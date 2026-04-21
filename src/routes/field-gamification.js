@@ -98,108 +98,106 @@ async function routes(fastify) {
     return { transactions: rows };
   });
 
-  // ── POST /spin — spin the Wheel of Norns ──
+  // ── POST /spin — spin the Wheel of Norns (TRANSACTIONAL) ──
   fastify.post('/spin', { preHandler: [fastify.fieldAuthenticate] }, async (req, reply) => {
     const eid = req.fieldEmployee.id;
+    const client = await db.connect();
 
-    // Check daily spin (reset at 06:00 MSK)
-    const { rows: [lastSpin] } = await db.query(
-      `SELECT spin_at FROM gamification_spins WHERE employee_id = $1
-       ORDER BY spin_at DESC LIMIT 1`, [eid]
-    );
+    try {
+      await client.query('BEGIN');
 
-    if (lastSpin) {
-      const now = new Date();
-      const msk = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
-      const resetToday = new Date(msk); resetToday.setHours(6, 0, 0, 0);
-      if (msk < resetToday) resetToday.setDate(resetToday.getDate() - 1);
+      // Check daily spin with row lock (prevents race condition)
+      const { rows: [lastSpin] } = await client.query(
+        `SELECT spin_at FROM gamification_spins WHERE employee_id = $1
+         ORDER BY spin_at DESC LIMIT 1 FOR UPDATE`, [eid]
+      );
 
-      const lastSpinMsk = new Date(lastSpin.spin_at.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
-      if (lastSpinMsk >= resetToday) {
-        return reply.code(429).send({ error: 'Спин уже использован сегодня', next_spin: resetToday.toISOString() });
+      if (lastSpin) {
+        const now = new Date();
+        const msk = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
+        const resetToday = new Date(msk); resetToday.setHours(6, 0, 0, 0);
+        if (msk < resetToday) resetToday.setDate(resetToday.getDate() - 1);
+        const lastSpinMsk = new Date(lastSpin.spin_at.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
+        if (lastSpinMsk >= resetToday) {
+          await client.query('ROLLBACK');
+          return reply.code(429).send({ error: 'Спин уже использован сегодня' });
+        }
       }
-    }
 
-    // Load prizes and determine winner using crypto RNG
-    const { rows: prizes } = await db.query(
-      'SELECT * FROM gamification_prizes WHERE is_active = true'
-    );
-    if (!prizes.length) return reply.code(500).send({ error: 'Нет доступных призов' });
-
-    // Pity system check
-    const { rows: [pity] } = await db.query(
-      `INSERT INTO gamification_pity_counters (employee_id) VALUES ($1)
-       ON CONFLICT (employee_id) DO UPDATE SET updated_at = NOW()
-       RETURNING spins_since_rare, pending_multiplier`, [eid]
-    );
-    const spinsSinceRare = pity?.spins_since_rare || 0;
-    const pendingMultiplier = pity?.pending_multiplier || 1;
-
-    // Select prize via weighted random (crypto.randomBytes)
-    let selectedPrize;
-    const pityGuarantee = 50; // from settings
-
-    if (spinsSinceRare >= pityGuarantee) {
-      // Guaranteed rare+
-      const rarePrizes = prizes.filter((p) => p.tier !== 'common');
-      selectedPrize = weightedRandom(rarePrizes);
-    } else {
-      selectedPrize = weightedRandom(prizes);
-    }
-
-    // Record spin
-    await db.query(
-      `INSERT INTO gamification_spins (employee_id, prize_id, prize_tier, prize_name, prize_value, multiplier_applied)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [eid, selectedPrize.id, selectedPrize.tier, selectedPrize.name, selectedPrize.value, pendingMultiplier]
-    );
-
-    // Update pity counter
-    const isRare = selectedPrize.tier !== 'common';
-    await db.query(
-      `UPDATE gamification_pity_counters SET
-         spins_since_rare = $2,
-         last_rare_at = $3,
-         pending_multiplier = $4,
-         updated_at = NOW()
-       WHERE employee_id = $1`,
-      [eid, isRare ? 0 : spinsSinceRare + 1, isRare ? new Date() : pity?.last_rare_at || null,
-       selectedPrize.prize_type === 'multiplier' ? selectedPrize.value : 1]
-    );
-
-    // Credit prize rewards
-    const rewardAmount = (selectedPrize.value || 0) * pendingMultiplier;
-    if (selectedPrize.prize_type === 'runes' && rewardAmount > 0) {
-      await creditWallet(db, eid, 'runes', rewardAmount, 'spin_win', selectedPrize.id);
-    } else if (selectedPrize.prize_type === 'xp' && rewardAmount > 0) {
-      await creditWallet(db, eid, 'xp', rewardAmount, 'spin_win', selectedPrize.id);
-    } else if (selectedPrize.prize_type === 'merch' || selectedPrize.requires_delivery) {
-      // Add to inventory + create fulfillment
-      const { rows: [inv] } = await db.query(
-        `INSERT INTO gamification_inventory (employee_id, item_type, item_name, source_id, source_type)
-         VALUES ($1, 'spin_prize', $2, $3, 'spin') RETURNING id`,
-        [eid, selectedPrize.name, selectedPrize.id]
+      // Load prizes
+      const { rows: prizes } = await client.query(
+        'SELECT * FROM gamification_prizes WHERE is_active = true AND weight > 0'
       );
-      await db.query(
-        `INSERT INTO gamification_fulfillment (inventory_id, employee_id, item_name, status)
-         VALUES ($1, $2, $3, 'pending')`,
-        [inv.id, eid, selectedPrize.name]
-      );
-    }
+      if (!prizes.length) { await client.query('ROLLBACK'); return reply.code(500).send({ error: 'Нет доступных призов' }); }
 
-    return {
-      prize: {
-        id: selectedPrize.id,
-        tier: selectedPrize.tier,
-        type: selectedPrize.prize_type,
-        name: selectedPrize.name,
-        description: selectedPrize.description,
-        value: rewardAmount,
-        icon: selectedPrize.icon,
-      },
-      multiplier_applied: pendingMultiplier,
-      pity_counter: isRare ? 0 : spinsSinceRare + 1,
-    };
+      // Pity system (locked row)
+      const { rows: [pity] } = await client.query(
+        `INSERT INTO gamification_pity_counters (employee_id) VALUES ($1)
+         ON CONFLICT (employee_id) DO UPDATE SET updated_at = NOW()
+         RETURNING spins_since_rare, pending_multiplier`, [eid]
+      );
+      const spinsSinceRare = pity?.spins_since_rare || 0;
+      const pendingMultiplier = Math.max(1, pity?.pending_multiplier || 1);
+      const pityGuarantee = 50;
+
+      // Select prize
+      let selectedPrize;
+      if (spinsSinceRare >= pityGuarantee) {
+        const rarePrizes = prizes.filter((p) => p.tier !== 'common');
+        selectedPrize = weightedRandom(rarePrizes.length ? rarePrizes : prizes);
+      } else {
+        selectedPrize = weightedRandom(prizes);
+      }
+
+      // Record spin
+      await client.query(
+        `INSERT INTO gamification_spins (employee_id, prize_id, prize_tier, prize_name, prize_value, multiplier_applied)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [eid, selectedPrize.id, selectedPrize.tier, selectedPrize.name, selectedPrize.value, pendingMultiplier]
+      );
+
+      // Update pity counter
+      const isRare = selectedPrize.tier !== 'common';
+      await client.query(
+        `UPDATE gamification_pity_counters SET
+           spins_since_rare = $2, last_rare_at = $3, pending_multiplier = $4, updated_at = NOW()
+         WHERE employee_id = $1`,
+        [eid, isRare ? 0 : spinsSinceRare + 1, isRare ? new Date() : pity?.last_rare_at || null,
+         selectedPrize.prize_type === 'multiplier' ? Math.max(1, selectedPrize.value) : 1]
+      );
+
+      // Credit prize rewards
+      const rewardAmount = Math.max(0, (selectedPrize.value || 0) * pendingMultiplier);
+      if (selectedPrize.prize_type === 'runes' && rewardAmount > 0) {
+        await creditWalletTx(client, eid, 'runes', rewardAmount, 'spin_win', selectedPrize.id);
+      } else if (selectedPrize.prize_type === 'xp' && rewardAmount > 0) {
+        await creditWalletTx(client, eid, 'xp', rewardAmount, 'spin_win', selectedPrize.id);
+      } else if (selectedPrize.prize_type === 'merch' || selectedPrize.requires_delivery) {
+        const { rows: [inv] } = await client.query(
+          `INSERT INTO gamification_inventory (employee_id, item_type, item_name, source_id, source_type)
+           VALUES ($1, 'spin_prize', $2, $3, 'spin') RETURNING id`,
+          [eid, selectedPrize.name, selectedPrize.id]
+        );
+        await client.query(
+          `INSERT INTO gamification_fulfillment (inventory_id, employee_id, item_name, status)
+           VALUES ($1, $2, $3, 'pending')`,
+          [inv.id, eid, selectedPrize.name]
+        );
+      }
+
+      await client.query('COMMIT');
+      return {
+        prize: { id: selectedPrize.id, tier: selectedPrize.tier, type: selectedPrize.prize_type,
+          name: selectedPrize.name, description: selectedPrize.description, value: rewardAmount, icon: selectedPrize.icon },
+        multiplier_applied: pendingMultiplier,
+        pity_counter: isRare ? 0 : spinsSinceRare + 1,
+      };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   });
 
   // ── GET /prizes — prize catalog ──
@@ -219,50 +217,73 @@ async function routes(fastify) {
   });
 
   // ── POST /shop/buy — purchase item ──
+  // ── POST /shop/buy — purchase item (TRANSACTIONAL) ──
   fastify.post('/shop/buy', {
     preHandler: [fastify.fieldAuthenticate],
     schema: { body: { type: 'object', required: ['item_id'], properties: { item_id: { type: 'integer' } } } }
   }, async (req, reply) => {
     const eid = req.fieldEmployee.id;
     const { item_id } = req.body;
+    const client = await db.connect();
 
-    const { rows: [item] } = await db.query(
-      'SELECT * FROM gamification_shop_items WHERE id = $1 AND is_active = true', [item_id]
-    );
-    if (!item) return reply.code(404).send({ error: 'Товар не найден' });
+    try {
+      await client.query('BEGIN');
 
-    // Debit runes
-    const { rows: [wallet] } = await db.query(
-      `UPDATE gamification_wallets SET balance = balance - $1, updated_at = NOW()
-       WHERE employee_id = $2 AND currency = 'runes' AND balance >= $1 RETURNING balance`,
-      [item.price_runes, eid]
-    );
-    if (!wallet) return reply.code(400).send({ error: 'Недостаточно рун' });
-
-    // Ledger
-    await db.query(
-      `INSERT INTO gamification_currency_ledger (employee_id, currency, amount, balance_after, operation, reference_id, reference_type)
-       VALUES ($1, 'runes', $2, $3, 'shop_buy', $4, 'shop')`,
-      [eid, -item.price_runes, wallet.balance, item.id]
-    );
-
-    // Add to inventory
-    const { rows: [inv] } = await db.query(
-      `INSERT INTO gamification_inventory (employee_id, item_type, item_name, item_description, source_id, source_type)
-       VALUES ($1, 'shop_purchase', $2, $3, $4, 'shop') RETURNING id`,
-      [eid, item.name, item.description, item.id]
-    );
-
-    // Fulfillment if physical
-    if (item.requires_delivery) {
-      await db.query(
-        `INSERT INTO gamification_fulfillment (inventory_id, employee_id, item_name, status)
-         VALUES ($1, $2, $3, 'pending')`,
-        [inv.id, eid, item.name]
+      // Lock and check item + stock
+      const { rows: [item] } = await client.query(
+        'SELECT * FROM gamification_shop_items WHERE id = $1 AND is_active = true FOR UPDATE', [item_id]
       );
-    }
+      if (!item) { await client.query('ROLLBACK'); return reply.code(404).send({ error: 'Товар не найден' }); }
+      if (item.max_stock !== null && item.current_stock <= 0) {
+        await client.query('ROLLBACK'); return reply.code(400).send({ error: 'Товар закончился' });
+      }
 
-    return { ok: true, item: item.name, runes_spent: item.price_runes, balance: wallet.balance };
+      // Debit runes (atomic check)
+      const { rows: [wallet] } = await client.query(
+        `UPDATE gamification_wallets SET balance = balance - $1, updated_at = NOW()
+         WHERE employee_id = $2 AND currency = 'runes' AND balance >= $1 RETURNING balance`,
+        [item.price_runes, eid]
+      );
+      if (!wallet) { await client.query('ROLLBACK'); return reply.code(400).send({ error: 'Недостаточно рун' }); }
+
+      // Decrement stock
+      if (item.max_stock !== null) {
+        await client.query(
+          'UPDATE gamification_shop_items SET current_stock = current_stock - 1 WHERE id = $1', [item_id]
+        );
+      }
+
+      // Ledger
+      await client.query(
+        `INSERT INTO gamification_currency_ledger (employee_id, currency, amount, balance_after, operation, reference_id, reference_type)
+         VALUES ($1, 'runes', $2, $3, 'shop_buy', $4, 'shop')`,
+        [eid, -item.price_runes, wallet.balance, item.id]
+      );
+
+      // Inventory
+      const { rows: [inv] } = await client.query(
+        `INSERT INTO gamification_inventory (employee_id, item_type, item_name, item_description, source_id, source_type)
+         VALUES ($1, 'shop_purchase', $2, $3, $4, 'shop') RETURNING id`,
+        [eid, item.name, item.description, item.id]
+      );
+
+      // Fulfillment if physical
+      if (item.requires_delivery) {
+        await client.query(
+          `INSERT INTO gamification_fulfillment (inventory_id, employee_id, item_name, status)
+           VALUES ($1, $2, $3, 'pending')`,
+          [inv.id, eid, item.name]
+        );
+      }
+
+      await client.query('COMMIT');
+      return { ok: true, item: item.name, runes_spent: item.price_runes, balance: wallet.balance };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   });
 
   // ── GET /inventory ──
@@ -290,21 +311,102 @@ async function routes(fastify) {
     `, [eid]);
     return { quests: rows };
   });
+
+  // ── POST /quests/:id/claim — claim quest reward ──
+  fastify.post('/quests/:id/claim', { preHandler: [fastify.fieldAuthenticate] }, async (req, reply) => {
+    const eid = req.fieldEmployee.id;
+    const questId = parseInt(req.params.id, 10);
+
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Check quest progress
+      const { rows: [progress] } = await client.query(
+        `SELECT qp.*, q.reward_type, q.reward_amount, q.name
+         FROM gamification_quest_progress qp
+         JOIN gamification_quests q ON q.id = qp.quest_id
+         WHERE qp.quest_id = $1 AND qp.employee_id = $2 AND qp.completed = true AND qp.reward_claimed = false`,
+        [questId, eid]
+      );
+      if (!progress) {
+        await client.query('ROLLBACK');
+        return reply.code(400).send({ error: 'Квест не завершён или награда уже получена' });
+      }
+
+      // Mark as claimed
+      await client.query(
+        'UPDATE gamification_quest_progress SET reward_claimed = true WHERE quest_id = $1 AND employee_id = $2',
+        [questId, eid]
+      );
+
+      // Credit reward
+      if (progress.reward_type === 'runes' && progress.reward_amount > 0) {
+        await client.query(
+          `INSERT INTO gamification_wallets (employee_id, currency, balance)
+           VALUES ($1, 'runes', $2)
+           ON CONFLICT (employee_id, currency) DO UPDATE SET balance = gamification_wallets.balance + $2, updated_at = NOW()`,
+          [eid, progress.reward_amount]
+        );
+        const { rows: [w] } = await client.query(
+          'SELECT balance FROM gamification_wallets WHERE employee_id = $1 AND currency = $2', [eid, 'runes']
+        );
+        await client.query(
+          `INSERT INTO gamification_currency_ledger (employee_id, currency, amount, balance_after, operation, reference_id, reference_type)
+           VALUES ($1, 'runes', $2, $3, 'quest_claim', $4, 'quest')`,
+          [eid, progress.reward_amount, w.balance, questId]
+        );
+      }
+
+      // Audit log
+      await client.query(
+        `INSERT INTO gamification_audit_log (employee_id, action, details) VALUES ($1, 'quest_claimed', $2)`,
+        [eid, JSON.stringify({ quest_id: questId, quest_name: progress.name, reward_type: progress.reward_type, reward_amount: progress.reward_amount })]
+      );
+
+      await client.query('COMMIT');
+      return { ok: true, quest_id: questId, reward_type: progress.reward_type, reward_amount: progress.reward_amount };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  });
 }
 
 // ── Helpers ──
 
 function weightedRandom(items) {
-  const totalWeight = items.reduce((sum, item) => sum + item.weight, 0);
+  const totalWeight = items.reduce((sum, item) => sum + (item.weight || 0), 0);
+  if (totalWeight <= 0) return items[Math.floor(Math.random() * items.length)]; // fallback
   const bytes = crypto.randomBytes(4);
   const rand = bytes.readUInt32BE(0) / 0xFFFFFFFF;
   let cumulative = 0;
 
   for (const item of items) {
-    cumulative += item.weight / totalWeight;
+    cumulative += (item.weight || 0) / totalWeight;
     if (rand <= cumulative) return item;
   }
   return items[items.length - 1];
+}
+
+// Transaction-aware version (uses client from transaction)
+async function creditWalletTx(client, employeeId, currency, amount, operation, referenceId) {
+  await client.query(
+    `INSERT INTO gamification_wallets (employee_id, currency, balance)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (employee_id, currency) DO UPDATE SET balance = gamification_wallets.balance + $3, updated_at = NOW()`,
+    [employeeId, currency, amount]
+  );
+  const { rows: [w] } = await client.query(
+    'SELECT balance FROM gamification_wallets WHERE employee_id = $1 AND currency = $2', [employeeId, currency]
+  );
+  await client.query(
+    `INSERT INTO gamification_currency_ledger (employee_id, currency, amount, balance_after, operation, reference_id, reference_type)
+     VALUES ($1, $2, $3, $4, $5, $6, 'spin')`,
+    [employeeId, currency, amount, w.balance, operation, referenceId]
+  );
 }
 
 async function creditWallet(db, employeeId, currency, amount, operation, referenceId) {

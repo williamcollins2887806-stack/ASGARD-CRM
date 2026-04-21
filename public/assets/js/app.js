@@ -301,6 +301,8 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/to-analytics",l:"Хроники Тендерного Отдела",d:"KPI тендерных специалистов",roles:["ADMIN","HEAD_TO",...DIRECTOR_ROLES],i:"kpiworks",p:"to_analytics",g:"analytics"},
     {r:"/pm-analytics",l:"Хроники Руководителей Проектов",d:"KPI и загрузка РП",roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES],i:"kpiworks",p:"pm_analytics",g:"analytics"},
     {r:"/engineer-dashboard",l:"Кузница Инженера",d:"Склад, оборудование, ТО",roles:["ADMIN","CHIEF_ENGINEER"],i:"backup",p:"engineer_dashboard",g:"analytics"},
+    {r:"/gamification-dashboard",l:"Геймификация",d:"Монеты, призы, квесты рабочи��",roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES,"HR","HR_MANAGER"],i:"kpiworks",p:"gamification_dashboard",g:"analytics"},
+    {r:"/gamification-admin",l:"Управление геймификацией",d:"Товары, призы, квесты — CRUD",roles:["ADMIN",...DIRECTOR_ROLES,"HR"],i:"backup",p:"gamification_admin",g:"analytics"},
     {r:"/object-map",l:"Карта объектов",d:"География работ",roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES],i:"kpiworks",p:"object_map",g:"analytics"},
 
     // Фаза 8+9: Почта + AI-анализ заявок (объединено)
@@ -1998,6 +2000,8 @@ var _setupPinKeypad = null;
     AsgardRouter.add("/register", pageRegister, {auth:false});
     AsgardRouter.add("/home", pageHome, {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/dashboard", ()=>AsgardDashboardPage.render({layout, title:"Дашборд руководителя"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES]});
+    AsgardRouter.add("/gamification-dashboard", ()=>AsgardGamificationDashboard.render({layout, title:"Геймификация — Дашборд"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES,"HR","HR_MANAGER"]});
+    AsgardRouter.add("/gamification-admin", ()=>AsgardGamificationCrud.render({layout, title:"Геймификация — Управление"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES,"HR","HR_MANAGER"]});
     AsgardRouter.add("/calendar", ()=>AsgardCalendarPage.render({layout, title:"Календарь встреч"}), {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/birthdays", ()=>AsgardBirthdaysPage.render({layout, title:"Дни рождения"}), {auth:true, roles:ALL_ROLES});
 

@@ -119,6 +119,7 @@ window.AsgardFieldTab = (function () {
       { id: 'packing', label: '📦 Сборы', render: () => renderPackingTab(content, work, user) },
       { id: 'stages', label: '🗺 Маршруты', render: () => renderStagesTab(content, work, user) },
       { id: 'payments', label: '💳 Выплаты', render: () => renderPaymentsTab(content, work, user) },
+      { id: 'prizes', label: '🎁 Призы', render: () => renderPrizesTab(content, work, user) },
     ];
 
     root.innerHTML = '';
@@ -2783,6 +2784,192 @@ window.AsgardFieldTab = (function () {
         formDiv.remove();
         renderPaymentsTab(parentContainer, work, user);
       } catch (err) { toast('Ошибка', err.message, 'err'); }
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // PRIZES TAB — Fulfillment for PM / Director (W3.5)
+  // ═══════════════════════════════════════════════════════════════════
+
+  async function apiAdmin(path, opts) {
+    const r = await fetch('/api/gamification/admin' + path, { headers: hdr(), ...opts });
+    return r.json();
+  }
+
+  async function renderPrizesTab(container, work, user) {
+    container.innerHTML = '<div class="help" style="padding:20px;text-align:center;color:var(--t3,#888)">Загрузка призов…</div>';
+
+    let deliveries, history;
+    try {
+      [deliveries, history] = await Promise.all([
+        apiAdmin('/pending-deliveries'),
+        apiAdmin('/delivered-history'),
+      ]);
+    } catch (e) {
+      container.innerHTML = '<div style="padding:20px;color:#ef4444">Ошибка: ' + esc(String(e)) + '</div>';
+      return;
+    }
+
+    const pending = (deliveries.deliveries || []).filter(d => d.status === 'pending');
+    const ready = (deliveries.deliveries || []).filter(d => d.status === 'ready');
+    const delivered = (history.history || []).slice(0, 20);
+
+    container.innerHTML = '';
+
+    // ── Stats row ──
+    const stats = document.createElement('div');
+    stats.style.cssText = 'display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap';
+    [
+      { label: '📦 Готовы к выдаче', val: ready.length, color: '#3b82f6', bg: 'rgba(59,130,246,.08)' },
+      { label: '⏳ Готовятся', val: pending.length, color: '#f59e0b', bg: 'rgba(245,158,11,.08)' },
+      { label: '✅ Выдано (30д)', val: delivered.length, color: '#22c55e', bg: 'rgba(34,197,94,.08)' },
+    ].forEach(s => {
+      const card = document.createElement('div');
+      card.style.cssText = `flex:1;min-width:120px;padding:12px 16px;border-radius:12px;background:${s.bg};border:1px solid ${s.color}20`;
+      card.innerHTML = `<div style="font-size:11px;color:${s.color};font-weight:600;margin-bottom:4px">${s.label}</div>
+        <div style="font-size:24px;font-weight:800;color:${s.color}">${s.val}</div>`;
+      stats.appendChild(card);
+    });
+    container.appendChild(stats);
+
+    // ── Ready section (top priority) ──
+    if (ready.length > 0) {
+      const sect = makePrizeSection('📦 Готовы к выдаче', '#3b82f6', ready, true, container, work, user);
+      container.appendChild(sect);
+    }
+
+    // ── Pending section ──
+    if (pending.length > 0) {
+      const sect = makePrizeSection('⏳ Готовятся', '#f59e0b', pending, false, container, work, user);
+      container.appendChild(sect);
+    }
+
+    // ── Delivered history ──
+    if (delivered.length > 0) {
+      const sect = document.createElement('div');
+      sect.style.cssText = 'margin-top:16px';
+      sect.innerHTML = `<div style="font-size:13px;font-weight:700;color:var(--t2,#aaa);margin-bottom:8px">✅ Выдано (последние 30 дней)</div>`;
+      const table = document.createElement('table');
+      table.style.cssText = 'width:100%;border-collapse:collapse;font-size:12px';
+      table.innerHTML = `<thead><tr style="color:var(--t3,#888);border-bottom:1px solid var(--brd,rgba(255,255,255,.08))">
+        <th style="text-align:left;padding:6px 8px">Рабочий</th>
+        <th style="text-align:left;padding:6px 8px">Приз</th>
+        <th style="text-align:left;padding:6px 8px">Выдал</th>
+        <th style="text-align:left;padding:6px 8px">Дата</th>
+      </tr></thead><tbody></tbody>`;
+      const tbody = table.querySelector('tbody');
+      delivered.forEach(d => {
+        const tr = document.createElement('tr');
+        tr.style.cssText = 'border-bottom:1px solid var(--brd,rgba(255,255,255,.04))';
+        tr.innerHTML = `<td style="padding:6px 8px;color:var(--t1,#fff)">${esc(d.employee_name || '—')}</td>
+          <td style="padding:6px 8px;color:var(--t2,#aaa)">${esc(d.item_name || '—')}</td>
+          <td style="padding:6px 8px;color:var(--t3,#888)">${esc(d.delivered_by_name || '—')}</td>
+          <td style="padding:6px 8px;color:var(--t3,#888)">${d.delivered_at ? new Date(d.delivered_at).toLocaleDateString('ru-RU') : '—'}</td>`;
+        tbody.appendChild(tr);
+      });
+      sect.appendChild(table);
+      container.appendChild(sect);
+    }
+
+    // ── Empty state ──
+    if (ready.length === 0 && pending.length === 0 && delivered.length === 0) {
+      container.innerHTML = `<div style="padding:40px;text-align:center">
+        <div style="font-size:48px;margin-bottom:12px;opacity:.4">🎁</div>
+        <div style="font-size:14px;color:var(--t3,#888)">Нет призов на выдачу</div>
+        <div style="font-size:12px;color:var(--t3,#666);margin-top:4px">Рабочие могут получить призы через рулетку, магазин и квесты</div>
+      </div>`;
+    }
+  }
+
+  function makePrizeSection(title, color, items, showDeliver, parentContainer, work, user) {
+    const sect = document.createElement('div');
+    sect.style.cssText = 'margin-bottom:16px';
+    sect.innerHTML = `<div style="font-size:13px;font-weight:700;color:${color};margin-bottom:8px">${title} (${items.length})</div>`;
+
+    items.forEach(item => {
+      const row = document.createElement('div');
+      row.style.cssText = `display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:6px;border-radius:12px;
+        background:var(--card,#141828);border:1px solid ${color}20;transition:all .2s`;
+
+      const info = document.createElement('div');
+      info.style.cssText = 'flex:1;min-width:0';
+      info.innerHTML = `<div style="font-size:13px;font-weight:700;color:var(--t1,#fff)">${esc(item.employee_name || 'Рабочий #' + item.employee_id)}</div>
+        <div style="font-size:12px;color:var(--t2,#aaa);margin-top:2px">${esc(item.item_name)}</div>
+        <div style="font-size:10px;color:var(--t3,#888);margin-top:2px">${esc(item.work_name || '')} · ${new Date(item.created_at).toLocaleDateString('ru-RU')}</div>`;
+      row.appendChild(info);
+
+      if (showDeliver) {
+        const btn = document.createElement('button');
+        btn.className = 'btn';
+        btn.style.cssText = `padding:6px 16px;border-radius:10px;font-size:12px;font-weight:700;
+          background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;border:none;cursor:pointer;
+          box-shadow:0 2px 0 #15803d;white-space:nowrap;transition:all .1s`;
+        btn.textContent = '✅ Выдал';
+        btn.addEventListener('click', () => showDeliverModal(item, parentContainer, work, user));
+        row.appendChild(btn);
+      } else {
+        // "Mark as ready" button for pending items
+        const btn = document.createElement('button');
+        btn.className = 'btn ghost';
+        btn.style.cssText = 'padding:6px 12px;border-radius:10px;font-size:11px;font-weight:600;color:var(--t3,#888);white-space:nowrap';
+        btn.textContent = '📦 Готов';
+        btn.addEventListener('click', async () => {
+          try {
+            await apiAdmin('/inventory/' + item.id + '/ready', { method: 'PUT' });
+            toast('Статус', item.item_name + ' — готов к выдаче', 'ok');
+            renderPrizesTab(parentContainer, work, user);
+          } catch (e) { toast('Ошибка', String(e), 'err'); }
+        });
+        row.appendChild(btn);
+      }
+
+      sect.appendChild(row);
+    });
+
+    return sect;
+  }
+
+  function showDeliverModal(item, parentContainer, work, user) {
+    AsgardUI.showModal({
+      title: '✅ Выдача приза',
+      html: `<div style="padding:16px">
+        <div style="margin-bottom:16px;padding:12px;border-radius:12px;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.15)">
+          <div style="font-size:14px;font-weight:700;color:var(--t1,#fff)">${esc(item.employee_name)}</div>
+          <div style="font-size:13px;color:var(--t2,#aaa);margin-top:4px">${esc(item.item_name)}</div>
+        </div>
+        <label style="display:block;font-size:12px;font-weight:600;color:var(--t3,#888);margin-bottom:6px">Комментарий (необязательно)</label>
+        <textarea id="deliverNote" rows="3" style="width:100%;border-radius:10px;border:1px solid var(--brd,rgba(255,255,255,.1));
+          background:var(--card,#141828);color:var(--t1,#fff);padding:10px;font-size:13px;resize:vertical"
+          placeholder="Например: Выдал на объекте, роспись получил"></textarea>
+        <button id="deliverConfirmBtn" style="width:100%;margin-top:16px;padding:14px;border-radius:14px;border:none;
+          font-size:15px;font-weight:800;color:#fff;cursor:pointer;
+          background:linear-gradient(135deg,#22c55e,#16a34a);box-shadow:0 4px 0 #15803d;transition:all .1s">
+          ✅ Подтвердить выдачу
+        </button>
+      </div>`,
+      onMount: ({ modal }) => {
+        const btn = document.getElementById('deliverConfirmBtn');
+        if (!btn) return;
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          btn.textContent = 'Отправка…';
+          const note = (document.getElementById('deliverNote') || {}).value || '';
+          try {
+            await apiAdmin('/inventory/' + item.id + '/deliver', {
+              method: 'PUT',
+              body: JSON.stringify({ delivery_note: note }),
+            });
+            toast('Выдано!', item.item_name + ' → ' + item.employee_name, 'ok');
+            if (modal && modal.close) modal.close();
+            else document.querySelector('.modal-overlay')?.click();
+            renderPrizesTab(parentContainer, work, user);
+          } catch (e) {
+            toast('Ошибка', String(e), 'err');
+            btn.disabled = false;
+            btn.textContent = '✅ Подтвердить выдачу';
+          }
+        });
+      },
     });
   }
 

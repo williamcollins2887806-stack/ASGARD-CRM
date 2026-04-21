@@ -49,6 +49,13 @@ const ACTIONS = [
   { icon: UserCircle, label: 'Профиль', path: '/m/field/profile' },
 ];
 
+const GAMIFICATION_TILES = [
+  { emoji: '\uD83C\uDFB0', label: 'Рулетка', path: '/m/field/wheel', bg: 'linear-gradient(135deg,#3a0a10,#1a0508)', border: 'rgba(232,64,87,.25)' },
+  { emoji: '\uD83D\uDECD', label: 'Магазин', path: '/m/field/shop', bg: 'linear-gradient(135deg,#2a2008,#1a1505)', border: 'rgba(240,200,80,.25)' },
+  { emoji: '\uD83C\uDF81', label: 'Инвентарь', path: '/m/field/inventory', bg: 'linear-gradient(135deg,#0a1a2a,#081020)', border: 'rgba(74,144,255,.25)' },
+  { emoji: '\u2694\uFE0F', label: 'Квесты', path: '/m/field/quests', bg: 'linear-gradient(135deg,#1a0a2a,#100818)', border: 'rgba(165,110,255,.25)' },
+];
+
 export default function FieldHome() {
   const navigate = useNavigate();
   const haptic = useHaptic();
@@ -232,6 +239,23 @@ export default function FieldHome() {
           )}
         </div>
       )}
+
+      {/* Gamification tiles — Norse style */}
+      <div className="mb-5">
+        <p className="text-xs font-semibold uppercase tracking-wide px-1 mb-2" style={{ color: 'var(--text-tertiary)', letterSpacing: '.1em' }}>
+          {'\u2694'} Геймификация
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          {GAMIFICATION_TILES.map(({ emoji, label, path, bg, border }) => (
+            <button key={path} onClick={() => { haptic.medium(); navigate(path); }}
+              className="flex items-center gap-3 p-4 rounded-2xl active:scale-95 transition-transform"
+              style={{ background: bg, border: `1.5px solid ${border}`, boxShadow: '0 4px 16px rgba(0,0,0,.2)' }}>
+              <span style={{ fontSize: 28, filter: 'drop-shadow(0 2px 6px rgba(0,0,0,.3))' }}>{emoji}</span>
+              <span className="text-sm font-bold" style={{ color: '#fff' }}>{label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Quick actions */}
       <div className="grid grid-cols-3 gap-3">

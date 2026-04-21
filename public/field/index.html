@@ -2,170 +2,26 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#0D0D0F">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="ASGARD Field">
-  <meta name="format-detection" content="telephone=no">
-  <title>ASGARD Field</title>
-
-  <!-- Kill-switch: при смене версии — сбросить все кэши и перерегистрировать SW -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="refresh" content="0;url=/m/field-login">
+  <title>ASGARD Field — Redirect</title>
   <script>
-  (function(){
-    var TARGET_VER = '3.3.1';
-    var curVer = localStorage.getItem('field_sw_ver');
-    if (curVer !== TARGET_VER && 'serviceWorker' in navigator && 'caches' in window) {
-      // Удалить все кэши
-      caches.keys().then(function(keys) {
-        keys.forEach(function(k) { caches.delete(k); });
+    // Unregister old field SW before redirect
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(regs => {
+        regs.forEach(r => { if (r.scope.includes('/field')) r.unregister(); });
       });
-      // Unregister все SW
-      navigator.serviceWorker.getRegistrations().then(function(regs) {
-        regs.forEach(function(r) { r.unregister(); });
-      });
-      localStorage.setItem('field_sw_ver', TARGET_VER);
-      // Перезагрузить через 500ms чтобы дать время на unregister
-      setTimeout(function() { location.reload(true); }, 500);
     }
-  })();
+    // Clear old field caches
+    if ('caches' in window) {
+      caches.keys().then(names => {
+        names.filter(n => n.startsWith('field-')).forEach(n => caches.delete(n));
+      });
+    }
+    window.location.replace('/m/field-login');
   </script>
-
-  <link rel="manifest" href="/field/manifest.json">
-  <link rel="icon" type="image/png" sizes="192x192" href="/assets/img/icon-192.png">
-  <link rel="apple-touch-icon" href="/assets/img/icon-192.png">
-
-  <style>
-    /* CSS Reset — Field only */
-    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-    html { -webkit-text-size-adjust: 100%; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
-    body {
-      margin: 0; padding: 0;
-      background: #0D0D0F; color: #F4F4F5;
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      font-size: 16px; line-height: 1.5;
-      overflow: hidden;
-      -webkit-tap-highlight-color: transparent;
-      overscroll-behavior: none;
-    }
-    input, button, textarea, select { font-family: inherit; font-size: inherit; }
-    button { cursor: pointer; }
-    a { color: inherit; text-decoration: none; }
-    img { display: block; max-width: 100%; }
-
-    /* Loading screen */
-    #field-loading {
-      position: fixed; inset: 0; z-index: 9999;
-      background: #0D0D0F;
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center; gap: 16px;
-    }
-    #field-loading img {
-      width: 64px; height: 64px; border-radius: 14px;
-      animation: fieldLoadGlow 2s ease infinite;
-    }
-    #field-loading .load-text {
-      color: #D4A843; font-weight: 700; font-size: 1.25rem;
-      letter-spacing: 3px;
-    }
-    #field-loading .load-dots {
-      display: flex; gap: 6px;
-    }
-    #field-loading .load-dot {
-      width: 6px; height: 6px; border-radius: 50%;
-      background: #D4A843; opacity: 0.3;
-      animation: fieldLoadDot 1.2s ease infinite;
-    }
-    #field-loading .load-dot:nth-child(2) { animation-delay: 0.2s; }
-    #field-loading .load-dot:nth-child(3) { animation-delay: 0.4s; }
-
-    @keyframes fieldLoadGlow {
-      0%, 100% { filter: drop-shadow(0 0 8px rgba(212,168,67,0.3)); }
-      50% { filter: drop-shadow(0 0 20px rgba(212,168,67,0.6)); }
-    }
-    @keyframes fieldLoadDot {
-      0%, 100% { opacity: 0.3; transform: scale(1); }
-      50% { opacity: 1; transform: scale(1.3); }
-    }
-
-    /* Scrollbar styling */
-    ::-webkit-scrollbar { width: 3px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
-
-    /* Safe areas */
-    #field-app { padding-top: env(safe-area-inset-top); }
-  </style>
-
-  <!-- Font preload -->
-  <link rel="preload" href="/assets/fonts/inter.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="/assets/fonts/inter-600.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="/assets/fonts/inter-700.woff2" as="font" type="font/woff2" crossorigin>
-  <style>
-    @font-face { font-family: 'Inter'; src: url('/assets/fonts/inter.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
-    @font-face { font-family: 'Inter'; src: url('/assets/fonts/inter-600.woff2') format('woff2'); font-weight: 600; font-style: normal; font-display: swap; }
-    @font-face { font-family: 'Inter'; src: url('/assets/fonts/inter-700.woff2') format('woff2'); font-weight: 700; font-style: normal; font-display: swap; }
-  </style>
 </head>
-<body>
-  <!-- Loading screen (removed by app.js) -->
-  <div id="field-loading">
-    <img src="/assets/img/logo.png" alt="ASGARD">
-    <div class="load-text">ASGARD</div>
-    <div class="load-dots">
-      <div class="load-dot"></div>
-      <div class="load-dot"></div>
-      <div class="load-dot"></div>
-    </div>
-  </div>
-
-  <!-- App root -->
-  <div id="field-app"></div>
-
-  <!-- Shared components -->
-  <link rel="stylesheet" href="/css/cr-components.css">
-  <script src="/assets/js/components/cr-select.js"></script>
-  <script src="/assets/js/components/cr-employee-picker.js"></script>
-  <script src="/assets/js/components/cr-autocomplete.js"></script>
-
-  <!-- Core scripts -->
-  <script src="/field/ds-field.js?v=3.3.1"></script>
-  <script src="/field/core.js?v=3.3.1"></script>
-  <script src="/field/components.js?v=3.3.1"></script>
-
-  <!-- Pages -->
-  <script src="/field/pages/login.js?v=3.3.1"></script>
-  <script src="/field/pages/home.js?v=3.3.1"></script>
-  <script src="/field/pages/shift.js?v=3.3.1"></script>
-  <script src="/field/pages/money.js?v=3.3.1"></script>
-  <script src="/field/pages/logistics.js?v=3.3.1"></script>
-  <script src="/field/pages/history.js?v=3.3.1"></script>
-  <script src="/field/pages/profile.js?v=3.3.1"></script>
-  <script src="/field/pages/crew.js?v=3.3.1"></script>
-  <script src="/field/pages/report.js?v=3.3.1"></script>
-  <script src="/field/pages/incidents.js?v=3.3.1"></script>
-  <script src="/field/pages/photos.js?v=3.3.1"></script>
-  <script src="/field/pages/funds.js?v=3.3.1"></script>
-  <script src="/field/pages/packing.js?v=3.3.1"></script>
-  <script src="/field/pages/stages.js?v=3.3.1"></script>
-  <script src="/field/pages/earnings.js?v=3.3.1"></script>
-  <script src="/field/pages/my-works.js?v=3.3.1"></script>
-
-  <!-- App init (must be last) -->
-  <script src="/field/app.js?v=3.3.1"></script>
-
-  <script>
-    // Remove loading screen when app renders
-    window.addEventListener('load', () => {
-      setTimeout(() => {
-        const loader = document.getElementById('field-loading');
-        if (loader) {
-          loader.style.transition = 'opacity 0.3s';
-          loader.style.opacity = '0';
-          setTimeout(() => loader.remove(), 300);
-        }
-      }, 300);
-    });
-  </script>
+<body style="background:#0D0D0F;color:#fff;font-family:system-ui;display:flex;align-items:center;justify-content:center;min-height:100vh">
+  <p>Перенаправление на новую версию...</p>
 </body>
 </html>

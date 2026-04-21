@@ -2,7 +2,7 @@
 // Shell caching + Push Notifications + Offline Support + Background Sync
 // Session 15: PWA + Push Actions + Badge + Offline
 
-const SHELL_VERSION = '19.8.0';
+const SHELL_VERSION = '19.10.0';
 const CACHE_NAME = `asgard-crm-shell-${SHELL_VERSION}`;
 const API_CACHE_NAME = 'asgard-crm-api-v2';
 
@@ -77,8 +77,18 @@ self.addEventListener('fetch', (event) => {
 
   if (url.origin !== location.origin) return;
 
-  // Field PWA has its own SW — do not intercept
+  // Field PWA (vanilla) has its own SW — do not intercept
   if (url.pathname === '/field' || url.pathname.startsWith('/field/')) return;
+
+  // React Mobile App /m/* — SPA routing: navigation requests → /m/index.html
+  if ((url.pathname === '/m' || url.pathname.startsWith('/m/')) && !url.pathname.match(/\.\w+$/)) {
+    if (request.mode === 'navigate' || (request.headers.get('accept') || '').includes('text/html')) {
+      event.respondWith(
+        fetch('/m/index.html').catch(() => caches.match('/m/index.html') || caches.match('./offline.html'))
+      );
+      return;
+    }
+  }
 
   // ── API routing ──
   if (url.pathname.startsWith('/api/')) {
