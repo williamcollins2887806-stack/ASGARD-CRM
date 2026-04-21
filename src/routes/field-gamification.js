@@ -218,7 +218,7 @@ async function routes(fastify) {
   // ── GET /shop — shop items ──
   fastify.get('/shop', { preHandler: [fastify.fieldAuthenticate] }, async () => {
     const { rows } = await db.query(
-      'SELECT id, name, description, price_runes, category, icon, image_url, requires_delivery FROM gamification_shop_items WHERE is_active = true ORDER BY category, price_runes'
+      'SELECT id, name, description, price_runes, category, icon, image_url, requires_delivery, current_stock, max_stock, rarity, is_limited FROM gamification_shop_items WHERE is_active = true ORDER BY category, price_runes'
     );
     return { items: rows };
   });
@@ -296,9 +296,14 @@ async function routes(fastify) {
   // ── GET /inventory ──
   fastify.get('/inventory', { preHandler: [fastify.fieldAuthenticate] }, async (req) => {
     const { rows } = await db.query(
-      `SELECT gi.*, gf.status as delivery_status, gf.delivery_note
+      `SELECT gi.*, gf.status as delivery_status, gf.delivery_note, gf.delivered_at,
+              u.name as pm_name, e2.phone as pm_phone, w.object_name as work_name
        FROM gamification_inventory gi
        LEFT JOIN gamification_fulfillment gf ON gf.inventory_id = gi.id
+       LEFT JOIN users u ON u.id = gf.assigned_pm
+       LEFT JOIN employee_assignments ea ON ea.employee_id = gi.employee_id
+       LEFT JOIN works w ON w.id = ea.work_id
+       LEFT JOIN employees e2 ON e2.id = gi.employee_id
        WHERE gi.employee_id = $1 ORDER BY gi.acquired_at DESC`,
       [req.fieldEmployee.id]
     );

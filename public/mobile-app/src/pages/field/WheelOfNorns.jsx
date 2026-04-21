@@ -242,11 +242,14 @@ const DEMO_PRIZES = [
 
 function randomPrize(pool) { return pool[Math.floor(Math.random() * pool.length)]; }
 
+// S3 fix: escape HTML to prevent XSS from API data
+function escHtml(s) { if (!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
 function buildStripHTML(items) {
   return items.map(p => {
-    const tier = p.tier;
+    const tier = escHtml(p.tier);
     const tag = tier === 'legendary' ? 'ЛЕГЕНДА' : tier === 'epic' ? 'ЭПИК' : tier === 'rare' ? 'РЕДКИЙ' : '';
-    return `<div class="wn-item"><div class="wn-di-icon ${tier}">${p.icon}</div><div style="flex:1;min-width:0"><div class="wn-di-name">${p.name}</div><div class="wn-di-desc">${p.desc || ''}</div></div>${tag ? `<div class="wn-di-tag ${tier}">${tag}</div>` : ''}</div>`;
+    return `<div class="wn-item"><div class="wn-di-icon ${tier}">${escHtml(p.icon)}</div><div style="flex:1;min-width:0"><div class="wn-di-name">${escHtml(p.name)}</div><div class="wn-di-desc">${escHtml(p.desc)}</div></div>${tag ? `<div class="wn-di-tag ${tier}">${tag}</div>` : ''}</div>`;
   }).join('');
 }
 

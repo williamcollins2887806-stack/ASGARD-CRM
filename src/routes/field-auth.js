@@ -437,9 +437,13 @@ async function routes(fastify, options) {
     }
   });
 
-  // ─────────────────────────────────────────────────────────────────────
+  // ──────────────────────────────────────────���──────────────────────────
   // POST /pin-login — login with PIN only (JWT expired, employee_id known)
+  // S4 fix: rate limit — 5 attempts per 15 min per employee_id
   // ─────────────────────────────────────────────────────────────────────
+  const pinAttempts = new Map(); // employee_id → { count, resetAt }
+  setInterval(() => { const now = Date.now(); for (const [k, v] of pinAttempts) { if (v.resetAt < now) pinAttempts.delete(k); } }, 60000);
+
   fastify.post('/pin-login', {
     schema: {
       body: {
@@ -454,6 +458,13 @@ async function routes(fastify, options) {
   }, async (req, reply) => {
     try {
       const { employee_id, pin } = req.body;
+
+      // S4: Rate limit check
+      const attempt = pinAttempts.get(employee_id) || { count: 0, resetAt: Date.now() + 15 * 60 * 1000 };
+      if (attempt.count >= 5) {
+        const waitMin = Math.ceil((attempt.resetAt - Date.now()) / 60000);
+        return reply.code(429).send({ error: `Слишком много попыток. Подождите ${waitMin} мин` });
+      }
 
       const { rows: employees } = await db.query(
         `SELECT e.id, e.fio, e.phone, e.city, e.position, e.user_id, e.is_active
@@ -478,8 +489,14 @@ async function routes(fastify, options) {
 
       const valid = await bcrypt.compare(pin, userRows[0].pin_hash);
       if (!valid) {
+        // S4: Increment failed attempt counter
+        attempt.count++;
+        if (!pinAttempts.has(employee_id)) attempt.resetAt = Date.now() + 15 * 60 * 1000;
+        pinAttempts.set(employee_id, attempt);
         return reply.code(401).send({ error: 'Неверный PIN' });
       }
+      // S4: Clear attempts on success
+      pinAttempts.delete(employee_id);
 
       const token = jwt.sign(
         { employee_id: employee.id, user_id: employee.user_id, type: 'field' },
