@@ -44,7 +44,7 @@ async function routes(fastify) {
   // GET /leaderboard — top 20 employees by points
   fastify.get('/leaderboard', { preHandler: [fastify.fieldAuthenticate] }, async () => {
     const { rows } = await db.query(`
-      SELECT apb.employee_id, e.name as fio, apb.points_earned_total,
+      SELECT apb.employee_id, e.fio, apb.points_earned_total,
              (SELECT COUNT(*) FROM employee_achievements ea WHERE ea.employee_id = apb.employee_id) as achievements_count
       FROM achievement_points_balance apb
       JOIN employees e ON e.id = apb.employee_id

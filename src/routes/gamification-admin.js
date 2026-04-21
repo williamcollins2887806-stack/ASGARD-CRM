@@ -27,7 +27,7 @@ async function routes(fastify) {
       query = `
         SELECT gf.id, gf.inventory_id, gf.employee_id, gf.item_name, gf.status,
                gf.delivery_note, gf.delivered_at, gf.created_at,
-               e.name AS employee_name, e.phone AS employee_phone,
+               e.fio AS employee_name, e.phone AS employee_phone,
                w.object_name AS work_name
         FROM gamification_fulfillment gf
         JOIN employees e ON e.id = gf.employee_id
@@ -41,7 +41,7 @@ async function routes(fastify) {
       query = `
         SELECT gf.id, gf.inventory_id, gf.employee_id, gf.item_name, gf.status,
                gf.delivery_note, gf.delivered_at, gf.created_at,
-               e.name AS employee_name, e.phone AS employee_phone,
+               e.fio AS employee_name, e.phone AS employee_phone,
                w.object_name AS work_name
         FROM gamification_fulfillment gf
         JOIN employees e ON e.id = gf.employee_id
@@ -64,7 +64,7 @@ async function routes(fastify) {
     if (!allowedRoles.includes(req.user?.role)) return reply.code(403).send({ error: 'Нет доступа' });
     const { rows } = await db.query(`
       SELECT gf.id, gf.item_name, gf.status, gf.delivered_at, gf.delivery_note,
-             e.name AS employee_name, u.name AS delivered_by_name
+             e.fio AS employee_name, u.name AS delivered_by_name
       FROM gamification_fulfillment gf
       JOIN employees e ON e.id = gf.employee_id
       LEFT JOIN users u ON u.id = gf.delivered_by
@@ -178,15 +178,15 @@ async function routes(fastify) {
 
     // Top workers
     const { rows: topWorkers } = await db.query(`
-      SELECT e.name, COUNT(*) AS spins
+      SELECT e.fio AS name, COUNT(*) AS spins
       FROM gamification_spins gs
       JOIN employees e ON e.id = gs.employee_id
-      GROUP BY e.id, e.name ORDER BY spins DESC LIMIT 10
+      GROUP BY e.id, e.fio ORDER BY spins DESC LIMIT 10
     `);
 
     // Recent operations
     const { rows: recentOps } = await db.query(`
-      SELECT gcl.created_at, e.name AS employee_name, gcl.currency, gcl.amount, gcl.operation, gcl.note
+      SELECT gcl.created_at, e.fio AS employee_name, gcl.currency, gcl.amount, gcl.operation, gcl.note
       FROM gamification_currency_ledger gcl
       JOIN employees e ON e.id = gcl.employee_id
       ORDER BY gcl.created_at DESC LIMIT 20
