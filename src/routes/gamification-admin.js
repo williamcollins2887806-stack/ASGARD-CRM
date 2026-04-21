@@ -6,6 +6,8 @@
  * GET  /dashboard            — KPI + stats for director
  */
 
+const notificationDispatcher = require('../services/notificationDispatcher'); // D-1
+
 async function routes(fastify) {
   const db = fastify.db;
 
@@ -132,6 +134,16 @@ async function routes(fastify) {
       `UPDATE gamification_fulfillment SET status = 'ready', updated_at = NOW() WHERE id = $1`,
       [fulfillmentId]
     );
+
+    // D-1: Notify worker that prize is ready for pickup
+    const { rows: [emp] } = await db.query(
+      'SELECT user_id FROM employees WHERE id = $1', [item.employee_id]
+    );
+    if (emp?.user_id) {
+      notificationDispatcher.send(db, emp.user_id, 'FULFILLMENT_READY', {
+        item: item.item_name, message: `Приз "${item.item_name}" готов! Заберите у РП.`
+      }).catch(() => {});
+    }
 
     return { ok: true, fulfillment_id: fulfillmentId, status: 'ready' };
   });

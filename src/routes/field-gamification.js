@@ -13,6 +13,7 @@
  */
 
 const crypto = require('crypto');
+const notificationDispatcher = require('../services/notificationDispatcher'); // D-1: activate dead code
 
 async function routes(fastify) {
   const db = fastify.db;
@@ -193,6 +194,18 @@ async function routes(fastify) {
       }
 
       await client.query('COMMIT');
+
+      // D-1: Send push notification for epic/legendary wins (fire-and-forget)
+      if (selectedPrize.tier === 'legendary' || selectedPrize.tier === 'epic') {
+        const userId = req.fieldEmployee.user_id;
+        if (userId) {
+          const template = selectedPrize.tier === 'legendary' ? 'LEGENDARY_WIN' : 'ACHIEVEMENT_EARNED';
+          notificationDispatcher.send(db, userId, template, {
+            prize: selectedPrize.name, message: `Вы выиграли: ${selectedPrize.name}!`
+          }).catch(() => {}); // fire-and-forget
+        }
+      }
+
       return {
         prize: { id: selectedPrize.id, tier: selectedPrize.tier, type: selectedPrize.prize_type,
           name: selectedPrize.name, description: selectedPrize.description, value: rewardAmount, icon: selectedPrize.icon },

@@ -580,7 +580,7 @@ export default function FieldQuests() {
    CSS — 1:1 from FIELD_QUESTS_RENDER.html
    ═══════════════════════════════════════════════════════════ */
 const QUEST_CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&display=swap');
+/* Q10: Cinzel font loaded via index.html link — no @import FOUC */
 @keyframes fq-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 .fq{
   --fq-bg:#0b0e1a;--fq-card:#141828;--fq-card2:#1a2040;

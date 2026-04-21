@@ -64,4 +64,15 @@ CREATE INDEX IF NOT EXISTS idx_gsi_category ON gamification_shop_items(category)
 CREATE INDEX IF NOT EXISTS idx_gq_type ON gamification_quests(quest_type) WHERE is_active = true;
 CREATE INDEX IF NOT EXISTS idx_gp_active ON gamification_prizes(is_active) WHERE is_active = true;
 
+-- D5: Allow daily/weekly quests to repeat — add period_start for UNIQUE scope
+ALTER TABLE gamification_quest_progress ADD COLUMN IF NOT EXISTS period_start DATE DEFAULT CURRENT_DATE;
+-- Drop old unique and create new one scoped to period
+ALTER TABLE gamification_quest_progress DROP CONSTRAINT IF EXISTS gamification_quest_progress_employee_id_quest_id_key;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gqp_employee_quest_period
+  ON gamification_quest_progress(employee_id, quest_id, period_start);
+
+-- D6: Add unique constraint on shop item names to prevent seed duplicates
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gsi_name_unique ON gamification_shop_items(name) WHERE is_active = true;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_gp_name_unique ON gamification_prizes(name) WHERE is_active = true;
+
 COMMIT;

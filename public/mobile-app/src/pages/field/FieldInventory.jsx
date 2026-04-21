@@ -404,7 +404,7 @@ export default function FieldInventory() {
    CSS — 1:1 from FIELD_INVENTORY_RENDER.html
    ═══════════════════════════════════════════════════════════ */
 const INV_CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&display=swap');
+/* Q10: Cinzel font loaded via index.html link — no @import FOUC */
 @keyframes finv-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 .finv{
   --finv-bg:#0b0e1a;--finv-card:#141828;--finv-card2:#1a2040;

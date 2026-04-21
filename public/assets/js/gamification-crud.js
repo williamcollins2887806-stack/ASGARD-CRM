@@ -205,6 +205,9 @@ window.AsgardGamificationCrud = (function () {
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--t2,#aaa)">
           <input type="checkbox" id="gc-delivery" ${prize?.requires_delivery ? 'checked' : ''}> Требует доставки
         </label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--t2,#aaa)">
+          <input type="checkbox" id="gc-active" ${prize?.is_active !== false ? 'checked' : ''}> Активен
+        </label>
         <button id="gc-save" style="padding:14px;border-radius:14px;border:none;background:var(--gold,#D4A843);color:#1a1000;font-size:15px;font-weight:800;cursor:pointer">
           ${isEdit ? 'Сохранить' : 'Создать'}
         </button>
@@ -220,6 +223,7 @@ window.AsgardGamificationCrud = (function () {
             weight: parseInt(document.getElementById('gc-weight').value) || 100,
             icon: document.getElementById('gc-icon').value || null,
             requires_delivery: document.getElementById('gc-delivery').checked,
+            is_active: document.getElementById('gc-active').checked,
           };
           try {
             if (isEdit) await api('/prizes/' + prize.id, { method: 'PUT', body: JSON.stringify(body) });
@@ -281,6 +285,9 @@ window.AsgardGamificationCrud = (function () {
             ${['runes','xp'].map(t => `<option value="${t}"${quest?.reward_type === t ? ' selected' : ''}>${t}</option>`).join('')}
           </select>
         </div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--t2,#aaa)">
+          <input type="checkbox" id="gc-active" ${quest?.is_active !== false ? 'checked' : ''}> Активен
+        </label>
         <button id="gc-save" style="padding:14px;border-radius:14px;border:none;background:var(--gold,#D4A843);color:#1a1000;font-size:15px;font-weight:800;cursor:pointer">
           ${isEdit ? 'Сохранить' : 'Создать'}
         </button>
@@ -296,6 +303,7 @@ window.AsgardGamificationCrud = (function () {
             target_count: parseInt(document.getElementById('gc-count').value) || 1,
             reward_amount: parseInt(document.getElementById('gc-reward').value) || 0,
             reward_type: document.getElementById('gc-rtype').value,
+            is_active: document.getElementById('gc-active').checked,
           };
           try {
             if (isEdit) await api('/quests/' + quest.id, { method: 'PUT', body: JSON.stringify(body) });

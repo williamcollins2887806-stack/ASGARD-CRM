@@ -293,8 +293,12 @@ export default function WheelOfNorns() {
   const bubbleTimer = useRef(null);
 
   // Q3+Q4: cleanup all pending timeouts on unmount
+  // Q3+Q4+Q8: cleanup timeouts + AudioContext on unmount
   useEffect(() => {
-    return () => { pendingTimers.current.forEach(t => clearTimeout(t)); pendingTimers.current = []; };
+    return () => {
+      pendingTimers.current.forEach(t => clearTimeout(t)); pendingTimers.current = [];
+      if (audioCtx) { audioCtx.close().catch(() => {}); audioCtx = null; }
+    };
   }, []);
 
   // Load wallet data
