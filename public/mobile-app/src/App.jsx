@@ -26,6 +26,10 @@ import FieldPacking from '@/pages/field/FieldPacking';
 import FieldStages from '@/pages/field/FieldStages';
 import FieldAchievements from '@/pages/field/FieldAchievements';
 import FieldLeaderboard from '@/pages/field/FieldLeaderboard';
+import WheelOfNorns from '@/pages/field/WheelOfNorns';
+import FieldShop from '@/pages/field/FieldShop';
+import FieldInventory from '@/pages/field/FieldInventory';
+import FieldQuests from '@/pages/field/FieldQuests';
 import Welcome from '@/pages/Welcome';
 import Login from '@/pages/Login';
 import PinEntry from '@/pages/PinEntry';
@@ -195,6 +199,10 @@ function AppLayout() {
                 <Route path="stages" element={<FieldStages />} />
                 <Route path="achievements" element={<FieldAchievements />} />
                 <Route path="leaderboard" element={<FieldLeaderboard />} />
+                <Route path="wheel" element={<WheelOfNorns />} />
+                <Route path="shop" element={<FieldShop />} />
+                <Route path="inventory" element={<FieldInventory />} />
+                <Route path="quests" element={<FieldQuests />} />
                 <Route index element={<Navigate to="home" replace />} />
               </Route>
             </>
