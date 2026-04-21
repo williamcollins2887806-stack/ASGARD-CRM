@@ -151,7 +151,17 @@
 - **Branch**: feature/gamification, 8 commits ahead of mobile-v3
 
 ### Next session
-- W3.4: Frontend for Wheel of Norns (WheelOfNorns.jsx with spring physics, Web Audio), Shop, Inventory, Quests pages
-- W3.5: PM/Director admin dashboard, seasonal event skeleton
-- W4: Audit (4 parallel auditors)
-- W1.5: SW update + push + offline (at deploy time)
+- **Сессия 2**: Порт 3 рендеров 1:1 (FIELD_SHOP_RENDER 644 строк, FIELD_INVENTORY_RENDER 1229, FIELD_QUESTS_RENDER 1041) + аудит бэкенда
+- **Сессия 3**: W3.5 PM/Director admin views + seasonal
+- **Сессия 4**: W1.5 SW + push + offline + cutover (при деплое)
+- **Сессия 5**: W4.1+4.2 Аудит (4 ревизора)
+
+### WheelOfNorns status
+- 823 строки, **1:1 порт** эталона (991 строк HTML)
+- ALL Viking SVG details: helmet dents, horn grooves, knuckle bumps, braid wrapping
+- Spring physics RAF: kY/dY, kR/dR, kS/dS — Hooke's law
+- Viking states: idle/spin/win/epic + blink + pupils + speech bubbles
+- 3-phase spin: accel 0.8s / cruise 2.5s / decel 5s (quartic ease-out)
+- Near-miss, progressive haptic, drum blur, canvas particles
+- BONUSES: triumph fanfare, gold dust, screen shake, anticipation
+- Commit: 394787c (одобрена Ником)
