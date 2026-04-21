@@ -177,6 +177,29 @@ async function loadData(content, me) {
     stCard.appendChild(el('div', { style: { color: DS.t.gold, fontSize: '0.8125rem', marginTop: '6px' } },
       '\u041F\u043E\u0434\u0440\u043E\u0431\u043D\u0435\u0435 \u2192'));
     btnWrap.appendChild(stCard);
+  } else if (!isActiveAssignment) {
+    // Worker left the site — no shift possible
+    const leftInfo = el('div', {
+      style: {
+        background: 'rgba(255,165,0,0.08)',
+        border: '1px solid rgba(255,165,0,0.2)',
+        borderRadius: '14px',
+        padding: '14px 16px',
+        textAlign: 'center',
+      },
+    });
+    leftInfo.appendChild(el('div', {
+      style: { fontSize: '1.5rem', marginBottom: '4px' },
+    }, '\u26AB'));
+    leftInfo.appendChild(el('div', {
+      style: { color: DS.t.text, fontSize: '0.9375rem', fontWeight: '600' },
+    }, '\u0412\u044B \u0443\u0435\u0445\u0430\u043B\u0438 \u0441 \u043E\u0431\u044A\u0435\u043A\u0442\u0430'));
+    if (assignment.date_to) {
+      leftInfo.appendChild(el('div', {
+        style: { color: DS.t.textSec, fontSize: '0.75rem', marginTop: '4px' },
+      }, '\u041E\u0442\u044A\u0435\u0437\u0434: ' + Utils.formatDate(assignment.date_to)));
+    }
+    btnWrap.appendChild(leftInfo);
   } else if (!checkin || checkin.status === 'completed' || checkin.status === 'cancelled') {
     // No active checkin — show START SHIFT
     btnWrap.appendChild(F.BigButton({
@@ -255,6 +278,7 @@ function buildQuickActions(project, me) {
 
   const actions = [
     { icon: '\uD83D\uDCBC', label: '\u041C\u043E\u0438 \u0440\u0430\u0431\u043E\u0442\u044B', href: '/field/my-works' },
+    { icon: '\uD83D\uDC65', label: '\u0411\u0440\u0438\u0433\u0430\u0434\u0430', href: '/field/crew' },
     { icon: '\uD83D\uDCB0', label: '\u0414\u0435\u043D\u044C\u0433\u0438', href: '/field/money' },
     { icon: '\uD83D\uDDFA\uFE0F', label: '\u041C\u0430\u0440\u0448\u0440\u0443\u0442', href: '/field/stages' },
     { icon: '\u2708\uFE0F', label: '\u0411\u0438\u043B\u0435\u0442\u044B', href: '/field/logistics' },
@@ -265,7 +289,6 @@ function buildQuickActions(project, me) {
 
   if (isMaster) {
     actions.push(
-      { icon: '\uD83D\uDC65', label: '\u0411\u0440\u0438\u0433\u0430\u0434\u0430', href: '/field/crew' },
       { icon: '\uD83D\uDCCB', label: '\u041C\u0430\u0440\u0448\u0440. \u0431\u0440\u0438\u0433.', href: '/field/crew-stages' },
       { icon: '\uD83D\uDCDD', label: '\u041E\u0442\u0447\u0451\u0442', href: '/field/report' },
       { icon: '\u26A0\uFE0F', label: '\u0418\u043D\u0446\u0438\u0434\u0435\u043D\u0442', href: '/field/incidents' },
