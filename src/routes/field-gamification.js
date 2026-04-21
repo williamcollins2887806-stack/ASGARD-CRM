@@ -106,10 +106,22 @@ async function routes(fastify) {
     try {
       await client.query('BEGIN');
 
-      // Check daily spin with row lock (prevents race condition)
+      // R1 fix: Lock pity_counters row FIRST — guarantees only one spin can proceed
+      // This works even for first spin because UPSERT creates the row atomically
+      const { rows: [pity] } = await client.query(
+        `INSERT INTO gamification_pity_counters (employee_id) VALUES ($1)
+         ON CONFLICT (employee_id) DO UPDATE SET updated_at = NOW()
+         RETURNING *`, [eid]
+      );
+      // Now lock the row explicitly for the duration of this transaction
+      await client.query(
+        'SELECT * FROM gamification_pity_counters WHERE employee_id = $1 FOR UPDATE', [eid]
+      );
+
+      // Check daily spin (safe now — pity row is locked, no concurrent spin can proceed)
       const { rows: [lastSpin] } = await client.query(
         `SELECT spin_at FROM gamification_spins WHERE employee_id = $1
-         ORDER BY spin_at DESC LIMIT 1 FOR UPDATE`, [eid]
+         ORDER BY spin_at DESC LIMIT 1`, [eid]
       );
 
       if (lastSpin) {
@@ -130,12 +142,7 @@ async function routes(fastify) {
       );
       if (!prizes.length) { await client.query('ROLLBACK'); return reply.code(500).send({ error: 'Нет доступных призов' }); }
 
-      // Pity system (locked row)
-      const { rows: [pity] } = await client.query(
-        `INSERT INTO gamification_pity_counters (employee_id) VALUES ($1)
-         ON CONFLICT (employee_id) DO UPDATE SET updated_at = NOW()
-         RETURNING spins_since_rare, pending_multiplier`, [eid]
-      );
+      // Pity values (row already locked above via pity variable)
       const spinsSinceRare = pity?.spins_since_rare || 0;
       const pendingMultiplier = Math.max(1, pity?.pending_multiplier || 1);
       const pityGuarantee = 50;
@@ -326,7 +333,8 @@ async function routes(fastify) {
         `SELECT qp.*, q.reward_type, q.reward_amount, q.name
          FROM gamification_quest_progress qp
          JOIN gamification_quests q ON q.id = qp.quest_id
-         WHERE qp.quest_id = $1 AND qp.employee_id = $2 AND qp.completed = true AND qp.reward_claimed = false`,
+         WHERE qp.quest_id = $1 AND qp.employee_id = $2 AND qp.completed = true AND qp.reward_claimed = false
+         FOR UPDATE OF qp`,
         [questId, eid]
       );
       if (!progress) {

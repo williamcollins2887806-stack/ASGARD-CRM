@@ -29,7 +29,7 @@ async function routes(fastify) {
                w.object_name AS work_name
         FROM gamification_fulfillment gf
         JOIN employees e ON e.id = gf.employee_id
-        LEFT JOIN field_assignments fa ON fa.employee_id = gf.employee_id AND fa.is_active = true
+        LEFT JOIN employee_assignments fa ON fa.employee_id = gf.employee_id
         LEFT JOIN works w ON w.id = fa.work_id
         WHERE gf.status IN ('pending', 'ready')
         ORDER BY CASE gf.status WHEN 'ready' THEN 0 WHEN 'pending' THEN 1 END, gf.created_at DESC
@@ -43,7 +43,7 @@ async function routes(fastify) {
                w.object_name AS work_name
         FROM gamification_fulfillment gf
         JOIN employees e ON e.id = gf.employee_id
-        LEFT JOIN field_assignments fa ON fa.employee_id = gf.employee_id AND fa.is_active = true
+        LEFT JOIN employee_assignments fa ON fa.employee_id = gf.employee_id
         LEFT JOIN works w ON w.id = fa.work_id
         WHERE gf.status IN ('pending', 'ready')
           AND w.pm_id = $1
