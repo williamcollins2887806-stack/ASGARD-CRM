@@ -2270,13 +2270,14 @@ window.AsgardFieldTab = (function () {
         <th style="text-align:right">Остаток</th><th style="text-align:right">Авансы</th>
         <th style="text-align:right">Премии</th><th style="text-align:right">Удерж.</th>
         <th style="text-align:right;color:var(--gold)">К выплате</th>
+        <th></th>
       </tr></thead>`;
       const tbody = document.createElement('tbody');
       for (const e of emps) {
         if (e.error === 'per_diem_not_set') {
           const tr = document.createElement('tr');
           tr.style.background = 'rgba(245,158,11,0.08)';
-          tr.innerHTML = `<td>${esc(e.employee_name)}</td><td colspan="9" style="color:#f59e0b;font-size:11px">⚠️ суточные не установлены</td>`;
+          tr.innerHTML = `<td>${esc(e.employee_name)}</td><td colspan="10" style="color:#f59e0b;font-size:11px">⚠️ суточные не установлены</td>`;
           tbody.appendChild(tr);
           continue;
         }
@@ -2295,11 +2296,19 @@ window.AsgardFieldTab = (function () {
           <td style="text-align:right">${money(e.bonus_paid)} ₽</td>
           <td style="text-align:right">${money(e.penalty)} ₽</td>
           <td style="text-align:right;font-weight:600;color:var(--gold)">${money(e.net_to_pay)} ₽</td>
+          <td><button class="btn primary pay-worker" data-employee-id="${e.employee_id}" data-fio="${esc(e.employee_name||'')}" style="font-size:10px;padding:3px 8px;white-space:nowrap">💰 Выплатить</button></td>
         `;
         tbody.appendChild(tr);
       }
       tbl.appendChild(tbody);
       container.appendChild(tbl);
+
+      // Pay-worker handlers
+      container.querySelectorAll('.pay-worker').forEach(btn => {
+        btn.addEventListener('click', () => {
+          openPayWorkerModal(btn.dataset.employeeId, btn.dataset.fio, work, user, container);
+        });
+      });
     }
 
     // ─── All payments list ───────────────────────────────────────
@@ -2430,6 +2439,162 @@ window.AsgardFieldTab = (function () {
       } catch (err) {
         toast('Ошибка: ' + err.message, '', 'err');
         if (btn) { btn.disabled = false; btn.textContent = 'Выплатить'; }
+      }
+    });
+  }
+
+  // ─── Модалка: выплата рабочему (SSoT сводка + свободная сумма) ────
+  function openPayWorkerModal(employeeId, fio, work, user, container) {
+    AsgardUI.showModal({ title: 'Загрузка...', html: '<div style="text-align:center;padding:40px">\u23F3</div>', icon: '\uD83D\uDCB0' });
+    fetch('/api/worker-payments/employee-summary?work_id=' + work.id + '&employee_id=' + employeeId, { headers: hdr() })
+      .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, data: j }; }); })
+      .then(function(res) {
+        if (!res.ok) { AsgardUI.hideModal(); toast('\u041E\u0448\u0438\u0431\u043A\u0430: ' + (res.data.error || ''), '', 'err'); return; }
+        renderPayWorkerModal(res.data, fio, work, user, container);
+      })
+      .catch(function(err) { AsgardUI.hideModal(); toast('\u041E\u0448\u0438\u0431\u043A\u0430 \u0441\u0435\u0442\u0438: ' + err.message, '', 'err'); });
+  }
+
+  function renderPayWorkerModal(summary, fio, work, user, container) {
+    var pd = summary.per_diem;
+    var sal = summary.salary;
+    var pdLabel = pd.balance < 0 ? '\u0410\u0432\u0430\u043D\u0441' : pd.balance > 0 ? '\u0414\u043E\u043B\u0433' : '\u0412\u0441\u0451 \u0432\u044B\u043F\u043B\u0430\u0447\u0435\u043D\u043E';
+    var pdColor = pd.balance < 0 ? '#3b82f6' : pd.balance > 0 ? '#f59e0b' : '#10b981';
+    var salLabel = sal.balance > 0 ? '\u0414\u043E\u043B\u0433 \u043A\u043E\u043C\u043F\u0430\u043D\u0438\u0438' : sal.balance < 0 ? '\u041F\u0435\u0440\u0435\u043F\u043B\u0430\u0442\u0430' : '\u0412\u0441\u0451 \u0432\u044B\u043F\u043B\u0430\u0447\u0435\u043D\u043E';
+    var salColor = sal.balance > 0 ? '#f59e0b' : sal.balance < 0 ? '#ef4444' : '#10b981';
+    var brd = 'var(--brd, rgba(255,255,255,0.08))';
+
+    var html = '<div style="max-height:70vh;overflow-y:auto">' +
+      '<div style="border:1px solid ' + brd + ';border-radius:8px;padding:12px;margin-bottom:12px">' +
+        '<div style="font-weight:700;color:var(--t2);font-size:11px;text-transform:uppercase;margin-bottom:10px">\u0422\u0435\u043A\u0443\u0449\u0435\u0435 \u0441\u043E\u0441\u0442\u043E\u044F\u043D\u0438\u0435</div>' +
+        '<div style="margin-bottom:12px"><div style="font-weight:600;margin-bottom:4px">\uD83C\uDF19 \u0421\u0443\u0442\u043E\u0447\u043D\u044B\u0435</div>' +
+          '<div style="display:flex;justify-content:space-between;font-size:13px"><span>\u041D\u0430\u0447\u0438\u0441\u043B\u0435\u043D\u043E (' + summary.checkins_days + ' \u0434\u043D):</span><span>' + money(pd.accrued) + ' \u20BD</span></div>' +
+          '<div style="display:flex;justify-content:space-between;font-size:13px"><span>\u0412\u044B\u0434\u0430\u043D\u043E:</span><span>' + money(pd.paid) + ' \u20BD</span></div>' +
+          '<div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700;padding-top:4px;border-top:1px dashed ' + brd + '"><span style="color:' + pdColor + '">' + pdLabel + ':</span><span style="color:' + pdColor + '">' + money(Math.abs(pd.balance)) + ' \u20BD</span></div></div>' +
+        '<div style="margin-bottom:12px"><div style="font-weight:600;margin-bottom:4px">\uD83D\uDCBC \u0417\u0430\u0440\u043F\u043B\u0430\u0442\u0430</div>' +
+          '<div style="display:flex;justify-content:space-between;font-size:13px"><span>\u0417\u0430\u0440\u0430\u0431\u043E\u0442\u0430\u043D\u043E (\u0424\u041E\u0422):</span><span>' + money(sal.fot_accrued) + ' \u20BD</span></div>' +
+          '<div style="display:flex;justify-content:space-between;font-size:13px"><span>\u0410\u0432\u0430\u043D\u0441\u044B \u0432\u044B\u0434\u0430\u043D\u044B:</span><span>' + money(sal.advance_paid) + ' \u20BD</span></div>' +
+          '<div style="display:flex;justify-content:space-between;font-size:13px"><span>\u0417\u041F \u0432\u044B\u043F\u043B\u0430\u0447\u0435\u043D\u043E:</span><span>' + money(sal.salary_paid) + ' \u20BD</span></div>' +
+          '<div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700;padding-top:4px;border-top:1px dashed ' + brd + '"><span style="color:' + salColor + '">' + salLabel + ':</span><span style="color:' + salColor + '">' + money(Math.abs(sal.balance)) + ' \u20BD</span></div></div>' +
+        ((summary.bonus.paid || summary.penalty.paid) ? '<div><div style="font-weight:600;margin-bottom:4px">\u2B50 \u041F\u0440\u043E\u0447\u0435\u0435</div>' +
+          (summary.bonus.paid ? '<div style="display:flex;justify-content:space-between;font-size:13px"><span>\u041F\u0440\u0435\u043C\u0438\u0438:</span><span>' + money(summary.bonus.paid) + ' \u20BD</span></div>' : '') +
+          (summary.penalty.paid ? '<div style="display:flex;justify-content:space-between;font-size:13px"><span>\u0423\u0434\u0435\u0440\u0436\u0430\u043D\u0438\u044F:</span><span>' + money(summary.penalty.paid) + ' \u20BD</span></div>' : '') + '</div>' : '') +
+      '</div>' +
+      '<div style="border:1px solid ' + brd + ';border-radius:8px;padding:12px;margin-bottom:12px">' +
+        '<div style="font-weight:700;color:var(--t2);font-size:11px;text-transform:uppercase;margin-bottom:10px">\u0412\u044B\u043F\u043B\u0430\u0442\u0430</div>' +
+        '<div class="cr-f-field"><div class="cr-f-label">\u0422\u0438\u043F <span class="cr-f-label__req">*</span></div>' +
+          '<div style="display:flex;flex-direction:column;gap:6px">' +
+            '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid ' + brd + ';border-radius:6px;cursor:pointer"><input type="radio" name="payType" value="per_diem" checked><span>\uD83C\uDF19 \u0421\u0443\u0442\u043E\u0447\u043D\u044B\u0435</span></label>' +
+            '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid ' + brd + ';border-radius:6px;cursor:pointer"><input type="radio" name="payType" value="advance"><span>\uD83D\uDCB5 \u0410\u0432\u0430\u043D\u0441 \u0417\u041F</span></label>' +
+            '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid ' + brd + ';border-radius:6px;cursor:pointer"><input type="radio" name="payType" value="salary"><span>\uD83D\uDCBC \u0417\u0430\u0440\u043F\u043B\u0430\u0442\u0430</span></label>' +
+            '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid ' + brd + ';border-radius:6px;cursor:pointer"><input type="radio" name="payType" value="bonus"><span>\u2B50 \u041F\u0440\u0435\u043C\u0438\u044F</span></label>' +
+            '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid ' + brd + ';border-radius:6px;cursor:pointer"><input type="radio" name="payType" value="penalty"><span>\u26A0 \u0423\u0434\u0435\u0440\u0436\u0430\u043D\u0438\u0435</span></label>' +
+          '</div></div>' +
+        '<div class="cr-f-field"><div class="cr-f-label">\u0421\u0443\u043C\u043C\u0430 <span class="cr-f-label__req">*</span></div>' +
+          '<input id="pwAmount" type="number" min="0" step="100" placeholder="0" style="font-size:18px;text-align:center"/></div>' +
+        '<div class="cr-f-field"><div class="cr-f-label" style="font-size:11px;color:var(--t3)">\u0411\u044B\u0441\u0442\u0440\u044B\u0435 \u0441\u0443\u043C\u043C\u044B</div><div id="pwQuick" style="display:flex;gap:6px;flex-wrap:wrap"></div></div>' +
+        '<div class="cr-f-field"><div class="cr-f-label">\u0421\u043F\u043E\u0441\u043E\u0431</div><div style="display:flex;gap:8px">' +
+          '<label class="cr-f-chip cr-f-chip--active" style="flex:1;text-align:center"><input type="radio" name="pwMethod" value="cash" checked style="display:none">\uD83D\uDCB5 \u041D\u0430\u043B</label>' +
+          '<label class="cr-f-chip" style="flex:1;text-align:center"><input type="radio" name="pwMethod" value="card" style="display:none">\uD83D\uDCB3 \u041A\u0430\u0440\u0442\u0430</label>' +
+          '<label class="cr-f-chip" style="flex:1;text-align:center"><input type="radio" name="pwMethod" value="transfer" style="display:none">\uD83C\uDFE6 \u041F\u0435\u0440\u0435\u0432\u043E\u0434</label>' +
+        '</div></div>' +
+        '<div class="cr-f-field"><div class="cr-f-label">\u041A\u043E\u043C\u043C\u0435\u043D\u0442\u0430\u0440\u0438\u0439</div><input id="pwNote" placeholder="\u041D\u0435\u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u043E"/></div>' +
+      '</div>' +
+      '<div id="pwPreview" style="border:1px solid var(--gold);border-radius:8px;padding:12px;margin-bottom:12px;background:rgba(245,158,11,0.05);display:none">' +
+        '<div style="font-weight:700;color:var(--gold);font-size:11px;text-transform:uppercase;margin-bottom:8px">\u041F\u043E\u0441\u043B\u0435 \u0432\u044B\u043F\u043B\u0430\u0442\u044B</div><div id="pwPreviewContent"></div></div>' +
+      '<div style="display:flex;gap:10px;justify-content:flex-end"><button class="btn ghost" id="pwCancel">\u041E\u0442\u043C\u0435\u043D\u0430</button><button class="btn primary" id="pwConfirm">\u0412\u044B\u043F\u043B\u0430\u0442\u0438\u0442\u044C</button></div></div>';
+
+    AsgardUI.showModal({ title: '\u0412\u044B\u043F\u043B\u0430\u0442\u0430 \u0440\u0430\u0431\u043E\u0447\u0435\u043C\u0443', subtitle: esc(fio), html: html, icon: '\uD83D\uDCB0' });
+    var body = document.getElementById('modalBody');
+
+    function updateQuickButtons() {
+      var type = body && body.querySelector('input[name="payType"]:checked');
+      type = type ? type.value : 'per_diem';
+      var quick = document.getElementById('pwQuick');
+      if (!quick) return;
+      var rate = summary.per_diem_rate || 1000;
+      var buttons = [];
+      if (type === 'per_diem') {
+        buttons = [{ lbl: '+1 \u0434\u0435\u043D\u044C', val: rate }, { lbl: '+5 \u0434\u043D\u0435\u0439', val: rate * 5 }, { lbl: '+10 \u0434\u043D\u0435\u0439', val: rate * 10 }];
+        if (pd.balance > 0) buttons.push({ lbl: '\u0412\u0435\u0441\u044C \u0434\u043E\u043B\u0433 (' + money(pd.balance) + ')', val: pd.balance });
+      } else if (type === 'advance' || type === 'salary') {
+        buttons = [{ lbl: '+5 000', val: 5000 }, { lbl: '+10 000', val: 10000 }, { lbl: '+20 000', val: 20000 }];
+        if (sal.balance > 0) buttons.push({ lbl: '\u0412\u0435\u0441\u044C \u0434\u043E\u043B\u0433 (' + money(sal.balance) + ')', val: sal.balance });
+      } else {
+        buttons = [{ lbl: '+1 000', val: 1000 }, { lbl: '+3 000', val: 3000 }, { lbl: '+5 000', val: 5000 }];
+      }
+      quick.innerHTML = buttons.map(function(b) { return '<button class="btn ghost" data-val="' + b.val + '" style="font-size:11px;padding:4px 8px">' + b.lbl + '</button>'; }).join('');
+      quick.querySelectorAll('button').forEach(function(b) {
+        b.addEventListener('click', function() { document.getElementById('pwAmount').value = b.dataset.val; updatePreview(); });
+      });
+    }
+
+    function updatePreview() {
+      var typeEl = body && body.querySelector('input[name="payType"]:checked');
+      var type = typeEl ? typeEl.value : '';
+      var amt = Number((document.getElementById('pwAmount') || {}).value) || 0;
+      var preview = document.getElementById('pwPreview');
+      var content = document.getElementById('pwPreviewContent');
+      if (!preview || !content || amt <= 0) { if (preview) preview.style.display = 'none'; return; }
+      var h = '';
+      if (type === 'per_diem') {
+        var nb = pd.balance - amt;
+        h = '<div><strong>' + (nb < 0 ? '\u0410\u0432\u0430\u043D\u0441 \u043F\u043E \u0441\u0443\u0442\u043E\u0447\u043D\u044B\u043C' : nb > 0 ? '\u0414\u043E\u043B\u0433 \u043F\u043E \u0441\u0443\u0442\u043E\u0447\u043D\u044B\u043C' : '\u0421\u0443\u0442\u043E\u0447\u043D\u044B\u0435 \u0437\u0430\u043A\u0440\u044B\u0442\u044B') + ':</strong> ' + money(Math.abs(nb)) + ' \u20BD</div><div style="font-size:12px;color:var(--t3)">\u0411\u044B\u043B\u043E: ' + money(Math.abs(pd.balance)) + ' \u20BD</div>';
+      } else if (type === 'advance' || type === 'salary') {
+        var nb2 = sal.balance - amt;
+        h = '<div><strong>' + (nb2 > 0 ? '\u0414\u043E\u043B\u0433 \u043F\u043E \u0417\u041F' : nb2 < 0 ? '\u041F\u0435\u0440\u0435\u043F\u043B\u0430\u0442\u0430 \u043F\u043E \u0417\u041F' : '\u0417\u041F \u0437\u0430\u043A\u0440\u044B\u0442\u0430') + ':</strong> ' + money(Math.abs(nb2)) + ' \u20BD</div><div style="font-size:12px;color:var(--t3)">\u0411\u044B\u043B\u043E: ' + money(Math.abs(sal.balance)) + ' \u20BD</div>';
+      } else if (type === 'bonus') {
+        h = '<div><strong>\u041F\u0440\u0435\u043C\u0438\u0439 \u0432\u0441\u0435\u0433\u043E:</strong> ' + money(summary.bonus.paid + amt) + ' \u20BD</div>';
+      } else if (type === 'penalty') {
+        h = '<div><strong>\u0423\u0434\u0435\u0440\u0436\u0430\u043D\u0438\u0439 \u0432\u0441\u0435\u0433\u043E:</strong> ' + money(summary.penalty.paid + amt) + ' \u20BD</div>';
+      }
+      content.innerHTML = h;
+      preview.style.display = 'block';
+    }
+
+    if (body) {
+      body.querySelectorAll('input[name="payType"]').forEach(function(r) { r.addEventListener('change', function() { updateQuickButtons(); updatePreview(); }); });
+      body.querySelectorAll('label.cr-f-chip').forEach(function(label) {
+        label.addEventListener('click', function() {
+          body.querySelectorAll('label.cr-f-chip').forEach(function(l) { l.classList.remove('cr-f-chip--active'); });
+          label.classList.add('cr-f-chip--active');
+        });
+      });
+    }
+    var amtInput = document.getElementById('pwAmount');
+    if (amtInput) amtInput.addEventListener('input', updatePreview);
+    updateQuickButtons();
+
+    var cancelBtn = document.getElementById('pwCancel');
+    if (cancelBtn) cancelBtn.addEventListener('click', function() { AsgardUI.hideModal(); });
+
+    var confirmBtn = document.getElementById('pwConfirm');
+    if (confirmBtn) confirmBtn.addEventListener('click', async function() {
+      var typeEl = body && body.querySelector('input[name="payType"]:checked');
+      var type = typeEl ? typeEl.value : '';
+      var amount = Number((document.getElementById('pwAmount') || {}).value);
+      var methodEl = body && body.querySelector('input[name="pwMethod"]:checked');
+      var method = methodEl ? methodEl.value : '';
+      var note = ((document.getElementById('pwNote') || {}).value || '').trim();
+
+      if (!amount || amount <= 0) { toast('\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u0441\u0443\u043C\u043C\u0443', '', 'err'); return; }
+      if (!type) { toast('\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0442\u0438\u043F', '', 'err'); return; }
+      if (!method) { toast('\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0441\u043F\u043E\u0441\u043E\u0431', '', 'err'); return; }
+
+      confirmBtn.disabled = true; confirmBtn.textContent = '\u23F3 \u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430...';
+      try {
+        var resp = await fetch('/api/worker-payments/pay-worker', {
+          method: 'POST', headers: hdr(),
+          body: JSON.stringify({ employee_id: parseInt(summary.employee.id), work_id: work.id, type: type, amount: amount, payment_method: method, note: note })
+        });
+        var data = await resp.json();
+        if (!resp.ok) { toast(data.details || data.error || '\u041E\u0448\u0438\u0431\u043A\u0430', '', 'err'); confirmBtn.disabled = false; confirmBtn.textContent = '\u0412\u044B\u043F\u043B\u0430\u0442\u0438\u0442\u044C'; return; }
+        toast('\u2705 \u0412\u044B\u043F\u043B\u0430\u0442\u0430 \u0437\u0430\u043F\u0438\u0441\u0430\u043D\u0430');
+        AsgardUI.hideModal();
+        renderPaymentsTab(container, work, user);
+      } catch (err) {
+        toast('\u041E\u0448\u0438\u0431\u043A\u0430: ' + err.message, '', 'err');
+        confirmBtn.disabled = false; confirmBtn.textContent = '\u0412\u044B\u043F\u043B\u0430\u0442\u0438\u0442\u044C';
       }
     });
   }
