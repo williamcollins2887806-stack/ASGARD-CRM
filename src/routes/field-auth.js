@@ -13,7 +13,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const MangoService = require('../services/mango');
 
-const FIELD_JWT_SECRET = process.env.FIELD_JWT_SECRET || process.env.JWT_SECRET;
+const FIELD_JWT_SECRET = process.env.FIELD_JWT_SECRET || (process.env.JWT_SECRET + '_field'); // S7: separate field secret
 const FIELD_JWT_EXPIRES = '90d';
 const SMS_CODE_LENGTH = 4;
 const SMS_CODE_TTL_MIN = 5;
@@ -21,8 +21,9 @@ const SMS_MAX_ATTEMPTS = 3;
 const SMS_COOLDOWN_SEC = 60;
 const MANGO_SMS_FROM = process.env.MANGO_SMS_EXTENSION || '101';
 
+const crypto = require('crypto');
 function generateCode() {
-  return String(Math.floor(1000 + Math.random() * 9000));
+  return String(crypto.randomInt(1000, 10000)); // S8: crypto-safe RNG instead of Math.random
 }
 
 function hashToken(token) {

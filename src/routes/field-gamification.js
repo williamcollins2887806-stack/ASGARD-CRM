@@ -353,21 +353,22 @@ async function routes(fastify) {
         [questId, eid]
       );
 
-      // Credit reward
-      if (progress.reward_type === 'runes' && progress.reward_amount > 0) {
+      // Credit reward (D9: handles both 'runes' and 'xp')
+      const rewardCurrency = progress.reward_type === 'xp' ? 'xp' : 'runes';
+      if (['runes', 'xp'].includes(progress.reward_type) && progress.reward_amount > 0) {
         await client.query(
           `INSERT INTO gamification_wallets (employee_id, currency, balance)
-           VALUES ($1, 'runes', $2)
-           ON CONFLICT (employee_id, currency) DO UPDATE SET balance = gamification_wallets.balance + $2, updated_at = NOW()`,
-          [eid, progress.reward_amount]
+           VALUES ($1, $2, $3)
+           ON CONFLICT (employee_id, currency) DO UPDATE SET balance = gamification_wallets.balance + $3, updated_at = NOW()`,
+          [eid, rewardCurrency, progress.reward_amount]
         );
         const { rows: [w] } = await client.query(
-          'SELECT balance FROM gamification_wallets WHERE employee_id = $1 AND currency = $2', [eid, 'runes']
+          'SELECT balance FROM gamification_wallets WHERE employee_id = $1 AND currency = $2', [eid, rewardCurrency]
         );
         await client.query(
           `INSERT INTO gamification_currency_ledger (employee_id, currency, amount, balance_after, operation, reference_id, reference_type)
-           VALUES ($1, 'runes', $2, $3, 'quest_claim', $4, 'quest')`,
-          [eid, progress.reward_amount, w.balance, questId]
+           VALUES ($1, $2, $3, $4, 'quest_claim', $5, 'quest')`,
+          [eid, rewardCurrency, progress.reward_amount, w.balance, questId]
         );
       }
 
@@ -422,23 +423,6 @@ async function creditWalletTx(client, employeeId, currency, amount, operation, r
   );
 }
 
-async function creditWallet(db, employeeId, currency, amount, operation, referenceId) {
-  await db.query(
-    `INSERT INTO gamification_wallets (employee_id, currency, balance)
-     VALUES ($1, $2, $3)
-     ON CONFLICT (employee_id, currency) DO UPDATE SET
-       balance = gamification_wallets.balance + $3, updated_at = NOW()`,
-    [employeeId, currency, amount]
-  );
-  const { rows: [w] } = await db.query(
-    'SELECT balance FROM gamification_wallets WHERE employee_id = $1 AND currency = $2',
-    [employeeId, currency]
-  );
-  await db.query(
-    `INSERT INTO gamification_currency_ledger (employee_id, currency, amount, balance_after, operation, reference_id, reference_type)
-     VALUES ($1, $2, $3, $4, $5, $6, 'spin')`,
-    [employeeId, currency, amount, w.balance, operation, referenceId]
-  );
-}
+// R5: removed dead non-transactional creditWallet() — use creditWalletTx() instead
 
 module.exports = routes;

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
 
@@ -269,6 +269,9 @@ export default function WheelOfNorns() {
   const pupilRRef = useRef(null);
   const bubbleRef = useRef(null);
   const pendingTimers = useRef([]); // Q3: track timeouts for cleanup
+  const startParticlesRef = useRef(null); // Q9: no global leak
+  // Q6: memoize stars so they don't jump on re-render
+  const starsData = useMemo(() => Array.from({ length: 25 }, () => ({ x: Math.random() * 100, y: Math.random() * 50, w: 1 + Math.random() * 2, d: Math.random() * 3, dur: 2 + Math.random() * 2 })), []);
 
   const [balance, setBalance] = useState(0);
   const [level, setLevel] = useState(1);
@@ -390,7 +393,7 @@ export default function WheelOfNorns() {
     }
     // Export starter
     animRunning.current = false;
-    window.__wnStartParticles = () => { if (!animRunning.current) { animRunning.current = true; loop(); } };
+    startParticlesRef.current = () => { if (!animRunning.current) { animRunning.current = true; loop(); } };
 
     return () => { running = false; window.removeEventListener('resize', resize); };
   }, []);
@@ -548,7 +551,7 @@ export default function WheelOfNorns() {
       explode(particles.current, bx, by, colors, tier === 'legendary' ? 80 : tier === 'epic' ? 50 : 25, tier === 'legendary' ? 12 : tier === 'epic' ? 8 : 4);
       if (tier === 'legendary') { setTimeout(() => { explode(particles.current, bx, by, colors, 40, 8); goldDust(particles.current, bx, by); }, 300); setTimeout(() => explode(particles.current, bx, by, colors, 25, 6), 650); }
       else if (tier === 'epic') goldDust(particles.current, bx, by); // BONUS: gold dust for epic too
-      if (window.__wnStartParticles) window.__wnStartParticles();
+      if (startParticlesRef.current) startParticlesRef.current();
     }
 
     setWonPrize(prize);
@@ -578,8 +581,8 @@ export default function WheelOfNorns() {
       {/* Background */}
       <div className="wn-bg">
         <div className="wn-glow wn-g1" /><div className="wn-glow wn-g2" /><div className="wn-glow wn-g3" />
-        <div className="wn-stars">{Array.from({ length: 25 }, (_, i) => (
-          <div key={i} className="wn-s" style={{ left: `${Math.random() * 100}%`, top: `${Math.random() * 50}%`, width: `${1 + Math.random() * 2}px`, height: `${1 + Math.random() * 2}px`, animationDelay: `${Math.random() * 3}s`, animationDuration: `${2 + Math.random() * 2}s` }} />
+        <div className="wn-stars">{starsData.map((s, i) => (
+          <div key={i} className="wn-s" style={{ left: `${s.x}%`, top: `${s.y}%`, width: `${s.w}px`, height: `${s.w}px`, animationDelay: `${s.d}s`, animationDuration: `${s.dur}s` }} />
         ))}</div>
       </div>
       {/* Particle canvas */}
