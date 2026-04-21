@@ -2327,7 +2327,7 @@ window.AsgardFieldTab = (function () {
           <td style="text-align:right;font-weight:600">${money(p.amount)} ₽</td>
           <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.comment || '—')}</td>
           <td>${PAY_STATUS_LABELS[p.status] || p.status}</td>
-          <td>${p.status === 'pending' ? '<button class="btn ghost cancel-pay" data-id="' + p.id + '" style="font-size:10px;padding:3px 6px;color:#ef4444">✕</button>' : ''}</td>
+          <td>${p.status === 'pending' ? '<button class="btn ghost pay-now" data-id="' + p.id + '" data-amount="' + p.amount + '" data-type="' + (p.type||'') + '" data-employee="' + esc(p.employee_name||'') + '" style="font-size:10px;padding:3px 6px;color:#10b981" title="Выплатить">💰</button><button class="btn ghost cancel-pay" data-id="' + p.id + '" style="font-size:10px;padding:3px 6px;color:#ef4444">✕</button>' : ''}</td>
         `;
         tbody2.appendChild(tr);
       }
@@ -2345,9 +2345,93 @@ window.AsgardFieldTab = (function () {
           } catch (err) { toast('Ошибка: ' + err.message); }
         });
       });
+
+      // Pay handlers
+      container.querySelectorAll('.pay-now').forEach(btn => {
+        btn.addEventListener('click', () => {
+          openPayModal(btn.dataset.id, btn.dataset.amount, btn.dataset.type, btn.dataset.employee, work, user, container);
+        });
+      });
     } else if (emps.length === 0) {
       container.innerHTML += '<div class="help" style="padding:32px;text-align:center">Нет выплат для этого проекта</div>';
     }
+  }
+
+  // ─── Модалка: отметить выплату рабочему ──────────────────────────
+  function openPayModal(paymentId, amount, type, employeeName, work, user, container) {
+    const typeLabel = (PAY_TYPE_LABELS[type] || type).replace(/^[^\s]+\s/, '');
+    const html = `
+      <div style="text-align:center;margin-bottom:16px">
+        <div style="font-size:28px;font-weight:800;color:var(--gold)">${AsgardUI.money(amount)} ₽</div>
+        <div style="font-size:13px;color:var(--t2);margin-top:4px">${esc(typeLabel)} — ${esc(employeeName)}</div>
+      </div>
+      <div class="cr-f-field">
+        <div class="cr-f-label">Способ выплаты <span class="cr-f-label__req">*</span></div>
+        <div style="display:flex;gap:8px">
+          <label class="cr-f-chip cr-f-chip--active" style="flex:1;text-align:center;cursor:pointer">
+            <input type="radio" name="payMethod" value="cash" checked style="display:none"> 💵 Наличные
+          </label>
+          <label class="cr-f-chip" style="flex:1;text-align:center;cursor:pointer">
+            <input type="radio" name="payMethod" value="card" style="display:none"> 💳 Карта
+          </label>
+          <label class="cr-f-chip" style="flex:1;text-align:center;cursor:pointer">
+            <input type="radio" name="payMethod" value="transfer" style="display:none"> 🏦 Перевод
+          </label>
+        </div>
+      </div>
+      <div class="cr-f-field">
+        <div class="cr-f-label">Комментарий</div>
+        <input id="payNote" placeholder="Необязательно"/>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+        <button class="btn ghost" id="payCancel">Отмена</button>
+        <button class="btn primary" id="payConfirm">Выплатить</button>
+      </div>
+    `;
+
+    AsgardUI.showModal({ title: 'Выплата', html, icon: '💰', subtitle: esc(employeeName) });
+
+    // Radio chip toggle
+    const body = document.getElementById('modalBody');
+    if (body) {
+      body.querySelectorAll('label.cr-f-chip').forEach(label => {
+        label.addEventListener('click', () => {
+          body.querySelectorAll('label.cr-f-chip').forEach(l => l.classList.remove('cr-f-chip--active'));
+          label.classList.add('cr-f-chip--active');
+        });
+      });
+    }
+
+    document.getElementById('payCancel')?.addEventListener('click', () => AsgardUI.hideModal());
+
+    document.getElementById('payConfirm')?.addEventListener('click', async () => {
+      const method = body?.querySelector('input[name="payMethod"]:checked')?.value;
+      const note = document.getElementById('payNote')?.value?.trim() || '';
+      if (!method) { toast('Выберите способ'); return; }
+
+      const btn = document.getElementById('payConfirm');
+      if (btn) { btn.disabled = true; btn.textContent = '⏳ Обработка...'; }
+
+      try {
+        const resp = await fetch('/api/worker-payments/' + paymentId + '/pay', {
+          method: 'PUT',
+          headers: hdr(),
+          body: JSON.stringify({ payment_method: method, note })
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+          toast(data.details || data.error || 'Ошибка', '', 'err');
+          if (btn) { btn.disabled = false; btn.textContent = 'Выплатить'; }
+          return;
+        }
+        toast('✅ Выплата записана');
+        AsgardUI.hideModal();
+        renderPaymentsTab(container, work, user);
+      } catch (err) {
+        toast('Ошибка: ' + err.message, '', 'err');
+        if (btn) { btn.disabled = false; btn.textContent = 'Выплатить'; }
+      }
+    });
   }
 
   // ─── Inline form: массовые суточные (рендерится внутри вкладки, не в отдельной модалке) ──
