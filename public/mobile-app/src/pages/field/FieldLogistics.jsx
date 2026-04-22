@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
-import { ArrowLeft, Plane, Building, Car, FileText, Shield, Eye, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Plane, Building, Car, FileText, Shield, Eye, Download, ExternalLink } from 'lucide-react';
 
 const TYPE_CONFIG = {
   ticket_to: { label: 'Билет туда', Icon: Plane },
@@ -34,8 +34,9 @@ export default function FieldLogistics() {
         fieldApi.get('/logistics/my').catch(() => []),
         fieldApi.get('/logistics/my/history').catch(() => []),
       ]);
-      setCurrent(Array.isArray(cur) ? cur : cur?.items || cur?.rows || []);
-      setHistory(Array.isArray(hist) ? hist : hist?.items || hist?.rows || []);
+      const normalize = (data) => (Array.isArray(data) ? data : data?.logistics || data?.items || data?.rows || []);
+      setCurrent(normalize(cur));
+      setHistory(normalize(hist));
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
   }
@@ -118,15 +119,24 @@ export default function FieldLogistics() {
                       {item.flight_number && <p>Рейс: {item.flight_number}</p>}
                     </div>
                     {/* Actions */}
-                    {item.file_url && (
-                      <button
-                        onClick={() => window.open(item.file_url, '_blank')}
-                        className="mt-2 flex items-center gap-1 text-xs"
-                        style={{ color: 'var(--gold)' }}
-                      >
-                        <Eye size={12} /> Просмотр
-                      </button>
-                    )}
+                    {(item.file_url || item.details?.receipt_url) && (() => {
+                      const rawUrl = item.file_url || item.details?.receipt_url;
+                      // Extract filename from /api/files/preview/UUID.pdf → use field endpoint
+                      const filename = rawUrl.split('/').pop();
+                      const token = localStorage.getItem('field_token');
+                      const fieldUrl = `/api/field/logistics/my/file/${filename}?token=${encodeURIComponent(token)}`;
+                      return (
+                        <div className="mt-2 flex items-center gap-3">
+                          <button onClick={() => window.open(fieldUrl, '_blank')}
+                            className="flex items-center gap-1 text-xs font-medium" style={{ color: 'var(--gold)' }}>
+                            <Eye size={14} /> Открыть
+                          </button>
+                          <a href={fieldUrl} download className="flex items-center gap-1 text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+                            <Download size={14} /> Скачать
+                          </a>
+                        </div>
+                      );
+                    })()}
                     {item.driver_phone && (
                       <a href={`tel:${item.driver_phone}`} className="mt-1 flex items-center gap-1 text-xs" style={{ color: 'var(--gold)' }}>
                         <ExternalLink size={12} /> Водитель: {item.driver_phone}

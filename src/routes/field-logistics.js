@@ -262,7 +262,8 @@ async function routes(fastify, options) {
 
       const { rows } = await db.query(`
         SELECT fl.*, w.work_title, w.city,
-               d.original_name as document_name, d.download_url
+               d.original_name as document_name, d.download_url,
+               COALESCE(d.download_url, fl.details->>'receipt_url') as file_url
         FROM field_logistics fl
         JOIN works w ON w.id = fl.work_id
         LEFT JOIN documents d ON d.id = fl.document_id
@@ -286,7 +287,8 @@ async function routes(fastify, options) {
 
       const { rows } = await db.query(`
         SELECT fl.*, w.work_title, w.city,
-               d.original_name as document_name, d.download_url
+               d.original_name as document_name, d.download_url,
+               COALESCE(d.download_url, fl.details->>'receipt_url') as file_url
         FROM field_logistics fl
         JOIN works w ON w.id = fl.work_id
         LEFT JOIN documents d ON d.id = fl.document_id
@@ -298,6 +300,68 @@ async function routes(fastify, options) {
       return { logistics: rows };
     } catch (err) {
       fastify.log.error('[field-logistics] GET /my/history error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // GET /my/file/:filename — preview/download ticket file (Field auth)
+  // Serves PDF/images inline, verifies worker owns the logistics record
+  // ─────────────────────────────────────────────────────────────────────
+  const path = require('path');
+  const fs = require('fs').promises;
+
+  fastify.get('/my/file/:filename', async (req, reply) => {
+    try {
+      // Support token via query param (for opening in new tab)
+      const token = req.query.token || (req.headers.authorization || '').replace('Bearer ', '');
+      if (!token) return reply.code(401).send({ error: 'Не авторизован' });
+
+      const jwt = require('jsonwebtoken');
+      const FIELD_JWT_SECRET = process.env.FIELD_JWT_SECRET || (process.env.JWT_SECRET + '_field');
+      let decoded;
+      try { decoded = jwt.verify(token, FIELD_JWT_SECRET); } catch { return reply.code(401).send({ error: 'Токен недействителен' }); }
+      if (decoded.type !== 'field') return reply.code(401).send({ error: 'Неверный тип токена' });
+      const empId = decoded.employee_id;
+      const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, '');
+      if (!filename) return reply.code(400).send({ error: 'Некорректный файл' });
+
+      // Verify this file belongs to the worker's logistics
+      const { rows } = await db.query(
+        `SELECT fl.id FROM field_logistics fl
+         WHERE fl.employee_id = $1 AND fl.details->>'receipt_url' LIKE $2
+         LIMIT 1`,
+        [empId, `%${filename}%`]
+      );
+      if (!rows.length) return reply.code(403).send({ error: 'Нет доступа' });
+
+      // Find file in documents table
+      const { rows: docs } = await db.query(
+        'SELECT filename, original_name, mime_type FROM documents WHERE filename = $1 LIMIT 1',
+        [filename]
+      );
+      if (!docs.length) return reply.code(404).send({ error: 'Файл не найден' });
+
+      const doc = docs[0];
+      const uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, '../../uploads');
+      const filePath = path.join(uploadDir, doc.filename);
+
+      try { await fs.access(filePath); } catch { return reply.code(404).send({ error: 'Файл не найден' }); }
+
+      const buffer = await fs.readFile(filePath);
+      const mime = doc.mime_type || 'application/octet-stream';
+      const isInline = mime.startsWith('application/pdf') || mime.startsWith('image/');
+
+      reply
+        .header('Content-Type', mime)
+        .header('Content-Length', buffer.length)
+        .header('Content-Disposition', isInline
+          ? `inline; filename="${encodeURIComponent(doc.original_name || filename)}"`
+          : `attachment; filename="${encodeURIComponent(doc.original_name || filename)}"`)
+        .header('Cache-Control', 'private, max-age=3600')
+        .send(buffer);
+    } catch (err) {
+      fastify.log.error('[field-logistics] file preview error:', err);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
