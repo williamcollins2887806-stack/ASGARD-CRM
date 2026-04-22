@@ -25,6 +25,7 @@ import FieldIncidents from '@/pages/field/FieldIncidents';
 import FieldPhotos from '@/pages/field/FieldPhotos';
 import FieldPacking from '@/pages/field/FieldPacking';
 import FieldStages from '@/pages/field/FieldStages';
+import FieldCrewStages from '@/pages/field/FieldCrewStages';
 import FieldAchievements from '@/pages/field/FieldAchievements';
 import FieldLeaderboard from '@/pages/field/FieldLeaderboard';
 import WheelOfNorns from '@/pages/field/WheelOfNorns';
@@ -199,6 +200,7 @@ function AppLayout() {
                 <Route path="photos" element={<FieldPhotos />} />
                 <Route path="packing" element={<FieldPacking />} />
                 <Route path="stages" element={<FieldStages />} />
+                <Route path="crew-stages" element={<FieldCrewStages />} />
                 <Route path="achievements" element={<FieldAchievements />} />
                 <Route path="leaderboard" element={<FieldLeaderboard />} />
                 <Route path="wheel" element={<WheelOfNorns />} />
