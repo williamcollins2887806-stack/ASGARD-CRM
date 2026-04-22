@@ -7,7 +7,8 @@ import { useHaptic } from '@/hooks/useHaptic';
 function fmtMoney(n) { return (n || 0).toLocaleString('ru-RU') + ' \u20BD'; }
 function fmtDate(iso) { if (!iso) return ''; const d = new Date(iso); return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`; }
 
-const SHIFT_LABELS = { day: 'День', night: 'Ночь', half: 'Пол-смены', travel: 'Дорога' };
+const SHIFT_LABELS = { day: 'День', night: 'Ночь', half: 'Пол-смены', travel: 'Дорога', standby: 'Ожидание', road: 'Дорога' };
+const ROLE_LABELS = { senior_master: 'Ст. мастер', shift_master: 'Мастер', worker: 'Рабочий' };
 
 export default function FieldHistory() {
   const navigate = useNavigate();
@@ -102,7 +103,12 @@ export default function FieldHistory() {
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate" style={{ color: 'var(--text-primary)' }}>{p.work_title || p.title}</p>
                     <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-                      {p.city}{p.start_date ? ` · ${fmtDate(p.start_date)}` : ''}{p.end_date ? ` — ${fmtDate(p.end_date)}` : ''}
+                      {[
+                        p.city,
+                        (p.date_from || p.start_date) ? `${fmtDate(p.date_from || p.start_date)}${(p.date_to || p.end_date) ? ` — ${fmtDate(p.date_to || p.end_date)}` : ''}` : null,
+                        ROLE_LABELS[p.field_role] || p.role || null,
+                        p.pm_name ? `РП: ${p.pm_name}` : null,
+                      ].filter(Boolean).join(' · ')}
                     </p>
                     <div className="flex items-center gap-3 mt-1.5 text-xs" style={{ color: 'var(--text-secondary)' }}>
                       <span>{p.shifts_count || 0} смен</span>
@@ -122,26 +128,38 @@ export default function FieldHistory() {
                       <div className="py-4 text-center text-xs" style={{ color: 'var(--text-tertiary)' }}>Загрузка...</div>
                     ) : timesheet && timesheet.length > 0 ? (
                       <div className="mt-3 space-y-1">
-                        <div className="grid grid-cols-4 text-xs font-semibold pb-1" style={{ color: 'var(--text-tertiary)' }}>
-                          <span>Дата</span><span>Тип</span><span className="text-right">Часы</span><span className="text-right">Сумма</span>
+                        <div className="grid text-xs font-semibold pb-1" style={{ color: 'var(--text-tertiary)', gridTemplateColumns: '42px 1fr auto auto auto' }}>
+                          <span>Дата</span><span>Тип</span><span className="text-right px-1">Бал</span><span className="text-right px-1">Ч</span><span className="text-right">Сумма</span>
                         </div>
-                        {timesheet.map((d, i) => (
-                          <div key={i} className="grid grid-cols-4 text-xs py-1" style={{ color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-norse)' }}>
-                            <span>{fmtDate(d.date)}</span>
-                            <span>{SHIFT_LABELS[d.shift_type] || d.shift_type || '—'}</span>
-                            <span className="text-right">{d.hours || '—'}</span>
-                            <span className="text-right" style={{ color: 'var(--gold)' }}>{d.earned ? fmtMoney(d.earned) : '—'}</span>
-                          </div>
-                        ))}
-                        <div className="grid grid-cols-4 text-xs font-bold pt-2" style={{ color: 'var(--text-primary)' }}>
-                          <span>Итого</span><span></span>
-                          <span className="text-right">{timesheet.reduce((s,d) => s + (d.hours || 0), 0)}</span>
-                          <span className="text-right" style={{ color: 'var(--gold)' }}>{fmtMoney(timesheet.reduce((s,d) => s + (d.earned || 0), 0))}</span>
+                        {timesheet.map((d, i) => {
+                          const shift = d.shift_type || d.shift || '';
+                          const points = d.day_rate ? Math.round(parseFloat(d.day_rate) / 500) : (d.points || 0);
+                          const earned = d.earned || d.amount_earned || 0;
+                          return (
+                            <div key={i} className="grid text-xs py-1" style={{ color: 'var(--text-secondary)', borderBottom: '1px solid var(--border-norse)', gridTemplateColumns: '42px 1fr auto auto auto' }}>
+                              <span>{fmtDate(d.date)}</span>
+                              <span>{SHIFT_LABELS[shift] || shift || '—'}</span>
+                              <span className="text-right px-1" style={{ color: 'var(--text-tertiary)' }}>{points > 0 ? points : ''}</span>
+                              <span className="text-right px-1">{d.hours || d.hours_worked || '—'}</span>
+                              <span className="text-right" style={{ color: 'var(--gold)' }}>{earned ? fmtMoney(earned) : '—'}</span>
+                            </div>
+                          );
+                        })}
+                        <div className="grid text-xs font-bold pt-2" style={{ color: 'var(--text-primary)', gridTemplateColumns: '42px 1fr auto auto auto' }}>
+                          <span>Итого</span><span></span><span></span>
+                          <span className="text-right px-1">{timesheet.reduce((s,d) => s + (d.hours || d.hours_worked || 0), 0)}</span>
+                          <span className="text-right" style={{ color: 'var(--gold)' }}>{fmtMoney(timesheet.reduce((s,d) => s + (d.earned || d.amount_earned || 0), 0))}</span>
                         </div>
                       </div>
                     ) : (
                       <p className="py-3 text-xs text-center" style={{ color: 'var(--text-tertiary)' }}>Нет данных</p>
                     )}
+                    {/* Finance link */}
+                    <button onClick={() => { haptic.light(); navigate(`/field/money?detail=${key}`); }}
+                      className="w-full mt-3 py-2 rounded-lg text-xs font-medium text-center"
+                      style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--gold)' }}>
+                      💰 Финансы проекта →
+                    </button>
                   </div>
                 )}
               </div>
