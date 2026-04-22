@@ -554,10 +554,14 @@ async function routes(fastify, options) {
         } catch (_) {}
       }
 
-      // Expenses by category (JOIN employees for ФОТ/суточные/авансы)
+      // Expenses by category (fot_employee_name for ФОТ/суточные, supplier for materials)
       const { rows: expenses } = await db.query(`
         SELECT we.id, we.category, we.amount, we.comment,
-          COALESCE(NULLIF(TRIM(we.supplier), ''), COALESCE(NULLIF(TRIM(e.full_name), ''), e.fio)) AS supplier,
+          COALESCE(
+            NULLIF(TRIM(we.supplier), ''),
+            NULLIF(TRIM(we.fot_employee_name), ''),
+            CASE WHEN we.fot_employee_id IS NOT NULL THEN COALESCE(NULLIF(TRIM(e.full_name), ''), e.fio) END
+          ) AS supplier,
           we.invoice_needed, we.invoice_received, we.doc_number, we.fot_employee_name, we.fot_employee_id
         FROM work_expenses we
         LEFT JOIN employees e ON e.id = we.fot_employee_id
