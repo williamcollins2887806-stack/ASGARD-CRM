@@ -517,7 +517,7 @@ async function routes(fastify, options) {
       let crew = [];
       try {
         const crewRes = await db.query(`
-          SELECT e.id, e.full_name, e.position,
+          SELECT e.id, COALESCE(NULLIF(TRIM(e.full_name), ''), e.fio, 'Сотрудник #' || e.id) AS full_name, e.position,
                  COUNT(DISTINCT fc.date) as shifts,
                  COALESCE(SUM(fc.hours_paid), 0) as hours,
                  COALESCE(SUM(fc.amount_earned), 0) as earned,
@@ -527,7 +527,7 @@ async function routes(fastify, options) {
           LEFT JOIN field_tariff_grid ftg ON ftg.id = ea.tariff_id
           LEFT JOIN field_checkins fc ON fc.employee_id = ea.employee_id AND fc.work_id = $1
           WHERE ea.work_id = $1
-          GROUP BY e.id, e.full_name, e.position, ftg.point_value
+          GROUP BY e.id, e.full_name, e.fio, e.position, ftg.point_value
           ORDER BY earned DESC
         `, [workId]);
         crew = crewRes.rows;
@@ -554,9 +554,15 @@ async function routes(fastify, options) {
         } catch (_) {}
       }
 
-      // Expenses by category
-      const { rows: expenses } = await db.query(
-        'SELECT id, category, amount, comment, supplier, invoice_needed, invoice_received, doc_number FROM work_expenses WHERE work_id = $1 ORDER BY category, id',
+      // Expenses by category (JOIN employees for ФОТ/суточные/авансы)
+      const { rows: expenses } = await db.query(`
+        SELECT we.id, we.category, we.amount, we.comment,
+          COALESCE(NULLIF(TRIM(we.supplier), ''), COALESCE(NULLIF(TRIM(e.full_name), ''), e.fio)) AS supplier,
+          we.invoice_needed, we.invoice_received, we.doc_number, we.fot_employee_name, we.fot_employee_id
+        FROM work_expenses we
+        LEFT JOIN employees e ON e.id = we.fot_employee_id
+        WHERE we.work_id = $1
+        ORDER BY we.category, we.id`,
         [workId]
       );
 
