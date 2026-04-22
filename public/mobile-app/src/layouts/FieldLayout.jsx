@@ -15,14 +15,14 @@ export default function FieldLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const haptic = useHaptic();
+  const navRef = useRef(null);
+  const [indicator, setIndicator] = useState({ left: 0, width: 0 });
 
   // Auth guard — redirect to welcome if no field token
   const fieldToken = localStorage.getItem('field_token');
   if (!fieldToken) {
     return <Navigate to="/field/welcome" replace />;
   }
-  const navRef = useRef(null);
-  const [indicator, setIndicator] = useState({ left: 0, width: 0 });
 
   const activeIndex = TABS.findIndex(({ path }) =>
     location.pathname === path || location.pathname.startsWith(path + '/')
