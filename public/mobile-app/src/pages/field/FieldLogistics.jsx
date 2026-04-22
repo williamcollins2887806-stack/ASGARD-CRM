@@ -99,13 +99,15 @@ export default function FieldLogistics() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
-                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{cfg.label}</p>
+                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{item.title || cfg.label}</p>
                       <span className="text-xs px-2 py-0.5 rounded-full" style={{ backgroundColor: statusColor + '20', color: statusColor }}>
                         {STATUS_LABELS[item.status] || item.status}
                       </span>
                     </div>
                     {/* Details */}
                     <div className="mt-1 space-y-0.5 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                      {item.work_title && <p className="font-medium">{item.work_title}</p>}
+                      {(item.departure || item.details?.departure) && <p>Отправление: {item.departure || item.details?.departure}</p>}
                       {item.route && <p>{item.route}</p>}
                       {item.carrier && <p>{item.carrier}</p>}
                       {item.hotel_name && <p>{item.hotel_name}</p>}

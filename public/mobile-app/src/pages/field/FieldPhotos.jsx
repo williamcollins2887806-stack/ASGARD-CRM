@@ -14,6 +14,8 @@ export default function FieldPhotos() {
   const [uploading, setUploading] = useState(false);
   const [viewPhoto, setViewPhoto] = useState(null);
   const [error, setError] = useState(null);
+  const [uploadType, setUploadType] = useState('work');
+  const [caption, setCaption] = useState('');
 
   useEffect(() => { loadData(); }, []);
 
@@ -42,6 +44,8 @@ export default function FieldPhotos() {
       const formData = new FormData();
       formData.append('photo', file);
       formData.append('work_id', wid);
+      formData.append('photo_type', uploadType);
+      if (caption.trim()) formData.append('caption', caption.trim());
 
       const token = localStorage.getItem('field_token');
       const res = await fetch('/api/field/photos/', {
@@ -53,7 +57,7 @@ export default function FieldPhotos() {
       haptic.success();
       loadData();
     } catch (e) { setError(e.message); }
-    finally { setUploading(false); if (fileRef.current) fileRef.current.value = ''; }
+    finally { setUploading(false); setCaption(''); if (fileRef.current) fileRef.current.value = ''; }
   }
 
   if (loading) {
@@ -99,7 +103,27 @@ export default function FieldPhotos() {
       <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleUpload} className="hidden" />
 
       {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>{error}</div>}
-      {uploading && <div className="p-3 rounded-lg text-sm text-center" style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--gold)' }}>Загрузка...</div>}
+
+      {/* Upload type selector + caption */}
+      {project && (
+        <div className="rounded-xl p-3 space-y-2" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
+          <div className="flex gap-1.5">
+            {[{ val: 'work', label: '🔨 Работа' }, { val: 'before', label: '📋 До' }, { val: 'after', label: '✅ После' }, { val: 'incident', label: '⚠️ Инцидент' }].map(t => (
+              <button key={t.val} onClick={() => setUploadType(t.val)}
+                className="flex-1 py-1.5 rounded-lg text-xs font-medium"
+                style={{ backgroundColor: uploadType === t.val ? 'var(--gold)' : 'var(--bg-primary)', color: uploadType === t.val ? '#000' : 'var(--text-secondary)', border: '1px solid var(--border-norse)' }}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <input type="text" placeholder="Подпись к фото (необязательно)" value={caption}
+            onChange={e => setCaption(e.target.value)}
+            className="w-full p-2 rounded-lg text-xs"
+            style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }} />
+        </div>
+      )}
+
+      {uploading && <div className="p-3 rounded-lg text-sm text-center" style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--gold)' }}>⚔️ Загрузка... Славной фотке — славное место!</div>}
 
       {/* Photos grid */}
       {photos.length === 0 ? (
@@ -117,7 +141,7 @@ export default function FieldPhotos() {
                 <button
                   key={photo.id}
                   onClick={() => setViewPhoto(photo)}
-                  className="aspect-square rounded-lg overflow-hidden"
+                  className="aspect-square rounded-lg overflow-hidden relative"
                   style={{ backgroundColor: 'var(--bg-elevated)' }}
                 >
                   <img
@@ -126,6 +150,12 @@ export default function FieldPhotos() {
                     className="w-full h-full object-cover"
                     loading="lazy"
                   />
+                  {photo.photo_type && photo.photo_type !== 'work' && (
+                    <span className="absolute top-1 left-1 text-xs px-1.5 py-0.5 rounded font-medium"
+                      style={{ backgroundColor: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: '0.5625rem' }}>
+                      {{ before: 'До', after: 'После', incident: '⚠️' }[photo.photo_type] || photo.photo_type}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -140,6 +170,10 @@ export default function FieldPhotos() {
             <X size={24} className="text-white" />
           </button>
           <img src={viewPhoto.url || viewPhoto.file_url || `/api/field/photos/${viewPhoto.id}/full`} alt="" className="max-w-full max-h-full object-contain" />
+          <div className="absolute bottom-4 left-4 right-4 text-center">
+            {viewPhoto.caption && <p className="text-sm text-white mb-1">{viewPhoto.caption}</p>}
+            <p className="text-xs text-gray-400">{new Date(viewPhoto.created_at || viewPhoto.uploaded_at).toLocaleString('ru-RU')}</p>
+          </div>
         </div>
       )}
     </div>

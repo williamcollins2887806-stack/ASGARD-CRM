@@ -74,6 +74,11 @@ export default function FieldReport() {
         <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Ежедневный отчёт</h1>
       </div>
 
+      {/* Date header */}
+      <p className="text-sm font-medium text-center" style={{ color: 'var(--text-secondary)' }}>
+        Отчёт за {new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
+      </p>
+
       {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>{error}</div>}
       {success && (
         <div className="p-3 rounded-lg text-sm flex items-center gap-2" style={{ backgroundColor: 'rgba(34,197,94,0.1)', color: '#22c55e' }}>
@@ -108,28 +113,58 @@ export default function FieldReport() {
         </div>
       ) : (
         <div className="rounded-xl p-4 space-y-3" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
-          {fields.map((field) => (
-            <div key={field.key || field.name}>
-              <label className="text-xs font-medium mb-1 block" style={{ color: 'var(--text-secondary)' }}>{field.label || field.name}</label>
-              {field.type === 'textarea' ? (
-                <textarea
-                  value={formData[field.key || field.name] || ''}
-                  onChange={(e) => setFormData({ ...formData, [field.key || field.name]: e.target.value })}
-                  rows={3}
-                  className="w-full p-2 rounded-lg text-sm resize-none"
-                  style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }}
-                />
-              ) : (
-                <input
-                  type={field.type || 'text'}
-                  value={formData[field.key || field.name] || ''}
-                  onChange={(e) => setFormData({ ...formData, [field.key || field.name]: e.target.value })}
-                  className="w-full p-2 rounded-lg text-sm"
-                  style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }}
-                />
-              )}
-            </div>
-          ))}
+          {template?.name && (
+            <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-tertiary)' }}>{template.name}</p>
+          )}
+          {fields.map((field) => {
+            const fKey = field.key || field.name;
+            return (
+              <div key={fKey}>
+                <label className="text-xs font-medium mb-1 block" style={{ color: 'var(--text-secondary)' }}>{field.label || field.name}</label>
+                {field.type === 'textarea' ? (
+                  <textarea value={formData[fKey] || ''} onChange={(e) => setFormData({ ...formData, [fKey]: e.target.value })}
+                    rows={3} className="w-full p-2 rounded-lg text-sm resize-none"
+                    style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }} />
+                ) : field.type === 'select' ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {(field.options || []).map(opt => (
+                      <button key={opt} onClick={() => setFormData({ ...formData, [fKey]: opt })}
+                        className="px-3 py-1.5 rounded-full text-xs font-medium"
+                        style={{ backgroundColor: formData[fKey] === opt ? 'var(--gold)' : 'var(--bg-primary)', color: formData[fKey] === opt ? '#000' : 'var(--text-secondary)', border: '1px solid var(--border-norse)' }}>
+                        {opt}
+                      </button>
+                    ))}
+                  </div>
+                ) : field.type === 'number' ? (
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => setFormData({ ...formData, [fKey]: Math.max(0, (parseInt(formData[fKey]) || 0) - 1) })}
+                      className="w-10 h-10 rounded-lg text-lg font-bold flex items-center justify-center"
+                      style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }}>−</button>
+                    <span className="text-lg font-bold flex-1 text-center" style={{ color: 'var(--text-primary)' }}>{formData[fKey] || 0}</span>
+                    <button onClick={() => setFormData({ ...formData, [fKey]: (parseInt(formData[fKey]) || 0) + 1 })}
+                      className="w-10 h-10 rounded-lg text-lg font-bold flex items-center justify-center"
+                      style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }}>+</button>
+                  </div>
+                ) : (
+                  <input type={field.type || 'text'} value={formData[fKey] || ''} onChange={(e) => setFormData({ ...formData, [fKey]: e.target.value })}
+                    className="w-full p-2 rounded-lg text-sm"
+                    style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }} />
+                )}
+              </div>
+            );
+          })}
+          {/* Downtime fields */}
+          <div className="pt-2 mt-1" style={{ borderTop: '1px solid var(--border-norse)' }}>
+            <label className="text-xs font-medium mb-1 block" style={{ color: 'var(--text-secondary)' }}>Простой (минуты)</label>
+            <input type="number" value={formData.downtime_minutes || ''} onChange={e => setFormData({ ...formData, downtime_minutes: e.target.value })}
+              placeholder="0" className="w-full p-2 rounded-lg text-sm"
+              style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }} />
+            {(formData.downtime_minutes > 0) && (
+              <textarea value={formData.downtime_reason || ''} onChange={e => setFormData({ ...formData, downtime_reason: e.target.value })}
+                placeholder="Причина простоя" rows={2} className="w-full p-2 rounded-lg text-sm resize-none mt-2"
+                style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }} />
+            )}
+          </div>
         </div>
       )}
 

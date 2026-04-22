@@ -16,6 +16,8 @@ export default function FieldShift() {
   const [error, setError] = useState(null);
   const [elapsed, setElapsed] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [showCheckout, setShowCheckout] = useState(false);
+  const [geoInfo, setGeoInfo] = useState(null);
   const timerRef = useRef(null);
 
   const fetchData = async () => {
@@ -62,6 +64,7 @@ export default function FieldShift() {
 
   const handleEnd = async () => {
     haptic.medium();
+    setShowCheckout(false);
     setSubmitting(true);
     try {
       const geo = await getGeo();
@@ -70,6 +73,13 @@ export default function FieldShift() {
     } catch (e) { setError(e.message); }
     finally { setSubmitting(false); }
   };
+
+  // Capture geo info on load for display
+  useEffect(() => {
+    if (isActive && checkin) {
+      getGeo().then(g => { if (g.lat) setGeoInfo(g); });
+    }
+  }, [isActive]);
 
   const hh = fmt(Math.floor(elapsed / 3600));
   const mm = fmt(Math.floor((elapsed % 3600) / 60));
@@ -104,11 +114,17 @@ export default function FieldShift() {
             <div className="w-full h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--border-norse)' }}>
               <div className="h-full rounded-full transition-all" style={{ width: `${progress}%`, background: 'linear-gradient(90deg, var(--gold), #f59e0b)' }} />
             </div>
-            <button onClick={handleEnd} disabled={submitting}
+            <button onClick={() => setShowCheckout(true)} disabled={submitting}
               className="w-full py-3 rounded-xl font-semibold text-white flex items-center justify-center gap-2"
               style={{ backgroundColor: 'var(--error)', opacity: submitting ? 0.6 : 1 }}>
               <Square size={18} /> Завершить
             </button>
+            {/* Geo accuracy */}
+            {geoInfo && (
+              <p className="text-xs text-center mt-2" style={{ color: 'var(--text-tertiary)' }}>
+                📍 Точность: ±{Math.round(geoInfo.accuracy || 0)}м
+              </p>
+            )}
           </div>
         )}
         {isCompleted && (
@@ -146,7 +162,27 @@ export default function FieldShift() {
           <MapPin size={18} style={{ color: 'var(--gold)' }} />
           <div className="flex-1 min-w-0">
             <p className="font-medium truncate" style={{ color: 'var(--text-primary)' }}>{data.project.work_title || data.project.title}</p>
-            <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{data.project.city}{data.assignment?.day_rate ? ' · ' + fmtMoney(data.assignment.day_rate) + '/день' : ''}</p>
+            <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+              {[data.project.city, data.project.object_name, data.project.day_rate ? fmtMoney(data.project.day_rate) + '/день' : null].filter(Boolean).join(' · ')}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Checkout confirm sheet */}
+      {showCheckout && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={() => setShowCheckout(false)}>
+          <div className="w-full max-w-md rounded-t-2xl p-5 space-y-4" style={{ backgroundColor: 'var(--bg-primary)' }} onClick={e => e.stopPropagation()}>
+            <h2 className="text-base font-bold text-center" style={{ color: 'var(--text-primary)' }}>Завершить смену?</h2>
+            <p className="text-sm text-center" style={{ color: 'var(--text-secondary)' }}>
+              Вы на объекте с {fmtTime(checkin?.checkin_at)} ({fmt(Math.floor(elapsed / 3600))}ч {fmt(Math.floor((elapsed % 3600) / 60))}мин)
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setShowCheckout(false)} className="flex-1 py-3 rounded-xl text-sm font-medium"
+                style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }}>Отмена</button>
+              <button onClick={handleEnd} className="flex-1 py-3 rounded-xl text-sm font-semibold text-white"
+                style={{ backgroundColor: '#ef4444' }}>Завершить</button>
+            </div>
           </div>
         </div>
       )}

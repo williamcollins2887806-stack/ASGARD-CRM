@@ -9,6 +9,8 @@ const TYPES = [
   { value: 'equipment', label: 'Поломка оборудования' },
   { value: 'safety', label: 'Нарушение ТБ' },
   { value: 'material', label: 'Порча материала' },
+  { value: 'no_material', label: 'Нет материала' },
+  { value: 'weather', label: 'Погода' },
   { value: 'other', label: 'Другое' },
 ];
 

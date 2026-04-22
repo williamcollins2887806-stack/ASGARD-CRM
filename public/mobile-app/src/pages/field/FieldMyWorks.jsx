@@ -39,6 +39,11 @@ function ProjectCard({ project, isActive, navigate, haptic }) {
             {[project.city, project.customer_name].filter(Boolean).join(' · ')}
           </span>
         </div>
+        {(project.date_from || project.date_to) && (
+          <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+            {project.date_from ? new Date(project.date_from).toLocaleDateString('ru-RU') : '?'} — {project.date_to ? new Date(project.date_to).toLocaleDateString('ru-RU') : '...'}
+          </p>
+        )}
       </div>
       <div className="flex gap-4">
         {project.shifts != null && (
@@ -66,7 +71,15 @@ function ProjectCard({ project, isActive, navigate, haptic }) {
               )}
             </div>
           )}
-          {project.master_name && (
+          {project.masters?.length > 0 ? project.masters.map((m, i) => (
+            <div key={i} className="flex items-center gap-1">
+              <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Мастер:</span>
+              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{shortenName(m.fio || m.name)}</span>
+              {(m.phone) && (
+                <a href={`tel:${m.phone}`} className="ml-1"><Phone size={12} style={{ color: 'var(--gold)' }} /></a>
+              )}
+            </div>
+          )) : project.master_name ? (
             <div className="flex items-center gap-1">
               <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Мастер:</span>
               <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{shortenName(project.master_name)}</span>
@@ -74,7 +87,7 @@ function ProjectCard({ project, isActive, navigate, haptic }) {
                 <a href={`tel:${project.master_phone}`} className="ml-1"><Phone size={12} style={{ color: 'var(--gold)' }} /></a>
               )}
             </div>
-          )}
+          ) : null}
         </div>
       )}
       {/* Action */}
