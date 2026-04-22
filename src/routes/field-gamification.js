@@ -43,7 +43,7 @@ async function routes(fastify) {
     const { silver_amount } = req.body;
     const runesGained = silver_amount * 10; // 10 silver = 100 runes → 1 silver = 10 runes
 
-    const client = await db.connect();
+    const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
 
@@ -102,7 +102,7 @@ async function routes(fastify) {
   // ── POST /spin — spin the Wheel of Norns (TRANSACTIONAL) ──
   fastify.post('/spin', { preHandler: [fastify.fieldAuthenticate] }, async (req, reply) => {
     const eid = req.fieldEmployee.id;
-    const client = await db.connect();
+    const client = await db.pool.connect();
 
     try {
       await client.query('BEGIN');
@@ -119,22 +119,34 @@ async function routes(fastify) {
         'SELECT * FROM gamification_pity_counters WHERE employee_id = $1 FOR UPDATE', [eid]
       );
 
-      // Check daily spin (safe now — pity row is locked, no concurrent spin can proceed)
-      const { rows: [lastSpin] } = await client.query(
-        `SELECT spin_at FROM gamification_spins WHERE employee_id = $1
-         ORDER BY spin_at DESC LIMIT 1`, [eid]
+      // Daily spin logic: 1 free + 1 bonus for checkin today
+      const now = new Date();
+      const msk = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
+      const resetToday = new Date(msk); resetToday.setHours(6, 0, 0, 0);
+      if (msk < resetToday) resetToday.setDate(resetToday.getDate() - 1);
+
+      // Count spins today
+      const { rows: [{ cnt: todaySpins }] } = await client.query(
+        `SELECT COUNT(*)::int as cnt FROM gamification_spins
+         WHERE employee_id = $1 AND spin_at >= $2`,
+        [eid, resetToday]
       );
 
-      if (lastSpin) {
-        const now = new Date();
-        const msk = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
-        const resetToday = new Date(msk); resetToday.setHours(6, 0, 0, 0);
-        if (msk < resetToday) resetToday.setDate(resetToday.getDate() - 1);
-        const lastSpinMsk = new Date(lastSpin.spin_at.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
-        if (lastSpinMsk >= resetToday) {
-          await client.query('ROLLBACK');
-          return reply.code(429).send({ error: 'Спин уже использован сегодня' });
-        }
+      // Check if worker has checkin today (bonus spin)
+      const { rows: [checkinToday] } = await client.query(
+        `SELECT id FROM field_checkins
+         WHERE employee_id = $1 AND date >= CURRENT_DATE AND status IN ('active','completed')
+         LIMIT 1`,
+        [eid]
+      );
+      const maxSpins = checkinToday ? 2 : 1; // 1 free + 1 bonus for checkin
+
+      if (todaySpins >= maxSpins) {
+        await client.query('ROLLBACK');
+        const msg = checkinToday
+          ? 'Оба спина использованы сегодня. Приходи завтра!'
+          : 'Бесплатный спин использован. Отметься на объекте для бонусного!';
+        return reply.code(429).send({ error: msg });
       }
 
       // Load prizes
@@ -244,7 +256,7 @@ async function routes(fastify) {
   }, async (req, reply) => {
     const eid = req.fieldEmployee.id;
     const { item_id } = req.body;
-    const client = await db.connect();
+    const client = await db.pool.connect();
 
     try {
       await client.query('BEGIN');
@@ -342,7 +354,7 @@ async function routes(fastify) {
     const eid = req.fieldEmployee.id;
     const questId = parseInt(req.params.id, 10);
 
-    const client = await db.connect();
+    const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
 

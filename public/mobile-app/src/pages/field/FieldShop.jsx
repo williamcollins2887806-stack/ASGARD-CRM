@@ -86,9 +86,9 @@ export default function FieldShop() {
     ]).then(([wallet, shop]) => {
       setBalance(wallet.runes || 0);
       const apiItems = shop.items || [];
-      setItems(apiItems.length >= 4 ? apiItems.map(it => ({
-        ...it, rarity: it.rarity || 'common', stock: it.stock ?? 99, limited: it.limited || false,
-      })) : MOCK_ITEMS);
+      setItems((apiItems.length > 0 ? apiItems : MOCK_ITEMS).map(it => ({
+        ...it, rarity: it.rarity || 'common', stock: it.current_stock ?? it.stock ?? 99, limited: it.is_limited || it.limited || false,
+      })));
     }).finally(() => setLoading(false));
   }, []);
 

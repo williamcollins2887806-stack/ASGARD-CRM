@@ -63,21 +63,18 @@ export default function FieldInventory() {
   useEffect(() => {
     fieldApi.get('/gamification/inventory').then(d => {
       const apiItems = d?.inventory || [];
-      if (apiItems.length > 0) {
-        setItems(apiItems.map(it => ({
-          id: it.id, name: it.item_name || it.name, status: it.delivery_status || 'pending',
-          svg: it.svg_key || 'tshirt', source: it.source_type || 'shop',
-          sourceLabel: it.source_type === 'spin' ? 'Рулетка' : it.source_type === 'shop' ? 'Магазин' : 'Ачивка',
-          sourceIcon: it.source_type === 'spin' ? '\uD83C\uDFB0' : it.source_type === 'shop' ? '\uD83D\uDECD' : '\uD83C\uDFC6',
-          date: new Date(it.acquired_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }),
-          deliveredDate: it.delivered_at ? new Date(it.delivered_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }) : null,
-          pm: it.pm_name || null, pmPhone: it.pm_phone || null, object: it.work_name || null,
-          desc: it.item_description || it.description || '',
-        })));
-      } else {
-        setItems(MOCK_ITEMS);
-      }
-    }).catch(() => setItems(MOCK_ITEMS))
+      const mapped = (apiItems || []).map(it => ({
+        id: it.id, name: it.item_name || it.name, status: it.delivery_status || 'pending',
+        svg: it.svg_key || 'tshirt', source: it.source_type || 'shop',
+        sourceLabel: it.source_type === 'spin' ? 'Рулетка' : it.source_type === 'shop' ? 'Магазин' : 'Ачивка',
+        sourceIcon: it.source_type === 'spin' ? '\uD83C\uDFB0' : it.source_type === 'shop' ? '\uD83D\uDECD' : '\uD83C\uDFC6',
+        date: new Date(it.acquired_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+        deliveredDate: it.delivered_at ? new Date(it.delivered_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }) : null,
+        pm: it.pm_name || null, pmPhone: it.pm_phone || null, object: it.work_name || null,
+        desc: it.item_description || it.description || '',
+      }));
+      setItems(mapped);
+    }).catch(() => setItems([]))
       .finally(() => setLoading(false));
   }, []);
 
