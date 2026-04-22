@@ -733,13 +733,7 @@ async function routes(fastify, options) {
         FROM employees WHERE id = $1
       `, [empId]);
       if (!rows.length) return reply.code(404).send({ error: 'Не найден' });
-      const emp = rows[0];
-      // Mask sensitive PII — show only last 4 digits
-      if (emp.passport_number) emp.passport_number = '** **** ' + emp.passport_number.slice(-4);
-      if (emp.passport_data) emp.passport_data = emp.passport_data.replace(/\d{2}\s?\d{2}\s?\d{6}/g, (m) => '** ** ****' + m.slice(-2));
-      if (emp.inn) emp.inn = '********' + emp.inn.slice(-4);
-      if (emp.snils) emp.snils = '***-***-' + emp.snils.slice(-6);
-      return { employee: emp };
+      return { employee: rows[0] };
     } catch (err) {
       fastify.log.error('[field-worker] /personal error:', err);
       return reply.code(500).send({ error: 'Ошибка сервера' });
@@ -751,10 +745,11 @@ async function routes(fastify, options) {
   // Требует подтверждения через модалку на фронте
   // ═══════════════════════════════════════════════════════════════════
   const EDITABLE_FIELDS = new Set([
-    'phone', 'email', 'city', 'address',
+    'fio', 'phone', 'email', 'city', 'address',
     'passport_data', 'passport_number', 'inn', 'snils',
     'clothing_size', 'shoe_size',
-    'birth_date', 'gender'
+    'birth_date', 'gender', 'is_self_employed',
+    'naks', 'naks_expiry', 'imt_number', 'imt_expires',
   ]);
 
   fastify.put('/personal', auth, async (req, reply) => {

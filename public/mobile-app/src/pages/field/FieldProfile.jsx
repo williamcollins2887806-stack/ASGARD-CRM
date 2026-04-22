@@ -244,11 +244,17 @@ export default function FieldProfile() {
                         value={editData[f.key] || ''} onChange={e => setEditData({ ...editData, [f.key]: e.target.value })}>
                         <option value="">—</option><option value="true">Да</option><option value="false">Нет</option>
                       </select>
+                    ) : f.key === 'gender' ? (
+                      <select className="w-full rounded-lg px-3 py-2 text-sm mt-0.5 outline-none"
+                        style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }}
+                        value={editData[f.key] || ''} onChange={e => setEditData({ ...editData, [f.key]: e.target.value })}>
+                        <option value="">—</option><option value="М">Мужской</option><option value="Ж">Женский</option>
+                      </select>
                     ) : (
                       <input className="w-full rounded-lg px-3 py-2 text-sm mt-0.5 outline-none"
                         style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }}
                         type={f.type || 'text'}
-                        value={f.type === 'date' && editData[f.key] ? editData[f.key].slice(0, 10) : (editData[f.key] || '')}
+                        value={f.type === 'date' && editData[f.key] ? String(editData[f.key]).slice(0, 10) : (editData[f.key] || '')}
                         onChange={e => setEditData({ ...editData, [f.key]: e.target.value })} />
                     )}
                   </div>
@@ -316,15 +322,21 @@ export default function FieldProfile() {
 
 const PERSONAL_FIELDS = [
   { key: 'fio', label: 'ФИО' },
+  { key: 'phone', label: 'Телефон' },
+  { key: 'email', label: 'Email' },
   { key: 'birth_date', label: 'Дата рождения', type: 'date' },
   { key: 'gender', label: 'Пол' },
   { key: 'city', label: 'Город' },
-  { key: 'is_self_employed', label: 'Самозанятый' },
-  { key: 'employment_date', label: 'Дата трудоустройства', type: 'date' },
-  { key: 'passport', label: 'Паспорт' },
+  { key: 'address', label: 'Адрес регистрации' },
+  { key: 'passport_data', label: 'Паспорт (серия номер)' },
   { key: 'inn', label: 'ИНН' },
   { key: 'snils', label: 'СНИЛС' },
-  { key: 'address', label: 'Адрес' },
+  { key: 'is_self_employed', label: 'Самозанятый' },
+  { key: 'naks', label: 'НАКС' },
+  { key: 'naks_expiry', label: 'НАКС до', type: 'date' },
+  { key: 'imt_number', label: 'Удостоверение ИТР' },
+  { key: 'imt_expires', label: 'ИТР до', type: 'date' },
   { key: 'clothing_size', label: 'Размер одежды' },
   { key: 'shoe_size', label: 'Размер обуви' },
+  { key: 'employment_date', label: 'Дата трудоустройства', type: 'date' },
 ];
