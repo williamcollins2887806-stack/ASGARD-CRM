@@ -41,19 +41,19 @@ function getGeo() {
 }
 
 const ACTIONS = [
-  { icon: Clock, label: 'Смена', path: '/m/field/shift' },
-  { icon: Wallet, label: 'Деньги', path: '/m/field/money' },
-  { icon: History, label: 'История', path: '/m/field/history' },
-  { icon: Users, label: 'Бригада', path: '/m/field/crew' },
-  { icon: Truck, label: 'Логистика', path: '/m/field/logistics' },
-  { icon: UserCircle, label: 'Профиль', path: '/m/field/profile' },
+  { icon: Clock, label: 'Смена', path: '/field/shift' },
+  { icon: Wallet, label: 'Деньги', path: '/field/money' },
+  { icon: History, label: 'История', path: '/field/history' },
+  { icon: Users, label: 'Бригада', path: '/field/crew' },
+  { icon: Truck, label: 'Логистика', path: '/field/logistics' },
+  { icon: UserCircle, label: 'Профиль', path: '/field/profile' },
 ];
 
 const GAMIFICATION_TILES = [
-  { emoji: '\uD83C\uDFB0', label: 'Рулетка', path: '/m/field/wheel', bg: 'linear-gradient(135deg,#3a0a10,#1a0508)', border: 'rgba(232,64,87,.25)' },
-  { emoji: '\uD83D\uDECD', label: 'Магазин', path: '/m/field/shop', bg: 'linear-gradient(135deg,#2a2008,#1a1505)', border: 'rgba(240,200,80,.25)' },
-  { emoji: '\uD83C\uDF81', label: 'Инвентарь', path: '/m/field/inventory', bg: 'linear-gradient(135deg,#0a1a2a,#081020)', border: 'rgba(74,144,255,.25)' },
-  { emoji: '\u2694\uFE0F', label: 'Квесты', path: '/m/field/quests', bg: 'linear-gradient(135deg,#1a0a2a,#100818)', border: 'rgba(165,110,255,.25)' },
+  { emoji: '\uD83C\uDFB0', label: 'Рулетка', path: '/field/wheel', bg: 'linear-gradient(135deg,#3a0a10,#1a0508)', border: 'rgba(232,64,87,.25)' },
+  { emoji: '\uD83D\uDECD', label: 'Магазин', path: '/field/shop', bg: 'linear-gradient(135deg,#2a2008,#1a1505)', border: 'rgba(240,200,80,.25)' },
+  { emoji: '\uD83C\uDF81', label: 'Инвентарь', path: '/field/inventory', bg: 'linear-gradient(135deg,#0a1a2a,#081020)', border: 'rgba(74,144,255,.25)' },
+  { emoji: '\u2694\uFE0F', label: 'Квесты', path: '/field/quests', bg: 'linear-gradient(135deg,#1a0a2a,#100818)', border: 'rgba(165,110,255,.25)' },
 ];
 
 export default function FieldHome() {

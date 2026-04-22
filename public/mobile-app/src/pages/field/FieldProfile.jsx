@@ -75,7 +75,7 @@ export default function FieldProfile() {
         ]);
         setProfile(me);
         setPermits(Array.isArray(perms) ? perms : perms?.permits || []);
-        setPersonal(pers);
+        setPersonal(pers?.employee || pers);
       } catch (e) { /* auth redirect handled by client */ }
       setLoading(false);
     }

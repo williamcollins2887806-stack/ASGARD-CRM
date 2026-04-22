@@ -192,14 +192,16 @@ async function routes(fastify, options) {
       userId = empUser[0]?.user_id;
 
       if (!userId) {
-        // Create user with role FIELD_WORKER
+        // Create user with role FIELD_WORKER (password_hash required by NOT NULL constraint)
         const login = normalized.replace('+', '');
+        const randomPwd = crypto.randomBytes(32).toString('hex');
+        const pwdHash = await bcrypt.hash(randomPwd, 10);
         const { rows: newUser } = await db.query(
-          `INSERT INTO users (login, role, is_active, name, created_at, updated_at)
-           VALUES ($1, 'FIELD_WORKER', true, $2, NOW(), NOW())
+          `INSERT INTO users (login, password_hash, role, is_active, name, created_at, updated_at)
+           VALUES ($1, $2, 'FIELD_WORKER', true, $3, NOW(), NOW())
            ON CONFLICT (login) DO UPDATE SET updated_at = NOW()
            RETURNING id`,
-          [login, employee.fio || 'Рабочий']
+          [login, pwdHash, employee.fio || 'Рабочий']
         );
         userId = newUser[0].id;
         await db.query(
