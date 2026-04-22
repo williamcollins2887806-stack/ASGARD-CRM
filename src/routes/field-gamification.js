@@ -139,14 +139,30 @@ async function routes(fastify) {
          LIMIT 1`,
         [eid]
       );
-      const maxSpins = checkinToday ? 2 : 1; // 1 free + 1 bonus for checkin
+      const maxFreeSpins = checkinToday ? 2 : 1; // 1 free + 1 bonus for checkin
 
-      if (todaySpins >= maxSpins) {
-        await client.query('ROLLBACK');
-        const msg = checkinToday
-          ? 'Оба спина использованы сегодня. Приходи завтра!'
-          : 'Бесплатный спин использован. Отметься на объекте для бонусного!';
-        return reply.code(429).send({ error: msg });
+      if (todaySpins >= maxFreeSpins) {
+        // Check for purchased extra spins in inventory (unused)
+        const { rows: [purchasedSpin] } = await client.query(
+          `SELECT id FROM gamification_inventory
+           WHERE employee_id = $1 AND item_name ILIKE '%спин%' AND is_used = false
+           ORDER BY acquired_at ASC LIMIT 1`,
+          [eid]
+        );
+
+        if (purchasedSpin) {
+          // Consume the purchased spin
+          await client.query(
+            'UPDATE gamification_inventory SET is_used = true WHERE id = $1',
+            [purchasedSpin.id]
+          );
+        } else {
+          await client.query('ROLLBACK');
+          const msg = checkinToday
+            ? 'Оба спина использованы. Купи доп. спин в магазине или приходи завтра!'
+            : 'Бесплатный спин использован. Отметься на объекте для бонусного!';
+          return reply.code(429).send({ error: msg });
+        }
       }
 
       // Load prizes

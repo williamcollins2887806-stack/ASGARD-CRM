@@ -111,23 +111,19 @@ export default function FieldQuests() {
   useEffect(() => {
     fieldApi.get('/gamification/quests').then(d => {
       const apiQuests = d?.quests || [];
-      if (apiQuests.length > 0) {
-        setQuests(apiQuests.map(q => ({
-          id: q.id, type: q.quest_type || 'daily', icon: q.icon || '\u26A1',
-          name: q.name, desc: q.description,
-          lore: q.lore || 'Испытание, достойное воина Асгарда.',
-          current: q.progress || 0, target: q.target_count || 1,
-          rewardCoins: q.reward_amount || 0, rewardItem: q.reward_item || null,
-          state: q.reward_claimed ? 'claimed' : q.completed ? 'ready' : 'active',
-          timerType: q.quest_type === 'daily' ? 'daily' : q.quest_type === 'weekly' ? 'weekly' :
-            q.quest_type === 'seasonal' ? 'seasonal' : 'none',
-          seasonEnd: q.season_end || '2026-05-31',
-          requiredLevel: q.required_level, currentLevel: q.current_level,
-        })));
-      } else {
-        setQuests(MOCK_QUESTS);
-      }
-    }).catch(() => setQuests(MOCK_QUESTS))
+      setQuests((apiQuests || []).map(q => ({
+        id: q.id, type: q.quest_type || 'daily', icon: q.icon || '\u26A1',
+        name: q.name, desc: q.description,
+        lore: q.lore || 'Испытание, достойное воина Асгарда.',
+        current: q.progress || 0, target: q.target_count || 1,
+        rewardCoins: q.reward_amount || 0, rewardItem: q.reward_item || null,
+        state: q.reward_claimed ? 'claimed' : q.completed ? 'ready' : 'active',
+        timerType: q.quest_type === 'daily' ? 'daily' : q.quest_type === 'weekly' ? 'weekly' :
+          q.quest_type === 'seasonal' ? 'seasonal' : 'none',
+        seasonEnd: q.season_end || '2026-05-31',
+        requiredLevel: q.required_level, currentLevel: q.current_level,
+      })));
+    }).catch(() => setQuests([]))
       .finally(() => setLoading(false));
   }, []);
 
