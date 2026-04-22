@@ -6,6 +6,7 @@ import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { TabBar } from '@/components/layout/TabBar';
 import { features } from '@/config/features';
 import FieldLayout from '@/layouts/FieldLayout';
+import FieldWelcome from '@/pages/field/FieldWelcome';
 import FieldLogin from '@/pages/field/FieldLogin';
 import FieldPinSetup from '@/pages/field/FieldPinSetup';
 import FieldPinEntry from '@/pages/field/FieldPinEntry';
@@ -178,6 +179,7 @@ function AppLayout() {
           {/* ═══ Field Worker routes (feature-flagged) ═══ */}
           {features.FIELD_REACT_MIGRATION && (
             <>
+              <Route path="/field/welcome" element={<FieldWelcome />} />
               <Route path="/field-login" element={<FieldLogin />} />
               <Route path="/field/pin-setup" element={<FieldPinSetup />} />
               <Route path="/field/pin-entry" element={<FieldPinEntry />} />

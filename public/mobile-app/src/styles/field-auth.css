@@ -1,0 +1,412 @@
+/* ═══════════════════════════════════════════════════════════════
+   ASGARD Field Auth — Norse Epic Login
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  --fa-bg-deep: #050814;
+  --fa-bg-dark: #0a0f1e;
+  --fa-gold: #D4A843;
+  --fa-gold-bright: #F5D070;
+  --fa-gold-dim: #8B7030;
+  --fa-rune-color: rgba(212, 168, 67, 0.12);
+}
+
+/* ─── Welcome Screen ─────────────────────────────────────────── */
+.fa-welcome {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: linear-gradient(170deg, var(--fa-bg-dark) 0%, var(--fa-bg-deep) 60%, #000 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  padding: 40px 24px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* ─── Stars ───────────────────────────────────────────────────── */
+.fa-stars { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+.fa-star {
+  position: absolute;
+  background: var(--fa-gold-bright);
+  border-radius: 50%;
+  animation: fa-twinkle 3s ease-in-out infinite;
+}
+@keyframes fa-twinkle {
+  0%, 100% { opacity: 0.15; transform: scale(0.8); }
+  50% { opacity: 0.8; transform: scale(1.2); }
+}
+
+/* ─── Corner Runes ────────────────────────────────────────────── */
+.fa-rune {
+  position: absolute;
+  font-size: 36px;
+  color: var(--fa-rune-color);
+  z-index: 0;
+  animation: fa-rune-glow 4s ease-in-out infinite;
+  user-select: none;
+}
+.fa-rune-tl { top: 24px; left: 20px; }
+.fa-rune-tr { top: 24px; right: 20px; animation-delay: 1s; }
+.fa-rune-bl { bottom: 24px; left: 20px; animation-delay: 2s; }
+.fa-rune-br { bottom: 24px; right: 20px; animation-delay: 3s; }
+@keyframes fa-rune-glow {
+  0%, 100% { opacity: 0.1; text-shadow: none; }
+  50% { opacity: 0.25; text-shadow: 0 0 12px rgba(212,168,67,0.3); }
+}
+
+/* ─── Logo ────────────────────────────────────────────────────── */
+.fa-logo {
+  animation: fa-breathe 3s ease-in-out infinite;
+  filter: drop-shadow(0 0 20px rgba(212,168,67,0.25));
+}
+@keyframes fa-breathe {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 20px rgba(212,168,67,0.25)); }
+  50% { transform: scale(1.03); filter: drop-shadow(0 0 30px rgba(212,168,67,0.4)); }
+}
+
+/* ─── Content ─────────────────────────────────────────────────── */
+.fa-welcome-content {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  opacity: 0;
+  transform: translateY(20px) scale(0.95);
+  transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.fa-welcome-content.fa-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.fa-title {
+  font-family: 'Cinzel', 'Times New Roman', serif;
+  font-size: 48px;
+  font-weight: 700;
+  color: var(--fa-gold);
+  letter-spacing: 8px;
+  margin: 16px 0 4px;
+  text-shadow: 0 2px 20px rgba(212,168,67,0.3);
+}
+
+.fa-subtitle {
+  font-size: 18px;
+  color: var(--fa-gold-dim);
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  margin: 0 0 32px;
+}
+
+.fa-quote {
+  font-style: italic;
+  font-size: 16px;
+  color: rgba(255,255,255,0.5);
+  max-width: 280px;
+  line-height: 1.6;
+  min-height: 52px;
+}
+
+.fa-cursor {
+  animation: fa-blink 0.8s step-end infinite;
+  color: var(--fa-gold);
+  font-style: normal;
+}
+@keyframes fa-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* ─── Bottom section ──────────────────────────────────────────── */
+.fa-welcome-bottom {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 320px;
+  margin-top: 40px;
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.fa-welcome-bottom.fa-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ─── Gold Button ─────────────────────────────────────────────── */
+.fa-btn-gold {
+  width: 100%;
+  padding: 16px 24px;
+  border: none;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--fa-gold), var(--fa-gold-dim));
+  color: var(--fa-bg-deep);
+  font-size: 18px;
+  font-weight: 700;
+  font-family: 'Cinzel', serif;
+  letter-spacing: 1px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  animation: fa-btn-pulse 2s ease-in-out infinite;
+  -webkit-tap-highlight-color: transparent;
+}
+.fa-btn-gold:active {
+  transform: scale(0.97);
+  filter: brightness(0.9);
+}
+@keyframes fa-btn-pulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(212,168,67,0.2), 0 4px 16px rgba(0,0,0,0.4); }
+  50% { box-shadow: 0 0 35px rgba(212,168,67,0.4), 0 4px 20px rgba(0,0,0,0.5); }
+}
+
+.fa-footer {
+  text-align: center;
+  font-size: 12px;
+  color: rgba(255,255,255,0.2);
+  margin-top: 20px;
+  letter-spacing: 1px;
+}
+
+/* ─── Login Screen (shared) ───────────────────────────────────── */
+.fa-login {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: linear-gradient(170deg, var(--fa-bg-dark) 0%, var(--fa-bg-deep) 60%, #000 100%);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  padding: 0 24px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.fa-login-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0;
+  position: relative;
+  z-index: 1;
+}
+
+.fa-back-btn {
+  background: none;
+  border: none;
+  color: var(--fa-gold);
+  font-size: 24px;
+  cursor: pointer;
+  padding: 8px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.fa-mini-logo {
+  font-family: 'Cinzel', serif;
+  font-size: 16px;
+  color: var(--fa-gold-dim);
+  letter-spacing: 3px;
+}
+
+.fa-login-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+  padding-bottom: 60px;
+}
+
+.fa-heading {
+  font-family: 'Cinzel', serif;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--fa-gold);
+  text-align: center;
+  margin-bottom: 8px;
+  line-height: 1.3;
+}
+
+.fa-desc {
+  font-size: 16px;
+  color: rgba(255,255,255,0.45);
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+/* ─── Phone Input ─────────────────────────────────────────────── */
+.fa-phone-wrap {
+  width: 100%;
+  max-width: 320px;
+  position: relative;
+}
+
+.fa-phone-prefix {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--fa-gold);
+  pointer-events: none;
+}
+
+.fa-phone-input {
+  width: 100%;
+  padding: 16px 16px 16px 50px;
+  background: rgba(255,255,255,0.04);
+  border: 1.5px solid rgba(212,168,67,0.2);
+  border-radius: 12px;
+  color: #fff;
+  font-size: 20px;
+  font-family: inherit;
+  letter-spacing: 1px;
+  outline: none;
+  transition: border-color 0.3s, box-shadow 0.3s;
+  -webkit-appearance: none;
+}
+.fa-phone-input:focus {
+  border-color: var(--fa-gold);
+  box-shadow: 0 0 0 3px rgba(212,168,67,0.1), 0 0 20px rgba(212,168,67,0.1);
+}
+.fa-phone-input::placeholder { color: rgba(255,255,255,0.2); }
+
+/* ─── OTP Boxes ───────────────────────────────────────────────── */
+.fa-otp-wrap {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.fa-otp-box {
+  width: 60px;
+  height: 60px;
+  background: rgba(255,255,255,0.04);
+  border: 1.5px solid rgba(212,168,67,0.2);
+  border-radius: 12px;
+  color: var(--fa-gold);
+  font-family: 'Cinzel', serif;
+  font-size: 28px;
+  font-weight: 700;
+  text-align: center;
+  outline: none;
+  transition: border-color 0.3s, box-shadow 0.3s, background 0.3s;
+  -webkit-appearance: none;
+}
+.fa-otp-box:focus {
+  border-color: var(--fa-gold);
+  box-shadow: 0 0 0 3px rgba(212,168,67,0.1);
+  background: rgba(212,168,67,0.05);
+}
+
+.fa-otp-box.fa-otp-success {
+  border-color: var(--fa-gold-bright);
+  box-shadow: 0 0 20px rgba(212,168,67,0.4);
+  background: rgba(212,168,67,0.1);
+}
+
+/* ─── Countdown ───────────────────────────────────────────────── */
+.fa-countdown {
+  font-size: 14px;
+  color: rgba(255,255,255,0.3);
+  text-align: center;
+}
+.fa-countdown-link {
+  color: var(--fa-gold);
+  cursor: pointer;
+  background: none;
+  border: none;
+  font: inherit;
+  padding: 0;
+}
+
+/* ─── Success animation ──────────────────────────────────────── */
+.fa-success-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--fa-bg-deep);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: fa-success-in 0.4s ease;
+}
+@keyframes fa-success-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.fa-success-rune {
+  font-size: 72px;
+  color: var(--fa-gold);
+  animation: fa-rune-appear 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  text-shadow: 0 0 40px rgba(212,168,67,0.5);
+}
+@keyframes fa-rune-appear {
+  0% { transform: scale(0.3); opacity: 0; }
+  60% { transform: scale(1.3); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.fa-success-text {
+  font-family: 'Cinzel', serif;
+  font-size: 24px;
+  color: var(--fa-gold);
+  margin-top: 16px;
+  animation: fa-fade-up 0.5s ease 0.3s both;
+}
+@keyframes fa-fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fa-success-name {
+  font-size: 16px;
+  color: rgba(255,255,255,0.4);
+  margin-top: 8px;
+  animation: fa-fade-up 0.5s ease 0.5s both;
+}
+
+/* ─── Loading ─────────────────────────────────────────────────── */
+.fa-loading-text {
+  font-size: 14px;
+  color: var(--fa-gold-dim);
+  text-align: center;
+  margin-top: 12px;
+  animation: fa-twinkle 1.5s ease-in-out infinite;
+}
+
+/* ─── Error ───────────────────────────────────────────────────── */
+.fa-error {
+  color: #e24b4a;
+  font-size: 14px;
+  text-align: center;
+  margin-top: 12px;
+  animation: fa-shake 0.4s ease;
+}
+@keyframes fa-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+
+/* ─── Button Disabled ─────────────────────────────────────────── */
+.fa-btn-gold:disabled {
+  opacity: 0.4;
+  cursor: default;
+  animation: none;
+}
+
+/* ─── Transition ──────────────────────────────────────────────── */
+.fa-slide-in {
+  animation: fa-slide-in 0.3s ease;
+}
+@keyframes fa-slide-in {
+  from { opacity: 0; transform: translateX(40px); }
+  to { opacity: 1; transform: translateX(0); }
+}

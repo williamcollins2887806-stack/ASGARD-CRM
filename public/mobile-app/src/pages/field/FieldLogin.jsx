@@ -1,197 +1,234 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useFieldAuthStore } from '@/stores/fieldAuthStore';
-import { Phone, Shield, ArrowRight, Loader2 } from 'lucide-react';
+import '@/styles/field-auth.css';
+
+function playGateOpen() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const notes = [523.25, 659.25, 783.99, 1046.5]; // C5 E5 G5 C6
+    notes.forEach((freq, i) => {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.12);
+      g.gain.setValueAtTime(0.15, ctx.currentTime + i * 0.12);
+      g.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + i * 0.12 + 0.5);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(ctx.currentTime + i * 0.12);
+      o.stop(ctx.currentTime + i * 0.12 + 0.5);
+    });
+    setTimeout(() => ctx.close(), 1200);
+  } catch (_) {}
+}
+
+// Stars (shared with Welcome)
+function Stars() {
+  const stars = useRef(
+    Array.from({ length: 30 }, () => ({
+      x: Math.random() * 100, y: Math.random() * 100,
+      size: Math.random() * 2 + 0.5,
+      delay: Math.random() * 4, duration: 2 + Math.random() * 3,
+    }))
+  ).current;
+  return (
+    <div className="fa-stars">
+      {stars.map((s, i) => (
+        <div key={i} className="fa-star" style={{
+          left: s.x+'%', top: s.y+'%', width: s.size+'px', height: s.size+'px',
+          animationDelay: s.delay+'s', animationDuration: s.duration+'s',
+        }} />
+      ))}
+    </div>
+  );
+}
+
+function formatPhone(raw) {
+  const d = raw.replace(/\D/g, '').slice(0, 10);
+  if (d.length <= 3) return d;
+  if (d.length <= 6) return `(${d.slice(0,3)}) ${d.slice(3)}`;
+  if (d.length <= 8) return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6)}`;
+  return `(${d.slice(0,3)}) ${d.slice(3,6)}-${d.slice(6,8)}-${d.slice(8)}`;
+}
 
 export default function FieldLogin() {
   const navigate = useNavigate();
   const { requestCode, verifyCode, loading, error, clearError } = useFieldAuthStore();
 
-  const [step, setStep] = useState('phone'); // 'phone' | 'code'
+  const [step, setStep] = useState('phone'); // phone | code | success
   const [phone, setPhone] = useState('');
-  const [code, setCode] = useState('');
+  const [otp, setOtp] = useState(['', '', '', '']);
   const [cooldown, setCooldown] = useState(0);
-  const codeInputRef = useRef(null);
-  const cooldownTimerRef = useRef(null);
+  const [employeeName, setEmployeeName] = useState('');
+  const otpRefs = [useRef(), useRef(), useRef(), useRef()];
 
-  // Q5: cleanup cooldown interval on unmount
-  useEffect(() => { return () => { if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current); }; }, []);
+  // Countdown timer
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setInterval(() => setCooldown(c => c <= 1 ? 0 : c - 1), 1000);
+    return () => clearInterval(t);
+  }, [cooldown]);
 
-  // Format phone for display
-  const formatPhone = (val) => {
-    const digits = val.replace(/\D/g, '').slice(0, 11);
-    if (digits.length <= 1) return '+7';
-    let formatted = '+7';
-    const rest = digits.slice(1);
-    if (rest.length > 0) formatted += ' (' + rest.slice(0, 3);
-    if (rest.length > 3) formatted += ') ' + rest.slice(3, 6);
-    if (rest.length > 6) formatted += '-' + rest.slice(6, 8);
-    if (rest.length > 8) formatted += '-' + rest.slice(8, 10);
-    return formatted;
-  };
-
-  const handlePhoneChange = (e) => {
-    clearError();
-    const raw = e.target.value.replace(/\D/g, '');
-    setPhone(raw.length <= 1 ? '7' : raw);
-  };
+  const rawPhone = phone.replace(/\D/g, '');
+  const fullPhone = '+7' + rawPhone;
 
   const handleRequestCode = async () => {
-    if (phone.length < 11) return;
+    if (rawPhone.length < 10) return;
+    clearError();
     try {
-      await requestCode('+' + phone);
+      await requestCode(fullPhone);
       setStep('code');
       setCooldown(60);
-      if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current);
-      cooldownTimerRef.current = setInterval(() => {
-        setCooldown((c) => {
-          if (c <= 1) { clearInterval(cooldownTimerRef.current); cooldownTimerRef.current = null; return 0; }
-          return c - 1;
-        });
-      }, 1000);
-      setTimeout(() => codeInputRef.current?.focus(), 100);
-    } catch { /* error in store */ }
+      setTimeout(() => otpRefs[0].current?.focus(), 300);
+    } catch (_) {}
   };
 
-  const handleVerifyCode = async (codeVal) => {
-    const c = codeVal || code;
-    if (c.length < 4) return;
-    try {
-      await verifyCode('+' + phone, c);
-      navigate('/field/home', { replace: true });
-    } catch { /* error in store */ }
-  };
-
-  const handleCodeChange = (e) => {
+  const handleOtpChange = (index, value) => {
     clearError();
-    const val = e.target.value.replace(/\D/g, '').slice(0, 4);
-    setCode(val);
-    if (val.length === 4) {
-      setTimeout(() => handleVerifyCode(val), 50); // Q2: pass val directly to avoid stale closure
+    const digit = value.replace(/\D/g, '').slice(-1);
+    const newOtp = [...otp];
+    newOtp[index] = digit;
+    setOtp(newOtp);
+
+    if (digit && index < 3) {
+      otpRefs[index + 1].current?.focus();
+    }
+
+    // Auto-verify on last digit
+    if (digit && index === 3) {
+      const code = newOtp.join('');
+      if (code.length === 4) {
+        handleVerify(code);
+      }
     }
   };
 
+  const handleOtpKeyDown = (index, e) => {
+    if (e.key === 'Backspace' && !otp[index] && index > 0) {
+      otpRefs[index - 1].current?.focus();
+    }
+  };
+
+  const handleVerify = async (code) => {
+    try {
+      const result = await verifyCode(fullPhone, code);
+      setEmployeeName(result?.employee?.fio || '');
+
+      // Success animation
+      playGateOpen();
+      if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+      setStep('success');
+
+      setTimeout(() => {
+        navigate('/field/home', { replace: true });
+      }, 1800);
+    } catch (_) {}
+  };
+
+  const handleResend = async () => {
+    if (cooldown > 0) return;
+    clearError();
+    try {
+      await requestCode(fullPhone);
+      setCooldown(60);
+      setOtp(['', '', '', '']);
+    } catch (_) {}
+  };
+
+  // ═══ SUCCESS SCREEN ═══
+  if (step === 'success') {
+    return (
+      <div className="fa-success-overlay">
+        <Stars />
+        <div className="fa-success-rune">ᚦ</div>
+        <div className="fa-success-text">Врата открыты</div>
+        {employeeName && (
+          <div className="fa-success-name">Асгард встречает тебя, {employeeName.split(' ')[0]}</div>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div
-      className="min-h-screen flex flex-col items-center justify-center px-6"
-      style={{ backgroundColor: 'var(--bg-primary)' }}
-    >
-      {/* Logo */}
-      <div className="mb-8 text-center">
-        <div
-          className="w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center"
-          style={{ background: 'var(--gold-gradient)' }}
-        >
-          <Shield size={32} className="text-white" />
-        </div>
-        <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
-          ASGARD Field
-        </h1>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-          Личный к��бинет рабочего
-        </p>
+    <div className="fa-login">
+      <Stars />
+
+      <div className="fa-login-header">
+        <button className="fa-back-btn" onClick={() => {
+          if (step === 'code') { setStep('phone'); setOtp(['','','','']); clearError(); }
+          else navigate('/field/welcome');
+        }}>←</button>
+        <span className="fa-mini-logo">ASGARD</span>
       </div>
 
-      {/* Phone step */}
-      {step === 'phone' && (
-        <div className="w-full max-w-sm space-y-4">
-          <div>
-            <label className="text-xs font-medium mb-1 block" style={{ color: 'var(--text-secondary)' }}>
-              Номер телефона
-            </label>
-            <div className="relative">
-              <Phone size={18} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-tertiary)' }} />
+      <div className="fa-login-body">
+        {/* ═══ PHONE STEP ═══ */}
+        {step === 'phone' && (
+          <div className="fa-slide-in" style={{ width: '100%', maxWidth: 320 }}>
+            <h2 className="fa-heading">Назови себя,<br />воин</h2>
+            <p className="fa-desc">Введи свой номер телефона</p>
+
+            <div className="fa-phone-wrap">
+              <span className="fa-phone-prefix">+7</span>
               <input
+                className="fa-phone-input"
                 type="tel"
+                inputMode="numeric"
+                placeholder="(999) 123-45-67"
                 value={formatPhone(phone)}
-                onChange={handlePhoneChange}
-                placeholder="+7 (___) ___-__-__"
-                className="w-full pl-10 pr-4 py-3 rounded-xl text-base"
-                style={{
-                  backgroundColor: 'var(--bg-elevated)',
-                  border: '1px solid var(--border-norse)',
-                  color: 'var(--text-primary)',
-                }}
+                onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                 autoFocus
               />
             </div>
-          </div>
 
-          <button
-            onClick={handleRequestCode}
-            disabled={phone.length < 11 || loading}
-            className="w-full py-3 rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-opacity disabled:opacity-50"
-            style={{ background: 'var(--gold-gradient)' }}
-          >
-            {loading ? <Loader2 size={18} className="animate-spin" /> : <ArrowRight size={18} />}
-            Получить код
-          </button>
-        </div>
-      )}
+            {error && <div className="fa-error">{error}</div>}
 
-      {/* Code step */}
-      {step === 'code' && (
-        <div className="w-full max-w-sm space-y-4">
-          <p className="text-sm text-center" style={{ color: 'var(--text-secondary)' }}>
-            Код отправлен на {formatPhone(phone)}
-          </p>
-
-          <input
-            ref={codeInputRef}
-            type="tel"
-            value={code}
-            onChange={handleCodeChange}
-            placeholder="____"
-            maxLength={4}
-            className="w-full text-center text-3xl tracking-[0.5em] py-4 rounded-xl font-mono"
-            style={{
-              backgroundColor: 'var(--bg-elevated)',
-              border: '1px solid var(--border-norse)',
-              color: 'var(--text-primary)',
-              letterSpacing: '0.5em',
-            }}
-            autoFocus
-          />
-
-          <button
-            onClick={handleVerifyCode}
-            disabled={code.length < 4 || loading}
-            className="w-full py-3 rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-opacity disabled:opacity-50"
-            style={{ background: 'var(--gold-gradient)' }}
-          >
-            {loading ? <Loader2 size={18} className="animate-spin" /> : null}
-            Подтвердить
-          </button>
-
-          <div className="flex items-center justify-between">
             <button
-              onClick={() => { setStep('phone'); setCode(''); clearError(); }}
-              className="text-sm"
-              style={{ color: 'var(--text-tertiary)' }}
-            >
-              Изменить номер
-            </button>
-            <button
+              className="fa-btn-gold"
+              style={{ marginTop: 24 }}
+              disabled={rawPhone.length < 10 || loading}
               onClick={handleRequestCode}
-              disabled={cooldown > 0 || loading}
-              className="text-sm disabled:opacity-50"
-              style={{ color: 'var(--gold)' }}
             >
-              {cooldown > 0 ? `Повторить (${cooldown}с)` : 'Отправить снова'}
+              {loading ? '⏳ Валькирия посылает знак...' : '⚔ Отправить знак'}
             </button>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Error */}
-      {error && (
-        <div
-          className="mt-4 px-4 py-2 rounded-lg text-sm text-center"
-          style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--error, #ef4444)' }}
-        >
-          {error}
-        </div>
-      )}
+        {/* ═══ CODE STEP ═══ */}
+        {step === 'code' && (
+          <div className="fa-slide-in" style={{ width: '100%', maxWidth: 320 }}>
+            <h2 className="fa-heading">Валькирия<br />отправила знак</h2>
+            <p className="fa-desc">Введи 4 руны с неба</p>
+
+            <div className="fa-otp-wrap">
+              {otp.map((digit, i) => (
+                <input
+                  key={i}
+                  ref={otpRefs[i]}
+                  className="fa-otp-box"
+                  type="tel"
+                  inputMode="numeric"
+                  maxLength={1}
+                  value={digit}
+                  onChange={(e) => handleOtpChange(i, e.target.value)}
+                  onKeyDown={(e) => handleOtpKeyDown(i, e)}
+                />
+              ))}
+            </div>
+
+            {error && <div className="fa-error">{error}</div>}
+            {loading && <div className="fa-loading-text">Валькирия проверяет руны...</div>}
+
+            <div className="fa-countdown">
+              {cooldown > 0 ? (
+                <span>Повторить знак через {String(Math.floor(cooldown / 60)).padStart(2, '0')}:{String(cooldown % 60).padStart(2, '0')}</span>
+              ) : (
+                <button className="fa-countdown-link" onClick={handleResend}>Повторить знак</button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
