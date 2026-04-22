@@ -21,7 +21,6 @@ const SMS_MAX_ATTEMPTS = 3;
 const SMS_COOLDOWN_SEC = 60;
 const MANGO_SMS_FROM = process.env.MANGO_SMS_EXTENSION || '101';
 
-const crypto = require('crypto');
 function generateCode() {
   return String(crypto.randomInt(1000, 10000)); // S8: crypto-safe RNG instead of Math.random
 }
