@@ -57,8 +57,11 @@ function isMobileUA(userAgent) {
 
 function sendIndexHtml(request, reply) {
   const ua = request.headers['user-agent'] || '';
-  const html = isMobileUA(ua) ? indexMobile : indexDesktop;
-  reply.type('text/html').header('Cache-Control', 'no-cache').send(html);
+  // Mobile users → redirect to React app at /m/
+  if (isMobileUA(ua)) {
+    return reply.redirect(302, '/m/');
+  }
+  reply.type('text/html').header('Cache-Control', 'no-cache').send(indexDesktop);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
