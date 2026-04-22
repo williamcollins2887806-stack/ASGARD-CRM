@@ -57,14 +57,8 @@ export default function FieldLogin() {
     const c = codeVal || code;
     if (c.length < 4) return;
     try {
-      const result = await verifyCode('+' + phone, c);
-      if (result.status === 'need_pin_setup') {
-        navigate('/field/pin-setup', { replace: true });
-      } else if (result.status === 'need_pin') {
-        navigate('/field/pin-entry', { replace: true });
-      } else {
-        navigate('/field/home', { replace: true });
-      }
+      await verifyCode('+' + phone, c);
+      navigate('/field/home', { replace: true });
     } catch { /* error in store */ }
   };
 

@@ -48,7 +48,7 @@ export const useFieldAuthStore = create((set, get) => ({
       set({
         token: data.token,
         employee: data.employee,
-        status: data.status, // 'need_pin_setup' | 'need_pin'
+        status: 'authenticated', // PIN removed — direct login after SMS
         loading: false,
       });
       return data;

@@ -208,13 +208,7 @@ async function routes(fastify, options) {
         );
       }
 
-      // Check PIN status
-      const { rows: userRow } = await db.query(
-        `SELECT pin_hash FROM users WHERE id = $1`, [userId]
-      );
-      const hasPinSet = !!(userRow[0]?.pin_hash);
-
-      // Generate JWT
+      // Generate JWT (no PIN step — direct login after SMS)
       const token = jwt.sign(
         { employee_id: employee.id, user_id: userId, type: 'field' },
         FIELD_JWT_SECRET,
@@ -240,7 +234,7 @@ async function routes(fastify, options) {
 
       return {
         token,
-        status: hasPinSet ? 'need_pin' : 'need_pin_setup',
+        status: 'authenticated',
         employee: {
           id: employee.id,
           fio: employee.fio,
