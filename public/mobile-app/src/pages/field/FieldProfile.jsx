@@ -215,6 +215,7 @@ export default function FieldProfile() {
                   <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{p.name || p.title || p.permit_name}</p>
                   {p.doc_number && <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>№ {p.doc_number}</p>}
                   {p.issuer && <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{p.issuer}</p>}
+                  {(p.expiry_date || p.valid_until) && <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>до {new Date(p.expiry_date || p.valid_until).toLocaleDateString('ru-RU')}</p>}
                 </div>
                 {ec.label && <span className="text-xs px-2 py-0.5 rounded-full whitespace-nowrap" style={{ backgroundColor: ec.bg, color: ec.color }}>{ec.label}</span>}
               </div>
@@ -246,7 +247,9 @@ export default function FieldProfile() {
                     ) : (
                       <input className="w-full rounded-lg px-3 py-2 text-sm mt-0.5 outline-none"
                         style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }}
-                        type={f.type || 'text'} value={editData[f.key] || ''} onChange={e => setEditData({ ...editData, [f.key]: e.target.value })} />
+                        type={f.type || 'text'}
+                        value={f.type === 'date' && editData[f.key] ? editData[f.key].slice(0, 10) : (editData[f.key] || '')}
+                        onChange={e => setEditData({ ...editData, [f.key]: e.target.value })} />
                     )}
                   </div>
                 ))}
@@ -269,6 +272,9 @@ export default function FieldProfile() {
                       let val = personal[f.key];
                       if (val == null || val === '') return null;
                       if (f.key === 'is_self_employed') val = val === true || val === 'true' ? 'Да' : 'Нет';
+                      if (f.type === 'date' && val) {
+                        try { val = new Date(val).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }); } catch {}
+                      }
                       return (
                         <div key={f.key}>
                           <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{f.label}</p>
