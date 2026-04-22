@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
 
@@ -284,6 +284,7 @@ export default function WheelOfNorns() {
   const [wonPrize, setWonPrize] = useState(null);
   const [hint, setHint] = useState('Нажми чтобы испытать судьбу!');
   const [shaking, setShaking] = useState(false);
+  const [spinsLeft, setSpinsLeft] = useState(null); // { free, checkin, purchased, total }
 
   // Spring physics state
   const springState = useRef({ vY: 0, vVel: 0, vRot: 0, vRVel: 0, vScale: 1, vSVel: 0, target: { y: 0, rot: 0, scale: 1 }, state: 'idle', phase: 0 });
@@ -301,7 +302,15 @@ export default function WheelOfNorns() {
     };
   }, []);
 
-  // Load wallet data
+  // Load wallet + spin status
+  const loadSpinStatus = useCallback(() => {
+    fieldApi.get('/gamification/spin-status').then(s => {
+      setSpinsLeft(s);
+      setCanSpin(s.total > 0);
+      if (s.total <= 0) setHint('Спины закончились');
+    }).catch(() => {});
+  }, []);
+
   useEffect(() => {
     fieldApi.get('/gamification/wallet').then(w => {
       setBalance(w.runes || 0);
@@ -311,11 +320,11 @@ export default function WheelOfNorns() {
       setXpText(`${w.xp_in_level || 0} / ${w.xp_per_level || 100}`);
     }).catch(() => {});
     fieldApi.get('/gamification/quests').then(d => {
-      // Streak from quests data
       const streakQ = (d?.quests || []).find(q => q.target_action === 'streak');
       if (streakQ) setStreak(streakQ.progress || 0);
     }).catch(() => {});
-  }, []);
+    loadSpinStatus();
+  }, [loadSpinStatus]);
 
   // Init strip with random items
   useEffect(() => {
@@ -418,9 +427,38 @@ export default function WheelOfNorns() {
     if (state === 'epic') { mouth.setAttribute('d', 'M54 66 Q70 86 86 66'); teeth.setAttribute('opacity', '1'); teeth.setAttribute('d', 'M58 72 L62 72 L66 72 L70 72 L74 72 L78 72 L82 72'); bL.setAttribute('d', 'M46 38 Q52 31 66 38'); bR.setAttribute('d', 'M74 38 Q88 31 94 38'); }
   }
 
+  // ═══ VIKING QUOTES (when no spins left) ═══
+  const VIKING_NOSPINS = [
+    'Иди работай, бездельник! Руны сами себя не заработают! 💀',
+    'Один бы тебя выгнал за лень. На объект, воин! ⚒️',
+    'Тор не крутил рулетку — он молотом махал! 🔨',
+    'Хватит тыкать, иди трубы вари! 🔥',
+    'Сначала работа — потом призы. Это закон Асгарда! ⚔️',
+    'Валькирии не забирают лентяев. Иди на объект! 🛡️',
+    'Ты думал тут казино? Марш на смену! 💪',
+    'Локи бы тебя обманул, а я говорю правду — РАБОТАЙ! 🐍',
+    'Даже Фенрир работает усерднее тебя! 🐺',
+    'Мьёльнир сам себя не поднимет. Как и твоя зарплата! ⚡',
+    'Бесплатных рун не бывает. Отметься на объекте! 📍',
+    'Рагнарёк наступит раньше, чем ты заработаешь на спин! 🌋',
+    'Норны видят — ты сидишь без дела. Позор! 👀',
+    'Кузнец Брок не прерывался на рулетку! За работу! 🏗️',
+    'Эйнхерии тренируются, а ты в телефоне залип? 📱',
+    'Вальхалла для тех, кто пашет! А не для тех, кто тыкает! 👊',
+  ];
+
+  function handleNoSpins() {
+    hap([15, 10, 15]);
+    const quote = VIKING_NOSPINS[Math.floor(Math.random() * VIKING_NOSPINS.length)];
+    say(quote, 3500);
+    setShaking(true);
+    setTimeout(() => setShaking(false), 200);
+  }
+
   // ═══ SPIN ═══
   async function handleSpin() {
-    if (spinning || !canSpin) return;
+    if (spinning) return;
+    if (!canSpin) { handleNoSpins(); return; }
     initAudio(); hap([25]);
     setSpinning(true);
     setVikingState('spin');
@@ -433,8 +471,13 @@ export default function WheelOfNorns() {
       prize = data.prize;
     } catch (err) {
       setSpinning(false); setVikingState('idle');
-      if (err.message.includes('уже использован')) { setCanSpin(false); setHint('Приходи завтра в 06:00!'); }
-      else setHint(err.message);
+      loadSpinStatus(); // refresh counter
+      if (err.message.includes('использован') || err.message.includes('закончились')) {
+        setCanSpin(false);
+        handleNoSpins();
+      } else {
+        setHint(err.message);
+      }
       return;
     }
 
@@ -560,15 +603,22 @@ export default function WheelOfNorns() {
 
     setWonPrize(prize);
     setTimeout(() => setShowReward(true), tier === 'legendary' ? 900 : 500);
-    // Refresh balance
+    // Refresh balance + spin status
     fieldApi.get('/gamification/wallet').then(w => setBalance(w.runes || 0)).catch(() => {});
+    loadSpinStatus();
   }
 
   function claim() {
     setShowReward(false);
     hap([12]);
     setVikingState('idle');
-    setHint('Приходи ��автра!');
+    // Check remaining spins
+    loadSpinStatus();
+    if (spinsLeft && spinsLeft.total <= 1) {
+      setHint('Спины закончились');
+    } else {
+      setHint('Крути ещё!');
+    }
     // Re-init strip
     if (stripRef.current) {
       const items = []; for (let i = 0; i < 5; i++) items.push(randomPrize(DEMO_PRIZES));
@@ -604,9 +654,29 @@ export default function WheelOfNorns() {
             <div className="wn-title">КОЛЕСО НОРН</div>
             <div className="wn-sub">ИСПЫТАЙ СУДЬБУ</div>
           </div>
-          <div className="wn-wallet">
-            <div className="wn-coin">ᚱ</div>
-            <span className="wn-bal">{balance}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {/* Spin counter */}
+            {spinsLeft != null && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px 5px 7px',
+                background: spinsLeft.total > 0
+                  ? 'linear-gradient(135deg, #3a0a10, #1a0508)'
+                  : 'linear-gradient(135deg, #1a1a1a, #0a0a0a)',
+                border: `1.5px solid ${spinsLeft.total > 0 ? 'rgba(232,64,87,.4)' : 'rgba(255,255,255,.1)'}`,
+                borderRadius: 20, boxShadow: spinsLeft.total > 0 ? '0 2px 10px rgba(232,64,87,.15)' : 'none',
+              }}>
+                <span style={{ fontSize: 16 }}>🎰</span>
+                <span style={{
+                  fontSize: 15, fontWeight: 800, fontVariantNumeric: 'tabular-nums',
+                  color: spinsLeft.total > 0 ? '#E84057' : 'rgba(255,255,255,.3)',
+                }}>×{spinsLeft.total}</span>
+              </div>
+            )}
+            {/* Rune balance */}
+            <div className="wn-wallet">
+              <div className="wn-coin">ᚱ</div>
+              <span className="wn-bal">{balance}</span>
+            </div>
           </div>
         </div>
 
@@ -793,8 +863,9 @@ export default function WheelOfNorns() {
 
         {/* SPIN BUTTON */}
         <div className="wn-spin-area">
-          <button className={`wn-btn ${spinning || !canSpin ? 'wn-btn-off' : 'wn-btn-pulse'}`} onClick={handleSpin} disabled={spinning || !canSpin}>
-            <span style={{ fontSize: 22 }}>ᚾ</span> КРУТИТЬ КОЛЕСО
+          <button className={`wn-btn ${spinning ? 'wn-btn-off' : !canSpin ? '' : 'wn-btn-pulse'}`} onClick={handleSpin} disabled={spinning}
+            style={!canSpin && !spinning ? { background: 'linear-gradient(135deg, #333, #222)', boxShadow: '0 6px 0 #111, 0 8px 15px rgba(0,0,0,.3)', opacity: 0.7 } : {}}>
+            <span style={{ fontSize: 22 }}>ᚾ</span> {canSpin ? 'КРУТИТЬ КОЛЕСО' : 'СПИНЫ ЗАКОНЧИЛИСЬ'}
           </button>
         </div>
         <div className="wn-hint">{hint}</div>

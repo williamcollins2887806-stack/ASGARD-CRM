@@ -99,6 +99,44 @@ async function routes(fastify) {
     return { transactions: rows };
   });
 
+  // ── GET /spin-status — how many spins available ──
+  fastify.get('/spin-status', { preHandler: [fastify.fieldAuthenticate] }, async (req) => {
+    const eid = req.fieldEmployee.id;
+    const now = new Date();
+    const msk = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
+    const resetToday = new Date(msk); resetToday.setHours(0, 0, 0, 0);
+
+    const { rows: [{ cnt: todaySpins }] } = await db.query(
+      `SELECT COUNT(*)::int as cnt FROM gamification_spins
+       WHERE employee_id = $1 AND spin_at >= $2`, [eid, resetToday]
+    );
+
+    const freeTotal = 1;
+    const freeUsed = Math.min(todaySpins, freeTotal);
+    const freeLeft = freeTotal - freeUsed;
+
+    const { rows: [checkinRecent] } = await db.query(
+      `SELECT checkin_at FROM field_checkins
+       WHERE employee_id = $1 AND status IN ('active','completed')
+         AND checkin_at >= NOW() - INTERVAL '24 hours'
+       ORDER BY checkin_at DESC LIMIT 1`, [eid]
+    );
+    const checkinTotal = checkinRecent ? 3 : 0;
+    const checkinUsed = Math.max(0, Math.min(todaySpins - freeTotal, checkinTotal));
+    const checkinLeft = checkinTotal - checkinUsed;
+    const checkinExpiresAt = checkinRecent
+      ? new Date(new Date(checkinRecent.checkin_at).getTime() + 24 * 60 * 60 * 1000).toISOString()
+      : null;
+
+    const { rows: [{ cnt: purchasedLeft }] } = await db.query(
+      `SELECT COUNT(*)::int as cnt FROM gamification_inventory
+       WHERE employee_id = $1 AND item_name ILIKE '%спин%' AND is_used = false`, [eid]
+    );
+
+    const total = freeLeft + checkinLeft + purchasedLeft;
+    return { free: freeLeft, checkin: checkinLeft, purchased: purchasedLeft, total, checkin_expires_at: checkinExpiresAt };
+  });
+
   // ── POST /spin — spin the Wheel of Norns (TRANSACTIONAL) ──
   fastify.post('/spin', { preHandler: [fastify.fieldAuthenticate] }, async (req, reply) => {
     const eid = req.fieldEmployee.id;
@@ -119,50 +157,57 @@ async function routes(fastify) {
         'SELECT * FROM gamification_pity_counters WHERE employee_id = $1 FOR UPDATE', [eid]
       );
 
-      // Daily spin logic: 1 free + 1 bonus for checkin today
+      // ── Spin allowance: 1 free/day (00:00 MSK) + 3 for checkin (24h expiry) + purchased ──
       const now = new Date();
       const msk = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
-      const resetToday = new Date(msk); resetToday.setHours(6, 0, 0, 0);
-      if (msk < resetToday) resetToday.setDate(resetToday.getDate() - 1);
+      const resetToday = new Date(msk); resetToday.setHours(0, 0, 0, 0); // midnight MSK
 
-      // Count spins today
+      // Count spins since midnight MSK
       const { rows: [{ cnt: todaySpins }] } = await client.query(
         `SELECT COUNT(*)::int as cnt FROM gamification_spins
          WHERE employee_id = $1 AND spin_at >= $2`,
         [eid, resetToday]
       );
 
-      // Check if worker has checkin today (bonus spin)
-      const { rows: [checkinToday] } = await client.query(
-        `SELECT id FROM field_checkins
-         WHERE employee_id = $1 AND date >= CURRENT_DATE AND status IN ('active','completed')
-         LIMIT 1`,
+      // 1 free spin per day
+      const freeSpins = 1;
+
+      // 3 bonus spins for any checkin in last 24 hours (by worker or master)
+      const { rows: [checkinRecent] } = await client.query(
+        `SELECT checkin_at FROM field_checkins
+         WHERE employee_id = $1 AND status IN ('active','completed')
+           AND checkin_at >= NOW() - INTERVAL '24 hours'
+         ORDER BY checkin_at DESC LIMIT 1`,
         [eid]
       );
-      const maxFreeSpins = checkinToday ? 2 : 1; // 1 free + 1 bonus for checkin
+      const checkinSpins = checkinRecent ? 3 : 0;
 
-      if (todaySpins >= maxFreeSpins) {
-        // Check for purchased extra spins in inventory (unused)
-        const { rows: [purchasedSpin] } = await client.query(
-          `SELECT id FROM gamification_inventory
-           WHERE employee_id = $1 AND item_name ILIKE '%спин%' AND is_used = false
-           ORDER BY acquired_at ASC LIMIT 1`,
-          [eid]
+      // Purchased spins (unused, from shop)
+      const { rows: purchasedSpins } = await client.query(
+        `SELECT id FROM gamification_inventory
+         WHERE employee_id = $1 AND item_name ILIKE '%спин%' AND is_used = false
+         ORDER BY acquired_at ASC`,
+        [eid]
+      );
+
+      const maxAllowed = freeSpins + checkinSpins + purchasedSpins.length;
+
+      if (todaySpins >= maxAllowed) {
+        await client.query('ROLLBACK');
+        return reply.code(429).send({
+          error: checkinRecent
+            ? 'Все спины использованы. Купи доп. спин в магазине или приходи завтра!'
+            : 'Бесплатный спин использован. Отметься на объекте — получишь ещё 3!',
+          spins_remaining: 0,
+        });
+      }
+
+      // If using a purchased spin (beyond free + checkin), consume it
+      if (todaySpins >= freeSpins + checkinSpins && purchasedSpins.length > 0) {
+        await client.query(
+          'UPDATE gamification_inventory SET is_used = true WHERE id = $1',
+          [purchasedSpins[0].id]
         );
-
-        if (purchasedSpin) {
-          // Consume the purchased spin
-          await client.query(
-            'UPDATE gamification_inventory SET is_used = true WHERE id = $1',
-            [purchasedSpin.id]
-          );
-        } else {
-          await client.query('ROLLBACK');
-          const msg = checkinToday
-            ? 'Оба спина использованы. Купи доп. спин в магазине или приходи завтра!'
-            : 'Бесплатный спин использован. Отметься на объекте для бонусного!';
-          return reply.code(429).send({ error: msg });
-        }
       }
 
       // Load prizes

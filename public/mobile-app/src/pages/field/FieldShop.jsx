@@ -305,7 +305,7 @@ export default function FieldShop() {
               <div className="fshop-top-title">МАГАЗИН АСГАРДА</div>
               <div className="fshop-top-sub">ТРАТЬ РУНЫ С УМОМ</div>
             </div>
-            <div className="fshop-wallet" onClick={() => navigate('/field/wallet')}>
+            <div className="fshop-wallet">
               <div className="fshop-wallet-coin">ᚱ</div>
               <span className="fshop-wallet-num" ref={balElRef}>{balance.toLocaleString('ru')}</span>
             </div>
