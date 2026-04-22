@@ -142,7 +142,7 @@ async function routes(fastify, options) {
 
       if (a.tariff_id) {
         const { rows: tRows } = await db.query(
-          `SELECT id, category, position_name, points, rate_per_shift FROM field_tariff_grid WHERE id = $1`,
+          `SELECT id, category, position_name, points, rate_per_shift, point_value FROM field_tariff_grid WHERE id = $1`,
           [a.tariff_id]
         );
         if (tRows.length > 0) {
@@ -245,6 +245,7 @@ async function routes(fastify, options) {
             position_name: tariff.position_name,
             points: tariff.points,
             rate_per_shift: parseFloat(tariff.rate_per_shift),
+            point_value: parseFloat(tariff.point_value || 500),
             combination: combination ? {
               id: combination.id,
               position_name: combination.position_name,
