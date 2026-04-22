@@ -135,6 +135,14 @@ async function routes(fastify, options) {
       const workId = parseInt(req.query.work_id);
       if (!workId) return reply.code(400).send({ error: 'Укажите work_id' });
 
+      // Verify access — employee must be assigned to this project
+      const empId = req.fieldEmployee.id;
+      const { rows: access } = await db.query(
+        'SELECT id FROM employee_assignments WHERE employee_id = $1 AND work_id = $2 LIMIT 1',
+        [empId, workId]
+      );
+      if (!access.length) return reply.code(403).send({ error: 'Нет доступа к этому проекту' });
+
       let sql = `
         SELECT fp.id, fp.employee_id, fp.filename, fp.original_name, fp.photo_type,
                fp.caption, fp.lat, fp.lng, fp.taken_at, fp.created_at,

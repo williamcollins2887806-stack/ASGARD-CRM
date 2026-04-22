@@ -48,14 +48,14 @@ async function routes(fastify, options) {
       const stats = statsQ.rows[0] || {};
       // on_time: checkins before 08:05
       const onTimeQ = await db.query(
-        `SELECT COUNT(*) as cnt FROM field_checkins WHERE employee_id=$1 AND status='completed' AND EXTRACT(HOUR FROM checkin_at)*60 + EXTRACT(MINUTE FROM checkin_at) <= 485`,
+        `SELECT COUNT(*) as cnt FROM field_checkins WHERE employee_id=$1 AND status='completed' AND EXTRACT(HOUR FROM checkin_at AT TIME ZONE 'Europe/Moscow')*60 + EXTRACT(MINUTE FROM checkin_at AT TIME ZONE 'Europe/Moscow') <= 485`,
         [emp.id]
       );
       stats.on_time = parseInt(onTimeQ.rows[0]?.cnt || 0);
 
       // consecutive shifts (simplified — count from last gap)
       const consecQ = await db.query(
-        `SELECT date FROM field_checkins WHERE employee_id=$1 AND status='completed' ORDER BY date DESC LIMIT 30`,
+        `SELECT date FROM field_checkins WHERE employee_id=$1 AND status='completed' ORDER BY date DESC LIMIT 365`,
         [emp.id]
       );
       let consecutive = 0;
@@ -453,7 +453,7 @@ async function routes(fastify, options) {
       // Per diem
       const perDiemRate = parseFloat(assignment.per_diem || 0);
       const { rows: calDays } = await db.query(
-        `SELECT COUNT(DISTINCT date) as cnt FROM field_checkins WHERE employee_id=$1 AND work_id=$2 AND status != 'cancelled'`,
+        `SELECT COUNT(DISTINCT date) as cnt FROM field_checkins WHERE employee_id=$1 AND work_id=$2 AND status = 'completed'`,
         [empId, workId]
       );
       const perDiemDays = parseInt(calDays[0]?.cnt || 0);
@@ -733,7 +733,13 @@ async function routes(fastify, options) {
         FROM employees WHERE id = $1
       `, [empId]);
       if (!rows.length) return reply.code(404).send({ error: 'Не найден' });
-      return { employee: rows[0] };
+      const emp = rows[0];
+      // Mask sensitive PII — show only last 4 digits
+      if (emp.passport_number) emp.passport_number = '** **** ' + emp.passport_number.slice(-4);
+      if (emp.passport_data) emp.passport_data = emp.passport_data.replace(/\d{2}\s?\d{2}\s?\d{6}/g, (m) => '** ** ****' + m.slice(-2));
+      if (emp.inn) emp.inn = '********' + emp.inn.slice(-4);
+      if (emp.snils) emp.snils = '***-***-' + emp.snils.slice(-6);
+      return { employee: emp };
     } catch (err) {
       fastify.log.error('[field-worker] /personal error:', err);
       return reply.code(500).send({ error: 'Ошибка сервера' });

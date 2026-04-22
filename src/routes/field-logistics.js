@@ -266,7 +266,7 @@ async function routes(fastify, options) {
         FROM field_logistics fl
         JOIN works w ON w.id = fl.work_id
         LEFT JOIN documents d ON d.id = fl.document_id
-        WHERE fl.employee_id = $1 AND (fl.date_to IS NULL OR fl.date_to >= CURRENT_DATE - INTERVAL '7 days')
+        WHERE fl.employee_id = $1
         ORDER BY fl.date_from DESC NULLS LAST, fl.created_at DESC
       `, [empId]);
 

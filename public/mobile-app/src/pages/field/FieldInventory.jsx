@@ -23,21 +23,7 @@ const SVGS = {
   dayoff: `<svg viewBox="0 0 80 80" fill="none"><defs><linearGradient id="do1" x1="14" y1="14" x2="66" y2="70" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#2a2040"/><stop offset="100%" stop-color="#1a1530"/></linearGradient></defs><rect x="14" y="18" width="52" height="50" rx="6" fill="url(#do1)" stroke="#F0C850" stroke-width="1.2"/><rect x="14" y="18" width="52" height="14" rx="6" fill="rgba(240,200,80,.1)"/><rect x="14" y="26" width="52" height="6" fill="rgba(240,200,80,.1)"/><rect x="26" y="14" width="4" height="10" rx="2" fill="#C8940A" stroke="#F0C850" stroke-width=".5"/><rect x="50" y="14" width="4" height="10" rx="2" fill="#C8940A" stroke="#F0C850" stroke-width=".5"/><text x="40" y="52" text-anchor="middle" font-size="20" font-weight="900" fill="#F0C850" font-family="system-ui">+1</text><text x="40" y="62" text-anchor="middle" font-size="7" font-weight="700" fill="rgba(240,200,80,.6)" font-family="system-ui">ВЫХОДНОЙ</text></svg>`,
 };
 
-/* ═══ MOCK DATA ═══ */
-const MOCK_ITEMS = [
-  { id:5, name:'Толстовка ASGARD', status:'ready', svg:'hoodie', source:'wheel', sourceLabel:'Рулетка', sourceIcon:'\uD83C\uDFB0', date:'18.04.2026', pm:'Андросов Н.А.', pmPhone:'+79001234567', object:'ЖК Северный', desc:'Фирменная толстовка Асгард Сервис. 100% хлопок, плотность 320 г/м2. Размер L.' },
-  { id:6, name:'Powerbank 20000mAh', status:'ready', svg:'powerbank', source:'quest', sourceLabel:'Квест', sourceIcon:'\u2694', date:'17.04.2026', pm:'Андросов Н.А.', pmPhone:'+79001234567', object:'ЖК Северный', desc:'Мощный внешний аккумулятор с быстрой зарядкой QC3.0.' },
-  { id:7, name:'Кружка викинга', status:'ready', svg:'vikingmug', source:'wheel', sourceLabel:'Рулетка', sourceIcon:'\uD83C\uDFB0', date:'16.04.2026', pm:'Соловьёв Д.В.', pmPhone:'+79009876543', object:'БЦ Валхалла', desc:'Деревянная кружка ручной работы в стиле викингов. Объём 500 мл.' },
-  { id:1, name:'Футболка ASGARD', status:'pending', svg:'tshirt', source:'shop', sourceLabel:'Магазин', sourceIcon:'\uD83D\uDECD', date:'18.04.2026', desc:'Фирменная футболка Асгард Сервис с рунической вышивкой.' },
-  { id:2, name:'Термокружка', status:'pending', svg:'thermomug', source:'wheel', sourceLabel:'Рулетка', sourceIcon:'\uD83C\uDFB0', date:'19.04.2026', desc:'Термокружка из нержавеющей стали 450 мл.' },
-  { id:3, name:'Шапка зимняя', status:'pending', svg:'beanie', source:'wheel', sourceLabel:'Рулетка', sourceIcon:'\uD83C\uDFB0', date:'19.04.2026', desc:'Вязаная шапка с помпоном и вышивкой ASGARD.' },
-  { id:4, name:'Vip-место в автобусе', status:'pending', svg:'vipseat', source:'shop', sourceLabel:'Магазин', sourceIcon:'\uD83D\uDECD', date:'20.04.2026', desc:'Персональное VIP-место в служебном автобусе на 1 месяц.' },
-  { id:8, name:'Рюкзак 30л', status:'delivered', svg:'backpack', source:'shop', sourceLabel:'Магазин', sourceIcon:'\uD83D\uDECD', date:'12.04.2026', deliveredDate:'14.04.2026', pm:'Андросов Н.А.', pmPhone:'+79001234567', object:'ЖК Северный', desc:'Вместительный городской рюкзак с отделением для ноутбука.' },
-  { id:9, name:'Брелок Мьёльнир', status:'delivered', svg:'keychain', source:'wheel', sourceLabel:'Рулетка', sourceIcon:'\uD83C\uDFB0', date:'10.04.2026', deliveredDate:'11.04.2026', pm:'Андросов Н.А.', desc:'Металлический брелок в форме молота Тора.' },
-  { id:10, name:'Бейдж Ветеран', status:'delivered', svg:'badge', source:'achievement', sourceLabel:'Ачивка', sourceIcon:'\uD83C\uDFC6', date:'08.04.2026', deliveredDate:'08.04.2026', pm:'Соловьёв Д.В.', desc:'Эксклюзивный металлический бейдж за 6+ месяцев непрерывной работы.' },
-  { id:11, name:'Наклейки ASGARD', status:'delivered', svg:'stickers', source:'wheel', sourceLabel:'Рулетка', sourceIcon:'\uD83C\uDFB0', date:'05.04.2026', deliveredDate:'06.04.2026', pm:'Андросов Н.А.', desc:'Набор из 12 виниловых стикеров с нордическим дизайном.' },
-  { id:12, name:'+1 выходной', status:'delivered', svg:'dayoff', source:'shop', sourceLabel:'Магазин', sourceIcon:'\uD83D\uDECD', date:'01.04.2026', deliveredDate:'02.04.2026', pm:'Соловьёв Д.В.', desc:'Один дополнительный оплачиваемый выходной день.' },
-];
+/* Mock data removed — only real API data shown */
 
 const STATUS_ORDER = { ready: 0, pending: 1, delivered: 2 };
 const FUTHARK = ['ᚠ','ᚢ','ᚦ','ᚨ','ᚱ','ᚲ','ᚷ','ᚹ','ᚺ','ᚾ','ᛁ','ᛃ','ᛈ','ᛇ','ᛉ','ᛊ','ᛏ','ᛒ','ᛖ','ᛗ','ᛚ','ᛜ','ᛞ','ᛟ'];
