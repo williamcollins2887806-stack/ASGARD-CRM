@@ -7,33 +7,40 @@ import { ArrowLeft, Users, Phone, Clock, UserPlus, Send } from 'lucide-react';
 const fmtTime = (d) => d ? new Date(d).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '';
 const fmt = (n) => (n || 0).toLocaleString('ru-RU') + ' ₽';
 
+const ROLE_LABELS = { senior_master: 'Ст. мастер', shift_master: 'Мастер', worker: 'Рабочий' };
+const SHIFT_LABELS = { day: 'дневная', night: 'ночная', road: 'дорога', standby: 'ожидание' };
+
 export default function FieldCrew() {
   const navigate = useNavigate();
   const haptic = useHaptic();
-  const [crew, setCrew] = useState([]);
-  const [project, setProject] = useState(null);
-  const [assignment, setAssignment] = useState(null);
+  const [data, setData] = useState(null);
+  const [workTitle, setWorkTitle] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showManual, setShowManual] = useState(false);
   const [manualForm, setManualForm] = useState({ employee_id: '', checkin_time: '', reason: '' });
+  const [isMaster, setIsMaster] = useState(false);
 
   useEffect(() => { loadData(); }, []);
 
   async function loadData() {
     try {
       setLoading(true);
+      // Get active project for work_id
       const projData = await fieldApi.get('/worker/active-project');
       const proj = projData?.project || projData;
-      const assign = projData?.assignment || null;
-      setProject(proj);
-      setAssignment(assign);
+      const workId = proj?.work_id || proj?.id;
+      setWorkTitle(proj?.work_title || '');
 
-      if (proj?.work_id || proj?.id) {
-        const wid = proj.work_id || proj.id;
-        const checkins = await fieldApi.get(`/checkin/today?work_id=${wid}`);
-        setCrew(Array.isArray(checkins) ? checkins : checkins?.rows || checkins?.crew || []);
+      if (!workId) {
+        setError('Нет активного проекта');
+        return;
       }
+
+      // Use /worker/crew endpoint — returns 3 groups
+      const crewData = await fieldApi.get(`/worker/crew?work_id=${workId}`);
+      setData(crewData);
+      setIsMaster(crewData?.your_role === 'shift_master' || crewData?.your_role === 'senior_master');
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
   }
@@ -41,7 +48,8 @@ export default function FieldCrew() {
   async function submitManualCheckin() {
     haptic.medium();
     try {
-      const wid = project?.work_id || project?.id;
+      const projData = await fieldApi.get('/worker/active-project');
+      const wid = projData?.project?.work_id || projData?.project?.id;
       await fieldApi.post('/checkin/manual', {
         work_id: wid,
         employee_id: Number(manualForm.employee_id),
@@ -52,9 +60,7 @@ export default function FieldCrew() {
       setShowManual(false);
       setManualForm({ employee_id: '', checkin_time: '', reason: '' });
       loadData();
-    } catch (e) {
-      setError(e.message);
-    }
+    } catch (e) { setError(e.message); }
   }
 
   if (loading) {
@@ -65,13 +71,12 @@ export default function FieldCrew() {
     );
   }
 
-  const isMaster = assignment?.field_role?.includes('master');
-  const onSite = crew.filter((c) => c.status === 'active').length;
-  const completed = crew.filter((c) => c.status === 'completed').length;
-  const absent = crew.filter((c) => !c.status || c.status === 'absent');
+  const onSite = data?.on_site || [];
+  const notCheckedIn = data?.not_checked_in || [];
+  const leftSite = data?.left_site || [];
 
   return (
-    <div className="p-4 pb-24 space-y-4" style={{ backgroundColor: 'var(--bg-primary)' }}>
+    <div className="p-4 pb-24 space-y-3" style={{ backgroundColor: 'var(--bg-primary)' }}>
       {/* Header */}
       <div className="flex items-center gap-3">
         <button onClick={() => navigate('/field/home')} className="p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-elevated)' }}>
@@ -80,55 +85,51 @@ export default function FieldCrew() {
         <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Бригада</h1>
       </div>
 
+      {/* Work title */}
+      {workTitle && (
+        <p className="text-xs font-semibold uppercase tracking-widest text-center" style={{ color: 'var(--text-tertiary)' }}>
+          {workTitle}
+        </p>
+      )}
+
       {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>{error}</div>}
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-2">
-        <StatBox label="На объекте" value={onSite} color="#22c55e" />
-        <StatBox label="Завершили" value={completed} color="#3b82f6" />
-        <StatBox label="Всего" value={crew.length} color="var(--gold)" />
+      {/* Stats — 4 columns matching vanilla */}
+      <div className="grid grid-cols-4 gap-2">
+        <StatBox label="Всего" value={data?.total || 0} color="var(--text-secondary)" />
+        <StatBox label="На объекте" value={onSite.length} color="#22c55e" />
+        <StatBox label="Нет чекина" value={notCheckedIn.length} color="#f59e0b" />
+        <StatBox label="Уехали" value={leftSite.length} color="var(--text-tertiary)" />
       </div>
 
-      {/* Crew list */}
-      {crew.length === 0 ? (
+      {/* On site */}
+      {onSite.length > 0 && (
+        <>
+          <SectionLabel text="🟢 На объекте сегодня" />
+          {onSite.map((m) => <CrewCard key={m.employee_id} member={m} />)}
+        </>
+      )}
+
+      {/* Not checked in */}
+      {notCheckedIn.length > 0 && (
+        <>
+          <SectionLabel text="🟡 Не отметились" />
+          {notCheckedIn.map((m) => <CrewCard key={m.employee_id} member={m} />)}
+        </>
+      )}
+
+      {/* Left site */}
+      {leftSite.length > 0 && (
+        <>
+          <SectionLabel text="⚫ Уехали с объекта" />
+          {leftSite.map((m) => <CrewCard key={m.employee_id} member={m} />)}
+        </>
+      )}
+
+      {onSite.length === 0 && notCheckedIn.length === 0 && leftSite.length === 0 && !error && (
         <div className="rounded-xl p-8 text-center" style={{ backgroundColor: 'var(--bg-elevated)' }}>
           <Users size={32} className="mx-auto mb-2" style={{ color: 'var(--text-tertiary)' }} />
-          <p style={{ color: 'var(--text-tertiary)' }}>Нет данных о бригаде</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {crew.map((member) => {
-            const statusColor = member.status === 'active' ? '#22c55e' : member.status === 'completed' ? '#3b82f6' : '#6b7280';
-            return (
-              <div key={member.id || member.employee_id} className="rounded-xl p-3 flex items-center gap-3" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
-                {/* Status dot */}
-                <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: statusColor }} />
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{member.fio || member.employee_name}</p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    {member.checkin_at && (
-                      <span className="text-xs flex items-center gap-1" style={{ color: 'var(--text-tertiary)' }}>
-                        <Clock size={10} /> {fmtTime(member.checkin_at)}
-                      </span>
-                    )}
-                    {member.hours_worked > 0 && (
-                      <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{member.hours_worked}ч</span>
-                    )}
-                    {member.amount_earned > 0 && (
-                      <span className="text-xs font-medium" style={{ color: 'var(--gold)' }}>{fmt(member.amount_earned)}</span>
-                    )}
-                  </div>
-                </div>
-                {/* Phone */}
-                {member.phone && (
-                  <a href={`tel:${member.phone}`} className="p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-primary)' }}>
-                    <Phone size={16} style={{ color: 'var(--gold)' }} />
-                  </a>
-                )}
-              </div>
-            );
-          })}
+          <p style={{ color: 'var(--text-tertiary)' }}>Бригада пуста</p>
         </div>
       )}
 
@@ -153,8 +154,8 @@ export default function FieldCrew() {
                 style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }}
               >
                 <option value="">Выберите сотрудника</option>
-                {absent.map((m) => (
-                  <option key={m.employee_id || m.id} value={m.employee_id || m.id}>{m.fio || m.employee_name}</option>
+                {notCheckedIn.map((m) => (
+                  <option key={m.employee_id} value={m.employee_id}>{m.fio}</option>
                 ))}
               </select>
               <input
@@ -163,7 +164,6 @@ export default function FieldCrew() {
                 onChange={(e) => setManualForm({ ...manualForm, checkin_time: e.target.value })}
                 className="w-full p-2 rounded-lg text-sm"
                 style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }}
-                placeholder="Время"
               />
               <textarea
                 value={manualForm.reason}
@@ -174,19 +174,13 @@ export default function FieldCrew() {
                 style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }}
               />
               <div className="flex gap-2">
-                <button
-                  onClick={() => setShowManual(false)}
+                <button onClick={() => setShowManual(false)}
                   className="flex-1 py-2 rounded-lg text-sm"
-                  style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-secondary)' }}
-                >
-                  Отмена
-                </button>
-                <button
-                  onClick={submitManualCheckin}
+                  style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-secondary)' }}>Отмена</button>
+                <button onClick={submitManualCheckin}
                   disabled={!manualForm.employee_id || !manualForm.checkin_time || !manualForm.reason}
                   className="flex-1 py-2 rounded-lg text-sm font-semibold text-white flex items-center justify-center gap-1 disabled:opacity-50"
-                  style={{ background: 'var(--gold-gradient)' }}
-                >
+                  style={{ background: 'var(--gold-gradient)' }}>
                   <Send size={14} /> Отметить
                 </button>
               </div>
@@ -198,11 +192,58 @@ export default function FieldCrew() {
   );
 }
 
+function CrewCard({ member: m }) {
+  const isMasterRole = m.field_role === 'shift_master' || m.field_role === 'senior_master';
+
+  const meta = [];
+  if (m.checkin_at) meta.push(fmtTime(m.checkin_at));
+  if (m.checkin_shift) meta.push(SHIFT_LABELS[m.checkin_shift] || m.checkin_shift);
+  if (m.checkin_status === 'completed' && m.amount_earned) meta.push(fmt(parseFloat(m.amount_earned)));
+  if (!m.is_active && m.date_to) meta.push('до ' + new Date(m.date_to).toLocaleDateString('ru-RU'));
+
+  const borderColor = m.checkin_status === 'active' ? 'rgba(52,199,89,0.2)' : 'var(--border-norse)';
+
+  return (
+    <div className="rounded-xl p-3 flex items-center gap-3"
+      style={{ backgroundColor: 'var(--bg-elevated)', border: `1px solid ${borderColor}` }}>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{m.fio || 'Сотрудник'}</p>
+          {isMasterRole && (
+            <span className="text-xs font-semibold px-1.5 py-0.5 rounded flex-shrink-0"
+              style={{ color: 'var(--gold)', backgroundColor: 'rgba(212,168,67,0.12)' }}>
+              {ROLE_LABELS[m.field_role] || 'Рабочий'}
+            </span>
+          )}
+        </div>
+        {meta.length > 0 && (
+          <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{meta.join(' · ')}</p>
+        )}
+      </div>
+      {m.phone && (
+        <a href={`tel:${m.phone.replace(/[^\d+]/g, '')}`} className="p-2 rounded-lg flex-shrink-0"
+          style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)' }}>
+          <Phone size={16} style={{ color: 'var(--gold)' }} />
+        </a>
+      )}
+    </div>
+  );
+}
+
 function StatBox({ label, value, color }) {
   return (
-    <div className="rounded-lg p-3 text-center" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
-      <p className="text-xl font-bold" style={{ color }}>{value}</p>
-      <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{label}</p>
+    <div className="rounded-lg p-2.5 text-center" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
+      <p className="text-lg font-bold" style={{ color }}>{value}</p>
+      <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)', fontSize: '0.5625rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</p>
     </div>
+  );
+}
+
+function SectionLabel({ text }) {
+  return (
+    <p className="text-xs font-bold tracking-wide mt-2 pb-1"
+      style={{ color: 'var(--text-tertiary)', borderBottom: '1px solid var(--border-norse)' }}>
+      {text}
+    </p>
   );
 }
