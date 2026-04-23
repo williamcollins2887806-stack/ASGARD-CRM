@@ -297,8 +297,8 @@ export default function FieldHistory() {
   }
 
   const totalProjects = projects.length;
-  const totalShifts = projects.reduce((s, p) => s + (p.shifts_count || 0), 0);
-  const totalEarned = projects.reduce((s, p) => s + (p.total_earned || 0), 0);
+  const totalShifts = projects.reduce((s, p) => s + (parseInt(p.shifts_count) || 0), 0);
+  const totalEarned = projects.reduce((s, p) => s + (parseFloat(p.total_earned) || 0), 0);
 
   const grouped = projects.reduce((acc, p) => {
     const y = (p.date_from || p.start_date) ? new Date(p.date_from || p.start_date).getFullYear() : 'Без даты';

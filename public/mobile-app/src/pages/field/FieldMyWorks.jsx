@@ -46,16 +46,16 @@ function ProjectCard({ project, isActive, navigate, haptic }) {
         )}
       </div>
       <div className="flex gap-4">
-        {project.shifts != null && (
+        {project.shifts_count != null && (
           <div>
             <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Смены</p>
-            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{project.shifts}</p>
+            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{parseInt(project.shifts_count) || 0}</p>
           </div>
         )}
-        {project.earned != null && (
+        {project.total_earned != null && (
           <div>
             <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Заработано</p>
-            <p className="text-sm font-medium" style={{ color: 'var(--gold)' }}>{formatMoney(project.earned)}</p>
+            <p className="text-sm font-medium" style={{ color: 'var(--gold)' }}>{formatMoney(project.total_earned)}</p>
           </div>
         )}
       </div>
@@ -132,8 +132,8 @@ export default function FieldMyWorks() {
   if (loading) return <Skeleton />;
   const active = projects.filter(p => p.is_active || p.status === 'active');
   const completed = projects.filter(p => !p.is_active && p.status !== 'active');
-  const totalShifts = projects.reduce((s, p) => s + (p.shifts || 0), 0);
-  const totalEarned = projects.reduce((s, p) => s + (p.earned || 0), 0);
+  const totalShifts = projects.reduce((s, p) => s + (parseInt(p.shifts_count) || 0), 0);
+  const totalEarned = projects.reduce((s, p) => s + (parseFloat(p.total_earned) || 0), 0);
 
   return (
     <div className="p-4 pb-24 space-y-4">
