@@ -38,6 +38,7 @@ function buildPushPayload(template, data) {
     QUEST_COMPLETED: 'Квест выполнен!',
     STREAK_AT_RISK: 'Стрик под угрозой',
     ACHIEVEMENT_EARNED: 'Новая ачивка!',
+    PRIZE_REQUESTED: 'Новый запрос приза',
   };
 
   return {

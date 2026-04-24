@@ -545,6 +545,145 @@ async function routes(fastify) {
     return { leaderboard: enriched, my_rank: myEntryEnriched };
   });
 
+  // ── POST /inventory/:id/equip — equip digital/cosmetic item ──
+  fastify.post('/inventory/:id/equip', { preHandler: [fastify.fieldAuthenticate] }, async (req, reply) => {
+    const eid = req.fieldEmployee.id;
+    const invId = parseInt(req.params.id, 10);
+
+    // Get inventory item with shop category
+    const { rows: [inv] } = await db.query(
+      `SELECT gi.*, gsi.category, gsi.name as shop_name
+       FROM gamification_inventory gi
+       LEFT JOIN gamification_shop_items gsi ON gsi.id = gi.source_id AND gi.item_type = 'shop_purchase'
+       WHERE gi.id = $1 AND gi.employee_id = $2`,
+      [invId, eid]
+    );
+    if (!inv) return reply.code(404).send({ error: 'Предмет не найден' });
+
+    const category = inv.item_category || inv.category || 'merch';
+    if (!['digital', 'cosmetic'].includes(category)) {
+      return reply.code(400).send({ error: 'Этот предмет нельзя надеть' });
+    }
+
+    // Determine slot from item name
+    const name = (inv.item_name || '').toLowerCase();
+    let slot = 'active_badge';
+    if (name.includes('аватар')) slot = 'active_avatar';
+    else if (name.includes('рамк')) slot = 'active_frame';
+    else if (name.includes('тем')) slot = 'active_theme';
+    else if (name.includes('бейдж') || name.includes('кубок')) slot = 'active_badge';
+
+    // Unequip previous item in same slot for this employee
+    await db.query(
+      `UPDATE gamification_inventory SET is_equipped = false
+       WHERE employee_id = $1 AND is_equipped = true
+         AND id IN (
+           SELECT id FROM gamification_inventory
+           WHERE employee_id = $1
+             AND CASE
+               WHEN item_name ILIKE '%аватар%' THEN 'active_avatar'
+               WHEN item_name ILIKE '%рамк%' THEN 'active_frame'
+               WHEN item_name ILIKE '%тем%' THEN 'active_theme'
+               ELSE 'active_badge'
+             END = $2
+         )`,
+      [eid, slot]
+    );
+
+    // Equip this item
+    await db.query(
+      'UPDATE gamification_inventory SET is_equipped = true WHERE id = $1',
+      [invId]
+    );
+
+    // Update employee profile slot
+    await db.query(
+      `UPDATE employees SET ${slot} = $1 WHERE id = $2`,
+      [inv.item_name, eid]
+    );
+
+    return { ok: true, slot, item_name: inv.item_name };
+  });
+
+  // ── POST /inventory/:id/request — worker requests physical prize delivery ──
+  fastify.post('/inventory/:id/request', { preHandler: [fastify.fieldAuthenticate] }, async (req, reply) => {
+    const eid = req.fieldEmployee.id;
+    const invId = parseInt(req.params.id, 10);
+
+    const { rows: [inv] } = await db.query(
+      'SELECT * FROM gamification_inventory WHERE id = $1 AND employee_id = $2',
+      [invId, eid]
+    );
+    if (!inv) return reply.code(404).send({ error: 'Предмет не найден' });
+
+    // Try to update existing fulfillment row
+    const { rows: [ful] } = await db.query(
+      `UPDATE gamification_fulfillment
+       SET status = 'requested', requested_at = NOW(), updated_at = NOW()
+       WHERE inventory_id = $1 AND employee_id = $2 AND status = 'pending'
+       RETURNING *`,
+      [invId, eid]
+    );
+
+    let pmUserId = null;
+
+    if (!ful) {
+      // No pending fulfillment — create one
+      await db.query(
+        `INSERT INTO gamification_fulfillment (inventory_id, employee_id, item_name, status, requested_at)
+         VALUES ($1, $2, $3, 'requested', NOW())`,
+        [invId, eid, inv.item_name]
+      );
+      // Get PM for notification
+      const { rows: [pmInfo] } = await db.query(
+        `SELECT w.pm_id FROM employee_assignments ea JOIN works w ON w.id = ea.work_id
+         WHERE ea.employee_id = $1 AND ea.is_active = true LIMIT 1`, [eid]
+      );
+      pmUserId = pmInfo?.pm_id || null;
+    } else {
+      // Get PM from subquery on employee_assignments
+      const { rows: [pmInfo] } = await db.query(
+        `SELECT w.pm_id FROM employee_assignments ea JOIN works w ON w.id = ea.work_id
+         WHERE ea.employee_id = $1 AND ea.is_active = true LIMIT 1`, [eid]
+      );
+      pmUserId = pmInfo?.pm_id || null;
+    }
+
+    // Notify PM
+    if (pmUserId) {
+      const { rows: [emp] } = await db.query('SELECT fio FROM employees WHERE id = $1', [eid]);
+      notificationDispatcher.send(db, pmUserId, 'PRIZE_REQUESTED', {
+        item: inv.item_name,
+        employee: emp?.fio || 'Рабочий',
+        message: `${emp?.fio || 'Рабочий'} запросил приз: "${inv.item_name}"`,
+      }).catch(() => {});
+    }
+
+    return { ok: true, status: 'requested' };
+  });
+
+  // ── POST /inventory/:id/confirm — worker confirms receipt of physical prize ──
+  fastify.post('/inventory/:id/confirm', { preHandler: [fastify.fieldAuthenticate] }, async (req, reply) => {
+    const eid = req.fieldEmployee.id;
+    const invId = parseInt(req.params.id, 10);
+
+    const { rows: [ful] } = await db.query(
+      `UPDATE gamification_fulfillment
+       SET status = 'confirmed', confirmed_at = NOW(), updated_at = NOW()
+       WHERE inventory_id = $1 AND employee_id = $2 AND status = 'delivered'
+       RETURNING id`,
+      [invId, eid]
+    );
+    if (!ful) return reply.code(400).send({ error: 'Нельзя подтвердить получение: приз не отмечен как выданный' });
+
+    await db.query(
+      'UPDATE gamification_inventory SET is_delivered = true WHERE id = $1',
+      [invId]
+    );
+
+    return { ok: true, status: 'confirmed' };
+  });
+
   // ── POST /quests/:id/claim — claim quest reward ──
   fastify.post('/quests/:id/claim', { preHandler: [fastify.fieldAuthenticate] }, async (req, reply) => {
     const eid = req.fieldEmployee.id;

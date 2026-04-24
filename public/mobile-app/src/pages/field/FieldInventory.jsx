@@ -6,6 +6,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
+import { useHaptic } from '@/hooks/useHaptic';
 
 /* ═══ SVG ILLUSTRATIONS — 12 unique Norse geometric ═══ */
 const SVGS = {
@@ -25,7 +26,7 @@ const SVGS = {
 
 /* Mock data removed — only real API data shown */
 
-const STATUS_ORDER = { ready: 0, pending: 1, delivered: 2 };
+const STATUS_ORDER = { ready: 0, requested: 1, pending: 2, delivered: 3, confirmed: 4, digital: 5 };
 const FUTHARK = ['ᚠ','ᚢ','ᚦ','ᚨ','ᚱ','ᚲ','ᚷ','ᚹ','ᚺ','ᚾ','ᛁ','ᛃ','ᛈ','ᛇ','ᛉ','ᛊ','ᛏ','ᛒ','ᛖ','ᛗ','ᛚ','ᛜ','ᛞ','ᛟ'];
 
 /* ═══ SVG renderer (dangerouslySetInnerHTML) ═══ */
@@ -34,35 +35,97 @@ function SvgIcon({ name, size = 60 }) {
   return <div style={{ width: size, height: size }} dangerouslySetInnerHTML={{ __html: html.replace('viewBox="0 0 80 80"', `viewBox="0 0 80 80" width="${size}" height="${size}"`) }} />;
 }
 
+const DIGITAL_CATEGORIES = ['digital', 'cosmetic'];
+const PHYSICAL_CATEGORIES = ['merch', 'food', 'privilege'];
+
 /* ═══ COMPONENT ═══ */
 export default function FieldInventory() {
   const navigate = useNavigate();
+  const haptic = useHaptic();
   const [items, setItems] = useState([]);
   const [filter, setFilter] = useState(null);
   const [modalItem, setModalItem] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [visibleCards, setVisibleCards] = useState(new Set());
+  const [actionLoading, setActionLoading] = useState(null); // itemId being acted on
   const touchStartY = useRef(0);
 
   /* ── Load from API ── */
-  useEffect(() => {
+  const loadInventory = useCallback(() => {
+    setLoading(true);
     fieldApi.get('/gamification/inventory').then(d => {
       const apiItems = d?.inventory || [];
-      const mapped = (apiItems || []).map(it => ({
-        id: it.id, name: it.item_name || it.name, status: it.delivery_status || 'pending',
-        svg: it.svg_key || 'tshirt', source: it.source_type || 'shop',
-        sourceLabel: it.source_type === 'spin' ? 'Рулетка' : it.source_type === 'shop' ? 'Магазин' : 'Ачивка',
-        sourceIcon: it.source_type === 'spin' ? '\uD83C\uDFB0' : it.source_type === 'shop' ? '\uD83D\uDECD' : '\uD83C\uDFC6',
-        date: new Date(it.acquired_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }),
-        deliveredDate: it.delivered_at ? new Date(it.delivered_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }) : null,
-        pm: it.pm_name || null, pmPhone: it.pm_phone || null, object: it.work_name || null,
-        desc: it.item_description || it.description || '',
-      }));
+      const mapped = (apiItems || []).map(it => {
+        const cat = it.item_category || 'merch';
+        return {
+          id: it.id, name: it.item_name || it.name,
+          status: it.delivery_status || (DIGITAL_CATEGORIES.includes(cat) ? 'digital' : 'pending'),
+          svg: it.svg_key || 'tshirt', source: it.source_type || 'shop',
+          sourceLabel: it.source_type === 'spin' ? 'Рулетка' : it.source_type === 'shop' ? 'Магазин' : 'Ачивка',
+          sourceIcon: it.source_type === 'spin' ? '\uD83C\uDFB0' : it.source_type === 'shop' ? '\uD83D\uDECD' : '\uD83C\uDFC6',
+          date: new Date(it.acquired_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+          deliveredDate: it.delivered_at ? new Date(it.delivered_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }) : null,
+          pm: it.pm_name || null, pmPhone: it.pm_phone || null, object: it.work_name || null,
+          desc: it.item_description || it.description || '',
+          category: cat,
+          isEquipped: it.is_equipped || false,
+          isDigital: DIGITAL_CATEGORIES.includes(cat),
+          isPhysical: PHYSICAL_CATEGORIES.includes(cat),
+        };
+      });
       setItems(mapped);
     }).catch(() => setItems([]))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => { loadInventory(); }, [loadInventory]);
+
+  /* ── Action handlers ── */
+  const handleEquip = useCallback(async (itemId, e) => {
+    e?.stopPropagation();
+    haptic.medium();
+    setActionLoading(itemId);
+    try {
+      await fieldApi.post(`/gamification/inventory/${itemId}/equip`);
+      haptic.success();
+      loadInventory();
+    } catch {
+      haptic.error();
+    } finally {
+      setActionLoading(null);
+    }
+  }, [haptic, loadInventory]);
+
+  const handleRequest = useCallback(async (itemId, e) => {
+    e?.stopPropagation();
+    haptic.medium();
+    setActionLoading(itemId);
+    try {
+      await fieldApi.post(`/gamification/inventory/${itemId}/request`);
+      haptic.success();
+      loadInventory();
+    } catch {
+      haptic.error();
+    } finally {
+      setActionLoading(null);
+    }
+  }, [haptic, loadInventory]);
+
+  const handleConfirm = useCallback(async (itemId, e) => {
+    e?.stopPropagation();
+    haptic.medium();
+    setActionLoading(itemId);
+    try {
+      await fieldApi.post(`/gamification/inventory/${itemId}/confirm`);
+      haptic.success();
+      loadInventory();
+    } catch {
+      haptic.error();
+    } finally {
+      setActionLoading(null);
+    }
+  }, [haptic, loadInventory]);
 
   /* ── Stagger animation ── */
   useEffect(() => {
@@ -76,8 +139,8 @@ export default function FieldInventory() {
 
   /* ── Counts ── */
   const counts = useMemo(() => {
-    const c = { pending: 0, ready: 0, delivered: 0 };
-    items.forEach(i => c[i.status]++);
+    const c = { pending: 0, requested: 0, ready: 0, delivered: 0, confirmed: 0, digital: 0 };
+    items.forEach(i => { if (c[i.status] !== undefined) c[i.status]++; });
     return c;
   }, [items]);
 
@@ -89,7 +152,7 @@ export default function FieldInventory() {
   }, [items, filter]);
 
   /* ── Ready PM info ── */
-  const readyItems = useMemo(() => items.filter(i => i.status === 'ready'), [items]);
+  const readyItems = useMemo(() => items.filter(i => i.status === 'ready' || i.status === 'delivered'), [items]);
   const readyPm = readyItems[0]?.pm;
   const readyPhone = readyItems[0]?.pmPhone;
 
@@ -206,9 +269,11 @@ export default function FieldInventory() {
           <div className="finv-status-bar">
             {[
               { key: 'pending', icon: '\u23F3', label: 'Готовят' },
+              { key: 'requested', icon: '\uD83D\uDCE9', label: 'Запрошен' },
               { key: 'ready', icon: '\uD83D\uDCE6', label: 'Готовы' },
-              { key: 'delivered', icon: '\u2705', label: 'Получены' },
-            ].map(p => (
+              { key: 'delivered', icon: '\uD83C\uDF81', label: 'Выдан' },
+              { key: 'digital', icon: '\u2728', label: 'Надеть' },
+            ].filter(p => counts[p.key] > 0 || filter === p.key).map(p => (
               <div key={p.key} className={`finv-pill${filter === p.key ? ' active' : ''}`}
                 data-filter={p.key} onClick={() => toggleFilter(p.key)}>
                 <span className="finv-pill-icon">{p.icon}</span>
@@ -234,6 +299,16 @@ export default function FieldInventory() {
               )}
             </div>
           )}
+          {/* ═══ DELIVERED BANNER — needs confirmation ═══ */}
+          {counts.delivered > 0 && (!filter || filter === 'delivered') && (
+            <div className="finv-ready-banner" style={{ background: 'linear-gradient(135deg,rgba(74,222,128,.12),rgba(52,211,153,.06))', borderColor: 'rgba(74,222,128,.25)' }}>
+              <div className="finv-ready-banner-icon">{'\uD83C\uDF81'}</div>
+              <div className="finv-ready-banner-text">
+                <div className="finv-ready-banner-title" style={{ color: '#4ade80' }}>{counts.delivered} {counts.delivered === 1 ? 'приз выдан' : 'приза выдано'}</div>
+                <div className="finv-ready-banner-sub">Нажми «Получил» чтобы подтвердить</div>
+              </div>
+            </div>
+          )}
 
           {/* ═══ ITEM LIST ═══ */}
           <div className="finv-item-list">
@@ -248,18 +323,34 @@ export default function FieldInventory() {
               </div>
             ) : sorted.map((item) => {
               const isVisible = visibleCards.has(item.id);
+              const isActing = actionLoading === item.id;
               let statusIcon, statusText, statusClass, subText;
-              if (item.status === 'pending') {
+
+              if (item.isDigital) {
+                statusIcon = item.isEquipped ? '\u2728' : '\uD83C\uDFAD';
+                statusText = item.isEquipped ? 'Надет' : 'Косметика';
+                statusClass = item.isEquipped ? 'delivered' : 'pending';
+                subText = item.isEquipped ? 'Активирован на профиле' : 'Нажми "Надеть" чтобы активировать';
+              } else if (item.status === 'pending') {
                 statusIcon = '\u23F3'; statusText = 'Готовят'; statusClass = 'pending'; subText = 'Ожидайте, заказ в обработке';
+              } else if (item.status === 'requested') {
+                statusIcon = '\uD83D\uDCE9'; statusText = 'Запрошен'; statusClass = 'ready'; subText = 'РП получил запрос, ожидайте выдачи';
               } else if (item.status === 'ready') {
                 statusIcon = '\uD83D\uDCE6'; statusText = 'Готов к выдаче'; statusClass = 'ready'; subText = 'Подойдите к РП на объекте';
+              } else if (item.status === 'delivered') {
+                statusIcon = '\uD83C\uDF81'; statusText = 'Выдан'; statusClass = 'ready'; subText = 'Подтвердите получение';
+              } else if (item.status === 'confirmed') {
+                statusIcon = '\u2705'; statusText = 'Получен'; statusClass = 'delivered'; subText = 'Получено ' + (item.deliveredDate || '');
               } else {
-                statusIcon = '\u2705'; statusText = 'Получен'; statusClass = 'delivered'; subText = 'Выдано ' + item.deliveredDate;
+                statusIcon = '\u2705'; statusText = 'Получен'; statusClass = 'delivered'; subText = 'Выдано ' + (item.deliveredDate || '');
               }
 
               return (
-                <div key={item.id} className={`finv-item-card${isVisible ? ' visible' : ''}`}
-                  data-status={item.status} onClick={() => openModal(item)}>
+                <div key={item.id}
+                  className={`finv-item-card${isVisible ? ' visible' : ''}`}
+                  data-status={item.status === 'confirmed' ? 'delivered' : item.status}
+                  style={item.status === 'confirmed' ? { opacity: 0.5, filter: 'grayscale(.6)' } : undefined}
+                  onClick={() => openModal(item)}>
                   <div className="finv-item-svg-wrap">
                     <div className="finv-item-svg-glow" />
                     <SvgIcon name={item.svg} size={60} />
@@ -268,10 +359,10 @@ export default function FieldInventory() {
                     <div className="finv-item-name">{item.name}</div>
                     <div className={`finv-item-status-badge ${statusClass}`}>{statusIcon} {statusText}</div>
                     <div className="finv-item-sub">{subText}</div>
-                    {item.pm && item.status === 'ready' && (
+                    {item.pm && (item.status === 'ready' || item.status === 'delivered') && (
                       <div className="finv-item-pm-row">
                         <span>{'\uD83D\uDC64'} {item.pm}</span>
-                        {item.pmPhone && (
+                        {item.pmPhone && item.status === 'ready' && (
                           <a href={`tel:${item.pmPhone}`} className="finv-item-pm-call"
                             onClick={e => e.stopPropagation()}>
                             <svg viewBox="0 0 24 24" width="14" height="14" fill="#3b82f6">
@@ -281,7 +372,7 @@ export default function FieldInventory() {
                         )}
                       </div>
                     )}
-                    {item.pm && item.status === 'delivered' && (
+                    {item.pm && item.status === 'confirmed' && (
                       <div className="finv-item-pm-row"><span>{'\uD83D\uDC64'} {item.pm}</span></div>
                     )}
                     <div className="finv-item-source">
@@ -289,6 +380,39 @@ export default function FieldInventory() {
                       <span>{item.sourceLabel}</span>
                       <span style={{ marginLeft: 6 }} className="finv-item-date">{item.date}</span>
                     </div>
+
+                    {/* ── Action Buttons ── */}
+                    {item.isDigital && !item.isEquipped && (
+                      <button
+                        className="finv-action-btn equip"
+                        disabled={isActing}
+                        onClick={e => handleEquip(item.id, e)}>
+                        {isActing ? '\u29D7 ...' : '\u2728 Надеть'}
+                      </button>
+                    )}
+                    {item.isDigital && item.isEquipped && (
+                      <div className="finv-equipped-badge">{'\u2728'} Надета ✓</div>
+                    )}
+                    {item.isPhysical && item.status === 'pending' && (
+                      <button
+                        className="finv-action-btn request"
+                        disabled={isActing}
+                        onClick={e => handleRequest(item.id, e)}>
+                        {isActing ? '\u29D7 ...' : '\uD83C\uDF81 Получить'}
+                      </button>
+                    )}
+                    {item.isPhysical && item.status === 'delivered' && (
+                      <button
+                        className="finv-action-btn confirm"
+                        disabled={isActing}
+                        onClick={e => handleConfirm(item.id, e)}>
+                        {isActing ? '\u29D7 ...' : '\u2705 Получил'}
+                      </button>
+                    )}
+                    {item.status === 'confirmed' && (
+                      <div className="finv-confirmed-badge">{'\u2705'} Получено</div>
+                    )}
+
                     <div className="finv-item-more">{'\u25B8'} Подробнее</div>
                   </div>
                 </div>
@@ -310,7 +434,20 @@ export default function FieldInventory() {
               </svg>
             </button>
             {modalItem && (() => {
-              const tl = getTimeline(modalItem.status);
+              const isDigitalItem = modalItem.isDigital;
+              const tl = getTimeline(
+                modalItem.status === 'requested' || modalItem.status === 'delivered' ? 'ready' :
+                modalItem.status === 'confirmed' ? 'delivered' :
+                modalItem.status
+              );
+              const isActingModal = actionLoading === modalItem.id;
+              const modalStatusLabel =
+                isDigitalItem ? (modalItem.isEquipped ? '\u2728 Надет' : '\uD83C\uDFAD Косметика') :
+                modalItem.status === 'pending' ? '\u23F3 Готовят' :
+                modalItem.status === 'requested' ? '\uD83D\uDCE9 Запрошен' :
+                modalItem.status === 'ready' ? '\uD83D\uDCE6 Готов к выдаче' :
+                modalItem.status === 'delivered' ? '\uD83C\uDF81 Выдан — подтвердите получение' :
+                '\u2705 Получен ' + (modalItem.deliveredDate || '');
               return (
                 <>
                   <div className="finv-modal-svg-area">
@@ -333,11 +470,7 @@ export default function FieldInventory() {
                     </div>
                     <div className="finv-modal-grid-item">
                       <div className="finv-modal-grid-label">Статус</div>
-                      <div className="finv-modal-grid-value">
-                        {modalItem.status === 'pending' ? '\u23F3 Готовят' :
-                         modalItem.status === 'ready' ? '\uD83D\uDCE6 Готов к выдаче' :
-                         '\u2705 Получен ' + modalItem.deliveredDate}
-                      </div>
+                      <div className="finv-modal-grid-value">{modalStatusLabel}</div>
                     </div>
                     {modalItem.pm && (
                       <div className="finv-modal-grid-item">
@@ -353,22 +486,64 @@ export default function FieldInventory() {
                     )}
                   </div>
 
-                  {/* Timeline */}
-                  <div className="finv-modal-timeline">
-                    <div className={`finv-tl-dot ${tl.dots[0]}`}>{'\u23F3'}</div>
-                    <div className={`finv-tl-line ${tl.lines[0]}`} />
-                    <div className={`finv-tl-dot ${tl.dots[1]}`}>{'\uD83D\uDCE6'}</div>
-                    <div className={`finv-tl-line ${tl.lines[1]}`} />
-                    <div className={`finv-tl-dot ${tl.dots[2]}`}>{'\u2705'}</div>
-                  </div>
-                  <div className="finv-tl-labels">
-                    <div className={`finv-tl-label ${tl.labels[0]}`}>Готовят</div>
-                    <div className={`finv-tl-label ${tl.labels[1]}`}>Готов</div>
-                    <div className={`finv-tl-label ${tl.labels[2]}`}>Получен</div>
-                  </div>
+                  {/* Timeline — only for physical items */}
+                  {!isDigitalItem && (
+                    <>
+                      <div className="finv-modal-timeline">
+                        <div className={`finv-tl-dot ${tl.dots[0]}`}>{'\u23F3'}</div>
+                        <div className={`finv-tl-line ${tl.lines[0]}`} />
+                        <div className={`finv-tl-dot ${tl.dots[1]}`}>{'\uD83D\uDCE6'}</div>
+                        <div className={`finv-tl-line ${tl.lines[1]}`} />
+                        <div className={`finv-tl-dot ${tl.dots[2]}`}>{'\u2705'}</div>
+                      </div>
+                      <div className="finv-tl-labels">
+                        <div className={`finv-tl-label ${tl.labels[0]}`}>Готовят</div>
+                        <div className={`finv-tl-label ${tl.labels[1]}`}>Готов</div>
+                        <div className={`finv-tl-label ${tl.labels[2]}`}>Получен</div>
+                      </div>
+                    </>
+                  )}
 
-                  {/* CTA */}
-                  {modalItem.status === 'ready' && modalItem.pmPhone && (
+                  {/* CTA — digital: equip button */}
+                  {isDigitalItem && !modalItem.isEquipped && (
+                    <button
+                      className="finv-modal-cta show"
+                      style={{ background: 'linear-gradient(135deg,#7c3aed,#a855f7)', boxShadow: '0 5px 0 #4c1d95,0 8px 20px rgba(168,85,247,.2)' }}
+                      disabled={isActingModal}
+                      onClick={() => { handleEquip(modalItem.id); closeModal(); }}>
+                      {isActingModal ? '\u29D7 Надеваем...' : '\u2728 Надеть предмет'}
+                    </button>
+                  )}
+                  {isDigitalItem && modalItem.isEquipped && (
+                    <div style={{ textAlign: 'center', padding: '16px 0', color: '#4ade80', fontWeight: 700, fontSize: 15 }}>
+                      {'\u2728'} Предмет активирован на вашем профиле
+                    </div>
+                  )}
+
+                  {/* CTA — physical pending: request delivery */}
+                  {!isDigitalItem && modalItem.status === 'pending' && (
+                    <button
+                      className="finv-modal-cta show"
+                      style={{ background: 'linear-gradient(135deg,#C8940A,#F0C850)', color: '#1a1000', boxShadow: '0 5px 0 #8B6914,0 8px 20px rgba(240,200,80,.2)' }}
+                      disabled={isActingModal}
+                      onClick={() => { handleRequest(modalItem.id); closeModal(); }}>
+                      {isActingModal ? '\u29D7 Запрашиваем...' : '\uD83C\uDF81 Запросить выдачу'}
+                    </button>
+                  )}
+
+                  {/* CTA — physical delivered: confirm receipt */}
+                  {!isDigitalItem && modalItem.status === 'delivered' && (
+                    <button
+                      className="finv-modal-cta show"
+                      style={{ background: 'linear-gradient(135deg,#166534,#22c55e)', boxShadow: '0 5px 0 #14532d,0 8px 20px rgba(34,197,94,.2)' }}
+                      disabled={isActingModal}
+                      onClick={() => { handleConfirm(modalItem.id); closeModal(); }}>
+                      {isActingModal ? '\u29D7 Подтверждаем...' : '\u2705 Я получил приз'}
+                    </button>
+                  )}
+
+                  {/* CTA — physical ready: call PM */}
+                  {!isDigitalItem && modalItem.status === 'ready' && modalItem.pmPhone && (
                     <a href={`tel:${modalItem.pmPhone}`} className="finv-modal-cta show">
                       {'\uD83D\uDCDE'} Позвонить РП {modalItem.pm}
                     </a>
@@ -580,4 +755,37 @@ const INV_CSS = `
 .finv ::-webkit-scrollbar{width:3px}
 .finv ::-webkit-scrollbar-track{background:transparent}
 .finv ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:2px}
+
+/* Action buttons */
+.finv-action-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:9px 16px;border-radius:12px;border:none;font-size:12px;font-weight:800;cursor:pointer;
+  transition:all .15s;margin-top:6px;-webkit-tap-highlight-color:transparent}
+.finv-action-btn:active{transform:translateY(2px)}
+.finv-action-btn:disabled{opacity:.5;cursor:not-allowed}
+.finv-action-btn.equip{background:linear-gradient(135deg,#7c3aed,#a855f7);color:#fff;
+  box-shadow:0 3px 0 #4c1d95,0 4px 12px rgba(168,85,247,.2)}
+.finv-action-btn.equip:not(:disabled):active{box-shadow:0 1px 0 #4c1d95}
+.finv-action-btn.request{background:linear-gradient(135deg,#C8940A,#F0C850);color:#1a1000;
+  box-shadow:0 3px 0 #8B6914,0 4px 12px rgba(240,200,80,.2)}
+.finv-action-btn.request:not(:disabled):active{box-shadow:0 1px 0 #8B6914}
+.finv-action-btn.confirm{background:linear-gradient(135deg,#166534,#22c55e);color:#fff;
+  box-shadow:0 3px 0 #14532d,0 4px 12px rgba(34,197,94,.2)}
+.finv-action-btn.confirm:not(:disabled):active{box-shadow:0 1px 0 #14532d}
+
+/* Equipped / Confirmed badges (inline) */
+.finv-equipped-badge{display:inline-flex;align-items:center;gap:4px;padding:5px 10px;
+  border-radius:8px;background:rgba(168,85,247,.12);color:#c084fc;font-size:11px;font-weight:700;
+  margin-top:6px;border:1px solid rgba(168,85,247,.2)}
+.finv-confirmed-badge{display:inline-flex;align-items:center;gap:4px;padding:5px 10px;
+  border-radius:8px;background:rgba(74,222,128,.1);color:#4ade80;font-size:11px;font-weight:700;
+  margin-top:6px;border:1px solid rgba(74,222,128,.2)}
+
+/* pill for requested status */
+.finv-pill[data-filter="requested"]{border-color:rgba(251,191,36,.3)}
+.finv-pill[data-filter="requested"].active{background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.5);color:#fde68a}
+.finv-pill[data-filter="requested"].active .finv-pill-count{background:#fbbf24;color:#1a1000}
+/* pill for digital status */
+.finv-pill[data-filter="digital"]{border-color:rgba(168,85,247,.3)}
+.finv-pill[data-filter="digital"].active{background:rgba(168,85,247,.12);border-color:rgba(168,85,247,.5);color:#c084fc}
+.finv-pill[data-filter="digital"].active .finv-pill-count{background:#a855f7;color:#fff}
 `;

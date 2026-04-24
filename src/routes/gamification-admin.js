@@ -26,30 +26,30 @@ async function routes(fastify) {
     if (isDirector) {
       query = `
         SELECT gf.id, gf.inventory_id, gf.employee_id, gf.item_name, gf.status,
-               gf.delivery_note, gf.delivered_at, gf.created_at,
+               gf.delivery_note, gf.delivered_at, gf.requested_at, gf.created_at,
                e.fio AS employee_name, e.phone AS employee_phone,
                w.object_name AS work_name
         FROM gamification_fulfillment gf
         JOIN employees e ON e.id = gf.employee_id
         LEFT JOIN employee_assignments fa ON fa.employee_id = gf.employee_id
         LEFT JOIN works w ON w.id = fa.work_id
-        WHERE gf.status IN ('pending', 'ready')
-        ORDER BY CASE gf.status WHEN 'ready' THEN 0 WHEN 'pending' THEN 1 END, gf.created_at DESC
+        WHERE gf.status IN ('pending', 'requested', 'ready')
+        ORDER BY CASE gf.status WHEN 'requested' THEN 0 WHEN 'ready' THEN 1 WHEN 'pending' THEN 2 END, gf.created_at DESC
       `;
       params = [];
     } else {
       query = `
         SELECT gf.id, gf.inventory_id, gf.employee_id, gf.item_name, gf.status,
-               gf.delivery_note, gf.delivered_at, gf.created_at,
+               gf.delivery_note, gf.delivered_at, gf.requested_at, gf.created_at,
                e.fio AS employee_name, e.phone AS employee_phone,
                w.object_name AS work_name
         FROM gamification_fulfillment gf
         JOIN employees e ON e.id = gf.employee_id
         LEFT JOIN employee_assignments fa ON fa.employee_id = gf.employee_id
         LEFT JOIN works w ON w.id = fa.work_id
-        WHERE gf.status IN ('pending', 'ready')
+        WHERE gf.status IN ('pending', 'requested', 'ready')
           AND w.pm_id = $1
-        ORDER BY CASE gf.status WHEN 'ready' THEN 0 WHEN 'pending' THEN 1 END, gf.created_at DESC
+        ORDER BY CASE gf.status WHEN 'requested' THEN 0 WHEN 'ready' THEN 1 WHEN 'pending' THEN 2 END, gf.created_at DESC
       `;
       params = [user.id];
     }
@@ -94,7 +94,7 @@ async function routes(fastify) {
     const { rows: [item] } = await db.query(
       `UPDATE gamification_fulfillment
        SET status = 'delivered', delivered_at = NOW(), delivered_by = $1, delivery_note = $2, updated_at = NOW()
-       WHERE id = $3 AND status IN ('pending', 'ready')
+       WHERE id = $3 AND status IN ('pending', 'requested', 'ready')
        RETURNING *`,
       [user.id, delivery_note || null, fulfillmentId]
     );
@@ -105,6 +105,17 @@ async function routes(fastify) {
       'UPDATE gamification_inventory SET is_delivered = true WHERE id = $1',
       [item.inventory_id]
     );
+
+    // Notify worker that prize has been delivered
+    const { rows: [empInfo] } = await db.query(
+      'SELECT user_id FROM employees WHERE id = $1', [item.employee_id]
+    );
+    if (empInfo?.user_id) {
+      notificationDispatcher.send(db, empInfo.user_id, 'FULFILLMENT_READY', {
+        item: item.item_name,
+        message: `Ваш приз "${item.item_name}" выдан! Нажмите "Получил" в приложении.`,
+      }).catch(() => {});
+    }
 
     // Audit log
     await db.query(
