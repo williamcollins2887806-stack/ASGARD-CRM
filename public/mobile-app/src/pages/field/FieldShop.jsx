@@ -627,12 +627,7 @@ const SHOP_CSS = `
   background:linear-gradient(90deg,transparent,rgba(255,255,255,.2),transparent);animation:fshop-shine 3s infinite}
 @keyframes fshop-shine{0%,100%{left:-100%}50%{left:150%}}
 
-/* ═══ LOCKED ═══ */
-.fshop-card.locked .fshop-card-img{filter:saturate(.3) brightness(.6)}
-.fshop-card.locked .fshop-card-icon{filter:saturate(.2) brightness(.5) drop-shadow(0 4px 12px rgba(0,0,0,.4))}
-.fshop-card.locked .fshop-card-name{color:var(--fshop-t3)}
-.fshop-card.locked .fshop-card-glow{opacity:.08}
-.fshop-card.locked .fshop-cp-num{color:var(--fshop-t3)}
+/* ═══ LOCKED — только надпись, без затемнения ═══ */
 .fshop-card.locked .fshop-card-buy{cursor:not-allowed}
 .fshop-card.locked .fshop-card-buy::after{display:none}
 .fshop-card-deficit{display:flex;align-items:center;gap:3px;font-size:9px;font-weight:700;color:var(--fshop-red);margin-top:3px}
