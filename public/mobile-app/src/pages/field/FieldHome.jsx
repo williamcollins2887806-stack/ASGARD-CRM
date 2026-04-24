@@ -183,10 +183,13 @@ export default function FieldHome() {
     }
   };
 
-  // fio = "Фамилия Имя Отчество" → берём второе слово (Имя), фолбэк — первое слово
+  // fio = "Фамилия Имя Отчество" → берём второе слово (Имя)
+  // Если оно выглядит как инициал ("А.", "А.В.") или пустое — берём первое слово (Фамилия)
   const fio = employee?.fio || '';
   const fioParts = fio.trim().split(/\s+/);
-  const firstName = fioParts[1] || fioParts[0] || 'Воин';
+  const rawSecond = fioParts[1] || '';
+  const isInitial = rawSecond.length <= 3 || /^[А-ЯA-Z][.\-]/.test(rawSecond);
+  const firstName = (!isInitial && rawSecond) ? rawSecond : (fioParts[0] || 'Воин');
   const project = data?.project;
   const checkin = data?.today_checkin || project?.today_checkin;
   const isActive = checkin && !checkin.checkout_at;
