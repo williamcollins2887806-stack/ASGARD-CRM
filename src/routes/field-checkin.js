@@ -203,9 +203,10 @@ async function routes(fastify, options) {
         return reply.code(400).send({ error: 'Укажите checkin_id' });
       }
 
-      // Find checkin with shift_type from assignment
+      // Find checkin with shift type
       const { rows: checkins } = await db.query(
         `SELECT fc.id, fc.employee_id, fc.work_id, fc.checkin_at, fc.day_rate, fc.status,
+                fc.shift AS checkin_shift,
                 COALESCE(ea.shift_type, fc.shift, 'day') AS shift_type
          FROM field_checkins fc
          LEFT JOIN employee_assignments ea ON ea.id = fc.assignment_id
@@ -234,8 +235,6 @@ async function routes(fastify, options) {
       const hoursWorked = (checkoutAt - checkinAt) / (1000 * 60 * 60);
       const shiftHours = parseFloat(settings.shift_hours || 11);
       const hoursPaid = roundHours(hoursWorked, settings.rounding_rule, parseFloat(settings.rounding_step));
-      const dayRate = parseFloat(checkin.day_rate || 0);
-
       // Prevent early checkout — must work at least (shiftHours - 0.5) hours
       const minHours = shiftHours - 0.5;
       if (hoursWorked < minHours) {
@@ -246,19 +245,28 @@ async function routes(fastify, options) {
         return reply.code(400).send({ error: `Смена ещё не завершена. Осталось ~${label}` });
       }
 
-      // Full shift pay — earnings do not depend on exact time worked
+      // Determine pay:
+      // - Work shifts (day/night): re-fetch current rate from assignment (picks up combo added after checkin)
+      // - Non-work shifts (road, standby, waiting, etc.): use stored rate, no combo bonus
+      const isWorkShift = ['day', 'night'].includes(checkin.checkin_shift || '');
+      let dayRate;
+      if (isWorkShift) {
+        dayRate = await getDayRate(checkin.employee_id, checkin.work_id);
+      } else {
+        dayRate = parseFloat(checkin.day_rate || 0);
+      }
       const amountEarned = dayRate;
 
-      // Update checkin
+      // Update checkin — also update day_rate to reflect current assignment (combo may have been added)
       await db.query(`
         UPDATE field_checkins SET
           checkout_at = $2, checkout_lat = $3, checkout_lng = $4, checkout_accuracy = $5,
           checkout_source = 'self', hours_worked = $6, hours_paid = $7,
-          amount_earned = $8, status = 'completed', updated_at = NOW(), note = COALESCE($9, note)
+          amount_earned = $8, day_rate = $9, status = 'completed', updated_at = NOW(), note = COALESCE($10, note)
         WHERE id = $1
       `, [checkin_id, checkoutAt.toISOString(), lat || null, lng || null, accuracy || null,
           Math.round(hoursWorked * 100) / 100, hoursPaid,
-          Math.round(amountEarned * 100) / 100, note || null]);
+          Math.round(amountEarned * 100) / 100, dayRate, note || null]);
 
       const quote = randomQuote(FIELD_QUOTES_SHIFT_END)
         .replace('{hours}', Math.floor(hoursWorked));
