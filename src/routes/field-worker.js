@@ -79,6 +79,20 @@ async function routes(fastify, options) {
         earned: a.check(stats),
       }));
 
+      // Cosmetic equipment slots + ammo
+      const { rows: [cosmetics] } = await db.query(
+        'SELECT active_avatar, active_frame, active_badge, active_theme, active_helmet, active_weapon, active_armor FROM employees WHERE id=$1',
+        [emp.id]
+      );
+
+      // Gamification wallets
+      const { rows: wallets } = await db.query(
+        'SELECT currency, balance FROM gamification_wallets WHERE employee_id=$1',
+        [emp.id]
+      );
+      const runes = parseInt(wallets.find(w => w.currency === 'runes')?.balance || 0);
+      const xp    = parseInt(wallets.find(w => w.currency === 'xp')?.balance    || 0);
+
       return {
         id: emp.id,
         fio: emp.fio,
@@ -97,6 +111,18 @@ async function routes(fastify, options) {
         phone_verified: emp.phone_verified,
         day_rate: emp.day_rate,
         achievements,
+        // Gamification
+        runes,
+        xp,
+        total_shifts: parseInt(stats.total_shifts || 0),
+        // Cosmetics & ammo
+        active_avatar: cosmetics?.active_avatar || null,
+        active_frame:  cosmetics?.active_frame  || null,
+        active_badge:  cosmetics?.active_badge  || null,
+        active_theme:  cosmetics?.active_theme  || null,
+        active_helmet: cosmetics?.active_helmet || null,
+        active_weapon: cosmetics?.active_weapon || null,
+        active_armor:  cosmetics?.active_armor  || null,
       };
     } catch (err) {
       fastify.log.error('[field-worker] /me error:', err);

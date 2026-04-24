@@ -267,16 +267,29 @@ async function routes(fastify) {
       } else if (selectedPrize.prize_type === 'xp' && rewardAmount > 0) {
         await creditWalletTx(client, eid, 'xp', rewardAmount, 'spin_win', selectedPrize.id);
       } else if (selectedPrize.prize_type === 'shop_item' || selectedPrize.prize_type === 'merch' || selectedPrize.requires_delivery) {
+        // Look up shop item category to set item_category correctly
+        let itemCategory = 'merch';
+        if (selectedPrize.prize_type === 'shop_item' && selectedPrize.value) {
+          const { rows: [si] } = await client.query(
+            'SELECT category FROM gamification_shop_items WHERE id = $1', [selectedPrize.value]
+          );
+          if (si) itemCategory = si.category;
+        }
         const { rows: [inv] } = await client.query(
-          `INSERT INTO gamification_inventory (employee_id, item_type, item_name, source_id, source_type)
-           VALUES ($1, 'spin_prize', $2, $3, 'spin') RETURNING id`,
-          [eid, selectedPrize.name, selectedPrize.id]
+          `INSERT INTO gamification_inventory (employee_id, item_type, item_name, item_category, source_id, source_type)
+           VALUES ($1, 'spin_prize', $2, $3, $4, 'spin') RETURNING id`,
+          [eid, selectedPrize.name, itemCategory, selectedPrize.value]
         );
-        await client.query(
-          `INSERT INTO gamification_fulfillment (inventory_id, employee_id, item_name, status)
-           VALUES ($1, $2, $3, 'pending')`,
-          [inv.id, eid, selectedPrize.name]
-        );
+        // Only create fulfillment for physical items that need delivery
+        const needsDelivery = selectedPrize.requires_delivery || selectedPrize.prize_type === 'merch';
+        const isDigitalCosmetic = ['digital', 'cosmetic'].includes(itemCategory);
+        if (needsDelivery && !isDigitalCosmetic) {
+          await client.query(
+            `INSERT INTO gamification_fulfillment (inventory_id, employee_id, item_name, status)
+             VALUES ($1, $2, $3, 'pending')`,
+            [inv.id, eid, selectedPrize.name]
+          );
+        }
       }
 
       await client.query('COMMIT');
@@ -565,13 +578,23 @@ async function routes(fastify) {
       return reply.code(400).send({ error: 'Этот предмет нельзя надеть' });
     }
 
-    // Determine slot from item name
+    // Determine equipment slot from item name
     const name = (inv.item_name || '').toLowerCase();
     let slot = 'active_badge';
-    if (name.includes('аватар')) slot = 'active_avatar';
-    else if (name.includes('рамк')) slot = 'active_frame';
-    else if (name.includes('тем')) slot = 'active_theme';
-    else if (name.includes('бейдж') || name.includes('кубок')) slot = 'active_badge';
+    if      (name.includes('аватар'))                                   slot = 'active_avatar';
+    else if (name.includes('рамк'))                                     slot = 'active_frame';
+    else if (name.includes('тема') || /^тем[^а]/.test(name) || name === 'тема') slot = 'active_theme';
+    else if (name.includes('шлем') || name.includes('маска'))           slot = 'active_helmet';
+    else if (name.includes('оружие') || name.includes('топор') ||
+             name.includes('молот') || name.includes('копьё') ||
+             name.includes('копье') || name.includes('меч'))            slot = 'active_weapon';
+    else if (name.includes('броня') || name.includes('кольчуг') ||
+             name.includes('нагрудник') || name.includes('плащ'))       slot = 'active_armor';
+    else if (name.includes('бейдж') || name.includes('кубок'))         slot = 'active_badge';
+
+    // Validate slot exists as column
+    const VALID_SLOTS = ['active_avatar','active_frame','active_theme','active_badge','active_helmet','active_weapon','active_armor'];
+    if (!VALID_SLOTS.includes(slot)) slot = 'active_badge';
 
     // Unequip previous item in same slot for this employee
     await db.query(
@@ -581,9 +604,15 @@ async function routes(fastify) {
            SELECT id FROM gamification_inventory
            WHERE employee_id = $1
              AND CASE
-               WHEN item_name ILIKE '%аватар%' THEN 'active_avatar'
-               WHEN item_name ILIKE '%рамк%' THEN 'active_frame'
-               WHEN item_name ILIKE '%тем%' THEN 'active_theme'
+               WHEN item_name ILIKE '%аватар%'                                                         THEN 'active_avatar'
+               WHEN item_name ILIKE '%рамк%'                                                           THEN 'active_frame'
+               WHEN item_name ILIKE '%шлем%' OR item_name ILIKE '%маска%'                             THEN 'active_helmet'
+               WHEN item_name ILIKE '%оружие%' OR item_name ILIKE '%топор%' OR
+                    item_name ILIKE '%молот%'  OR item_name ILIKE '%копьё%' OR
+                    item_name ILIKE '%меч%'                                                            THEN 'active_weapon'
+               WHEN item_name ILIKE '%броня%' OR item_name ILIKE '%кольчуг%' OR
+                    item_name ILIKE '%нагрудник%' OR item_name ILIKE '%плащ%'                         THEN 'active_armor'
+               WHEN item_name ILIKE '%тема%' OR item_name ILIKE '%тём%'                               THEN 'active_theme'
                ELSE 'active_badge'
              END = $2
          )`,
