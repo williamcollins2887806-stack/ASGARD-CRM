@@ -195,7 +195,18 @@ export default function FieldHome() {
   const isActive = checkin && !checkin.checkout_at;
   const isActiveAssignment = project?.is_active !== false;
   const isMaster = employee?.field_role === 'shift_master' || employee?.field_role === 'senior_master' || project?.field_role?.includes('master');
-  const vikingTitle = isMaster ? 'ярл Асгарда' : 'воин Асгарда';
+  const WARRIOR_TITLES = [
+    'воин Асгарда', 'страж Мидгарда', 'берсерк Севера', 'копейщик Одина',
+    'щитоносец клана', 'викинг Асгарда', 'хускарл Тора', 'дружинник Севера',
+    'рунный боец', 'сын Асгарда', 'меченосец клана', 'северный страж',
+  ];
+  const MASTER_TITLES = [
+    'ярл Асгарда', 'хёвдинг клана', 'вождь дружины', 'конунг объекта',
+    'старейшина клана', 'хирдман Одина', 'военный вождь', 'ярл Севера',
+  ];
+  const dayIndex = Math.floor(Date.now() / 86400000); // меняется каждый день
+  const titles = isMaster ? MASTER_TITLES : WARRIOR_TITLES;
+  const vikingTitle = titles[dayIndex % titles.length];
 
   // Earnings breakdown
   const perDiem = parseFloat(project?.per_diem || 0);
