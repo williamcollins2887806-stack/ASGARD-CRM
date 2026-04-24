@@ -183,12 +183,16 @@ export default function FieldHome() {
     }
   };
 
-  const firstName = employee?.name?.split(' ')[0] || 'Работник';
+  // fio = "Фамилия Имя Отчество" → берём второе слово (Имя), фолбэк — первое слово
+  const fio = employee?.fio || '';
+  const fioParts = fio.trim().split(/\s+/);
+  const firstName = fioParts[1] || fioParts[0] || 'Воин';
   const project = data?.project;
   const checkin = data?.today_checkin || project?.today_checkin;
   const isActive = checkin && !checkin.checkout_at;
   const isActiveAssignment = project?.is_active !== false;
   const isMaster = employee?.field_role === 'shift_master' || employee?.field_role === 'senior_master' || project?.field_role?.includes('master');
+  const vikingTitle = isMaster ? 'ярл Асгарда' : 'воин Асгарда';
 
   // Earnings breakdown
   const perDiem = parseFloat(project?.per_diem || 0);
@@ -236,7 +240,7 @@ export default function FieldHome() {
 
       {/* Greeting + Viking quote */}
       <div className="mb-5">
-        <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{getGreeting()}, {firstName}</h1>
+        <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>{getGreeting()}, {firstName}, {vikingTitle}!</h1>
         <p className="text-sm capitalize mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{fmtDate()}</p>
         <p className="text-xs italic mt-2" style={{ color: 'var(--text-tertiary)' }}>«{quote}»</p>
       </div>
