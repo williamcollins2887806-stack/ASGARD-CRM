@@ -48,12 +48,12 @@ export default function FieldPhotos() {
       if (caption.trim()) formData.append('caption', caption.trim());
 
       const token = localStorage.getItem('field_token');
-      const res = await fetch('/api/field/photos/', {
+      const res = await fetch('/api/field/photos/upload', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
-      if (!res.ok) throw new Error('Ошибка загрузки');
+      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || `Ошибка загрузки (${res.status})`); }
       haptic.success();
       loadData();
     } catch (e) { setError(e.message); }
