@@ -249,7 +249,11 @@ function buildStripHTML(items) {
   return items.map(p => {
     const tier = escHtml(p.tier);
     const tag = tier === 'legendary' ? 'ЛЕГЕНДА' : tier === 'epic' ? 'ЭПИК' : tier === 'rare' ? 'РЕДКИЙ' : '';
-    return `<div class="wn-item"><div class="wn-di-icon ${tier}">${escHtml(p.icon)}</div><div style="flex:1;min-width:0"><div class="wn-di-name">${escHtml(p.name)}</div><div class="wn-di-desc">${escHtml(p.desc)}</div></div>${tag ? `<div class="wn-di-tag ${tier}">${tag}</div>` : ''}</div>`;
+    // Use SVG icon if available (safe — comes from our own DB), else emoji
+    const iconContent = p.icon_svg
+      ? `<span style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px">${p.icon_svg}</span>`
+      : escHtml(p.icon || '?');
+    return `<div class="wn-item"><div class="wn-di-icon ${tier}" style="${p.icon_svg ? 'font-size:0;padding:0' : ''}">${iconContent}</div><div style="flex:1;min-width:0"><div class="wn-di-name">${escHtml(p.name)}</div><div class="wn-di-desc">${escHtml(p.desc || p.description || '')}</div></div>${tag ? `<div class="wn-di-tag ${tier}">${tag}</div>` : ''}</div>`;
   }).join('');
 }
 
@@ -273,6 +277,7 @@ export default function WheelOfNorns() {
   // Q6: memoize stars so they don't jump on re-render
   const starsData = useMemo(() => Array.from({ length: 25 }, () => ({ x: Math.random() * 100, y: Math.random() * 50, w: 1 + Math.random() * 2, d: Math.random() * 3, dur: 2 + Math.random() * 2 })), []);
 
+  const [prizesPool, setPrizesPool] = useState(DEMO_PRIZES);
   const [balance, setBalance] = useState(0);
   const [level, setLevel] = useState(1);
   const [xpPct, setXpPct] = useState(65);
@@ -319,6 +324,15 @@ export default function WheelOfNorns() {
       setXpPct(pct);
       setXpText(`${w.xp_in_level || 0} / ${w.xp_per_level || 100}`);
     }).catch(() => {});
+    // Load real prizes pool from API
+    fieldApi.get('/gamification/prizes').then(d => {
+      if (d.prizes?.length) {
+        setPrizesPool(d.prizes.map(p => ({
+          name: p.name, icon: p.icon, icon_svg: p.icon_svg || null,
+          desc: p.description, tier: p.tier,
+        })));
+      }
+    }).catch(() => {});
     fieldApi.get('/gamification/quests').then(d => {
       const streakQ = (d?.quests || []).find(q => q.target_action === 'streak');
       if (streakQ) setStreak(streakQ.progress || 0);
@@ -326,14 +340,14 @@ export default function WheelOfNorns() {
     loadSpinStatus();
   }, [loadSpinStatus]);
 
-  // Init strip with random items
+  // Init strip with random items (re-init when prizesPool loads from API)
   useEffect(() => {
     if (stripRef.current) {
-      const items = []; for (let i = 0; i < 5; i++) items.push(randomPrize(DEMO_PRIZES));
+      const items = []; for (let i = 0; i < 5; i++) items.push(randomPrize(prizesPool));
       stripRef.current.innerHTML = buildStripHTML(items);
       stripRef.current.style.transform = `translateY(${-ITEM_H + ITEM_H * ((VISIBLE - 1) / 2)}px)`;
     }
-  }, []);
+  }, [prizesPool]);
 
   // Viking spring physics RAF loop
   useEffect(() => {
@@ -482,7 +496,7 @@ export default function WheelOfNorns() {
     }
 
     // Build strip with near-miss suspense
-    const pool = DEMO_PRIZES;
+    const pool = prizesPool;
     const totalItems = 200;
     const winIndex = totalItems - 4;
     const items = [];
@@ -621,7 +635,7 @@ export default function WheelOfNorns() {
     }
     // Re-init strip
     if (stripRef.current) {
-      const items = []; for (let i = 0; i < 5; i++) items.push(randomPrize(DEMO_PRIZES));
+      const items = []; for (let i = 0; i < 5; i++) items.push(randomPrize(prizesPool));
       stripRef.current.innerHTML = buildStripHTML(items);
       stripRef.current.style.transform = `translateY(${-ITEM_H + ITEM_H * ((VISIBLE - 1) / 2)}px)`;
     }
@@ -874,11 +888,11 @@ export default function WheelOfNorns() {
         <div className="wn-loot">
           <div className="wn-loot-h">Возможные награды</div>
           <div className="wn-loot-row">
-            <div className="wn-lc"><span className="wn-lc-i">ᚱ</span><span className="wn-lc-n">Руны</span></div>
-            <div className="wn-lc rar"><span className="wn-lc-i">⚡</span><span className="wn-lc-n">XP</span></div>
-            <div className="wn-lc rar"><span className="wn-lc-i">🎯</span><span className="wn-lc-n">×2</span></div>
-            <div className="wn-lc epc"><span className="wn-lc-i">🛡️</span><span className="wn-lc-n">Рамка</span></div>
-            <div className="wn-lc leg"><span className="wn-lc-i">⚔️</span><span className="wn-lc-n">Мерч</span></div>
+            <div className="wn-lc"><span className="wn-lc-i">🍜</span><span className="wn-lc-n">Еда</span></div>
+            <div className="wn-lc rar"><span className="wn-lc-i">👕</span><span className="wn-lc-n">Мерч</span></div>
+            <div className="wn-lc rar"><span className="wn-lc-i">⭐</span><span className="wn-lc-n">Привилегии</span></div>
+            <div className="wn-lc epc"><span className="wn-lc-i">💎</span><span className="wn-lc-n">Цифровое</span></div>
+            <div className="wn-lc leg"><span className="wn-lc-i">🧥</span><span className="wn-lc-n">Куртка</span></div>
           </div>
         </div>
       </div>
@@ -891,7 +905,10 @@ export default function WheelOfNorns() {
             <div className="wn-rw-handle" />
             <div className="wn-rw-icon">
               <div className={`wn-rw-glow ${wonPrize.tier}`} />
-              <div className="wn-rw-emoji">{wonPrize.icon}</div>
+              {wonPrize.icon_svg
+                ? <span className="wn-rw-emoji" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 0, lineHeight: '110px' }}
+                    dangerouslySetInnerHTML={{ __html: wonPrize.icon_svg.replace(/(<svg[^>]*)\s+(width|height)="[^"]*"/g, '$1').replace(/<svg/, '<svg width="72" height="72"') }} />
+                : <div className="wn-rw-emoji">{wonPrize.icon}</div>}
             </div>
             <div style={{ textAlign: 'center' }}>
               <div className={`wn-rw-tag ${wonPrize.tier}`}>

@@ -218,9 +218,11 @@ async function routes(fastify) {
         );
       }
 
-      // Load prizes
+      // Load prizes (join shop_items for icon_svg when prize_type='shop_item')
       const { rows: prizes } = await client.query(
-        'SELECT * FROM gamification_prizes WHERE is_active = true AND weight > 0'
+        `SELECT p.*, s.icon_svg FROM gamification_prizes p
+         LEFT JOIN gamification_shop_items s ON s.id = p.value AND p.prize_type = 'shop_item'
+         WHERE p.is_active = true AND p.weight > 0`
       );
       if (!prizes.length) { await client.query('ROLLBACK'); return reply.code(500).send({ error: 'Нет доступных призов' }); }
 
@@ -256,12 +258,14 @@ async function routes(fastify) {
       );
 
       // Credit prize rewards
-      const rewardAmount = Math.max(0, (selectedPrize.value || 0) * pendingMultiplier);
+      const rewardAmount = selectedPrize.prize_type === 'shop_item'
+        ? 0
+        : Math.max(0, (selectedPrize.value || 0) * pendingMultiplier);
       if (selectedPrize.prize_type === 'runes' && rewardAmount > 0) {
         await creditWalletTx(client, eid, 'runes', rewardAmount, 'spin_win', selectedPrize.id);
       } else if (selectedPrize.prize_type === 'xp' && rewardAmount > 0) {
         await creditWalletTx(client, eid, 'xp', rewardAmount, 'spin_win', selectedPrize.id);
-      } else if (selectedPrize.prize_type === 'merch' || selectedPrize.requires_delivery) {
+      } else if (selectedPrize.prize_type === 'shop_item' || selectedPrize.prize_type === 'merch' || selectedPrize.requires_delivery) {
         const { rows: [inv] } = await client.query(
           `INSERT INTO gamification_inventory (employee_id, item_type, item_name, source_id, source_type)
            VALUES ($1, 'spin_prize', $2, $3, 'spin') RETURNING id`,
@@ -289,7 +293,8 @@ async function routes(fastify) {
 
       return {
         prize: { id: selectedPrize.id, tier: selectedPrize.tier, type: selectedPrize.prize_type,
-          name: selectedPrize.name, description: selectedPrize.description, value: rewardAmount, icon: selectedPrize.icon },
+          name: selectedPrize.name, description: selectedPrize.description, value: rewardAmount,
+          icon: selectedPrize.icon, icon_svg: selectedPrize.icon_svg || null },
         multiplier_applied: pendingMultiplier,
         pity_counter: isRare ? 0 : spinsSinceRare + 1,
       };
@@ -304,7 +309,10 @@ async function routes(fastify) {
   // ── GET /prizes — prize catalog ──
   fastify.get('/prizes', { preHandler: [fastify.fieldAuthenticate] }, async () => {
     const { rows } = await db.query(
-      'SELECT id, tier, prize_type, name, description, icon, weight FROM gamification_prizes WHERE is_active = true ORDER BY tier, weight DESC'
+      `SELECT p.id, p.tier, p.prize_type, p.name, p.description, p.icon, p.weight, p.value, s.icon_svg
+       FROM gamification_prizes p
+       LEFT JOIN gamification_shop_items s ON s.id = p.value AND p.prize_type = 'shop_item'
+       WHERE p.is_active = true ORDER BY p.tier, p.weight DESC`
     );
     return { prizes: rows };
   });
