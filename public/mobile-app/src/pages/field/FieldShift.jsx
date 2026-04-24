@@ -82,7 +82,8 @@ export default function FieldShift() {
       const pad = n => String(n).padStart(2, '0');
       const client_date = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
       const client_time = now.toISOString();
-      await fieldApi.post('/checkin/', { work_id: data.assignment?.id, ...geo, client_date, client_time });
+      const client_local_hour = now.getHours();
+      await fieldApi.post('/checkin/', { work_id: data.assignment?.id, ...geo, client_date, client_time, client_local_hour });
       await fetchData();
     } catch (e) { setError(e.message); }
     finally { setSubmitting(false); }

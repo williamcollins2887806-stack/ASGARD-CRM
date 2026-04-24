@@ -88,7 +88,7 @@ async function routes(fastify, options) {
   fastify.post('/', auth, async (req, reply) => {
     try {
       const empId = req.fieldEmployee.id;
-      const { work_id, lat, lng, accuracy, note, client_date, client_time } = req.body || {};
+      const { work_id, lat, lng, accuracy, note, client_date, client_time, client_local_hour } = req.body || {};
 
       // Use client local date/time to handle multi-timezone workers (e.g. Kemerovo UTC+7 vs server UTC+3)
       const useDate = /^\d{4}-\d{2}-\d{2}$/.test(client_date) ? client_date : null;
@@ -110,7 +110,17 @@ async function routes(fastify, options) {
       }
 
       const assignmentId = assignments[0].id;
-      const shiftType = assignments[0].shift_type || 'day';
+
+      // Determine shift type: use assignment setting if set, otherwise auto-detect from worker's local hour
+      // Auto-detect: 04:00–15:59 local → day, 16:00–03:59 local → night
+      let shiftType = assignments[0].shift_type;
+      if (!shiftType) {
+        const localHour = (client_local_hour != null && client_local_hour >= 0 && client_local_hour <= 23)
+          ? client_local_hour
+          : new Date().getHours(); // fallback to server hour
+        shiftType = (localHour >= 4 && localHour < 16) ? 'day' : 'night';
+        fastify.log.info(`[field-checkin] shift auto-detected: hour=${localHour} → ${shiftType} (emp=${empId})`);
+      }
 
       // Check no existing checkin today (any non-cancelled status)
       const { rows: existing } = await db.query(
