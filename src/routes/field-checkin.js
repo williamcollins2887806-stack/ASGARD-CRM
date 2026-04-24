@@ -88,7 +88,11 @@ async function routes(fastify, options) {
   fastify.post('/', auth, async (req, reply) => {
     try {
       const empId = req.fieldEmployee.id;
-      const { work_id, lat, lng, accuracy, note } = req.body || {};
+      const { work_id, lat, lng, accuracy, note, client_date, client_time } = req.body || {};
+
+      // Use client local date/time to handle multi-timezone workers (e.g. Kemerovo UTC+7 vs server UTC+3)
+      const useDate = /^\d{4}-\d{2}-\d{2}$/.test(client_date) ? client_date : null;
+      const useParsedTime = client_time && !isNaN(new Date(client_time)) ? new Date(client_time).toISOString() : null;
 
       if (!work_id) {
         return reply.code(400).send({ error: 'Укажите work_id' });
@@ -110,9 +114,11 @@ async function routes(fastify, options) {
       // Check no existing checkin today (any non-cancelled status)
       const { rows: existing } = await db.query(
         `SELECT id, checkin_at, checkout_at, status FROM field_checkins
-         WHERE employee_id = $1 AND work_id = $2 AND date = CURRENT_DATE AND status != 'cancelled'
+         WHERE employee_id = $1 AND work_id = $2
+           AND date = COALESCE($3::date, CURRENT_DATE)
+           AND status != 'cancelled'
          LIMIT 1`,
-        [empId, work_id]
+        [empId, work_id, useDate]
       );
 
       if (existing.length > 0) {
@@ -152,13 +158,13 @@ async function routes(fastify, options) {
       // Get day_rate
       const dayRate = await getDayRate(empId, work_id);
 
-      // Insert checkin
+      // Insert checkin — use client local date/time when provided
       const { rows: inserted } = await db.query(`
         INSERT INTO field_checkins (employee_id, work_id, assignment_id, checkin_at,
           checkin_lat, checkin_lng, checkin_accuracy, checkin_source, date, day_rate, note)
-        VALUES ($1, $2, $3, NOW(), $4, $5, $6, 'self', CURRENT_DATE, $7, $8)
+        VALUES ($1, $2, $3, COALESCE($4::timestamptz, NOW()), $5, $6, $7, 'self', COALESCE($8::date, CURRENT_DATE), $9, $10)
         RETURNING id, checkin_at
-      `, [empId, work_id, assignmentId, lat || null, lng || null, accuracy || null, dayRate, note || null]);
+      `, [empId, work_id, assignmentId, useParsedTime, lat || null, lng || null, accuracy || null, useDate, dayRate, note || null]);
 
       const checkin = inserted[0];
 
@@ -180,7 +186,7 @@ async function routes(fastify, options) {
   fastify.post('/checkout', auth, async (req, reply) => {
     try {
       const empId = req.fieldEmployee.id;
-      const { checkin_id, lat, lng, accuracy, note } = req.body || {};
+      const { checkin_id, lat, lng, accuracy, note, client_time } = req.body || {};
 
       if (!checkin_id) {
         return reply.code(400).send({ error: 'Укажите checkin_id' });
@@ -206,9 +212,9 @@ async function routes(fastify, options) {
         return reply.code(409).send({ error: 'Сме��а уже завершена' });
       }
 
-      // Calculate hours
+      // Calculate hours — use client local time if provided (multi-timezone support)
       const settings = await getProjectSettings(checkin.work_id);
-      const checkoutAt = new Date();
+      const checkoutAt = (client_time && !isNaN(new Date(client_time))) ? new Date(client_time) : new Date();
       const checkinAt = new Date(checkin.checkin_at);
       const hoursWorked = (checkoutAt - checkinAt) / (1000 * 60 * 60);
       const hoursPaid = roundHours(hoursWorked, settings.rounding_rule, parseFloat(settings.rounding_step));
@@ -219,11 +225,11 @@ async function routes(fastify, options) {
       // Update checkin
       await db.query(`
         UPDATE field_checkins SET
-          checkout_at = NOW(), checkout_lat = $2, checkout_lng = $3, checkout_accuracy = $4,
-          checkout_source = 'self', hours_worked = $5, hours_paid = $6,
-          amount_earned = $7, status = 'completed', updated_at = NOW(), note = COALESCE($8, note)
+          checkout_at = $2, checkout_lat = $3, checkout_lng = $4, checkout_accuracy = $5,
+          checkout_source = 'self', hours_worked = $6, hours_paid = $7,
+          amount_earned = $8, status = 'completed', updated_at = NOW(), note = COALESCE($9, note)
         WHERE id = $1
-      `, [checkin_id, lat || null, lng || null, accuracy || null,
+      `, [checkin_id, checkoutAt.toISOString(), lat || null, lng || null, accuracy || null,
           Math.round(hoursWorked * 100) / 100, hoursPaid,
           Math.round(amountEarned * 100) / 100, note || null]);
 

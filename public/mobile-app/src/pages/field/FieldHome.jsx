@@ -144,7 +144,11 @@ export default function FieldHome() {
     try {
       const geo = await getGeo();
       const wid = data?.project?.work_id || data?.assignment?.work_id;
-      await fieldApi.post('/checkin/', { work_id: wid, ...geo });
+      const now = new Date();
+      const pad = n => String(n).padStart(2, '0');
+      const client_date = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+      const client_time = now.toISOString();
+      await fieldApi.post('/checkin/', { work_id: wid, ...geo, client_date, client_time });
       haptic.success();
       await fetchData();
     } catch (e) {
@@ -160,7 +164,8 @@ export default function FieldHome() {
     setActionLoading(true);
     try {
       const geo = await getGeo();
-      await fieldApi.post('/checkin/checkout', { ...geo, checkin_id: checkin?.id });
+      const client_time = new Date().toISOString();
+      await fieldApi.post('/checkin/checkout', { ...geo, checkin_id: checkin?.id, client_time });
       haptic.success();
       await fetchData();
     } catch (e) {

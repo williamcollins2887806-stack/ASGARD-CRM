@@ -56,7 +56,11 @@ export default function FieldShift() {
     setSubmitting(true);
     try {
       const geo = await getGeo();
-      await fieldApi.post('/checkin/', { work_id: data.assignment?.id, ...geo });
+      const now = new Date();
+      const pad = n => String(n).padStart(2, '0');
+      const client_date = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+      const client_time = now.toISOString();
+      await fieldApi.post('/checkin/', { work_id: data.assignment?.id, ...geo, client_date, client_time });
       await fetchData();
     } catch (e) { setError(e.message); }
     finally { setSubmitting(false); }
@@ -68,7 +72,8 @@ export default function FieldShift() {
     setSubmitting(true);
     try {
       const geo = await getGeo();
-      await fieldApi.post('/checkin/checkout', { ...geo, checkin_id: checkin?.id });
+      const client_time = new Date().toISOString();
+      await fieldApi.post('/checkin/checkout', { ...geo, checkin_id: checkin?.id, client_time });
       await fetchData();
     } catch (e) { setError(e.message); }
     finally { setSubmitting(false); }
