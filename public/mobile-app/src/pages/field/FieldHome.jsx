@@ -160,7 +160,7 @@ export default function FieldHome() {
     setActionLoading(true);
     try {
       const geo = await getGeo();
-      await fieldApi.post('/checkin/checkout', geo);
+      await fieldApi.post('/checkin/checkout', { ...geo, checkin_id: checkin?.id });
       haptic.success();
       await fetchData();
     } catch (e) {

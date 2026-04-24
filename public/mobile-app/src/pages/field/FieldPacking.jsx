@@ -272,7 +272,7 @@ export default function FieldPacking() {
               style={{ backgroundColor: 'var(--bg-elevated)', border: '1px dashed var(--border-norse)' }}>
               <Camera size={16} style={{ color: 'var(--gold)' }} />
               <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>Фото недостачи</span>
-              <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" />
+              <input ref={fileRef} type="file" accept="image/*" className="hidden" />
             </label>
             <div className="flex gap-2">
               <button onClick={() => setShortageForm(null)} className="flex-1 py-2.5 rounded-lg text-sm"

@@ -100,7 +100,7 @@ export default function FieldPhotos() {
         )}
       </div>
 
-      <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleUpload} className="hidden" />
+      <input ref={fileRef} type="file" accept="image/*" onChange={handleUpload} className="hidden" />
 
       {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>{error}</div>}
 

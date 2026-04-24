@@ -169,7 +169,7 @@ function FundDetail({ fundId, fund, onBack, onRefresh }) {
               style={{ backgroundColor: 'var(--bg-primary)', border: '1px dashed var(--border-norse)' }}>
               <Camera size={16} style={{ color: 'var(--gold)' }} />
               <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>Прикрепить фото</span>
-              <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" />
+              <input ref={fileRef} type="file" accept="image/*" className="hidden" />
             </label>
           </div>
 
