@@ -10,6 +10,7 @@
  * POST /shop/buy        — purchase with runes
  * GET  /inventory       — player inventory
  * GET  /quests          — active quests + progress
+ * GET  /leaderboard     — top 50 workers by runes + XP with current player rank
  */
 
 const crypto = require('crypto');
@@ -415,15 +416,133 @@ async function routes(fastify) {
   // ── GET /quests ──
   fastify.get('/quests', { preHandler: [fastify.fieldAuthenticate] }, async (req) => {
     const eid = req.fieldEmployee.id;
+
+    // Calculate period boundaries (MSK)
+    const now = new Date();
+    const msk = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
+    const todayMsk = new Date(msk); todayMsk.setHours(0, 0, 0, 0);
+    const weekStartMsk = new Date(msk);
+    weekStartMsk.setHours(0, 0, 0, 0);
+    const dow = weekStartMsk.getDay();
+    weekStartMsk.setDate(weekStartMsk.getDate() - (dow === 0 ? 6 : dow - 1));
+
+    // Get wallet for level
+    const { rows: walletRows } = await db.query(
+      `SELECT currency, balance FROM gamification_wallets WHERE employee_id = $1`, [eid]
+    );
+    const xpBalance = walletRows.find((r) => r.currency === 'xp')?.balance || 0;
+    const currentLevel = Math.floor(xpBalance / 100) + 1;
+
     const { rows } = await db.query(`
-      SELECT q.*, COALESCE(qp.current_count, 0) as progress, COALESCE(qp.completed, false) as completed,
-             qp.reward_claimed
+      SELECT
+        q.*,
+        -- Progress: reset if period rolled over, otherwise use stored
+        CASE
+          WHEN q.quest_type = 'daily'    AND (qp.period_start IS NULL OR qp.period_start < $2) THEN 0
+          WHEN q.quest_type = 'weekly'   AND (qp.period_start IS NULL OR qp.period_start < $3) THEN 0
+          ELSE COALESCE(qp.current_count, 0)
+        END AS progress,
+        -- Completed: reset if period rolled over
+        CASE
+          WHEN q.quest_type = 'daily'    AND (qp.period_start IS NULL OR qp.period_start < $2) THEN false
+          WHEN q.quest_type = 'weekly'   AND (qp.period_start IS NULL OR qp.period_start < $3) THEN false
+          ELSE COALESCE(qp.completed, false)
+        END AS completed,
+        -- reward_claimed: reset if period rolled over
+        CASE
+          WHEN q.quest_type = 'daily'    AND (qp.period_start IS NULL OR qp.period_start < $2) THEN false
+          WHEN q.quest_type = 'weekly'   AND (qp.period_start IS NULL OR qp.period_start < $3) THEN false
+          ELSE COALESCE(qp.reward_claimed, false)
+        END AS reward_claimed
       FROM gamification_quests q
       LEFT JOIN gamification_quest_progress qp ON qp.quest_id = q.id AND qp.employee_id = $1
       WHERE q.is_active = true
       ORDER BY q.quest_type, q.id
-    `, [eid]);
-    return { quests: rows };
+    `, [eid, todayMsk.toISOString(), weekStartMsk.toISOString()]);
+
+    return { quests: rows, current_level: currentLevel };
+  });
+
+  // ── GET /leaderboard — top 50 workers ranked by runes + XP, current player highlighted ──
+  fastify.get('/leaderboard', { preHandler: [fastify.fieldAuthenticate] }, async (req) => {
+    const eid = req.fieldEmployee.id;
+
+    const { rows } = await db.query(`
+      WITH wallets AS (
+        SELECT
+          employee_id,
+          MAX(CASE WHEN currency = 'runes' THEN balance ELSE 0 END) AS runes,
+          MAX(CASE WHEN currency = 'xp'    THEN balance ELSE 0 END) AS xp
+        FROM gamification_wallets
+        GROUP BY employee_id
+      ),
+      ranked AS (
+        SELECT
+          w.employee_id,
+          e.fio,
+          w.runes,
+          w.xp,
+          -- Combined score: runes + xp*2 for ranking
+          (w.runes + w.xp * 2) AS score,
+          -- Level: floor(xp/100)+1, min 1
+          GREATEST(1, FLOOR(w.xp / 100) + 1)::int AS level,
+          -- Rank by combined score
+          ROW_NUMBER() OVER (ORDER BY (w.runes + w.xp * 2) DESC, w.runes DESC) AS rank,
+          -- Total shifts
+          (SELECT COUNT(*) FROM field_checkins fc WHERE fc.employee_id = w.employee_id AND fc.status = 'completed') AS total_shifts
+        FROM wallets w
+        JOIN employees e ON e.id = w.employee_id
+        WHERE (w.runes > 0 OR w.xp > 0)
+      )
+      SELECT * FROM ranked
+      WHERE rank <= 50
+      ORDER BY rank
+    `);
+
+    // Find current player rank (may be outside top-50)
+    let myEntry = rows.find((r) => r.employee_id === eid);
+    if (!myEntry) {
+      const { rows: [me] } = await db.query(`
+        WITH wallets AS (
+          SELECT employee_id,
+            MAX(CASE WHEN currency = 'runes' THEN balance ELSE 0 END) AS runes,
+            MAX(CASE WHEN currency = 'xp'    THEN balance ELSE 0 END) AS xp
+          FROM gamification_wallets GROUP BY employee_id
+        ),
+        ranked AS (
+          SELECT w.employee_id, e.fio, w.runes, w.xp,
+            (w.runes + w.xp * 2) AS score,
+            GREATEST(1, FLOOR(w.xp / 100) + 1)::int AS level,
+            ROW_NUMBER() OVER (ORDER BY (w.runes + w.xp * 2) DESC, w.runes DESC) AS rank,
+            (SELECT COUNT(*) FROM field_checkins fc WHERE fc.employee_id = w.employee_id AND fc.status = 'completed') AS total_shifts
+          FROM wallets w JOIN employees e ON e.id = w.employee_id
+        )
+        SELECT * FROM ranked WHERE employee_id = $1
+      `, [eid]);
+      myEntry = me || null;
+    }
+
+    // Norse rank titles by level
+    const RANK_TITLES = [
+      { min: 1,  title: 'Трэль',     icon: '⚒️' },
+      { min: 3,  title: 'Карл',      icon: '🛡️' },
+      { min: 5,  title: 'Хускарл',   icon: '⚔️' },
+      { min: 8,  title: 'Дружинник', icon: '🗡️' },
+      { min: 12, title: 'Витязь',    icon: '🏹' },
+      { min: 16, title: 'Ярл',       icon: '👑' },
+      { min: 20, title: 'Конунг',    icon: '⚡' },
+    ];
+    function getRankTitle(level) {
+      const lvl = parseInt(level, 10) || 1;
+      let result = RANK_TITLES[0];
+      for (const t of RANK_TITLES) { if (lvl >= t.min) result = t; }
+      return result;
+    }
+
+    const enriched = rows.map((r) => ({ ...r, rank_title: getRankTitle(r.level) }));
+    const myEntryEnriched = myEntry ? { ...myEntry, rank_title: getRankTitle(myEntry.level) } : null;
+
+    return { leaderboard: enriched, my_rank: myEntryEnriched };
   });
 
   // ── POST /quests/:id/claim — claim quest reward ──

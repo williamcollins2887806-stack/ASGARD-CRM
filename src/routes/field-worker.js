@@ -198,11 +198,14 @@ async function routes(fastify, options) {
       `, [a.work_id]);
       const masters = masterRows;
 
-      // Today's checkin
+      // Today's checkin — also find active shifts started yesterday (night shift cross-midnight)
       let todayCheckin = null;
       const { rows: checkinRows } = await db.query(
         `SELECT id, checkin_at, checkout_at, hours_worked, hours_paid, amount_earned, status
-         FROM field_checkins WHERE employee_id = $1 AND work_id = $2 AND date = CURRENT_DATE AND status != 'cancelled'
+         FROM field_checkins
+         WHERE employee_id = $1 AND work_id = $2 AND status != 'cancelled'
+           AND (date = CURRENT_DATE OR status = 'active')
+         ORDER BY checkin_at DESC
          LIMIT 1`,
         [empId, a.work_id]
       );

@@ -179,6 +179,15 @@ async function routes(fastify, options) {
 
       const checkin = inserted[0];
 
+      // Quest progress: early_checkin (before 07:00 local time)
+      try {
+        const { updateQuestProgress } = require('../services/questProgress');
+        const localHourNow = client_local_hour ?? new Date().getHours();
+        if (localHourNow < 7) {
+          updateQuestProgress(db, empId, 'early_checkin').catch(() => {});
+        }
+      } catch { /* non-critical */ }
+
       return {
         checkin_id: checkin.id,
         checkin_at: checkin.checkin_at,
@@ -276,6 +285,20 @@ async function routes(fastify, options) {
         const achievementChecker = require('../services/achievementChecker');
         achievementChecker.checkAndGrant(db, req.fieldEmployee.id).catch(() => {});
       } catch { /* achievementChecker not available yet */ }
+
+      // Quest progress hooks (fire-and-forget)
+      try {
+        const { updateQuestProgress } = require('../services/questProgress');
+        const empId = req.fieldEmployee.id;
+        // shift_complete fires on every checkout
+        updateQuestProgress(db, empId, 'shift_complete').catch(() => {});
+        // total_shifts — same action, permanent quests use this too
+        updateQuestProgress(db, empId, 'total_shifts').catch(() => {});
+        // hours_min_8 — only if shift was at least 8 hours
+        if (hoursWorked >= 7.5) {
+          updateQuestProgress(db, empId, 'hours_min_8').catch(() => {});
+        }
+      } catch { /* non-critical */ }
 
       return {
         hours_worked: Math.round(hoursWorked * 100) / 100,

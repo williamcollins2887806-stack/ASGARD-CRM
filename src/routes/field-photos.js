@@ -115,6 +115,12 @@ async function routes(fastify, options) {
         photoType, caption, lat, lng
       ]);
 
+      // Quest progress: photo_upload (fire-and-forget)
+      try {
+        const { updateQuestProgress } = require('../services/questProgress');
+        updateQuestProgress(db, empId, 'photo_upload').catch(() => {});
+      } catch { /* non-critical */ }
+
       return {
         photo_id: inserted[0].id,
         filename: uniqueName,
