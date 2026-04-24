@@ -35,6 +35,28 @@ export default function FieldShift() {
   const isActive = checkin && checkin.checkin_at && !checkin.checkout_at;
   const isCompleted = checkin && checkin.checkout_at;
 
+  // Shift end time restriction (local device time)
+  const shiftType = data?.project?.shift_type || 'day';
+  function getShiftEndInfo() {
+    const now = new Date();
+    const localMin = now.getHours() * 60 + now.getMinutes();
+    const endMin = shiftType === 'night' ? 8 * 60 : 20 * 60;
+    const graceMin = 30;
+    let allowed = false;
+    let remainingMin = 0;
+    if (shiftType === 'night') {
+      allowed = (localMin >= endMin - graceMin && localMin < 14 * 60);
+      if (!allowed) remainingMin = localMin >= 14 * 60 ? (24 * 60 - localMin) + endMin - graceMin : endMin - graceMin - localMin;
+    } else {
+      allowed = localMin >= endMin - graceMin;
+      if (!allowed) remainingMin = endMin - graceMin - localMin;
+    }
+    const h = Math.floor(remainingMin / 60);
+    const m = remainingMin % 60;
+    return { allowed, endLabel: shiftType === 'night' ? '08:00' : '20:00', remainingLabel: h > 0 ? `${h}ч ${m}м` : `${m}м` };
+  }
+  const shiftEndInfo = isActive ? getShiftEndInfo() : { allowed: true, endLabel: '', remainingLabel: '' };
+
   useEffect(() => {
     if (!isActive) { clearInterval(timerRef.current); return; }
     const calc = () => Math.floor((Date.now() - new Date(checkin.checkin_at).getTime()) / 1000);
@@ -119,10 +141,15 @@ export default function FieldShift() {
             <div className="w-full h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--border-norse)' }}>
               <div className="h-full rounded-full transition-all" style={{ width: `${progress}%`, background: 'linear-gradient(90deg, var(--gold), #f59e0b)' }} />
             </div>
-            <button onClick={() => setShowCheckout(true)} disabled={submitting}
-              className="w-full py-3 rounded-xl font-semibold text-white flex items-center justify-center gap-2"
-              style={{ backgroundColor: 'var(--error)', opacity: submitting ? 0.6 : 1 }}>
-              <Square size={18} /> Завершить
+            {!shiftEndInfo.allowed && (
+              <p className="text-center text-xs mb-1" style={{ color: 'var(--text-secondary)' }}>
+                Смена до {shiftEndInfo.endLabel} · осталось {shiftEndInfo.remainingLabel}
+              </p>
+            )}
+            <button onClick={() => shiftEndInfo.allowed && setShowCheckout(true)} disabled={submitting || !shiftEndInfo.allowed}
+              className="w-full py-3 rounded-xl font-semibold flex items-center justify-center gap-2"
+              style={{ backgroundColor: shiftEndInfo.allowed ? 'var(--error)' : 'var(--bg-elevated)', color: shiftEndInfo.allowed ? '#fff' : 'var(--text-tertiary)', border: shiftEndInfo.allowed ? 'none' : '1px solid var(--border-norse)', opacity: submitting ? 0.6 : 1 }}>
+              <Square size={18} /> {shiftEndInfo.allowed ? 'Завершить' : `Завершить в ${shiftEndInfo.endLabel}`}
             </button>
             {/* Geo accuracy */}
             {geoInfo && (

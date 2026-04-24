@@ -200,6 +200,39 @@ export default function FieldHome() {
   const isActive = checkin && !checkin.checkout_at;
   const isActiveAssignment = project?.is_active !== false;
   const isMaster = employee?.field_role === 'shift_master' || employee?.field_role === 'senior_master' || project?.field_role?.includes('master');
+
+  // Shift end time restriction (local device time)
+  const shiftType = project?.shift_type || 'day';
+  const shiftHours = parseFloat(project?.shift_hours || 11);
+  function getShiftEndInfo() {
+    const now = new Date();
+    const localMin = now.getHours() * 60 + now.getMinutes();
+    // Day shift ends at 20:00, night shift ends at 08:00
+    const endMin = shiftType === 'night' ? 8 * 60 : 20 * 60;
+    const graceMin = 30; // allow checkout 30 min before end
+    let allowed = false;
+    let remainingMin = 0;
+    if (shiftType === 'night') {
+      // night: 20:00→08:00; allow from 07:30 until 14:00 (morning window only)
+      allowed = (localMin >= endMin - graceMin && localMin < 14 * 60);
+      if (!allowed) {
+        if (localMin >= 14 * 60) remainingMin = (24 * 60 - localMin) + endMin - graceMin;
+        else remainingMin = endMin - graceMin - localMin;
+      }
+    } else {
+      // day: 08:00→20:00; allow from 19:30
+      allowed = localMin >= endMin - graceMin;
+      if (!allowed) remainingMin = endMin - graceMin - localMin;
+    }
+    const h = Math.floor(remainingMin / 60);
+    const m = remainingMin % 60;
+    return {
+      allowed,
+      endLabel: shiftType === 'night' ? '08:00' : '20:00',
+      remainingLabel: h > 0 ? `${h}ч ${m}м` : `${m}м`,
+    };
+  }
+  const shiftEndInfo = isActive ? getShiftEndInfo() : { allowed: true, endLabel: '', remainingLabel: '' };
   const WARRIOR_TITLES = [
     'воин Асгарда', 'страж Мидгарда', 'берсерк Севера', 'копейщик Одина',
     'щитоносец клана', 'викинг Асгарда', 'хускарл Тора', 'дружинник Севера',
@@ -362,10 +395,15 @@ export default function FieldHome() {
                   Заработано: <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>{fmtMoney(checkin.amount_earned)}</span>
                 </p>
               )}
-              <button disabled={actionLoading} onClick={handleCheckout}
+              {!shiftEndInfo.allowed && (
+                <p className="text-center text-xs mb-2" style={{ color: 'var(--text-secondary)' }}>
+                  Смена до {shiftEndInfo.endLabel} · осталось {shiftEndInfo.remainingLabel}
+                </p>
+              )}
+              <button disabled={actionLoading || !shiftEndInfo.allowed} onClick={handleCheckout}
                 className="w-full py-3 rounded-xl font-semibold text-white text-sm disabled:opacity-50"
-                style={{ backgroundColor: '#ef4444' }}>
-                {actionLoading ? 'Завершаем...' : 'Завершить смену'}
+                style={{ backgroundColor: shiftEndInfo.allowed ? '#ef4444' : 'var(--bg-elevated)', color: shiftEndInfo.allowed ? '#fff' : 'var(--text-tertiary)', border: shiftEndInfo.allowed ? 'none' : '1px solid var(--border-norse)' }}>
+                {actionLoading ? 'Завершаем...' : shiftEndInfo.allowed ? 'Завершить смену' : `Завершить в ${shiftEndInfo.endLabel}`}
               </button>
             </>
           ) : (

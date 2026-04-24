@@ -100,7 +100,7 @@ async function routes(fastify, options) {
 
       // Check assignment exists and is active
       const { rows: assignments } = await db.query(`
-        SELECT id, field_role FROM employee_assignments
+        SELECT id, field_role, shift_type FROM employee_assignments
         WHERE employee_id = $1 AND work_id = $2 AND is_active = true
         LIMIT 1
       `, [empId, work_id]);
@@ -110,6 +110,7 @@ async function routes(fastify, options) {
       }
 
       const assignmentId = assignments[0].id;
+      const shiftType = assignments[0].shift_type || 'day';
 
       // Check no existing checkin today (any non-cancelled status)
       const { rows: existing } = await db.query(
@@ -158,13 +159,13 @@ async function routes(fastify, options) {
       // Get day_rate
       const dayRate = await getDayRate(empId, work_id);
 
-      // Insert checkin — use client local date/time when provided
+      // Insert checkin — use client local date/time when provided; set shift from assignment
       const { rows: inserted } = await db.query(`
         INSERT INTO field_checkins (employee_id, work_id, assignment_id, checkin_at,
-          checkin_lat, checkin_lng, checkin_accuracy, checkin_source, date, day_rate, note)
-        VALUES ($1, $2, $3, COALESCE($4::timestamptz, NOW()), $5, $6, $7, 'self', COALESCE($8::date, CURRENT_DATE), $9, $10)
+          checkin_lat, checkin_lng, checkin_accuracy, checkin_source, date, shift, day_rate, note)
+        VALUES ($1, $2, $3, COALESCE($4::timestamptz, NOW()), $5, $6, $7, 'self', COALESCE($8::date, CURRENT_DATE), $9, $10, $11)
         RETURNING id, checkin_at
-      `, [empId, work_id, assignmentId, useParsedTime, lat || null, lng || null, accuracy || null, useDate, dayRate, note || null]);
+      `, [empId, work_id, assignmentId, useParsedTime, lat || null, lng || null, accuracy || null, useDate, shiftType, dayRate, note || null]);
 
       const checkin = inserted[0];
 
@@ -192,9 +193,13 @@ async function routes(fastify, options) {
         return reply.code(400).send({ error: 'Укажите checkin_id' });
       }
 
-      // Find checkin
+      // Find checkin with shift_type from assignment
       const { rows: checkins } = await db.query(
-        `SELECT id, employee_id, work_id, checkin_at, day_rate, status FROM field_checkins WHERE id = $1`,
+        `SELECT fc.id, fc.employee_id, fc.work_id, fc.checkin_at, fc.day_rate, fc.status,
+                COALESCE(ea.shift_type, fc.shift, 'day') AS shift_type
+         FROM field_checkins fc
+         LEFT JOIN employee_assignments ea ON ea.id = fc.assignment_id
+         WHERE fc.id = $1`,
         [checkin_id]
       );
 
@@ -217,10 +222,22 @@ async function routes(fastify, options) {
       const checkoutAt = (client_time && !isNaN(new Date(client_time))) ? new Date(client_time) : new Date();
       const checkinAt = new Date(checkin.checkin_at);
       const hoursWorked = (checkoutAt - checkinAt) / (1000 * 60 * 60);
-      const hoursPaid = roundHours(hoursWorked, settings.rounding_rule, parseFloat(settings.rounding_step));
       const shiftHours = parseFloat(settings.shift_hours || 11);
+      const hoursPaid = roundHours(hoursWorked, settings.rounding_rule, parseFloat(settings.rounding_step));
       const dayRate = parseFloat(checkin.day_rate || 0);
-      const amountEarned = shiftHours > 0 ? (hoursPaid / shiftHours) * dayRate : 0;
+
+      // Prevent early checkout — must work at least (shiftHours - 0.5) hours
+      const minHours = shiftHours - 0.5;
+      if (hoursWorked < minHours) {
+        const remainingMin = Math.ceil((minHours - hoursWorked) * 60);
+        const h = Math.floor(remainingMin / 60);
+        const m = remainingMin % 60;
+        const label = h > 0 ? `${h}ч ${m}м` : `${m}м`;
+        return reply.code(400).send({ error: `Смена ещё не завершена. Осталось ~${label}` });
+      }
+
+      // Full shift pay — earnings do not depend on exact time worked
+      const amountEarned = dayRate;
 
       // Update checkin
       await db.query(`
