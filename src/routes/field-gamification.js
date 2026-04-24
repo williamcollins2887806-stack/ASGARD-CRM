@@ -21,6 +21,14 @@ async function routes(fastify) {
   // ── GET /wallet — balances + level ──
   fastify.get('/wallet', { preHandler: [fastify.fieldAuthenticate] }, async (req) => {
     const eid = req.fieldEmployee.id;
+
+    // Auto-create missing wallets on first access
+    await db.query(`
+      INSERT INTO gamification_wallets (employee_id, currency, balance)
+      VALUES ($1,'silver',0),($1,'runes',0),($1,'xp',0)
+      ON CONFLICT (employee_id, currency) DO NOTHING
+    `, [eid]);
+
     const { rows } = await db.query(
       'SELECT currency, balance FROM gamification_wallets WHERE employee_id = $1', [eid]
     );
@@ -304,7 +312,7 @@ async function routes(fastify) {
   // ── GET /shop — shop items ──
   fastify.get('/shop', { preHandler: [fastify.fieldAuthenticate] }, async () => {
     const { rows } = await db.query(
-      'SELECT id, name, description, price_runes, category, icon, image_url, requires_delivery, current_stock, max_stock, rarity, is_limited FROM gamification_shop_items WHERE is_active = true ORDER BY category, price_runes'
+      'SELECT id, name, description, price_runes, category, icon, icon_svg, image_url, requires_delivery, current_stock, max_stock, rarity, is_limited FROM gamification_shop_items WHERE is_active = true ORDER BY category, price_runes'
     );
     return { items: rows };
   });

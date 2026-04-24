@@ -31,12 +31,13 @@ const RARITY_LABELS = { legendary:'ЛЕГЕНДА', epic:'ЭПИК', rare:'РЕ�
 const RARITY_LABELS_FULL = { legendary:'ЛЕГЕНДАРНЫЙ', epic:'ЭПИЧЕСКИЙ', rare:'РЕДКИЙ', common:'ОБЫЧНЫЙ' };
 const CAT_CONFIG = [
   { key:'all', icon:'🏪', label:'Все' },
+  { key:'food', icon:'🍞', label:'Еда' },
   { key:'merch', icon:'👕', label:'Мерч' },
   { key:'digital', icon:'🎨', label:'Цифровое' },
   { key:'privilege', icon:'⭐', label:'Привилегии' },
   { key:'cosmetic', icon:'✨', label:'Косметика' },
 ];
-const SECTION_TITLES = { all:'Все товары', merch:'Мерч', digital:'Цифровое', privilege:'Привилегии', cosmetic:'Косметика' };
+const SECTION_TITLES = { all:'Все товары', food:'Еда', merch:'Мерч', digital:'Цифровое', privilege:'Привилегии', cosmetic:'Косметика' };
 
 function plural(n, forms) {
   return forms[n % 10 === 1 && n % 100 !== 11 ? 0 : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 1 : 2];
@@ -233,7 +234,7 @@ export default function FieldShop() {
 
   /* ── Category counts ── */
   const counts = useMemo(() => {
-    const c = { all: items.length, merch: 0, digital: 0, privilege: 0, cosmetic: 0 };
+    const c = { all: items.length, food: 0, merch: 0, digital: 0, privilege: 0, cosmetic: 0 };
     items.forEach(i => { if (c[i.category] !== undefined) c[i.category]++; });
     return c;
   }, [items]);
@@ -316,7 +317,11 @@ export default function FieldShop() {
             <div className="fshop-banner" onClick={() => openModal(featured)}>
               {featured.limited && <div className="fshop-banner-tag">ЛИМИТКА</div>}
               <div className="fshop-banner-row">
-                <div className="fshop-banner-icon">{featured.icon}</div>
+                <div className="fshop-banner-icon">
+                  {featured.icon_svg
+                    ? <span className="fshop-svg-icon" dangerouslySetInnerHTML={{ __html: featured.icon_svg }} />
+                    : featured.icon}
+                </div>
                 <div className="fshop-banner-text">
                   <div className="fshop-banner-title">{featured.name}</div>
                   <div className="fshop-banner-desc">{featured.description}{featured.stock < 10 ? ` Осталось ${featured.stock} шт.` : ''}</div>
@@ -359,7 +364,11 @@ export default function FieldShop() {
                 <div key={item.id} className={cls} onClick={() => !soldOut && openModal(item)}>
                   <div className="fshop-card-img">
                     <div className="fshop-card-glow" />
-                    <div className="fshop-card-icon">{item.icon}</div>
+                    <div className="fshop-card-icon">
+                      {item.icon_svg
+                        ? <span className="fshop-svg-icon" dangerouslySetInnerHTML={{ __html: item.icon_svg }} />
+                        : item.icon}
+                    </div>
                     <div className={`fshop-card-rarity ${item.rarity}`}>{RARITY_LABELS[item.rarity]}</div>
                     {item.limited && <div className="fshop-card-limited">ЛИМИТКА</div>}
                   </div>
@@ -401,7 +410,11 @@ export default function FieldShop() {
               <>
                 <div className="fshop-modal-icon-area">
                   <div className={`fshop-modal-glow ${selectedItem.category}`} />
-                  <div className="fshop-modal-emoji" key={selectedItem.id}>{selectedItem.icon}</div>
+                  <div className="fshop-modal-emoji" key={selectedItem.id}>
+                    {selectedItem.icon_svg
+                      ? <span className="fshop-svg-icon fshop-svg-icon--lg" dangerouslySetInnerHTML={{ __html: selectedItem.icon_svg }} />
+                      : selectedItem.icon}
+                  </div>
                 </div>
                 <div style={{ textAlign: 'center' }}>
                   <div className={`fshop-modal-rarity ${selectedItem.rarity}`}>{RARITY_LABELS_FULL[selectedItem.rarity]}</div>
@@ -443,14 +456,19 @@ export default function FieldShop() {
             </div>
             <div className="fshop-success-title">Добыча твоя!</div>
             <div className="fshop-success-desc">
-              {successItem?.category === 'merch' ? 'Мерч добавлен! Забери на складе у кладовщика.' :
+              {successItem?.category === 'food' ? 'Забери у прораба или на складе объекта!' :
+               successItem?.category === 'merch' ? 'Мерч добавлен! Забери на складе у кладовщика.' :
                successItem?.category === 'digital' ? 'Цифровой контент активирован!' :
                successItem?.category === 'privilege' ? 'Привилегия активирована!' :
                'Косметика применена к профилю!'}
             </div>
             {successItem && (
               <div className="fshop-success-item">
-                <span className="fshop-success-item-icon">{successItem.icon}</span>
+                <span className="fshop-success-item-icon">
+                  {successItem.icon_svg
+                    ? <span className="fshop-svg-icon fshop-svg-icon--md" dangerouslySetInnerHTML={{ __html: successItem.icon_svg }} />
+                    : successItem.icon}
+                </span>
                 <span className="fshop-success-item-name">{successItem.name}</span>
               </div>
             )}
@@ -561,6 +579,7 @@ const SHOP_CSS = `
 
 .fshop-card-img{position:relative;height:120px;display:flex;align-items:center;justify-content:center;overflow:hidden}
 .fshop-card-img::before{content:'';position:absolute;inset:0;opacity:.5}
+.fshop-card.food .fshop-card-img::before{background:linear-gradient(135deg,#1a1008,#0f180a)}
 .fshop-card.merch .fshop-card-img::before{background:linear-gradient(135deg,#1a1030,#0f1828)}
 .fshop-card.digital .fshop-card-img::before{background:linear-gradient(135deg,#0f1828,#0b1a20)}
 .fshop-card.privilege .fshop-card-img::before{background:linear-gradient(135deg,#1a1020,#1a0818)}
@@ -569,6 +588,7 @@ const SHOP_CSS = `
   filter:drop-shadow(0 4px 12px rgba(0,0,0,.4));transition:all .4s cubic-bezier(.34,1.56,.64,1)}
 @media(hover:hover){.fshop-card:hover .fshop-card-icon{transform:scale(1.15) rotate(-5deg)}}
 .fshop-card-glow{position:absolute;width:80px;height:80px;border-radius:50%;filter:blur(25px);opacity:.3;z-index:1}
+.fshop-card.food .fshop-card-glow{background:#84CC16}
 .fshop-card.merch .fshop-card-glow{background:var(--fshop-gold)}
 .fshop-card.digital .fshop-card-glow{background:var(--fshop-blue)}
 .fshop-card.privilege .fshop-card-glow{background:var(--fshop-purple)}
@@ -641,6 +661,7 @@ const SHOP_CSS = `
 .fshop-modal-handle{width:40px;height:4px;border-radius:2px;background:rgba(255,255,255,.12);margin:0 auto 16px}
 .fshop-modal-icon-area{text-align:center;position:relative;height:100px;margin-bottom:8px}
 .fshop-modal-glow{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:120px;height:120px;border-radius:50%;filter:blur(25px)}
+.fshop-modal-glow.food{background:rgba(132,204,22,.2)}
 .fshop-modal-glow.merch{background:rgba(240,200,80,.25)}
 .fshop-modal-glow.digital{background:rgba(74,144,255,.2)}
 .fshop-modal-glow.privilege{background:rgba(165,110,255,.2)}
@@ -707,6 +728,16 @@ const SHOP_CSS = `
 .fshop-empty{text-align:center;padding:40px 20px}
 .fshop-empty-icon{font-size:48px;margin-bottom:12px;opacity:.4}
 .fshop-empty-text{font-size:14px;color:var(--fshop-t3)}
+
+/* ═══ SVG ICONS ═══ */
+.fshop-svg-icon{display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px}
+.fshop-svg-icon svg{width:48px;height:48px}
+.fshop-svg-icon--lg{width:56px;height:56px}
+.fshop-svg-icon--lg svg{width:56px;height:56px}
+.fshop-svg-icon--md{width:36px;height:36px}
+.fshop-svg-icon--md svg{width:36px;height:36px}
+.fshop-banner-icon .fshop-svg-icon{width:52px;height:52px}
+.fshop-banner-icon .fshop-svg-icon svg{width:52px;height:52px}
 
 /* ═══ SCROLLBAR ═══ */
 .fshop ::-webkit-scrollbar{width:0;height:0}
