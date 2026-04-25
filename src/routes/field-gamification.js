@@ -509,74 +509,60 @@ async function routes(fastify) {
     return { quests: rows, current_level: currentLevel };
   });
 
-  // ── GET /leaderboard — top 50 workers ranked by runes + XP, current player highlighted ──
+  // ── GET /leaderboard — ranked by earned runes, with tournament bracket ──
   fastify.get('/leaderboard', { preHandler: [fastify.fieldAuthenticate] }, async (req) => {
     const eid = req.fieldEmployee.id;
 
     const { rows } = await db.query(`
-      WITH wallets AS (
-        SELECT
-          employee_id,
-          MAX(CASE WHEN currency = 'runes' THEN balance ELSE 0 END) AS runes,
-          MAX(CASE WHEN currency = 'xp'    THEN balance ELSE 0 END) AS xp
-        FROM gamification_wallets
-        GROUP BY employee_id
+      WITH earned AS (
+        SELECT employee_id,
+          SUM(CASE WHEN currency='runes' AND amount>0 THEN amount ELSE 0 END)::int AS earned_runes,
+          SUM(CASE WHEN currency='xp'    AND amount>0 THEN amount ELSE 0 END)::int AS earned_xp,
+          SUM(CASE WHEN currency='runes' AND amount>0
+                   AND created_at >= date_trunc('month', NOW() AT TIME ZONE 'Europe/Moscow')
+                   THEN amount ELSE 0 END)::int AS monthly_runes
+        FROM gamification_currency_ledger GROUP BY employee_id
       ),
       ranked AS (
         SELECT
-          w.employee_id,
+          e.id AS employee_id,
           e.fio,
-          w.runes,
-          w.xp,
-          -- Combined score: runes + xp*2 for ranking
-          (w.runes + w.xp * 2) AS score,
-          -- Level: floor(xp/100)+1, min 1
-          GREATEST(1, FLOOR(w.xp / 100) + 1)::int AS level,
-          -- Rank by combined score
-          ROW_NUMBER() OVER (ORDER BY (w.runes + w.xp * 2) DESC, w.runes DESC) AS rank,
-          -- Total shifts
-          (SELECT COUNT(*) FROM field_checkins fc WHERE fc.employee_id = w.employee_id AND fc.status = 'completed') AS total_shifts
-        FROM wallets w
-        JOIN employees e ON e.id = w.employee_id
-        WHERE (w.runes > 0 OR w.xp > 0)
+          e.active_avatar,
+          COALESCE(ea.earned_runes, 0)  AS earned_runes,
+          COALESCE(ea.earned_xp, 0)     AS earned_xp,
+          COALESCE(ea.monthly_runes, 0) AS monthly_runes,
+          COALESCE(gw_r.balance, 0)::int AS runes,
+          COALESCE(gw_x.balance, 0)::int AS xp,
+          COALESCE(sh.shift_count, 0)::int AS total_shifts,
+          COALESCE(gs.current_streak, 0)::int AS streak,
+          GREATEST(1, FLOOR(COALESCE(gw_x.balance, 0) / 100) + 1)::int AS level,
+          ROW_NUMBER() OVER (
+            ORDER BY COALESCE(ea.earned_runes,0) DESC,
+                     COALESCE(ea.earned_xp,0) DESC,
+                     COALESCE(gw_r.balance,0) DESC
+          )::int AS rank
+        FROM employees e
+        JOIN gamification_wallets gw_r ON gw_r.employee_id=e.id AND gw_r.currency='runes'
+        LEFT JOIN gamification_wallets gw_x  ON gw_x.employee_id=e.id AND gw_x.currency='xp'
+        LEFT JOIN earned ea ON ea.employee_id=e.id
+        LEFT JOIN (
+          SELECT employee_id, COUNT(*)::int AS shift_count
+          FROM field_checkins WHERE status='completed' GROUP BY employee_id
+        ) sh ON sh.employee_id=e.id
+        LEFT JOIN gamification_streaks gs ON gs.employee_id=e.id
       )
-      SELECT * FROM ranked
-      WHERE rank <= 50
-      ORDER BY rank
+      SELECT * FROM ranked ORDER BY rank LIMIT 50
     `);
 
-    // Find current player rank (may be outside top-50)
-    let myEntry = rows.find((r) => r.employee_id === eid);
-    if (!myEntry) {
-      const { rows: [me] } = await db.query(`
-        WITH wallets AS (
-          SELECT employee_id,
-            MAX(CASE WHEN currency = 'runes' THEN balance ELSE 0 END) AS runes,
-            MAX(CASE WHEN currency = 'xp'    THEN balance ELSE 0 END) AS xp
-          FROM gamification_wallets GROUP BY employee_id
-        ),
-        ranked AS (
-          SELECT w.employee_id, e.fio, w.runes, w.xp,
-            (w.runes + w.xp * 2) AS score,
-            GREATEST(1, FLOOR(w.xp / 100) + 1)::int AS level,
-            ROW_NUMBER() OVER (ORDER BY (w.runes + w.xp * 2) DESC, w.runes DESC) AS rank,
-            (SELECT COUNT(*) FROM field_checkins fc WHERE fc.employee_id = w.employee_id AND fc.status = 'completed') AS total_shifts
-          FROM wallets w JOIN employees e ON e.id = w.employee_id
-        )
-        SELECT * FROM ranked WHERE employee_id = $1
-      `, [eid]);
-      myEntry = me || null;
-    }
-
-    // Norse rank titles by level
+    // Norse rank titles
     const RANK_TITLES = [
-      { min: 1,  title: 'Трэль',     icon: '⚒️' },
-      { min: 3,  title: 'Карл',      icon: '🛡️' },
-      { min: 5,  title: 'Хускарл',   icon: '⚔️' },
-      { min: 8,  title: 'Дружинник', icon: '🗡️' },
-      { min: 12, title: 'Витязь',    icon: '🏹' },
-      { min: 16, title: 'Ярл',       icon: '👑' },
-      { min: 20, title: 'Конунг',    icon: '⚡' },
+      { min: 1,  title: 'Трэль',     icon: '⛓️',  color: '#9ca3af' },
+      { min: 3,  title: 'Карл',      icon: '⚒️',  color: '#a78bfa' },
+      { min: 5,  title: 'Хускарл',   icon: '🛡️',  color: '#60a5fa' },
+      { min: 8,  title: 'Дружинник', icon: '⚔️',  color: '#34d399' },
+      { min: 12, title: 'Витязь',    icon: '🏹',  color: '#f97316' },
+      { min: 16, title: 'Ярл',       icon: '👑',  color: '#D4A843' },
+      { min: 20, title: 'Конунг',    icon: '⚡',  color: '#ef4444' },
     ];
     function getRankTitle(level) {
       const lvl = parseInt(level, 10) || 1;
@@ -586,9 +572,100 @@ async function routes(fastify) {
     }
 
     const enriched = rows.map((r) => ({ ...r, rank_title: getRankTitle(r.level) }));
-    const myEntryEnriched = myEntry ? { ...myEntry, rank_title: getRankTitle(myEntry.level) } : null;
 
-    return { leaderboard: enriched, my_rank: myEntryEnriched };
+    // Find current player (may be outside top-50)
+    let myEntry = enriched.find((r) => r.employee_id === eid);
+    if (!myEntry) {
+      const { rows: [me] } = await db.query(`
+        WITH earned AS (
+          SELECT employee_id,
+            SUM(CASE WHEN currency='runes' AND amount>0 THEN amount ELSE 0 END)::int AS earned_runes,
+            SUM(CASE WHEN currency='xp' AND amount>0 THEN amount ELSE 0 END)::int AS earned_xp,
+            SUM(CASE WHEN currency='runes' AND amount>0
+                     AND created_at >= date_trunc('month', NOW() AT TIME ZONE 'Europe/Moscow')
+                     THEN amount ELSE 0 END)::int AS monthly_runes
+          FROM gamification_currency_ledger GROUP BY employee_id
+        ),
+        ranked AS (
+          SELECT e.id AS employee_id, e.fio, e.active_avatar,
+            COALESCE(ea.earned_runes,0) AS earned_runes,
+            COALESCE(ea.earned_xp,0) AS earned_xp,
+            COALESCE(ea.monthly_runes,0) AS monthly_runes,
+            COALESCE(gw_r.balance,0)::int AS runes,
+            COALESCE(gw_x.balance,0)::int AS xp,
+            COALESCE(sh.shift_count,0)::int AS total_shifts,
+            COALESCE(gs.current_streak,0)::int AS streak,
+            GREATEST(1, FLOOR(COALESCE(gw_x.balance,0)/100)+1)::int AS level,
+            ROW_NUMBER() OVER (
+              ORDER BY COALESCE(ea.earned_runes,0) DESC, COALESCE(ea.earned_xp,0) DESC
+            )::int AS rank
+          FROM employees e
+          JOIN gamification_wallets gw_r ON gw_r.employee_id=e.id AND gw_r.currency='runes'
+          LEFT JOIN gamification_wallets gw_x ON gw_x.employee_id=e.id AND gw_x.currency='xp'
+          LEFT JOIN earned ea ON ea.employee_id=e.id
+          LEFT JOIN (SELECT employee_id, COUNT(*)::int AS shift_count FROM field_checkins WHERE status='completed' GROUP BY employee_id) sh ON sh.employee_id=e.id
+          LEFT JOIN gamification_streaks gs ON gs.employee_id=e.id
+        )
+        SELECT * FROM ranked WHERE employee_id = $1
+      `, [eid]);
+      myEntry = me ? { ...me, rank_title: getRankTitle(me.level) } : null;
+    }
+
+    // ── Tournament bracket: top-16 seeded by earned_runes ──
+    function buildTournament(players) {
+      const now = new Date();
+      const msk = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
+      const monthName = msk.toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
+      const weekOfMonth = Math.min(4, Math.ceil(msk.getDate() / 7));
+
+      const seeds = players.slice(0, 16);
+      while (seeds.length < 16) seeds.push(null);
+
+      function card(p) {
+        if (!p) return null;
+        return {
+          employee_id: p.employee_id,
+          name: (p.fio || '').split(' ')[0],
+          monthly_runes: parseInt(p.monthly_runes) || 0,
+          rank: parseInt(p.rank),
+        };
+      }
+      function winner(p1, p2) {
+        return (p1?.monthly_runes || 0) >= (p2?.monthly_runes || 0) ? p1 : p2;
+      }
+      function match(p1, p2) {
+        const c1 = card(p1), c2 = card(p2);
+        const w = winner(c1, c2);
+        return { p1: c1, p2: c2, winner_id: w?.employee_id ?? null };
+      }
+
+      const r1 = Array.from({ length: 8 }, (_, i) => match(seeds[i], seeds[15 - i]));
+      const r2 = Array.from({ length: 4 }, (_, i) => {
+        const w1 = r1[i * 2].winner_id === r1[i * 2].p1?.employee_id ? r1[i * 2].p1 : r1[i * 2].p2;
+        const w2 = r1[i * 2 + 1].winner_id === r1[i * 2 + 1].p1?.employee_id ? r1[i * 2 + 1].p1 : r1[i * 2 + 1].p2;
+        return match(w1 ? players.find(p => p.employee_id === w1.employee_id) : null,
+                     w2 ? players.find(p => p.employee_id === w2.employee_id) : null);
+      });
+      const r3 = Array.from({ length: 2 }, (_, i) => {
+        const w1 = r2[i * 2].winner_id === r2[i * 2].p1?.employee_id ? r2[i * 2].p1 : r2[i * 2].p2;
+        const w2 = r2[i * 2 + 1].winner_id === r2[i * 2 + 1].p1?.employee_id ? r2[i * 2 + 1].p1 : r2[i * 2 + 1].p2;
+        return match(w1 ? players.find(p => p.employee_id === w1.employee_id) : null,
+                     w2 ? players.find(p => p.employee_id === w2.employee_id) : null);
+      });
+      const wS1 = r3[0].winner_id === r3[0].p1?.employee_id ? r3[0].p1 : r3[0].p2;
+      const wS2 = r3[1].winner_id === r3[1].p1?.employee_id ? r3[1].p1 : r3[1].p2;
+      const rfinal = match(
+        wS1 ? players.find(p => p.employee_id === wS1.employee_id) : null,
+        wS2 ? players.find(p => p.employee_id === wS2.employee_id) : null,
+      );
+      const champion = rfinal.winner_id === rfinal.p1?.employee_id ? rfinal.p1 : rfinal.p2;
+
+      return { month: monthName, week: weekOfMonth, rounds: [r1, r2, r3, [rfinal]], champion };
+    }
+
+    const tournament = enriched.length >= 2 ? buildTournament(enriched) : null;
+
+    return { leaderboard: enriched, my_rank: myEntry, tournament };
   });
 
   // ── POST /inventory/:id/equip — equip digital/cosmetic item ──

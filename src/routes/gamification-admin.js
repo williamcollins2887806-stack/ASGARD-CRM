@@ -215,6 +215,86 @@ async function routes(fastify) {
       recent_operations: recentOps,
     };
   });
+  // ── GET /leaderboard — full worker leaderboard for PM/Director desktop view ──
+  fastify.get('/leaderboard', { preHandler: [fastify.authenticate] }, async (req) => {
+    const allowedRoles = ['PM','HEAD_PM','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','ADMIN','HR','HR_MANAGER'];
+    if (!allowedRoles.includes(req.user.role)) return { leaderboard: [], tournament: null };
+
+    const RANK_TITLES = [
+      { min: 1,  title: 'Трэль',     icon: '⛓️',  color: '#9ca3af' },
+      { min: 3,  title: 'Карл',      icon: '⚒️',  color: '#a78bfa' },
+      { min: 5,  title: 'Хускарл',   icon: '🛡️',  color: '#60a5fa' },
+      { min: 8,  title: 'Дружинник', icon: '⚔️',  color: '#34d399' },
+      { min: 12, title: 'Витязь',    icon: '🏹',  color: '#f97316' },
+      { min: 16, title: 'Ярл',       icon: '👑',  color: '#D4A843' },
+      { min: 20, title: 'Конунг',    icon: '⚡',  color: '#ef4444' },
+    ];
+    function getRankTitle(level) {
+      const lvl = parseInt(level) || 1;
+      let r = RANK_TITLES[0];
+      for (const t of RANK_TITLES) { if (lvl >= t.min) r = t; }
+      return r;
+    }
+
+    const { rows } = await db.query(`
+      WITH earned AS (
+        SELECT employee_id,
+          SUM(CASE WHEN currency='runes' AND amount>0 THEN amount ELSE 0 END)::int AS earned_runes,
+          SUM(CASE WHEN currency='xp'    AND amount>0 THEN amount ELSE 0 END)::int AS earned_xp,
+          SUM(CASE WHEN currency='runes' AND amount>0
+                   AND created_at >= date_trunc('month', NOW() AT TIME ZONE 'Europe/Moscow')
+                   THEN amount ELSE 0 END)::int AS monthly_runes
+        FROM gamification_currency_ledger GROUP BY employee_id
+      ),
+      ranked AS (
+        SELECT
+          e.id AS employee_id, e.fio, e.active_avatar,
+          COALESCE(ea.earned_runes,0)  AS earned_runes,
+          COALESCE(ea.earned_xp,0)     AS earned_xp,
+          COALESCE(ea.monthly_runes,0) AS monthly_runes,
+          COALESCE(gw_r.balance,0)::int AS runes,
+          COALESCE(gw_x.balance,0)::int AS xp,
+          COALESCE(sh.shift_count,0)::int AS total_shifts,
+          COALESCE(gs.current_streak,0)::int AS streak,
+          GREATEST(1, FLOOR(COALESCE(gw_x.balance,0)/100)+1)::int AS level,
+          ROW_NUMBER() OVER (
+            ORDER BY COALESCE(ea.earned_runes,0) DESC, COALESCE(ea.earned_xp,0) DESC
+          )::int AS rank
+        FROM employees e
+        JOIN gamification_wallets gw_r ON gw_r.employee_id=e.id AND gw_r.currency='runes'
+        LEFT JOIN gamification_wallets gw_x ON gw_x.employee_id=e.id AND gw_x.currency='xp'
+        LEFT JOIN earned ea ON ea.employee_id=e.id
+        LEFT JOIN (SELECT employee_id, COUNT(*)::int AS shift_count FROM field_checkins WHERE status='completed' GROUP BY employee_id) sh ON sh.employee_id=e.id
+        LEFT JOIN gamification_streaks gs ON gs.employee_id=e.id
+      )
+      SELECT * FROM ranked ORDER BY rank
+    `);
+
+    const leaderboard = rows.map(r => ({ ...r, rank_title: getRankTitle(r.level) }));
+
+    // Tournament bracket (same logic as field endpoint)
+    function buildTournament(players) {
+      const now = new Date();
+      const msk = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
+      const monthName = msk.toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
+      const weekOfMonth = Math.min(4, Math.ceil(msk.getDate() / 7));
+      const seeds = players.slice(0, 16);
+      while (seeds.length < 16) seeds.push(null);
+      function card(p) { return p ? { employee_id: p.employee_id, name: (p.fio||'').split(' ')[0], monthly_runes: parseInt(p.monthly_runes)||0, rank: parseInt(p.rank) } : null; }
+      function winner(p1, p2) { return (p1?.monthly_runes||0) >= (p2?.monthly_runes||0) ? p1 : p2; }
+      function match(p1, p2) { const c1=card(p1), c2=card(p2); const w=winner(c1,c2); return {p1:c1,p2:c2,winner_id:w?.employee_id??null}; }
+      const r1 = Array.from({length:8},(_,i)=>match(seeds[i],seeds[15-i]));
+      function getW(m) { return m.winner_id===m.p1?.employee_id?m.p1:m.p2; }
+      function findP(players,w) { return w?players.find(p=>p.employee_id===w.employee_id):null; }
+      const r2 = Array.from({length:4},(_,i)=>match(findP(players,getW(r1[i*2])),findP(players,getW(r1[i*2+1]))));
+      const r3 = Array.from({length:2},(_,i)=>match(findP(players,getW(r2[i*2])),findP(players,getW(r2[i*2+1]))));
+      const rf = match(findP(players,getW(r3[0])),findP(players,getW(r3[1])));
+      return { month: monthName, week: weekOfMonth, rounds: [r1,r2,r3,[rf]], champion: getW(rf) };
+    }
+
+    const tournament = leaderboard.length >= 2 ? buildTournament(leaderboard) : null;
+    return { leaderboard, tournament };
+  });
 }
 
 module.exports = routes;

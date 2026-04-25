@@ -303,6 +303,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/engineer-dashboard",l:"Кузница Инженера",d:"Склад, оборудование, ТО",roles:["ADMIN","CHIEF_ENGINEER"],i:"backup",p:"engineer_dashboard",g:"analytics"},
     {r:"/pm-prizes",l:"Призы рабочих",d:"Запросы на выдачу призов",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"kpiworks",p:"pm_prizes",g:"analytics"},
     {r:"/gamification-dashboard",l:"Геймификация",d:"Монеты, призы, квесты рабочих",roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES,"HR","HR_MANAGER"],i:"kpiworks",p:"gamification_dashboard",g:"analytics"},
+    {r:"/gamification-leaderboard",l:"Рейтинг рабочих",d:"Зал Одина — турнир и рейтинг",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES,"HR","HR_MANAGER"],i:"kpiworks",p:"gamification_leaderboard",g:"analytics"},
     {r:"/gamification-admin",l:"Управление геймификацией",d:"Товары, призы, квесты — CRUD",roles:["ADMIN",...DIRECTOR_ROLES,"HR","OFFICE_MANAGER"],i:"backup",p:"gamification_admin",g:"analytics"},
     {r:"/object-map",l:"Карта объектов",d:"География работ",roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES],i:"kpiworks",p:"object_map",g:"analytics"},
 
@@ -2003,6 +2004,7 @@ var _setupPinKeypad = null;
     AsgardRouter.add("/dashboard", ()=>AsgardDashboardPage.render({layout, title:"Дашборд руководителя"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES]});
     AsgardRouter.add("/pm-prizes", ()=>AsgardPmPrizesPage.render({layout, title:"Призы рабочих"}), {auth:true, roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES]});
     AsgardRouter.add("/gamification-dashboard", ()=>AsgardGamificationDashboard.render({layout, title:"Геймификация — Дашборд"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES,"HR","HR_MANAGER"]});
+    AsgardRouter.add("/gamification-leaderboard", ()=>AsgardGamificationLeaderboard.render({layout, title:"Рейтинг рабочих"}), {auth:true, roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES,"HR","HR_MANAGER"]});
     AsgardRouter.add("/gamification-admin", ()=>AsgardGamificationCrud.render({layout, title:"Геймификация — Управление"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES,"HR","HR_MANAGER","OFFICE_MANAGER"]});
     AsgardRouter.add("/calendar", ()=>AsgardCalendarPage.render({layout, title:"Календарь встреч"}), {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/birthdays", ()=>AsgardBirthdaysPage.render({layout, title:"Дни рождения"}), {auth:true, roles:ALL_ROLES});
