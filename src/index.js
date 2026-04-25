@@ -599,6 +599,19 @@ try {
   fastify.log.warn('[ShiftAutocomplete] Init skipped: ' + cronErr.message);
 }
 
+// ── Tournament Cron: weekly bracket ──
+try {
+  const tournamentCron = require('./services/tournament-cron');
+  fastify.addHook('onReady', async () => {
+    tournamentCron.start(fastify.log);
+  });
+  fastify.addHook('onClose', async () => {
+    tournamentCron.stop();
+  });
+} catch (cronErr) {
+  fastify.log.warn('[TournamentCron] Init skipped: ' + cronErr.message);
+}
+
 // ── Call Report Scheduler ──
 try {
   const ReportScheduler = require('./services/report-scheduler');

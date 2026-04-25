@@ -129,7 +129,7 @@ function PodiumCard({ player, rank, isSelf, countersActive }) {
   const COLORS = { 1: '#FFD700', 2: '#C0C0C0', 3: '#CD7F32' };
   const c = COLORS[rank];
   const height = rank === 1 ? 130 : rank === 2 ? 108 : 95;
-  const runes = useCountUp(player?.earned_runes, 1200, countersActive);
+  const power = useCountUp(player?.warrior_power, 1200, countersActive);
 
   if (!player) return <div style={{ flex: 1 }} />;
   const firstName = (player.fio || '').split(' ')[0] || '?';
@@ -164,7 +164,7 @@ function PodiumCard({ player, rank, isSelf, countersActive }) {
           {firstName}
         </p>
         <p style={{ fontSize: 13, fontWeight: 800, color: c, marginTop: 2 }}>
-          {runes.toLocaleString('ru-RU')} <span style={{ fontSize: 10, opacity: 0.8 }}>ᚱ</span>
+          {power.toLocaleString('ru-RU')} <span style={{ fontSize: 10, opacity: 0.8 }}>⚔️</span>
         </p>
         {player.rank_title && <RankBadge title={player.rank_title.title} icon={player.rank_title.icon} small />}
       </div>
@@ -232,11 +232,11 @@ function PlayerRow({ player, isSelf, idx, visible }) {
 
       {/* Stats */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
-        <span style={{ fontSize: 14, fontWeight: 800, color: '#D4A843' }}>
-          {parseInt(player.earned_runes || 0).toLocaleString('ru-RU')} <span style={{ fontSize: 10, opacity: 0.7 }}>ᚱ</span>
+        <span style={{ fontSize: 14, fontWeight: 800, color: '#f97316' }}>
+          {parseInt(player.warrior_power || 0).toLocaleString('ru-RU')} <span style={{ fontSize: 10, opacity: 0.7 }}>⚔️</span>
         </span>
-        <span style={{ fontSize: 11, fontWeight: 600, color: '#a855f7' }}>
-          {parseInt(player.earned_xp || 0).toLocaleString('ru-RU')} <span style={{ fontSize: 9, opacity: 0.7 }}>XP</span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: '#D4A843' }}>
+          {parseInt(player.earned_runes || 0).toLocaleString('ru-RU')} <span style={{ fontSize: 9, opacity: 0.7 }}>ᚱ</span>
         </span>
       </div>
     </div>
@@ -264,8 +264,8 @@ function MatchCard({ match, myId, small }) {
         <span style={{ fontSize: small ? 10 : 11, fontWeight: isMe ? 800 : 600, color: isWinner ? '#D4A843' : '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 70 }}>
           {isMe ? '⚡' : ''}{p.name}
         </span>
-        <span style={{ fontSize: small ? 9 : 10, color: isWinner ? '#D4A843' : '#6b7280', fontWeight: 700, flexShrink: 0 }}>
-          {p.monthly_runes}ᚱ
+        <span style={{ fontSize: small ? 9 : 10, color: isWinner ? '#f97316' : '#6b7280', fontWeight: 700, flexShrink: 0 }}>
+          {(parseInt(p.warrior_power)||0).toLocaleString('ru-RU')}⚔️
         </span>
       </div>
     );
@@ -287,8 +287,16 @@ function MatchCard({ match, myId, small }) {
 /* ═══ Full tournament bracket (4 rounds, horizontal scroll) ═══ */
 function TournamentBracket({ tournament, myId }) {
   if (!tournament) return null;
-  const { rounds, month, week, champion } = tournament;
+  const { rounds, champion, week_start, week_end, status } = tournament;
   const ROUND_LABELS = ['1/8 финала', 'Четверть', 'Полуфинал', 'Финал'];
+
+  // Format week dates
+  function fmtDate(d) {
+    if (!d) return '';
+    const dt = new Date(d);
+    return `${dt.getUTCDate()} ${['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'][dt.getUTCMonth()]}`;
+  }
+  const weekLabel = week_start ? `${fmtDate(week_start)} – ${fmtDate(week_end)}` : '';
 
   return (
     <div>
@@ -297,12 +305,14 @@ function TournamentBracket({ tournament, myId }) {
         <div style={{ fontSize: 16, fontWeight: 800, color: '#D4A843', animation: 'lb-champion-glow 3s ease-in-out infinite' }}>
           ⚔️ Битва за Вальхаллу
         </div>
-        <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
-          {month} · Неделя {week}/4
-        </div>
+        {weekLabel && (
+          <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
+            {weekLabel} · {status === 'completed' ? '✅ Завершён' : '🔥 Идёт'}
+          </div>
+        )}
         {champion && (
           <div style={{ marginTop: 6, fontSize: 12, color: '#D4A843', fontWeight: 700 }}>
-            👑 Лидирует: {champion.name} ({champion.monthly_runes}ᚱ за месяц)
+            👑 {status === 'completed' ? 'Чемпион' : 'Лидирует'}: {champion.name} ({(parseInt(champion.warrior_power)||0).toLocaleString('ru-RU')} ⚔️)
           </div>
         )}
       </div>
@@ -310,34 +320,28 @@ function TournamentBracket({ tournament, myId }) {
       {/* Bracket — horizontal scroll */}
       <div style={{ overflowX: 'auto', paddingBottom: 8 }}>
         <div style={{ display: 'flex', gap: 0, minWidth: 'max-content' }}>
-          {rounds.map((round, ri) => {
-            const matchCount = round.length;
-            // vertical spacing: each match takes equal space
-            return (
-              <div key={ri} style={{ display: 'flex', flexDirection: 'column' }}>
-                {/* Round header */}
-                <div style={{ textAlign: 'center', fontSize: 9, fontWeight: 700, color: '#6b7280', padding: '0 8px', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                  {ROUND_LABELS[ri]}
-                </div>
-                {/* Matches */}
-                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-around', flex: 1, gap: 4, padding: '0 4px' }}>
-                  {round.map((match, mi) => (
-                    <div key={mi} style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
-                      <MatchCard match={match} myId={myId} small={ri > 0} />
-                      {ri < rounds.length - 1 && (
-                        <div style={{ display: 'flex', alignItems: 'center', color: '#374151', fontSize: 12, padding: '0 2px' }}>→</div>
-                      )}
-                    </div>
-                  ))}
-                </div>
+          {rounds.map((round, ri) => (
+            <div key={ri} style={{ display: 'flex', flexDirection: 'column' }}>
+              <div style={{ textAlign: 'center', fontSize: 9, fontWeight: 700, color: '#6b7280', padding: '0 8px', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                {ROUND_LABELS[ri]}
               </div>
-            );
-          })}
+              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-around', flex: 1, gap: 4, padding: '0 4px' }}>
+                {round.map((match, mi) => (
+                  <div key={mi} style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+                    <MatchCard match={match} myId={myId} small={ri > 0} />
+                    {ri < rounds.length - 1 && (
+                      <div style={{ color: '#374151', fontSize: 12, padding: '0 2px' }}>→</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
       <p style={{ fontSize: 10, color: '#4b5563', textAlign: 'center', marginTop: 8 }}>
-        Лидер каждого матча — по рунам за текущий месяц
+        Победитель каждого матча — по Силе Воина ⚔️ за текущую неделю
       </p>
     </div>
   );
@@ -364,8 +368,8 @@ function MyBanner({ me, total }) {
         </div>
       </div>
       <div style={{ textAlign: 'right' }}>
-        <div style={{ fontSize: 15, fontWeight: 800, color: '#D4A843' }}>{parseInt(me.earned_runes || 0).toLocaleString('ru-RU')} ᚱ</div>
-        <div style={{ fontSize: 11, color: '#a855f7' }}>{parseInt(me.earned_xp || 0)} XP</div>
+        <div style={{ fontSize: 15, fontWeight: 800, color: '#f97316' }}>{parseInt(me.warrior_power || 0).toLocaleString('ru-RU')} ⚔️</div>
+        <div style={{ fontSize: 11, color: '#D4A843' }}>{parseInt(me.earned_runes || 0).toLocaleString('ru-RU')} ᚱ</div>
       </div>
     </div>
   );
@@ -395,7 +399,7 @@ export default function FieldLeaderboard() {
   const [myRank, setMyRank] = useState(null);
   const [tournament, setTournament] = useState(null);
   const [tab, setTab] = useState('rating');       // 'rating' | 'tournament'
-  const [sortBy, setSortBy] = useState('runes');  // 'runes' | 'xp' | 'shifts'
+  const [sortBy, setSortBy] = useState('power');  // 'power' | 'runes' | 'xp' | 'shifts'
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [countersActive, setCountersActive] = useState(false);
@@ -417,9 +421,10 @@ export default function FieldLeaderboard() {
   const myId = myRank?.employee_id;
 
   const sorted = [...leaderboard].sort((a, b) => {
-    if (sortBy === 'xp')    return parseInt(b.earned_xp) - parseInt(a.earned_xp);
+    if (sortBy === 'runes')  return parseInt(b.earned_runes) - parseInt(a.earned_runes);
+    if (sortBy === 'xp')     return parseInt(b.earned_xp) - parseInt(a.earned_xp);
     if (sortBy === 'shifts') return parseInt(b.total_shifts) - parseInt(a.total_shifts);
-    return parseInt(b.earned_runes) - parseInt(a.earned_runes);
+    return parseInt(b.warrior_power) - parseInt(a.warrior_power); // 'power' (default)
   }).map((p, i) => ({ ...p, display_rank: i + 1 }));
 
   const top3 = sorted.slice(0, 3);
@@ -522,9 +527,9 @@ export default function FieldLeaderboard() {
               {/* ── Sort pills ── */}
               <div style={{ display: 'flex', gap: 6 }}>
                 {[
-                  { key: 'runes', label: 'ᚱ Руны', color: '#D4A843' },
-                  { key: 'xp',    label: '⚡ XP',   color: '#a855f7' },
-                  { key: 'shifts',label: '📅 Смены', color: '#60a5fa' },
+                  { key: 'power',  label: '⚔️ Сила',  color: '#f97316' },
+                  { key: 'runes',  label: 'ᚱ Руны',   color: '#D4A843' },
+                  { key: 'shifts', label: '📅 Смены', color: '#60a5fa' },
                 ].map(s => (
                   <button key={s.key} onClick={() => setSortBy(s.key)} style={{
                     flex: 1, padding: '6px 0', borderRadius: 10, fontSize: 11, fontWeight: 700,
