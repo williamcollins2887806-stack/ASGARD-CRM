@@ -261,11 +261,12 @@ async function routes(fastify) {
             ORDER BY COALESCE(ea.earned_runes,0) DESC, COALESCE(ea.earned_xp,0) DESC
           )::int AS rank
         FROM employees e
-        JOIN gamification_wallets gw_r ON gw_r.employee_id=e.id AND gw_r.currency='runes'
+        LEFT JOIN gamification_wallets gw_r ON gw_r.employee_id=e.id AND gw_r.currency='runes'
         LEFT JOIN gamification_wallets gw_x ON gw_x.employee_id=e.id AND gw_x.currency='xp'
         LEFT JOIN earned ea ON ea.employee_id=e.id
         LEFT JOIN (SELECT employee_id, COUNT(*)::int AS shift_count FROM field_checkins WHERE status='completed' GROUP BY employee_id) sh ON sh.employee_id=e.id
         LEFT JOIN gamification_streaks gs ON gs.employee_id=e.id
+        WHERE e.is_active = true
       )
       SELECT * FROM ranked ORDER BY rank
     `);
