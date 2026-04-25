@@ -248,6 +248,13 @@ fastify.register(require('@fastify/static'), {
   }
 });
 
+// Uploads directory — served separately (uploads/ is outside public/)
+fastify.register(require('@fastify/static'), {
+  root: path.join(__dirname, '../uploads'),
+  prefix: '/uploads/',
+  decorateReply: false,
+});
+
 // Rate limiting
 // SECURITY B8: Per-user rate limit (not just per-IP)
 fastify.register(require('@fastify/rate-limit'), {
