@@ -113,7 +113,7 @@ function getRank(level) { return RANKS.find(r=>level>=r.min && level<=r.max)||RA
 ═══════════════════════════════════════════════════════════════════ */
 const AVATAR_SVGS = {
 
-  'Аватар "Один"': `<svg viewBox="0 0 100 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  'Аватар "Один"': `<svg viewBox="0 0 100 200" width="100%" height="100%" preserveAspectRatio="xMidYMin slice" fill="none" xmlns="http://www.w3.org/2000/svg">
 <defs>
   <radialGradient id="ob" cx="50%" cy="35%" r="65%"><stop offset="0%" stop-color="#1e2848"/><stop offset="100%" stop-color="#060810"/></radialGradient>
   <linearGradient id="oc" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#18203a"/><stop offset="100%" stop-color="#0e1428"/></linearGradient>
@@ -197,7 +197,7 @@ const AVATAR_SVGS = {
 <path d="M67 42 Q72 52 71 62" stroke="#7a6040" stroke-width="3.5" stroke-linecap="round" fill="none"/>
 </svg>`,
 
-  'Аватар "Тор"': `<svg viewBox="0 0 100 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  'Аватар "Тор"': `<svg viewBox="0 0 100 200" width="100%" height="100%" preserveAspectRatio="xMidYMin slice" fill="none" xmlns="http://www.w3.org/2000/svg">
 <defs>
   <radialGradient id="tb" cx="50%" cy="35%" r="65%"><stop offset="0%" stop-color="#1a2040"/><stop offset="100%" stop-color="#060810"/></radialGradient>
   <linearGradient id="tl" x1=".5" y1="0" x2=".5" y2="1"><stop offset="0%" stop-color="#F0C850"/><stop offset="100%" stop-color="#ff6800"/></linearGradient>
@@ -284,7 +284,242 @@ const AVATAR_SVGS = {
 <!-- lightning glow eyes hint -->
 <ellipse cx="43" cy="43" rx="6" ry="5" fill="none" stroke="rgba(100,160,255,.25)" stroke-width="1"/>
 <ellipse cx="57" cy="43" rx="6" ry="5" fill="none" stroke="rgba(100,160,255,.25)" stroke-width="1"/>
+</svg>
+
+  'Аватар "Воин"': `<svg viewBox="0 0 100 200" width="100%" height="100%" preserveAspectRatio="xMidYMin slice" fill="none" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <radialGradient id="wbg" cx="50%" cy="35%" r="65%"><stop offset="0%" stop-color="#1a2218"/><stop offset="100%" stop-color="#070c06"/></radialGradient>
+  <linearGradient id="wla" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#7a4a20"/><stop offset="100%" stop-color="#4a2810"/></linearGradient>
+  <radialGradient id="wsk" cx="45%" cy="38%" r="55%"><stop offset="0%" stop-color="#d4a870"/><stop offset="50%" stop-color="#c09050"/><stop offset="100%" stop-color="#8a5830"/></radialGradient>
+</defs>
+<rect width="100" height="200" fill="url(#wbg)"/>
+<path d="M34 170 L30 197 L25 197 Q24 192 27 184 L30 170Z" fill="#1a1008"/>
+<path d="M66 170 L70 197 L75 197 Q76 192 73 184 L70 170Z" fill="#1a1008"/>
+<path d="M27 184 L32 184" stroke="#302010" stroke-width="1.5"/>
+<path d="M73 184 L68 184" stroke="#302010" stroke-width="1.5"/>
+<path d="M32 140 L28 170 L38 170 L40 152 L50 155 L60 152 L62 170 L72 170 L68 140Z" fill="#282218"/>
+<path d="M32 80 Q32 68 50 66 Q68 68 68 80 L68 140 L32 140Z" fill="url(#wla)"/>
+<path d="M38 80 L38 140" stroke="#301808" stroke-width=".8" opacity=".6"/>
+<path d="M62 80 L62 140" stroke="#301808" stroke-width=".8" opacity=".6"/>
+<path d="M34 95 Q50 92 66 95" stroke="#301808" stroke-width=".7" fill="none" opacity=".5"/>
+<path d="M34 115 Q50 112 66 115" stroke="#301808" stroke-width=".7" fill="none" opacity=".5"/>
+<circle cx="40" cy="88" r="1.5" fill="#b08838" opacity=".7"/>
+<circle cx="60" cy="88" r="1.5" fill="#b08838" opacity=".7"/>
+<circle cx="40" cy="108" r="1.5" fill="#b08838" opacity=".5"/>
+<circle cx="60" cy="108" r="1.5" fill="#b08838" opacity=".5"/>
+<rect x="32" y="136" width="36" height="5" rx="2" fill="#3a2810" stroke="rgba(200,160,60,.4)" stroke-width=".5"/>
+<rect x="47" y="135" width="6" height="7" rx="1" fill="#503820" stroke="rgba(200,160,60,.5)" stroke-width=".5"/>
+<path d="M22 82 Q30 72 50 68 Q70 72 78 82" fill="#6a5040" opacity=".8"/>
+<path d="M32 82 Q22 96 18 112" stroke="#7a4a20" stroke-width="10" stroke-linecap="round" fill="none"/>
+<path d="M32 82 Q22 96 18 112" stroke="#c8a060" stroke-width="7" stroke-linecap="round" fill="none"/>
+<circle cx="17" cy="114" r="5" fill="#c8a060"/>
+<path d="M68 82 Q80 92 84 108" stroke="#7a4a20" stroke-width="10" stroke-linecap="round" fill="none"/>
+<path d="M68 82 Q80 92 84 108" stroke="#c8a060" stroke-width="7" stroke-linecap="round" fill="none"/>
+<line x1="85" y1="114" x2="82" y2="74" stroke="#604828" stroke-width="2.5" stroke-linecap="round"/>
+<path d="M78 68 Q70 60 72 74 Q78 76 86 74 Q88 62 78 68Z" fill="#686880" stroke="rgba(240,200,80,.6)" stroke-width=".7"/>
+<path d="M76 70 Q78 66 80 70" stroke="rgba(255,255,255,.2)" stroke-width=".5" fill="none"/>
+<rect x="44" y="62" width="12" height="7" rx="3" fill="#c8a060"/>
+<ellipse cx="50" cy="46" rx="18" ry="20" fill="url(#wsk)"/>
+<path d="M33 54 Q30 66 32 76 Q38 86 50 88 Q62 86 68 76 Q70 66 67 54" fill="#8a4818"/>
+<path d="M36 58 Q34 68 36 76 Q42 84 50 86 Q58 84 64 76 Q66 68 64 58" fill="#a05820" opacity=".4"/>
+<path d="M38 55 Q44 50 50 51 Q56 50 62 55" stroke="#7a3810" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+<ellipse cx="42" cy="43" rx="5" ry="4" fill="#f0ece4"/>
+<circle cx="42" cy="43" r="2.8" fill="#3a6820"/>
+<circle cx="42" cy="43" r="1.6" fill="#1a4010"/>
+<circle cx="43" cy="42" r=".8" fill="#fff"/>
+<ellipse cx="58" cy="43" rx="5" ry="4" fill="#f0ece4"/>
+<circle cx="58" cy="43" r="2.8" fill="#3a6820"/>
+<circle cx="58" cy="43" r="1.6" fill="#1a4010"/>
+<circle cx="59" cy="42" r=".8" fill="#fff"/>
+<path d="M36 38 Q42 35 47 38" stroke="#6a3810" stroke-width="2" fill="none" stroke-linecap="round"/>
+<path d="M53 38 Q58 35 64 38" stroke="#6a3810" stroke-width="2" fill="none" stroke-linecap="round"/>
+<path d="M32 36 Q34 18 50 16 Q66 18 68 36" fill="#7a3a10"/>
+<path d="M33 38 Q28 50 29 62" stroke="#7a3a10" stroke-width="4" stroke-linecap="round" fill="none"/>
+<path d="M67 38 Q72 50 71 62" stroke="#7a3a10" stroke-width="4" stroke-linecap="round" fill="none"/>
+<circle cx="29" cy="62" r="3" fill="#4a2010"/>
+<circle cx="71" cy="62" r="3" fill="#4a2010"/>
+<path d="M44 34 L48 38" stroke="#7a5030" stroke-width=".8" stroke-linecap="round" opacity=".7"/>
 </svg>`,
+
+  'Аватар "Берсерк"': `<svg viewBox="0 0 100 200" width="100%" height="100%" preserveAspectRatio="xMidYMin slice" fill="none" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <radialGradient id="bbg" cx="50%" cy="35%" r="65%"><stop offset="0%" stop-color="#1a0808"/><stop offset="100%" stop-color="#080404"/></radialGradient>
+  <radialGradient id="bsk" cx="45%" cy="38%" r="55%"><stop offset="0%" stop-color="#d4906a"/><stop offset="50%" stop-color="#c07850"/><stop offset="100%" stop-color="#8a5030"/></radialGradient>
+  <linearGradient id="bch" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#c8907a"/><stop offset="100%" stop-color="#a06048"/></linearGradient>
+</defs>
+<rect width="100" height="200" fill="url(#bbg)"/>
+<path d="M34 170 L30 197 L25 197 Q24 192 27 184 L30 170Z" fill="#241008"/>
+<path d="M66 170 L70 197 L75 197 Q76 192 73 184 L70 170Z" fill="#241008"/>
+<path d="M32 140 L28 170 L38 170 L40 152 L50 155 L60 152 L62 170 L72 170 L68 140Z" fill="#2a1a10"/>
+<!-- bare chest with war paint -->
+<path d="M32 80 Q32 70 50 68 Q68 70 68 80 L68 140 L32 140Z" fill="url(#bch)"/>
+<path d="M36 80 L38 140" stroke="rgba(180,80,40,.3)" stroke-width="1" opacity=".5"/>
+<path d="M64 80 L62 140" stroke="rgba(180,80,40,.3)" stroke-width="1" opacity=".5"/>
+<!-- war paint stripes -->
+<path d="M34 88 L44 96" stroke="#cc2020" stroke-width="1.8" stroke-linecap="round" opacity=".7"/>
+<path d="M66 88 L56 96" stroke="#cc2020" stroke-width="1.8" stroke-linecap="round" opacity=".7"/>
+<path d="M38 104 L48 112" stroke="#cc2020" stroke-width="1.5" stroke-linecap="round" opacity=".6"/>
+<path d="M62 104 L52 112" stroke="#cc2020" stroke-width="1.5" stroke-linecap="round" opacity=".6"/>
+<rect x="32" y="136" width="36" height="5" rx="2" fill="#3a1810" stroke="rgba(200,80,40,.4)" stroke-width=".5"/>
+<rect x="47" y="135" width="6" height="7" rx="1" fill="#501820" stroke="rgba(200,80,40,.5)" stroke-width=".5"/>
+<path d="M22 82 Q30 70 50 66 Q70 70 78 82" fill="#8a5030" opacity=".7"/>
+<!-- LEFT arm with left axe -->
+<path d="M30 82 Q18 94 14 110" stroke="#8a5030" stroke-width="10" stroke-linecap="round" fill="none"/>
+<path d="M30 82 Q18 94 14 110" stroke="#c8806a" stroke-width="7" stroke-linecap="round" fill="none"/>
+<line x1="13" y1="114" x2="8" y2="75" stroke="#5a3820" stroke-width="2" stroke-linecap="round"/>
+<path d="M4 65 Q-1 57 3 70 Q8 72 14 70 Q14 57 4 65Z" fill="#585868" stroke="rgba(220,80,40,.7)" stroke-width=".8"/>
+<!-- RIGHT arm with right axe -->
+<path d="M70 82 Q82 92 87 108" stroke="#8a5030" stroke-width="10" stroke-linecap="round" fill="none"/>
+<path d="M70 82 Q82 92 87 108" stroke="#c8806a" stroke-width="7" stroke-linecap="round" fill="none"/>
+<line x1="88" y1="112" x2="92" y2="74" stroke="#5a3820" stroke-width="2" stroke-linecap="round"/>
+<path d="M96 64 Q101 56 97 70 Q92 72 86 70 Q86 57 96 64Z" fill="#585868" stroke="rgba(220,80,40,.7)" stroke-width=".8"/>
+<rect x="44" y="62" width="12" height="7" rx="3" fill="#c8806a"/>
+<ellipse cx="50" cy="46" rx="18" ry="20" fill="url(#bsk)"/>
+<path d="M34 52 Q30 64 32 74 Q38 86 50 88 Q62 86 68 74 Q70 64 66 52" fill="#a03010"/>
+<path d="M36 55 Q34 66 36 74 Q42 84 50 86 Q58 84 64 74 Q66 66 64 55" fill="#c04020" opacity=".4"/>
+<path d="M39 53 Q44 48 50 49 Q56 48 61 53" stroke="#8a2010" stroke-width="3" fill="none" stroke-linecap="round"/>
+<!-- crazed red eyes -->
+<ellipse cx="42" cy="42" rx="5.5" ry="4.5" fill="#f0ece4"/>
+<circle cx="42" cy="42" r="3" fill="#cc2020"/>
+<circle cx="42" cy="42" r="1.8" fill="#800000"/>
+<circle cx="43" cy="41" r=".9" fill="#ffaaaa"/>
+<ellipse cx="58" cy="42" rx="5.5" ry="4.5" fill="#f0ece4"/>
+<circle cx="58" cy="42" r="3" fill="#cc2020"/>
+<circle cx="58" cy="42" r="1.8" fill="#800000"/>
+<circle cx="59" cy="41" r=".9" fill="#ffaaaa"/>
+<path d="M35 37 Q42 33 48 37" stroke="#8a2010" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+<path d="M52 37 Q58 33 65 37" stroke="#8a2010" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+<!-- wild red hair (no helmet) -->
+<path d="M32 36 Q34 14 50 10 Q66 14 68 36" fill="#b03010"/>
+<path d="M33 36 Q22 46 20 62 L28 60" stroke="#b03010" stroke-width="5" stroke-linecap="round" fill="none"/>
+<path d="M67 36 Q78 46 80 62 L72 60" stroke="#b03010" stroke-width="5" stroke-linecap="round" fill="none"/>
+<path d="M40 38 Q38 26 36 16" stroke="#c04020" stroke-width="2.2" stroke-linecap="round" fill="none" opacity=".6"/>
+<path d="M60 38 Q62 26 64 16" stroke="#c04020" stroke-width="2.2" stroke-linecap="round" fill="none" opacity=".6"/>
+<!-- war paint on face -->
+<path d="M34 42 L42 46" stroke="#cc2020" stroke-width="1.5" stroke-linecap="round" opacity=".8"/>
+<path d="M58 46 L66 42" stroke="#cc2020" stroke-width="1.5" stroke-linecap="round" opacity=".8"/>
+</svg>`,
+
+  'Аватар "Вёльва"': `<svg viewBox="0 0 100 200" width="100%" height="100%" preserveAspectRatio="xMidYMin slice" fill="none" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <radialGradient id="vbg" cx="50%" cy="35%" r="65%"><stop offset="0%" stop-color="#12101e"/><stop offset="100%" stop-color="#060408"/></radialGradient>
+  <linearGradient id="vrb" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#3a2860"/><stop offset="100%" stop-color="#1e1438"/></linearGradient>
+  <radialGradient id="vsk" cx="45%" cy="38%" r="55%"><stop offset="0%" stop-color="#d4c4b8"/><stop offset="50%" stop-color="#b8a898"/><stop offset="100%" stop-color="#8a7868"/></radialGradient>
+</defs>
+<rect width="100" height="200" fill="url(#vbg)"/>
+<path d="M50 170 L50 197" stroke="#2a1e48" stroke-width="18" stroke-linecap="round"/>
+<path d="M38 170 L34 197 L28 197 Q28 190 32 182Z" fill="#2a1e48"/>
+<path d="M62 170 L66 197 L72 197 Q72 190 68 182Z" fill="#2a1e48"/>
+<path d="M30 84 Q28 110 32 140 Q38 165 50 172 Q62 165 68 140 Q72 110 70 84 Q60 78 50 76 Q40 78 30 84Z" fill="url(#vrb)"/>
+<path d="M30 84 Q25 100 24 130 Q26 155 38 168 L38 170 L30 170 Q24 145 24 120 Q24 98 30 82Z" fill="#2a1e50" opacity=".9"/>
+<path d="M70 84 Q75 100 76 130 Q74 155 62 168 L62 170 L70 170 Q76 145 76 120 Q76 98 70 82Z" fill="#2a1e50" opacity=".9"/>
+<path d="M32 100 L68 100" stroke="rgba(180,140,255,.12)" stroke-width=".7"/>
+<path d="M30 120 L70 120" stroke="rgba(180,140,255,.1)" stroke-width=".7"/>
+<path d="M32 140 L68 140" stroke="rgba(180,140,255,.08)" stroke-width=".7"/>
+<text x="50" y="112" text-anchor="middle" font-size="10" fill="rgba(180,140,255,.18)" font-family="serif">ᛟ</text>
+<text x="42" y="128" text-anchor="middle" font-size="7" fill="rgba(180,140,255,.14)" font-family="serif">ᚨ</text>
+<text x="58" y="128" text-anchor="middle" font-size="7" fill="rgba(180,140,255,.14)" font-family="serif">ᚱ</text>
+<path d="M22 84 Q30 74 50 70 Q70 74 78 84 Q60 78 50 76 Q40 78 22 84Z" fill="#28204a" opacity=".9"/>
+<path d="M26 82 Q22 70 24 55 Q26 45 32 44 Q28 55 30 68Z" fill="#2a1e50"/>
+<path d="M74 82 Q78 70 76 55 Q74 45 68 44 Q72 55 70 68Z" fill="#2a1e50"/>
+<!-- LEFT arm with mystical staff -->
+<path d="M30 82 Q20 94 18 112" stroke="#3a2860" stroke-width="10" stroke-linecap="round" fill="none"/>
+<path d="M30 82 Q20 94 18 112" stroke="#8878b8" stroke-width="7" stroke-linecap="round" fill="none"/>
+<line x1="17" y1="115" x2="12" y2="170" stroke="#403050" stroke-width="2.5" stroke-linecap="round"/>
+<path d="M8 162 Q6 150 12 148 Q16 150 12 170Z" fill="#7858c8" opacity=".8"/>
+<ellipse cx="10" cy="154" rx="3" ry="5" fill="none" stroke="rgba(180,140,255,.5)" stroke-width=".8"/>
+<circle cx="12" cy="148" r="3" fill="#9878e8" opacity=".7"/>
+<!-- RIGHT arm -->
+<path d="M70 82 Q80 94 82 112" stroke="#3a2860" stroke-width="10" stroke-linecap="round" fill="none"/>
+<path d="M70 82 Q80 94 82 112" stroke="#8878b8" stroke-width="7" stroke-linecap="round" fill="none"/>
+<circle cx="83" cy="114" r="5" fill="#8878b8"/>
+<rect x="44" y="62" width="12" height="8" rx="3" fill="#b0a0c0"/>
+<ellipse cx="50" cy="47" rx="16" ry="18" fill="url(#vsk)"/>
+<!-- silver-grey hair and braids -->
+<path d="M35 54 Q32 66 34 76 Q40 86 50 88 Q60 86 66 76 Q68 66 65 54" fill="#d0c8d8" opacity=".9"/>
+<path d="M36 58 Q34 68 36 76 Q42 84 50 86 Q58 84 64 76 Q66 68 64 58" fill="#e0d8e8" opacity=".35"/>
+<path d="M40 56 Q44 52 50 53 Q56 52 60 56" stroke="#b0a8c0" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+<!-- violet eyes -->
+<ellipse cx="43" cy="44" rx="5" ry="4" fill="#f0ece8"/>
+<circle cx="43" cy="44" r="2.8" fill="#7858c8"/>
+<circle cx="43" cy="44" r="1.6" fill="#5038a8"/>
+<circle cx="44" cy="43" r=".9" fill="#ddd8ff"/>
+<ellipse cx="57" cy="44" rx="5" ry="4" fill="#f0ece8"/>
+<circle cx="57" cy="44" r="2.8" fill="#7858c8"/>
+<circle cx="57" cy="44" r="1.6" fill="#5038a8"/>
+<circle cx="58" cy="43" r=".9" fill="#ddd8ff"/>
+<path d="M37 39 Q43 36 48 39" stroke="#a090b0" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+<path d="M52 39 Q57 36 63 39" stroke="#a090b0" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+<path d="M34 40 Q36 22 50 18 Q64 22 66 40" fill="#c8c0d8"/>
+<path d="M34 42 Q26 52 24 66 L28 68 Q26 55 34 45Z" stroke="#d0c8e0" stroke-width="3" stroke-linecap="round" fill="none"/>
+<path d="M66 42 Q74 52 76 66 L72 68 Q74 55 66 45Z" stroke="#d0c8e0" stroke-width="3" stroke-linecap="round" fill="none"/>
+<text x="50" y="38" text-anchor="middle" font-size="6" fill="rgba(180,140,255,.55)" font-family="serif">᛹</text>
+</svg>`,
+
+  'Аватар "Скальд"': `<svg viewBox="0 0 100 200" width="100%" height="100%" preserveAspectRatio="xMidYMin slice" fill="none" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <radialGradient id="sbg" cx="50%" cy="35%" r="65%"><stop offset="0%" stop-color="#1a1408"/><stop offset="100%" stop-color="#080602"/></radialGradient>
+  <linearGradient id="stu" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#2e6040"/><stop offset="50%" stop-color="#1a4828"/><stop offset="100%" stop-color="#3a1e08"/></linearGradient>
+  <radialGradient id="ssk" cx="45%" cy="38%" r="55%"><stop offset="0%" stop-color="#d4aa78"/><stop offset="50%" stop-color="#c09060"/><stop offset="100%" stop-color="#8a6035"/></radialGradient>
+</defs>
+<rect width="100" height="200" fill="url(#sbg)"/>
+<path d="M34 170 L30 197 L25 197 Q24 192 27 184 L30 170Z" fill="#1a1208"/>
+<path d="M66 170 L70 197 L75 197 Q76 192 73 184 L70 170Z" fill="#1a1208"/>
+<path d="M27 184 L32 184" stroke="#302010" stroke-width="1.5"/>
+<path d="M73 184 L68 184" stroke="#302010" stroke-width="1.5"/>
+<path d="M32 140 L28 170 L38 170 L40 152 L50 155 L60 152 L62 170 L72 170 L68 140Z" fill="#241c10"/>
+<!-- colorful tunic -->
+<path d="M32 80 Q32 68 50 66 Q68 68 68 80 L68 140 L32 140Z" fill="url(#stu)"/>
+<path d="M35 78 Q38 90 38 140" stroke="rgba(200,160,60,.15)" stroke-width=".8" fill="none"/>
+<path d="M65 78 Q62 90 62 140" stroke="rgba(200,160,60,.15)" stroke-width=".8" fill="none"/>
+<path d="M34 94 L66 94" stroke="rgba(240,180,60,.15)" stroke-width=".6"/>
+<path d="M34 110 L66 110" stroke="rgba(240,180,60,.12)" stroke-width=".6"/>
+<path d="M34 126 L66 126" stroke="rgba(240,180,60,.1)" stroke-width=".6"/>
+<path d="M42 80 L42 94 M50 80 L50 94 M58 80 L58 94" stroke="rgba(240,160,40,.2)" stroke-width="1"/>
+<rect x="32" y="136" width="36" height="5" rx="2" fill="#302010" stroke="rgba(240,180,60,.45)" stroke-width=".5"/>
+<rect x="47" y="135" width="6" height="7" rx="1" fill="#483020" stroke="rgba(240,180,60,.55)" stroke-width=".5"/>
+<path d="M22 82 Q30 72 50 68 Q70 72 78 82" fill="#5a4428" opacity=".8"/>
+<!-- LEFT arm -->
+<path d="M32 82 Q22 96 18 112" stroke="#4a3820" stroke-width="10" stroke-linecap="round" fill="none"/>
+<path d="M32 82 Q22 96 18 112" stroke="#c8a060" stroke-width="7" stroke-linecap="round" fill="none"/>
+<circle cx="17" cy="114" r="5" fill="#c8a060"/>
+<!-- RIGHT arm holding lyre -->
+<path d="M68 82 Q80 92 83 108" stroke="#4a3820" stroke-width="10" stroke-linecap="round" fill="none"/>
+<path d="M68 82 Q80 92 83 108" stroke="#c8a060" stroke-width="7" stroke-linecap="round" fill="none"/>
+<!-- lyre instrument -->
+<ellipse cx="90" cy="100" rx="9" ry="14" fill="#1a120a" stroke="rgba(240,180,60,.5)" stroke-width=".8"/>
+<line x1="84" y1="94" x2="84" y2="106" stroke="rgba(240,180,60,.35)" stroke-width=".6"/>
+<line x1="87" y1="92" x2="87" y2="108" stroke="rgba(240,180,60,.4)" stroke-width=".6"/>
+<line x1="90" y1="91" x2="90" y2="109" stroke="rgba(240,180,60,.4)" stroke-width=".6"/>
+<line x1="93" y1="92" x2="93" y2="108" stroke="rgba(240,180,60,.4)" stroke-width=".6"/>
+<line x1="96" y1="94" x2="96" y2="106" stroke="rgba(240,180,60,.35)" stroke-width=".6"/>
+<path d="M82 94 L98 94" stroke="rgba(240,180,60,.4)" stroke-width=".7"/>
+<path d="M82 106 L98 106" stroke="rgba(240,180,60,.4)" stroke-width=".7"/>
+<circle cx="90" cy="88" r="3" fill="#1a120a" stroke="rgba(240,180,60,.6)" stroke-width=".8"/>
+<rect x="44" y="62" width="12" height="7" rx="3" fill="#c8a060"/>
+<ellipse cx="50" cy="46" rx="18" ry="20" fill="url(#ssk)"/>
+<!-- dark brown beard -->
+<path d="M33 54 Q30 66 32 76 Q38 86 50 88 Q62 86 68 76 Q70 66 67 54" fill="#6a4020"/>
+<path d="M36 58 Q34 68 36 76 Q42 84 50 86 Q58 84 64 76 Q66 68 64 58" fill="#7a4828" opacity=".45"/>
+<path d="M38 55 Q44 50 50 51 Q56 50 62 55" stroke="#5a3010" stroke-width="2" fill="none" stroke-linecap="round"/>
+<!-- warm amber eyes -->
+<ellipse cx="42" cy="43" rx="5" ry="4" fill="#f0ece4"/>
+<circle cx="42" cy="43" r="2.8" fill="#a85820"/>
+<circle cx="42" cy="43" r="1.6" fill="#6a3410"/>
+<circle cx="43" cy="42" r=".8" fill="#fff"/>
+<ellipse cx="58" cy="43" rx="5" ry="4" fill="#f0ece4"/>
+<circle cx="58" cy="43" r="2.8" fill="#a85820"/>
+<circle cx="58" cy="43" r="1.6" fill="#6a3410"/>
+<circle cx="59" cy="42" r=".8" fill="#fff"/>
+<path d="M36 38 Q42 35 47 38" stroke="#5a3010" stroke-width="2" fill="none" stroke-linecap="round"/>
+<path d="M53 38 Q58 35 64 38" stroke="#5a3010" stroke-width="2" fill="none" stroke-linecap="round"/>
+<path d="M32 36 Q33 18 50 14 Q67 18 68 36" fill="#5a3818"/>
+<path d="M33 36 Q28 48 29 60" stroke="#5a3818" stroke-width="4" stroke-linecap="round" fill="none"/>
+<path d="M67 36 Q72 48 71 60" stroke="#5a3818" stroke-width="4" stroke-linecap="round" fill="none"/>
+<!-- headband -->
+<path d="M32 37 Q50 34 68 37" fill="none" stroke="#c89030" stroke-width="2.5"/>
+<circle cx="50" cy="35" r="2.5" fill="#c89030"/>
+</svg>``,
 };
 
 /* ═══════════════════════════════════════════════════════════════════
