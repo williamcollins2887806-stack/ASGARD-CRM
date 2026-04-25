@@ -259,7 +259,7 @@ async function routes(fastify) {
       );
 
       // Credit prize rewards
-      const rewardAmount = selectedPrize.prize_type === 'shop_item'
+      let rewardAmount = selectedPrize.prize_type === 'shop_item'
         ? 0
         : Math.max(0, (selectedPrize.value || 0) * pendingMultiplier);
       if (selectedPrize.prize_type === 'runes' && rewardAmount > 0) {
@@ -275,20 +275,41 @@ async function routes(fastify) {
           );
           if (si) itemCategory = si.category;
         }
-        const { rows: [inv] } = await client.query(
-          `INSERT INTO gamification_inventory (employee_id, item_type, item_name, item_category, source_id, source_type)
-           VALUES ($1, 'spin_prize', $2, $3, $4, 'spin') RETURNING id`,
-          [eid, selectedPrize.name, itemCategory, selectedPrize.value]
-        );
-        // Only create fulfillment for physical items that need delivery
-        const needsDelivery = selectedPrize.requires_delivery || selectedPrize.prize_type === 'merch';
         const isDigitalCosmetic = ['digital', 'cosmetic'].includes(itemCategory);
-        if (needsDelivery && !isDigitalCosmetic) {
-          await client.query(
-            `INSERT INTO gamification_fulfillment (inventory_id, employee_id, item_name, status)
-             VALUES ($1, $2, $3, 'pending')`,
-            [inv.id, eid, selectedPrize.name]
+
+        // Dedup: digital/cosmetic items can only be owned once — give runes instead
+        let duplicate = false;
+        if (isDigitalCosmetic) {
+          const { rows: [existing] } = await client.query(
+            'SELECT id FROM gamification_inventory WHERE employee_id = $1 AND item_name = $2 LIMIT 1',
+            [eid, selectedPrize.name]
           );
+          if (existing) duplicate = true;
+        }
+
+        if (duplicate) {
+          const compRunes = 50;
+          await creditWalletTx(client, eid, 'runes', compRunes, 'duplicate_prize', selectedPrize.id);
+          rewardAmount = compRunes;
+          selectedPrize = Object.assign({}, selectedPrize, {
+            name: selectedPrize.name + ' → руны ×' + compRunes,
+            prize_type: 'runes'
+          });
+        } else {
+          const { rows: [inv] } = await client.query(
+            `INSERT INTO gamification_inventory (employee_id, item_type, item_name, item_category, source_id, source_type)
+             VALUES ($1, 'spin_prize', $2, $3, $4, 'spin') RETURNING id`,
+            [eid, selectedPrize.name, itemCategory, selectedPrize.value]
+          );
+          // Only create fulfillment for physical items that need delivery
+          const needsDelivery = selectedPrize.requires_delivery || selectedPrize.prize_type === 'merch';
+          if (needsDelivery && !isDigitalCosmetic) {
+            await client.query(
+              `INSERT INTO gamification_fulfillment (inventory_id, employee_id, item_name, status)
+               VALUES ($1, $2, $3, 'pending')`,
+              [inv.id, eid, selectedPrize.name]
+            );
+          }
         }
       }
 
@@ -382,6 +403,18 @@ async function routes(fastify) {
          VALUES ($1, 'runes', $2, $3, 'shop_buy', $4, 'shop')`,
         [eid, -item.price_runes, wallet.balance, item.id]
       );
+
+      // Dedup: block re-purchase of already-owned digital/cosmetic items
+      if (['digital', 'cosmetic'].includes(item.category)) {
+        const { rows: [existing] } = await client.query(
+          'SELECT id FROM gamification_inventory WHERE employee_id = $1 AND item_name = $2 LIMIT 1',
+          [eid, item.name]
+        );
+        if (existing) {
+          await client.query('ROLLBACK');
+          return reply.code(400).send({ error: 'У вас уже есть этот предмет' });
+        }
+      }
 
       // Inventory (item_category from shop item so equip/request buttons render correctly)
       const { rows: [inv] } = await client.query(
