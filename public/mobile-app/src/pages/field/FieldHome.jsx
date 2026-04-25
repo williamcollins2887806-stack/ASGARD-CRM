@@ -89,6 +89,7 @@ const GAMIFICATION_TILES = [
   { emoji: '🛍', label: 'Магазин', path: '/field/shop', bg: 'linear-gradient(135deg,#2a2008,#1a1505)', border: 'rgba(240,200,80,.25)' },
   { emoji: '🎁', label: 'Инвентарь', path: '/field/inventory', bg: 'linear-gradient(135deg,#0a1a2a,#081020)', border: 'rgba(74,144,255,.25)' },
   { emoji: '⚔️', label: 'Квесты', path: '/field/quests', bg: 'linear-gradient(135deg,#1a0a2a,#100818)', border: 'rgba(165,110,255,.25)' },
+  { emoji: '🏆', label: 'Рейтинг', path: '/field/leaderboard', bg: 'linear-gradient(135deg,#1a1400,#0e0c00)', border: 'rgba(212,168,67,.35)' },
 ];
 
 export default function FieldHome() {
@@ -103,6 +104,7 @@ export default function FieldHome() {
   const [actionLoading, setActionLoading] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [quote] = useState(randomQuote);
+  const [myRank, setMyRank] = useState(null);
   const timerRef = useRef(null);
   const touchStartY = useRef(0);
   const [pulling, setPulling] = useState(false);
@@ -125,6 +127,13 @@ export default function FieldHome() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Fetch my rank
+  useEffect(() => {
+    fieldApi.get('/gamification/leaderboard').then((res) => {
+      if (res?.my_rank) setMyRank(res.my_rank);
+    }).catch(() => {});
+  }, []);
 
   // Live timer
   useEffect(() => {
@@ -461,6 +470,27 @@ export default function FieldHome() {
           ))}
         </div>
       </div>
+
+      {/* Rank mini-card */}
+      {myRank && (
+        <button onClick={() => { haptic.medium(); navigate('/field/leaderboard'); }}
+          className="w-full rounded-2xl p-4 mb-5 text-left active:scale-95 transition-transform"
+          style={{ background: 'linear-gradient(135deg,#1a1400,#0e0c00)', border: '1.5px solid rgba(212,168,67,.4)', boxShadow: '0 4px 20px rgba(212,168,67,.08)' }}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span style={{ fontSize: 32 }}>🏆</span>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'rgba(212,168,67,.7)' }}>Мой рейтинг</p>
+                <p className="text-lg font-bold" style={{ color: '#D4A843' }}>#{myRank.rank} из {myRank.total}</p>
+                <p className="text-xs" style={{ color: 'rgba(255,255,255,.5)' }}>
+                  {myRank.rank_title?.icon} {myRank.rank_title?.title} · {myRank.earned_runes} ᚱ заработано
+                </p>
+              </div>
+            </div>
+            <span style={{ color: 'rgba(212,168,67,.6)', fontSize: 18 }}>›</span>
+          </div>
+        </button>
+      )}
 
       {/* Quick actions */}
       <div className="grid grid-cols-4 gap-3">

@@ -611,6 +611,12 @@ async function routes(fastify) {
       myEntry = me ? { ...me, rank_title: getRankTitle(me.level) } : null;
     }
 
+    // Total participants count
+    const { rows: [{ total_count }] } = await db.query(
+      `SELECT COUNT(*)::int AS total_count FROM gamification_wallets WHERE currency='runes'`
+    );
+    if (myEntry) myEntry = { ...myEntry, total: total_count };
+
     // ── Tournament bracket: top-16 seeded by earned_runes ──
     function buildTournament(players) {
       const now = new Date();
