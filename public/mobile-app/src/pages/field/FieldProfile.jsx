@@ -284,7 +284,7 @@ const AVATAR_SVGS = {
 <!-- lightning glow eyes hint -->
 <ellipse cx="43" cy="43" rx="6" ry="5" fill="none" stroke="rgba(100,160,255,.25)" stroke-width="1"/>
 <ellipse cx="57" cy="43" rx="6" ry="5" fill="none" stroke="rgba(100,160,255,.25)" stroke-width="1"/>
-</svg>
+</svg>`,
 
   'Аватар "Воин"': `<svg viewBox="0 0 100 200" width="100%" height="100%" preserveAspectRatio="xMidYMin slice" fill="none" xmlns="http://www.w3.org/2000/svg">
 <defs>
@@ -351,11 +351,9 @@ const AVATAR_SVGS = {
 <path d="M34 170 L30 197 L25 197 Q24 192 27 184 L30 170Z" fill="#241008"/>
 <path d="M66 170 L70 197 L75 197 Q76 192 73 184 L70 170Z" fill="#241008"/>
 <path d="M32 140 L28 170 L38 170 L40 152 L50 155 L60 152 L62 170 L72 170 L68 140Z" fill="#2a1a10"/>
-<!-- bare chest with war paint -->
 <path d="M32 80 Q32 70 50 68 Q68 70 68 80 L68 140 L32 140Z" fill="url(#bch)"/>
 <path d="M36 80 L38 140" stroke="rgba(180,80,40,.3)" stroke-width="1" opacity=".5"/>
 <path d="M64 80 L62 140" stroke="rgba(180,80,40,.3)" stroke-width="1" opacity=".5"/>
-<!-- war paint stripes -->
 <path d="M34 88 L44 96" stroke="#cc2020" stroke-width="1.8" stroke-linecap="round" opacity=".7"/>
 <path d="M66 88 L56 96" stroke="#cc2020" stroke-width="1.8" stroke-linecap="round" opacity=".7"/>
 <path d="M38 104 L48 112" stroke="#cc2020" stroke-width="1.5" stroke-linecap="round" opacity=".6"/>
@@ -363,12 +361,10 @@ const AVATAR_SVGS = {
 <rect x="32" y="136" width="36" height="5" rx="2" fill="#3a1810" stroke="rgba(200,80,40,.4)" stroke-width=".5"/>
 <rect x="47" y="135" width="6" height="7" rx="1" fill="#501820" stroke="rgba(200,80,40,.5)" stroke-width=".5"/>
 <path d="M22 82 Q30 70 50 66 Q70 70 78 82" fill="#8a5030" opacity=".7"/>
-<!-- LEFT arm with left axe -->
 <path d="M30 82 Q18 94 14 110" stroke="#8a5030" stroke-width="10" stroke-linecap="round" fill="none"/>
 <path d="M30 82 Q18 94 14 110" stroke="#c8806a" stroke-width="7" stroke-linecap="round" fill="none"/>
 <line x1="13" y1="114" x2="8" y2="75" stroke="#5a3820" stroke-width="2" stroke-linecap="round"/>
 <path d="M4 65 Q-1 57 3 70 Q8 72 14 70 Q14 57 4 65Z" fill="#585868" stroke="rgba(220,80,40,.7)" stroke-width=".8"/>
-<!-- RIGHT arm with right axe -->
 <path d="M70 82 Q82 92 87 108" stroke="#8a5030" stroke-width="10" stroke-linecap="round" fill="none"/>
 <path d="M70 82 Q82 92 87 108" stroke="#c8806a" stroke-width="7" stroke-linecap="round" fill="none"/>
 <line x1="88" y1="112" x2="92" y2="74" stroke="#5a3820" stroke-width="2" stroke-linecap="round"/>
@@ -378,7 +374,6 @@ const AVATAR_SVGS = {
 <path d="M34 52 Q30 64 32 74 Q38 86 50 88 Q62 86 68 74 Q70 64 66 52" fill="#a03010"/>
 <path d="M36 55 Q34 66 36 74 Q42 84 50 86 Q58 84 64 74 Q66 66 64 55" fill="#c04020" opacity=".4"/>
 <path d="M39 53 Q44 48 50 49 Q56 48 61 53" stroke="#8a2010" stroke-width="3" fill="none" stroke-linecap="round"/>
-<!-- crazed red eyes -->
 <ellipse cx="42" cy="42" rx="5.5" ry="4.5" fill="#f0ece4"/>
 <circle cx="42" cy="42" r="3" fill="#cc2020"/>
 <circle cx="42" cy="42" r="1.8" fill="#800000"/>
@@ -389,13 +384,11 @@ const AVATAR_SVGS = {
 <circle cx="59" cy="41" r=".9" fill="#ffaaaa"/>
 <path d="M35 37 Q42 33 48 37" stroke="#8a2010" stroke-width="2.5" fill="none" stroke-linecap="round"/>
 <path d="M52 37 Q58 33 65 37" stroke="#8a2010" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-<!-- wild red hair (no helmet) -->
 <path d="M32 36 Q34 14 50 10 Q66 14 68 36" fill="#b03010"/>
 <path d="M33 36 Q22 46 20 62 L28 60" stroke="#b03010" stroke-width="5" stroke-linecap="round" fill="none"/>
 <path d="M67 36 Q78 46 80 62 L72 60" stroke="#b03010" stroke-width="5" stroke-linecap="round" fill="none"/>
 <path d="M40 38 Q38 26 36 16" stroke="#c04020" stroke-width="2.2" stroke-linecap="round" fill="none" opacity=".6"/>
 <path d="M60 38 Q62 26 64 16" stroke="#c04020" stroke-width="2.2" stroke-linecap="round" fill="none" opacity=".6"/>
-<!-- war paint on face -->
 <path d="M34 42 L42 46" stroke="#cc2020" stroke-width="1.5" stroke-linecap="round" opacity=".8"/>
 <path d="M58 46 L66 42" stroke="#cc2020" stroke-width="1.5" stroke-linecap="round" opacity=".8"/>
 </svg>`,
@@ -422,24 +415,19 @@ const AVATAR_SVGS = {
 <path d="M22 84 Q30 74 50 70 Q70 74 78 84 Q60 78 50 76 Q40 78 22 84Z" fill="#28204a" opacity=".9"/>
 <path d="M26 82 Q22 70 24 55 Q26 45 32 44 Q28 55 30 68Z" fill="#2a1e50"/>
 <path d="M74 82 Q78 70 76 55 Q74 45 68 44 Q72 55 70 68Z" fill="#2a1e50"/>
-<!-- LEFT arm with mystical staff -->
 <path d="M30 82 Q20 94 18 112" stroke="#3a2860" stroke-width="10" stroke-linecap="round" fill="none"/>
 <path d="M30 82 Q20 94 18 112" stroke="#8878b8" stroke-width="7" stroke-linecap="round" fill="none"/>
 <line x1="17" y1="115" x2="12" y2="170" stroke="#403050" stroke-width="2.5" stroke-linecap="round"/>
 <path d="M8 162 Q6 150 12 148 Q16 150 12 170Z" fill="#7858c8" opacity=".8"/>
-<ellipse cx="10" cy="154" rx="3" ry="5" fill="none" stroke="rgba(180,140,255,.5)" stroke-width=".8"/>
 <circle cx="12" cy="148" r="3" fill="#9878e8" opacity=".7"/>
-<!-- RIGHT arm -->
 <path d="M70 82 Q80 94 82 112" stroke="#3a2860" stroke-width="10" stroke-linecap="round" fill="none"/>
 <path d="M70 82 Q80 94 82 112" stroke="#8878b8" stroke-width="7" stroke-linecap="round" fill="none"/>
 <circle cx="83" cy="114" r="5" fill="#8878b8"/>
 <rect x="44" y="62" width="12" height="8" rx="3" fill="#b0a0c0"/>
 <ellipse cx="50" cy="47" rx="16" ry="18" fill="url(#vsk)"/>
-<!-- silver-grey hair and braids -->
 <path d="M35 54 Q32 66 34 76 Q40 86 50 88 Q60 86 66 76 Q68 66 65 54" fill="#d0c8d8" opacity=".9"/>
 <path d="M36 58 Q34 68 36 76 Q42 84 50 86 Q58 84 64 76 Q66 68 64 58" fill="#e0d8e8" opacity=".35"/>
 <path d="M40 56 Q44 52 50 53 Q56 52 60 56" stroke="#b0a8c0" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-<!-- violet eyes -->
 <ellipse cx="43" cy="44" rx="5" ry="4" fill="#f0ece8"/>
 <circle cx="43" cy="44" r="2.8" fill="#7858c8"/>
 <circle cx="43" cy="44" r="1.6" fill="#5038a8"/>
@@ -468,7 +456,6 @@ const AVATAR_SVGS = {
 <path d="M27 184 L32 184" stroke="#302010" stroke-width="1.5"/>
 <path d="M73 184 L68 184" stroke="#302010" stroke-width="1.5"/>
 <path d="M32 140 L28 170 L38 170 L40 152 L50 155 L60 152 L62 170 L72 170 L68 140Z" fill="#241c10"/>
-<!-- colorful tunic -->
 <path d="M32 80 Q32 68 50 66 Q68 68 68 80 L68 140 L32 140Z" fill="url(#stu)"/>
 <path d="M35 78 Q38 90 38 140" stroke="rgba(200,160,60,.15)" stroke-width=".8" fill="none"/>
 <path d="M65 78 Q62 90 62 140" stroke="rgba(200,160,60,.15)" stroke-width=".8" fill="none"/>
@@ -479,14 +466,11 @@ const AVATAR_SVGS = {
 <rect x="32" y="136" width="36" height="5" rx="2" fill="#302010" stroke="rgba(240,180,60,.45)" stroke-width=".5"/>
 <rect x="47" y="135" width="6" height="7" rx="1" fill="#483020" stroke="rgba(240,180,60,.55)" stroke-width=".5"/>
 <path d="M22 82 Q30 72 50 68 Q70 72 78 82" fill="#5a4428" opacity=".8"/>
-<!-- LEFT arm -->
 <path d="M32 82 Q22 96 18 112" stroke="#4a3820" stroke-width="10" stroke-linecap="round" fill="none"/>
 <path d="M32 82 Q22 96 18 112" stroke="#c8a060" stroke-width="7" stroke-linecap="round" fill="none"/>
 <circle cx="17" cy="114" r="5" fill="#c8a060"/>
-<!-- RIGHT arm holding lyre -->
 <path d="M68 82 Q80 92 83 108" stroke="#4a3820" stroke-width="10" stroke-linecap="round" fill="none"/>
 <path d="M68 82 Q80 92 83 108" stroke="#c8a060" stroke-width="7" stroke-linecap="round" fill="none"/>
-<!-- lyre instrument -->
 <ellipse cx="90" cy="100" rx="9" ry="14" fill="#1a120a" stroke="rgba(240,180,60,.5)" stroke-width=".8"/>
 <line x1="84" y1="94" x2="84" y2="106" stroke="rgba(240,180,60,.35)" stroke-width=".6"/>
 <line x1="87" y1="92" x2="87" y2="108" stroke="rgba(240,180,60,.4)" stroke-width=".6"/>
@@ -498,11 +482,9 @@ const AVATAR_SVGS = {
 <circle cx="90" cy="88" r="3" fill="#1a120a" stroke="rgba(240,180,60,.6)" stroke-width=".8"/>
 <rect x="44" y="62" width="12" height="7" rx="3" fill="#c8a060"/>
 <ellipse cx="50" cy="46" rx="18" ry="20" fill="url(#ssk)"/>
-<!-- dark brown beard -->
 <path d="M33 54 Q30 66 32 76 Q38 86 50 88 Q62 86 68 76 Q70 66 67 54" fill="#6a4020"/>
 <path d="M36 58 Q34 68 36 76 Q42 84 50 86 Q58 84 64 76 Q66 68 64 58" fill="#7a4828" opacity=".45"/>
 <path d="M38 55 Q44 50 50 51 Q56 50 62 55" stroke="#5a3010" stroke-width="2" fill="none" stroke-linecap="round"/>
-<!-- warm amber eyes -->
 <ellipse cx="42" cy="43" rx="5" ry="4" fill="#f0ece4"/>
 <circle cx="42" cy="43" r="2.8" fill="#a85820"/>
 <circle cx="42" cy="43" r="1.6" fill="#6a3410"/>
@@ -516,10 +498,9 @@ const AVATAR_SVGS = {
 <path d="M32 36 Q33 18 50 14 Q67 18 68 36" fill="#5a3818"/>
 <path d="M33 36 Q28 48 29 60" stroke="#5a3818" stroke-width="4" stroke-linecap="round" fill="none"/>
 <path d="M67 36 Q72 48 71 60" stroke="#5a3818" stroke-width="4" stroke-linecap="round" fill="none"/>
-<!-- headband -->
 <path d="M32 37 Q50 34 68 37" fill="none" stroke="#c89030" stroke-width="2.5"/>
 <circle cx="50" cy="35" r="2.5" fill="#c89030"/>
-</svg>``,
+</svg>`
 };
 
 /* ═══════════════════════════════════════════════════════════════════
