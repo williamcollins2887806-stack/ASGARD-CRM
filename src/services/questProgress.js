@@ -33,20 +33,25 @@ async function updateQuestProgress(db, employeeId, action, meta = {}) {
     if (!quests.length) return;
 
     for (const quest of quests) {
-      const periodStart = quest.quest_type === 'daily'
+      const periodDate = quest.quest_type === 'daily'
         ? todayMsk
         : quest.quest_type === 'weekly'
         ? weekStartMsk
         : new Date(0); // permanent — epoch
 
+      // Use plain date string (YYYY-MM-DD) to avoid UTC timezone mismatch when
+      // PostgreSQL casts to ::date. toISOString() returns UTC which shifts the date
+      // by -3h at midnight MSK, causing the INSERT and UPDATE to use different dates.
+      const periodStart = periodDate.toISOString().slice(0, 10); // "YYYY-MM-DD"
+
       // Upsert progress row for current period (V094: unique on employee+quest+period)
       const { rows: [prog] } = await db.query(`
         INSERT INTO gamification_quest_progress (employee_id, quest_id, current_count, completed, reward_claimed, period_start)
-        VALUES ($1, $2, 0, false, false, $3)
+        VALUES ($1, $2, 0, false, false, $3::date)
         ON CONFLICT (employee_id, quest_id, period_start) DO UPDATE SET
           current_count = gamification_quest_progress.current_count
         RETURNING current_count, completed
-      `, [employeeId, quest.id, periodStart.toISOString()]);
+      `, [employeeId, quest.id, periodStart]);
 
       // Don't increment if already completed this period
       if (prog.completed) continue;
@@ -58,7 +63,7 @@ async function updateQuestProgress(db, employeeId, action, meta = {}) {
             completed = (current_count + 1 >= $3)
         WHERE employee_id = $1 AND quest_id = $2 AND period_start = $4::date
         RETURNING current_count, completed
-      `, [employeeId, quest.id, quest.target_count, periodStart.toISOString()]);
+      `, [employeeId, quest.id, quest.target_count, periodStart]);
 
       if (updated?.completed) {
         // Log quest completion for audit

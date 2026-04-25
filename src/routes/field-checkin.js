@@ -295,7 +295,7 @@ async function routes(fastify, options) {
         // total_shifts — same action, permanent quests use this too
         updateQuestProgress(db, empId, 'total_shifts').catch(() => {});
         // hours_min_8 — only if shift was at least 8 hours
-        if (hoursWorked >= 7.5) {
+        if (hoursWorked >= 8) {
           updateQuestProgress(db, empId, 'hours_min_8').catch(() => {});
         }
       } catch { /* non-critical */ }

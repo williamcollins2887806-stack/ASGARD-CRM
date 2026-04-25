@@ -586,6 +586,19 @@ try {
   fastify.log.warn('[AchievementsCron] Init skipped: ' + cronErr.message);
 }
 
+// ── Shift Autocomplete: every 30 min ──
+try {
+  const shiftAutocomplete = require('./services/shift-autocomplete');
+  fastify.addHook('onReady', async () => {
+    shiftAutocomplete.start(fastify.log);
+  });
+  fastify.addHook('onClose', async () => {
+    shiftAutocomplete.stop();
+  });
+} catch (cronErr) {
+  fastify.log.warn('[ShiftAutocomplete] Init skipped: ' + cronErr.message);
+}
+
 // ── Call Report Scheduler ──
 try {
   const ReportScheduler = require('./services/report-scheduler');

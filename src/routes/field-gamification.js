@@ -97,6 +97,118 @@ async function routes(fastify) {
     }
   });
 
+  // ── POST /wallet/convert-to-xp — runes → XP (rate: 5 runes = 1 XP) ──
+  // Daily cap: 1000 runes per day. Min: 15 runes. Max per request: 1000 runes.
+  fastify.post('/wallet/convert-to-xp', {
+    preHandler: [fastify.fieldAuthenticate],
+    schema: {
+      body: {
+        type: 'object',
+        required: ['runes_amount'],
+        properties: { runes_amount: { type: 'integer', minimum: 15, maximum: 1000 } }
+      }
+    }
+  }, async (req, reply) => {
+    const eid = req.fieldEmployee.id;
+    const { runes_amount } = req.body;
+
+    const RATE = 5;       // 5 runes → 1 XP
+    const DAILY_CAP = 1000; // max runes converted per day
+
+    const xpGained = Math.floor(runes_amount / RATE);
+    if (xpGained < 1) {
+      return reply.code(400).send({ error: `Минимум ${RATE} рун для получения 1 XP` });
+    }
+    const runesSpent = xpGained * RATE; // round down to exact multiple
+
+    // Check daily cap
+    const nowMsk = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
+    const todayMsk = new Date(nowMsk); todayMsk.setHours(0, 0, 0, 0);
+
+    const { rows: [{ used_today }] } = await db.query(
+      `SELECT COALESCE(SUM(ABS(amount)), 0)::int AS used_today
+       FROM gamification_currency_ledger
+       WHERE employee_id = $1 AND currency = 'runes' AND operation = 'xp_convert'
+         AND created_at >= $2`,
+      [eid, todayMsk.toISOString()]
+    );
+    if (parseInt(used_today) + runesSpent > DAILY_CAP) {
+      const remaining = Math.max(0, DAILY_CAP - parseInt(used_today));
+      return reply.code(400).send({
+        error: `Дневной лимит: ${DAILY_CAP} рун. Сегодня осталось: ${remaining} рун`,
+        daily_remaining: remaining
+      });
+    }
+
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Debit runes (atomic check)
+      const { rows: [runesWallet] } = await client.query(
+        `SELECT balance FROM gamification_wallets WHERE employee_id = $1 AND currency = 'runes' FOR UPDATE`,
+        [eid]
+      );
+      if (!runesWallet || parseFloat(runesWallet.balance) < runesSpent) {
+        await client.query('ROLLBACK');
+        return reply.code(400).send({ error: `Недостаточно рун. Нужно: ${runesSpent}, есть: ${Math.floor(runesWallet?.balance || 0)}` });
+      }
+
+      const newRunesBalance = parseFloat(runesWallet.balance) - runesSpent;
+      await client.query(
+        `UPDATE gamification_wallets SET balance = $2, updated_at = NOW()
+         WHERE employee_id = $1 AND currency = 'runes'`,
+        [eid, newRunesBalance]
+      );
+      await client.query(
+        `INSERT INTO gamification_currency_ledger (employee_id, currency, amount, balance_after, operation, note)
+         VALUES ($1, 'runes', $2, $3, 'xp_convert', $4)`,
+        [eid, -runesSpent, newRunesBalance, `Переплавка рун в XP: ${runesSpent} ᚱ → ${xpGained} XP`]
+      );
+
+      // Credit XP
+      await client.query(
+        `INSERT INTO gamification_wallets (employee_id, currency, balance)
+         VALUES ($1, 'xp', $2)
+         ON CONFLICT (employee_id, currency) DO UPDATE
+           SET balance = gamification_wallets.balance + $2, updated_at = NOW()`,
+        [eid, xpGained]
+      );
+      const { rows: [xpWallet] } = await client.query(
+        `SELECT balance FROM gamification_wallets WHERE employee_id = $1 AND currency = 'xp'`, [eid]
+      );
+      await client.query(
+        `INSERT INTO gamification_currency_ledger (employee_id, currency, amount, balance_after, operation, note)
+         VALUES ($1, 'xp', $2, $3, 'xp_convert', $4)`,
+        [eid, xpGained, xpWallet.balance, `Переплавка: ${runesSpent} ᚱ → ${xpGained} XP`]
+      );
+
+      // Audit
+      await client.query(
+        `INSERT INTO gamification_audit_log (employee_id, action, details)
+         VALUES ($1, 'xp_convert', $2)`,
+        [eid, JSON.stringify({ runes_spent: runesSpent, xp_gained: xpGained })]
+      );
+
+      await client.query('COMMIT');
+
+      const newLevel = Math.max(1, Math.floor(xpWallet.balance / 100) + 1);
+      return {
+        ok: true,
+        runes_spent: runesSpent,
+        xp_gained: xpGained,
+        xp_balance: parseInt(xpWallet.balance),
+        new_level: newLevel,
+        daily_remaining: DAILY_CAP - parseInt(used_today) - runesSpent,
+      };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  });
+
   // ── GET /wallet/history — last 50 transactions ──
   fastify.get('/wallet/history', { preHandler: [fastify.fieldAuthenticate] }, async (req) => {
     const eid = req.fieldEmployee.id;
@@ -827,6 +939,107 @@ async function routes(fastify) {
     );
 
     return { ok: true, status: 'confirmed' };
+  });
+
+  // ── POST /inventory/:id/sell — sell item for 50% of shop price in runes ──
+  fastify.post('/inventory/:id/sell', { preHandler: [fastify.fieldAuthenticate] }, async (req, reply) => {
+    const eid = req.fieldEmployee.id;
+    const invId = parseInt(req.params.id, 10);
+
+    const { rows: [inv] } = await db.query(
+      'SELECT * FROM gamification_inventory WHERE id = $1 AND employee_id = $2',
+      [invId, eid]
+    );
+    if (!inv) return reply.code(404).send({ error: 'Предмет не найден' });
+    if (inv.is_equipped) return reply.code(400).send({ error: 'Сначала снимите предмет' });
+
+    // Cannot sell item in active delivery
+    const { rows: [ful] } = await db.query(
+      `SELECT id FROM gamification_fulfillment
+       WHERE inventory_id = $1 AND status IN ('requested','ready','delivered')`,
+      [invId]
+    );
+    if (ful) return reply.code(400).send({ error: 'Предмет в процессе доставки — нельзя продать' });
+
+    // Determine sell price:
+    // Tier-based defaults (runes) for fallback
+    const TIER_PRICE = { legendary: 500, epic: 200, rare: 75, uncommon: 40, common: 25 };
+    let shopPriceRunes = 0;
+
+    if (inv.source_type === 'shop' && inv.source_id) {
+      const { rows: [si] } = await db.query(
+        'SELECT price_runes FROM gamification_shop_items WHERE id = $1', [inv.source_id]
+      );
+      shopPriceRunes = parseInt(si?.price_runes || 0);
+    } else if (inv.source_type === 'spin' && inv.source_id) {
+      // Prize may link to a shop_item via prize.value when prize_type='shop_item'
+      const { rows: [pr] } = await db.query(
+        `SELECT prize_type, value, tier FROM gamification_prizes WHERE id = $1`, [inv.source_id]
+      );
+      if (pr?.prize_type === 'shop_item' && pr.value) {
+        const { rows: [si] } = await db.query(
+          'SELECT price_runes FROM gamification_shop_items WHERE id = $1', [parseInt(pr.value)]
+        );
+        shopPriceRunes = parseInt(si?.price_runes || 0);
+      }
+      if (!shopPriceRunes) {
+        shopPriceRunes = TIER_PRICE[pr?.tier] || 50;
+      }
+    }
+
+    // Fallback: use item_category/item_name heuristics
+    if (!shopPriceRunes) shopPriceRunes = 50;
+
+    const sellPrice = Math.max(5, Math.floor(shopPriceRunes * 0.5));
+
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Delete inventory record
+      const { rowCount } = await client.query(
+        'DELETE FROM gamification_inventory WHERE id = $1 AND employee_id = $2',
+        [invId, eid]
+      );
+      if (!rowCount) {
+        await client.query('ROLLBACK');
+        return reply.code(409).send({ error: 'Предмет уже продан' });
+      }
+
+      // Credit runes
+      await client.query(
+        `INSERT INTO gamification_wallets (employee_id, currency, balance)
+         VALUES ($1, 'runes', $2)
+         ON CONFLICT (employee_id, currency) DO UPDATE
+           SET balance = gamification_wallets.balance + $2, updated_at = NOW()`,
+        [eid, sellPrice]
+      );
+
+      // Ledger
+      const { rows: [wallet] } = await client.query(
+        `SELECT balance FROM gamification_wallets WHERE employee_id = $1 AND currency = 'runes'`, [eid]
+      );
+      await client.query(
+        `INSERT INTO gamification_currency_ledger (employee_id, currency, amount, balance_after, operation, note, reference_type)
+         VALUES ($1, 'runes', $2, $3, 'item_sell', $4, 'inventory')`,
+        [eid, sellPrice, wallet?.balance || sellPrice, `Продажа: ${inv.item_name}`]
+      );
+
+      // Audit log
+      await client.query(
+        `INSERT INTO gamification_audit_log (employee_id, action, details)
+         VALUES ($1, 'item_sold', $2)`,
+        [eid, JSON.stringify({ inventory_id: invId, item_name: inv.item_name, sell_price: sellPrice })]
+      );
+
+      await client.query('COMMIT');
+      return { ok: true, sell_price: sellPrice, item_name: inv.item_name };
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
   });
 
   // ── POST /quests/:id/claim — claim quest reward ──

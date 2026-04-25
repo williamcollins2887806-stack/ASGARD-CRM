@@ -51,6 +51,29 @@ export default function FieldInventory() {
   const [actionLoading, setActionLoading] = useState(null); // itemId being acted on
   const touchStartY = useRef(0);
 
+  // Sell sheet
+  const [sellItem, setSellItem] = useState(null);
+  const [sellLoading, setSellLoading] = useState(false);
+  const [sellResult, setSellResult] = useState(null); // { item_name, sell_price }
+
+  // Wallet + XP exchange
+  const [wallet, setWallet] = useState({ runes: 0, xp: 0 });
+  const [showXpForge, setShowXpForge] = useState(false);
+  const [xpAmount, setXpAmount] = useState('');
+  const [xpLoading, setXpLoading] = useState(false);
+  const [xpResult, setXpResult] = useState(null);
+
+  const XP_RATE = 5; // 5 runes = 1 XP
+  const XP_DAILY_CAP = 1000;
+
+  const fetchWallet = useCallback(() => {
+    fieldApi.get('/gamification/wallet').then(d => {
+      setWallet({ runes: d.runes || 0, xp: d.xp || 0 });
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => { fetchWallet(); }, [fetchWallet]);
+
   /* ── Load from API ── */
   const loadInventory = useCallback(() => {
     setLoading(true);
@@ -126,6 +149,44 @@ export default function FieldInventory() {
       setActionLoading(null);
     }
   }, [haptic, loadInventory]);
+
+  const handleSell = useCallback(async () => {
+    if (!sellItem) return;
+    haptic.medium();
+    setSellLoading(true);
+    try {
+      const res = await fieldApi.post(`/gamification/inventory/${sellItem.id}/sell`, {});
+      haptic.success();
+      setSellResult({ item_name: res.item_name, sell_price: res.sell_price });
+      setSellItem(null);
+      loadInventory();
+      fetchWallet();
+    } catch (err) {
+      haptic.error();
+      setSellItem(null);
+    } finally {
+      setSellLoading(false);
+    }
+  }, [sellItem, haptic, loadInventory, fetchWallet]);
+
+  const handleXpExchange = useCallback(async () => {
+    const amount = parseInt(xpAmount);
+    if (!amount || amount < 15) return;
+    setXpLoading(true);
+    haptic.medium();
+    try {
+      const res = await fieldApi.post('/gamification/wallet/convert-to-xp', { runes_amount: amount });
+      haptic.success();
+      setXpResult(res);
+      setXpAmount('');
+      fetchWallet();
+      setTimeout(() => setXpResult(null), 4000);
+    } catch (err) {
+      haptic.error();
+    } finally {
+      setXpLoading(false);
+    }
+  }, [xpAmount, haptic, fetchWallet]);
 
   /* ── Stagger animation ── */
   useEffect(() => {
@@ -310,6 +371,69 @@ export default function FieldInventory() {
             </div>
           )}
 
+          {/* ═══ XP FORGE (Кузница рун) ═══ */}
+          <div className="finv-xp-forge-wrap">
+            <button className="finv-xp-forge-toggle" onClick={() => setShowXpForge(p => !p)}>
+              <span>⚗️ Кузница XP</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 11, color: 'rgba(212,168,67,.7)' }}>{wallet.runes} ᚱ · {wallet.xp} XP</span>
+                <span style={{ transition: 'transform .3s', transform: showXpForge ? 'rotate(180deg)' : 'rotate(0deg)', fontSize: 10, color: 'rgba(255,255,255,.4)' }}>▼</span>
+              </span>
+            </button>
+            {showXpForge && (
+              <div className="finv-xp-forge-body">
+                <div className="finv-xp-forge-rate">Курс: 5 ᚱ = 1 XP · лимит 1000 ᚱ/день</div>
+                <div className="finv-xp-forge-balances">
+                  <div className="finv-xp-forge-bal">
+                    <div style={{ fontSize: 20 }}>ᚱ</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: '#D4A843' }}>{wallet.runes}</div>
+                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,.4)' }}>Руны</div>
+                  </div>
+                  <div style={{ fontSize: 24, color: 'rgba(255,255,255,.2)' }}>→</div>
+                  <div className="finv-xp-forge-bal">
+                    <div style={{ fontSize: 20 }}>⚡</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: '#818cf8' }}>{wallet.xp}</div>
+                    <div style={{ fontSize: 10, color: 'rgba(255,255,255,.4)' }}>XP</div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input
+                    type="number"
+                    min="15"
+                    max="1000"
+                    step="5"
+                    placeholder="Рун (мин. 15)"
+                    value={xpAmount}
+                    onChange={e => setXpAmount(e.target.value)}
+                    className="finv-xp-input"
+                  />
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,.4)', whiteSpace: 'nowrap' }}>
+                    → {xpAmount && parseInt(xpAmount) >= 15 ? Math.floor(parseInt(xpAmount) / XP_RATE) : 0} XP
+                  </div>
+                </div>
+                {xpResult && (
+                  <div className="finv-xp-result">
+                    ✅ Переплавлено {xpResult.runes_spent} ᚱ → +{xpResult.xp_gained} XP! Уровень: {xpResult.new_level}
+                  </div>
+                )}
+                <button
+                  className="finv-xp-forge-btn"
+                  disabled={xpLoading || !xpAmount || parseInt(xpAmount) < 15 || parseInt(xpAmount) > wallet.runes}
+                  onClick={handleXpExchange}>
+                  {xpLoading ? '⚗️ Переплавка...' : '⚗️ Переплавить руны в XP'}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Sell result toast */}
+          {sellResult && (
+            <div className="finv-sell-toast">
+              💰 Продано: <strong>{sellResult.item_name}</strong> за <strong>{sellResult.sell_price} ᚱ</strong>
+              <button onClick={() => setSellResult(null)} style={{ marginLeft: 8, background: 'none', border: 'none', color: 'rgba(255,255,255,.5)', cursor: 'pointer', fontSize: 14 }}>✕</button>
+            </div>
+          )}
+
           {/* ═══ ITEM LIST ═══ */}
           <div className="finv-item-list">
             {sorted.length === 0 ? (
@@ -413,6 +537,14 @@ export default function FieldInventory() {
                       <div className="finv-confirmed-badge">{'\u2705'} Получено</div>
                     )}
 
+                    {/* Sell button — available for pending items and unequipped digital */}
+                    {(item.status === 'pending' || (item.isDigital && !item.isEquipped)) && (
+                      <button className="finv-action-btn sell"
+                        onClick={e => { e.stopPropagation(); haptic.light(); setSellItem(item); }}>
+                        💰 Продать
+                      </button>
+                    )}
+
                     <div className="finv-item-more">{'\u25B8'} Подробнее</div>
                   </div>
                 </div>
@@ -421,6 +553,38 @@ export default function FieldInventory() {
           </div>
 
         </div>
+
+        {/* ═══ SELL CONFIRMATION SHEET ═══ */}
+        {sellItem && (
+          <>
+            <div className="finv-modal-overlay on" onClick={() => setSellItem(null)} />
+            <div className="finv-modal-sheet on" style={{ maxHeight: '50dvh' }}>
+              <div className="finv-modal-card" onClick={e => e.stopPropagation()}>
+                <div className="finv-modal-handle" />
+                <div style={{ textAlign: 'center', marginBottom: 16 }}>
+                  <div style={{ fontSize: 36, marginBottom: 8 }}>💰</div>
+                  <div style={{ fontFamily: 'Cinzel,serif', fontSize: 17, fontWeight: 900, color: '#fff', marginBottom: 6 }}>
+                    Продать предмет?
+                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#D4A843', marginBottom: 4 }}>{sellItem.name}</div>
+                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,.5)' }}>
+                    Цена продажи: ~50% от стоимости в магазине
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={() => setSellItem(null)}
+                    style={{ flex: 1, padding: '14px 0', borderRadius: 14, border: '1.5px solid rgba(255,255,255,.1)', background: 'rgba(255,255,255,.04)', color: 'rgba(255,255,255,.7)', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+                    Отмена
+                  </button>
+                  <button onClick={handleSell} disabled={sellLoading}
+                    style={{ flex: 2, padding: '14px 0', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg,#C8940A,#F0C850)', color: '#1a1000', fontSize: 14, fontWeight: 800, cursor: 'pointer', opacity: sellLoading ? 0.6 : 1 }}>
+                    {sellLoading ? '⚗️ Продаём...' : '💰 Да, продать'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
 
         {/* ═══ DETAIL MODAL ═══ */}
         <div className={`finv-modal-overlay${showModal ? ' on' : ''}`} onClick={closeModal} />
@@ -788,4 +952,41 @@ const INV_CSS = `
 .finv-pill[data-filter="digital"]{border-color:rgba(168,85,247,.3)}
 .finv-pill[data-filter="digital"].active{background:rgba(168,85,247,.12);border-color:rgba(168,85,247,.5);color:#c084fc}
 .finv-pill[data-filter="digital"].active .finv-pill-count{background:#a855f7;color:#fff}
+
+/* Sell button */
+.finv-action-btn.sell{background:rgba(200,148,10,.12);color:#D4A843;
+  border:1.5px solid rgba(200,148,10,.25);box-shadow:none}
+.finv-action-btn.sell:not(:disabled):active{background:rgba(200,148,10,.2)}
+
+/* XP Forge */
+.finv-xp-forge-wrap{margin:4px 16px 8px;border-radius:16px;overflow:hidden;
+  border:1.5px solid rgba(212,168,67,.2);background:rgba(212,168,67,.04)}
+.finv-xp-forge-toggle{width:100%;padding:12px 16px;background:none;border:none;color:#D4A843;
+  font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:space-between;
+  font-family:inherit;-webkit-tap-highlight-color:transparent}
+.finv-xp-forge-toggle:active{background:rgba(212,168,67,.06)}
+.finv-xp-forge-body{padding:0 16px 16px;display:flex;flex-direction:column;gap:12px}
+.finv-xp-forge-rate{font-size:11px;color:rgba(255,255,255,.4);text-align:center;
+  padding:6px 12px;border-radius:8px;background:rgba(255,255,255,.03)}
+.finv-xp-forge-balances{display:flex;align-items:center;justify-content:center;gap:20px}
+.finv-xp-forge-bal{display:flex;flex-direction:column;align-items:center;gap:2px;
+  padding:10px 20px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.04);min-width:80px}
+.finv-xp-input{flex:1;padding:12px 16px;border-radius:12px;border:1.5px solid rgba(212,168,67,.25);
+  background:rgba(255,255,255,.04);color:#fff;font-size:15px;font-weight:700;
+  font-family:inherit;outline:none;-webkit-appearance:none}
+.finv-xp-input:focus{border-color:rgba(212,168,67,.5)}
+.finv-xp-input::placeholder{color:rgba(255,255,255,.25)}
+.finv-xp-forge-btn{padding:14px;border-radius:14px;border:none;
+  background:linear-gradient(135deg,rgba(129,140,248,.8),rgba(99,102,241,.9));
+  color:#fff;font-size:14px;font-weight:800;cursor:pointer;
+  font-family:inherit;transition:opacity .2s;-webkit-tap-highlight-color:transparent}
+.finv-xp-forge-btn:disabled{opacity:.4;cursor:not-allowed}
+.finv-xp-forge-btn:not(:disabled):active{opacity:.8}
+.finv-xp-result{padding:10px 14px;border-radius:10px;background:rgba(74,222,128,.1);
+  border:1px solid rgba(74,222,128,.2);color:#4ade80;font-size:12px;font-weight:700;text-align:center}
+
+/* Sell toast */
+.finv-sell-toast{margin:0 16px 8px;padding:10px 14px;border-radius:12px;
+  background:rgba(200,148,10,.12);border:1.5px solid rgba(200,148,10,.3);
+  color:#D4A843;font-size:12px;display:flex;align-items:center;gap:4px}
 `;

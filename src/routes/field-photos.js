@@ -149,6 +149,18 @@ async function routes(fastify, options) {
       );
       if (!access.length) return reply.code(403).send({ error: 'Нет доступа к этому проекту' });
 
+      // Determine role to filter photos:
+      // - Masters (shift_master / senior_master) see all photos for the project
+      // - Regular workers see only their own photos
+      const { rows: assignRows } = await db.query(
+        `SELECT field_role FROM employee_assignments
+         WHERE employee_id = $1 AND work_id = $2
+         ORDER BY is_active DESC LIMIT 1`,
+        [empId, workId]
+      );
+      const fieldRole = assignRows[0]?.field_role || '';
+      const isMaster = fieldRole === 'shift_master' || fieldRole === 'senior_master';
+
       let sql = `
         SELECT fp.id, fp.employee_id, fp.filename, fp.original_name, fp.photo_type,
                fp.caption, fp.lat, fp.lng, fp.taken_at, fp.created_at,
@@ -159,6 +171,13 @@ async function routes(fastify, options) {
       `;
       const params = [workId];
       let idx = 2;
+
+      // Workers can only see their own photos
+      if (!isMaster) {
+        sql += ` AND fp.employee_id = $${idx}`;
+        params.push(empId);
+        idx++;
+      }
 
       if (req.query.date) {
         sql += ` AND fp.created_at::date = $${idx}`;
@@ -189,6 +208,43 @@ async function routes(fastify, options) {
       return { photos };
     } catch (err) {
       fastify.log.error('[field-photos] GET / error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+  // ─────────────────────────────────────────────────────────────────────
+  // GET /crm/:work_id — CRM (PM) view: all photos for a work object
+  // Requires standard CRM auth (authenticate), not fieldAuthenticate
+  // Accessible to: PM, HEAD_PM, DIRECTOR_*, ADMIN
+  // ─────────────────────────────────────────────────────────────────────
+  fastify.get('/crm/:work_id', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    try {
+      const allowedRoles = ['PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'ADMIN'];
+      if (!allowedRoles.includes(req.user.role)) {
+        return reply.code(403).send({ error: 'Нет доступа' });
+      }
+
+      const workId = parseInt(req.params.work_id);
+      if (!workId) return reply.code(400).send({ error: 'Укажите work_id' });
+
+      const { rows } = await db.query(`
+        SELECT fp.id, fp.employee_id, fp.filename, fp.photo_type, fp.caption,
+               fp.lat, fp.lng, fp.taken_at, fp.created_at, fp.report_id,
+               e.fio AS author_name
+        FROM field_photos fp
+        JOIN employees e ON e.id = fp.employee_id
+        WHERE fp.work_id = $1
+        ORDER BY fp.created_at DESC
+        LIMIT 500
+      `, [workId]);
+
+      const photos = rows.map(p => ({
+        ...p,
+        url: `/uploads/field/${workId}/${p.filename}`,
+      }));
+
+      return { photos };
+    } catch (err) {
+      fastify.log.error('[field-photos] GET /crm error:', err);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
