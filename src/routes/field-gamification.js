@@ -383,11 +383,11 @@ async function routes(fastify) {
         [eid, -item.price_runes, wallet.balance, item.id]
       );
 
-      // Inventory
+      // Inventory (item_category from shop item so equip/request buttons render correctly)
       const { rows: [inv] } = await client.query(
-        `INSERT INTO gamification_inventory (employee_id, item_type, item_name, item_description, source_id, source_type)
-         VALUES ($1, 'shop_purchase', $2, $3, $4, 'shop') RETURNING id`,
-        [eid, item.name, item.description, item.id]
+        `INSERT INTO gamification_inventory (employee_id, item_type, item_name, item_description, item_category, source_id, source_type)
+         VALUES ($1, 'shop_purchase', $2, $3, $4, $5, 'shop') RETURNING id`,
+        [eid, item.name, item.description, item.category || 'merch', item.id]
       );
 
       // Fulfillment if physical

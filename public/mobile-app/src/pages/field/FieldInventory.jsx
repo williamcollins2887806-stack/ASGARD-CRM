@@ -87,7 +87,7 @@ export default function FieldInventory() {
     haptic.medium();
     setActionLoading(itemId);
     try {
-      await fieldApi.post(`/gamification/inventory/${itemId}/equip`);
+      await fieldApi.post(`/gamification/inventory/${itemId}/equip`, {});
       haptic.success();
       loadInventory();
     } catch {
@@ -102,7 +102,7 @@ export default function FieldInventory() {
     haptic.medium();
     setActionLoading(itemId);
     try {
-      await fieldApi.post(`/gamification/inventory/${itemId}/request`);
+      await fieldApi.post(`/gamification/inventory/${itemId}/request`, {});
       haptic.success();
       loadInventory();
     } catch {
