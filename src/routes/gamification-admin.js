@@ -236,7 +236,7 @@ async function routes(fastify) {
       return r;
     }
 
-    // warrior_power = total_shifts*300 + earned_xp*8 + earned_runes*1
+    // warrior_power = total_shifts*10 + earned_xp*5 + earned_runes*8
     const { rows } = await db.query(`
       WITH earned AS (
         SELECT employee_id,
@@ -254,9 +254,9 @@ async function routes(fastify) {
           COALESCE(sh.shift_count,0)::int AS total_shifts,
           COALESCE(gs.current_streak,0)::int AS streak,
           GREATEST(1, FLOOR(COALESCE(gw_x.balance,0)/100)+1)::int AS level,
-          (COALESCE(sh.shift_count,0)*300 + COALESCE(ea.earned_xp,0)*8 + COALESCE(ea.earned_runes,0))::int AS warrior_power,
+          (COALESCE(sh.shift_count,0)*10 + COALESCE(ea.earned_xp,0)*5 + COALESCE(ea.earned_runes,0)*8)::int AS warrior_power,
           ROW_NUMBER() OVER (
-            ORDER BY (COALESCE(sh.shift_count,0)*300 + COALESCE(ea.earned_xp,0)*8 + COALESCE(ea.earned_runes,0)) DESC
+            ORDER BY (COALESCE(sh.shift_count,0)*10 + COALESCE(ea.earned_xp,0)*5 + COALESCE(ea.earned_runes,0)*8) DESC
           )::int AS rank
         FROM employees e
         LEFT JOIN gamification_wallets gw_r ON gw_r.employee_id=e.id AND gw_r.currency='runes'
@@ -301,7 +301,7 @@ async function routes(fastify) {
             GROUP BY employee_id
           )
           SELECT e.id AS employee_id,
-            (COALESCE(ws.weekly_shifts,0)*300 + COALESCE(wc.weekly_xp,0)*8 + COALESCE(wc.weekly_runes,0))::int AS weekly_warrior_power
+            (COALESCE(ws.weekly_shifts,0)*10 + COALESCE(wc.weekly_xp,0)*5 + COALESCE(wc.weekly_runes,0)*8)::int AS weekly_warrior_power
           FROM employees e
           LEFT JOIN wc ON wc.employee_id = e.id
           LEFT JOIN ws ON ws.employee_id = e.id

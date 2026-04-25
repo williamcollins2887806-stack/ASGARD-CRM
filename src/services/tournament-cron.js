@@ -2,7 +2,7 @@
  * Tournament Cron — Real Weekly Bracket
  * ════════════════════════════════════════════════════════════════
  * Creates a new bracket every Monday 00:05 MSK (top-16 seeded by
- * all-time Сила Воина = shifts*300 + xp*8 + runes*1).
+ * all-time Сила Воина = shifts*10 + xp*5 + runes*8).
  * Finalizes (records champion) every Sunday 23:50 MSK.
  *
  * Bracket progression: weekly Сила Воина determines match winner.
@@ -47,7 +47,7 @@ async function getTop16ByAllTimeWarriorPower() {
     SELECT
       e.id   AS employee_id,
       e.fio,
-      (COALESCE(sh.shift_count,0)*300 + COALESCE(ea.earned_xp,0)*8 + COALESCE(ea.earned_runes,0))::int AS warrior_power
+      (COALESCE(sh.shift_count,0)*10 + COALESCE(ea.earned_xp,0)*5 + COALESCE(ea.earned_runes,0)*8)::int AS warrior_power
     FROM employees e
     LEFT JOIN earned ea ON ea.employee_id = e.id
     LEFT JOIN (
@@ -146,7 +146,7 @@ async function finalizeWeeklyTournament(log) {
         GROUP BY employee_id
       )
       SELECT e.id AS employee_id,
-        (COALESCE(ws.weekly_shifts,0)*300 + COALESCE(wc.weekly_xp,0)*8 + COALESCE(wc.weekly_runes,0))::int AS weekly_warrior_power
+        (COALESCE(ws.weekly_shifts,0)*10 + COALESCE(wc.weekly_xp,0)*5 + COALESCE(wc.weekly_runes,0)*8)::int AS weekly_warrior_power
       FROM employees e
       LEFT JOIN wc ON wc.employee_id = e.id
       LEFT JOIN ws ON ws.employee_id = e.id
