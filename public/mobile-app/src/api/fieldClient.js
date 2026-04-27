@@ -43,14 +43,14 @@ class FieldApiClient {
     return this.request(endpoint);
   }
 
-  post(endpoint, data) {
+  post(endpoint, data = {}) {
     return this.request(endpoint, {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
-  put(endpoint, data) {
+  put(endpoint, data = {}) {
     return this.request(endpoint, {
       method: 'PUT',
       body: JSON.stringify(data),
