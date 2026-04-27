@@ -12,50 +12,55 @@ async function routes(fastify) {
   const db = fastify.db;
 
   // ── GET /pending-deliveries — for PM / Director ──
+  // Returns two sections:
+  //   won   — all physical inventory items (no fulfillment request yet, status=pending)
+  //   requested — fulfillment requested/ready by worker
   fastify.get('/pending-deliveries', { preHandler: [fastify.authenticate] }, async (req) => {
     const user = req.user;
     const allowedRoles = ['PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'ADMIN'];
     if (!allowedRoles.includes(user.role)) {
-      return { deliveries: [] };
+      return { won: [], requested: [] };
     }
 
-    // PM sees only their works, directors see all
     const isDirector = user.role.startsWith('DIRECTOR') || user.role === 'ADMIN';
-    let query, params;
+    const pmFilter = isDirector ? '' : 'AND EXISTS (SELECT 1 FROM employee_assignments ea2 JOIN works w2 ON w2.id=ea2.work_id WHERE ea2.employee_id=gi.employee_id AND ea2.is_active=true AND w2.pm_id=$1)';
+    const params = isDirector ? [] : [user.id];
 
-    if (isDirector) {
-      query = `
-        SELECT gf.id, gf.inventory_id, gf.employee_id, gf.item_name, gf.status,
-               gf.delivery_note, gf.delivered_at, gf.requested_at, gf.created_at,
-               e.fio AS employee_name, e.phone AS employee_phone,
-               w.object_name AS work_name
-        FROM gamification_fulfillment gf
-        JOIN employees e ON e.id = gf.employee_id
-        LEFT JOIN employee_assignments fa ON fa.employee_id = gf.employee_id
-        LEFT JOIN works w ON w.id = fa.work_id
-        WHERE gf.status IN ('pending', 'requested', 'ready')
-        ORDER BY CASE gf.status WHEN 'requested' THEN 0 WHEN 'ready' THEN 1 WHEN 'pending' THEN 2 END, gf.created_at DESC
-      `;
-      params = [];
-    } else {
-      query = `
-        SELECT gf.id, gf.inventory_id, gf.employee_id, gf.item_name, gf.status,
-               gf.delivery_note, gf.delivered_at, gf.requested_at, gf.created_at,
-               e.fio AS employee_name, e.phone AS employee_phone,
-               w.object_name AS work_name
-        FROM gamification_fulfillment gf
-        JOIN employees e ON e.id = gf.employee_id
-        LEFT JOIN employee_assignments fa ON fa.employee_id = gf.employee_id
-        LEFT JOIN works w ON w.id = fa.work_id
-        WHERE gf.status IN ('pending', 'requested', 'ready')
-          AND w.pm_id = $1
-        ORDER BY CASE gf.status WHEN 'requested' THEN 0 WHEN 'ready' THEN 1 WHEN 'pending' THEN 2 END, gf.created_at DESC
-      `;
-      params = [user.id];
-    }
+    // Section 1: "Выиграно/Куплено" — physical items (food/merch) with pending fulfillment (worker hasn't requested yet)
+    const { rows: won } = await db.query(`
+      SELECT DISTINCT ON (gf.id)
+             gf.id, gf.inventory_id, gf.employee_id, gf.item_name, gf.status,
+             gf.created_at, e.fio AS employee_name, e.phone AS employee_phone,
+             gi.item_category,
+             w.object_name AS work_name
+      FROM gamification_fulfillment gf
+      JOIN gamification_inventory gi ON gi.id = gf.inventory_id
+      JOIN employees e ON e.id = gf.employee_id
+      LEFT JOIN employee_assignments ea ON ea.employee_id = gf.employee_id AND ea.is_active = true
+      LEFT JOIN works w ON w.id = ea.work_id
+      WHERE gf.status = 'pending'
+        ${pmFilter}
+      ORDER BY gf.id, gf.created_at DESC
+    `, params);
 
-    const { rows } = await db.query(query, params);
-    return { deliveries: rows };
+    // Section 2: "Запрошено к выдаче" — worker pressed "Получить" (status=requested/ready)
+    const { rows: requested } = await db.query(`
+      SELECT DISTINCT ON (gf.id)
+             gf.id, gf.inventory_id, gf.employee_id, gf.item_name, gf.status,
+             gf.requested_at, gf.created_at, e.fio AS employee_name, e.phone AS employee_phone,
+             gi.item_category,
+             w.object_name AS work_name
+      FROM gamification_fulfillment gf
+      JOIN gamification_inventory gi ON gi.id = gf.inventory_id
+      JOIN employees e ON e.id = gf.employee_id
+      LEFT JOIN employee_assignments ea ON ea.employee_id = gf.employee_id AND ea.is_active = true
+      LEFT JOIN works w ON w.id = ea.work_id
+      WHERE gf.status IN ('requested', 'ready')
+        ${pmFilter}
+      ORDER BY gf.id, COALESCE(gf.requested_at, gf.created_at) DESC
+    `, params);
+
+    return { won, requested };
   });
 
   // ── GET /delivered-history — recent deliveries ──

@@ -120,6 +120,21 @@ export default function FieldInventory() {
     }
   }, [haptic, loadInventory]);
 
+  const handleUnequip = useCallback(async (itemId, e) => {
+    e?.stopPropagation();
+    haptic.light();
+    setActionLoading(itemId);
+    try {
+      await fieldApi.post(`/gamification/inventory/${itemId}/unequip`, {});
+      haptic.success();
+      loadInventory();
+    } catch {
+      haptic.error();
+    } finally {
+      setActionLoading(null);
+    }
+  }, [haptic, loadInventory]);
+
   const handleRequest = useCallback(async (itemId, e) => {
     e?.stopPropagation();
     haptic.medium();
@@ -515,7 +530,16 @@ export default function FieldInventory() {
                       </button>
                     )}
                     {item.isDigital && item.isEquipped && (
-                      <div className="finv-equipped-badge">{'\u2728'} Надета ✓</div>
+                      <>
+                        <div className="finv-equipped-badge">{'\u2728'} Надета ✓</div>
+                        <button
+                          className="finv-action-btn"
+                          style={{ background: 'rgba(255,255,255,.08)', color: 'rgba(255,255,255,.5)', fontSize: 11 }}
+                          disabled={isActing}
+                          onClick={e => handleUnequip(item.id, e)}>
+                          Снять
+                        </button>
+                      </>
                     )}
                     {item.isPhysical && item.status === 'pending' && (
                       <button

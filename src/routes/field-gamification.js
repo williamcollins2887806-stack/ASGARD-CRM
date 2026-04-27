@@ -615,6 +615,13 @@ async function routes(fastify) {
       FROM gamification_quests q
       LEFT JOIN gamification_quest_progress qp ON qp.quest_id = q.id AND qp.employee_id = $1
       WHERE q.is_active = true
+        AND (q.allowed_roles IS NULL OR q.allowed_roles = ''
+          OR EXISTS (
+            SELECT 1 FROM employee_assignments ea
+            WHERE ea.employee_id = $1 AND ea.is_active = true
+              AND ea.field_role = ANY(string_to_array(q.allowed_roles, ','))
+          )
+        )
       ORDER BY q.quest_type, q.id
     `, [eid, todayMsk.toISOString(), weekStartMsk.toISOString()]);
 
@@ -889,6 +896,37 @@ async function routes(fastify) {
     );
 
     return { ok: true, slot, item_name: inv.item_name };
+  });
+
+  // ── POST /inventory/:id/unequip — unequip cosmetic/digital item ──
+  fastify.post('/inventory/:id/unequip', { preHandler: [fastify.fieldAuthenticate] }, async (req, reply) => {
+    const eid = req.fieldEmployee.id;
+    const invId = parseInt(req.params.id, 10);
+
+    const { rows: [inv] } = await db.query(
+      'SELECT * FROM gamification_inventory WHERE id = $1 AND employee_id = $2',
+      [invId, eid]
+    );
+    if (!inv) return reply.code(404).send({ error: 'Предмет не найден' });
+    if (!inv.is_equipped) return reply.code(400).send({ error: 'Предмет не надет' });
+
+    // Determine slot by item_name (same logic as equip)
+    const name = (inv.item_name || '').toLowerCase();
+    let slot = 'active_badge';
+    if      (name.includes('аватар'))                                   slot = 'active_avatar';
+    else if (name.includes('рамк'))                                     slot = 'active_frame';
+    else if (name.includes('тема') || /^тем[^а]/.test(name))           slot = 'active_theme';
+    else if (name.includes('шлем') || name.includes('маска'))           slot = 'active_helmet';
+    else if (name.includes('оружие') || name.includes('топор') ||
+             name.includes('молот') || name.includes('копьё') ||
+             name.includes('копье') || name.includes('меч'))            slot = 'active_weapon';
+    else if (name.includes('броня') || name.includes('кольчуг') ||
+             name.includes('нагрудник') || name.includes('плащ'))       slot = 'active_armor';
+
+    await db.query('UPDATE gamification_inventory SET is_equipped = false WHERE id = $1', [invId]);
+    await db.query(`UPDATE employees SET ${slot} = NULL WHERE id = $1`, [eid]);
+
+    return { ok: true, slot };
   });
 
   // ── POST /inventory/:id/request — worker requests physical prize delivery ──

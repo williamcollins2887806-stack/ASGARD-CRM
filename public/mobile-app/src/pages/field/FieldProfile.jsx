@@ -764,7 +764,10 @@ function SlotGrid({ slots, cosmetics, navigate, haptic }) {
     <div style={{ display: 'grid', gridTemplateColumns: `repeat(${slots.length},1fr)`, gap: 8, padding: '8px 12px' }}>
       {slots.map(slot => {
         const val = cosmetics?.[slot.key];
-        const shortName = val ? val.replace(/^[^"]*"([^"]*)".*$/, '$1') : null;
+        // Extract name from quotes: "Рогатый" or «Рогатый» or just trim
+        const shortName = val
+          ? (val.match(/["""«]([^"""»]+)["""»]/) || [])[1] || val.replace(/^[^\s]+\s/, '').replace(/^["«]|["»]$/g, '').trim() || val
+          : null;
         return (
           <button key={slot.key}
             onClick={() => { haptic.light(); navigate('/field/inventory'); }}

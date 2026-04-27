@@ -230,13 +230,18 @@ export default function FieldQuests() {
   const confirmClaim = useCallback(async () => {
     if (!claimingQuest) return;
     const q = claimingQuest;
+
+    // API claim first — only celebrate on success
+    try {
+      await fieldApi.post(`/gamification/quests/${q.id}/claim`);
+    } catch (err) {
+      hap([50]); closeModal();
+      return;
+    }
+
     playFanfare(); hap([50, 30, 80, 30, 100]);
     spawnConfetti(innerWidth / 2, innerHeight / 3, 80);
     spawnConfetti(innerWidth / 2, innerHeight / 3, 60);
-
-    // API claim
-    try { await fieldApi.post(`/gamification/quests/${q.id}/claim`); } catch {}
-
     setQuests(prev => prev.map(quest => quest.id === q.id ? { ...quest, state: 'claimed' } : quest));
     setTimeout(() => { closeModal(); }, 600);
   }, [claimingQuest, playFanfare, hap, spawnConfetti, closeModal]);
