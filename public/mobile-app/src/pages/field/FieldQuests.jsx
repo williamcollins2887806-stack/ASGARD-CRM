@@ -54,13 +54,14 @@ const MOCK_QUESTS = [
     current:0, target:1, rewardCoins:0, rewardItem:'Титул Ярл + особая рамка', state:'locked', requiredLevel:20, currentLevel:7, timerType:'none' },
 ];
 
-const TYPE_LABELS = { daily:'\uD83C\uDF05 День', weekly:'\uD83D\uDCC5 Неделя', seasonal:'\uD83C\uDF42 Сезон', permanent:'\uD83C\uDFDB Вечные' };
+const TYPE_LABELS = { daily:'\uD83C\uDF05 День', weekly:'\uD83D\uDCC5 Неделя', monthly:'\uD83D\uDCC6 Месяц', seasonal:'\uD83C\uDF42 Сезон', permanent:'\uD83C\uDFDB Вечные' };
 const RUNE_ACCENTS = ['\u16C9','\u16B1','\u16CF','\u16A6','\u16A0','\u16C7'];
-const TAB_RUNES = { daily:'\u16A0', weekly:'\u16B1', seasonal:'\u16C7', permanent:'\u16C9' };
+const TAB_RUNES = { daily:'\u16A0', weekly:'\u16B1', monthly:'\u16CF', seasonal:'\u16C7', permanent:'\u16C9' };
 
 /* ═══ Timer helpers ═══ */
 function getEndOfDay() { const d = new Date(); d.setHours(23,59,59,999); return d; }
 function getEndOfWeek() { const d = new Date(); const day = d.getDay(); d.setDate(d.getDate() + (day === 0 ? 0 : 7 - day)); d.setHours(23,59,59,999); return d; }
+function getEndOfMonth() { const d = new Date(); d.setMonth(d.getMonth() + 1, 0); d.setHours(23,59,59,999); return d; }
 function formatCountdown(ms) {
   if (ms <= 0) return 'Истекло';
   const s = Math.floor(ms / 1000), d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
@@ -119,7 +120,7 @@ export default function FieldQuests() {
         rewardCoins: q.reward_amount || 0, rewardItem: q.reward_item || null,
         state: q.reward_claimed ? 'claimed' : q.completed ? 'ready' : 'active',
         timerType: q.quest_type === 'daily' ? 'daily' : q.quest_type === 'weekly' ? 'weekly' :
-          q.quest_type === 'seasonal' ? 'seasonal' : 'none',
+          q.quest_type === 'monthly' ? 'monthly' : q.quest_type === 'seasonal' ? 'seasonal' : 'none',
         seasonEnd: q.season_end || '2026-05-31',
         requiredLevel: q.required_level, currentLevel: q.current_level,
       })));
@@ -254,8 +255,8 @@ export default function FieldQuests() {
   /* ── Computed ── */
   const tabQuests = useMemo(() => quests.filter(q => q.type === activeTab), [quests, activeTab]);
   const badges = useMemo(() => {
-    const b = { daily: 0, weekly: 0, seasonal: 0, permanent: 0 };
-    quests.forEach(q => { if (q.state === 'ready') b[q.type]++; });
+    const b = { daily: 0, weekly: 0, monthly: 0, seasonal: 0, permanent: 0 };
+    quests.forEach(q => { if (q.state === 'ready') b[q.type] = (b[q.type] || 0) + 1; });
     return b;
   }, [quests]);
   const dailyDone = useMemo(() => quests.filter(q => q.type === 'daily' && (q.state === 'ready' || q.state === 'claimed')).length, [quests]);
@@ -266,6 +267,7 @@ export default function FieldQuests() {
     const now = Date.now();
     if (timerType === 'daily') return formatCountdown(getEndOfDay().getTime() - now);
     if (timerType === 'weekly') return formatCountdown(getEndOfWeek().getTime() - now);
+    if (timerType === 'monthly') return formatCountdown(getEndOfMonth().getTime() - now);
     if (timerType === 'seasonal' && seasonEnd) return formatCountdown(new Date(seasonEnd + 'T23:59:59').getTime() - now);
     return null;
   }, [timerTick]); // eslint-disable-line
@@ -306,6 +308,27 @@ export default function FieldQuests() {
             <span className="fq-bonus-icon">{'\u269C'}</span>
             <span className="fq-bonus-txt">Бонус за неделю:</span>
             <span className="fq-bonus-val">{'\u269C'} 500</span>
+          </div>
+        </div>
+      );
+    }
+    if (activeTab === 'monthly') {
+      const totalT = q.reduce((a, q) => a + q.target, 0);
+      const totalC = q.reduce((a, q) => a + Math.min(q.current, q.target), 0);
+      const pct = totalT > 0 ? Math.round(totalC / totalT * 100) : 0;
+      const daysLeft = Math.ceil((getEndOfMonth().getTime() - Date.now()) / 86400000);
+      return (
+        <div className="fq-ribbon">
+          <div className="fq-ribbon-row">
+            <span className="fq-ribbon-label">{new Date().toLocaleString('ru-RU', { month: 'long' })}:</span>
+            <span className="fq-ribbon-val" style={{ color: 'var(--fq-monthly)' }}>{pct}%</span>
+          </div>
+          <div style={{ marginTop: 6 }}>
+            <div className="fq-bar-track" style={{ height: 8 }}><div className="fq-bar-fill monthly" style={{ width: `${pct}%` }} /></div>
+          </div>
+          <div className="fq-ribbon-streak" style={{ borderTopColor: 'rgba(168,85,247,.1)' }}>
+            <span style={{ fontSize: 18 }}>{'\u23F3'}</span>
+            <span className="fq-streak-txt">Осталось <b style={{ color: 'var(--fq-monthly)' }}>{daysLeft}</b> дней</span>
           </div>
         </div>
       );
@@ -402,11 +425,11 @@ export default function FieldQuests() {
 
           {/* ═══ TAB BAR ═══ */}
           <div className="fq-tabs">
-            {['daily','weekly','seasonal','permanent'].map(type => (
+            {['daily','weekly','monthly','seasonal','permanent'].map(type => (
               <div key={type} className={`fq-tab ${type}${activeTab === type ? ' active' : ''}`}
                 onClick={() => switchTab(type)}>
-                <span className="fq-tab-icon">{type === 'daily' ? '\uD83C\uDF05' : type === 'weekly' ? '\uD83D\uDCC5' : type === 'seasonal' ? '\uD83C\uDF42' : '\uD83C\uDFDB'}</span>
-                {type === 'daily' ? 'День' : type === 'weekly' ? 'Неделя' : type === 'seasonal' ? 'Сезон' : 'Вечные'}
+                <span className="fq-tab-icon">{type === 'daily' ? '\uD83C\uDF05' : type === 'weekly' ? '\uD83D\uDCC5' : type === 'monthly' ? '\uD83D\uDCC6' : type === 'seasonal' ? '\uD83C\uDF42' : '\uD83C\uDFDB'}</span>
+                {type === 'daily' ? 'День' : type === 'weekly' ? 'Неделя' : type === 'monthly' ? 'Месяц' : type === 'seasonal' ? 'Сезон' : 'Вечные'}
                 {badges[type] > 0 && <span className="fq-tab-badge">{badges[type]}</span>}
               </div>
             ))}
@@ -441,7 +464,7 @@ export default function FieldQuests() {
                   <div className="fq-qc-top">
                     <div className={`fq-qc-pill ${q.type}`}>
                       <span>{q.icon}</span>
-                      {q.type === 'daily' ? 'День' : q.type === 'weekly' ? 'Неделя' : q.type === 'seasonal' ? 'Сезон' : 'Вечный'}
+                      {q.type === 'daily' ? 'День' : q.type === 'weekly' ? 'Неделя' : q.type === 'monthly' ? 'Месяц' : q.type === 'seasonal' ? 'Сезон' : 'Вечный'}
                     </div>
                     {q.state === 'ready' && <span className="fq-qc-status ready">{'\u2726'} Награда</span>}
                     {q.state === 'claimed' && <span className="fq-qc-status claimed">{'\u2713'} Выполнен</span>}
@@ -588,7 +611,7 @@ const QUEST_CSS = `
   --fq-gold:#F0C850;--fq-gold-d:#C8940A;--fq-gold-l:#FFE17A;
   --fq-red:#E84057;--fq-blue:#4A90FF;--fq-purple:#A56EFF;--fq-green:#3DDC84;
   --fq-t1:#fff;--fq-t2:rgba(255,255,255,.7);--fq-t3:rgba(255,255,255,.4);
-  --fq-daily:#22c55e;--fq-weekly:#3b82f6;--fq-seasonal:#8b5cf6;--fq-permanent:#f59e0b;
+  --fq-daily:#22c55e;--fq-weekly:#3b82f6;--fq-monthly:#a855f7;--fq-seasonal:#8b5cf6;--fq-permanent:#f59e0b;
   --fq-rune:#b45309;
   position:relative;width:100%;height:100dvh;background:var(--fq-bg);color:var(--fq-t1);
   font-family:-apple-system,BlinkMacSystemFont,'SF Pro Round',system-ui,sans-serif;
@@ -632,6 +655,7 @@ const QUEST_CSS = `
 .fq-tab.active.daily{background:rgba(34,197,94,.15);border-color:rgba(34,197,94,.3);color:var(--fq-daily)}
 .fq-tab.active.weekly{background:rgba(59,130,246,.15);border-color:rgba(59,130,246,.3);color:var(--fq-weekly)}
 .fq-tab.active.seasonal{background:rgba(139,92,246,.15);border-color:rgba(139,92,246,.3);color:var(--fq-seasonal)}
+.fq-tab.active.monthly{background:rgba(168,85,247,.15);border-color:rgba(168,85,247,.3);color:var(--fq-monthly)}
 .fq-tab.active.permanent{background:rgba(245,158,11,.15);border-color:rgba(245,158,11,.3);color:var(--fq-permanent)}
 
 /* Ribbon */
@@ -644,6 +668,7 @@ const QUEST_CSS = `
 .fq-ribbon-dot.on::after{content:'';position:absolute;top:1px;left:2px;right:2px;height:3px;border-radius:2px;background:rgba(255,255,255,.25)}
 .fq-ribbon-dot.on.daily{background:linear-gradient(90deg,#16a34a,var(--fq-daily))}
 .fq-ribbon-dot.on.weekly{background:linear-gradient(90deg,#2563eb,var(--fq-weekly))}
+.fq-ribbon-dot.on.monthly{background:linear-gradient(90deg,#7c3aed,var(--fq-monthly))}
 .fq-ribbon-streak{display:flex;align-items:center;gap:6px;margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,.04)}
 .fq-streak-fire{font-size:18px;filter:drop-shadow(0 0 6px rgba(255,120,0,.5));animation:fq-flame .8s ease-in-out infinite alternate}
 @keyframes fq-flame{0%{transform:scale(1) rotate(-3deg)}100%{transform:scale(1.1) rotate(3deg)}}
@@ -666,6 +691,7 @@ const QUEST_CSS = `
 .fq-quest-card.daily::before{background:var(--fq-daily)}
 .fq-quest-card.weekly::before{background:var(--fq-weekly)}
 .fq-quest-card.seasonal::before{background:var(--fq-seasonal)}
+.fq-quest-card.monthly::before{background:var(--fq-monthly)}
 .fq-quest-card.permanent::before{background:var(--fq-permanent)}
 .fq-quest-card.state-ready{border-color:rgba(240,200,80,.3);box-shadow:0 4px 16px rgba(0,0,0,.2),0 0 20px rgba(240,200,80,.12);animation:fq-goldGlow 2.5s ease-in-out infinite}
 @keyframes fq-goldGlow{0%,100%{box-shadow:0 4px 16px rgba(0,0,0,.2),0 0 15px rgba(240,200,80,.08)}50%{box-shadow:0 4px 16px rgba(0,0,0,.2),0 0 30px rgba(240,200,80,.2)}}
@@ -684,6 +710,7 @@ const QUEST_CSS = `
 .fq-qc-pill.daily{background:rgba(34,197,94,.12);color:var(--fq-daily);border:1px solid rgba(34,197,94,.2)}
 .fq-qc-pill.weekly{background:rgba(59,130,246,.12);color:var(--fq-weekly);border:1px solid rgba(59,130,246,.2)}
 .fq-qc-pill.seasonal{background:rgba(139,92,246,.12);color:var(--fq-seasonal);border:1px solid rgba(139,92,246,.2)}
+.fq-qc-pill.monthly{background:rgba(168,85,247,.12);color:var(--fq-monthly);border:1px solid rgba(168,85,247,.2)}
 .fq-qc-pill.permanent{background:rgba(245,158,11,.12);color:var(--fq-permanent);border:1px solid rgba(245,158,11,.2)}
 .fq-qc-status{margin-left:auto;font-size:11px;font-weight:700;display:flex;align-items:center;gap:4px}
 .fq-qc-status.ready{color:var(--fq-gold);animation:fq-statusPulse 1.5s ease-in-out infinite}
@@ -705,6 +732,7 @@ const QUEST_CSS = `
 .fq-bar-fill.daily{background:linear-gradient(90deg,#16a34a,var(--fq-daily),#4ade80)}
 .fq-bar-fill.weekly{background:linear-gradient(90deg,#2563eb,var(--fq-weekly),#60a5fa)}
 .fq-bar-fill.seasonal{background:linear-gradient(90deg,#7c3aed,var(--fq-seasonal),#a78bfa)}
+.fq-bar-fill.monthly{background:linear-gradient(90deg,#7c3aed,var(--fq-monthly),#c084fc)}
 .fq-bar-fill.permanent{background:linear-gradient(90deg,#d97706,var(--fq-permanent),#fbbf24)}
 .fq-bar-fill.ready{background:linear-gradient(90deg,var(--fq-gold-d),var(--fq-gold),var(--fq-gold-l))!important}
 

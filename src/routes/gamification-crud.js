@@ -10,7 +10,7 @@ const CRUD_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'H
 const ALLOWED_COLS = {
   shop_items: new Set(['name','description','price_runes','category','icon','image_url','is_active','max_stock','current_stock','requires_delivery','rarity']),
   prizes: new Set(['name','description','tier','prize_type','value','weight','icon','is_active','requires_delivery','max_stock']),
-  quests: new Set(['name','description','quest_type','target_action','target_count','reward_type','reward_amount','icon','is_active']),
+  quests: new Set(['name','description','quest_type','target_action','target_count','reward_type','reward_amount','icon','is_active','lore','allowed_roles','required_level']),
 };
 
 function buildSafeUpdate(body, allowedSet) {
@@ -212,7 +212,7 @@ async function routes(fastify) {
         type: 'object', additionalProperties: false,
         required: ['quest_type', 'name', 'target_action', 'target_count', 'reward_amount'],
         properties: {
-          quest_type: { type: 'string', enum: ['daily', 'weekly', 'seasonal', 'permanent'] },
+          quest_type: { type: 'string', enum: ['daily', 'weekly', 'monthly', 'seasonal', 'permanent'] },
           name: { type: 'string', minLength: 1 }, description: { type: 'string' },
           target_action: { type: 'string' }, target_count: { type: 'integer', minimum: 1 },
           reward_type: { type: 'string' }, reward_amount: { type: 'integer', minimum: 0 },
@@ -238,7 +238,7 @@ async function routes(fastify) {
         type: 'object', additionalProperties: false,
         properties: {
           name: { type: 'string' }, description: { type: 'string' },
-          quest_type: { type: 'string', enum: ['daily', 'weekly', 'seasonal', 'permanent'] },
+          quest_type: { type: 'string', enum: ['daily', 'weekly', 'monthly', 'seasonal', 'permanent'] },
           target_action: { type: 'string' }, target_count: { type: 'integer', minimum: 1 },
           reward_amount: { type: 'integer', minimum: 0 }, reward_type: { type: 'string' },
           icon: { type: 'string' }, is_active: { type: 'boolean' },

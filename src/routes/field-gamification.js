@@ -584,6 +584,9 @@ async function routes(fastify) {
     weekStartMsk.setHours(0, 0, 0, 0);
     const dow = weekStartMsk.getDay();
     weekStartMsk.setDate(weekStartMsk.getDate() - (dow === 0 ? 6 : dow - 1));
+    const monthStartMsk = new Date(msk);
+    monthStartMsk.setDate(1);
+    monthStartMsk.setHours(0, 0, 0, 0);
 
     // Get wallet for level
     const { rows: walletRows } = await db.query(
@@ -599,18 +602,21 @@ async function routes(fastify) {
         CASE
           WHEN q.quest_type = 'daily'    AND (qp.period_start IS NULL OR qp.period_start < $2) THEN 0
           WHEN q.quest_type = 'weekly'   AND (qp.period_start IS NULL OR qp.period_start < $3) THEN 0
+          WHEN q.quest_type = 'monthly'  AND (qp.period_start IS NULL OR qp.period_start < $4) THEN 0
           ELSE COALESCE(qp.current_count, 0)
         END AS progress,
         -- Completed: reset if period rolled over
         CASE
           WHEN q.quest_type = 'daily'    AND (qp.period_start IS NULL OR qp.period_start < $2) THEN false
           WHEN q.quest_type = 'weekly'   AND (qp.period_start IS NULL OR qp.period_start < $3) THEN false
+          WHEN q.quest_type = 'monthly'  AND (qp.period_start IS NULL OR qp.period_start < $4) THEN false
           ELSE COALESCE(qp.completed, false)
         END AS completed,
         -- reward_claimed: reset if period rolled over
         CASE
           WHEN q.quest_type = 'daily'    AND (qp.period_start IS NULL OR qp.period_start < $2) THEN false
           WHEN q.quest_type = 'weekly'   AND (qp.period_start IS NULL OR qp.period_start < $3) THEN false
+          WHEN q.quest_type = 'monthly'  AND (qp.period_start IS NULL OR qp.period_start < $4) THEN false
           ELSE COALESCE(qp.reward_claimed, false)
         END AS reward_claimed
       FROM gamification_quests q
@@ -624,7 +630,7 @@ async function routes(fastify) {
           )
         )
       ORDER BY q.quest_type, q.id
-    `, [eid, todayMsk.toISOString(), weekStartMsk.toISOString()]);
+    `, [eid, todayMsk.toISOString(), weekStartMsk.toISOString(), monthStartMsk.toISOString()]);
 
     return { quests: rows, current_level: currentLevel };
   });

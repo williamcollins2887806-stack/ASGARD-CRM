@@ -128,6 +128,12 @@ async function routes(fastify, options) {
         fastify.log.error('[field-reports] notify error:', notifyErr.message);
       }
 
+      // Quest progress: report_submit (fire-and-forget)
+      try {
+        const { updateQuestProgress } = require('../services/questProgress');
+        updateQuestProgress(db, empId, 'report_submit').catch(() => {});
+      } catch { /* non-critical */ }
+
       return {
         report_id: inserted[0].id,
         created_at: inserted[0].created_at,

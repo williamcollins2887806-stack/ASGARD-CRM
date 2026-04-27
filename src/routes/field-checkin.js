@@ -188,6 +188,32 @@ async function routes(fastify, options) {
         }
       } catch { /* non-critical */ }
 
+      // Quest progress: crew_all_checked_in — check if ALL workers checked in today (triggers for masters)
+      try {
+        const { updateQuestProgress } = require('../services/questProgress');
+        const todayDate = useDate || new Date().toISOString().slice(0, 10);
+        // Count active workers (not masters) for this work
+        const { rows: [{ total_workers }] } = await db.query(
+          `SELECT COUNT(*)::int as total_workers FROM employee_assignments
+           WHERE work_id = $1 AND is_active = true AND field_role = 'worker'`, [work_id]
+        );
+        // Count distinct workers who checked in today
+        const { rows: [{ checked_in }] } = await db.query(
+          `SELECT COUNT(DISTINCT employee_id)::int as checked_in FROM field_checkins
+           WHERE work_id = $1 AND date = $2 AND status IN ('active','completed')`, [work_id, todayDate]
+        );
+        // If all workers present, trigger quest for all masters on this work
+        if (checked_in >= total_workers && total_workers > 0) {
+          const { rows: masters } = await db.query(
+            `SELECT employee_id FROM employee_assignments
+             WHERE work_id = $1 AND is_active = true AND field_role IN ('shift_master','senior_master')`, [work_id]
+          );
+          for (const m of masters) {
+            updateQuestProgress(db, m.employee_id, 'crew_all_checked_in').catch(() => {});
+          }
+        }
+      } catch { /* non-critical */ }
+
       return {
         checkin_id: checkin.id,
         checkin_at: checkin.checkin_at,
@@ -288,7 +314,7 @@ async function routes(fastify, options) {
 
       // Quest progress hooks (fire-and-forget)
       try {
-        const { updateQuestProgress } = require('../services/questProgress');
+        const { updateQuestProgress, setQuestProgress } = require('../services/questProgress');
         const empId = req.fieldEmployee.id;
         // shift_complete fires on every checkout
         updateQuestProgress(db, empId, 'shift_complete').catch(() => {});
@@ -298,6 +324,38 @@ async function routes(fastify, options) {
         if (hoursWorked >= 8) {
           updateQuestProgress(db, empId, 'hours_min_8').catch(() => {});
         }
+        // hours_min_10 — full watch quest
+        if (hoursWorked >= 10) {
+          updateQuestProgress(db, empId, 'hours_min_10').catch(() => {});
+        }
+        // night_shift — if this was a night shift
+        if (checkin.shift === 'night') {
+          updateQuestProgress(db, empId, 'night_shift').catch(() => {});
+        }
+        // Streak update: calculate consecutive work days & update streak quests
+        const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' });
+        db.query(`
+          INSERT INTO gamification_streaks (employee_id, current_streak, longest_streak, last_active_date)
+          VALUES ($1, 1, 1, $2::date)
+          ON CONFLICT (employee_id) DO UPDATE SET
+            current_streak = CASE
+              WHEN gamification_streaks.last_active_date = ($2::date - 1) THEN gamification_streaks.current_streak + 1
+              WHEN gamification_streaks.last_active_date = $2::date THEN gamification_streaks.current_streak
+              ELSE 1
+            END,
+            longest_streak = GREATEST(gamification_streaks.longest_streak,
+              CASE
+                WHEN gamification_streaks.last_active_date = ($2::date - 1) THEN gamification_streaks.current_streak + 1
+                WHEN gamification_streaks.last_active_date = $2::date THEN gamification_streaks.current_streak
+                ELSE 1
+              END),
+            last_active_date = $2::date,
+            updated_at = NOW()
+          RETURNING current_streak
+        `, [empId, todayStr]).then(({ rows }) => {
+          const streak = rows[0]?.current_streak || 1;
+          setQuestProgress(db, empId, 'streak', streak).catch(() => {});
+        }).catch(() => {});
       } catch { /* non-critical */ }
 
       return {
