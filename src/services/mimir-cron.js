@@ -44,7 +44,7 @@ async function getUserData(userId, timeSlot) {
     // Active tenders with deadlines
     const tenders = await db.query(
       `SELECT id, tender_title AS title, tender_status, deadline FROM tenders
-       WHERE (pm_id = $1 OR responsible_pm_id = $1)
+       WHERE responsible_pm_id = $1
          AND tender_status IN ('active', 'preparation', 'in_progress')
        ORDER BY deadline ASC NULLS LAST
        LIMIT 5`,
