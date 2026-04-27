@@ -237,7 +237,7 @@ const DEMO_PRIZES = [
   { name: '250 Рун', icon: '💎', desc: 'Руническое богатство!', tier: 'epic' },
   { name: 'Рамка «Воин»', icon: '⚔️', desc: 'Рамка огня и стали', tier: 'epic' },
   { name: 'Футболка ASGARD', icon: '👕', desc: 'Фирменная футболка!', tier: 'legendary' },
-  { name: '1000 Р��н', icon: '💎', desc: 'Легендарное сокровище!', tier: 'legendary' },
+  { name: '1000 Рун', icon: '💎', desc: 'Легендарное сокровище!', tier: 'legendary' },
 ];
 
 function randomPrize(pool) { return pool[Math.floor(Math.random() * pool.length)]; }
@@ -912,7 +912,7 @@ export default function WheelOfNorns() {
             </div>
             <div style={{ textAlign: 'center' }}>
               <div className={`wn-rw-tag ${wonPrize.tier}`}>
-                {wonPrize.tier === 'legendary' ? 'ЛЕГЕНДАРНЫЙ' : wonPrize.tier === 'epic' ? '��ПИЧЕСКИЙ' : wonPrize.tier === 'rare' ? 'РЕДКИЙ' : 'ОБЫЧНЫЙ'}
+                {wonPrize.tier === 'legendary' ? 'ЛЕГЕНДАРНЫЙ' : wonPrize.tier === 'epic' ? 'ЭПИЧЕСКИЙ' : wonPrize.tier === 'rare' ? 'РЕДКИЙ' : 'ОБЫЧНЫЙ'}
               </div><br />
               <div className="wn-rw-name">{wonPrize.name}</div>
               <div className="wn-rw-desc">{wonPrize.description || wonPrize.desc}</div>
