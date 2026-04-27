@@ -136,10 +136,10 @@ async function routes(fastify) {
     const fulfillmentId = parseInt(req.params.id, 10);
 
     const { rows: [item] } = await db.query(
-      'SELECT * FROM gamification_fulfillment WHERE id = $1 AND status = $2',
-      [fulfillmentId, 'pending']
+      `SELECT * FROM gamification_fulfillment WHERE id = $1 AND status IN ('pending', 'requested')`,
+      [fulfillmentId]
     );
-    if (!item) return reply.code(404).send({ error: 'Запись не найдена' });
+    if (!item) return reply.code(404).send({ error: 'Запись не найдена или уже готова/выдана' });
 
     await db.query(
       `UPDATE gamification_fulfillment SET status = 'ready', updated_at = NOW() WHERE id = $1`,

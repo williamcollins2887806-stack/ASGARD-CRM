@@ -982,10 +982,9 @@ async function routes(fastify) {
     if (!inv) return reply.code(404).send({ error: 'Предмет не найден' });
     if (inv.is_equipped) return reply.code(400).send({ error: 'Сначала снимите предмет' });
 
-    // Cannot sell item in active delivery
+    // Cannot sell item if any fulfillment record exists (pending/requested/ready/delivered)
     const { rows: [ful] } = await db.query(
-      `SELECT id FROM gamification_fulfillment
-       WHERE inventory_id = $1 AND status IN ('requested','ready','delivered')`,
+      `SELECT id FROM gamification_fulfillment WHERE inventory_id = $1`,
       [invId]
     );
     if (ful) return reply.code(400).send({ error: 'Предмет в процессе доставки — нельзя продать' });
