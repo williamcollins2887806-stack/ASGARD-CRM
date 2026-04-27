@@ -95,6 +95,7 @@ export default function FieldInventory() {
           isEquipped: it.is_equipped || false,
           isDigital: DIGITAL_CATEGORIES.includes(cat),
           isPhysical: PHYSICAL_CATEGORIES.includes(cat),
+          hasFulfillment: it.has_fulfillment || false,
         };
       });
       setItems(mapped);
@@ -561,8 +562,8 @@ export default function FieldInventory() {
                       <div className="finv-confirmed-badge">{'\u2705'} Получено</div>
                     )}
 
-                    {/* Sell button — available for pending items and unequipped digital */}
-                    {(item.status === 'pending' || (item.isDigital && !item.isEquipped)) && (
+                    {/* Sell button — physical only if no fulfillment, digital only if not equipped */}
+                    {((item.isPhysical && !item.hasFulfillment) || (item.isDigital && !item.isEquipped)) && (
                       <button className="finv-action-btn sell"
                         onClick={e => { e.stopPropagation(); haptic.light(); setSellItem(item); }}>
                         💰 Продать

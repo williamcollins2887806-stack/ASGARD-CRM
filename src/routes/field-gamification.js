@@ -558,6 +558,7 @@ async function routes(fastify) {
   fastify.get('/inventory', { preHandler: [fastify.fieldAuthenticate] }, async (req) => {
     const { rows } = await db.query(
       `SELECT gi.*, gf.status as delivery_status, gf.delivery_note, gf.delivered_at,
+              (gf.id IS NOT NULL) as has_fulfillment,
               u.name as pm_name, e2.phone as pm_phone, w.object_name as work_name
        FROM gamification_inventory gi
        LEFT JOIN gamification_fulfillment gf ON gf.inventory_id = gi.id
