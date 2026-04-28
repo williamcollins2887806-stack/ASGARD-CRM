@@ -271,14 +271,32 @@ async function routes(fastify, options) {
       const hoursWorked = (checkoutAt - checkinAt) / (1000 * 60 * 60);
       const shiftHours = parseFloat(settings.shift_hours || 11);
       const hoursPaid = roundHours(hoursWorked, settings.rounding_rule, parseFloat(settings.rounding_step));
-      // Prevent early checkout — must work at least (shiftHours - 0.5) hours
-      const minHours = shiftHours - 0.5;
-      if (hoursWorked < minHours) {
-        const remainingMin = Math.ceil((minHours - hoursWorked) * 60);
+      // Prevent early checkout — two conditions:
+      // 1. Must work at least 8 hours
+      // 2. Must be within 2 hours of shift end (day=20:00, night=08:00)
+      const MIN_CHECKOUT_HOURS = 8;
+      if (hoursWorked < MIN_CHECKOUT_HOURS) {
+        const remainingMin = Math.ceil((MIN_CHECKOUT_HOURS - hoursWorked) * 60);
         const h = Math.floor(remainingMin / 60);
         const m = remainingMin % 60;
         const label = h > 0 ? `${h}ч ${m}м` : `${m}м`;
-        return reply.code(400).send({ error: `Смена ещё не завершена. Осталось ~${label}` });
+        return reply.code(400).send({ error: `Минимум 8 часов. Осталось ~${label}` });
+      }
+      // Check proximity to shift end (MSK timezone)
+      const mskNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
+      const mskHour = mskNow.getHours();
+      const shiftType = checkin.shift || 'day';
+      const shiftEndHour = shiftType === 'night' ? 8 : 20; // 20:00 for day, 08:00 for night
+      // Calculate hours until shift end
+      let hoursToEnd;
+      if (shiftType === 'night') {
+        // Night shift: checkin ~20:00, end ~08:00 next day
+        hoursToEnd = mskHour >= 20 ? (24 - mskHour + shiftEndHour) : (shiftEndHour - mskHour);
+      } else {
+        hoursToEnd = shiftEndHour - mskHour;
+      }
+      if (hoursToEnd > 2 && hoursWorked < shiftHours - 0.5) {
+        return reply.code(400).send({ error: `До конца смены ещё ${Math.floor(hoursToEnd)}ч. Закрытие доступно за 2 часа до конца или после ${shiftHours - 0.5}ч работы.` });
       }
 
       // Determine pay:

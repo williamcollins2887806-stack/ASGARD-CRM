@@ -107,6 +107,7 @@ export default function FieldQuests() {
   const [timerTick, setTimerTick] = useState(0);
   const [loading, setLoading] = useState(true);
   const [isNight, setIsNight] = useState(false);
+  const [userStreak, setUserStreak] = useState(0);
   const [brigadeQuests, setBrigadeQuests] = useState([]);
   const [odinChallenge, setOdinChallenge] = useState(null);
   const [duels, setDuels] = useState([]);
@@ -127,6 +128,7 @@ export default function FieldQuests() {
         seasonEnd: q.season_end || '2026-05-31',
         requiredLevel: q.required_level, currentLevel: q.current_level,
       })));
+      if (typeof d?.streak === 'number') setUserStreak(d.streak);
     }).catch(() => setQuests([]))
       .finally(() => setLoading(false));
     // Phase 2: Brigade quests, Odin challenge, Duels
@@ -173,12 +175,17 @@ export default function FieldQuests() {
     });
   }, [quests, activeTab, loading]);
 
-  /* ── Streak danger toast (demo after 8s) ── */
+  /* ── Streak danger toast — show only when streak > 5 and end of day approaching ── */
   useEffect(() => {
-    let t2;
-    const t = setTimeout(() => { setShowDangerToast(true); t2 = setTimeout(() => setShowDangerToast(false), 4000); }, 8000);
-    return () => { clearTimeout(t); if (t2) clearTimeout(t2); };
-  }, []);
+    if (userStreak < 5) return;
+    const now = new Date();
+    const endOfDay = new Date(now); endOfDay.setHours(23, 59, 59);
+    const hoursLeft = (endOfDay - now) / 3600000;
+    if (hoursLeft <= 3) {
+      const t = setTimeout(() => { setShowDangerToast(true); setTimeout(() => setShowDangerToast(false), 5000); }, 2000);
+      return () => clearTimeout(t);
+    }
+  }, [userStreak]);
 
   /* ── Audio ── */
   const initAudio = useCallback(() => { if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)(); }, []);
@@ -293,10 +300,12 @@ export default function FieldQuests() {
             </div>
             <span className="fq-ribbon-val" style={{ color: 'var(--fq-daily)' }}>{done}/{q.length}</span>
           </div>
-          <div className="fq-ribbon-streak">
-            <span className="fq-streak-fire">{'\uD83D\uDD25'}</span>
-            <span className="fq-streak-txt"><b>12 дней</b> подряд</span>
-          </div>
+          {userStreak > 0 && (
+            <div className="fq-ribbon-streak">
+              <span className="fq-streak-fire">{'\uD83D\uDD25'}</span>
+              <span className="fq-streak-txt"><b>{userStreak} {userStreak === 1 ? 'день' : userStreak < 5 ? 'дня' : 'дней'}</b> подряд</span>
+            </div>
+          )}
         </div>
       );
     }
@@ -655,7 +664,7 @@ export default function FieldQuests() {
 
         {/* ═══ DANGER TOAST ═══ */}
         <div className={`fq-danger-toast${showDangerToast ? ' show' : ''}`}>
-          <span className="fq-dt-fire">{'\uD83D\uDD25'}</span> Серия 12 дней под угрозой!
+          <span className="fq-dt-fire">{'\uD83D\uDD25'}</span> Серия {userStreak} {userStreak === 1 ? 'день' : userStreak < 5 ? 'дня' : 'дней'} под угрозой!
         </div>
 
         {/* ═══ CLAIM MODAL ═══ */}

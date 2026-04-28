@@ -632,7 +632,13 @@ async function routes(fastify) {
       ORDER BY q.quest_type, q.id
     `, [eid, todayMsk.toISOString(), weekStartMsk.toISOString(), monthStartMsk.toISOString()]);
 
-    return { quests: rows, current_level: currentLevel };
+    // Load streak
+    const { rows: [streakRow] } = await db.query(
+      `SELECT current_streak, longest_streak FROM gamification_streaks WHERE employee_id = $1`, [eid]
+    );
+    const currentStreak = streakRow?.current_streak || 0;
+
+    return { quests: rows, current_level: currentLevel, streak: currentStreak };
   });
 
   // ── GET /leaderboard — ranked by Сила Воина (shifts*10+xp*5+runes*8), real DB tournament ──

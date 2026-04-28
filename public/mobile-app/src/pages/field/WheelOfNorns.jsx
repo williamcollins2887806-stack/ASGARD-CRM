@@ -334,8 +334,13 @@ export default function WheelOfNorns() {
       }
     }).catch(() => {});
     fieldApi.get('/gamification/quests').then(d => {
-      const streakQ = (d?.quests || []).find(q => q.target_action === 'streak');
-      if (streakQ) setStreak(streakQ.progress || 0);
+      // Use streak from API response (added in Phase 1)
+      if (typeof d?.streak === 'number') setStreak(d.streak);
+      else {
+        // Fallback: read from quest progress
+        const streakQ = (d?.quests || []).find(q => q.target_action === 'streak');
+        if (streakQ) setStreak(streakQ.progress || 0);
+      }
     }).catch(() => {});
     loadSpinStatus();
   }, [loadSpinStatus]);

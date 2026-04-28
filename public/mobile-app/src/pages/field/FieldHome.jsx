@@ -220,32 +220,49 @@ export default function FieldHome() {
   const shiftType = project?.shift_type || 'day';
   const shiftHours = parseFloat(project?.shift_hours || 11);
   function getShiftEndInfo() {
-    const now = new Date();
-    const localMin = now.getHours() * 60 + now.getMinutes();
-    // Day shift ends at 20:00, night shift ends at 08:00
-    const endMin = shiftType === 'night' ? 8 * 60 : 20 * 60;
-    const graceMin = 30; // allow checkout 30 min before end
-    let allowed = false;
-    let remainingMin = 0;
-    if (shiftType === 'night') {
-      // night: 20:00→08:00; allow from 07:30 until 14:00 (morning window only)
-      allowed = (localMin >= endMin - graceMin && localMin < 14 * 60);
-      if (!allowed) {
-        if (localMin >= 14 * 60) remainingMin = (24 * 60 - localMin) + endMin - graceMin;
-        else remainingMin = endMin - graceMin - localMin;
-      }
-    } else {
-      // day: 08:00→20:00; allow from 19:30
-      allowed = localMin >= endMin - graceMin;
-      if (!allowed) remainingMin = endMin - graceMin - localMin;
+    const checkin = data?.today_checkin || data?.project?.today_checkin;
+    if (!checkin || checkin.checkout_at) return { allowed: true, endLabel: '', remainingLabel: '' };
+    const checkinAt = new Date(checkin.checkin_at).getTime();
+    const now = Date.now();
+    const hoursWorked = (now - checkinAt) / 3600000;
+    // Rule 1: Must have worked 8+ hours
+    const MIN_HOURS = 8;
+    if (hoursWorked < MIN_HOURS) {
+      const remainingMin = Math.ceil((MIN_HOURS - hoursWorked) * 60);
+      const h = Math.floor(remainingMin / 60);
+      const m = remainingMin % 60;
+      return {
+        allowed: false,
+        endLabel: `${MIN_HOURS}ч минимум`,
+        remainingLabel: h > 0 ? `${h}ч ${m}м` : `${m}м`,
+      };
     }
-    const h = Math.floor(remainingMin / 60);
-    const m = remainingMin % 60;
-    return {
-      allowed,
-      endLabel: shiftType === 'night' ? '08:00' : '20:00',
-      remainingLabel: h > 0 ? `${h}ч ${m}м` : `${m}м`,
-    };
+    // Rule 2: Must be within 2 hours of shift end (day=20:00 MSK, night=08:00 MSK)
+    // Use MSK offset: UTC+3
+    const mskMs = now + 3 * 3600000;
+    const mskDate = new Date(mskMs);
+    const mskHour = mskDate.getUTCHours();
+    const mskMin = mskDate.getUTCMinutes();
+    const mskTotalMin = mskHour * 60 + mskMin;
+    const endMin = shiftType === 'night' ? 8 * 60 : 20 * 60;
+    let minutesToEnd;
+    if (shiftType === 'night') {
+      minutesToEnd = mskTotalMin >= 20 * 60 ? (24 * 60 - mskTotalMin + endMin) : (endMin - mskTotalMin);
+    } else {
+      minutesToEnd = endMin - mskTotalMin;
+    }
+    // Allow if within 2 hours of shift end OR worked 10.5+ hours (fallback)
+    const allowed = minutesToEnd <= 120 || hoursWorked >= 10.5;
+    if (!allowed) {
+      const h = Math.floor(minutesToEnd / 60);
+      const m = minutesToEnd % 60;
+      return {
+        allowed: false,
+        endLabel: shiftType === 'night' ? '08:00' : '20:00',
+        remainingLabel: `${h}ч ${m}м до конца`,
+      };
+    }
+    return { allowed: true, endLabel: '', remainingLabel: '' };
   }
   const shiftEndInfo = isActive ? getShiftEndInfo() : { allowed: true, endLabel: '', remainingLabel: '' };
   const WARRIOR_TITLES = [
