@@ -117,8 +117,9 @@ async function routes(fastify, options) {
 
       // Quest progress: photo_upload (fire-and-forget)
       try {
-        const { updateQuestProgress } = require('../services/questProgress');
+        const { updateQuestProgress, updateBrigadeQuestProgress } = require('../services/questProgress');
         updateQuestProgress(db, empId, 'photo_upload').catch(() => {});
+        updateBrigadeQuestProgress(db, empId, 'photo_upload').catch(() => {});
       } catch { /* non-critical */ }
 
       return {

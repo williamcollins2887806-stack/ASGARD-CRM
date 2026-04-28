@@ -181,10 +181,11 @@ async function routes(fastify, options) {
 
       // Quest progress: early_checkin (before 07:00 local time)
       try {
-        const { updateQuestProgress } = require('../services/questProgress');
+        const { updateQuestProgress, updateBrigadeQuestProgress } = require('../services/questProgress');
         const localHourNow = client_local_hour ?? new Date().getHours();
         if (localHourNow < 7) {
           updateQuestProgress(db, empId, 'early_checkin').catch(() => {});
+          updateBrigadeQuestProgress(db, empId, 'early_checkin').catch(() => {});
         }
       } catch { /* non-critical */ }
 
@@ -314,10 +315,12 @@ async function routes(fastify, options) {
 
       // Quest progress hooks (fire-and-forget)
       try {
-        const { updateQuestProgress, setQuestProgress } = require('../services/questProgress');
+        const { updateQuestProgress, setQuestProgress, updateBrigadeQuestProgress } = require('../services/questProgress');
         const empId = req.fieldEmployee.id;
         // shift_complete fires on every checkout
         updateQuestProgress(db, empId, 'shift_complete').catch(() => {});
+        // Brigade quest: shift_complete
+        updateBrigadeQuestProgress(db, empId, 'shift_complete').catch(() => {});
         // total_shifts — same action, permanent quests use this too
         updateQuestProgress(db, empId, 'total_shifts').catch(() => {});
         // hours_min_8 — only if shift was at least 8 hours

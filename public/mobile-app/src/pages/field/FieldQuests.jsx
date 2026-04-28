@@ -107,6 +107,9 @@ export default function FieldQuests() {
   const [timerTick, setTimerTick] = useState(0);
   const [loading, setLoading] = useState(true);
   const [isNight, setIsNight] = useState(false);
+  const [brigadeQuests, setBrigadeQuests] = useState([]);
+  const [odinChallenge, setOdinChallenge] = useState(null);
+  const [duels, setDuels] = useState([]);
 
   /* ── Load from API ── */
   useEffect(() => {
@@ -126,6 +129,10 @@ export default function FieldQuests() {
       })));
     }).catch(() => setQuests([]))
       .finally(() => setLoading(false));
+    // Phase 2: Brigade quests, Odin challenge, Duels
+    fieldApi.get('/gamification/brigade-quests').then(d => setBrigadeQuests(d?.quests || [])).catch(() => {});
+    fieldApi.get('/gamification/odin-challenge').then(d => setOdinChallenge(d?.challenge || null)).catch(() => {});
+    fieldApi.get('/gamification/duels').then(d => setDuels(d?.duels || [])).catch(() => {});
   }, []);
 
   /* ── Night mode ── */
@@ -437,6 +444,115 @@ export default function FieldQuests() {
 
           {/* ═══ RIBBON ═══ */}
           {renderRibbon()}
+
+          {/* ═══ ODIN'S CHALLENGE (daily tab only) ═══ */}
+          {activeTab === 'daily' && odinChallenge && (
+            <div className="fq-odin-card" style={{
+              margin: '0 16px 8px', padding: 14, borderRadius: 18,
+              background: 'linear-gradient(135deg, rgba(240,200,80,.08), rgba(232,64,87,.05))',
+              border: '1px solid rgba(240,200,80,.2)', position: 'relative', overflow: 'hidden',
+            }}>
+              <div style={{ position:'absolute', top:6, right:10, fontSize:40, opacity:.08 }}>{'\uD83D\uDC41'}</div>
+              <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:6 }}>
+                <span style={{ fontSize:18 }}>{odinChallenge.icon || '\uD83D\uDC41'}</span>
+                <span style={{ fontSize:10, fontWeight:800, letterSpacing:'.1em', color:'var(--fq-gold)', textTransform:'uppercase' }}>Задание Одина</span>
+                <span style={{ marginLeft:'auto', fontSize:12, fontWeight:700, color:'var(--fq-gold-l)' }}>{odinChallenge.reward_runes}ᚱ</span>
+              </div>
+              <div style={{ fontSize:14, fontWeight:700, marginBottom:4 }}>{odinChallenge.title}</div>
+              <div style={{ fontSize:12, color:'var(--fq-t2)', marginBottom:8, lineHeight:1.4 }}>{odinChallenge.description}</div>
+              {odinChallenge.my_completion ? (
+                <div style={{ fontSize:12, fontWeight:700, color:'var(--fq-green)', display:'flex', alignItems:'center', gap:4 }}>
+                  {'\u2713'} Выполнено {odinChallenge.my_completion.reward_claimed ? '(награда получена)' : '(ожидает проверки)'}
+                </div>
+              ) : (
+                <button style={{
+                  width:'100%', padding:10, borderRadius:12, border:'none', fontSize:13, fontWeight:800,
+                  color:'#1a1000', cursor:'pointer',
+                  background:'linear-gradient(135deg, var(--fq-gold-d), var(--fq-gold))',
+                  boxShadow:'0 3px 0 #8B6914',
+                }} onClick={() => {
+                  fieldApi.post(`/gamification/odin-challenge/${odinChallenge.id}/complete`, {}).then(() => {
+                    setOdinChallenge(prev => ({ ...prev, my_completion: { reward_claimed: true } }));
+                    hap([40, 20, 60]);
+                  }).catch(() => {});
+                }}>
+                  {'\u2694'} ВЫПОЛНИТЬ
+                </button>
+              )}
+              <div style={{ fontSize:10, color:'var(--fq-t3)', marginTop:6 }}>
+                {'\uD83D\uDC65'} Выполнили: {odinChallenge.total_completions || 0} чел.
+                {odinChallenge.created_by_name && <span> | От: {odinChallenge.created_by_name}</span>}
+              </div>
+            </div>
+          )}
+
+          {/* ═══ BRIGADE QUESTS (weekly tab) ═══ */}
+          {activeTab === 'weekly' && brigadeQuests.length > 0 && (
+            <div style={{ margin: '0 16px 8px' }}>
+              <div style={{ fontSize:10, fontWeight:700, letterSpacing:'.1em', color:'var(--fq-t3)', textTransform:'uppercase', marginBottom:6, textAlign:'center' }}>
+                {'\uD83D\uDEE1'} Бригадные квесты
+              </div>
+              {brigadeQuests.map(bq => {
+                const pct = Math.min(100, Math.round((bq.current_count / bq.target_count) * 100));
+                return (
+                  <div key={bq.id} style={{
+                    padding: 12, borderRadius: 16, marginBottom: 8,
+                    background: bq.completed ? 'linear-gradient(135deg, rgba(61,220,132,.08), rgba(61,220,132,.03))' : 'var(--fq-card)',
+                    border: `1px solid ${bq.completed ? 'rgba(61,220,132,.3)' : 'rgba(255,255,255,.04)'}`,
+                  }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
+                      <span style={{ fontSize:20 }}>{bq.icon}</span>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:13, fontWeight:700 }}>{bq.name}</div>
+                        <div style={{ fontSize:11, color:'var(--fq-t2)' }}>{bq.description}</div>
+                      </div>
+                      <div style={{ textAlign:'right' }}>
+                        <div style={{ fontSize:12, fontWeight:800, color:'var(--fq-gold-l)' }}>{bq.reward_per_person}ᚱ</div>
+                        <div style={{ fontSize:9, color:'var(--fq-t3)' }}>{'\u00D7'}{bq.crew_size} чел</div>
+                      </div>
+                    </div>
+                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                      <div className="fq-bar-track" style={{ flex:1, height:8 }}>
+                        <div className="fq-bar-fill weekly" style={{ width: `${pct}%`, transition:'width .6s' }} />
+                      </div>
+                      <span style={{ fontSize:11, fontWeight:700, color: bq.completed ? 'var(--fq-green)' : 'var(--fq-t2)', minWidth:45, textAlign:'right' }}>
+                        {bq.completed ? '\u2713 Done' : `${bq.current_count}/${bq.target_count}`}
+                      </span>
+                    </div>
+                    {bq.lore && <div style={{ fontSize:10, color:'var(--fq-t3)', fontStyle:'italic', marginTop:4, lineHeight:1.3 }}>{bq.lore}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ═══ DUELS (daily tab) ═══ */}
+          {activeTab === 'daily' && duels.length > 0 && (
+            <div style={{ margin: '0 16px 8px' }}>
+              <div style={{ fontSize:10, fontWeight:700, letterSpacing:'.1em', color:'var(--fq-t3)', textTransform:'uppercase', marginBottom:6, textAlign:'center' }}>
+                {'\u2694'} Дуэли
+              </div>
+              {duels.slice(0, 3).map(d => (
+                <div key={d.id} style={{
+                  padding: 10, borderRadius: 14, marginBottom: 6,
+                  background: d.status === 'completed' ? 'rgba(255,255,255,.02)' : 'var(--fq-card)',
+                  border: '1px solid rgba(255,255,255,.04)',
+                  display:'flex', alignItems:'center', gap:8, fontSize:12,
+                }}>
+                  <span style={{ fontSize:18 }}>{d.duel_type === 'photos' ? '\uD83D\uDCF7' : d.duel_type === 'hours' ? '\u23F1' : '\u2694'}</span>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontWeight:700 }}>{d.challenger_name} vs {d.opponent_name}</div>
+                    <div style={{ fontSize:10, color:'var(--fq-t3)' }}>
+                      {d.status === 'pending' ? 'Ожидает ответа' : d.status === 'active' ? 'В бою!' :
+                        d.status === 'completed' ? `${d.challenger_score}-${d.opponent_score}` : d.status === 'declined' ? 'Отклонено' : d.status}
+                    </div>
+                  </div>
+                  <div style={{ fontWeight:800, color:'var(--fq-gold)' }}>{d.stake_runes}ᚱ</div>
+                  {d.winner_name && <div style={{ fontSize:10, color:'var(--fq-green)', fontWeight:700 }}>{'\uD83C\uDFC6'} {d.winner_name}</div>}
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* ═══ QUEST LIST ═══ */}
           <div className="fq-quest-list">

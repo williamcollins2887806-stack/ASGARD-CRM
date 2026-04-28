@@ -147,4 +147,64 @@ async function setQuestProgress(db, employeeId, action, value) {
   }
 }
 
-module.exports = { updateQuestProgress, setQuestProgress };
+/**
+ * Update brigade quest progress — increments shared counter for the whole crew.
+ * Called alongside individual quest updates.
+ */
+async function updateBrigadeQuestProgress(db, employeeId, action) {
+  try {
+    // Find worker's active work_id
+    const { rows: [assign] } = await db.query(
+      `SELECT work_id FROM employee_assignments WHERE employee_id = $1 AND is_active = true LIMIT 1`, [employeeId]
+    );
+    if (!assign) return;
+
+    // Find active brigade quests matching this action
+    const { rows: quests } = await db.query(
+      `SELECT id, target_count FROM gamification_brigade_quests
+       WHERE work_id = $1 AND is_active = true AND completed = false AND target_action = $2`,
+      [assign.work_id, action]
+    );
+
+    for (const q of quests) {
+      const { rows: [updated] } = await db.query(
+        `UPDATE gamification_brigade_quests
+         SET current_count = current_count + 1,
+             completed = (current_count + 1 >= $2),
+             completed_at = CASE WHEN (current_count + 1 >= $2) THEN NOW() ELSE completed_at END
+         WHERE id = $1 AND completed = false
+         RETURNING current_count, completed`,
+        [q.id, q.target_count]
+      );
+
+      // If just completed — distribute rewards to all crew
+      if (updated?.completed) {
+        const { rows: crew } = await db.query(
+          `SELECT employee_id FROM employee_assignments
+           WHERE work_id = $1 AND is_active = true AND field_role = 'worker'`, [assign.work_id]
+        );
+        const { rows: [bq] } = await db.query(`SELECT reward_per_person, name FROM gamification_brigade_quests WHERE id = $1`, [q.id]);
+        for (const member of crew) {
+          await db.query(
+            `INSERT INTO gamification_wallets (employee_id, currency, balance)
+             VALUES ($1, 'runes', $2)
+             ON CONFLICT (employee_id, currency) DO UPDATE SET balance = gamification_wallets.balance + $2, updated_at = NOW()`,
+            [member.employee_id, bq.reward_per_person]
+          );
+          await db.query(
+            `INSERT INTO gamification_currency_ledger (employee_id, currency, amount, balance_after, operation, reference_id, reference_type, note)
+             VALUES ($1, 'runes', $2,
+               (SELECT balance FROM gamification_wallets WHERE employee_id = $1 AND currency = 'runes'),
+               'brigade_quest', $3, 'brigade', $4)`,
+            [member.employee_id, bq.reward_per_person, q.id, bq.name]
+          );
+        }
+        await db.query(`UPDATE gamification_brigade_quests SET reward_distributed = true WHERE id = $1`, [q.id]);
+      }
+    }
+  } catch (err) {
+    console.warn('[questProgress] updateBrigadeQuestProgress error:', err.message);
+  }
+}
+
+module.exports = { updateQuestProgress, setQuestProgress, updateBrigadeQuestProgress };

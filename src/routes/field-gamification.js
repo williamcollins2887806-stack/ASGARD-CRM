@@ -1191,6 +1191,283 @@ async function routes(fastify) {
       client.release();
     }
   });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // PHASE 2: Brigade Quests, Odin's Challenge, Duels
+  // ═══════════════════════════════════════════════════════════════════
+
+  // ── GET /brigade-quests — active brigade quests for worker's current project ──
+  fastify.get('/brigade-quests', { preHandler: [fastify.fieldAuthenticate] }, async (req) => {
+    const eid = req.fieldEmployee.id;
+    // Find worker's active work_id
+    const { rows: [assign] } = await db.query(
+      `SELECT work_id FROM employee_assignments WHERE employee_id = $1 AND is_active = true LIMIT 1`, [eid]
+    );
+    if (!assign) return { quests: [] };
+
+    const { rows } = await db.query(
+      `SELECT * FROM gamification_brigade_quests
+       WHERE work_id = $1 AND is_active = true
+       ORDER BY quest_type, id`, [assign.work_id]
+    );
+
+    // Count crew size for reward display
+    const { rows: [{ cnt: crewSize }] } = await db.query(
+      `SELECT COUNT(*)::int as cnt FROM employee_assignments
+       WHERE work_id = $1 AND is_active = true AND field_role = 'worker'`, [assign.work_id]
+    );
+
+    return {
+      quests: rows.map(q => ({
+        ...q,
+        crew_size: crewSize,
+        total_reward: q.reward_per_person * crewSize,
+      })),
+    };
+  });
+
+  // ── GET /odin-challenge — today's Odin challenge for this project ──
+  fastify.get('/odin-challenge', { preHandler: [fastify.fieldAuthenticate] }, async (req) => {
+    const eid = req.fieldEmployee.id;
+    const { rows: [assign] } = await db.query(
+      `SELECT work_id FROM employee_assignments WHERE employee_id = $1 AND is_active = true LIMIT 1`, [eid]
+    );
+    if (!assign) return { challenge: null };
+
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' });
+    const { rows: [challenge] } = await db.query(
+      `SELECT oc.*, u.name as created_by_name
+       FROM gamification_odin_challenges oc
+       LEFT JOIN users u ON u.id = oc.created_by
+       WHERE oc.work_id = $1 AND oc.challenge_date = $2 AND oc.is_active = true`, [assign.work_id, todayStr]
+    );
+    if (!challenge) return { challenge: null };
+
+    // Check if current employee already completed it
+    const { rows: [completion] } = await db.query(
+      `SELECT * FROM gamification_odin_completions WHERE challenge_id = $1 AND employee_id = $2`, [challenge.id, eid]
+    );
+
+    // Count total completions
+    const { rows: [{ cnt: completions }] } = await db.query(
+      `SELECT COUNT(*)::int as cnt FROM gamification_odin_completions WHERE challenge_id = $1`, [challenge.id]
+    );
+
+    return {
+      challenge: {
+        ...challenge,
+        my_completion: completion || null,
+        total_completions: completions,
+      },
+    };
+  });
+
+  // ── POST /odin-challenge/:id/complete — mark challenge as done (with optional photo) ──
+  fastify.post('/odin-challenge/:id/complete', { preHandler: [fastify.fieldAuthenticate] }, async (req, reply) => {
+    const eid = req.fieldEmployee.id;
+    const challengeId = parseInt(req.params.id);
+    const { photo_url } = req.body || {};
+
+    // Verify challenge exists and is today's
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' });
+    const { rows: [challenge] } = await db.query(
+      `SELECT * FROM gamification_odin_challenges WHERE id = $1 AND challenge_date = $2 AND is_active = true`, [challengeId, todayStr]
+    );
+    if (!challenge) return reply.code(404).send({ error: 'Задание не найдено или истекло' });
+
+    // Insert completion (unique constraint prevents double)
+    try {
+      await db.query(
+        `INSERT INTO gamification_odin_completions (challenge_id, employee_id, proof_photo_url)
+         VALUES ($1, $2, $3)`, [challengeId, eid, photo_url || null]
+      );
+    } catch (e) {
+      if (e.code === '23505') return reply.code(400).send({ error: 'Вы уже выполнили это задание' });
+      throw e;
+    }
+
+    // Auto-verify for non-photo challenges, credit reward immediately
+    if (challenge.verification_type !== 'photo' || !challenge.reward_runes) {
+      await db.query(
+        `UPDATE gamification_odin_completions SET reward_claimed = true, verified_at = NOW() WHERE challenge_id = $1 AND employee_id = $2`,
+        [challengeId, eid]
+      );
+      // Credit runes
+      await db.query(
+        `INSERT INTO gamification_wallets (employee_id, currency, balance)
+         VALUES ($1, 'runes', $2)
+         ON CONFLICT (employee_id, currency) DO UPDATE SET balance = gamification_wallets.balance + $2, updated_at = NOW()`,
+        [eid, challenge.reward_runes]
+      );
+      await db.query(
+        `INSERT INTO gamification_currency_ledger (employee_id, currency, amount, balance_after, operation, reference_id, reference_type)
+         VALUES ($1, 'runes', $2, (SELECT balance FROM gamification_wallets WHERE employee_id = $1 AND currency = 'runes'), 'odin_challenge', $3, 'odin')`,
+        [eid, challenge.reward_runes, challengeId]
+      );
+    }
+
+    return { ok: true, reward: challenge.reward_runes };
+  });
+
+  // ── GET /duels — my active and recent duels ──
+  fastify.get('/duels', { preHandler: [fastify.fieldAuthenticate] }, async (req) => {
+    const eid = req.fieldEmployee.id;
+    const { rows } = await db.query(
+      `SELECT d.*, e1.fio as challenger_name, e2.fio as opponent_name, e3.fio as winner_name
+       FROM gamification_duels d
+       JOIN employees e1 ON e1.id = d.challenger_id
+       JOIN employees e2 ON e2.id = d.opponent_id
+       LEFT JOIN employees e3 ON e3.id = d.winner_id
+       WHERE (d.challenger_id = $1 OR d.opponent_id = $1)
+         AND d.duel_date >= CURRENT_DATE - 7
+       ORDER BY d.created_at DESC LIMIT 20`, [eid]
+    );
+    return { duels: rows };
+  });
+
+  // ── POST /duels — create a duel challenge ──
+  fastify.post('/duels', {
+    preHandler: [fastify.fieldAuthenticate],
+    schema: { body: { type: 'object', required: ['opponent_id', 'duel_type'], properties: {
+      opponent_id: { type: 'integer' }, duel_type: { type: 'string', enum: ['photos','hours','shifts'] },
+      stake_runes: { type: 'integer', minimum: 5, maximum: 50 },
+    } } }
+  }, async (req, reply) => {
+    const eid = req.fieldEmployee.id;
+    const { opponent_id, duel_type, stake_runes = 10 } = req.body;
+    if (opponent_id === eid) return reply.code(400).send({ error: 'Нельзя вызвать самого себя' });
+
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' });
+
+    // Check: max 1 active duel per person per day
+    const { rows: [existing] } = await db.query(
+      `SELECT id FROM gamification_duels
+       WHERE duel_date = $1 AND status IN ('pending','accepted','active')
+         AND (challenger_id = $2 OR opponent_id = $2)`, [todayStr, eid]
+    );
+    if (existing) return reply.code(400).send({ error: 'У тебя уже есть активная дуэль сегодня' });
+
+    // Check opponent doesn't have active duel
+    const { rows: [oppDuel] } = await db.query(
+      `SELECT id FROM gamification_duels
+       WHERE duel_date = $1 AND status IN ('pending','accepted','active')
+         AND (challenger_id = $2 OR opponent_id = $2)`, [todayStr, opponent_id]
+    );
+    if (oppDuel) return reply.code(400).send({ error: 'У соперника уже есть дуэль сегодня' });
+
+    // Check both have enough runes
+    const { rows: [myWallet] } = await db.query(
+      `SELECT balance FROM gamification_wallets WHERE employee_id = $1 AND currency = 'runes'`, [eid]
+    );
+    if (!myWallet || myWallet.balance < stake_runes) return reply.code(400).send({ error: 'Недостаточно рун для ставки' });
+
+    // Find work_id
+    const { rows: [assign] } = await db.query(
+      `SELECT work_id FROM employee_assignments WHERE employee_id = $1 AND is_active = true LIMIT 1`, [eid]
+    );
+
+    const { rows: [duel] } = await db.query(
+      `INSERT INTO gamification_duels (work_id, challenger_id, opponent_id, duel_type, stake_runes, duel_date, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'pending') RETURNING *`,
+      [assign?.work_id || 0, eid, opponent_id, duel_type, stake_runes, todayStr]
+    );
+
+    return { ok: true, duel };
+  });
+
+  // ── POST /duels/:id/respond — accept or decline ──
+  fastify.post('/duels/:id/respond', {
+    preHandler: [fastify.fieldAuthenticate],
+    schema: { body: { type: 'object', required: ['action'], properties: { action: { type: 'string', enum: ['accept','decline'] } } } }
+  }, async (req, reply) => {
+    const eid = req.fieldEmployee.id;
+    const duelId = parseInt(req.params.id);
+    const { action } = req.body;
+
+    const { rows: [duel] } = await db.query(
+      `SELECT * FROM gamification_duels WHERE id = $1 AND opponent_id = $2 AND status = 'pending'`, [duelId, eid]
+    );
+    if (!duel) return reply.code(404).send({ error: 'Дуэль не найдена' });
+
+    if (action === 'decline') {
+      await db.query(`UPDATE gamification_duels SET status = 'declined', resolved_at = NOW() WHERE id = $1`, [duelId]);
+      return { ok: true, status: 'declined' };
+    }
+
+    // Accept — check opponent has enough runes
+    const { rows: [oppWallet] } = await db.query(
+      `SELECT balance FROM gamification_wallets WHERE employee_id = $1 AND currency = 'runes'`, [eid]
+    );
+    if (!oppWallet || oppWallet.balance < duel.stake_runes) {
+      return reply.code(400).send({ error: 'Недостаточно рун для ставки' });
+    }
+
+    await db.query(`UPDATE gamification_duels SET status = 'active' WHERE id = $1`, [duelId]);
+    return { ok: true, status: 'active' };
+  });
+
+  // ── POST /duels/:id/resolve — end-of-day resolution (called by cron or manually) ──
+  fastify.post('/duels/:id/resolve', { preHandler: [fastify.fieldAuthenticate] }, async (req, reply) => {
+    const duelId = parseInt(req.params.id);
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows: [duel] } = await client.query(
+        `SELECT * FROM gamification_duels WHERE id = $1 AND status = 'active' FOR UPDATE`, [duelId]
+      );
+      if (!duel) { await client.query('ROLLBACK'); return reply.code(404).send({ error: 'Дуэль не найдена' }); }
+
+      // Calculate scores based on duel_type
+      let cScore = 0, oScore = 0;
+      if (duel.duel_type === 'photos') {
+        const { rows: [cs] } = await client.query(
+          `SELECT COUNT(*)::int as cnt FROM field_photos WHERE employee_id = $1 AND uploaded_at::date = $2`, [duel.challenger_id, duel.duel_date]
+        );
+        const { rows: [os] } = await client.query(
+          `SELECT COUNT(*)::int as cnt FROM field_photos WHERE employee_id = $1 AND uploaded_at::date = $2`, [duel.opponent_id, duel.duel_date]
+        );
+        cScore = cs?.cnt || 0; oScore = os?.cnt || 0;
+      } else if (duel.duel_type === 'hours') {
+        const { rows: [cs] } = await client.query(
+          `SELECT COALESCE(SUM(hours_worked),0)::numeric as hrs FROM field_checkins WHERE employee_id = $1 AND date = $2 AND status = 'completed'`, [duel.challenger_id, duel.duel_date]
+        );
+        const { rows: [os] } = await client.query(
+          `SELECT COALESCE(SUM(hours_worked),0)::numeric as hrs FROM field_checkins WHERE employee_id = $1 AND date = $2 AND status = 'completed'`, [duel.opponent_id, duel.duel_date]
+        );
+        cScore = parseFloat(cs?.hrs || 0); oScore = parseFloat(os?.hrs || 0);
+      }
+
+      const winnerId = cScore > oScore ? duel.challenger_id : oScore > cScore ? duel.opponent_id : null;
+      const totalPot = duel.stake_runes * 2;
+
+      await client.query(
+        `UPDATE gamification_duels SET status = 'completed', challenger_score = $2, opponent_score = $3, winner_id = $4, resolved_at = NOW() WHERE id = $1`,
+        [duelId, cScore, oScore, winnerId]
+      );
+
+      if (winnerId) {
+        // Debit loser, credit winner
+        const loserId = winnerId === duel.challenger_id ? duel.opponent_id : duel.challenger_id;
+        await client.query(
+          `UPDATE gamification_wallets SET balance = balance - $2, updated_at = NOW() WHERE employee_id = $1 AND currency = 'runes'`,
+          [loserId, duel.stake_runes]
+        );
+        await client.query(
+          `UPDATE gamification_wallets SET balance = balance + $2, updated_at = NOW() WHERE employee_id = $1 AND currency = 'runes'`,
+          [winnerId, duel.stake_runes]
+        );
+        await client.query(`UPDATE gamification_duels SET reward_paid = true WHERE id = $1`, [duelId]);
+      }
+      // Draw — no one pays
+
+      await client.query('COMMIT');
+      return { ok: true, winner_id: winnerId, challenger_score: cScore, opponent_score: oScore, reward: winnerId ? totalPot : 0 };
+    } catch (err) {
+      await client.query('ROLLBACK'); throw err;
+    } finally {
+      client.release();
+    }
+  });
 }
 
 // ── Helpers ──
