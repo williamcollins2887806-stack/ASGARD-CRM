@@ -180,6 +180,7 @@ export default function FieldInventory() {
     } catch (err) {
       haptic.error();
       setSellItem(null);
+      loadInventory();
     } finally {
       setSellLoading(false);
     }
