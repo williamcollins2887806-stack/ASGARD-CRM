@@ -1069,6 +1069,16 @@ async function routes(fastify) {
     try {
       await client.query('BEGIN');
 
+      // Check fulfillment inside transaction to avoid race condition
+      const { rows: [fulTx] } = await client.query(
+        'SELECT id FROM gamification_fulfillment WHERE inventory_id = $1',
+        [invId]
+      );
+      if (fulTx) {
+        await client.query('ROLLBACK');
+        return reply.code(400).send({ error: 'Предмет в процессе доставки — нельзя продать' });
+      }
+
       // Delete inventory record
       const { rowCount } = await client.query(
         'DELETE FROM gamification_inventory WHERE id = $1 AND employee_id = $2',
@@ -1109,6 +1119,9 @@ async function routes(fastify) {
       return { ok: true, sell_price: sellPrice, item_name: inv.item_name };
     } catch (e) {
       await client.query('ROLLBACK');
+      if (e.code === '23503') {
+        return reply.code(400).send({ error: 'Предмет в процессе доставки — нельзя продать' });
+      }
       throw e;
     } finally {
       client.release();
