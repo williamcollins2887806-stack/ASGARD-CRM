@@ -142,6 +142,7 @@ async function routes(fastify, options) {
         SELECT ea.id as assignment_id, ea.work_id, ea.field_role, ea.per_diem,
                ea.shift_type, ea.date_from, ea.date_to, ea.role, ea.is_active,
                ea.tariff_id, ea.tariff_points, ea.combination_tariff_id,
+               ea.departure_date, ea.departure_reason,
                w.work_title, w.city, w.object_name, w.address, w.pm_id,
                w.contact_person, w.contact_phone,
                fps.shift_hours, fps.schedule_type, fps.site_category,

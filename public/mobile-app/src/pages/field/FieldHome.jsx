@@ -213,7 +213,8 @@ export default function FieldHome() {
   const project = data?.project;
   const checkin = data?.today_checkin || project?.today_checkin;
   const isActive = checkin && !checkin.checkout_at;
-  const isActiveAssignment = project?.is_active !== false;
+  const hasDeparted = !!project?.departure_date;
+  const isActiveAssignment = project?.is_active !== false && !hasDeparted;
   const isMaster = employee?.field_role === 'shift_master' || employee?.field_role === 'senior_master' || project?.field_role?.includes('master');
 
   // Shift end time restriction (local device time)
@@ -402,12 +403,15 @@ export default function FieldHome() {
       {project && !isActiveAssignment && (
         <div className="rounded-xl p-4 mb-4 text-center"
           style={{ backgroundColor: 'rgba(255,165,0,0.08)', border: '1px solid rgba(255,165,0,0.2)' }}>
-          <div className="text-2xl mb-1">⚫</div>
+          <div className="text-2xl mb-1">🏠</div>
           <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>Вы уехали с объекта</p>
-          {project.date_to && (
+          {(project.departure_date || project.date_to) && (
             <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
-              Отъезд: {new Date(project.date_to).toLocaleDateString('ru-RU')}
+              Отъезд: {new Date(project.departure_date || project.date_to).toLocaleDateString('ru-RU')}
             </p>
+          )}
+          {project.departure_reason && (
+            <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>{project.departure_reason}</p>
           )}
         </div>
       )}
