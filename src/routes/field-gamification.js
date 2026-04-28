@@ -1468,6 +1468,124 @@ async function routes(fastify) {
       client.release();
     }
   });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // PHASE 3: Journey Map + Mimir Tips
+  // ═══════════════════════════════════════════════════════════════════
+
+  // ── GET /journey-map — all projects worker has been deployed to ──
+  fastify.get('/journey-map', { preHandler: [fastify.fieldAuthenticate] }, async (req) => {
+    const eid = req.fieldEmployee.id;
+    const { rows } = await db.query(`
+      SELECT
+        w.id as work_id, w.work_title, w.object_name, w.city,
+        w.latitude, w.longitude,
+        ea.field_role,
+        MIN(fc.date) as first_shift,
+        MAX(fc.date) as last_shift,
+        COUNT(fc.id)::int as total_shifts,
+        COALESCE(SUM(fc.amount_earned), 0)::numeric as total_earned,
+        COALESCE(SUM(fc.hours_worked), 0)::numeric as total_hours
+      FROM employee_assignments ea
+      JOIN works w ON w.id = ea.work_id
+      LEFT JOIN field_checkins fc ON fc.employee_id = ea.employee_id AND fc.work_id = ea.work_id AND fc.status = 'completed'
+      WHERE ea.employee_id = $1
+      GROUP BY w.id, w.work_title, w.object_name, w.city, w.latitude, w.longitude, ea.field_role
+      ORDER BY first_shift DESC NULLS LAST
+    `, [eid]);
+
+    // Compute achievements
+    const cities = new Set(rows.map(r => r.city).filter(Boolean));
+    const achievements = [];
+    if (cities.size >= 3) achievements.push({ id: 'traveler_3', name: 'Путник', desc: '3 города', icon: '🗺️' });
+    if (cities.size >= 5) achievements.push({ id: 'traveler_5', name: 'Странник', desc: '5 городов', icon: '🧭' });
+    if (cities.size >= 9) achievements.push({ id: 'nine_worlds', name: 'Девять миров', desc: '9 городов', icon: '🌍' });
+
+    const totalShifts = rows.reduce((s, r) => s + r.total_shifts, 0);
+    const totalEarned = rows.reduce((s, r) => s + parseFloat(r.total_earned), 0);
+
+    return {
+      projects: rows,
+      stats: { total_projects: rows.length, total_cities: cities.size, total_shifts: totalShifts, total_earned: totalEarned },
+      achievements,
+    };
+  });
+
+  // ── GET /mimir-tip — personalized daily motivation ──
+  fastify.get('/mimir-tip', { preHandler: [fastify.fieldAuthenticate] }, async (req) => {
+    const eid = req.fieldEmployee.id;
+
+    // Gather stats for personalized tip
+    const [streakRes, questsRes, rankRes, walletRes] = await Promise.all([
+      db.query(`SELECT current_streak, longest_streak FROM gamification_streaks WHERE employee_id = $1`, [eid]),
+      db.query(`SELECT q.name, qp.current_count, q.target_count
+        FROM gamification_quest_progress qp
+        JOIN gamification_quests q ON q.id = qp.quest_id
+        WHERE qp.employee_id = $1 AND qp.completed = false AND q.is_active = true
+        ORDER BY (qp.current_count::float / q.target_count) DESC LIMIT 3`, [eid]),
+      db.query(`
+        WITH ranked AS (
+          SELECT e.id, ROW_NUMBER() OVER (ORDER BY
+            (COALESCE(sh.cnt,0)*10 + COALESCE(gw.balance,0)*5 + COALESCE(gwr.balance,0)*8) DESC
+          ) as rank,
+          COUNT(*) OVER() as total
+          FROM employees e
+          LEFT JOIN (SELECT employee_id, COUNT(*)::int as cnt FROM field_checkins WHERE status='completed' GROUP BY employee_id) sh ON sh.employee_id=e.id
+          LEFT JOIN gamification_wallets gw ON gw.employee_id=e.id AND gw.currency='xp'
+          LEFT JOIN gamification_wallets gwr ON gwr.employee_id=e.id AND gwr.currency='runes'
+          WHERE e.is_active = true
+        ) SELECT rank, total FROM ranked WHERE id = $1`, [eid]),
+      db.query(`SELECT currency, balance FROM gamification_wallets WHERE employee_id = $1`, [eid]),
+    ]);
+
+    const streak = streakRes.rows[0]?.current_streak || 0;
+    const longestStreak = streakRes.rows[0]?.longest_streak || 0;
+    const nearQuests = questsRes.rows;
+    const rank = rankRes.rows[0]?.rank || 0;
+    const totalPlayers = rankRes.rows[0]?.total || 1;
+    const runes = walletRes.rows.find(r => r.currency === 'runes')?.balance || 0;
+    const xp = walletRes.rows.find(r => r.currency === 'xp')?.balance || 0;
+    const level = Math.floor(xp / 100) + 1;
+
+    // Generate tip based on stats (no AI needed — template-based for speed)
+    const tips = [];
+
+    // Streak tips
+    if (streak > 0 && streak < 7) tips.push({ icon: '🔥', text: `Стрик ${streak} ${streak === 1 ? 'день' : streak < 5 ? 'дня' : 'дней'}! Ещё ${7 - streak} до 50 рун.`, priority: 3 });
+    else if (streak >= 7 && streak < 14) tips.push({ icon: '🔥', text: `Стрик ${streak} дней! До 100 рун осталось ${14 - streak} дней. Не сдавайся!`, priority: 4 });
+    else if (streak >= 14 && streak < 21) tips.push({ icon: '🔥🔥', text: `${streak} дней подряд! Ещё ${21 - streak} до награды 150 рун. Ты машина!`, priority: 5 });
+    else if (streak >= 21) tips.push({ icon: '🔥🔥🔥', text: `${streak} дней подряд! Ты — легенда. Рекорд: ${longestStreak}.`, priority: 5 });
+    else tips.push({ icon: '⚔️', text: 'Начни серию смен! 7 дней подряд = 50 рун.', priority: 1 });
+
+    // Quest proximity tips
+    for (const q of nearQuests) {
+      const remaining = q.target_count - q.current_count;
+      if (remaining <= 3 && remaining > 0) {
+        tips.push({ icon: '🎯', text: `До «${q.name}» осталось ${remaining}! Почти готово.`, priority: 4 });
+      }
+    }
+
+    // Rank tips
+    if (rank > 0) {
+      const pct = Math.round((1 - rank / totalPlayers) * 100);
+      if (pct >= 90) tips.push({ icon: '👑', text: `Ты в топ-${Math.round(rank)}! Выше ${pct}% воинов.`, priority: 3 });
+      else if (pct >= 70) tips.push({ icon: '📈', text: `Ты на ${rank}-м месте из ${totalPlayers}. До топ-10 осталось немного!`, priority: 2 });
+      else tips.push({ icon: '💪', text: `Ты на ${rank}-м месте. Каждая смена поднимает тебя выше!`, priority: 1 });
+    }
+
+    // Level tips
+    const xpInLevel = xp % 100;
+    if (xpInLevel >= 70) tips.push({ icon: '⚡', text: `До уровня ${level + 1} осталось ${100 - xpInLevel} XP! Крути рулетку.`, priority: 3 });
+
+    // Rune tips
+    if (runes >= 800 && runes < 1000) tips.push({ icon: '💰', text: `${runes} рун! Ещё немного — и можно купить обед от компании (900ᚱ).`, priority: 2 });
+
+    // Pick highest priority tip
+    tips.sort((a, b) => b.priority - a.priority);
+    const tip = tips[0] || { icon: '⚔️', text: 'Сегодня новый день — новые подвиги!', priority: 0 };
+
+    return { tip, stats: { streak, level, rank, runes } };
+  });
 }
 
 // ── Helpers ──

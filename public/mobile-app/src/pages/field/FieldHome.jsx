@@ -90,6 +90,7 @@ const GAMIFICATION_TILES = [
   { emoji: '🎁', label: 'Инвентарь', path: '/field/inventory', bg: 'linear-gradient(135deg,#0a1a2a,#081020)', border: 'rgba(74,144,255,.25)' },
   { emoji: '⚔️', label: 'Квесты', path: '/field/quests', bg: 'linear-gradient(135deg,#1a0a2a,#100818)', border: 'rgba(165,110,255,.25)' },
   { emoji: '🏆', label: 'Рейтинг', path: '/field/leaderboard', bg: 'linear-gradient(135deg,#1a1400,#0e0c00)', border: 'rgba(212,168,67,.35)' },
+  { emoji: '🗺️', label: 'Подвиги', path: '/field/journey', bg: 'linear-gradient(135deg,#0a2020,#081818)', border: 'rgba(61,220,132,.25)' },
 ];
 
 export default function FieldHome() {
@@ -105,6 +106,7 @@ export default function FieldHome() {
   const [elapsed, setElapsed] = useState(0);
   const [quote] = useState(randomQuote);
   const [myRank, setMyRank] = useState(null);
+  const [mimirTip, setMimirTip] = useState(null);
   const timerRef = useRef(null);
   const touchStartY = useRef(0);
   const [pulling, setPulling] = useState(false);
@@ -128,10 +130,13 @@ export default function FieldHome() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Fetch my rank
+  // Fetch my rank + Mimir tip
   useEffect(() => {
     fieldApi.get('/gamification/leaderboard').then((res) => {
       if (res?.my_rank) setMyRank(res.my_rank);
+    }).catch(() => {});
+    fieldApi.get('/gamification/mimir-tip').then((res) => {
+      if (res?.tip) setMimirTip(res.tip);
     }).catch(() => {});
   }, []);
 
@@ -470,6 +475,21 @@ export default function FieldHome() {
           ))}
         </div>
       </div>
+
+      {/* Mimir tip */}
+      {mimirTip && (
+        <div className="mb-4 rounded-2xl p-4"
+          style={{ background: 'linear-gradient(135deg, rgba(74,144,255,.06), rgba(165,110,255,.04))',
+            border: '1px solid rgba(74,144,255,.15)', boxShadow: '0 4px 16px rgba(0,0,0,.15)' }}>
+          <div className="flex items-center gap-3">
+            <span style={{ fontSize: 28, filter: 'drop-shadow(0 2px 8px rgba(74,144,255,.3))' }}>{mimirTip.icon}</span>
+            <div className="flex-1">
+              <p className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: 'rgba(74,144,255,.7)', letterSpacing: '.1em' }}>Мимир говорит</p>
+              <p className="text-sm font-semibold" style={{ color: '#fff', lineHeight: 1.4 }}>{mimirTip.text}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Rank mini-card */}
       {myRank && (

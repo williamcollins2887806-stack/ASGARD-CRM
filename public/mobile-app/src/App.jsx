@@ -32,6 +32,7 @@ import WheelOfNorns from '@/pages/field/WheelOfNorns';
 import FieldShop from '@/pages/field/FieldShop';
 import FieldInventory from '@/pages/field/FieldInventory';
 import FieldQuests from '@/pages/field/FieldQuests';
+import FieldJourney from '@/pages/field/FieldJourney';
 import Welcome from '@/pages/Welcome';
 import Login from '@/pages/Login';
 import PinEntry from '@/pages/PinEntry';
@@ -207,6 +208,7 @@ function AppLayout() {
                 <Route path="shop" element={<FieldShop />} />
                 <Route path="inventory" element={<FieldInventory />} />
                 <Route path="quests" element={<FieldQuests />} />
+                <Route path="journey" element={<FieldJourney />} />
                 <Route index element={<Navigate to="home" replace />} />
               </Route>
             </>
