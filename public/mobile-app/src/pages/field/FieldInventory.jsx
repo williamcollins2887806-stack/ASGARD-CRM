@@ -96,6 +96,7 @@ export default function FieldInventory() {
           isDigital: DIGITAL_CATEGORIES.includes(cat),
           isPhysical: PHYSICAL_CATEGORIES.includes(cat),
           hasFulfillment: it.has_fulfillment || false,
+          fulfillmentStatus: it.delivery_status || null,
         };
       });
       setItems(mapped);
@@ -157,6 +158,21 @@ export default function FieldInventory() {
     setActionLoading(itemId);
     try {
       await fieldApi.post(`/gamification/inventory/${itemId}/confirm`);
+      haptic.success();
+      loadInventory();
+    } catch {
+      haptic.error();
+    } finally {
+      setActionLoading(null);
+    }
+  }, [haptic, loadInventory]);
+
+  const handleCancelRequest = useCallback(async (itemId, e) => {
+    e?.stopPropagation();
+    haptic.light();
+    setActionLoading(itemId);
+    try {
+      await fieldApi.post(`/gamification/inventory/${itemId}/cancel-request`, {});
       haptic.success();
       loadInventory();
     } catch {
@@ -548,7 +564,7 @@ export default function FieldInventory() {
                         className="finv-action-btn request"
                         disabled={isActing}
                         onClick={e => handleRequest(item.id, e)}>
-                        {isActing ? '\u29D7 ...' : '\uD83C\uDF81 Получить'}
+                        {isActing ? '\u29D7 ...' : '📦 Запросить доставку'}
                       </button>
                     )}
                     {item.isPhysical && item.status === 'delivered' && (
@@ -563,11 +579,20 @@ export default function FieldInventory() {
                       <div className="finv-confirmed-badge">{'\u2705'} Получено</div>
                     )}
 
-                    {/* Sell button — physical only if no fulfillment, digital only if not equipped */}
-                    {((item.isPhysical && !item.hasFulfillment) || (item.isDigital && !item.isEquipped)) && (
+                    {/* Sell: while pending (before requesting delivery), or digital not equipped */}
+                    {((item.isPhysical && item.status === 'pending') || (item.isDigital && !item.isEquipped)) && (
                       <button className="finv-action-btn sell"
                         onClick={e => { e.stopPropagation(); haptic.light(); setSellItem(item); }}>
                         💰 Продать
+                      </button>
+                    )}
+                    {/* Cancel delivery request */}
+                    {item.isPhysical && item.status === 'requested' && (
+                      <button
+                        style={{ background: 'rgba(156,163,175,.08)', border: '1px solid rgba(156,163,175,.15)', color: 'rgba(255,255,255,.45)', fontSize: 12, padding: '8px 12px', borderRadius: 10, cursor: 'pointer', marginTop: 4 }}
+                        disabled={isActing}
+                        onClick={e => handleCancelRequest(item.id, e)}>
+                        {isActing ? '...' : '✕ Отменить запрос'}
                       </button>
                     )}
 

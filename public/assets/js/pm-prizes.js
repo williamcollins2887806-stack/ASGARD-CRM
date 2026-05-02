@@ -257,10 +257,10 @@ window.AsgardPmPrizesPage = (function () {
         <div id="pp-history-content" style="display:none"></div>
       </div>`;
 
-    const loading = document.getElementById('pp-loading');
-    const reqContent = document.getElementById('pp-requests-content');
-    const hisContent = document.getElementById('pp-history-content');
-    const stats = document.getElementById('pp-stats');
+    const loading = layout.querySelector('#pp-loading');
+    const reqContent = layout.querySelector('#pp-requests-content');
+    const hisContent = layout.querySelector('#pp-history-content');
+    const stats = layout.querySelector('#pp-stats');
 
     let activeTab = 'requests';
     let deliveries = [];
@@ -268,7 +268,7 @@ window.AsgardPmPrizesPage = (function () {
 
     function showTab(tab) {
       activeTab = tab;
-      document.querySelectorAll('.pp-tab-btn').forEach(b => {
+      layout.querySelectorAll('.pp-tab-btn').forEach(b => {
         b.classList.toggle('active', b.dataset.tab === tab);
       });
       reqContent.style.display = tab === 'requests' ? '' : 'none';
@@ -313,11 +313,11 @@ window.AsgardPmPrizesPage = (function () {
     }
 
     // Tab clicks
-    document.getElementById('pp-tab-requests').addEventListener('click', () => showTab('requests'));
-    document.getElementById('pp-tab-history').addEventListener('click', () => showTab('history'));
+    layout.querySelector('#pp-tab-requests')?.addEventListener('click', () => showTab('requests'));
+    layout.querySelector('#pp-tab-history')?.addEventListener('click', () => showTab('history'));
 
     // Refresh
-    document.getElementById('pp-refresh').addEventListener('click', loadData);
+    layout.querySelector('#pp-refresh')?.addEventListener('click', loadData);
 
     await loadData();
   }

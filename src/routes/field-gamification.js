@@ -1021,6 +1021,28 @@ async function routes(fastify) {
     return { ok: true, status: 'confirmed' };
   });
 
+  // ── POST /inventory/:id/cancel-request — cancel delivery request (status: requested → pending) ──
+  fastify.post('/inventory/:id/cancel-request', { preHandler: [fastify.fieldAuthenticate] }, async (req, reply) => {
+    const eid = req.fieldEmployee.id;
+    const invId = parseInt(req.params.id, 10);
+
+    const { rows: [inv] } = await db.query(
+      'SELECT id FROM gamification_inventory WHERE id = $1 AND employee_id = $2', [invId, eid]
+    );
+    if (!inv) return reply.code(404).send({ error: 'Предмет не найден' });
+
+    const { rows: [ful] } = await db.query(
+      `UPDATE gamification_fulfillment
+       SET status = 'pending', requested_at = NULL, updated_at = NOW()
+       WHERE inventory_id = $1 AND employee_id = $2 AND status = 'requested'
+       RETURNING id`,
+      [invId, eid]
+    );
+    if (!ful) return reply.code(400).send({ error: 'Отменить можно только в статусе "запрошен"' });
+
+    return { ok: true, status: 'pending' };
+  });
+
   // ── POST /inventory/:id/sell — sell item for 50% of shop price in runes ──
   fastify.post('/inventory/:id/sell', { preHandler: [fastify.fieldAuthenticate] }, async (req, reply) => {
     const eid = req.fieldEmployee.id;
@@ -1033,12 +1055,12 @@ async function routes(fastify) {
     if (!inv) return reply.code(404).send({ error: 'Предмет не найден' });
     if (inv.is_equipped) return reply.code(400).send({ error: 'Сначала снимите предмет' });
 
-    // Cannot sell item if any fulfillment record exists (pending/requested/ready/delivered)
+    // Cannot sell if delivery already started (requested/ready/delivered), but allow if still pending
     const { rows: [ful] } = await db.query(
-      `SELECT id FROM gamification_fulfillment WHERE inventory_id = $1`,
+      `SELECT id, status FROM gamification_fulfillment WHERE inventory_id = $1`,
       [invId]
     );
-    if (ful) return reply.code(400).send({ error: 'Предмет в процессе доставки — нельзя продать' });
+    if (ful && ful.status !== 'pending') return reply.code(400).send({ error: 'Предмет уже в доставке — нельзя продать' });
 
     // Determine sell price:
     // Tier-based defaults (runes) for fallback
@@ -1075,14 +1097,18 @@ async function routes(fastify) {
     try {
       await client.query('BEGIN');
 
-      // Check fulfillment inside transaction to avoid race condition
+      // Re-check fulfillment inside transaction (race condition guard)
       const { rows: [fulTx] } = await client.query(
-        'SELECT id FROM gamification_fulfillment WHERE inventory_id = $1',
+        'SELECT id, status FROM gamification_fulfillment WHERE inventory_id = $1',
         [invId]
       );
-      if (fulTx) {
+      if (fulTx && fulTx.status !== 'pending') {
         await client.query('ROLLBACK');
-        return reply.code(400).send({ error: 'Предмет в процессе доставки — нельзя продать' });
+        return reply.code(400).send({ error: 'Предмет уже в доставке — нельзя продать' });
+      }
+      // Delete pending fulfillment if exists (worker chose to sell instead of request delivery)
+      if (fulTx) {
+        await client.query('DELETE FROM gamification_fulfillment WHERE inventory_id = $1', [invId]);
       }
 
       // Delete inventory record
