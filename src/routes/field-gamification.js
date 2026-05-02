@@ -378,6 +378,21 @@ async function routes(fastify) {
         await creditWalletTx(client, eid, 'runes', rewardAmount, 'spin_win', selectedPrize.id);
       } else if (selectedPrize.prize_type === 'xp' && rewardAmount > 0) {
         await creditWalletTx(client, eid, 'xp', rewardAmount, 'spin_win', selectedPrize.id);
+      } else if (selectedPrize.prize_type === 'extra_spin') {
+        // Create inventory item with "спин" in name so spin-allowance check picks it up
+        await client.query(
+          `INSERT INTO gamification_inventory (employee_id, item_type, item_name, item_description, item_category, source_id, source_type)
+           VALUES ($1, 'spin_prize', 'Доп. спин', 'Дополнительное вращение Колеса Норн', 'digital', $2, 'spin')`,
+          [eid, selectedPrize.id]
+        );
+        rewardAmount = 1;
+      } else if (['sticker', 'avatar_frame', 'vip'].includes(selectedPrize.prize_type)) {
+        // Digital cosmetic/privilege — add to inventory as digital item
+        await client.query(
+          `INSERT INTO gamification_inventory (employee_id, item_type, item_name, item_category, source_id, source_type)
+           VALUES ($1, 'spin_prize', $2, 'digital', $3, 'spin')`,
+          [eid, selectedPrize.name, selectedPrize.id]
+        );
       } else if (selectedPrize.prize_type === 'shop_item' || selectedPrize.prize_type === 'merch' || selectedPrize.requires_delivery) {
         // Look up shop item category to set item_category correctly
         let itemCategory = 'merch';
