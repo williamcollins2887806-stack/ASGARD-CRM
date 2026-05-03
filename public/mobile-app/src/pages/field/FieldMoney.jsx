@@ -173,10 +173,11 @@ function PerDiemBalanceCard({ cur, finances, proj }) {
     return 'дней';
   }
 
-  // Плановая дата выплаты: сегодня + daysLeft дней
+  // Плановая дата выплаты: день когда суточные закончатся
+  // Math.max(1, ceil) — минимум завтра, даже если остаток = 0
   function plannedDate() {
     const d = new Date();
-    d.setDate(d.getDate() + Math.ceil(daysLeft));
+    d.setDate(d.getDate() + Math.max(1, Math.ceil(daysLeft)));
     return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
   }
 
