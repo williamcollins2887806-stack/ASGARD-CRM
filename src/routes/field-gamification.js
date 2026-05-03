@@ -1092,7 +1092,8 @@ async function routes(fastify) {
       const { rows: [pr] } = await db.query(
         `SELECT prize_type, value, tier FROM gamification_prizes WHERE id = $1`, [inv.source_id]
       );
-      if (pr?.prize_type === 'shop_item' && pr.value) {
+      // Check linked shop_item regardless of prize_type (covers avatar_frame, cosmetic_item, extra_spin too)
+      if (pr?.value) {
         const { rows: [si] } = await db.query(
           'SELECT price_runes FROM gamification_shop_items WHERE id = $1', [parseInt(pr.value)]
         );
