@@ -172,6 +172,99 @@ async function loadMoney(content) {
     }).catch(() => {});
   }
 
+  // ── Per Diem Balance Card ─────────────────────────────────────────────
+  const perDiemAccrued = parseFloat(cur.per_diem_accrued || cur.per_diem_total || 0);
+  const perDiemRate    = parseFloat(cur.per_diem_rate || assignment.per_diem || 0);
+  const perDiemPaid    = parseFloat(cur.per_diem_paid ?? finances.per_diem_paid ?? 0);
+
+  if (perDiemRate > 0) {
+    const pdBalance  = perDiemAccrued - perDiemPaid;  // + = у рабочего переплата, - = должны рабочему
+    const pdDaysLeft = perDiemRate > 0 ? pdBalance / perDiemRate : 0;
+
+    // Determine status
+    let pdStatus, pdColor, pdBg, pdIcon, pdBadge, pdHint;
+    if (pdBalance >= 0) {
+      // Paid more than accrued — worker has "credit"
+      if (pdDaysLeft >= 3) {
+        pdStatus = '🟢 Суточные в плюсе'; pdColor = '#30D158'; pdBg = 'rgba(48,209,88,0.10)'; pdIcon = '✅';
+        pdBadge = 'ЗАПАС';
+        pdHint  = 'Хватит ещё на ' + Math.floor(pdDaysLeft) + ' ' + pluralDays(Math.floor(pdDaysLeft));
+      } else if (pdDaysLeft >= 1) {
+        pdStatus = '🟡 Суточные заканчиваются'; pdColor = '#FFD60A'; pdBg = 'rgba(255,214,10,0.10)'; pdIcon = '⚠️';
+        pdBadge = 'МАЛО';
+        pdHint  = 'Хватит ещё на ' + Math.ceil(pdDaysLeft) + ' ' + pluralDays(Math.ceil(pdDaysLeft));
+      } else {
+        pdStatus = '🟡 Суточные почти закончились'; pdColor = '#FFD60A'; pdBg = 'rgba(255,214,10,0.10)'; pdIcon = '⚠️';
+        pdBadge = 'МАЛО';
+        pdHint  = 'Заканчиваются сегодня';
+      }
+    } else {
+      // Company owes worker
+      pdStatus = '🔴 Долг по суточным'; pdColor = '#FF453A'; pdBg = 'rgba(255,69,58,0.10)'; pdIcon = '❗';
+      pdBadge = 'ДОЛГ';
+      pdHint  = 'Рекомендуем напомнить руководителю';
+    }
+
+    function pluralDays(n) {
+      if (n % 10 === 1 && n % 100 !== 11) return 'день';
+      if ([2,3,4].includes(n % 10) && ![12,13,14].includes(n % 100)) return 'дня';
+      return 'дней';
+    }
+
+    const pdCard = el('div', {
+      style: {
+        borderRadius: '16px', padding: '16px', border: '1px solid ' + pdColor + '33',
+        background: pdBg,
+        animation: 'fieldSlideUp 0.4s ease ' + nd() + 's both',
+        position: 'relative', overflow: 'hidden',
+      },
+    });
+
+    // Header row
+    const pdHeader = el('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' } });
+    pdHeader.appendChild(el('div', {
+      style: { color: pdColor, fontSize: '0.6875rem', fontWeight: '700', letterSpacing: '0.08em', textTransform: 'uppercase' },
+    }, 'СУТОЧНЫЕ'));
+    pdHeader.appendChild(el('span', {
+      style: {
+        background: pdColor, color: '#000', fontSize: '0.5625rem', fontWeight: '800',
+        letterSpacing: '0.06em', padding: '2px 6px', borderRadius: '6px',
+      },
+    }, pdBadge));
+    pdCard.appendChild(pdHeader);
+
+    // Big balance line
+    const pdBalRow = el('div', { style: { display: 'flex', alignItems: 'flex-end', gap: '8px', marginBottom: '10px' } });
+    const absBal = Math.abs(pdBalance);
+    const balSign = pdBalance >= 0 ? '+' : '−';
+    pdBalRow.appendChild(el('div', {
+      style: { fontSize: '2rem', fontWeight: '800', color: pdColor, lineHeight: '1' },
+    }, balSign + Utils.formatMoney(absBal) + ' ₽'));
+    pdCard.appendChild(pdBalRow);
+
+    // Status text
+    pdCard.appendChild(el('div', { style: { fontSize: '0.8125rem', fontWeight: '600', color: pdColor, marginBottom: '8px' } }, pdStatus));
+
+    // Hint
+    pdCard.appendChild(el('div', { style: { fontSize: '0.75rem', color: pdColor, opacity: '0.8' } }, pdIcon + ' ' + pdHint));
+
+    // Divider + breakdown rows
+    const pdDiv = el('div', { style: { borderTop: '1px solid ' + pdColor + '33', margin: '12px 0 10px' } });
+    pdCard.appendChild(pdDiv);
+
+    const mkRow = (label, val, valColor) => {
+      const row = el('div', { style: { display: 'flex', justifyContent: 'space-between', padding: '3px 0' } });
+      row.appendChild(el('span', { style: { color: 'rgba(255,255,255,0.55)', fontSize: '0.75rem' } }, label));
+      row.appendChild(el('span', { style: { color: valColor || 'rgba(255,255,255,0.85)', fontSize: '0.75rem', fontWeight: '600' } }, val));
+      return row;
+    };
+    pdCard.appendChild(mkRow('Начислено суточных', Utils.formatMoney(perDiemAccrued) + ' ₽'));
+    pdCard.appendChild(mkRow('Выплачено суточных', Utils.formatMoney(perDiemPaid) + ' ₽'));
+    pdCard.appendChild(mkRow('Ставка суточных', Utils.formatMoney(perDiemRate) + ' ₽/сут'));
+
+    content.appendChild(pdCard);
+  }
+
   // Breakdown
   const breakCard = el('div', {
     style: { background: t.surface, borderRadius: '16px', padding: '16px', border: '1px solid ' + t.border, animation: 'fieldSlideUp 0.4s ease ' + nd() + 's both' },
