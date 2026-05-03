@@ -183,7 +183,7 @@ function PerDiemBalanceCard({ cur, finances, proj }) {
 
   // ── Конфиг по статусу ────────────────────────────────────────────
   let cfg;
-  if (balance > 0 && daysLeft >= 3) {
+  if (balance > 0 && daysLeft >= 5) {
     cfg = {
       accentColor:  '#30D158',
       accentAlpha:  'rgba(48,209,88,0.15)',
