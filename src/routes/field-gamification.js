@@ -386,8 +386,8 @@ async function routes(fastify) {
           [eid, selectedPrize.id]
         );
         rewardAmount = 1;
-      } else if (['sticker', 'avatar_frame', 'vip'].includes(selectedPrize.prize_type)) {
-        // Digital cosmetic/privilege — add to inventory as digital item
+      } else if (['sticker', 'avatar_frame', 'vip', 'cosmetic_item'].includes(selectedPrize.prize_type)) {
+        // Digital cosmetic/privilege — add to inventory directly, no PM delivery needed
         await client.query(
           `INSERT INTO gamification_inventory (employee_id, item_type, item_name, item_category, source_id, source_type)
            VALUES ($1, 'spin_prize', $2, 'digital', $3, 'spin')`,
