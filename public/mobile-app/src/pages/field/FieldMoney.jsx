@@ -174,10 +174,10 @@ function PerDiemBalanceCard({ cur, finances, proj }) {
   }
 
   // Плановая дата выплаты: день когда суточные закончатся
-  // Math.max(1, ceil) — минимум завтра, даже если остаток = 0
+  // ceil(daysLeft) — если кончаются сегодня (daysLeft < 1), дата = сегодня
   function plannedDate() {
     const d = new Date();
-    d.setDate(d.getDate() + Math.max(1, Math.ceil(daysLeft)));
+    d.setDate(d.getDate() + Math.ceil(daysLeft));
     return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
   }
 
@@ -212,24 +212,6 @@ function PerDiemBalanceCard({ cur, finances, proj }) {
       subline:      days >= 1
         ? `Хватит ещё на\u00a0${days}\u00a0${plural(days)}`
         : 'Уточните у руководителя когда будет выплата',
-      plannedBlock: {
-        date:  plannedDate(),
-        label: 'Плановая дата следующей выплаты',
-        note:  'Фактическая дата выплаты может отличаться',
-      },
-    };
-  } else if (balance === 0) {
-    cfg = {
-      accentColor:  '#FFD60A',
-      accentAlpha:  'rgba(255,214,10,0.12)',
-      borderColor:  'rgba(255,214,10,0.25)',
-      badge:        'НОЛЬ',
-      badgeBg:      '#FFD60A',
-      badgeColor:   '#2a1f00',
-      dot:          '🟡',
-      headline:     'Суточные полностью использованы',
-      amountText:   '0\u00a0₽',
-      subline:      'Уточните у руководителя когда будет выплата',
       plannedBlock: {
         date:  plannedDate(),
         label: 'Плановая дата следующей выплаты',
