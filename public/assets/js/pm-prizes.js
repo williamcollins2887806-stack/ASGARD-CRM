@@ -300,7 +300,7 @@ window.AsgardPmPrizesPage = (function () {
           apiFetch('GET', '/pending-deliveries'),
           apiFetch('GET', '/delivered-history'),
         ]);
-        deliveries = deliData.deliveries || [];
+        deliveries = [...(deliData.requested || []), ...(deliData.won || [])];
         history = hisData.history || [];
         loading.style.display = 'none';
         updateStats();
