@@ -211,11 +211,11 @@ function PerDiemBalanceCard({ cur, finances, proj }) {
       subline:      days >= 1
         ? `Хватит ещё на\u00a0${days}\u00a0${plural(days)}`
         : 'Уточните у руководителя когда будет выплата',
-      plannedBlock: days >= 1 ? {
+      plannedBlock: {
         date:  plannedDate(),
         label: 'Плановая дата следующей выплаты',
         note:  'Фактическая дата выплаты может отличаться',
-      } : null,
+      },
     };
   } else if (balance === 0) {
     cfg = {
@@ -229,7 +229,11 @@ function PerDiemBalanceCard({ cur, finances, proj }) {
       headline:     'Суточные полностью использованы',
       amountText:   '0\u00a0₽',
       subline:      'Уточните у руководителя когда будет выплата',
-      plannedBlock: null,
+      plannedBlock: {
+        date:  plannedDate(),
+        label: 'Плановая дата следующей выплаты',
+        note:  'Фактическая дата выплаты может отличаться',
+      },
     };
   } else {
     cfg = {
