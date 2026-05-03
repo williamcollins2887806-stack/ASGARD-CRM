@@ -214,7 +214,7 @@ window.AsgardPmPrizesPage = (function () {
 
   // ── Main render ──
   async function render({ layout, title }) {
-    layout.innerHTML = `
+    await layout(`
       <style>
         .pp-tab-btn { background: rgba(255,255,255,.04); border: 1.5px solid rgba(255,255,255,.07); color: rgba(255,255,255,.5);
           padding: 10px 22px; border-radius: 12px; font-size: 13px; font-weight: 700; cursor: pointer; transition: all .2s; }
@@ -255,12 +255,12 @@ window.AsgardPmPrizesPage = (function () {
         </div>
         <div id="pp-requests-content" style="display:none"></div>
         <div id="pp-history-content" style="display:none"></div>
-      </div>`;
+      </div>`, { title });
 
-    const loading = layout.querySelector('#pp-loading');
-    const reqContent = layout.querySelector('#pp-requests-content');
-    const hisContent = layout.querySelector('#pp-history-content');
-    const stats = layout.querySelector('#pp-stats');
+    const loading = document.getElementById('pp-loading');
+    const reqContent = document.getElementById('pp-requests-content');
+    const hisContent = document.getElementById('pp-history-content');
+    const stats = document.getElementById('pp-stats');
 
     let activeTab = 'requests';
     let deliveries = [];
@@ -268,7 +268,7 @@ window.AsgardPmPrizesPage = (function () {
 
     function showTab(tab) {
       activeTab = tab;
-      layout.querySelectorAll('.pp-tab-btn').forEach(b => {
+      document.querySelectorAll('.pp-tab-btn').forEach(b => {
         b.classList.toggle('active', b.dataset.tab === tab);
       });
       reqContent.style.display = tab === 'requests' ? '' : 'none';
@@ -313,11 +313,11 @@ window.AsgardPmPrizesPage = (function () {
     }
 
     // Tab clicks
-    layout.querySelector('#pp-tab-requests')?.addEventListener('click', () => showTab('requests'));
-    layout.querySelector('#pp-tab-history')?.addEventListener('click', () => showTab('history'));
+    document.getElementById('pp-tab-requests')?.addEventListener('click', () => showTab('requests'));
+    document.getElementById('pp-tab-history')?.addEventListener('click', () => showTab('history'));
 
     // Refresh
-    layout.querySelector('#pp-refresh')?.addEventListener('click', loadData);
+    document.getElementById('pp-refresh')?.addEventListener('click', loadData);
 
     await loadData();
   }

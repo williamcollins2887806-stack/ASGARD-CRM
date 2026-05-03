@@ -44,7 +44,7 @@ window.AsgardGamificationLeaderboard = (function () {
 
   /* ── Render ── */
   async function render({ layout, title }) {
-    layout.innerHTML = `
+    await layout(`
 <style>
 @keyframes gl-gold-pulse { 0%,100%{box-shadow:0 0 10px rgba(212,168,67,.35)} 50%{box-shadow:0 0 22px rgba(212,168,67,.65)} }
 @keyframes gl-row-in    { from{transform:translateX(-12px);opacity:0} to{transform:translateX(0);opacity:1} }
@@ -111,16 +111,16 @@ window.AsgardGamificationLeaderboard = (function () {
   <div id="gl-tab-tournament" style="display:none">
     <div class="gl-card" id="gl-tournament"></div>
   </div>
-</div>`;
+</div>`, { title });
 
     /* ── Tab switching ── */
-    layout.querySelectorAll('.gl-tab').forEach(btn => {
+    document.querySelectorAll('.gl-tab').forEach(btn => {
       btn.addEventListener('click', () => {
-        layout.querySelectorAll('.gl-tab').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.gl-tab').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         const t = btn.dataset.tab;
-        $('gl-tab-rating', layout).style.display = t === 'rating' ? '' : 'none';
-        $('gl-tab-tournament', layout).style.display = t === 'tournament' ? '' : 'none';
+        document.getElementById('gl-tab-rating').style.display = t === 'rating' ? '' : 'none';
+        document.getElementById('gl-tab-tournament').style.display = t === 'tournament' ? '' : 'none';
       });
     });
 
@@ -129,7 +129,7 @@ window.AsgardGamificationLeaderboard = (function () {
     try {
       data = await api('/leaderboard');
     } catch (e) {
-      layout.querySelector('#gl-subtitle').innerHTML = `<span style="color:#ef4444">Ошибка: ${esc(String(e))}</span>`;
+      document.getElementById('gl-subtitle').innerHTML = `<span style="color:#ef4444">Ошибка: ${esc(String(e))}</span>`;
       return;
     }
 
@@ -141,10 +141,10 @@ window.AsgardGamificationLeaderboard = (function () {
     const totalShifts = leaderboard.reduce((s, p) => s + (parseInt(p.total_shifts)||0), 0);
 
     /* ── Subtitle ── */
-    layout.querySelector('#gl-subtitle').textContent = `${leaderboard.length} воинов · ${fmt(totalRunes)} ᚱ суммарно заработано`;
+    document.getElementById('gl-subtitle').textContent = `${leaderboard.length} воинов · ${fmt(totalRunes)} ᚱ суммарно заработано`;
 
     /* ── Summary cards ── */
-    const summaryEl = layout.querySelector('#gl-summary');
+    const summaryEl = document.getElementById('gl-summary');
     const summaryItems = [
       { icon: '⚔️', label: 'Воинов',   val: leaderboard.length, color: '#D4A843', counter: false },
       { icon: 'ᚱ',   label: 'Рун выдано', val: totalRunes, color: '#D4A843', counter: true },
@@ -161,14 +161,14 @@ window.AsgardGamificationLeaderboard = (function () {
     `).join('');
     // Animate counters
     summaryItems.forEach((s, i) => {
-      if (s.counter) animateCounter(layout.querySelector(`#gl-sum-${i}`), s.val);
+      if (s.counter) animateCounter(document.getElementById(`gl-sum-${i}`), s.val);
     });
 
     /* ── Podium ── */
     function renderPodium() {
       const sorted = getSorted();
       const top3 = sorted.slice(0, 3);
-      const podiumEl = layout.querySelector('#gl-podium');
+      const podiumEl = document.getElementById('gl-podium');
       const order = [top3[1], top3[0], top3[2]]; // 2-1-3 layout
       const ranks = [2, 1, 3];
       const HEIGHTS = { 1: 130, 2: 105, 3: 88 };
@@ -223,7 +223,7 @@ window.AsgardGamificationLeaderboard = (function () {
                    : sortBy==='monthly'? (parseInt(sorted[0]?.monthly_runes)||1)
                    : (parseInt(sorted[0]?.earned_runes)||1);
       const MEDALS = {1:'🥇',2:'🥈',3:'🥉'};
-      const tableEl = layout.querySelector('#gl-table');
+      const tableEl = document.getElementById('gl-table');
 
       tableEl.innerHTML = `
         <table style="width:100%;border-collapse:collapse;font-size:13px">
@@ -286,10 +286,10 @@ window.AsgardGamificationLeaderboard = (function () {
     }
 
     /* ── Sort controls ── */
-    layout.querySelectorAll('.gl-sort').forEach(btn => {
+    document.querySelectorAll('.gl-sort').forEach(btn => {
       btn.addEventListener('click', () => {
         sortBy = btn.dataset.sort;
-        layout.querySelectorAll('.gl-sort').forEach(b => {
+        document.querySelectorAll('.gl-sort').forEach(b => {
           b.style.color = '#9ca3af';
           b.style.borderColor = 'rgba(255,255,255,.1)';
           b.style.background = 'transparent';
@@ -304,7 +304,7 @@ window.AsgardGamificationLeaderboard = (function () {
 
     /* ── Tournament ── */
     function renderTournament() {
-      const tEl = layout.querySelector('#gl-tournament');
+      const tEl = document.getElementById('gl-tournament');
       if (!tournament) {
         tEl.innerHTML = '<p style="color:#6b7280;text-align:center;padding:40px">Недостаточно данных для турнира</p>';
         return;
