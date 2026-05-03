@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CREmployeePicker — Table Demo</title>
+  <style>
+    /* ASGARD dark theme variables */
+    :root {
+      --bg1: #0f1117;
+      --bg2: #1a1d26;
+      --bg3: #242833;
+      --bg4: #333847;
+      --t1: #e8eaf0;
+      --t2: #9ca3b4;
+      --t3: #6b7280;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg1);
+      color: var(--t1);
+      padding: 40px;
+    }
+    h1 { font-size: 18px; margin-bottom: 8px; }
+    h2 { font-size: 14px; color: var(--t2); margin-bottom: 24px; font-weight: 400; }
+    .demo-section { margin-bottom: 40px; }
+    .demo-label { font-size: 12px; color: var(--t3); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .demo-row { display: flex; gap: 20px; flex-wrap: wrap; }
+    #output { margin-top: 16px; padding: 12px; background: var(--bg2); border-radius: 8px; font-size: 12px; color: var(--t3); min-height: 40px; }
+  </style>
+  <link rel="stylesheet" href="/assets/css/cr-components.css">
+</head>
+<body>
+  <h1>CREmployeePicker — Table View</h1>
+  <h2>Компактная таблица вместо карточек. 20 человек на экран без скролла.</h2>
+
+  <div class="demo-section">
+    <div class="demo-label">Multi-select с группировкой по должности</div>
+    <div id="demo-grouped"></div>
+  </div>
+
+  <div class="demo-section">
+    <div class="demo-label">Multi-select без группировки</div>
+    <div id="demo-flat"></div>
+  </div>
+
+  <div class="demo-section">
+    <div class="demo-label">Single-select (pickOne)</div>
+    <button id="btn-pick" style="padding:8px 16px;background:var(--bg3);color:var(--t1);border:1px solid var(--bg4);border-radius:6px;cursor:pointer;font-size:13px;">
+      Выбрать сотрудника
+    </button>
+  </div>
+
+  <div id="output">Лог действий...</div>
+
+  <script src="/assets/js/components/cr-employee-picker.js"></script>
+  <script>
+    const log = (msg) => {
+      const el = document.getElementById('output');
+      el.textContent = msg + '\n' + el.textContent;
+    };
+
+    // Mock employees (realistic data)
+    const mockEmployees = [
+      { id: 1,  name: 'Кузьмин Михаил Михайлович',     position: 'Слесарь',       role: 'TO', city: 'Москва',        phone: '79161234567', rating: 4.2 },
+      { id: 2,  name: 'Сторожев Андрей Андреевич',      position: 'Мастер',        role: 'TO', city: 'Казань',        phone: '79852345678', rating: 3.8 },
+      { id: 3,  name: 'Мараховский Александр Петрович',  position: 'Слесарь',       role: 'TO', city: 'Тула',          phone: '',            rating: 0 },
+      { id: 4,  name: 'Иванов Сергей Николаевич',       position: 'Слесарь',       role: 'TO', city: 'Москва',        phone: '79031112233', rating: 4.5 },
+      { id: 5,  name: 'Петров Дмитрий Алексеевич',      position: 'Электрик',      role: 'TO', city: 'Нижний Новгород',phone: '79047778899', rating: 3.2 },
+      { id: 6,  name: 'Козлов Виктор Павлович',         position: 'Сварщик',       role: 'TO', city: 'Челябинск',     phone: '79055556677', rating: 4.8 },
+      { id: 7,  name: 'Новиков Алексей Дмитриевич',     position: 'Сварщик',       role: 'TO', city: 'Екатеринбург',  phone: '79063334455', rating: 4.0 },
+      { id: 8,  name: 'Морозов Игорь Владимирович',     position: 'Мастер',        role: 'TO', city: 'Воронеж',       phone: '79074445566', rating: 3.5 },
+      { id: 9,  name: 'Волков Антон Сергеевич',         position: 'Слесарь',       role: 'TO', city: 'Самара',        phone: '79087776688', rating: 3.9 },
+      { id: 10, name: 'Соколов Павел Андреевич',        position: 'Электрик',      role: 'TO', city: 'Ростов-на-Дону',phone: '79098887799', rating: 4.1 },
+      { id: 11, name: 'Лебедев Олег Иванович',         position: 'Слесарь',       role: 'TO', city: 'Краснодар',     phone: '79101110022', rating: 2.8 },
+      { id: 12, name: 'Захаров Руслан Петрович',        position: 'Разнорабочий',  role: 'TO', city: 'Москва',        phone: '79112221133', rating: 3.3 },
+      { id: 13, name: 'Федоров Денис Олегович',         position: 'Разнорабочий',  role: 'TO', city: 'Тверь',         phone: '79123332244', rating: 0 },
+      { id: 14, name: 'Егоров Максим Александрович',    position: 'Сварщик',       role: 'TO', city: 'Пермь',         phone: '79134443355', rating: 4.6 },
+      { id: 15, name: 'Козырев Николай Игоревич',       position: 'ИТР',           role: 'TO', city: 'Москва',        phone: '79145554466', rating: 4.3 },
+      { id: 16, name: 'Баранов Артем Валерьевич',       position: 'Мастер',        role: 'TO', city: 'Казань',        phone: '79156665577', rating: 3.7 },
+      { id: 17, name: 'Степанов Юрий Борисович',        position: 'Электрик',      role: 'TO', city: 'Волгоград',     phone: '79167776688', rating: 3.0 },
+      { id: 18, name: 'Григорьев Владимир Константинович', position: 'Слесарь',    role: 'TO', city: 'Уфа',           phone: '79178887799', rating: 4.4 },
+      { id: 19, name: 'Тимофеев Андрей Владимирович',   position: 'Разнорабочий',  role: 'TO', city: 'Саратов',       phone: '79189998800', rating: 2.5 },
+      { id: 20, name: 'Рябов Константин Михайлович',    position: 'Слесарь',       role: 'TO', city: 'Тюмень',        phone: '79190001122', rating: 3.6 },
+    ];
+
+    // Demo 1: Grouped by position with requirements
+    const el1 = CREmployeePicker.create({
+      id: 'demo-grouped',
+      employees: mockEmployees,
+      selected: [2, 6],
+      maxSelect: 0,
+      placeholder: 'Выберите бригаду...',
+      title: 'Формирование бригады',
+      fullWidth: true,
+      groupBy: 'position',
+      requirements: {
+        'Слесарь': 5,
+        'Мастер': 2,
+        'Сварщик': 3,
+        'Электрик': 2,
+        'Разнорабочий': 2,
+        'ИТР': 1,
+      },
+      onChange: (ids) => log(`Grouped: selected ${ids.length} employees: [${ids.join(',')}]`),
+    });
+    document.getElementById('demo-grouped').appendChild(el1);
+
+    // Demo 2: Flat (no grouping)
+    const el2 = CREmployeePicker.create({
+      id: 'demo-flat',
+      employees: mockEmployees.slice(0, 10),
+      selected: [],
+      maxSelect: 0,
+      placeholder: 'Выберите сотрудников...',
+      title: 'Участники',
+      fullWidth: true,
+      onChange: (ids) => log(`Flat: selected ${ids.length} employees: [${ids.join(',')}]`),
+    });
+    document.getElementById('demo-flat').appendChild(el2);
+
+    // Demo 3: Single-select via pickOne
+    document.getElementById('btn-pick').addEventListener('click', async () => {
+      const emp = await CREmployeePicker.pickOne({
+        title: 'Выберите ответственного',
+      });
+      if (emp) {
+        log(`PickOne: ${emp.name} (${emp.position}, ${emp.city})`);
+      } else {
+        log('PickOne: cancelled');
+      }
+    });
+  </script>
+</body>
+</html>

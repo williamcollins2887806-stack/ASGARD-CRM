@@ -1,6 +1,7 @@
 /**
- * ASGARD Field — Crew Page (master only)
- * Brigade list with statuses, call buttons, manual checkin
+ * ASGARD Field — Crew Page
+ * Brigade list: on_site / not_checked_in / left_site
+ * Available to all workers (not only masters)
  */
 (() => {
 'use strict';
@@ -24,287 +25,200 @@ const CrewPage = {
 
 async function loadCrew(content) {
   const t = DS.t;
-  const project = await API.fetch('/worker/active-project');
-  if (!project || !project.project) {
-    content.replaceChildren(F.Empty({ text: '\u041D\u0435\u0442 \u0430\u043A\u0442\u0438\u0432\u043D\u043E\u0433\u043E \u043F\u0440\u043E\u0435\u043A\u0442\u0430', icon: '\uD83D\uDC65' }));
+
+  // 1. Get work_id: active project first, fallback to last project
+  let workId = null;
+  let workTitle = null;
+
+  const active = await API.fetch('/worker/active-project').catch(() => null);
+  if (active && active.project) {
+    workId = active.project.work_id || active.project.id;
+    workTitle = active.project.work_title;
+  }
+
+  if (!workId) {
+    const all = await API.fetch('/worker/projects').catch(() => null);
+    const list = all?.projects || (Array.isArray(all) ? all : []);
+    if (list.length > 0) {
+      workId = list[0].work_id;
+      workTitle = list[0].work_title;
+    }
+  }
+
+  if (!workId) {
+    content.replaceChildren(F.Empty({ text: '\u041D\u0435\u0442 \u043F\u0440\u043E\u0435\u043A\u0442\u043E\u0432', icon: '\uD83D\uDC65' }));
     return;
   }
 
-  const workId = project.project.work_id || project.project.id;
-  const data = await API.fetch('/checkin/today?work_id=' + workId);
+  // 2. Load crew
+  let data;
+  try {
+    data = await API.fetch('/worker/crew?work_id=' + workId);
+  } catch (err) {
+    content.replaceChildren(F.Empty({ text: err.message || '\u041E\u0448\u0438\u0431\u043A\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438', icon: '\u26A0\uFE0F' }));
+    return;
+  }
 
   content.replaceChildren();
 
-  const checkins = data?.checkins || (Array.isArray(data) ? data : []);
+  const onSite = data.on_site || [];
+  const notChecked = data.not_checked_in || [];
+  const leftSite = data.left_site || [];
 
-  // Count stats
-  const onSite = checkins.filter(c => c.status === 'active').length;
-  const completed = checkins.filter(c => c.status === 'completed').length;
-  const total = project.project.crew_count || checkins.length || 0;
+  // Project title
+  if (workTitle) {
+    content.appendChild(el('div', {
+      style: { color: t.textTer, fontSize: '0.75rem', fontWeight: '600', letterSpacing: '0.06em', textTransform: 'uppercase', textAlign: 'center' },
+    }, workTitle));
+  }
 
-  // Stats header
+  // Stats
   const statsRow = el('div', {
     style: { display: 'flex', gap: '8px', animation: 'fieldSlideUp 0.4s ease both' },
   });
-  statsRow.appendChild(buildCrewStat('\u041D\u0430 \u043E\u0431\u044A\u0435\u043A\u0442\u0435', String(onSite), t.green, t));
-  statsRow.appendChild(buildCrewStat('\u0417\u0430\u0432\u0435\u0440\u0448\u0438\u043B\u0438', String(completed), t.blue, t));
-  statsRow.appendChild(buildCrewStat('\u0412\u0441\u0435\u0433\u043E', String(total), t.textSec, t));
+  statsRow.appendChild(crewStat('\u0412\u0441\u0435\u0433\u043E', String(data.total || 0), t.textSec, t));
+  statsRow.appendChild(crewStat('\u041D\u0430 \u043E\u0431\u044A\u0435\u043A\u0442\u0435', String(onSite.length), t.green, t));
+  statsRow.appendChild(crewStat('\u041D\u0435\u0442 \u0447\u0435\u043A\u0438\u043D\u0430', String(notChecked.length), t.orange, t));
+  statsRow.appendChild(crewStat('\u0423\u0435\u0445\u0430\u043B\u0438', String(leftSite.length), t.textTer, t));
   content.appendChild(statsRow);
 
-  if (!checkins.length) {
-    content.appendChild(F.Empty({ text: '\u0421\u0435\u0433\u043E\u0434\u043D\u044F \u043D\u0438\u043A\u0442\u043E \u043D\u0435 \u043E\u0442\u043C\u0435\u0442\u0438\u043B\u0441\u044F', icon: '\uD83D\uDC65' }));
-  }
-
   let delay = 0.1;
-  for (const c of checkins) {
-    delay += 0.05;
-    content.appendChild(buildCrewCard(c, delay, workId, content, t));
+
+  // On site
+  if (onSite.length > 0) {
+    delay += 0.06;
+    content.appendChild(sectionLabel('\uD83D\uDFE2 \u041D\u0430 \u043E\u0431\u044A\u0435\u043A\u0442\u0435 \u0441\u0435\u0433\u043E\u0434\u043D\u044F', t, delay));
+    for (const m of onSite) {
+      delay += 0.04;
+      content.appendChild(crewCard(m, t, delay));
+    }
   }
 
-  // Shift report button
-  content.appendChild(el('div', {
-    style: { marginTop: '8px', animation: 'fieldSlideUp 0.4s ease ' + (delay + 0.1) + 's both' },
-  }, F.BigButton({
-    label: '\u0414\u043D\u0435\u0432\u043D\u043E\u0439 \u043E\u0442\u0447\u0451\u0442',
-    icon: '\uD83D\uDCDD',
-    variant: 'gold',
-    onClick: () => Router.navigate('/field/report'),
-  })));
+  // Not checked in
+  if (notChecked.length > 0) {
+    delay += 0.06;
+    content.appendChild(sectionLabel('\uD83D\uDFE1 \u041D\u0435 \u043E\u0442\u043C\u0435\u0442\u0438\u043B\u0438\u0441\u044C', t, delay));
+    for (const m of notChecked) {
+      delay += 0.04;
+      content.appendChild(crewCard(m, t, delay));
+    }
+  }
+
+  // Left site
+  if (leftSite.length > 0) {
+    delay += 0.06;
+    content.appendChild(sectionLabel('\u26AB \u0423\u0435\u0445\u0430\u043B\u0438 \u0441 \u043E\u0431\u044A\u0435\u043A\u0442\u0430', t, delay));
+    for (const m of leftSite) {
+      delay += 0.04;
+      content.appendChild(crewCard(m, t, delay));
+    }
+  }
+
+  if (onSite.length === 0 && notChecked.length === 0 && leftSite.length === 0) {
+    content.appendChild(F.Empty({ text: '\u0411\u0440\u0438\u0433\u0430\u0434\u0430 \u043F\u0443\u0441\u0442\u0430', icon: '\uD83D\uDC65' }));
+  }
 }
 
-function buildCrewStat(label, value, color, t) {
-  const wrap = el('div', {
-    style: {
-      flex: '1', textAlign: 'center', padding: '12px 8px', borderRadius: '14px',
-      background: t.surface, border: '1px solid ' + t.border,
-    },
-  });
-  wrap.appendChild(el('div', { style: { color, fontSize: '1.5rem', fontWeight: '700' } }, value));
-  wrap.appendChild(el('div', { style: { color: t.textTer, fontSize: '0.625rem', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: '2px' } }, label));
-  return wrap;
-}
+function crewCard(m, t, animDelay) {
+  const ROLE_LABELS = {
+    senior_master: '\u0421\u0442. \u043C\u0430\u0441\u0442\u0435\u0440',
+    shift_master: '\u041C\u0430\u0441\u0442\u0435\u0440',
+    worker: '\u0420\u0430\u0431\u043E\u0447\u0438\u0439',
+  };
 
-function buildCrewCard(checkin, animDelay, workId, content, t) {
-  const isActive = checkin.status === 'active';
-  const isCompleted = checkin.status === 'completed';
-  const statusIcon = isActive ? '\u2705' : isCompleted ? '\uD83D\uDD35' : '\u2B55';
-  const statusLabel = isActive ? '\u041D\u0430 \u043E\u0431\u044A\u0435\u043A\u0442\u0435' : isCompleted ? '\u0417\u0430\u0432\u0435\u0440\u0448\u0438\u043B' : '\u041D\u0435 \u043E\u0442\u043C\u0435\u0442\u0438\u043B\u0441\u044F';
+  const hasCheckin = !!m.checkin_status;
+  const isCompleted = m.checkin_status === 'completed';
+  const isActive = m.checkin_status === 'active';
+  const borderColor = isActive ? 'rgba(52,199,89,0.2)' : !m.is_active ? 'rgba(255,255,255,0.04)' : t.border;
 
   const card = el('div', {
     style: {
-      background: t.surface, borderRadius: '14px', padding: '14px 16px',
-      border: '1px solid ' + (isActive ? 'rgba(52,199,89,0.15)' : t.border),
+      background: t.surface, borderRadius: '14px', padding: '12px 14px',
+      border: '1px solid ' + borderColor,
       animation: 'fieldSlideUp 0.4s ease ' + animDelay + 's both',
     },
   });
 
-  // Top row
   const top = el('div', { style: { display: 'flex', alignItems: 'center', gap: '10px' } });
-  top.appendChild(el('span', { style: { fontSize: '1.1rem' } }, statusIcon));
 
-  const info = el('div', { style: { flex: '1' } });
-  info.appendChild(el('div', { style: { color: t.text, fontWeight: '600', fontSize: '0.9375rem' } }, checkin.fio || checkin.employee_name || '\u0421\u043E\u0442\u0440\u0443\u0434\u043D\u0438\u043A'));
+  // Role badge
+  const roleText = ROLE_LABELS[m.field_role] || '\u0420\u0430\u0431\u043E\u0447\u0438\u0439';
+  const isMaster = m.field_role === 'shift_master' || m.field_role === 'senior_master';
 
-  const meta = [];
-  if (checkin.checkin_at) meta.push(Utils.formatTime(checkin.checkin_at));
-  if (isCompleted && checkin.hours_worked) meta.push(Utils.formatHours(checkin.hours_worked));
-  if (meta.length) {
-    info.appendChild(el('div', { style: { color: t.textSec, fontSize: '0.75rem', marginTop: '1px' } }, meta.join(' \u00B7 ')));
+  const info = el('div', { style: { flex: '1', minWidth: '0' } });
+  const nameRow = el('div', { style: { display: 'flex', alignItems: 'center', gap: '6px' } });
+  nameRow.appendChild(el('span', {
+    style: { color: t.text, fontWeight: '600', fontSize: '0.9375rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  }, m.fio || '\u0421\u043E\u0442\u0440\u0443\u0434\u043D\u0438\u043A'));
+  if (isMaster) {
+    nameRow.appendChild(el('span', {
+      style: { fontSize: '0.625rem', fontWeight: '600', color: t.gold, background: 'rgba(212,168,67,0.12)', padding: '1px 6px', borderRadius: '4px', whiteSpace: 'nowrap' },
+    }, roleText));
   }
+  info.appendChild(nameRow);
+
+  // Meta line
+  const meta = [];
+  if (hasCheckin && m.checkin_at) {
+    const time = new Date(m.checkin_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    meta.push(time);
+  }
+  if (m.checkin_shift) {
+    const SHIFT_LABELS = { day: '\u0434\u043D\u0435\u0432\u043D\u0430\u044F', night: '\u043D\u043E\u0447\u043D\u0430\u044F', road: '\u0434\u043E\u0440\u043E\u0433\u0430', standby: '\u043E\u0436\u0438\u0434\u0430\u043D\u0438\u0435' };
+    meta.push(SHIFT_LABELS[m.checkin_shift] || m.checkin_shift);
+  }
+  if (isCompleted && m.amount_earned) {
+    meta.push(Utils.formatMoney(parseFloat(m.amount_earned)) + '\u20BD');
+  }
+  if (!m.is_active && m.date_to) {
+    meta.push('\u0434\u043E ' + Utils.formatDate(m.date_to));
+  }
+  if (meta.length) {
+    info.appendChild(el('div', {
+      style: { color: t.textSec, fontSize: '0.75rem', marginTop: '2px' },
+    }, meta.join(' \u00B7 ')));
+  }
+
   top.appendChild(info);
 
   // Call button
-  if (checkin.phone) {
+  if (m.phone) {
     top.appendChild(el('a', {
-      href: 'tel:' + checkin.phone.replace(/[^\d+]/g, ''),
+      href: 'tel:' + m.phone.replace(/[^\d+]/g, ''),
       style: {
         width: '36px', height: '36px', borderRadius: '10px', display: 'flex',
         alignItems: 'center', justifyContent: 'center', background: t.bg2,
         border: '1px solid ' + t.border, fontSize: '1rem', textDecoration: 'none',
+        flexShrink: '0',
       },
     }, '\uD83D\uDCDE'));
   }
 
-  // Manual checkin button (if not checked in)
-  if (!isActive && !isCompleted) {
-    const manualBtn = el('button', {
-      style: {
-        padding: '4px 10px', borderRadius: '8px', border: '1px solid ' + t.gold + '40',
-        background: 'transparent', color: t.gold, fontSize: '0.6875rem', fontWeight: '600',
-        cursor: 'pointer',
-      },
-      onClick: () => showManualCheckin(checkin, workId, content),
-    }, '\u270F\uFE0F \u041E\u0442\u043C\u0435\u0442\u0438\u0442\u044C');
-    top.appendChild(manualBtn);
-  }
-
   card.appendChild(top);
-
-  // Earnings for completed + correct button
-  if (isCompleted && checkin.amount_earned) {
-    const earnRow = el('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px' } });
-    const pts = Math.round(parseFloat(checkin.day_rate || checkin.amount_earned || 0) / 500);
-    earnRow.appendChild(el('span', { style: { color: t.textSec, fontSize: '0.75rem' } }, pts + ' бал'));
-    const rightPart = el('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } });
-    rightPart.appendChild(el('span', { style: { color: t.gold, fontSize: '0.8125rem', fontWeight: '600' } }, Utils.formatMoney(checkin.amount_earned) + '\u20BD'));
-    const correctBtn = el('button', {
-      style: { padding: '2px 8px', borderRadius: '6px', border: '1px solid ' + t.border, background: 'transparent', color: t.textSec, fontSize: '0.625rem', cursor: 'pointer' },
-      onClick: () => showCorrectCheckin(checkin, workId, content),
-    }, '\u270F');
-    rightPart.appendChild(correctBtn);
-    earnRow.appendChild(rightPart);
-    card.appendChild(earnRow);
-  }
-
   return card;
 }
 
-function showManualCheckin(employee, workId, content) {
-  const t = DS.t;
-  const form = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '14px' } });
-
-  form.appendChild(el('div', { style: { color: t.text, fontSize: '0.9375rem' } },
-    '\u041E\u0442\u043C\u0435\u0442\u0438\u0442\u044C ' + (employee.fio || employee.employee_name) + ' \u0432\u0440\u0443\u0447\u043D\u0443\u044E'));
-
-  // Time inputs
-  const timeRow = el('div', { style: { display: 'flex', gap: '12px' } });
-
-  const checkinInput = el('input', {
-    type: 'time', value: '08:00',
+function crewStat(label, value, color, t) {
+  const wrap = el('div', {
     style: {
-      flex: '1', padding: '12px', borderRadius: '12px', border: '1px solid ' + t.border,
-      background: t.bg2, color: t.text, fontSize: '1rem',
+      flex: '1', textAlign: 'center', padding: '10px 4px', borderRadius: '12px',
+      background: t.surface, border: '1px solid ' + t.border,
     },
   });
-  const checkoutInput = el('input', {
-    type: 'time', value: '',
-    placeholder: '\u0423\u0445\u043E\u0434 (\u043D\u0435\u043E\u0431\u044F\u0437.)',
-    style: {
-      flex: '1', padding: '12px', borderRadius: '12px', border: '1px solid ' + t.border,
-      background: t.bg2, color: t.text, fontSize: '1rem',
-    },
-  });
-
-  const labelIn = el('div', {});
-  labelIn.appendChild(el('div', { style: { color: t.textSec, fontSize: '0.6875rem', marginBottom: '4px' } }, '\u041F\u0440\u0438\u0445\u043E\u0434'));
-  labelIn.appendChild(checkinInput);
-
-  const labelOut = el('div', {});
-  labelOut.appendChild(el('div', { style: { color: t.textSec, fontSize: '0.6875rem', marginBottom: '4px' } }, '\u0423\u0445\u043E\u0434 (\u043D\u0435\u043E\u0431\u044F\u0437.)'));
-  labelOut.appendChild(checkoutInput);
-
-  timeRow.appendChild(labelIn);
-  timeRow.appendChild(labelOut);
-  form.appendChild(timeRow);
-
-  // Reason
-  const reason = el('textarea', {
-    placeholder: '\u041F\u0440\u0438\u0447\u0438\u043D\u0430 \u0440\u0443\u0447\u043D\u043E\u0439 \u043E\u0442\u043C\u0435\u0442\u043A\u0438...',
-    style: {
-      width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid ' + t.border,
-      background: t.bg2, color: t.text, fontSize: '0.875rem', minHeight: '60px', resize: 'vertical',
-      boxSizing: 'border-box',
-    },
-  });
-  form.appendChild(reason);
-
-  const errorEl = el('div', { style: { color: t.red, fontSize: '0.8125rem', minHeight: '18px' } });
-  form.appendChild(errorEl);
-
-  // Buttons
-  const btns = el('div', { style: { display: 'flex', gap: '12px' } });
-  btns.appendChild(el('button', {
-    style: { flex: '1', height: '48px', borderRadius: '14px', border: '1px solid ' + t.border, background: t.bg2, color: t.text, fontSize: '0.9375rem', fontWeight: '600', cursor: 'pointer' },
-    onClick: () => sheet.remove(),
-  }, '\u041E\u0442\u043C\u0435\u043D\u0430'));
-
-  btns.appendChild(el('button', {
-    style: { flex: '1', height: '48px', borderRadius: '14px', border: 'none', background: t.goldGrad, color: '#FFF', fontSize: '0.9375rem', fontWeight: '600', cursor: 'pointer' },
-    onClick: async () => {
-      const today = new Date().toISOString().split('T')[0];
-      const checkinAt = today + 'T' + (checkinInput.value || '08:00') + ':00';
-      const body = {
-        employee_id: employee.employee_id || employee.id,
-        work_id: workId,
-        checkin_at: checkinAt,
-        date: today,
-        reason: reason.value || '\u0420\u0443\u0447\u043D\u0430\u044F \u043E\u0442\u043C\u0435\u0442\u043A\u0430 \u043C\u0430\u0441\u0442\u0435\u0440\u043E\u043C',
-      };
-      if (checkoutInput.value) {
-        body.checkout_at = today + 'T' + checkoutInput.value + ':00';
-      }
-      const resp = await API.post('/checkin/manual', body);
-      if (resp && resp._ok) {
-        sheet.remove();
-        F.Toast({ message: '\u2705 \u041E\u0442\u043C\u0435\u0442\u043A\u0430 \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u0430', type: 'success' });
-        Router.navigate('/field/crew');
-      } else {
-        errorEl.textContent = resp?.error || '\u041E\u0448\u0438\u0431\u043A\u0430';
-      }
-    },
-  }, '\u041E\u0442\u043C\u0435\u0442\u0438\u0442\u044C'));
-  form.appendChild(btns);
-
-  const sheet = F.BottomSheet({
-    title: '\u270F\uFE0F \u0420\u0443\u0447\u043D\u0430\u044F \u043E\u0442\u043C\u0435\u0442\u043A\u0430',
-    content: form,
-  });
+  wrap.appendChild(el('div', { style: { color, fontSize: '1.25rem', fontWeight: '700' } }, value));
+  wrap.appendChild(el('div', { style: { color: t.textTer, fontSize: '0.5625rem', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.04em', marginTop: '2px' } }, label));
+  return wrap;
 }
 
-function showCorrectCheckin(checkin, workId, content) {
-  const t = DS.t;
-  const currentPts = Math.round(parseFloat(checkin.day_rate || checkin.amount_earned || 0) / 500);
-  const form = el('div', { style: { display: 'flex', flexDirection: 'column', gap: '14px' } });
-
-  form.appendChild(el('div', { style: { color: t.text, fontSize: '0.9375rem' } },
-    '\u041A\u043E\u0440\u0440\u0435\u043A\u0442\u0438\u0440\u043E\u0432\u043A\u0430: ' + (checkin.fio || checkin.employee_name)));
-
-  // Points input
-  const ptsLabel = el('div', {});
-  ptsLabel.appendChild(el('div', { style: { color: t.textSec, fontSize: '0.6875rem', marginBottom: '4px' } }, '\u0411\u0430\u043B\u043B\u044B (6=\u0434\u043E\u0440\u043E\u0433\u0430, 12=\u0440\u0430\u0431\u043E\u0442\u0430, 18=\u043F\u0435\u0440\u0435\u0440\u0430\u0431.)'));
-  const ptsInput = el('input', {
-    type: 'number', value: String(currentPts), min: '0', max: '30',
-    style: { width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid ' + t.border, background: t.bg2, color: t.text, fontSize: '1.25rem', textAlign: 'center', boxSizing: 'border-box' },
-  });
-  ptsLabel.appendChild(ptsInput);
-  form.appendChild(ptsLabel);
-
-  // Note
-  const note = el('input', {
-    type: 'text', placeholder: '\u041F\u0440\u0438\u0447\u0438\u043D\u0430 \u043A\u043E\u0440\u0440\u0435\u043A\u0442\u0438\u0440\u043E\u0432\u043A\u0438...',
-    style: { width: '100%', padding: '12px', borderRadius: '12px', border: '1px solid ' + t.border, background: t.bg2, color: t.text, fontSize: '0.875rem', boxSizing: 'border-box' },
-  });
-  form.appendChild(note);
-
-  const btns = el('div', { style: { display: 'flex', gap: '12px' } });
-  btns.appendChild(el('button', {
-    style: { flex: '1', height: '48px', borderRadius: '14px', border: '1px solid ' + t.border, background: t.bg2, color: t.text, fontSize: '0.9375rem', fontWeight: '600', cursor: 'pointer' },
-    onClick: () => sheet.remove(),
-  }, '\u041E\u0442\u043C\u0435\u043D\u0430'));
-
-  btns.appendChild(el('button', {
-    style: { flex: '1', height: '48px', borderRadius: '14px', border: 'none', background: t.goldGrad, color: '#FFF', fontSize: '0.9375rem', fontWeight: '600', cursor: 'pointer' },
-    onClick: async () => {
-      const newPts = parseInt(ptsInput.value) || 0;
-      const newRate = newPts * 500;
-      const resp = await API.put('/checkin/correct/' + checkin.id, {
-        day_rate: newRate, amount_earned: newRate, note: note.value || null
-      });
-      if (resp && (resp.ok || resp._ok)) {
-        sheet.remove();
-        F.Toast({ message: '\u2705 \u0421\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u043E: ' + newPts + ' \u0431\u0430\u043B = ' + Utils.formatMoney(newRate) + '\u20BD', type: 'success' });
-        loadCrew(content);
-      } else {
-        F.Toast({ message: '\u274C ' + (resp?.error || '\u041E\u0448\u0438\u0431\u043A\u0430'), type: 'error' });
-      }
+function sectionLabel(text, t, animDelay) {
+  return el('div', {
+    style: {
+      color: t.textTer, fontSize: '0.75rem', fontWeight: '700', letterSpacing: '0.08em',
+      marginTop: '6px', padding: '4px 0',
+      borderBottom: '1px solid ' + t.border,
+      animation: 'fieldSlideUp 0.4s ease ' + animDelay + 's both',
     },
-  }, '\u0421\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C'));
-  form.appendChild(btns);
-
-  const sheet = F.BottomSheet({
-    title: '\u270F\uFE0F \u041A\u043E\u0440\u0440\u0435\u043A\u0442\u0438\u0440\u043E\u0432\u043A\u0430',
-    content: form,
-  });
+  }, text);
 }
 
 Router.register('/field/crew', CrewPage);

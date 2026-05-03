@@ -129,6 +129,9 @@ window.AsgardSLA = (function(){
     lastTickTime = now;
 
     if(!currentUser || !currentUser.id) return;
+    // Skip SLA tick if session is locked or token missing (prevents 403 spam)
+    if (!localStorage.getItem('asgard_token')) return;
+    if (window.AsgardSessionGuard && AsgardSessionGuard.isLocked && AsgardSessionGuard.isLocked()) return;
 
     const app = await getApp();
     const sla = app.sla;

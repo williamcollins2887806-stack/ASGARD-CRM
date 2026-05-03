@@ -5,7 +5,10 @@
  *   GET    /                              — список выплат (фильтры)
  *   POST   /                              — создать выплату
  *   PUT    /:id                           — обновить (если pending)
+ *   PUT    /:id/pay                       — отметить выплату (pending→paid)
  *   DELETE /:id                           — отменить (status=cancelled)
+ *   GET    /employee-summary              — сводка по рабочему (SSoT, для модалки)
+ *   POST   /pay-worker                    — выплатить рабочему (новая запись paid)
  *   POST   /bulk-per-diem                 — массовые суточные
  *   POST   /generate-salary/:year/:month  — ведомость из field_checkins
  *   POST   /pay-salary/:year/:month       — массово отметить выплату
@@ -206,6 +209,119 @@ async function routes(fastify, options) {
     }
   });
 
+  // ─── PUT /:id/pay — отметить выплату рабочему ──────────────────────
+  fastify.put('/:id/pay', crmAuth, async (req, reply) => {
+    try {
+      const paymentId = parseInt(req.params.id);
+      const { payment_method, note } = req.body || {};
+
+      const validMethods = ['cash', 'card', 'transfer'];
+      if (!validMethods.includes(payment_method)) {
+        return reply.code(400).send({ error: 'payment_method обязателен: cash, card или transfer' });
+      }
+
+      const { rows: pRows } = await db.query(`
+        SELECT wp.*, w.pm_id, w.head_pm_id, w.work_title,
+               e.fio AS employee_fio, e.user_id AS employee_user_id
+        FROM worker_payments wp
+        LEFT JOIN works w ON w.id = wp.work_id
+        LEFT JOIN employees e ON e.id = wp.employee_id
+        WHERE wp.id = $1
+      `, [paymentId]);
+
+      if (pRows.length === 0) {
+        return reply.code(404).send({ error: 'Выплата не найдена' });
+      }
+      const p = pRows[0];
+
+      if (p.status !== 'pending') {
+        return reply.code(400).send({
+          error: 'Нельзя выплатить',
+          details: `Текущий статус: ${p.status}. Выплата возможна только для pending.`
+        });
+      }
+
+      // Проверка прав: admin-роли или PM/HEAD_PM этого объекта
+      const role = req.user.role;
+      const userId = req.user.id;
+      const adminRoles = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH'];
+      const pmRoles = ['HEAD_PM', 'PM'];
+
+      let hasAccess = false;
+      if (adminRoles.includes(role)) {
+        hasAccess = true;
+      } else if (pmRoles.includes(role)) {
+        hasAccess = p.pm_id === userId || p.head_pm_id === userId;
+      }
+
+      if (!hasAccess) {
+        return reply.code(403).send({
+          error: 'Недостаточно прав',
+          details: 'Выплата доступна только руководителю проекта, бухгалтерии или администратору'
+        });
+      }
+
+      // UPDATE — отметить как оплачено
+      const newComment = note
+        ? (p.comment ? p.comment + '\n—\n' : '') + `[Выплачено ${payment_method}] ${note}`
+        : p.comment;
+
+      const { rows: updated } = await db.query(`
+        UPDATE worker_payments SET
+          status = 'paid',
+          paid_by = $1,
+          paid_at = NOW(),
+          payment_method = $2,
+          comment = $3,
+          updated_at = NOW()
+        WHERE id = $4 AND status = 'pending'
+        RETURNING *
+      `, [userId, payment_method, newComment, paymentId]);
+
+      if (updated.length === 0) {
+        return reply.code(409).send({ error: 'Статус изменился, обновите страницу' });
+      }
+
+      // Audit log
+      await db.query(`
+        INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+        VALUES ($1, 'worker_payments', $2, $3, $4::jsonb, NOW())
+      `, [userId, paymentId, 'payment_paid', JSON.stringify({
+        amount: p.amount,
+        type: p.type,
+        employee_id: p.employee_id,
+        employee_fio: p.employee_fio,
+        work_id: p.work_id,
+        work_title: p.work_title,
+        payment_method,
+        note: note || null
+      })]);
+
+      // Уведомление рабочему
+      if (p.employee_user_id) {
+        const typeLabels = { salary: 'Зарплата', per_diem: 'Суточные', advance: 'Аванс', bonus: 'Премия', penalty: 'Удержание' };
+        const methodLabels = { cash: 'наличные', card: 'на карту', transfer: 'переводом' };
+        try {
+          const notify = require('../services/notify');
+          await notify.createNotification(db, {
+            user_id: p.employee_user_id,
+            title: `💰 Выплачено ${Math.round(p.amount)}₽`,
+            message: `${typeLabels[p.type] || p.type}: ${p.amount}₽ ${methodLabels[payment_method]}`,
+            type: 'payment_received',
+            link: '/field/earnings'
+          });
+        } catch (e) {
+          fastify.log.warn(`[worker-payments] notification failed: ${e.message}`);
+        }
+      }
+
+      return { ok: true, payment: updated[0] };
+    } catch (err) {
+      fastify.log.error(`[worker-payments] PUT /:id/pay error: ${err.message}`);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
   // ─── DELETE /:id — отменить выплату ────────────────────────────────
   fastify.delete('/:id', crmAuth, async (req, reply) => {
     try {
@@ -222,6 +338,124 @@ async function routes(fastify, options) {
       return { ok: true };
     } catch (err) {
       fastify.log.error('[worker-payments] DELETE /:id error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── GET /employee-summary — сводка по рабочему (SSoT) ─────────────
+  fastify.get('/employee-summary', crmAuth, async (req, reply) => {
+    try {
+      const { work_id, employee_id } = req.query;
+      if (!work_id || !employee_id) return reply.code(400).send({ error: 'work_id и employee_id обязательны' });
+      const wId = parseInt(work_id), eId = parseInt(employee_id);
+
+      const { rows: empRows } = await db.query('SELECT id, fio FROM employees WHERE id = $1', [eId]);
+      if (!empRows.length) return reply.code(404).send({ error: 'Сотрудник не найден' });
+
+      const fin = await getWorkerFinances(db, eId, { workId: wId, logger: fastify.log });
+      if (fin.error) return reply.code(400).send({ error: fin.message || fin.error });
+
+      const w = (fin.by_work || [])[0] || {};
+
+      const { rows: [lastP] } = await db.query(`
+        SELECT MAX(paid_at::date) AS last_date FROM worker_payments
+        WHERE employee_id = $1 AND work_id = $2 AND status IN ('paid','confirmed')
+      `, [eId, wId]);
+
+      return {
+        employee: empRows[0],
+        work_id: wId,
+        checkins_days: w.days_worked || 0,
+        per_diem_rate: w.per_diem_rate || 0,
+        per_diem: {
+          accrued: w.per_diem_accrued || 0,
+          paid: w.per_diem_paid || 0,
+          balance: (w.per_diem_paid || 0) - (w.per_diem_accrued || 0)
+        },
+        salary: {
+          fot_accrued: w.fot || 0,
+          advance_paid: w.advance_paid || 0,
+          salary_paid: w.salary_paid || 0,
+          balance: (w.fot || 0) - (w.advance_paid || 0) - (w.salary_paid || 0)
+        },
+        bonus: { paid: w.bonus_paid || 0 },
+        penalty: { paid: w.penalty || 0 },
+        last_payment_date: lastP?.last_date || null
+      };
+    } catch (err) {
+      fastify.log.error('[worker-payments] GET /employee-summary error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── POST /pay-worker — выплатить рабочему (свободная сумма) ──────
+  fastify.post('/pay-worker', crmAuth, async (req, reply) => {
+    try {
+      const { employee_id, work_id, type, amount, payment_method, note } = req.body || {};
+
+      const validTypes = ['per_diem', 'salary', 'advance', 'bonus', 'penalty'];
+      if (!validTypes.includes(type)) return reply.code(400).send({ error: 'type: per_diem, salary, advance, bonus, penalty' });
+      const validMethods = ['cash', 'card', 'transfer'];
+      if (!validMethods.includes(payment_method)) return reply.code(400).send({ error: 'payment_method: cash, card, transfer' });
+      const amt = parseFloat(amount);
+      if (!amt || (type !== 'penalty' && amt <= 0)) return reply.code(400).send({ error: 'amount > 0' });
+      if (!employee_id || !work_id) return reply.code(400).send({ error: 'employee_id и work_id обязательны' });
+
+      const eId = parseInt(employee_id), wId = parseInt(work_id);
+
+      const { rows: ctx } = await db.query(`
+        SELECT w.pm_id, w.head_pm_id, w.work_title,
+               e.fio, e.user_id AS employee_user_id
+        FROM works w, employees e
+        WHERE w.id = $1 AND e.id = $2
+      `, [wId, eId]);
+      if (!ctx.length) return reply.code(404).send({ error: 'Работа или сотрудник не найдены' });
+      const c = ctx[0];
+
+      const role = req.user.role, userId = req.user.id;
+      const adminRoles = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH'];
+      let hasAccess = adminRoles.includes(role);
+      if (!hasAccess && (role === 'PM' || role === 'HEAD_PM')) {
+        hasAccess = c.pm_id === userId || c.head_pm_id === userId;
+      }
+      if (!hasAccess) return reply.code(403).send({ error: 'Недостаточно прав' });
+
+      const { rows: inserted } = await db.query(`
+        INSERT INTO worker_payments (
+          employee_id, work_id, type, amount, status,
+          payment_method, paid_by, paid_at, comment, created_at, created_by
+        ) VALUES ($1, $2, $3, $4, 'paid', $5, $6, NOW(), $7, NOW(), $6)
+        RETURNING *
+      `, [eId, wId, type, amt, payment_method, userId, note || null]);
+
+      await db.query(`
+        INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+        VALUES ($1, 'worker_payments', $2, 'payment_paid_direct', $3::jsonb, NOW())
+      `, [userId, inserted[0].id, JSON.stringify({
+        amount: amt, type, employee_id: eId, employee_fio: c.fio,
+        work_id: wId, work_title: c.work_title, payment_method, note: note || null
+      })]);
+
+      if (c.employee_user_id) {
+        const typeLabels = { salary: 'Зарплата', per_diem: 'Суточные', advance: 'Аванс', bonus: 'Премия', penalty: 'Удержание' };
+        const methodLabels = { cash: 'наличные', card: 'на карту', transfer: 'переводом' };
+        try {
+          const notify = require('../services/notify');
+          await notify.createNotification(db, {
+            user_id: c.employee_user_id,
+            title: `💰 Выплачено ${Math.round(amt)}₽`,
+            message: `${typeLabels[type] || type}: ${amt}₽ ${methodLabels[payment_method]}`,
+            type: 'payment_received',
+            link: '/field/earnings'
+          });
+        } catch (e) {
+          fastify.log.warn(`[worker-payments] notification failed: ${e.message}`);
+        }
+      }
+
+      return { ok: true, payment: inserted[0] };
+    } catch (err) {
+      fastify.log.error('[worker-payments] POST /pay-worker error:', err.message);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -382,52 +616,67 @@ async function routes(fastify, options) {
     }
   });
 
-  // ─── GET /project/:work_id/summary — сводка по объекту ────────────
+  // ─── GET /project/:work_id/summary — сводка по объекту (SSoT) ─────
   fastify.get('/project/:work_id/summary', crmAuth, async (req, reply) => {
     try {
-      const workId = parseInt(req.params.work_id);
+      const workId = parseInt(req.params.work_id, 10);
 
-      const { rows } = await db.query(`
-        SELECT
-          wp.employee_id,
-          e.fio as employee_name,
-          SUM(CASE WHEN wp.type = 'salary' AND wp.status != 'cancelled' THEN wp.amount ELSE 0 END) as salary_total,
-          SUM(CASE WHEN wp.type = 'per_diem' AND wp.status != 'cancelled' THEN wp.amount ELSE 0 END) as per_diem_total,
-          SUM(CASE WHEN wp.type = 'advance' AND wp.status != 'cancelled' THEN wp.amount ELSE 0 END) as advance_total,
-          SUM(CASE WHEN wp.type = 'bonus' AND wp.status != 'cancelled' THEN wp.amount ELSE 0 END) as bonus_total,
-          SUM(CASE WHEN wp.type = 'penalty' AND wp.status != 'cancelled' THEN wp.amount ELSE 0 END) as penalty_total,
-          SUM(CASE WHEN wp.type = 'salary' AND wp.status != 'cancelled' THEN COALESCE(wp.total_points, 0) ELSE 0 END) as total_points,
-          COUNT(DISTINCT CASE WHEN wp.type = 'per_diem' AND wp.status != 'cancelled' THEN wp.id END) as per_diem_count,
-          MAX(CASE WHEN wp.type = 'salary' THEN wp.status END) as salary_status
-        FROM worker_payments wp
-        JOIN employees e ON e.id = wp.employee_id
-        WHERE wp.work_id = $1 AND wp.status != 'cancelled'
-        GROUP BY wp.employee_id, e.fio
+      // Все рабочие с assignment или чекином на эту работу
+      const { rows: empRows } = await db.query(`
+        SELECT DISTINCT e.id, e.fio, e.position
+        FROM employees e
+        LEFT JOIN employee_assignments ea ON ea.employee_id = e.id AND ea.work_id = $1
+        LEFT JOIN field_checkins fc ON fc.employee_id = e.id AND fc.work_id = $1
+        WHERE ea.work_id = $1 OR fc.work_id = $1
         ORDER BY e.fio
       `, [workId]);
 
-      // Totals
-      let salarySum = 0, perDiemSum = 0, advanceSum = 0, bonusSum = 0, penaltySum = 0;
-      for (const r of rows) {
-        salarySum += parseFloat(r.salary_total);
-        perDiemSum += parseFloat(r.per_diem_total);
-        advanceSum += parseFloat(r.advance_total);
-        bonusSum += parseFloat(r.bonus_total);
-        penaltySum += parseFloat(r.penalty_total);
-      }
-
-      return {
-        employees: rows,
-        totals: {
-          salary: salarySum,
-          per_diem: perDiemSum,
-          advance: advanceSum,
-          bonus: bonusSum,
-          penalty: penaltySum,
-          net: salarySum + bonusSum - penaltySum - advanceSum,
-          grand_total: salarySum + perDiemSum + bonusSum - penaltySum
+      // Параллельно считаем финансы каждого через SSoT
+      const workers = await Promise.all(empRows.map(async (e) => {
+        const fin = await getWorkerFinances(db, e.id, { workId, logger: fastify.log });
+        if (fin.error === 'per_diem_not_set') {
+          return { employee_id: e.id, employee_name: e.fio, position: e.position,
+                   error: 'per_diem_not_set', message: fin.message };
         }
-      };
+        const w = (fin.by_work || [])[0] || {};
+        const pdBalance = (w.per_diem_accrued || 0) - (w.per_diem_paid || 0);
+        return {
+          employee_id: e.id,
+          employee_name: e.fio,
+          position: e.position,
+          is_active: w.is_active || false,
+          days_worked: w.days_worked || 0,
+          fot_accrued: w.fot || 0,
+          per_diem_rate: w.per_diem_rate || 0,
+          per_diem_accrued: w.per_diem_accrued || 0,
+          per_diem_paid: w.per_diem_paid || 0,
+          per_diem_balance: pdBalance,
+          salary_paid: w.salary_paid || 0,
+          advance_paid: w.advance_paid || 0,
+          bonus_paid: w.bonus_paid || 0,
+          penalty: w.penalty || 0,
+          net_to_pay: (w.fot || 0) + pdBalance + (w.bonus_paid || 0)
+                    - (w.penalty || 0) - (w.advance_paid || 0) - (w.salary_paid || 0),
+        };
+      }));
+
+      // Агрегаты для шапки
+      const totals = workers.reduce((acc, w) => {
+        if (w.error) return acc;
+        acc.fot_accrued += w.fot_accrued;
+        acc.per_diem_accrued += w.per_diem_accrued;
+        acc.per_diem_paid += w.per_diem_paid;
+        acc.per_diem_balance += w.per_diem_balance;
+        acc.salary_paid += w.salary_paid;
+        acc.advance_paid += w.advance_paid;
+        acc.bonus_paid += w.bonus_paid;
+        acc.penalty += w.penalty;
+        acc.net_to_pay += w.net_to_pay;
+        return acc;
+      }, { fot_accrued: 0, per_diem_accrued: 0, per_diem_paid: 0, per_diem_balance: 0,
+           salary_paid: 0, advance_paid: 0, bonus_paid: 0, penalty: 0, net_to_pay: 0 });
+
+      return { workers, totals };
     } catch (err) {
       fastify.log.error('[worker-payments] GET /project/:id/summary error:', err);
       return reply.code(500).send({ error: 'Ошибка сервера' });
@@ -1107,11 +1356,12 @@ async function routes(fastify, options) {
             ? ''
             : `AND work_id IN (SELECT id FROM works WHERE pm_id = ${parseInt(req.user.id)})`;
 
-          // Try UPDATE existing checkin
+          // Try UPDATE existing checkin (strict: work_id + non-cancelled + PM scope)
           const result = await db.query(`
             UPDATE field_checkins
             SET day_rate = $1, amount_earned = $2, updated_at = NOW()
             WHERE employee_id = $3 AND date = $4::date
+              AND status != 'cancelled'
               ${worksSubquery}
               ${day.work_id ? 'AND work_id = ' + parseInt(day.work_id) : ''}
           `, [dayAmount, dayAmount, empId, dayDate]);
@@ -1119,12 +1369,27 @@ async function routes(fastify, options) {
           if (result.rowCount > 0) {
             updated += result.rowCount;
           } else if (day.work_id) {
+            // Lookup assignment_id для empId + day.work_id
+            const { rows: assignRows } = await db.query(`
+              SELECT id FROM employee_assignments
+              WHERE employee_id = $1 AND work_id = $2
+              ORDER BY is_active DESC, id DESC
+              LIMIT 1
+            `, [empId, parseInt(day.work_id)]);
+
+            if (assignRows.length === 0) {
+              fastify.log.warn(`[payroll-grid] no assignment for emp=${empId} work=${day.work_id}, skipping`);
+              continue;
+            }
+
+            const assignmentId = assignRows[0].id;
+
             // INSERT new checkin if work_id is provided and no existing record
             await db.query(`
-              INSERT INTO field_checkins (employee_id, work_id, date, day_rate, amount_earned, status, created_at, updated_at)
-              VALUES ($1, $2, $3::date, $4, $5, 'completed', NOW(), NOW())
-              ON CONFLICT DO NOTHING
-            `, [empId, parseInt(day.work_id), dayDate, dayAmount, dayAmount]);
+              INSERT INTO field_checkins (employee_id, work_id, assignment_id, date, day_rate, amount_earned, status, checkin_at, created_at, updated_at)
+              VALUES ($1, $2, $3, $4::date, $5, $6, 'completed', $4::date + TIME '08:00', NOW(), NOW())
+              ON CONFLICT (employee_id, date, work_id) WHERE status != 'cancelled' DO NOTHING
+            `, [empId, parseInt(day.work_id), assignmentId, dayDate, dayAmount, dayAmount]);
             updated += 1;
           }
         }

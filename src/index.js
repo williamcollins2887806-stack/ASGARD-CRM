@@ -56,9 +56,7 @@ function isMobileUA(userAgent) {
 }
 
 function sendIndexHtml(request, reply) {
-  const ua = request.headers['user-agent'] || '';
-  const html = isMobileUA(ua) ? indexMobile : indexDesktop;
-  reply.type('text/html').header('Cache-Control', 'no-cache').send(html);
+  reply.type('text/html').header('Cache-Control', 'no-cache').send(indexDesktop);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -127,14 +125,9 @@ fastify.addHook('onRequest', async (request, reply) => {
     return;
   }
 
-  // Field SW — всегда без кэша (иначе браузер не увидит обновления)
-  if (url === '/field/sw.js') {
-    reply.header('Cache-Control', 'no-cache, no-store, must-revalidate');
-    reply.header('Pragma', 'no-cache');
-    return;
-  }
+  // V2: field/sw.js removed — redirect stub handles cleanup via index.html
 
-  // Allow Field PWA paths (/field/ and its assets)
+  // Allow Field PWA paths (/field/ — now serves redirect to /m/)
   if (url === '/field' || url === '/field/' || url.startsWith('/field/')) {
     return;
   }
@@ -253,6 +246,13 @@ fastify.register(require('@fastify/static'), {
       res.setHeader('Cache-Control', 'no-cache');
     }
   }
+});
+
+// Uploads directory — served separately (uploads/ is outside public/)
+fastify.register(require('@fastify/static'), {
+  root: path.join(__dirname, '../uploads'),
+  prefix: '/uploads/',
+  decorateReply: false,
 });
 
 // Rate limiting
@@ -450,6 +450,10 @@ fastify.register(require('./routes/field-logistics'), { prefix: '/api/field/logi
 fastify.register(require('./routes/field-funds'), { prefix: '/api/field/funds' });
 fastify.register(require('./routes/field-packing'), { prefix: '/api/field/packing' });
 fastify.register(require('./routes/field-stages'), { prefix: '/api/field/stages' });
+fastify.register(require('./routes/field-achievements'), { prefix: '/api/field/achievements' });
+fastify.register(require('./routes/field-gamification'), { prefix: '/api/field/gamification' });
+fastify.register(require('./routes/gamification-admin'), { prefix: '/api/gamification/admin' });
+fastify.register(require('./routes/gamification-crud'), { prefix: '/api/gamification/crud' });
 fastify.register(require('./routes/auth'), { prefix: '/api/auth' });
 fastify.register(require('./routes/users'), { prefix: '/api/users' });
 fastify.register(require('./routes/pre_tenders'), { prefix: '/api/pre-tenders' });
@@ -579,6 +583,40 @@ try {
   });
 } catch (cronErr) {
   fastify.log.warn('[PerDiemCron] Init skipped: ' + cronErr.message);
+}
+
+// ── Achievements Cron: daily check ──
+try {
+  const achievementsCron = require('./services/achievements-cron');
+  achievementsCron.init(fastify);
+} catch (cronErr) {
+  fastify.log.warn('[AchievementsCron] Init skipped: ' + cronErr.message);
+}
+
+// ── Shift Autocomplete: every 30 min ──
+try {
+  const shiftAutocomplete = require('./services/shift-autocomplete');
+  fastify.addHook('onReady', async () => {
+    shiftAutocomplete.start(fastify.log);
+  });
+  fastify.addHook('onClose', async () => {
+    shiftAutocomplete.stop();
+  });
+} catch (cronErr) {
+  fastify.log.warn('[ShiftAutocomplete] Init skipped: ' + cronErr.message);
+}
+
+// ── Tournament Cron: weekly bracket ──
+try {
+  const tournamentCron = require('./services/tournament-cron');
+  fastify.addHook('onReady', async () => {
+    tournamentCron.start(fastify.log);
+  });
+  fastify.addHook('onClose', async () => {
+    tournamentCron.stop();
+  });
+} catch (cronErr) {
+  fastify.log.warn('[TournamentCron] Init skipped: ' + cronErr.message);
 }
 
 // ── Call Report Scheduler ──

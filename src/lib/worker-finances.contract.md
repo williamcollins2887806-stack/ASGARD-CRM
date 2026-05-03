@@ -1,8 +1,9 @@
-# Worker Finances SSoT — Контракт API v1.2
+# Worker Finances SSoT — Контракт API v1.3
 
 > Единственный источник истины для расчёта финансов рабочего.
 > v1: 19.04.2026. v1.1: 19.04.2026 — статусы чекинов, имя таблицы, edge-cases.
 > v1.2: 19.04.2026 — assignment_id NULL handling, реальные work_status значения.
+> v1.3: 20.04.2026 — assignment_id NOT NULL (V087+V088), убран LATERAL fallback.
 
 ---
 
@@ -66,11 +67,9 @@ fot              = SUM(COALESCE(field_checkins.amount_earned, 0))
 per_diem_accrued = SUM по работам(COUNT(DISTINCT fc.date) × per_diem_rate)
                    WHERE fc.status = 'completed'
                    AND fc.amount_earned > 0
-                   per_diem_rate = COALESCE(ea.per_diem, ea_fallback.per_diem)
-                     ea = JOIN по fc.assignment_id (приоритет)
-                     ea_fallback = LATERAL lookup по (employee_id, work_id) если assignment_id NULL
+                   per_diem_rate = ea.per_diem (INNER JOIN по fc.assignment_id)
                    Группировка по (work_id, per_diem_rate) — у разных работ разные ставки.
-                   ⚠️ Если оба per_diem NULL → ошибка 422
+                   ⚠️ Если per_diem NULL → ошибка 422
                    ✅ Если per_diem = 0 → легитимно, per_diem_accrued = 0
 
 bonus_accrued    = SUM(worker_payments.amount)
@@ -139,7 +138,7 @@ total_pending    = total_earned − total_paid
 | Таблица                  | PK   | Ключевые колонки                     | JOIN                                 |
 |--------------------------|------|--------------------------------------|--------------------------------------|
 | `field_checkins` (fc)    | id   | employee_id, work_id, assignment_id, date, amount_earned, status | ON fc.employee_id = $empId |
-| `employee_assignments` (ea) | id | employee_id, work_id, per_diem, is_active | см. секцию "assignment_id NULL" ниже |
+| `employee_assignments` (ea) | id | employee_id, work_id, per_diem, is_active | INNER JOIN ea.id = fc.assignment_id |
 | `works` (w)              | id   | work_title, work_status, customer_name | ON w.id = fc.work_id              |
 | `worker_payments` (wp)   | id   | employee_id, work_id, type, amount, status, pay_year | ON wp.employee_id = $empId |
 
@@ -183,48 +182,28 @@ total_pending    = total_earned − total_paid
 > Следствие: `SUM(by_work[].total_paid)` может быть < корневой `total_paid` если есть
 > платежи без привязки к работе. Это не ошибка — это "нераспределённые" выплаты.
 
-### assignment_id IS NULL в field_checkins (КРИТИЧНО)
+### assignment_id в field_checkins (NOT NULL с V088)
 
-По миграции V060 `assignment_id` не имеет NOT NULL constraint.
-**На 19.04.2026 в проде 273 из 273 completed чекинов имеют `assignment_id = NULL`.**
+С миграции V088 `assignment_id` имеет NOT NULL constraint + FK на `employee_assignments(id)`.
+V087 сделал backfill всех 328 строк. Эндпоинты field-manage.js и worker-payments.js
+теперь заполняют FK при INSERT.
 
-Это значит прямой JOIN `ea ON ea.id = fc.assignment_id` пропустит ВСЕ чеки��ы
-при расчёте per_diem. ФОТ посчитается (он не зависит от ea), а суточные — нет.
+**Стратегия: прямой INNER JOIN.**
 
-**Стратегия: fallback на (employee_id, work_id) lookup.**
-
-Для получения per_diem ставки используем двухшаговый JOIN:
 ```sql
-LEFT JOIN employee_assignments ea
-  ON ea.id = fc.assignment_id                              -- приоритет: прямая ссылка
-LEFT JOIN LATERAL (
-  SELECT per_diem, is_active
-  FROM employee_assignments
-  WHERE employee_id = fc.employee_id AND work_id = fc.work_id
-  ORDER BY is_active DESC, id DESC   -- активное назначение первым, потом последнее
-  LIMIT 1
-) ea_fallback ON ea.id IS NULL                             -- fallback: если assignment_id NULL
+INNER JOIN employee_assignments ea ON ea.id = fc.assignment_id
 ```
 
-Итоговая ставка: `COALESCE(ea.per_diem, ea_fallback.per_diem)`.
-Если оба NULL → 422.
+per_diem ставка: `ea.per_diem`. Если NULL → 422.
 
-> **Нюанс COALESCE:** если прямое назначение имеет `per_diem = 0` (легитимный),
-> а fallback = 1500, вернётся 0. Это правильно — прямое назначение приоритетнее.
-
-**Тест-кейс:** чекин с assignment_id = NULL + назначение (emp, work) с per_diem = 1500
-→ per_diem_accrued считается корректно через fallback.
+> LATERAL fallback убран в v1.3 — больше не нужен.
 
 ### Несколько employee_assignments на одну (employee, work)
 
-На 19.04.2026 в проде дублей нет. Уникального constraint нет.
+На 20.04.2026 в проде есть UNIQUE index (V086). Дублей быть не может.
 
-**Поведение:** per_diem ставка берётся:
-1. Из `ea.id = fc.assignment_id` если assignment_id NOT NULL (приоритет)
-2. Иначе fallback: `WHERE ea.employee_id = fc.employee_id AND ea.work_id = fc.work_id
-   ORDER BY is_active DESC, id DESC LIMIT 1` (активное назначение, или последнее)
-
-Для `is_active` в `by_work[]` — берём из того же assignment (прямого или fallback).
+**Поведение:** per_diem ставка берётся из `ea.id = fc.assignment_id` (прямой JOIN).
+`is_active` в `by_work[]` — из того же assignment.
 
 ### per_diem = 0
 
@@ -233,7 +212,7 @@ LEFT JOIN LATERAL (
 
 ### per_diem IS NULL
 
-Ошибка данных (ни прямое, ни fallback назначение не имеет ставки).
+Ошибка данных (назначение не имеет ставки).
 Endpoint возвращает 422 — рабочий видит понятное сообщение.
 
 ---
@@ -445,4 +424,4 @@ GET /api/worker-payments/my/balance?year=2026
 - **Логгер:** передаётся аргументом `{ logger }` или импортируется
 - **Потребители:** `field-worker.js` (`GET /worker/finances`) и `worker-payments.js` (`GET /worker-payments/my/balance`)
 - **Фронт:** `money.js` и `earnings.js` — только рендер, никаких пересчётов
-- **per_diem ставка:** приоритет `ea.id = fc.assignment_id`, fallback `(employee_id, work_id)` lookup (см. секцию 7)
+- **per_diem ставка:** INNER JOIN `ea.id = fc.assignment_id` (v1.3, fallback убран)

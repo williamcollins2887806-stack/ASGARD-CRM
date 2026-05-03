@@ -88,7 +88,11 @@ async function routes(fastify, options) {
   fastify.post('/', auth, async (req, reply) => {
     try {
       const empId = req.fieldEmployee.id;
-      const { work_id, lat, lng, accuracy, note } = req.body || {};
+      const { work_id, lat, lng, accuracy, note, client_date, client_time, client_local_hour } = req.body || {};
+
+      // Use client local date/time to handle multi-timezone workers (e.g. Kemerovo UTC+7 vs server UTC+3)
+      const useDate = /^\d{4}-\d{2}-\d{2}$/.test(client_date) ? client_date : null;
+      const useParsedTime = client_time && !isNaN(new Date(client_time)) ? new Date(client_time).toISOString() : null;
 
       if (!work_id) {
         return reply.code(400).send({ error: 'Укажите work_id' });
@@ -96,7 +100,7 @@ async function routes(fastify, options) {
 
       // Check assignment exists and is active
       const { rows: assignments } = await db.query(`
-        SELECT id, field_role FROM employee_assignments
+        SELECT id, field_role, shift_type FROM employee_assignments
         WHERE employee_id = $1 AND work_id = $2 AND is_active = true
         LIMIT 1
       `, [empId, work_id]);
@@ -107,14 +111,33 @@ async function routes(fastify, options) {
 
       const assignmentId = assignments[0].id;
 
-      // Check no active checkin today
+      // Determine shift type: use assignment setting if set, otherwise auto-detect from worker's local hour
+      // Auto-detect: 04:00–15:59 local → day, 16:00–03:59 local → night
+      let shiftType = assignments[0].shift_type;
+      if (!shiftType) {
+        const localHour = (client_local_hour != null && client_local_hour >= 0 && client_local_hour <= 23)
+          ? client_local_hour
+          : new Date().getHours(); // fallback to server hour
+        shiftType = (localHour >= 4 && localHour < 16) ? 'day' : 'night';
+        fastify.log.info(`[field-checkin] shift auto-detected: hour=${localHour} → ${shiftType} (emp=${empId})`);
+      }
+
+      // Check no existing checkin today (any non-cancelled status)
       const { rows: existing } = await db.query(
-        `SELECT id FROM field_checkins WHERE employee_id = $1 AND work_id = $2 AND date = CURRENT_DATE AND status = 'active' LIMIT 1`,
-        [empId, work_id]
+        `SELECT id, checkin_at, checkout_at, status FROM field_checkins
+         WHERE employee_id = $1 AND work_id = $2
+           AND date = COALESCE($3::date, CURRENT_DATE)
+           AND status != 'cancelled'
+         LIMIT 1`,
+        [empId, work_id, useDate]
       );
 
       if (existing.length > 0) {
-        return reply.code(409).send({ error: 'Вы уже отметились сегодня' });
+        if (existing[0].checkout_at) {
+          return reply.code(409).send({ error: 'Смена за сегодня уже завершена' });
+        }
+        // Active shift exists — return it (double-tap protection)
+        return { checkin_id: existing[0].id, checkin_at: existing[0].checkin_at, resumed: true };
       }
 
       // Auto-close active trip stages (Session 12)
@@ -146,15 +169,51 @@ async function routes(fastify, options) {
       // Get day_rate
       const dayRate = await getDayRate(empId, work_id);
 
-      // Insert checkin
+      // Insert checkin — use client local date/time when provided; set shift from assignment
       const { rows: inserted } = await db.query(`
         INSERT INTO field_checkins (employee_id, work_id, assignment_id, checkin_at,
-          checkin_lat, checkin_lng, checkin_accuracy, checkin_source, date, day_rate, note)
-        VALUES ($1, $2, $3, NOW(), $4, $5, $6, 'self', CURRENT_DATE, $7, $8)
+          checkin_lat, checkin_lng, checkin_accuracy, checkin_source, date, shift, day_rate, note)
+        VALUES ($1, $2, $3, COALESCE($4::timestamptz, NOW()), $5, $6, $7, 'self', COALESCE($8::date, CURRENT_DATE), $9, $10, $11)
         RETURNING id, checkin_at
-      `, [empId, work_id, assignmentId, lat || null, lng || null, accuracy || null, dayRate, note || null]);
+      `, [empId, work_id, assignmentId, useParsedTime, lat || null, lng || null, accuracy || null, useDate, shiftType, dayRate, note || null]);
 
       const checkin = inserted[0];
+
+      // Quest progress: early_checkin (before 07:00 local time)
+      try {
+        const { updateQuestProgress, updateBrigadeQuestProgress } = require('../services/questProgress');
+        const localHourNow = client_local_hour ?? new Date().getHours();
+        if (localHourNow < 7) {
+          updateQuestProgress(db, empId, 'early_checkin').catch(() => {});
+          updateBrigadeQuestProgress(db, empId, 'early_checkin').catch(() => {});
+        }
+      } catch { /* non-critical */ }
+
+      // Quest progress: crew_all_checked_in — check if ALL workers checked in today (triggers for masters)
+      try {
+        const { updateQuestProgress } = require('../services/questProgress');
+        const todayDate = useDate || new Date().toISOString().slice(0, 10);
+        // Count active workers (not masters) for this work
+        const { rows: [{ total_workers }] } = await db.query(
+          `SELECT COUNT(*)::int as total_workers FROM employee_assignments
+           WHERE work_id = $1 AND is_active = true AND field_role = 'worker'`, [work_id]
+        );
+        // Count distinct workers who checked in today
+        const { rows: [{ checked_in }] } = await db.query(
+          `SELECT COUNT(DISTINCT employee_id)::int as checked_in FROM field_checkins
+           WHERE work_id = $1 AND date = $2 AND status IN ('active','completed')`, [work_id, todayDate]
+        );
+        // If all workers present, trigger quest for all masters on this work
+        if (checked_in >= total_workers && total_workers > 0) {
+          const { rows: masters } = await db.query(
+            `SELECT employee_id FROM employee_assignments
+             WHERE work_id = $1 AND is_active = true AND field_role IN ('shift_master','senior_master')`, [work_id]
+          );
+          for (const m of masters) {
+            updateQuestProgress(db, m.employee_id, 'crew_all_checked_in').catch(() => {});
+          }
+        }
+      } catch { /* non-critical */ }
 
       return {
         checkin_id: checkin.id,
@@ -174,15 +233,20 @@ async function routes(fastify, options) {
   fastify.post('/checkout', auth, async (req, reply) => {
     try {
       const empId = req.fieldEmployee.id;
-      const { checkin_id, lat, lng, accuracy, note } = req.body || {};
+      const { checkin_id, lat, lng, accuracy, note, client_time } = req.body || {};
 
       if (!checkin_id) {
         return reply.code(400).send({ error: 'Укажите checkin_id' });
       }
 
-      // Find checkin
+      // Find checkin with shift type
       const { rows: checkins } = await db.query(
-        `SELECT id, employee_id, work_id, checkin_at, day_rate, status FROM field_checkins WHERE id = $1`,
+        `SELECT fc.id, fc.employee_id, fc.work_id, fc.checkin_at, fc.day_rate, fc.status,
+                fc.shift AS checkin_shift,
+                COALESCE(ea.shift_type, fc.shift, 'day') AS shift_type
+         FROM field_checkins fc
+         LEFT JOIN employee_assignments ea ON ea.id = fc.assignment_id
+         WHERE fc.id = $1`,
         [checkin_id]
       );
 
@@ -200,29 +264,120 @@ async function routes(fastify, options) {
         return reply.code(409).send({ error: 'Сме��а уже завершена' });
       }
 
-      // Calculate hours
+      // Calculate hours — use client local time if provided (multi-timezone support)
       const settings = await getProjectSettings(checkin.work_id);
-      const checkoutAt = new Date();
+      const checkoutAt = (client_time && !isNaN(new Date(client_time))) ? new Date(client_time) : new Date();
       const checkinAt = new Date(checkin.checkin_at);
       const hoursWorked = (checkoutAt - checkinAt) / (1000 * 60 * 60);
-      const hoursPaid = roundHours(hoursWorked, settings.rounding_rule, parseFloat(settings.rounding_step));
       const shiftHours = parseFloat(settings.shift_hours || 11);
-      const dayRate = parseFloat(checkin.day_rate || 0);
-      const amountEarned = shiftHours > 0 ? (hoursPaid / shiftHours) * dayRate : 0;
+      const hoursPaid = roundHours(hoursWorked, settings.rounding_rule, parseFloat(settings.rounding_step));
+      // Prevent early checkout — two conditions:
+      // 1. Must work at least 8 hours
+      // 2. Must be within 2 hours of shift end (day=20:00, night=08:00)
+      const MIN_CHECKOUT_HOURS = 8;
+      if (hoursWorked < MIN_CHECKOUT_HOURS) {
+        const remainingMin = Math.ceil((MIN_CHECKOUT_HOURS - hoursWorked) * 60);
+        const h = Math.floor(remainingMin / 60);
+        const m = remainingMin % 60;
+        const label = h > 0 ? `${h}ч ${m}м` : `${m}м`;
+        return reply.code(400).send({ error: `Минимум 8 часов. Осталось ~${label}` });
+      }
+      // Check proximity to shift end (MSK timezone)
+      const mskNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
+      const mskHour = mskNow.getHours();
+      const shiftType = checkin.shift || 'day';
+      const shiftEndHour = shiftType === 'night' ? 8 : 20; // 20:00 for day, 08:00 for night
+      // Calculate hours until shift end
+      let hoursToEnd;
+      if (shiftType === 'night') {
+        // Night shift: checkin ~20:00, end ~08:00 next day
+        hoursToEnd = mskHour >= 20 ? (24 - mskHour + shiftEndHour) : (shiftEndHour - mskHour);
+      } else {
+        hoursToEnd = shiftEndHour - mskHour;
+      }
+      if (hoursToEnd > 2 && hoursWorked < shiftHours - 0.5) {
+        return reply.code(400).send({ error: `До конца смены ещё ${Math.floor(hoursToEnd)}ч. Закрытие доступно за 2 часа до конца или после ${shiftHours - 0.5}ч работы.` });
+      }
 
-      // Update checkin
+      // Determine pay:
+      // - Work shifts (day/night): re-fetch current rate from assignment (picks up combo added after checkin)
+      // - Non-work shifts (road, standby, waiting, etc.): use stored rate, no combo bonus
+      const isWorkShift = ['day', 'night'].includes(checkin.checkin_shift || '');
+      let dayRate;
+      if (isWorkShift) {
+        dayRate = await getDayRate(checkin.employee_id, checkin.work_id);
+      } else {
+        dayRate = parseFloat(checkin.day_rate || 0);
+      }
+      const amountEarned = dayRate;
+
+      // Update checkin — also update day_rate to reflect current assignment (combo may have been added)
       await db.query(`
         UPDATE field_checkins SET
-          checkout_at = NOW(), checkout_lat = $2, checkout_lng = $3, checkout_accuracy = $4,
-          checkout_source = 'self', hours_worked = $5, hours_paid = $6,
-          amount_earned = $7, status = 'completed', updated_at = NOW(), note = COALESCE($8, note)
+          checkout_at = $2, checkout_lat = $3, checkout_lng = $4, checkout_accuracy = $5,
+          checkout_source = 'self', hours_worked = $6, hours_paid = $7,
+          amount_earned = $8, day_rate = $9, status = 'completed', updated_at = NOW(), note = COALESCE($10, note)
         WHERE id = $1
-      `, [checkin_id, lat || null, lng || null, accuracy || null,
+      `, [checkin_id, checkoutAt.toISOString(), lat || null, lng || null, accuracy || null,
           Math.round(hoursWorked * 100) / 100, hoursPaid,
-          Math.round(amountEarned * 100) / 100, note || null]);
+          Math.round(amountEarned * 100) / 100, dayRate, note || null]);
 
       const quote = randomQuote(FIELD_QUOTES_SHIFT_END)
         .replace('{hours}', Math.floor(hoursWorked));
+
+      // Achievement check (fire-and-forget, don't block checkout response)
+      try {
+        const achievementChecker = require('../services/achievementChecker');
+        achievementChecker.checkAndGrant(db, req.fieldEmployee.id).catch(() => {});
+      } catch { /* achievementChecker not available yet */ }
+
+      // Quest progress hooks (fire-and-forget)
+      try {
+        const { updateQuestProgress, setQuestProgress, updateBrigadeQuestProgress } = require('../services/questProgress');
+        const empId = req.fieldEmployee.id;
+        // shift_complete fires on every checkout
+        updateQuestProgress(db, empId, 'shift_complete').catch(() => {});
+        // Brigade quest: shift_complete
+        updateBrigadeQuestProgress(db, empId, 'shift_complete').catch(() => {});
+        // total_shifts — same action, permanent quests use this too
+        updateQuestProgress(db, empId, 'total_shifts').catch(() => {});
+        // hours_min_8 — only if shift was at least 8 hours
+        if (hoursWorked >= 8) {
+          updateQuestProgress(db, empId, 'hours_min_8').catch(() => {});
+        }
+        // hours_min_10 — full watch quest
+        if (hoursWorked >= 10) {
+          updateQuestProgress(db, empId, 'hours_min_10').catch(() => {});
+        }
+        // night_shift — if this was a night shift
+        if (checkin.shift === 'night') {
+          updateQuestProgress(db, empId, 'night_shift').catch(() => {});
+        }
+        // Streak update: calculate consecutive work days & update streak quests
+        const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Moscow' });
+        db.query(`
+          INSERT INTO gamification_streaks (employee_id, current_streak, longest_streak, last_active_date)
+          VALUES ($1, 1, 1, $2::date)
+          ON CONFLICT (employee_id) DO UPDATE SET
+            current_streak = CASE
+              WHEN gamification_streaks.last_active_date = ($2::date - 1) THEN gamification_streaks.current_streak + 1
+              WHEN gamification_streaks.last_active_date = $2::date THEN gamification_streaks.current_streak
+              ELSE 1
+            END,
+            longest_streak = GREATEST(gamification_streaks.longest_streak,
+              CASE
+                WHEN gamification_streaks.last_active_date = ($2::date - 1) THEN gamification_streaks.current_streak + 1
+                WHEN gamification_streaks.last_active_date = $2::date THEN gamification_streaks.current_streak
+                ELSE 1
+              END),
+            last_active_date = $2::date,
+            updated_at = NOW()
+          RETURNING current_streak
+        `, [empId, todayStr]).then(({ rows }) => {
+          const streak = rows[0]?.current_streak || 1;
+          setQuestProgress(db, empId, 'streak', streak).catch(() => {});
+        }).catch(() => {});
+      } catch { /* non-critical */ }
 
       return {
         hours_worked: Math.round(hoursWorked * 100) / 100,
@@ -297,6 +452,23 @@ async function routes(fastify, options) {
           hours_worked, hours_paid, day_rate, amount_earned,
           date, status, edit_reason, note)
         VALUES ($1, $2, $3, $4, 'master', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        ON CONFLICT (employee_id, date, work_id) WHERE status != 'cancelled'
+          DO UPDATE SET
+            assignment_id = EXCLUDED.assignment_id,
+            checkin_at = EXCLUDED.checkin_at,
+            checkin_source = EXCLUDED.checkin_source,
+            checkin_by = EXCLUDED.checkin_by,
+            checkout_at = EXCLUDED.checkout_at,
+            checkout_source = EXCLUDED.checkout_source,
+            checkout_by = EXCLUDED.checkout_by,
+            hours_worked = EXCLUDED.hours_worked,
+            hours_paid = EXCLUDED.hours_paid,
+            day_rate = EXCLUDED.day_rate,
+            amount_earned = EXCLUDED.amount_earned,
+            status = EXCLUDED.status,
+            edit_reason = COALESCE(EXCLUDED.edit_reason, field_checkins.edit_reason),
+            note = COALESCE(EXCLUDED.note, field_checkins.note),
+            updated_at = NOW()
         RETURNING id, checkin_at, checkout_at
       `, [
         employee_id, work_id, workerAssign[0].id,

@@ -48,14 +48,14 @@ async function routes(fastify, options) {
       const stats = statsQ.rows[0] || {};
       // on_time: checkins before 08:05
       const onTimeQ = await db.query(
-        `SELECT COUNT(*) as cnt FROM field_checkins WHERE employee_id=$1 AND status='completed' AND EXTRACT(HOUR FROM checkin_at)*60 + EXTRACT(MINUTE FROM checkin_at) <= 485`,
+        `SELECT COUNT(*) as cnt FROM field_checkins WHERE employee_id=$1 AND status='completed' AND EXTRACT(HOUR FROM checkin_at AT TIME ZONE 'Europe/Moscow')*60 + EXTRACT(MINUTE FROM checkin_at AT TIME ZONE 'Europe/Moscow') <= 485`,
         [emp.id]
       );
       stats.on_time = parseInt(onTimeQ.rows[0]?.cnt || 0);
 
       // consecutive shifts (simplified — count from last gap)
       const consecQ = await db.query(
-        `SELECT date FROM field_checkins WHERE employee_id=$1 AND status='completed' ORDER BY date DESC LIMIT 30`,
+        `SELECT date FROM field_checkins WHERE employee_id=$1 AND status='completed' ORDER BY date DESC LIMIT 365`,
         [emp.id]
       );
       let consecutive = 0;
@@ -79,6 +79,20 @@ async function routes(fastify, options) {
         earned: a.check(stats),
       }));
 
+      // Cosmetic equipment slots + ammo
+      const { rows: [cosmetics] } = await db.query(
+        'SELECT active_avatar, active_frame, active_badge, active_theme, active_helmet, active_weapon, active_armor FROM employees WHERE id=$1',
+        [emp.id]
+      );
+
+      // Gamification wallets
+      const { rows: wallets } = await db.query(
+        'SELECT currency, balance FROM gamification_wallets WHERE employee_id=$1',
+        [emp.id]
+      );
+      const runes = parseInt(wallets.find(w => w.currency === 'runes')?.balance || 0);
+      const xp    = parseInt(wallets.find(w => w.currency === 'xp')?.balance    || 0);
+
       return {
         id: emp.id,
         fio: emp.fio,
@@ -97,6 +111,18 @@ async function routes(fastify, options) {
         phone_verified: emp.phone_verified,
         day_rate: emp.day_rate,
         achievements,
+        // Gamification
+        runes,
+        xp,
+        total_shifts: parseInt(stats.total_shifts || 0),
+        // Cosmetics & ammo
+        active_avatar: cosmetics?.active_avatar || null,
+        active_frame:  cosmetics?.active_frame  || null,
+        active_badge:  cosmetics?.active_badge  || null,
+        active_theme:  cosmetics?.active_theme  || null,
+        active_helmet: cosmetics?.active_helmet || null,
+        active_weapon: cosmetics?.active_weapon || null,
+        active_armor:  cosmetics?.active_armor  || null,
       };
     } catch (err) {
       fastify.log.error('[field-worker] /me error:', err);
@@ -116,6 +142,7 @@ async function routes(fastify, options) {
         SELECT ea.id as assignment_id, ea.work_id, ea.field_role, ea.per_diem,
                ea.shift_type, ea.date_from, ea.date_to, ea.role, ea.is_active,
                ea.tariff_id, ea.tariff_points, ea.combination_tariff_id,
+               ea.departure_date, ea.departure_reason,
                w.work_title, w.city, w.object_name, w.address, w.pm_id,
                w.contact_person, w.contact_phone,
                fps.shift_hours, fps.schedule_type, fps.site_category,
@@ -142,7 +169,7 @@ async function routes(fastify, options) {
 
       if (a.tariff_id) {
         const { rows: tRows } = await db.query(
-          `SELECT id, category, position_name, points, rate_per_shift FROM field_tariff_grid WHERE id = $1`,
+          `SELECT id, category, position_name, points, rate_per_shift, point_value FROM field_tariff_grid WHERE id = $1`,
           [a.tariff_id]
         );
         if (tRows.length > 0) {
@@ -183,24 +210,29 @@ async function routes(fastify, options) {
         }
       }
 
-      // Get master info
-      let master = null;
+      // Get masters (all active shift_master + senior_master)
       const { rows: masterRows } = await db.query(`
-        SELECT e.fio, e.phone FROM employee_assignments ea
+        SELECT e.fio, e.phone, ea.field_role AS role
+        FROM employee_assignments ea
         JOIN employees e ON e.id = ea.employee_id
-        WHERE ea.work_id = $1 AND ea.field_role IN ('shift_master','senior_master')
-          AND ea.is_active = true AND ea.employee_id != $2
-        LIMIT 1
-      `, [a.work_id, empId]);
-      if (masterRows.length > 0) {
-        master = { fio: masterRows[0].fio, phone: masterRows[0].phone };
-      }
+        WHERE ea.work_id = $1
+          AND ea.field_role IN ('shift_master','senior_master')
+          AND ea.is_active = true
+        ORDER BY CASE ea.field_role
+          WHEN 'senior_master' THEN 1
+          WHEN 'shift_master' THEN 2
+        END, e.fio
+      `, [a.work_id]);
+      const masters = masterRows;
 
-      // Today's checkin
+      // Today's checkin — also find active shifts started yesterday (night shift cross-midnight)
       let todayCheckin = null;
       const { rows: checkinRows } = await db.query(
         `SELECT id, checkin_at, checkout_at, hours_worked, hours_paid, amount_earned, status
-         FROM field_checkins WHERE employee_id = $1 AND work_id = $2 AND date = CURRENT_DATE AND status != 'cancelled'
+         FROM field_checkins
+         WHERE employee_id = $1 AND work_id = $2 AND status != 'cancelled'
+           AND (date = CURRENT_DATE OR status = 'active')
+         ORDER BY checkin_at DESC
          LIMIT 1`,
         [empId, a.work_id]
       );
@@ -243,6 +275,7 @@ async function routes(fastify, options) {
             position_name: tariff.position_name,
             points: tariff.points,
             rate_per_shift: parseFloat(tariff.rate_per_shift),
+            point_value: parseFloat(tariff.point_value || 500),
             combination: combination ? {
               id: combination.id,
               position_name: combination.position_name,
@@ -252,7 +285,8 @@ async function routes(fastify, options) {
             total_rate: dayRate,
           } : null,
           pm,
-          master,
+          masters,
+          master: masters[0] || null,
           today_checkin: todayCheckin,
           today_earnings: todayEarnings,
         },
@@ -272,16 +306,58 @@ async function routes(fastify, options) {
       const { rows } = await db.query(`
         SELECT ea.work_id, ea.field_role, ea.date_from, ea.date_to, ea.is_active,
                ea.tariff_id, ea.per_diem,
-               w.work_title, w.city, w.object_name, w.work_status,
+               w.work_title, w.city, w.object_name, w.work_status, w.customer_name,
+
+               -- PM как объект { fio, phone } или null
+               (SELECT row_to_json(pm_row) FROM (
+                  SELECT COALESCE(e_pm.fio, u_pm.name) AS fio,
+                         COALESCE(e_pm.phone, u_pm.phone) AS phone
+                  FROM users u_pm
+                  LEFT JOIN employees e_pm ON e_pm.user_id = u_pm.id
+                  WHERE u_pm.id = w.pm_id
+                  LIMIT 1
+               ) pm_row) AS pm,
+
+               -- Masters как массив [{ fio, phone, role }] — senior_master первым
+               COALESCE((SELECT json_agg(row_to_json(m_clean)) FROM (
+                  SELECT e_m.fio, e_m.phone, ea_m.field_role AS role
+                  FROM employee_assignments ea_m
+                  JOIN employees e_m ON e_m.id = ea_m.employee_id
+                  WHERE ea_m.work_id = ea.work_id
+                    AND ea_m.field_role IN ('shift_master','senior_master')
+                    AND ea_m.is_active = true
+                  ORDER BY CASE ea_m.field_role
+                    WHEN 'senior_master' THEN 1
+                    WHEN 'shift_master' THEN 2
+                    ELSE 3
+                  END, e_m.fio
+               ) m_clean), '[]'::json) AS masters,
+
+               -- Обратная совместимость
                (SELECT e2.fio FROM employees e2 WHERE e2.user_id = w.pm_id LIMIT 1) as pm_name,
+
+               -- Агрегаты по чекинам
                (SELECT COUNT(*) FROM field_checkins fc
-                WHERE fc.employee_id = ea.employee_id AND fc.work_id = ea.work_id AND fc.status = 'completed') as shifts_count,
+                 WHERE fc.employee_id = ea.employee_id
+                   AND fc.work_id = ea.work_id
+                   AND fc.status = 'completed') as shifts_count,
                (SELECT COALESCE(SUM(fc.amount_earned), 0) FROM field_checkins fc
-                WHERE fc.employee_id = ea.employee_id AND fc.work_id = ea.work_id AND fc.status = 'completed') as total_earned
+                 WHERE fc.employee_id = ea.employee_id
+                   AND fc.work_id = ea.work_id
+                   AND fc.status = 'completed') as total_earned,
+
+               -- Последний чекин для сортировки
+               (SELECT MAX(fc.date) FROM field_checkins fc
+                 WHERE fc.employee_id = ea.employee_id
+                   AND fc.work_id = ea.work_id
+                   AND fc.status = 'completed') as last_checkin_date
+
         FROM employee_assignments ea
         JOIN works w ON w.id = ea.work_id
         WHERE ea.employee_id = $1
-        ORDER BY ea.is_active DESC, ea.date_from DESC NULLS LAST
+        ORDER BY ea.is_active DESC,
+                 last_checkin_date DESC NULLS LAST,
+                 ea.date_from DESC NULLS LAST
       `, [empId]);
 
       // Add badge: completed > active > inactive (left but work continues)
@@ -407,7 +483,7 @@ async function routes(fastify, options) {
       // Per diem
       const perDiemRate = parseFloat(assignment.per_diem || 0);
       const { rows: calDays } = await db.query(
-        `SELECT COUNT(DISTINCT date) as cnt FROM field_checkins WHERE employee_id=$1 AND work_id=$2 AND status != 'cancelled'`,
+        `SELECT COUNT(DISTINCT date) as cnt FROM field_checkins WHERE employee_id=$1 AND work_id=$2 AND status = 'completed'`,
         [empId, workId]
       );
       const perDiemDays = parseInt(calDays[0]?.cnt || 0);
@@ -496,6 +572,103 @@ async function routes(fastify, options) {
       };
     } catch (err) {
       fastify.log.error('[field-worker] /finances/:id error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // GET /crew?work_id=X — brigade list (3 groups)
+  // ─────────────────────────────────────────────────────────────────────
+  fastify.get('/crew', auth, async (req, reply) => {
+    try {
+      const empId = req.fieldEmployee.id;
+      const workId = parseInt(req.query.work_id);
+
+      if (!workId) {
+        return reply.code(400).send({ error: 'work_id обязателен' });
+      }
+
+      // Check requester has (or had) assignment on this work
+      const { rows: myAssign } = await db.query(
+        `SELECT id FROM employee_assignments WHERE employee_id = $1 AND work_id = $2 LIMIT 1`,
+        [empId, workId]
+      );
+      if (myAssign.length === 0) {
+        return reply.code(403).send({ error: 'Нет доступа к этому проекту' });
+      }
+
+      // All assignments on this work
+      const { rows: allCrew } = await db.query(`
+        SELECT ea.employee_id, e.fio, e.phone, ea.field_role, ea.is_active,
+               ea.date_from, ea.date_to
+        FROM employee_assignments ea
+        JOIN employees e ON e.id = ea.employee_id
+        WHERE ea.work_id = $1
+        ORDER BY CASE ea.field_role
+          WHEN 'senior_master' THEN 1
+          WHEN 'shift_master' THEN 2
+          ELSE 3
+        END, e.fio
+      `, [workId]);
+
+      // Today's checkins for this work
+      const { rows: todayCheckins } = await db.query(`
+        SELECT employee_id, status, shift, checkin_at, checkout_at, amount_earned
+        FROM field_checkins
+        WHERE work_id = $1 AND date = CURRENT_DATE AND status != 'cancelled'
+      `, [workId]);
+
+      const checkinMap = {};
+      for (const c of todayCheckins) {
+        checkinMap[c.employee_id] = c;
+      }
+
+      // Split into 3 groups
+      const onSite = [];
+      const notCheckedIn = [];
+      const leftSite = [];
+
+      for (const m of allCrew) {
+        const c = checkinMap[m.employee_id];
+        const row = {
+          employee_id: m.employee_id,
+          fio: m.fio,
+          phone: (m.phone || '').replace(/_.*$/, ''),
+          field_role: m.field_role,
+          is_active: m.is_active,
+          date_from: m.date_from,
+          date_to: m.date_to,
+          checkin_status: c ? c.status : null,
+          checkin_shift: c ? c.shift : null,
+          checkin_at: c ? c.checkin_at : null,
+          amount_earned: c ? c.amount_earned : null,
+        };
+
+        if (!m.is_active) {
+          leftSite.push(row);
+        } else if (c) {
+          onSite.push(row);
+        } else {
+          notCheckedIn.push(row);
+        }
+      }
+
+      // Роль текущего пользователя на этом объекте (для будущих master-actions)
+      const myRole = allCrew.find(r => r.employee_id === empId)?.field_role || null;
+
+      return {
+        work_id: workId,
+        your_role: myRole,
+        on_site: onSite,
+        not_checked_in: notCheckedIn,
+        left_site: leftSite,
+        total: allCrew.length,
+        on_site_count: onSite.length,
+        not_checked_in_count: notCheckedIn.length,
+        left_site_count: leftSite.length,
+      };
+    } catch (err) {
+      fastify.log.error('[field-worker] /crew error:', err);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -602,10 +775,11 @@ async function routes(fastify, options) {
   // Требует подтверждения через модалку на фронте
   // ═══════════════════════════════════════════════════════════════════
   const EDITABLE_FIELDS = new Set([
-    'phone', 'email', 'city', 'address',
+    'fio', 'phone', 'email', 'city', 'address',
     'passport_data', 'passport_number', 'inn', 'snils',
     'clothing_size', 'shoe_size',
-    'birth_date', 'gender'
+    'birth_date', 'gender', 'is_self_employed',
+    'naks', 'naks_expiry', 'imt_number', 'imt_expires',
   ]);
 
   fastify.put('/personal', auth, async (req, reply) => {

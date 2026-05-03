@@ -107,7 +107,7 @@ class CallAnalyzer {
       ar.key_requirements && ar.key_requirements.length > 0 ? 'Требования: ' + ar.key_requirements.join('; ') : null
     ].filter(Boolean);
     try {
-      const sql = 'INSERT INTO tenders (customer_name,inn,tender_title,tender_type,tender_description,tender_region,tender_contact,tender_phone,tender_email,status,source,comment_to,pm_id,created_by,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW()) RETURNING id';
+      const sql = 'INSERT INTO tenders (customer_name,inn,tender_title,tender_type,tender_description,tender_region,tender_contact,tender_phone,tender_email,status,source,comment_to,responsible_pm_id,created_by,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW()) RETURNING id';
       const r = await db.query(sql, [cn || 'Из звонка', null, title, tt, dp.join('. ') || null, loc, ctn, ctp, cte, 'draft_from_call', 'phone_call', ar.summary || null, managerId || null, managerId || null]);
       const tid = r.rows[0].id;
       await db.query('UPDATE call_history SET lead_id = $1, updated_at = NOW() WHERE id = $2', [tid, callId]);

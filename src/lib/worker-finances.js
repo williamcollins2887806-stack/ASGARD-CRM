@@ -2,7 +2,7 @@
 
 /**
  * Worker Finances SSoT — единственный источник истины.
- * Контракт: src/lib/worker-finances.contract.md v1.2
+ * Контракт: src/lib/worker-finances.contract.md v1.3
  *
  * @param {object} db      — services/db (pool.query)
  * @param {number} empId   — employees.id
@@ -23,8 +23,7 @@ async function getWorkerFinances(db, empId, opts = {}) {
   }
 
   // ── CTE 1: Earnings from field_checkins ────────────────────────────────────
-  // Groups by work_id. Uses fallback for assignment_id NULL (273/273 in prod).
-  // per_diem rate: COALESCE(direct assignment, fallback by employee+work)
+  // Groups by work_id. assignment_id is NOT NULL (V088), direct INNER JOIN.
   const earningsSQL = `
     WITH checkin_earnings AS (
       SELECT
@@ -36,22 +35,11 @@ async function getWorkerFinances(db, empId, opts = {}) {
         COUNT(DISTINCT fc.date)
           FILTER (WHERE fc.amount_earned > 0)  AS days_worked,
         -- per_diem rate: MAX across checkins handles reassignment (worker→master)
-        MAX(COALESCE(ea_direct.per_diem, ea_fb.per_diem)) AS per_diem_rate,
-        bool_or(COALESCE(ea_direct.is_active, ea_fb.is_active, false)) AS assignment_is_active
+        MAX(ea.per_diem)                       AS per_diem_rate,
+        bool_or(ea.is_active)                  AS assignment_is_active
       FROM field_checkins fc
       JOIN works w ON w.id = fc.work_id
-      -- Direct assignment (may be NULL for all 273 prod rows)
-      LEFT JOIN employee_assignments ea_direct
-        ON ea_direct.id = fc.assignment_id
-      -- Fallback: best assignment for (employee, work)
-      LEFT JOIN LATERAL (
-        SELECT per_diem, is_active
-        FROM employee_assignments
-        WHERE employee_id = fc.employee_id
-          AND work_id = fc.work_id
-        ORDER BY is_active DESC, id DESC
-        LIMIT 1
-      ) ea_fb ON ea_direct.id IS NULL
+      INNER JOIN employee_assignments ea ON ea.id = fc.assignment_id
       WHERE fc.employee_id = $1
         AND fc.status = 'completed'
         ${year ? 'AND EXTRACT(YEAR FROM fc.date) = $2' : ''}

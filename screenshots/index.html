@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>E2E Test Screenshots — ASGARD CRM</title>
+<style>
+  body { background: #1a1a2e; color: #eee; font-family: -apple-system, sans-serif; margin: 0; padding: 20px; }
+  h1 { text-align: center; color: #D4A843; }
+  .summary { background: #16213e; padding: 20px; border-radius: 12px; margin: 20px auto; max-width: 800px; }
+  .summary h2 { color: #D4A843; margin-top: 0; }
+  .ok { color: #4caf50; }
+  .fail { color: #f44336; }
+  .grid { display: grid; grid-template-columns: 1fr; gap: 30px; max-width: 1400px; margin: 0 auto; }
+  .card { background: #16213e; border-radius: 12px; overflow: hidden; }
+  .card h3 { padding: 15px 20px 5px; margin: 0; color: #D4A843; font-size: 16px; }
+  .card p { padding: 0 20px 10px; margin: 0; color: #aaa; font-size: 13px; }
+  .card img { width: 100%; display: block; cursor: pointer; transition: transform 0.2s; }
+  .card img:hover { transform: scale(1.02); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+  .badge-ok { background: #1b5e20; color: #4caf50; }
+  .badge-fail { background: #b71c1c; color: #ef5350; }
+  .badge-warn { background: #e65100; color: #ff9800; }
+</style>
+</head>
+<body>
+<h1>⚔ E2E Test — ASGARD CRM</h1>
+<div class="summary">
+  <h2>Результаты прогона v6 (04.04.2026)</h2>
+  <pre style="font-size:14px; line-height:1.8">
+<span class="ok">✅</span> 0. Login
+<span class="ok">✅</span> 1. Handoff (Передать в просчёт) — уже выполнено ранее (v5)
+<span class="ok">✅</span> 2. Create Estimate (ID:2) — через API (pm-calcs пуст, <span class="badge badge-warn">БАГ</span>)
+<span class="ok">✅</span> 3. Approve Estimate (ID:2) — статус «Согласовано»
+<span class="ok">✅</span> 4. Work (ID:1) — найдена существующая
+<span class="ok">✅</span> 5. Open Work Card + Staff Request
+<span class="ok">✅</span> 6. Field Module — 5 табов (crew, logistics, dashboard, timesheet, packing)
+<span class="ok">✅</span> 7. Personnel — поиск Андросов
+
+<b>Объекты:</b> Tender #2 → Estimate #2 → Work #1
+  </pre>
+  <h3>Найденные баги</h3>
+  <p><span class="badge badge-fail">БАГ 1</span> PM Calcs (#/pm-calcs) — 0 строк для ADMIN при наличии тендера с handoff_at</p>
+  <p><span class="badge badge-warn">БАГ 2</span> PAGE_ERR «Ошибка обработки запроса» при сохранении работы</p>
+  <p><span class="badge badge-warn">БАГ 3</span> Оверлей #asgard-action-menu-overlay не закрывается после открытия полевого модуля</p>
+</div>
+
+<div class="grid">
+
+  <div class="card">
+    <h3>1. Страница тендеров</h3>
+    <p>Список тендеров с тендером #2 (ПАО ЛУКОЙЛ-Нефтехим, статус Новый)</p>
+    <a href="01_tenders_page.png" target="_blank"><img src="01_tenders_page.png" alt="1. Страница тендеров" loading="lazy"></a>
+  </div>
+
+  <div class="card">
+    <h3>1b. Карточка тендера #2</h3>
+    <p>Форма тендера открыта — Тип, РП, ТЕГ, Даты, Цена</p>
+    <a href="01b_tender_card.png" target="_blank"><img src="01b_tender_card.png" alt="1b. Карточка тендера #2" loading="lazy"></a>
+  </div>
+
+  <div class="card">
+    <h3>2. После «Передать в просчёт»</h3>
+    <p>Карточка тендера с тостом о требовании документов (v5)</p>
+    <a href="02_after_handoff.png" target="_blank"><img src="02_after_handoff.png" alt="2. После «Передать в просчёт»" loading="lazy"></a>
+  </div>
+
+  <div class="card">
+    <h3>2. PM Calcs — пусто</h3>
+    <p>БАГ: Карта Похода • Просчёты показывает 0 строк для ADMIN</p>
+    <a href="02_pm_calcs.png" target="_blank"><img src="02_pm_calcs.png" alt="2. PM Calcs — пусто" loading="lazy"></a>
+  </div>
+
+  <div class="card">
+    <h3>3. Свод Расчётов</h3>
+    <p>Список просчётов — 2 записи (ПАО ЛУКОЙЛ-Нефтехим)</p>
+    <a href="03_estimates.png" target="_blank"><img src="03_estimates.png" alt="3. Свод Расчётов" loading="lazy"></a>
+  </div>
+
+  <div class="card">
+    <h3>3b. Карточка просчёта</h3>
+    <p>Детали просчёта: цена ТКП, себестоимость, РП</p>
+    <a href="03b_estimate_card.png" target="_blank"><img src="03b_estimate_card.png" alt="3b. Карточка просчёта" loading="lazy"></a>
+  </div>
+
+  <div class="card">
+    <h3>3c. Просчёт согласован</h3>
+    <p>Статус «Согласовано» (зелёный бейдж), цена 4 850 000</p>
+    <a href="03c_approved.png" target="_blank"><img src="03c_approved.png" alt="3c. Просчёт согласован" loading="lazy"></a>
+  </div>
+
+  <div class="card">
+    <h3>5. Карточка работы #1</h3>
+    <p>Форма работы: стоимость, аванс, себестоимость, численность, заявка HR</p>
+    <a href="05_work_card.png" target="_blank"><img src="05_work_card.png" alt="5. Карточка работы #1" loading="lazy"></a>
+  </div>
+
+  <div class="card">
+    <h3>5b. Заявка на персонал</h3>
+    <p>Заполнены: Мастера, Слесари, ПТО, Промывщики, вахта, ротация</p>
+    <a href="05b_staff_filled.png" target="_blank"><img src="05b_staff_filled.png" alt="5b. Заявка на персонал" loading="lazy"></a>
+  </div>
+
+  <div class="card">
+    <h3>5c. Запрос рабочих отправлен</h3>
+    <p>После нажатия «Запросить рабочих»</p>
+    <a href="05c_staff_requested.png" target="_blank"><img src="05c_staff_requested.png" alt="5c. Запрос рабочих отправлен" loading="lazy"></a>
+  </div>
+
+  <div class="card">
+    <h3>6. Меню «⚡ Действия»</h3>
+    <p>Секции: Осмотр, Финансы, Планирование, Полевой модуль, Оборудование</p>
+    <a href="06_actions_menu.png" target="_blank"><img src="06_actions_menu.png" alt="6. Меню «⚡ Действия»" loading="lazy"></a>
+  </div>
+
+  <div class="card">
+    <h3>6b. Полевой модуль — действия</h3>
+    <p>Меню действий с кнопкой «Полевой модуль» (Бригада, логистика, дашборд, табель)</p>
+    <a href="07_field_module.png" target="_blank"><img src="07_field_module.png" alt="6b. Полевой модуль — действия" loading="lazy"></a>
+  </div>
+
+  <div class="card">
+    <h3>7. Полевой модуль — Бригада</h3>
+    <p>Таб «Бригада»: ФИО, Роль, Тариф, Баллы, кнопка «Запустить Field»</p>
+    <a href="08_field_crew.png" target="_blank"><img src="08_field_crew.png" alt="7. Полевой модуль — Бригада" loading="lazy"></a>
+  </div>
+
+  <div class="card">
+    <h3>7b. Полевой модуль — Логистика</h3>
+    <p>Таб «Логистика»</p>
+    <a href="08_field_logistics.png" target="_blank"><img src="08_field_logistics.png" alt="7b. Полевой модуль — Логистика" loading="lazy"></a>
+  </div>
+
+  <div class="card">
+    <h3>7c. Полевой модуль — Дашборд</h3>
+    <p>4 метрики: на объекте, чекинов, часов, заработок</p>
+    <a href="08_field_dashboard.png" target="_blank"><img src="08_field_dashboard.png" alt="7c. Полевой модуль — Дашборд" loading="lazy"></a>
+  </div>
+
+  <div class="card">
+    <h3>7d. Полевой модуль — Табель</h3>
+    <p>Диапазон дат, кнопки Загрузить/Выгрузить Excel</p>
+    <a href="08_field_timesheet.png" target="_blank"><img src="08_field_timesheet.png" alt="7d. Полевой модуль — Табель" loading="lazy"></a>
+  </div>
+
+  <div class="card">
+    <h3>7e. Полевой модуль — Сборы</h3>
+    <p>Таб «Сборы»</p>
+    <a href="08_field_packing.png" target="_blank"><img src="08_field_packing.png" alt="7e. Полевой модуль — Сборы" loading="lazy"></a>
+  </div>
+
+  <div class="card">
+    <h3>8. Персонал</h3>
+    <p>Страница #/personnel — поиск «Андросов»</p>
+    <a href="09_personnel.png" target="_blank"><img src="09_personnel.png" alt="8. Персонал" loading="lazy"></a>
+  </div>
+
+  <div class="card">
+    <h3>9. Тендеры — финал</h3>
+    <p>Финальное состояние страницы тендеров</p>
+    <a href="10_tenders_final.png" target="_blank"><img src="10_tenders_final.png" alt="9. Тендеры — финал" loading="lazy"></a>
+  </div>
+
+  <div class="card">
+    <h3>10. Работы — финал</h3>
+    <p>Финальное состояние страницы работ</p>
+    <a href="11_works_final.png" target="_blank"><img src="11_works_final.png" alt="10. Работы — финал" loading="lazy"></a>
+  </div>
+
+  <div class="card">
+    <h3>11. Финальный скриншот</h3>
+    <p>Последний скриншот прогона</p>
+    <a href="99_final.png" target="_blank"><img src="99_final.png" alt="11. Финальный скриншот" loading="lazy"></a>
+  </div>
+
+</div>
+<p style="text-align:center; color:#666; margin-top:40px">Generated by E2E test runner • ASGARD CRM</p>
+</body>
+</html>
