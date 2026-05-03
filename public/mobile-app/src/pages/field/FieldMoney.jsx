@@ -148,6 +148,196 @@ function MoneyDetail({ workId, onBack }) {
 }
 
 /* ══════════════════════════════════════════════════════════════════
+   PerDiemBalanceCard
+   Показывает баланс суточных рабочему с цветовым индикатором:
+   🟢 ЗАПАС  — баланс ≥ 3 дней суточных
+   🟡 МАЛО   — баланс < 3 дней, + плановая дата выплаты
+   🔴 ДОЛГ   — начислено больше выплачено
+   ══════════════════════════════════════════════════════════════════ */
+function PerDiemBalanceCard({ cur, finances, proj }) {
+  const perDiemAccrued = parseFloat(cur?.per_diem_accrued || cur?.per_diem_total || 0);
+  const perDiemRate    = parseFloat(cur?.per_diem_rate || proj?.per_diem || 0);
+  const perDiemPaid    = parseFloat(cur?.per_diem_paid ?? finances?.per_diem_paid ?? 0);
+
+  if (perDiemRate <= 0) return null;
+
+  // balance > 0 → выплачено больше начислено → у рабочего остаток (хорошо)
+  // balance < 0 → начислено больше выплачено → компания должна рабочему
+  const balance  = perDiemPaid - perDiemAccrued;
+  const daysLeft = balance / perDiemRate;
+
+  function plural(n) {
+    const a = Math.abs(Math.floor(n));
+    if (a % 10 === 1 && a % 100 !== 11) return 'день';
+    if ([2,3,4].includes(a % 10) && ![12,13,14].includes(a % 100)) return 'дня';
+    return 'дней';
+  }
+
+  // Плановая дата выплаты: сегодня + daysLeft дней
+  function plannedDate() {
+    const d = new Date();
+    d.setDate(d.getDate() + Math.ceil(daysLeft));
+    return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+  }
+
+  // ── Конфиг по статусу ────────────────────────────────────────────
+  let cfg;
+  if (balance > 0 && daysLeft >= 3) {
+    cfg = {
+      accentColor:  '#30D158',
+      accentAlpha:  'rgba(48,209,88,0.15)',
+      borderColor:  'rgba(48,209,88,0.22)',
+      badge:        'ЗАПАС',
+      badgeBg:      '#30D158',
+      badgeColor:   '#002a0e',
+      dot:          '🟢',
+      headline:     'Баланс суточных положительный',
+      amountText:   `${fmt(balance)}\u00a0₽`,
+      subline:      `Хватит ещё на\u00a0${Math.floor(daysLeft)}\u00a0${plural(daysLeft)}`,
+      plannedBlock: null,
+    };
+  } else if (balance > 0) {
+    const days = daysLeft >= 1 ? Math.ceil(daysLeft) : 0;
+    cfg = {
+      accentColor:  '#FFD60A',
+      accentAlpha:  'rgba(255,214,10,0.12)',
+      borderColor:  'rgba(255,214,10,0.25)',
+      badge:        'МАЛО',
+      badgeBg:      '#FFD60A',
+      badgeColor:   '#2a1f00',
+      dot:          '🟡',
+      headline:     days >= 1 ? 'Суточные заканчиваются' : 'Суточные заканчиваются сегодня',
+      amountText:   `${fmt(balance)}\u00a0₽`,
+      subline:      days >= 1
+        ? `Хватит ещё на\u00a0${days}\u00a0${plural(days)}`
+        : 'Уточните у руководителя когда будет выплата',
+      plannedBlock: days >= 1 ? {
+        date:  plannedDate(),
+        label: 'Плановая дата следующей выплаты',
+        note:  'Фактическая дата выплаты может отличаться',
+      } : null,
+    };
+  } else if (balance === 0) {
+    cfg = {
+      accentColor:  '#FFD60A',
+      accentAlpha:  'rgba(255,214,10,0.12)',
+      borderColor:  'rgba(255,214,10,0.25)',
+      badge:        'НОЛЬ',
+      badgeBg:      '#FFD60A',
+      badgeColor:   '#2a1f00',
+      dot:          '🟡',
+      headline:     'Суточные полностью использованы',
+      amountText:   '0\u00a0₽',
+      subline:      'Уточните у руководителя когда будет выплата',
+      plannedBlock: null,
+    };
+  } else {
+    cfg = {
+      accentColor:  '#FF453A',
+      accentAlpha:  'rgba(255,69,58,0.15)',
+      borderColor:  'rgba(255,69,58,0.25)',
+      badge:        'ДОЛГ',
+      badgeBg:      '#FF453A',
+      badgeColor:   '#2a0000',
+      dot:          '🔴',
+      headline:     'Вам должны суточных',
+      amountText:   `${fmt(Math.abs(balance))}\u00a0₽`,
+      subline:      'Рекомендуем напомнить руководству',
+      plannedBlock: null,
+    };
+  }
+
+  return (
+    <div style={{
+      borderRadius: '20px',
+      overflow: 'hidden',
+      border: `1px solid ${cfg.borderColor}`,
+      background: `linear-gradient(145deg, ${cfg.accentAlpha} 0%, rgba(255,255,255,0.01) 100%)`,
+      boxShadow: `0 0 0 1px ${cfg.borderColor}, 0 8px 28px ${cfg.accentAlpha}`,
+    }}>
+      {/* Accent top stripe */}
+      <div style={{ height: '3px', background: `linear-gradient(90deg, ${cfg.accentColor}, ${cfg.accentColor}44)` }} />
+
+      <div style={{ padding: '16px 18px 18px' }}>
+        {/* Row 1: label + badge */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+          <span style={{ fontSize: '0.6875rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
+            БАЛАНС СУТОЧНЫХ
+          </span>
+          <span style={{
+            fontSize: '0.5625rem', fontWeight: 800, letterSpacing: '0.07em',
+            padding: '3px 9px', borderRadius: '20px',
+            background: cfg.badgeBg, color: cfg.badgeColor,
+          }}>
+            {cfg.badge}
+          </span>
+        </div>
+
+        {/* Row 2: dot + big amount */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '5px' }}>
+          <span style={{ fontSize: '1.5rem', lineHeight: 1 }}>{cfg.dot}</span>
+          <span style={{ fontSize: '2.125rem', fontWeight: 800, color: cfg.accentColor, lineHeight: 1, letterSpacing: '-0.02em' }}>
+            {cfg.amountText}
+          </span>
+        </div>
+
+        {/* Row 3: headline */}
+        <p style={{ fontSize: '0.9375rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '3px' }}>
+          {cfg.headline}
+        </p>
+
+        {/* Row 4: subline */}
+        <p style={{ fontSize: '0.8125rem', color: cfg.accentColor, fontWeight: 500, opacity: 0.9 }}>
+          {cfg.subline}
+        </p>
+
+        {/* Planned payment date block (yellow only when days remain) */}
+        {cfg.plannedBlock && (
+          <div style={{
+            marginTop: '12px',
+            padding: '10px 14px',
+            borderRadius: '12px',
+            background: 'rgba(255,214,10,0.08)',
+            border: '1px solid rgba(255,214,10,0.20)',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '10px',
+          }}>
+            <span style={{ fontSize: '1.1rem', flexShrink: 0, marginTop: '1px' }}>📅</span>
+            <div>
+              <p style={{ fontSize: '0.6875rem', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '2px' }}>
+                {cfg.plannedBlock.label}
+              </p>
+              <p style={{ fontSize: '1rem', fontWeight: 700, color: '#FFD60A', marginBottom: '2px' }}>
+                {cfg.plannedBlock.date}
+              </p>
+              <p style={{ fontSize: '0.6875rem', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+                {cfg.plannedBlock.note}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Divider */}
+        <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', margin: '14px 0 11px' }} />
+
+        {/* Breakdown rows */}
+        {[
+          { label: `Начислено (за ${cur?.days_worked || 0} смен)`, value: `${fmt(perDiemAccrued)} ₽`, color: 'rgba(255,255,255,0.7)' },
+          { label: 'Выплачено вам', value: `${fmt(perDiemPaid)} ₽`, color: '#30D158' },
+          { label: 'Ставка суточных', value: `${fmt(perDiemRate)} ₽ / сутки`, color: cfg.accentColor },
+        ].map(({ label, value, color }) => (
+          <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0' }}>
+            <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)' }}>{label}</span>
+            <span style={{ fontSize: '0.8125rem', fontWeight: 600, color }}>{value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
    FieldMoney — Main /field/money
    ══════════════════════════════════════════════════════════════════ */
 export default function FieldMoney() {
@@ -298,6 +488,9 @@ export default function FieldMoney() {
           </p>
         </div>
       )}
+
+      {/* ─── Per Diem Balance Widget ─────────────────────────── */}
+      <PerDiemBalanceCard cur={cur} finances={finances} proj={proj} />
 
       {/* ─── Stages: Маршрут до объекта ──────────────────────── */}
       {stagesList.length > 0 && (
