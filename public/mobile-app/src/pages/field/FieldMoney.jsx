@@ -155,10 +155,12 @@ function MoneyDetail({ workId, onBack }) {
    🔴 ДОЛГ   — начислено больше выплачено
    ══════════════════════════════════════════════════════════════════ */
 function PerDiemBalanceCard({ cur, finances, proj }) {
-  const perDiemAccrued = parseFloat(cur?.per_diem_accrued || cur?.per_diem_total || 0);
-  const perDiemRate    = parseFloat(cur?.per_diem_rate || proj?.per_diem || 0);
+  // Читаем из cur (by_work[0]), fallback на корневые поля finances
+  const perDiemAccrued = parseFloat(cur?.per_diem_accrued ?? cur?.per_diem_total ?? finances?.per_diem_accrued ?? 0);
+  const perDiemRate    = parseFloat(cur?.per_diem_rate ?? finances?.per_diem_rate ?? proj?.per_diem ?? 0);
   const perDiemPaid    = parseFloat(cur?.per_diem_paid ?? finances?.per_diem_paid ?? 0);
 
+  // Если ставка не задана — не показываем виджет
   if (perDiemRate <= 0) return null;
 
   // balance > 0 → выплачено больше начислено → у рабочего остаток (хорошо)
