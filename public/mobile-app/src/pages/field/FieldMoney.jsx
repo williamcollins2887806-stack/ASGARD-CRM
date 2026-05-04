@@ -479,6 +479,19 @@ export default function FieldMoney() {
       )}
 
       {/* ─── Per Diem Balance Widget ─────────────────────────── */}
+      {/* DEBUG: временный блок — удалить после проверки */}
+      <div style={{ background: 'rgba(255,0,0,0.1)', border: '1px solid red', borderRadius: 8, padding: 12, fontSize: 11, color: 'var(--text-primary)', wordBreak: 'break-all' }}>
+        <b>DEBUG суточные:</b><br/>
+        cur.per_diem_rate: {String(cur?.per_diem_rate)}<br/>
+        cur.per_diem_accrued: {String(cur?.per_diem_accrued)}<br/>
+        cur.per_diem_paid: {String(cur?.per_diem_paid)}<br/>
+        finances.per_diem_rate: {String(finances?.per_diem_rate)}<br/>
+        finances.per_diem_accrued: {String(finances?.per_diem_accrued)}<br/>
+        finances.per_diem_paid: {String(finances?.per_diem_paid)}<br/>
+        proj.per_diem: {String(proj?.per_diem)}<br/>
+        by_work.length: {String(finances?.by_work?.length)}<br/>
+        cur keys: {Object.keys(cur || {}).join(', ')}
+      </div>
       <PerDiemBalanceCard cur={cur} finances={finances} proj={proj} />
 
       {/* ─── Stages: Маршрут до объекта ──────────────────────── */}
