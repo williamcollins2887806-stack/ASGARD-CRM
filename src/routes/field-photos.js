@@ -213,6 +213,93 @@ async function routes(fastify, options) {
     }
   });
   // ─────────────────────────────────────────────────────────────────────
+  // DELETE /:id — delete photo (own photos; masters can delete any in their project)
+  // ─────────────────────────────────────────────────────────────────────
+  fastify.delete('/:id', fieldAuth, async (req, reply) => {
+    try {
+      const photoId = parseInt(req.params.id);
+      if (!photoId) return reply.code(400).send({ error: 'Неверный id фото' });
+
+      const empId = req.fieldEmployee.id;
+
+      // Get photo info
+      const { rows: photoRows } = await db.query(
+        'SELECT id, employee_id, work_id, filename FROM field_photos WHERE id = $1',
+        [photoId]
+      );
+      if (!photoRows.length) return reply.code(404).send({ error: 'Фото не найдено' });
+
+      const photo = photoRows[0];
+
+      // Check permission: own photo OR master on that project
+      if (photo.employee_id !== empId) {
+        const { rows: assignRows } = await db.query(
+          `SELECT field_role FROM employee_assignments
+           WHERE employee_id = $1 AND work_id = $2 AND is_active = true LIMIT 1`,
+          [empId, photo.work_id]
+        );
+        const role = assignRows[0]?.field_role || '';
+        if (role !== 'shift_master' && role !== 'senior_master') {
+          return reply.code(403).send({ error: 'Нет прав на удаление этого фото' });
+        }
+      }
+
+      // Delete file from disk
+      const filePath = path.join(UPLOAD_BASE, 'field', String(photo.work_id), photo.filename);
+      try { await fs.promises.unlink(filePath); } catch (_) { /* file may already be gone */ }
+
+      // Delete DB record
+      await db.query('DELETE FROM field_photos WHERE id = $1', [photoId]);
+
+      return { ok: true };
+    } catch (err) {
+      fastify.log.error('[field-photos] DELETE /:id error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // GET /stats — photo count stats for a project
+  // ─────────────────────────────────────────────────────────────────────
+  fastify.get('/stats', fieldAuth, async (req, reply) => {
+    try {
+      const workId = parseInt(req.query.work_id);
+      if (!workId) return reply.code(400).send({ error: 'Укажите work_id' });
+
+      const empId = req.fieldEmployee.id;
+
+      // Check access
+      const { rows: access } = await db.query(
+        'SELECT field_role FROM employee_assignments WHERE employee_id = $1 AND work_id = $2 AND is_active = true LIMIT 1',
+        [empId, workId]
+      );
+      if (!access.length) return reply.code(403).send({ error: 'Нет доступа' });
+
+      const isMaster = access[0].field_role === 'shift_master' || access[0].field_role === 'senior_master';
+
+      // Build conditions
+      const ownerFilter = isMaster ? '' : ' AND employee_id = ' + empId;
+
+      const { rows } = await db.query(`
+        SELECT
+          COUNT(*) FILTER (WHERE created_at::date = CURRENT_DATE) AS today,
+          COUNT(*) AS total,
+          COUNT(*) FILTER (WHERE photo_type = 'work') AS work_count,
+          COUNT(*) FILTER (WHERE photo_type = 'before') AS before_count,
+          COUNT(*) FILTER (WHERE photo_type = 'after') AS after_count,
+          COUNT(*) FILTER (WHERE photo_type = 'incident') AS incident_count
+        FROM field_photos
+        WHERE work_id = $1 ${ownerFilter}
+      `, [workId]);
+
+      return rows[0];
+    } catch (err) {
+      fastify.log.error('[field-photos] GET /stats error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
   // GET /crm/:work_id — CRM (PM) view: all photos for a work object
   // Requires standard CRM auth (authenticate), not fieldAuthenticate
   // Accessible to: PM, HEAD_PM, DIRECTOR_*, ADMIN
