@@ -276,7 +276,7 @@ module.exports = async function(fastify) {
 
       return { task };
     } catch (err) {
-      fastify.log.error('Task creation error:', err.message);
+      fastify.log.error({ err }, 'Task creation error');
       if (err.code === '22001') return reply.code(400).send({ error: 'Значение поля слишком длинное' });
       if (err.code === '23502') return reply.code(400).send({ error: `Обязательное поле не заполнено: ${err.column || err.message}` });
       if (err.code === '23503') return reply.code(400).send({ error: 'Ссылка на несуществующую запись' });

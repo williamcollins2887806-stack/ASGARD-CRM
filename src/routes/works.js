@@ -757,7 +757,7 @@ async function routes(fastify, options) {
         },
       };
     } catch (err) {
-      fastify.log.error('[works] financial-summary error:', err.message);
+      fastify.log.error({ err }, '[works] financial-summary error');
       return reply.code(500).send({ error: 'Ошибка расчёта' });
     }
   });

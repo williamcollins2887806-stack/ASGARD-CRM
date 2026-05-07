@@ -35,7 +35,7 @@ function init(fastify) {
         fastify.log.info(`[achievements-cron] Checked ${employees.length} employees, granted ${totalEarned} achievements`);
       }
     } catch (err) {
-      fastify.log.error('[achievements-cron] Error:', err.message);
+      fastify.log.error({ err }, '[achievements-cron] Error');
     }
   }, { timezone: 'Europe/Moscow' });
 

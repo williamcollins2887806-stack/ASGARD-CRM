@@ -133,7 +133,7 @@ async function checkPerDiem(db, log) {
       log.info(`[per-diem-cron] Notified PM ${row.pm_id}: ${row.work_title} — ${row.people.length} workers`);
     }
   } catch (err) {
-    log.error('[per-diem-cron] Error:', err.message);
+    log.error({ err }, '[per-diem-cron] Error');
   }
 }
 

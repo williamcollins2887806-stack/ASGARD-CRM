@@ -47,7 +47,7 @@ class ReportScheduler {
       this.jobs.push(monthlyJob);
       this.log.info('[ReportScheduler] Monthly reports: 10:00 MSK 1st of month');
     } catch (err) {
-      this.log.error('[ReportScheduler] Start error:', err.message);
+      this.log.error({ err }, '[ReportScheduler] Start error');
     }
   }
 
@@ -91,7 +91,7 @@ class ReportScheduler {
 
       await this._deliver(report, 'daily', label);
     } catch (err) {
-      this.log.error('[ReportScheduler] Daily failed:', err.message);
+      this.log.error({ err }, '[ReportScheduler] Daily failed');
       this._locks.delete(lockKey);
     }
   }
@@ -115,7 +115,7 @@ class ReportScheduler {
 
       await this._deliver(report, 'weekly', label);
     } catch (err) {
-      this.log.error('[ReportScheduler] Weekly failed:', err.message);
+      this.log.error({ err }, '[ReportScheduler] Weekly failed');
       this._locks.delete(lockKey);
     }
   }
@@ -138,7 +138,7 @@ class ReportScheduler {
 
       await this._deliver(report, 'monthly', label);
     } catch (err) {
-      this.log.error('[ReportScheduler] Monthly failed:', err.message);
+      this.log.error({ err }, '[ReportScheduler] Monthly failed');
       this._locks.delete(lockKey);
     }
   }
@@ -220,7 +220,7 @@ class ReportScheduler {
 
       this.log.info(`[ReportScheduler] Report #${report.id} delivered to ${users.length} users`);
     } catch (err) {
-      this.log.error('[ReportScheduler] Deliver error:', err.message);
+      this.log.error({ err }, '[ReportScheduler] Deliver error');
     }
   }
 

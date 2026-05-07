@@ -157,7 +157,7 @@ async function runAutoComplete(log) {
       log.info(`[ShiftAutocomplete] Auto-completed ${completed} shift(s)`);
     }
   } catch (err) {
-    if (log) log.error('[ShiftAutocomplete] Run error:', err.message);
+    if (log) log.error({ err }, '[ShiftAutocomplete] Run error');
     else console.error('[ShiftAutocomplete] Run error:', err.message);
   }
 }

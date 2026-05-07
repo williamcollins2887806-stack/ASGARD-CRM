@@ -570,7 +570,7 @@ async function equipmentRoutes(fastify, options) {
       `, [id]);
       return { success: true, maintenance: result.rows };
     } catch(err) {
-      fastify.log.error('Equipment maintenance error:', err.message);
+      fastify.log.error({ err }, 'Equipment maintenance error');
       return reply.code(500).send({ success: false, message: 'Ошибка загрузки истории обслуживания' });
     }
   });

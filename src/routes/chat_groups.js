@@ -240,7 +240,7 @@ module.exports = async function(fastify) {
 
       return { chat, created: true };
     } catch (err) {
-      fastify.log.error('Direct chat error:', err.message);
+      fastify.log.error({ err }, 'Direct chat error');
       return reply.code(500).send({ error: 'Ошибка создания чата: ' + err.message });
     }
   });

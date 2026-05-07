@@ -478,7 +478,7 @@ async function mimirRoutes(fastify, options) {
       });
 
     } catch (error) {
-      fastify.log.error('Stream error details:', error.message, error.stack);
+      fastify.log.error({ err: error }, 'Stream error details');
       sendEvent({ type: 'error', message: 'Ошибка стриминга: ' + (error.message || 'неизвестная ошибка') });
     }
 
@@ -648,7 +648,7 @@ async function mimirRoutes(fastify, options) {
       };
 
     } catch (error) {
-      fastify.log.error('Analyze error:', error.message);
+      fastify.log.error({ err: error }, 'Analyze error');
       return reply.code(500).send({
         success: false,
         message: 'Ошибка анализа файлов'
@@ -803,7 +803,7 @@ async function mimirRoutes(fastify, options) {
 
       return { success: true, suggestions: suggestions.slice(0, 6) };
     } catch (err) {
-      fastify.log.error('[Mimir Suggestions] Error:', err.message);
+      fastify.log.error({ err }, '[Mimir Suggestions] Error');
       return {
         success: true,
         suggestions: [
@@ -1013,7 +1013,7 @@ async function mimirRoutes(fastify, options) {
 
       return { success: true, tkp: tkpText };
     } catch (error) {
-      fastify.log.error('TKP generation error:', error.message);
+      fastify.log.error({ err: error }, 'TKP generation error');
       return reply.code(500).send({ success: false, message: 'Ошибка генерации ТКП' });
     }
   });
@@ -1208,7 +1208,7 @@ async function mimirRoutes(fastify, options) {
       };
 
     } catch (error) {
-      fastify.log.error('Mimir suggest-tkp error:', error.message);
+      fastify.log.error({ err: error }, 'Mimir suggest-tkp error');
       return reply.code(500).send({ success: false, message: 'Ошибка генерации ТКП: ' + error.message });
     }
   });
@@ -1751,7 +1751,7 @@ async function mimirRoutes(fastify, options) {
       return reply.send({ fields, source: 'ai' });
 
     } catch (error) {
-      fastify.log.error('Mimir suggest-form error:', error.message);
+      fastify.log.error({ err: error }, 'Mimir suggest-form error');
       return reply.code(500).send({ error: 'Ошибка AI: ' + error.message });
     }
   });
@@ -1933,7 +1933,7 @@ ${analogsSummary}
       });
 
     } catch (error) {
-      fastify.log.error('[Mimir auto-respond error]:', error.message);
+      fastify.log.error({ err: error }, '[Mimir auto-respond error]');
       return reply.code(500).send({ error: 'Ошибка автоответа Мимира: ' + error.message });
     }
   });
@@ -2359,7 +2359,7 @@ ${history && history.length > 0 ? `\nКОНТЕКСТ ДИАЛОГА:\n${history
         }
       });
     } catch (err) {
-      fastify.log.error('[Mimir auto-estimate-chat]:', err.message, err.stack);
+      fastify.log.error({ err }, '[Mimir auto-estimate-chat]');
       return reply.code(500).send({ success: false, message: err.message });
     }
   });
@@ -2411,7 +2411,7 @@ ${history && history.length > 0 ? `\nКОНТЕКСТ ДИАЛОГА:\n${history
         settings: context.settings
       });
     } catch (error) {
-      fastify.log.error('[Mimir auto-estimate-context]:', error.message);
+      fastify.log.error({ err: error }, '[Mimir auto-estimate-context]');
       return reply.code(500).send({ success: false, message: error.message });
     }
   });
@@ -2465,7 +2465,7 @@ ${history && history.length > 0 ? `\nКОНТЕКСТ ДИАЛОГА:\n${history
         suggestions
       });
     } catch (err) {
-      fastify.log.error('[Mimir auto-estimate/check]:', err.message);
+      fastify.log.error({ err }, '[Mimir auto-estimate/check]');
       return reply.code(500).send({ success: false, message: err.message });
     }
   });

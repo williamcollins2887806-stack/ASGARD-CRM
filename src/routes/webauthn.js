@@ -152,7 +152,7 @@ async function routes(fastify) {
 
       return { verified: true, device_name: deviceName };
     } catch (err) {
-      fastify.log.error('WebAuthn registration verify error:', err.message);
+      fastify.log.error({ err }, 'WebAuthn registration verify error');
       return reply.code(400).send({ error: err.message });
     }
   });
@@ -342,7 +342,7 @@ async function routes(fastify) {
         }
       };
     } catch (err) {
-      fastify.log.error('WebAuthn auth verify error:', err.message);
+      fastify.log.error({ err }, 'WebAuthn auth verify error');
       return reply.code(400).send({ error: err.message });
     }
   });

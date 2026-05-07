@@ -770,7 +770,7 @@ async function routes(fastify, options) {
           status || 'completed', note || null]);
       return { ok: true, checkin: rows[0] };
     } catch (err) {
-      fastify.log.error('[field-manage] create checkin error:', err.message);
+      fastify.log.error({ err }, '[field-manage] create checkin error');
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -801,7 +801,7 @@ async function routes(fastify, options) {
       if (rows.length === 0) return reply.code(404).send({ error: 'Запись не найдена' });
       return { ok: true, checkin: rows[0] };
     } catch (err) {
-      fastify.log.error('[field-manage] update checkin error:', err.message);
+      fastify.log.error({ err }, '[field-manage] update checkin error');
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });

@@ -180,7 +180,7 @@ module.exports = async function(fastify, options) {
 
       return { found: false };
     } catch (err) {
-      fastify.log.error('Geocode fetch error:', err.message);
+      fastify.log.error({ err }, 'Geocode fetch error');
       return { found: false, error: 'Geocoding service unavailable', detail: err.message };
     }
   });
