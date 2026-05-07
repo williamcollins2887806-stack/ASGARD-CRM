@@ -268,6 +268,8 @@ async function routes(fastify, options) {
           object_lat: a.object_lat,
           object_lng: a.object_lng,
           geo_radius_meters: a.geo_radius_meters || 500,
+          departure_date: a.departure_date || null,
+          departure_reason: a.departure_reason || null,
           day_rate: dayRate,
           per_diem: perDiem,
           tariff: tariff ? {

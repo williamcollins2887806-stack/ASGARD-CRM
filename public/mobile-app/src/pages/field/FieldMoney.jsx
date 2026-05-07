@@ -150,11 +150,12 @@ function MoneyDetail({ workId, onBack }) {
 /* ══════════════════════════════════════════════════════════════════
    PerDiemBalanceCard
    Показывает баланс суточных рабочему с цветовым индикатором:
-   🟢 ЗАПАС  — баланс ≥ 3 дней суточных
-   🟡 МАЛО   — баланс < 3 дней, + плановая дата выплаты
-   🔴 ДОЛГ   — начислено больше выплачено
+   🟢 ЗАПАС     — баланс ≥ 5 дней суточных
+   🟡 МАЛО      — баланс < 5 дней, + плановая дата выплаты
+   ✅ ВЫПЛАЧЕНО — баланс = 0, или уехал с объекта и долгов нет
+   🔴 ДОЛГ      — начислено больше выплачено (реальный долг)
    ══════════════════════════════════════════════════════════════════ */
-function PerDiemBalanceCard({ cur, finances, proj }) {
+function PerDiemBalanceCard({ cur, finances, proj, hasDeparted }) {
   // Читаем из cur (by_work[0]), fallback на корневые поля finances
   const perDiemAccrued = parseFloat(cur?.per_diem_accrued ?? cur?.per_diem_total ?? finances?.per_diem_accrued ?? 0);
   const perDiemRate    = parseFloat(cur?.per_diem_rate ?? finances?.per_diem_rate ?? proj?.per_diem ?? 0);
@@ -164,9 +165,16 @@ function PerDiemBalanceCard({ cur, finances, proj }) {
   if (perDiemRate <= 0) return null;
 
   // balance > 0 → выплачено больше начислено → у рабочего остаток (хорошо)
+  // balance = 0 → всё ровно, суточные выплачены полностью
   // balance < 0 → начислено больше выплачено → компания должна рабочему
   const balance  = perDiemPaid - perDiemAccrued;
-  const daysLeft = balance / perDiemRate;
+  const daysLeft = perDiemRate > 0 ? balance / perDiemRate : 0;
+
+  // Считаем balance «нулевым» если разница меньше 1₽ (погрешность округлений)
+  const isBalanceZero = Math.abs(balance) < 1;
+
+  // Рабочий не на объекте: уехал (departure_date) или assignment не активен
+  const isInactive = hasDeparted || !cur?.is_active;
 
   function plural(n) {
     const a = Math.abs(Math.floor(n));
@@ -176,16 +184,34 @@ function PerDiemBalanceCard({ cur, finances, proj }) {
   }
 
   // Плановая дата выплаты: день когда суточные закончатся
-  // ceil(daysLeft) — если кончаются сегодня (daysLeft < 1), дата = сегодня
   function plannedDate() {
     const d = new Date();
-    d.setDate(d.getDate() + Math.ceil(daysLeft));
+    d.setDate(d.getDate() + Math.max(1, Math.ceil(daysLeft)));
     return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
   }
 
   // ── Конфиг по статусу ────────────────────────────────────────────
   let cfg;
-  if (balance > 0 && daysLeft >= 5) {
+
+  // 1. Баланс = 0 (или уехал и всё выплачено) → ВЫПЛАЧЕНО
+  if (isBalanceZero || (isInactive && balance >= 0)) {
+    cfg = {
+      accentColor:  '#30D158',
+      accentAlpha:  'rgba(48,209,88,0.12)',
+      borderColor:  'rgba(48,209,88,0.20)',
+      badge:        'ВЫПЛАЧЕНО',
+      badgeBg:      '#30D158',
+      badgeColor:   '#002a0e',
+      dot:          '✅',
+      headline:     isInactive ? 'Все положенные суточные выплачены' : 'Суточные выплачены полностью',
+      amountText:   `${fmt(perDiemPaid)}\u00a0₽`,
+      subline:      isInactive
+        ? 'Задолженностей по суточным нет'
+        : `Начислено и выплачено за ${cur?.days_worked || 0} смен`,
+      plannedBlock: null,
+    };
+  // 2. Запас >= 5 дней → ЗАПАС
+  } else if (balance > 0 && daysLeft >= 5) {
     cfg = {
       accentColor:  '#30D158',
       accentAlpha:  'rgba(48,209,88,0.15)',
@@ -199,6 +225,7 @@ function PerDiemBalanceCard({ cur, finances, proj }) {
       subline:      `Хватит ещё на\u00a0${Math.floor(daysLeft)}\u00a0${plural(daysLeft)}`,
       plannedBlock: null,
     };
+  // 3. Запас < 5 дней → МАЛО
   } else if (balance > 0) {
     const days = daysLeft >= 1 ? Math.ceil(daysLeft) : 0;
     cfg = {
@@ -220,6 +247,7 @@ function PerDiemBalanceCard({ cur, finances, proj }) {
         note:  'Фактическая дата выплаты может отличаться',
       },
     };
+  // 4. Реальный долг (accrued > paid) → ДОЛГ
   } else {
     cfg = {
       accentColor:  '#FF453A',
@@ -231,7 +259,9 @@ function PerDiemBalanceCard({ cur, finances, proj }) {
       dot:          '🔴',
       headline:     'Вам должны суточных',
       amountText:   `${fmt(Math.abs(balance))}\u00a0₽`,
-      subline:      'Рекомендуем напомнить руководству',
+      subline:      isInactive
+        ? 'Обратитесь к руководству для получения выплаты'
+        : 'Рекомендуем напомнить руководству',
       plannedBlock: null,
     };
   }
@@ -479,7 +509,8 @@ export default function FieldMoney() {
       )}
 
       {/* ─── Per Diem Balance Widget ─────────────────────────── */}
-      <PerDiemBalanceCard cur={cur} finances={finances} proj={proj} />
+      <PerDiemBalanceCard cur={cur} finances={finances} proj={proj}
+        hasDeparted={!!proj.departure_date || !cur.is_active} />
 
       {/* ─── Stages: Маршрут до объекта ──────────────────────── */}
       {stagesList.length > 0 && (
