@@ -16,7 +16,7 @@ class ApiClient {
   async request(endpoint, options = {}) {
     const token = this.getToken();
     const headers = {
-      'Content-Type': 'application/json',
+      ...(options.body !== undefined && { 'Content-Type': 'application/json' }),
       ...(token && { Authorization: `Bearer ${token}` }),
       ...options.headers,
     };
@@ -60,14 +60,14 @@ class ApiClient {
   post(endpoint, data) {
     return this.request(endpoint, {
       method: 'POST',
-      body: JSON.stringify(data),
+      ...(data !== undefined && { body: JSON.stringify(data) }),
     });
   }
 
   put(endpoint, data) {
     return this.request(endpoint, {
       method: 'PUT',
-      body: JSON.stringify(data),
+      ...(data !== undefined && { body: JSON.stringify(data) }),
     });
   }
 
