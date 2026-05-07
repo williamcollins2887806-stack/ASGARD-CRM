@@ -1527,7 +1527,7 @@ async function routes(fastify) {
     const { rows } = await db.query(`
       SELECT
         w.id as work_id, w.work_title, w.object_name, w.city,
-        w.latitude, w.longitude,
+        fps.object_lat as latitude, fps.object_lng as longitude,
         ea.field_role,
         MIN(fc.date) as first_shift,
         MAX(fc.date) as last_shift,
@@ -1536,9 +1536,10 @@ async function routes(fastify) {
         COALESCE(SUM(fc.hours_worked), 0)::numeric as total_hours
       FROM employee_assignments ea
       JOIN works w ON w.id = ea.work_id
+      LEFT JOIN field_project_settings fps ON fps.work_id = w.id
       LEFT JOIN field_checkins fc ON fc.employee_id = ea.employee_id AND fc.work_id = ea.work_id AND fc.status = 'completed'
       WHERE ea.employee_id = $1
-      GROUP BY w.id, w.work_title, w.object_name, w.city, w.latitude, w.longitude, ea.field_role
+      GROUP BY w.id, w.work_title, w.object_name, w.city, fps.object_lat, fps.object_lng, ea.field_role
       ORDER BY first_shift DESC NULLS LAST
     `, [eid]);
 

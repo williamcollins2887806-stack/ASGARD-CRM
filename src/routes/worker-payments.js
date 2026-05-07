@@ -455,7 +455,7 @@ async function routes(fastify, options) {
 
       return { ok: true, payment: inserted[0] };
     } catch (err) {
-      fastify.log.error('[worker-payments] POST /pay-worker error:', err.message);
+      fastify.log.error({ err }, '[worker-payments] POST /pay-worker error');
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });

@@ -85,7 +85,39 @@ async function getTransportForUser(db, userId) {
     };
   }
 
-  // 3. Fallback — ENV
+  // 3. Fallback — settings table
+  try {
+    const settRes = await db.query(
+      "SELECT value FROM settings WHERE key = 'smtp_config' LIMIT 1"
+    );
+    if (settRes.rows.length > 0) {
+      const cfg = typeof settRes.rows[0].value === 'string'
+        ? JSON.parse(settRes.rows[0].value) : settRes.rows[0].value;
+      if (cfg.host && cfg.user && cfg.pass) {
+        const cacheKey = 'settings';
+        if (!transportCache.has(cacheKey)) {
+          const transport = nodemailer.createTransport({
+            host: cfg.host,
+            port: parseInt(cfg.port || '587'),
+            secure: cfg.secure === true || cfg.port === 465,
+            auth: { user: cfg.user, pass: cfg.pass },
+            connectionTimeout: 10000,
+            greetingTimeout: 10000,
+            socketTimeout: 15000
+          });
+          transportCache.set(cacheKey, transport);
+        }
+        return {
+          transport: transportCache.get(cacheKey),
+          fromEmail: cfg.from || cfg.user,
+          fromName: cfg.fromName || 'АСГАРД CRM',
+          isPersonal: false
+        };
+      }
+    }
+  } catch (_) { /* settings not available */ }
+
+  // 4. Fallback — ENV
   if (process.env.SMTP_HOST) {
     const cacheKey = 'env';
     if (!transportCache.has(cacheKey)) {

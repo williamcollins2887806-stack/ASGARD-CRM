@@ -112,7 +112,9 @@ fastify.addHook('onRequest', async (request, reply) => {
   if (request.url.startsWith('/api/')) return;
 
   const rawUrl = request.raw.url || request.url;
-  const url = decodeURIComponent(rawUrl).replace(/\\/g, '/');
+  let url;
+  try { url = decodeURIComponent(rawUrl).replace(/\\/g, '/'); }
+  catch { return reply.code(400).send('Bad Request'); }
 
   // Allow known static asset paths
   if (/^\/(assets|css|js|img|images|fonts|icons|manifest)\//i.test(url) ||
@@ -690,7 +692,9 @@ fastify.setNotFoundHandler((request, reply) => {
   }
 
   // SECURITY: Block path traversal and sensitive file access
-  const decodedUrl = decodeURIComponent(request.url).replace(/\\/g, '/');
+  let decodedUrl;
+  try { decodedUrl = decodeURIComponent(request.url).replace(/\\/g, '/'); }
+  catch { return reply.code(400).send('Bad Request'); }
   if (decodedUrl.includes('..') ||
       decodedUrl.includes('/node_modules') ||
       /\/\.env/i.test(decodedUrl) ||
@@ -1092,8 +1096,20 @@ const start = async () => {
       fastify.log.warn('IMAP mail service init skipped: ' + imapErr.message);
     }
 
-    // Start server
-    await fastify.listen({ port: config.port, host: config.host });
+    // Start server (retry on EADDRINUSE — previous instance may still be releasing the port)
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      try {
+        await fastify.listen({ port: config.port, host: config.host });
+        break;
+      } catch (listenErr) {
+        if (listenErr.code === 'EADDRINUSE' && attempt < 5) {
+          fastify.log.warn(`Port ${config.port} busy, retry ${attempt}/5 in 2s...`);
+          await new Promise(r => setTimeout(r, 2000));
+        } else {
+          throw listenErr;
+        }
+      }
+    }
     fastify.log.info(`
 ╔═══════════════════════════════════════════════════════════════════════════╗
 ║                         ASGARD CRM SERVER                                 ║

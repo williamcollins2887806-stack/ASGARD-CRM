@@ -207,7 +207,9 @@ class ReportScheduler {
               });
               this.log.info(`[ReportScheduler] Email sent to ${user.email}`);
             } catch (emailErr) {
-              this.log.error(`[ReportScheduler] Email to ${user.email}: ${emailErr.message}\n${emailErr.stack || ''}`);
+              const isNotConfigured = emailErr.message?.includes('Не настроен');
+              const logFn = isNotConfigured ? 'warn' : 'error';
+              this.log[logFn](`[ReportScheduler] Email to ${user.email}: ${emailErr.message}`);
             }
           }
 

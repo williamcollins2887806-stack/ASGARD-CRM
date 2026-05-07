@@ -519,6 +519,11 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     reply.send({ status: 'ok' });
   });
 
+  // --- result/stat (Mango sends this for call statistics — acknowledge silently) ---
+  fastify.post('/webhook/result/stat', async (request, reply) => {
+    reply.send({ status: 'ok' });
+  });
+
   // --- ping ---
   fastify.post('/webhook/ping', async (request, reply) => {
     if (!checkWebhookRate(request.ip)) {
