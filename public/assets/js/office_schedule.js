@@ -92,7 +92,7 @@ window.AsgardOfficeSchedulePage=(function(){
 
     // Добавляем всех активных пользователей, которых нет в staff
     for(const u of users){
-      if(!u.is_active || u.role === 'BOT' || u.role === 'ADMIN' || String(u.login||'').startsWith('test_') || u.login === 'mimir_bot') continue;
+      if(!u.is_active || u.role === 'BOT' || u.role === 'ADMIN' || u.role === 'FIELD_WORKER' || String(u.login||'').startsWith('test_') || u.login === 'mimir_bot') continue;
       if(existingUserIds.has(u.id)) continue;
       await AsgardDB.add("staff", {
         user_id: u.id,
@@ -229,7 +229,7 @@ window.AsgardOfficeSchedulePage=(function(){
 
       // Строки сотрудников
       const bodyRows = staffSorted.map(s=>{
-        const editable = (s.user_id===user.id) || (!officeStrictOwn && (user.role==="ADMIN" || user.role==="OFFICE_MANAGER" || isDirRole(user.role)));
+        const editable = (s.user_id===user.id) || user.role==="OFFICE_MANAGER" || (!officeStrictOwn && (user.role==="ADMIN" || isDirRole(user.role)));
         const cells=[];
         for(let d=1; d<=numDays; d++){
           const dt = new Date(viewYear, viewMonth, d);
