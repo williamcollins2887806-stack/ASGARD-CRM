@@ -88,19 +88,22 @@ async function getTransportForUser(db, userId) {
   // 3. Fallback — settings table
   try {
     const settRes = await db.query(
-      "SELECT value FROM settings WHERE key = 'smtp_config' LIMIT 1"
+      "SELECT value_json FROM settings WHERE key = 'smtp_config' LIMIT 1"
     );
     if (settRes.rows.length > 0) {
-      const cfg = typeof settRes.rows[0].value === 'string'
-        ? JSON.parse(settRes.rows[0].value) : settRes.rows[0].value;
-      if (cfg.host && cfg.user && cfg.pass) {
+      const cfg = typeof settRes.rows[0].value_json === 'string'
+        ? JSON.parse(settRes.rows[0].value_json) : settRes.rows[0].value_json;
+      // Support both flat {user,pass} and nested {auth:{user,pass}} formats
+      const smtpUser = cfg.user || (cfg.auth && cfg.auth.user);
+      const smtpPass = cfg.pass || (cfg.auth && cfg.auth.pass);
+      if (cfg.host && smtpUser && smtpPass) {
         const cacheKey = 'settings';
         if (!transportCache.has(cacheKey)) {
           const transport = nodemailer.createTransport({
             host: cfg.host,
             port: parseInt(cfg.port || '587'),
-            secure: cfg.secure === true || cfg.port === 465,
-            auth: { user: cfg.user, pass: cfg.pass },
+            secure: cfg.secure === true || cfg.port === 465 || parseInt(cfg.port || '587') === 465,
+            auth: { user: smtpUser, pass: smtpPass },
             connectionTimeout: 10000,
             greetingTimeout: 10000,
             socketTimeout: 15000
@@ -109,7 +112,7 @@ async function getTransportForUser(db, userId) {
         }
         return {
           transport: transportCache.get(cacheKey),
-          fromEmail: cfg.from || cfg.user,
+          fromEmail: cfg.from || smtpUser,
           fromName: cfg.fromName || 'АСГАРД CRM',
           isPersonal: false
         };
