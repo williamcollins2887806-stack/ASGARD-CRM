@@ -11,6 +11,13 @@ const fastify = require('fastify')({
   }
 });
 
+// Allow empty body with Content-Type: application/json (returns {} instead of 400)
+fastify.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
+  if (!body || body.length === 0) return done(null, {});
+  try { done(null, JSON.parse(body)); }
+  catch (e) { e.statusCode = 400; done(e); }
+});
+
 const path = require('path');
 const fs = require('fs');
 
@@ -1096,15 +1103,15 @@ const start = async () => {
       fastify.log.warn('IMAP mail service init skipped: ' + imapErr.message);
     }
 
-    // Start server (retry on EADDRINUSE — previous instance may still be releasing the port)
-    for (let attempt = 1; attempt <= 5; attempt++) {
+    // Start server (short retry on EADDRINUSE — systemd RestartSec handles longer gaps)
+    for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         await fastify.listen({ port: config.port, host: config.host });
         break;
       } catch (listenErr) {
-        if (listenErr.code === 'EADDRINUSE' && attempt < 5) {
-          fastify.log.warn(`Port ${config.port} busy, retry ${attempt}/5 in 2s...`);
-          await new Promise(r => setTimeout(r, 2000));
+        if (listenErr.code === 'EADDRINUSE' && attempt < 3) {
+          fastify.log.warn(`Port ${config.port} busy, retry ${attempt}/3 in 3s...`);
+          await new Promise(r => setTimeout(r, 3000));
         } else {
           throw listenErr;
         }
@@ -1225,16 +1232,31 @@ const start = async () => {
   }
 };
 
-// Graceful shutdown
+// Graceful shutdown with timeout
 const shutdown = async () => {
   fastify.log.info('Shutting down...');
+  const forceExit = setTimeout(() => {
+    fastify.log.warn('Forced exit after 8s timeout');
+    process.exit(1);
+  }, 8000);
+  forceExit.unref();
   try { const imap = require('./services/imap'); await imap.shutdown(); } catch (_) {}
-  await fastify.close();
-  await db.end();
+  try { await fastify.close(); } catch (_) {}
+  try { await db.end(); } catch (_) {}
   process.exit(0);
 };
 
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
+
+// Prevent silent crashes from unhandled rejections
+process.on('unhandledRejection', (reason) => {
+  fastify.log.error({ err: reason instanceof Error ? reason : new Error(String(reason)) },
+    'Unhandled Promise Rejection');
+});
+process.on('uncaughtException', (err) => {
+  fastify.log.error({ err }, 'Uncaught Exception — shutting down');
+  shutdown();
+});
 
 start();

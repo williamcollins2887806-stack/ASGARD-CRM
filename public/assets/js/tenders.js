@@ -394,7 +394,7 @@ window.AsgardTendersPage = (function(){
   function canEditTender(user, tender){
     if(user.role==="ADMIN") return {full:true, limited:false};
     if(isDirRole(user.role)) return {full:false, limited:true};
-    if(user.role==="TO"){
+    if(user.role==="TO" || user.role==="HEAD_TO"){
       if(!tender.handoff_at && !tender.distribution_requested_at) return {full:true, limited:false};
       return {full:false, limited:true};
     }
@@ -1492,7 +1492,7 @@ window.AsgardTendersPage = (function(){
           <button class="${isNew?'btn ghost':'btn primary'}" id="btnSave">${isNew?"Создать тендер":"Сохранить"}</button>
           ${isNew ? `<button class="btn gold" id="btnStepNext">Далее →</button>` : ''}
           ${!isNew ? '<button class="btn ghost" id="btnTenderActions">⚡ Действия</button>' : ''}
-          ${(t && !t.handoff_at && !t.distribution_requested_at && user.role==="TO") ? `<button class="btn red" id="btnDist">На распределение</button>` : ``}
+          ${(t && !t.handoff_at && !t.distribution_requested_at && (user.role==="TO"||user.role==="HEAD_TO")) ? `<button class="btn red" id="btnDist">На распределение</button>` : ``}
           ${(t && !t.handoff_at && (user.role==="ADMIN"||isDirRole(user.role))) ? `<button class="btn red" id="btnHandoff">Передать в просчёт</button>` : ``}
           ${(t && t.tender_status==='ТКП согласовано') ? `<button class="btn" id="btnSentToClient" style="background:#17a2b8;color:#fff">📨 КП отправлено</button>` : ``}
           ${(t && t.tender_status !== 'Не подходит' && canArchive) ? `<button class="btn ghost mini" id="btnArchiveTender" style="color:var(--err-t)">🗑 Отсеять</button>` : ``}
