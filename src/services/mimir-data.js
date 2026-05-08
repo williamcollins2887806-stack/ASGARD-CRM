@@ -91,7 +91,7 @@ async function getDbStats(db, user) {
       });
 
       // За месяц
-      let recentQuery = 'SELECT COUNT(*) as cnt FROM tenders WHERE created_at > NOW() - INTERVAL \'30 days\' AND deleted_at IS NULL';
+      let recentQuery = 'SELECT COUNT(*) as cnt FROM tenders WHERE created_at > NOW() - INTERVAL \'30 days\' AND archived_at IS NULL';
       if (isPM(role) && !hasFullAccess(role)) {
         recentQuery += ' AND responsible_pm_id = $1';
       }

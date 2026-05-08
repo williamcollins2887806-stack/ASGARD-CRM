@@ -824,7 +824,7 @@ async function routes(fastify, options) {
     }
 
     // Проверяем что тендер существует
-    const tender = (await db.query('SELECT id, responsible_pm_id FROM tenders WHERE id = $1 AND deleted_at IS NULL', [id])).rows[0];
+    const tender = (await db.query('SELECT id, responsible_pm_id FROM tenders WHERE id = $1 AND archived_at IS NULL', [id])).rows[0];
     if (!tender) return reply.code(404).send({ error: 'Тендер не найден' });
 
     const result = await db.query(`

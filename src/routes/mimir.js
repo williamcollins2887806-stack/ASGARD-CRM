@@ -737,7 +737,7 @@ async function mimirRoutes(fastify, options) {
         // Срочные тендеры (дедлайн < 3 дней)
         const urgentRes = await db.query(
           `SELECT COUNT(*) as cnt FROM tenders
-           WHERE deleted_at IS NULL AND tender_status NOT IN ('Закрыт', 'Отменён', 'Выиграли', 'Проиграли')
+           WHERE archived_at IS NULL AND tender_status NOT IN ('Закрыт', 'Отменён', 'Выиграли', 'Проиграли')
            AND docs_deadline IS NOT NULL AND docs_deadline < CURRENT_DATE + INTERVAL '3 days' AND docs_deadline >= CURRENT_DATE`
         );
         const urgent = parseInt(urgentRes.rows[0]?.cnt || 0);
@@ -759,7 +759,7 @@ async function mimirRoutes(fastify, options) {
       // PM — активные тендеры и работы
       if (mimirData.isPM(role)) {
         const myTendersRes = await db.query(
-          `SELECT COUNT(*) as cnt FROM tenders WHERE deleted_at IS NULL AND responsible_pm_id = $1 AND tender_status NOT IN ('Закрыт', 'Отменён', 'Выиграли', 'Проиграли')`,
+          `SELECT COUNT(*) as cnt FROM tenders WHERE archived_at IS NULL AND responsible_pm_id = $1 AND tender_status NOT IN ('Закрыт', 'Отменён', 'Выиграли', 'Проиграли')`,
           [user.id]
         );
         const myTenders = parseInt(myTendersRes.rows[0]?.cnt || 0);

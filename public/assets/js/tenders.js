@@ -40,11 +40,19 @@ window.AsgardTendersPage = (function(){
     return /^(\/api\/|\/uploads\/|data:)/i.test(url || '');
   }
 
+  function appendTokenToUrl(url) {
+    var tk = localStorage.getItem('asgard_token');
+    if (!url || !tk) return url;
+    if (!/^\/api\//i.test(url)) return url;
+    var sep = url.indexOf('?') === -1 ? '?' : '&';
+    return url + sep + 'token=' + encodeURIComponent(tk);
+  }
+
   function openDocumentLink(doc){
     const url = buildDocumentLink(doc);
     if(!url) return false;
     const a = document.createElement('a');
-    a.href = url;
+    a.href = appendTokenToUrl(url);
     if(isInlineDownloadLink(url)) {
       a.download = doc?.name || doc?.original_name || doc?.filename || 'document';
     } else {
@@ -59,11 +67,12 @@ window.AsgardTendersPage = (function(){
 
   function renderDocumentAnchor(doc){
     const url = buildDocumentLink(doc);
+    const tokenUrl = appendTokenToUrl(url);
     const label = esc(doc?.name || doc?.original_name || doc?.filename || '\u0424\u0430\u0439\u043b');
     if(!url) return '<span class="help">\u0424\u0430\u0439\u043b \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d</span>';
     const attrs = isInlineDownloadLink(url)
-      ? `href="${esc(url)}" download="${label}"`
-      : `href="${esc(url)}" target="_blank" rel="noopener"`;
+      ? `href="${esc(tokenUrl)}" download="${label}"`
+      : `href="${esc(tokenUrl)}" target="_blank" rel="noopener"`;
     return `<a ${attrs}>${label}</a>`;
   }
 
