@@ -90,7 +90,14 @@ async function routes(fastify) {
     return {counts:counts.rows,overdue:overdue.rows,upcoming:upcoming.rows,pending_proc:pending.rows};
   });
 
-  fastify.get('/export/excel', {preHandler:[fastify.requireRoles([...PM_ROLES,...PROC_ROLES,...DIR_ROLES,...BUH_ROLES])]}, async(req,reply)=>{
+  fastify.get('/export/excel', {preHandler:[
+    async (request, reply) => {
+      if (!request.headers.authorization && request.query.token) {
+        request.headers.authorization = 'Bearer ' + request.query.token;
+      }
+    },
+    fastify.requireRoles([...PM_ROLES,...PROC_ROLES,...DIR_ROLES,...BUH_ROLES])
+  ]}, async(req,reply)=>{
     const ExcelJS=require('exceljs'); const user=req.user; const{status,pm_id,work_id}=req.query;
     let sql=`SELECT pr.*,u.name as pm_name,w.work_title,pc.name as proc_name,
       (SELECT COUNT(*) FROM procurement_items pi WHERE pi.procurement_id=pr.id) as items_count,
@@ -115,7 +122,14 @@ async function routes(fastify) {
     return reply.send(Buffer.from(buf));
   });
 
-  fastify.get('/template/excel', {preHandler:[fastify.requireRoles([...PM_ROLES,...PROC_ROLES])]}, async(req,reply)=>{
+  fastify.get('/template/excel', {preHandler:[
+    async (request, reply) => {
+      if (!request.headers.authorization && request.query.token) {
+        request.headers.authorization = 'Bearer ' + request.query.token;
+      }
+    },
+    fastify.requireRoles([...PM_ROLES,...PROC_ROLES])
+  ]}, async(req,reply)=>{
     const ExcelJS=require('exceljs');const wb=new ExcelJS.Workbook();const ws=wb.addWorksheet('Позиции');
     ws.mergeCells('A1:F1');ws.getCell('A1').value='ООО «АСГАРД СЕРВИС» — Шаблон заявки на закупку';ws.getCell('A1').font={bold:true,size:14};
     ws.getRow(3).values=['№','Наименование','Артикул','Ед.изм.','Количество','Примечание'];ws.getRow(3).font={bold:true};

@@ -1145,7 +1145,14 @@ module.exports = async function(fastify) {
   // GET /api/chat-groups/:id/files/:filename — скачивание файлов из чата
   // ---------------------------------------------------------------
   fastify.get('/:id/files/:filename', {
-    preHandler: [fastify.authenticate]
+    preHandler: [
+      async (request, reply) => {
+        if (!request.headers.authorization && request.query.token) {
+          request.headers.authorization = 'Bearer ' + request.query.token;
+        }
+      },
+      fastify.authenticate
+    ]
   }, async (request, reply) => {
     const chatId = parsePositiveInt(request.params.id);
     const storedFilename = getSafeChatStoredFilename(request.params.filename);

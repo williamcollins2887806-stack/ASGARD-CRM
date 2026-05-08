@@ -216,7 +216,14 @@ async function routes(fastify, options) {
   // GET /:id/pdf — PDF заявки на пропуск
   // ═══════════════════════════════════════════════════════════════
   fastify.get('/:id/pdf', {
-    preHandler: [fastify.authenticate]
+    preHandler: [
+      async (request, reply) => {
+        if (!request.headers.authorization && request.query.token) {
+          request.headers.authorization = 'Bearer ' + request.query.token;
+        }
+      },
+      fastify.authenticate
+    ]
   }, async (request, reply) => {
     const { rows } = await db.query(`
       SELECT pr.*, u.name as creator_name, w.work_title

@@ -336,7 +336,14 @@ module.exports = async function(fastify) {
   // GET /api/tasks/:id/file/:filename — Скачать файл задачи
   // ───────────────────────────────────────────────────────────────
   fastify.get('/:id/file/:filename', {
-    preHandler: [fastify.authenticate]
+    preHandler: [
+      async (request, reply) => {
+        if (!request.headers.authorization && request.query.token) {
+          request.headers.authorization = 'Bearer ' + request.query.token;
+        }
+      },
+      fastify.authenticate
+    ]
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
     const filename = request.params.filename;

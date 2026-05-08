@@ -250,14 +250,28 @@ async function routes(fastify) {
 
   // ═══ QR + PDF ═══
 
-  fastify.get('/:id/pallets/:pid/qr', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+  fastify.get('/:id/pallets/:pid/qr', { preHandler: [
+    async (request, reply) => {
+      if (!request.headers.authorization && request.query.token) {
+        request.headers.authorization = 'Bearer ' + request.query.token;
+      }
+    },
+    fastify.authenticate
+  ] }, async (req, reply) => {
     const { rows } = await db.query('SELECT qr_uuid FROM assembly_pallets WHERE id=$1 AND assembly_id=$2', [req.params.pid, req.params.id]);
     if (!rows[0]) return reply.code(404).send({ error: 'Не найдено' });
     const svg = await QRCode.toString(rows[0].qr_uuid, { type: 'svg', width: 200 });
     reply.header('Content-Type', 'image/svg+xml').send(svg);
   });
 
-  fastify.get('/:id/pallets/:pid/label-pdf', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+  fastify.get('/:id/pallets/:pid/label-pdf', { preHandler: [
+    async (request, reply) => {
+      if (!request.headers.authorization && request.query.token) {
+        request.headers.authorization = 'Bearer ' + request.query.token;
+      }
+    },
+    fastify.authenticate
+  ] }, async (req, reply) => {
     const PDFDocument = require('pdfkit'); const path = require('path'); const fs = require('fs');
     const FP = path.join(__dirname, '../../public/assets/fonts/DejaVuSans.ttf');
     const FB = path.join(__dirname, '../../public/assets/fonts/DejaVuSans-Bold.ttf');
@@ -286,7 +300,14 @@ async function routes(fastify) {
     doc.end();
   });
 
-  fastify.get('/:id/checklist-pdf', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+  fastify.get('/:id/checklist-pdf', { preHandler: [
+    async (request, reply) => {
+      if (!request.headers.authorization && request.query.token) {
+        request.headers.authorization = 'Bearer ' + request.query.token;
+      }
+    },
+    fastify.authenticate
+  ] }, async (req, reply) => {
     const PDFDocument = require('pdfkit'); const path = require('path'); const fs = require('fs');
     const FP = path.join(__dirname, '../../public/assets/fonts/DejaVuSans.ttf');
     const FB = path.join(__dirname, '../../public/assets/fonts/DejaVuSans-Bold.ttf');
@@ -408,7 +429,14 @@ async function routes(fastify) {
     } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
   });
 
-  fastify.get('/:id/export-excel', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+  fastify.get('/:id/export-excel', { preHandler: [
+    async (request, reply) => {
+      if (!request.headers.authorization && request.query.token) {
+        request.headers.authorization = 'Bearer ' + request.query.token;
+      }
+    },
+    fastify.authenticate
+  ] }, async (req, reply) => {
     const id = parseInt(req.params.id); const ExcelJS = require('exceljs');
     const asm = await db.query('SELECT ao.*,w.work_title FROM assembly_orders ao LEFT JOIN works w ON ao.work_id=w.id WHERE ao.id=$1', [id]);
     if (!asm.rows[0]) return reply.code(404).send({ error: 'Не найдена' });

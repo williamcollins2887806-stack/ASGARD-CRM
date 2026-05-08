@@ -541,7 +541,10 @@ window.AsgardPmCalcsPage = (function(){
             ${link?link:"<span class=\"help\">—</span>"}
           </div>
         </td>
-        <td><button class="btn" style="padding:6px 10px" data-act="open">Открыть</button></td>
+        <td style="white-space:nowrap">
+          <button class="btn" style="padding:6px 10px;background:linear-gradient(135deg,#C8293B,#1E4D8C);color:#fff;border:none;margin-right:6px" data-act="auto_estimate" title="Авто-просчёт Мимиром">⚡ Просчитать</button>
+          <button class="btn" style="padding:6px 10px" data-act="open">Открыть</button>
+        </td>
       </tr>`;
     }
 
@@ -617,6 +620,17 @@ window.AsgardPmCalcsPage = (function(){
       const tenderId = Number(tr.getAttribute("data-id"));
       if(e.target.getAttribute("data-act")==="open"){
         openTender(tenderId);
+      }
+      if(e.target.getAttribute("data-act")==="auto_estimate"){
+        const workRes = await AsgardDB.byIndex("works","tender_id", tenderId);
+        const work = workRes[0] || null;
+        if(work && work.id && window.openMimirAutoEstimate){
+          window.openMimirAutoEstimate(work.id);
+        } else if(!work) {
+          toast("Просчёт","Работа по тендеру ещё не создана","err");
+        } else {
+          toast("Просчёт","Модуль авто-просчёта не загружен","err");
+        }
       }
       if(e.target.getAttribute("data-act")==="docs"){
         // Открыть комплект документов для тендера

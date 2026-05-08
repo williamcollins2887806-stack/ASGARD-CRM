@@ -648,7 +648,14 @@ module.exports = async function telephonyRoutes(fastify, opts) {
 
   // --- Аудиозапись ---
   fastify.get('/calls/:id/record', {
-    preHandler: [fastify.authenticate]
+    preHandler: [
+      async (request, reply) => {
+        if (!request.headers.authorization && request.query.token) {
+          request.headers.authorization = 'Bearer ' + request.query.token;
+        }
+      },
+      fastify.authenticate
+    ]
   }, async (request, reply) => {
     const { id } = request.params;
     const res = await db.query('SELECT record_path, recording_id FROM call_history WHERE id = $1', [id]);

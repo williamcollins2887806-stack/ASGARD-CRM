@@ -1403,7 +1403,16 @@ async function routes(fastify, options) {
   });
 
   // ─── GET /reports/payroll-grid/:year/:month/export — Excel ведомость-сетка
-  fastify.get('/reports/payroll-grid/:year/:month/export', crmAuth, async (req, reply) => {
+  fastify.get('/reports/payroll-grid/:year/:month/export', {
+    preHandler: [
+      async (request, reply) => {
+        if (!request.headers.authorization && request.query.token) {
+          request.headers.authorization = 'Bearer ' + request.query.token;
+        }
+      },
+      fastify.requireRoles(MANAGE_ROLES)
+    ]
+  }, async (req, reply) => {
     try {
       const ExcelJS = require('exceljs');
       const year = parseInt(req.params.year);

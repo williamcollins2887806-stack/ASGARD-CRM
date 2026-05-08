@@ -297,7 +297,14 @@ module.exports = async function (fastify) {
   });
 
   // ── GET /bank/export/1c ───────────────────────────────────────────────
-  fastify.get('/bank/export/1c', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+  fastify.get('/bank/export/1c', { preHandler: [
+    async (request, reply) => {
+      if (!request.headers.authorization && request.query.token) {
+        request.headers.authorization = 'Bearer ' + request.query.token;
+      }
+    },
+    fastify.authenticate
+  ] }, async (req, reply) => {
     const { date_from, date_to, status = 'distributed' } = req.query;
     let where = 'WHERE status = $1'; const params = [status]; let idx = 2;
     if (date_from) { where += ` AND transaction_date >= $${idx++}`; params.push(date_from); }

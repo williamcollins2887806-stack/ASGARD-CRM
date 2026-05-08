@@ -319,7 +319,14 @@ async function routes(fastify, options) {
   // 5. DOWNLOAD ATTACHMENT
   // ═══════════════════════════════════════════════════════════════════
   fastify.get('/attachments/:id/download', {
-    preHandler: [fastify.authenticate]
+    preHandler: [
+      async (request, reply) => {
+        if (!request.headers.authorization && request.query.token) {
+          request.headers.authorization = 'Bearer ' + request.query.token;
+        }
+      },
+      fastify.authenticate
+    ]
   }, async (request, reply) => {
     if (!checkMailboxAccess(request, reply)) return;
 

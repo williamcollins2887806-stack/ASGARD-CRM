@@ -823,7 +823,14 @@ async function routes(fastify, options) {
   // 11. GET /attachments/:id/download (path traversal protected)
   // ═══════════════════════════════════════════════════════════════
   fastify.get('/attachments/:id/download', {
-    preHandler: [fastify.authenticate]
+    preHandler: [
+      async (request, reply) => {
+        if (!request.headers.authorization && request.query.token) {
+          request.headers.authorization = 'Bearer ' + request.query.token;
+        }
+      },
+      fastify.authenticate
+    ]
   }, async (request, reply) => {
     const account = await getUserAccount(request);
     if (!account) return reply.code(403).send({ error: 'Почта не настроена' });

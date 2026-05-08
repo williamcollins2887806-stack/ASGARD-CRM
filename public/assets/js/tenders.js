@@ -444,6 +444,8 @@ window.AsgardTendersPage = (function(){
     return `${_monthNamesShort[mi]||m[2]} ${m[1]}`;
   }
 
+  var _showAutoEstBtn = false;
+
   function tenderRow(t, pmName, createdByName){
     const fmtDate = AsgardUI.formatDate || (d => d ? new Date(d).toLocaleDateString('ru-RU') : '—');
     const ds = fmtDate(t.work_start_plan);
@@ -468,7 +470,16 @@ window.AsgardTendersPage = (function(){
       <td>${t.tender_price?money(t.tender_price):"—"}</td>
       <td>${ds} → ${de}</td>
       <td>${link}</td>
-      <td><button class="btn" style="padding:6px 10px" data-act="open">Открыть</button></td>
+      <td style="white-space:nowrap">
+        ${_showAutoEstBtn ? (function(){
+          const st = t.tender_status||'';
+          if(st === 'Новый') return '<button class="btn" style="padding:6px 10px;background:linear-gradient(135deg,#C8293B,#1E4D8C);color:#fff;border:none;margin-right:6px" data-act="auto_estimate" title="Авто-просчёт Мимиром">⚡ Просчитать</button>';
+          if(st === 'Отправлено на просчёт' || st === 'Согласование ТКП') return '<button class="btn ghost" style="padding:6px 10px;opacity:0.5;margin-right:6px" disabled title="Тендер на просчёте">⚡ На просчёте</button>';
+          if(st === 'Выиграли' || st === 'Проиграли' || st === 'Не подходит') return '';
+          return '<button class="btn ghost" style="padding:6px 10px;opacity:0.5;margin-right:6px" disabled title="Тендер просчитан">⚡ Просчитан</button>';
+        })() : ''}
+        <button class="btn" style="padding:6px 10px" data-act="open">Открыть</button>
+      </td>
     </tr>`;
   }
 
@@ -507,7 +518,15 @@ window.AsgardTendersPage = (function(){
       '</div>' +
       '<div class="m-tc-footer">' +
         '<span class="m-tc-period">' + fmtPeriod(t.period) + '</span>' +
+        '<div style="display:flex;gap:6px">' +
+        (_showAutoEstBtn ? (function(){
+          var st2 = t.tender_status||'';
+          if(st2 === 'Новый') return '<button class="btn mini" data-act="auto_estimate" style="border-radius:8px;background:linear-gradient(135deg,#C8293B,#1E4D8C);color:#fff;border:none">⚡ Просчитать</button>';
+          if(st2 === 'Отправлено на просчёт' || st2 === 'Согласование ТКП') return '<button class="btn mini" disabled style="border-radius:8px;opacity:0.5" title="На просчёте">⚡</button>';
+          return '';
+        })() : '') +
         '<button class="btn mini" data-act="open">Открыть</button>' +
+        '</div>' +
       '</div>' +
     '</div>';
   }
@@ -559,6 +578,7 @@ window.AsgardTendersPage = (function(){
     const auth = await AsgardAuth.requireUser();
     if(!auth){ location.hash="#/login"; return; }
     const user = auth.user;
+    _showAutoEstBtn = ['TO','HEAD_TO'].includes(user.role);
 
     const users = await getUsers();
     const pms = users.filter(u=>u.role==="PM" || (Array.isArray(u.roles) && u.roles.includes("PM")));
@@ -1050,6 +1070,15 @@ window.AsgardTendersPage = (function(){
             });
             const openBtn = card.querySelector('[data-act="open"]');
             if (openBtn) openBtn.addEventListener('click', () => openTender(card.dataset.id));
+            const aeBtn = card.querySelector('[data-act="auto_estimate"]');
+            if (aeBtn) aeBtn.addEventListener('click', async (ev) => {
+              ev.stopPropagation();
+              const tId = Number(card.dataset.id);
+              const workRes = await AsgardDB.byIndex("works","tender_id", tId);
+              const work = workRes[0] || null;
+              if(work && work.id && window.openMimirAutoEstimate) window.openMimirAutoEstimate(work.id);
+              else toast("Просчёт","Работа по тендеру ещё не создана","err");
+            });
           });
         }
       } else {
@@ -1297,6 +1326,17 @@ window.AsgardTendersPage = (function(){
       const id=Number(tr.getAttribute("data-id"));
       const act=e.target.getAttribute("data-act");
       if(act==="open") openTenderEditor(id);
+      if(act==="auto_estimate"){
+        const workRes = await AsgardDB.byIndex("works","tender_id", id);
+        const work = workRes[0] || null;
+        if(work && work.id && window.openMimirAutoEstimate){
+          window.openMimirAutoEstimate(work.id);
+        } else if(!work) {
+          toast("Просчёт","Работа по тендеру ещё не создана. Сначала передайте тендер в просчёт.","err");
+        } else {
+          toast("Просчёт","Модуль авто-просчёта не загружен","err");
+        }
+      }
       if(act==="handoff") { openTenderEditor(id); setTimeout(()=>{ const b=document.getElementById("btnHandoff"); if(b) b.scrollIntoView({block:"center"}); }, 50); }
     });
 

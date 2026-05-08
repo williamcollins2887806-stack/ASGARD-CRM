@@ -246,7 +246,14 @@ module.exports = async function (fastify) {
 
   // ─── GET /:id/pdf — Скачать PDF ──────────────────────────────────────
   fastify.get('/:id/pdf', {
-    preHandler: [fastify.authenticate]
+    preHandler: [
+      async (request, reply) => {
+        if (!request.headers.authorization && request.query.token) {
+          request.headers.authorization = 'Bearer ' + request.query.token;
+        }
+      },
+      fastify.authenticate
+    ]
   }, async (request, reply) => {
     const { id } = request.params;
     const { rows } = await db.query('SELECT * FROM site_inspections WHERE id = $1', [id]);
@@ -633,7 +640,14 @@ module.exports = async function (fastify) {
 
   // ─── GET /trips/:id/pdf — PDF командировки ───────────────────────────
   fastify.get('/trips/:id/pdf', {
-    preHandler: [fastify.authenticate]
+    preHandler: [
+      async (request, reply) => {
+        if (!request.headers.authorization && request.query.token) {
+          request.headers.authorization = 'Bearer ' + request.query.token;
+        }
+      },
+      fastify.authenticate
+    ]
   }, async (request, reply) => {
     const { id } = request.params;
     const { rows } = await db.query('SELECT * FROM business_trips WHERE id = $1', [id]);

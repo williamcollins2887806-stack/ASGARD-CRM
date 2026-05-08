@@ -169,7 +169,14 @@ async function routes(fastify, options) {
 
   // Предпросмотр файла (inline, без скачивания — для директора)
   fastify.get('/preview/:filename', {
-    preHandler: [fastify.authenticate]
+    preHandler: [
+      async (request, reply) => {
+        if (!request.headers.authorization && request.query.token) {
+          request.headers.authorization = 'Bearer ' + request.query.token;
+        }
+      },
+      fastify.authenticate
+    ]
   }, async (request, reply) => {
     const requestedFilename = getSafeFilenameParam(request.params.filename);
     if (!requestedFilename) {

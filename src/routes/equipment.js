@@ -2081,7 +2081,14 @@ async function equipmentRoutes(fastify, options) {
   });
 
   // ── Раздача фото оборудования ──
-  fastify.get('/photo/:filename', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.get('/photo/:filename', { preHandler: [
+    async (request, reply) => {
+      if (!request.headers.authorization && request.query.token) {
+        request.headers.authorization = 'Bearer ' + request.query.token;
+      }
+    },
+    fastify.authenticate
+  ] }, async (request, reply) => {
     const { filename } = request.params;
     const safeName = path.basename(filename);
     const uploadDir = process.env.UPLOAD_DIR || './uploads';

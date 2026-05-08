@@ -52,7 +52,14 @@ async function routes(fastify, options) {
   // GET /export — Массовый Excel экспорт
   // ═══════════════════════════════════════════════════════════════
   fastify.get('/export', {
-    preHandler: [fastify.authenticate]
+    preHandler: [
+      async (request, reply) => {
+        if (!request.headers.authorization && request.query.token) {
+          request.headers.authorization = 'Bearer ' + request.query.token;
+        }
+      },
+      fastify.authenticate
+    ]
   }, async (request, reply) => {
     const { status, work_id } = request.query;
     let sql = `SELECT tr.*, u.name as creator_name, w.work_title FROM tmc_requests tr
@@ -259,7 +266,14 @@ async function routes(fastify, options) {
   // GET /:id/excel — Экспорт одной заявки
   // ═══════════════════════════════════════════════════════════════
   fastify.get('/:id/excel', {
-    preHandler: [fastify.authenticate]
+    preHandler: [
+      async (request, reply) => {
+        if (!request.headers.authorization && request.query.token) {
+          request.headers.authorization = 'Bearer ' + request.query.token;
+        }
+      },
+      fastify.authenticate
+    ]
   }, async (request, reply) => {
     const { rows } = await db.query(`
       SELECT tr.*, u.name as creator_name, w.work_title
