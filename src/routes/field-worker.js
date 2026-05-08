@@ -218,6 +218,7 @@ async function routes(fastify, options) {
         WHERE ea.work_id = $1
           AND ea.field_role IN ('shift_master','senior_master')
           AND ea.is_active = true
+          AND (ea.departure_date IS NULL OR ea.departure_date > CURRENT_DATE)
         ORDER BY CASE ea.field_role
           WHEN 'senior_master' THEN 1
           WHEN 'shift_master' THEN 2

@@ -439,7 +439,7 @@ async function routes(fastify, options) {
         hoursWorked = (new Date(checkout_at) - new Date(checkinTime)) / (1000 * 60 * 60);
         hoursPaid = roundHours(hoursWorked, settings.rounding_rule, parseFloat(settings.rounding_step));
         const shiftHours = parseFloat(settings.shift_hours || 11);
-        amountEarned = shiftHours > 0 ? (hoursPaid / shiftHours) * dayRate : 0;
+        amountEarned = dayRate;
         hoursWorked = Math.round(hoursWorked * 100) / 100;
         amountEarned = Math.round(amountEarned * 100) / 100;
         status = 'completed';
@@ -581,6 +581,7 @@ async function routes(fastify, options) {
         FROM employee_assignments ea
         JOIN employees e ON e.id = ea.employee_id
         WHERE ea.work_id = $1 AND ea.is_active = true
+          AND (ea.departure_date IS NULL OR ea.departure_date > CURRENT_DATE)
         ORDER BY ea.field_role DESC, e.fio ASC
       `, [workId]);
 

@@ -106,12 +106,18 @@ async function runAutoComplete(log) {
         // Don't checkout in the future
         if (checkoutAt > now) checkoutAt = now;
 
+        // Don't checkout before checkin (timezone confusion guard)
+        if (checkoutAt <= checkinAt) {
+          if (log) log.warn(`[ShiftAutocomplete] Skipping checkin #${fc.id}: checkout <= checkin`);
+          continue;
+        }
+
         // Calculate hours
         const hoursWorked = (checkoutAt - checkinAt) / (1000 * 60 * 60);
         const shiftHours = parseFloat(fc.shift_hours) || 11;
         const hoursPaid = Math.min(hoursWorked, shiftHours);
         const dayRate = parseFloat(fc.day_rate) || 0;
-        const amountEarned = dayRate * Math.min(hoursPaid / shiftHours, 1);
+        const amountEarned = dayRate;
 
         await db.query(`
           UPDATE field_checkins SET

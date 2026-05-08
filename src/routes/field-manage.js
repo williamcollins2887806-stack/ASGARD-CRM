@@ -257,7 +257,9 @@ async function routes(fastify, options) {
         SELECT ea.employee_id, ea.id as assignment_id, e.fio, e.phone
         FROM employee_assignments ea
         JOIN employees e ON e.id = ea.employee_id
-        WHERE ea.work_id = $1 AND ea.is_active = true AND (ea.sms_sent = false OR ea.sms_sent IS NULL)
+        WHERE ea.work_id = $1 AND ea.is_active = true
+          AND (ea.departure_date IS NULL OR ea.departure_date > CURRENT_DATE)
+          AND (ea.sms_sent = false OR ea.sms_sent IS NULL)
       `;
       const params = [workId];
 
@@ -315,6 +317,7 @@ async function routes(fastify, options) {
         FROM employee_assignments ea
         JOIN employees e ON e.id = ea.employee_id
         WHERE ea.work_id = $1 AND ea.is_active = true
+          AND (ea.departure_date IS NULL OR ea.departure_date > CURRENT_DATE)
       `;
       const params = [workId];
 
@@ -394,6 +397,7 @@ async function routes(fastify, options) {
         JOIN employees e ON e.id = ea.employee_id
         LEFT JOIN field_tariff_grid ftg ON ftg.id = ea.tariff_id
         WHERE ea.work_id = $1 AND ea.is_active = true
+          AND (ea.departure_date IS NULL OR ea.departure_date > CURRENT_DATE)
         ORDER BY e.fio
       `, [workId]);
 
