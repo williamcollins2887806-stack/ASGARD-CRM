@@ -95,7 +95,7 @@
     }, '⚡');
     const titleBox = el('div', { style: { flex: '1', minWidth: '0' } });
     titleBox.appendChild(el('div', { style: { fontSize: '14px', fontWeight: '700', color: '#D4A843' } }, 'Мимир считает'));
-    titleBox.appendChild(el('div', { style: { fontSize: '11px', color: 'rgba(255,255,255,0.45)' } }, 'Работа #' + workId));
+    titleBox.appendChild(el('div', { style: { fontSize: '11px', color: 'rgba(255,255,255,0.45)' } }, String(workId).startsWith('t') ? 'Тендер #' + String(workId).slice(1) : 'Работа #' + workId));
     const closeBtn = el('button', {
       style: {
         width: '32px', height: '32px', borderRadius: '8px', border: 'none',
@@ -819,7 +819,8 @@
           'Authorization': 'Bearer ' + token,
         },
         body: JSON.stringify({
-          work_id: workId,
+          work_id: state.workId || undefined,
+          tender_id: state.tenderId || undefined,
           estimate_id: state.estimateId,
           message: text,
           history: state.chatHistory || [],
@@ -877,7 +878,8 @@
     stepsBox.appendChild(card);
   }
 
-  async function runStream(workId, state, stepsBox, resultBox, retryBtn, composerWrap) {
+  async function runStream(_workIdUnused, state, stepsBox, resultBox, retryBtn, composerWrap) {
+    const workId = state.workId || null;
     const token = getToken();
     if (!token) { showError(stepsBox, 'Не авторизован'); return; }
     retryBtn.disabled = true;
@@ -891,7 +893,7 @@
           'Authorization': 'Bearer ' + token,
           'Accept': 'text/event-stream',
         },
-        body: JSON.stringify({ work_id: workId }),
+        body: JSON.stringify(workId ? { work_id: workId } : { tender_id: state.tenderId }),
       });
 
       if (!response.ok) {
@@ -977,18 +979,21 @@
     document.head.appendChild(style);
   }
 
-  window.openMimirAutoEstimate = function (workId) {
-    if (!workId) return;
+  window.openMimirAutoEstimate = function (workId, tenderId) {
+    if (!workId && !tenderId) return;
     injectStyles();
     const state = {
+      workId: workId || null,
       estimateId: null,
       lastCard: null,
       lastAnalysis: null,
       composerVisible: false,
       chatLoading: false,
       chatHistory: [],
+      tenderId: tenderId || null,
     };
-    const { overlay, stepsBox, resultBox, retryFt, composerWrap } = buildModal(workId);
+    const effectiveId = workId || ('t' + tenderId);
+    const { overlay, stepsBox, resultBox, retryFt, composerWrap } = buildModal(effectiveId);
     document.body.appendChild(overlay);
     runStream(workId, state, stepsBox, resultBox, retryFt, composerWrap);
   };

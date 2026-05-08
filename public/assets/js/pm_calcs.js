@@ -622,14 +622,13 @@ window.AsgardPmCalcsPage = (function(){
         openTender(tenderId);
       }
       if(e.target.getAttribute("data-act")==="auto_estimate"){
+        if(!window.openMimirAutoEstimate){ toast("Просчёт","Модуль авто-просчёта не загружен","err"); return; }
         const workRes = await AsgardDB.byIndex("works","tender_id", tenderId);
         const work = workRes[0] || null;
-        if(work && work.id && window.openMimirAutoEstimate){
+        if(work && work.id){
           window.openMimirAutoEstimate(work.id);
-        } else if(!work) {
-          toast("Просчёт","Работа по тендеру ещё не создана","err");
         } else {
-          toast("Просчёт","Модуль авто-просчёта не загружен","err");
+          window.openMimirAutoEstimate(null, tenderId);
         }
       }
       if(e.target.getAttribute("data-act")==="docs"){

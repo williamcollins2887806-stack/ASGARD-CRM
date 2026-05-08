@@ -1953,13 +1953,34 @@ ${analogsSummary}
   fastify.post('/auto-estimate', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
-    const { work_id } = request.body || {};
+    const { work_id, tender_id } = request.body || {};
     const user = request.user;
 
-    if (!work_id || isNaN(parseInt(work_id))) {
-      return reply.code(400).send({ success: false, message: 'work_id обязателен' });
+    let workId = work_id ? parseInt(work_id) : null;
+
+    // If tender_id given without work_id, find work by tender or create virtual context
+    if (!workId && tender_id) {
+      const tId = parseInt(tender_id);
+      if (isNaN(tId)) return reply.code(400).send({ success: false, message: 'tender_id некорректен' });
+      const workRow = (await db.query('SELECT id FROM works WHERE tender_id = $1 LIMIT 1', [tId])).rows[0];
+      if (workRow) {
+        workId = workRow.id;
+      } else {
+        // No work exists yet — create a temporary one from tender data for estimation
+        const t = (await db.query('SELECT * FROM tenders WHERE id = $1', [tId])).rows[0];
+        if (!t) return reply.code(404).send({ success: false, message: 'Тендер не найден' });
+        const ins = await db.query(`
+          INSERT INTO works (tender_id, customer_name, work_title, work_status, pm_id, start_plan, end_plan, created_at, updated_at)
+          VALUES ($1, $2, $3, 'Просчёт', $4, $5, $6, NOW(), NOW())
+          RETURNING id
+        `, [tId, t.customer_name, t.tender_title, t.responsible_pm_id, t.work_start_plan, t.work_end_plan]);
+        workId = ins.rows[0].id;
+      }
     }
-    const workId = parseInt(work_id);
+
+    if (!workId || isNaN(workId)) {
+      return reply.code(400).send({ success: false, message: 'work_id или tender_id обязателен' });
+    }
 
     // SSE headers
     reply.raw.writeHead(200, {

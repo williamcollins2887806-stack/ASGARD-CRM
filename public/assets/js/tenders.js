@@ -578,7 +578,7 @@ window.AsgardTendersPage = (function(){
     const auth = await AsgardAuth.requireUser();
     if(!auth){ location.hash="#/login"; return; }
     const user = auth.user;
-    _showAutoEstBtn = ['TO','HEAD_TO'].includes(user.role);
+    _showAutoEstBtn = ['TO','HEAD_TO','ADMIN'].includes(user.role);
 
     const users = await getUsers();
     const pms = users.filter(u=>u.role==="PM" || (Array.isArray(u.roles) && u.roles.includes("PM")));
@@ -1074,10 +1074,11 @@ window.AsgardTendersPage = (function(){
             if (aeBtn) aeBtn.addEventListener('click', async (ev) => {
               ev.stopPropagation();
               const tId = Number(card.dataset.id);
+              if(!window.openMimirAutoEstimate){ toast("Просчёт","Модуль не загружен","err"); return; }
               const workRes = await AsgardDB.byIndex("works","tender_id", tId);
               const work = workRes[0] || null;
-              if(work && work.id && window.openMimirAutoEstimate) window.openMimirAutoEstimate(work.id);
-              else toast("Просчёт","Работа по тендеру ещё не создана","err");
+              if(work && work.id) window.openMimirAutoEstimate(work.id);
+              else window.openMimirAutoEstimate(null, tId);
             });
           });
         }
@@ -1327,14 +1328,13 @@ window.AsgardTendersPage = (function(){
       const act=e.target.getAttribute("data-act");
       if(act==="open") openTenderEditor(id);
       if(act==="auto_estimate"){
+        if(!window.openMimirAutoEstimate){ toast("Просчёт","Модуль авто-просчёта не загружен","err"); return; }
         const workRes = await AsgardDB.byIndex("works","tender_id", id);
         const work = workRes[0] || null;
-        if(work && work.id && window.openMimirAutoEstimate){
+        if(work && work.id){
           window.openMimirAutoEstimate(work.id);
-        } else if(!work) {
-          toast("Просчёт","Работа по тендеру ещё не создана. Сначала передайте тендер в просчёт.","err");
         } else {
-          toast("Просчёт","Модуль авто-просчёта не загружен","err");
+          window.openMimirAutoEstimate(null, id);
         }
       }
       if(act==="handoff") { openTenderEditor(id); setTimeout(()=>{ const b=document.getElementById("btnHandoff"); if(b) b.scrollIntoView({block:"center"}); }, 50); }
