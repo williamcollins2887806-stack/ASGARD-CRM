@@ -1585,7 +1585,7 @@ async function createDraftEstimate(db, ctx, ai, recomputed, user) {
      ) RETURNING *`,
     [
       work.id, work.tender_id || null, user.id, user.id,
-      String(est.title || work.work_title || `Просчёт работы #${work.id}`).substring(0, 200),
+      String(est.title || work.work_title || (work.id ? `Просчёт работы #${work.id}` : `Просчёт тендера #${work.tender_id}`)).substring(0, 200),
       est.work_type || ctx.workType || null,
       Number(est.crew_count) || null, Number(est.work_days) || null, Number(est.road_days) || 2,
       est.object_city || work.city || null, Number(est.object_distance_km) || null,

@@ -1957,28 +1957,19 @@ ${analogsSummary}
     const user = request.user;
 
     let workId = work_id ? parseInt(work_id) : null;
+    let tenderId = tender_id ? parseInt(tender_id) : null;
 
-    // If tender_id given without work_id, find work by tender or create virtual context
-    if (!workId && tender_id) {
-      const tId = parseInt(tender_id);
-      if (isNaN(tId)) return reply.code(400).send({ success: false, message: 'tender_id некорректен' });
-      const workRow = (await db.query('SELECT id FROM works WHERE tender_id = $1 LIMIT 1', [tId])).rows[0];
+    // If tender_id given without work_id, check if work exists for this tender
+    if (!workId && tenderId) {
+      if (isNaN(tenderId)) return reply.code(400).send({ success: false, message: 'tender_id некорректен' });
+      const workRow = (await db.query('SELECT id FROM works WHERE tender_id = $1 LIMIT 1', [tenderId])).rows[0];
       if (workRow) {
         workId = workRow.id;
-      } else {
-        // No work exists yet — create a temporary one from tender data for estimation
-        const t = (await db.query('SELECT * FROM tenders WHERE id = $1', [tId])).rows[0];
-        if (!t) return reply.code(404).send({ success: false, message: 'Тендер не найден' });
-        const ins = await db.query(`
-          INSERT INTO works (tender_id, customer_name, work_title, work_status, pm_id, start_plan, end_plan, created_at, updated_at)
-          VALUES ($1, $2, $3, 'Просчёт', $4, $5, $6, NOW(), NOW())
-          RETURNING id
-        `, [tId, t.customer_name, t.tender_title, t.responsible_pm_id, t.work_start_plan, t.work_end_plan]);
-        workId = ins.rows[0].id;
+        tenderId = null; // work found, use normal flow
       }
     }
 
-    if (!workId || isNaN(workId)) {
+    if (!workId && !tenderId) {
       return reply.code(400).send({ success: false, message: 'work_id или tender_id обязателен' });
     }
 
@@ -2003,10 +1994,11 @@ ${analogsSummary}
       const { getSystemPrompt, serializeContext } = require('../services/mimir-prompt');
       const mimirAutoEstimate = require('../services/mimir-auto-estimate');
 
-      sendEvent({ type: 'start', work_id: workId, message: '🧠 Мимир приступает к анализу' });
+      sendEvent({ type: 'start', work_id: workId, tender_id: tenderId, message: '🧠 Мимир приступает к анализу' });
 
       // ── Фаза 1: Сервер собирает ВСЕ данные (15 типов, ~200мс) ──
-      const ctx = await collector.collectAll(db, workId, (event) => sendEvent(event));
+      const collectorArg = workId ? workId : { tenderId };
+      const ctx = await collector.collectAll(db, collectorArg, (event) => sendEvent(event));
 
       // ── Фаза 2: Claude анализирует и считает ──
       sendEvent({ type: 'progress', step: 'ai_thinking', message: '🧮 Claude Sonnet анализирует данные...' });
@@ -2027,7 +2019,7 @@ ${analogsSummary}
       try {
         aiResult = await aiProvider.complete({
           system: systemPrompt,
-          messages: [{ role: 'user', content: `Составь просчёт для работы #${workId}.\n\n${dataText}` }],
+          messages: [{ role: 'user', content: `Составь просчёт для ${workId ? 'работы #' + workId : 'тендера #' + tenderId}.\n\n${dataText}` }],
           maxTokens: 16000,
           temperature: 0.2
         });
@@ -2056,10 +2048,10 @@ ${analogsSummary}
       // Фаза вопросов — сохраняем контекст для /auto-estimate-answer
       if (parsed.phase === 'questions' && parsed.questions) {
         // Кэшируем контекст (5 мин TTL)
-        const sessionId = `ae_${workId}_${Date.now()}`;
+        const sessionId = `ae_${workId || 't' + tenderId}_${Date.now()}`;
         if (!fastify._aeQuestionCache) fastify._aeQuestionCache = new Map();
         fastify._aeQuestionCache.set(sessionId, {
-          workId, dataText, systemPrompt, ctx, user,
+          workId, tenderId, dataText, systemPrompt, ctx, user,
           questions: parsed.questions,
           expires: Date.now() + 300000
         });

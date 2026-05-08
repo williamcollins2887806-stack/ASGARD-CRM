@@ -18,7 +18,7 @@ const { parseDocumentContent } = require('./estimateChat');
  *
  * @returns {Object} — 15 блоков данных + summary
  */
-async function collectAll(db, workId, onProgress) {
+async function collectAll(db, workIdOrOpts, onProgress) {
   const t0 = Date.now();
   const progress = (step, msg) => {
     if (typeof onProgress === 'function') {
@@ -26,16 +26,50 @@ async function collectAll(db, workId, onProgress) {
     }
   };
 
-  // ── 1. Работа ──
-  progress('work', '📋 Загружаю данные работы...');
-  const work = (await db.query('SELECT * FROM works WHERE id = $1', [workId])).rows[0];
-  if (!work) throw new Error(`Работа #${workId} не найдена`);
+  // Support both collectAll(db, workId, onProgress) and collectAll(db, { tenderId }, onProgress)
+  let workId = null;
+  let tenderIdArg = null;
+  if (typeof workIdOrOpts === 'object' && workIdOrOpts !== null) {
+    workId = workIdOrOpts.workId || null;
+    tenderIdArg = workIdOrOpts.tenderId || null;
+  } else {
+    workId = workIdOrOpts;
+  }
 
-  // ── 2. Тендер ──
+  let work = null;
   let tender = null;
-  if (work.tender_id) {
+
+  if (workId) {
+    // ── 1. Работа ──
+    progress('work', '📋 Загружаю данные работы...');
+    work = (await db.query('SELECT * FROM works WHERE id = $1', [workId])).rows[0];
+    if (!work) throw new Error(`Работа #${workId} не найдена`);
+
+    // ── 2. Тендер ──
+    if (work.tender_id) {
+      progress('tender', '📋 Загружаю тендер...');
+      tender = (await db.query('SELECT * FROM tenders WHERE id = $1', [work.tender_id])).rows[0] || null;
+    }
+  } else if (tenderIdArg) {
+    // Режим просчёта по тендеру (без работы)
     progress('tender', '📋 Загружаю тендер...');
-    tender = (await db.query('SELECT * FROM tenders WHERE id = $1', [work.tender_id])).rows[0] || null;
+    tender = (await db.query('SELECT * FROM tenders WHERE id = $1', [tenderIdArg])).rows[0];
+    if (!tender) throw new Error(`Тендер #${tenderIdArg} не найден`);
+
+    // Виртуальный объект work из данных тендера (в память, не в БД)
+    work = {
+      id: null,
+      tender_id: tender.id,
+      customer_name: tender.customer_name,
+      work_title: tender.tender_title,
+      work_status: 'Просчёт',
+      pm_id: tender.responsible_pm_id,
+      start_plan: tender.work_start_plan,
+      end_plan: tender.work_end_plan,
+      contract_value: tender.tender_price,
+    };
+  } else {
+    throw new Error('workId или tenderId обязателен');
   }
 
   // ── 3. Документы (распарсенные) ──
@@ -84,7 +118,8 @@ async function collectAll(db, workId, onProgress) {
     completedWorks, marginStats, warehouse, employees, allPermits,
     availability, workHistory, tariffs, settings,
     _meta: {
-      work_id: workId,
+      work_id: workId || null,
+      tender_id: tenderIdArg || (work && work.tender_id) || null,
       collected_at: new Date().toISOString(),
       elapsed_ms: Date.now() - t0,
       period: { start: startDate, end: endDate }
