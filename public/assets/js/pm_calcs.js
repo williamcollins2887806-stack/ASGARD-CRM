@@ -437,6 +437,10 @@ window.AsgardPmCalcsPage = (function(){
     const isDir = isDirRole(user.role) || user.role==="ADMIN";
     const isPM = user.role==="PM" || user.role==="HEAD_PM";
 
+    // Тендеры с существующими работами → уже "выпускники", не показываем по умолчанию
+    const worksAll = await AsgardDB.all("works");
+    const tenderIdsWithWork = new Set(worksAll.filter(w => w.tender_id).map(w => w.tender_id));
+
     // PM sees only own; Director/Admin can see all handed-off
     let tenders = tendersAll.filter(t=>t.handoff_at);
     if(user.role==="PM") tenders = tenders.filter(t=>t.responsible_pm_id===user.id);
@@ -567,6 +571,8 @@ window.AsgardPmCalcsPage = (function(){
       }
       if(!showWon){
         list = list.filter(t=>t.tender_status!=="Выиграли");
+        // Тендеры с созданными работами — уже не просчёты, скрываем
+        list = list.filter(t=>!tenderIdsWithWork.has(t.id));
       }
       if(st){
         list = list.filter(t=>t.tender_status===st);
