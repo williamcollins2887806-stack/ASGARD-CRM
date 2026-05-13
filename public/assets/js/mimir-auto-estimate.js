@@ -55,7 +55,7 @@
     return localStorage.getItem('asgard_token') || localStorage.getItem('token');
   }
 
-  function buildModal(workId) {
+  function buildModal(workId, state) {
     const overlay = el('div', {
       class: 'mimir-ae-overlay',
       style: {
@@ -254,7 +254,7 @@
     // ai_thinking и после — показываем сразу (Claude думает в реальном времени)
     if (event.step === 'ai_thinking' || event.step === 'creating_estimate') {
       // Сначала flush всю очередь мгновенно
-      while (_stepQueue.length > 0) { appendStepNow(_stepQueue.shift().stepsBox, _stepQueue.length >= 0 ? _stepQueue.shift()?.event : null); }
+      while (_stepQueue.length > 0) { var qi = _stepQueue.shift(); appendStepNow(qi.stepsBox, qi.event); }
       if (_stepTimer) { clearTimeout(_stepTimer); _stepTimer = null; }
       _stepQueue = [];
       appendStepNow(stepsBox, event);
@@ -993,7 +993,7 @@
       tenderId: tenderId || null,
     };
     const effectiveId = workId || ('t' + tenderId);
-    const { overlay, stepsBox, resultBox, retryFt, composerWrap } = buildModal(effectiveId);
+    const { overlay, stepsBox, resultBox, retryFt, composerWrap } = buildModal(effectiveId, state);
     document.body.appendChild(overlay);
     runStream(workId, state, stepsBox, resultBox, retryFt, composerWrap);
   };
