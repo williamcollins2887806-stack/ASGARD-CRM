@@ -242,6 +242,7 @@
   }
 
   function closeModal(overlay) {
+    _aeRunning = false;
     overlay.style.animation = 'mimirAeFadeOut 0.2s ease forwards';
     setTimeout(() => overlay.remove(), 200);
   }
@@ -939,6 +940,7 @@
       console.error('[MimirAutoEstimate]', err);
       showError(stepsBox, err.message);
     } finally {
+      _aeRunning = false;
       retryBtn.disabled = false;
       retryBtn.style.opacity = '1';
     }
@@ -979,8 +981,11 @@
     document.head.appendChild(style);
   }
 
+  let _aeRunning = false;
   window.openMimirAutoEstimate = function (workId, tenderId) {
     if (!workId && !tenderId) return;
+    if (_aeRunning) { AsgardUI.toast('Мимир', 'Просчёт уже запущен, дождитесь результата', 'warn'); return; }
+    _aeRunning = true;
     injectStyles();
     const state = {
       workId: workId || null,

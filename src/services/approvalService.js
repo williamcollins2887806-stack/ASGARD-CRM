@@ -308,6 +308,14 @@ async function directorApprove(db, { entityType, entityId, actor, comment }) {
       if (comment) dirFields.last_director_comment = comment;
       const { sql: dirSql, values: dirVals } = buildUpdate('estimates', entityId, dirFields);
       await client.query(dirSql, dirVals);
+
+      // Автоматически перевести тендер из «Согласование ТКП» → «ТКП согласовано»
+      if (record.tender_id) {
+        await client.query(`
+          UPDATE tenders SET tender_status = 'ТКП согласовано', updated_at = NOW()
+          WHERE id = $1 AND tender_status = 'Согласование ТКП'
+        `, [record.tender_id]);
+      }
     }
 
     if (requiresPayment) {
