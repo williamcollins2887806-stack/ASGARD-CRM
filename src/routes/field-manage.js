@@ -20,6 +20,7 @@
 const ExcelJS = require('exceljs');
 const MangoService = require('../services/mango');
 const { createNotification } = require('../services/notify');
+const { getWorkerFinances } = require('../lib/worker-finances');
 const MANGO_SMS_FROM = process.env.MANGO_SMS_EXTENSION || '101';
 
 const MANAGE_ROLES = ['PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
@@ -870,6 +871,90 @@ async function routes(fastify, options) {
       };
     } catch (err) {
       fastify.log.error('[field-manage] progress error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // GET /projects/:work_id/departure-preview/:employee_id
+  //   Financial summary before departure confirmation
+  // ─────────────────────────────────────────────────────────────────────
+  fastify.get('/projects/:work_id/departure-preview/:employee_id', roleCheck, async (req, reply) => {
+    try {
+      const workId = parseInt(req.params.work_id);
+      const empId = parseInt(req.params.employee_id);
+
+      // Employee info
+      const { rows: empRows } = await db.query(
+        `SELECT id, fio, phone, position FROM employees WHERE id = $1`, [empId]
+      );
+      if (!empRows.length) return reply.code(404).send({ error: 'Сотрудник не найден' });
+
+      // Assignment info
+      const { rows: assignRows } = await db.query(`
+        SELECT ea.id, ea.date_from, ea.per_diem, ea.departure_date, ea.departure_reason,
+               ftg.position_name, ftg.rate_per_shift
+        FROM employee_assignments ea
+        LEFT JOIN field_tariff_grid ftg ON ftg.id = ea.tariff_id
+        WHERE ea.work_id = $1 AND ea.employee_id = $2 AND ea.is_active = true
+        ORDER BY ea.created_at DESC LIMIT 1
+      `, [workId, empId]);
+
+      // Financial data from SSoT
+      const finances = await getWorkerFinances(db, empId, { workId, logger: fastify.log });
+
+      // Days on site
+      const dateFrom = assignRows[0]?.date_from;
+      let daysOnSite = 0;
+      if (dateFrom) {
+        const start = new Date(dateFrom);
+        const now = new Date();
+        daysOnSite = Math.max(0, Math.ceil((now - start) / (1000 * 60 * 60 * 24)));
+      }
+
+      return {
+        employee: empRows[0],
+        assignment: assignRows[0] || null,
+        days_on_site: daysOnSite,
+        finances: finances.error ? null : finances,
+        finances_error: finances.error || null,
+      };
+    } catch (err) {
+      fastify.log.error('[field-manage] departure-preview error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // POST /projects/:work_id/departure/:employee_id
+  //   Mark worker as departed
+  // ─────────────────────────────────────────────────────────────────────
+  fastify.post('/projects/:work_id/departure/:employee_id', roleCheck, async (req, reply) => {
+    try {
+      const workId = parseInt(req.params.work_id);
+      const empId = parseInt(req.params.employee_id);
+      const { reason, departure_date } = req.body || {};
+
+      const depDate = departure_date || new Date().toISOString().slice(0, 10);
+
+      const { rowCount } = await db.query(`
+        UPDATE employee_assignments
+        SET departure_date = $1, departure_reason = $2, updated_at = NOW()
+        WHERE work_id = $3 AND employee_id = $4 AND is_active = true
+          AND (departure_date IS NULL)
+      `, [depDate, reason || null, workId, empId]);
+
+      if (!rowCount) return reply.code(404).send({ error: 'Назначение не найдено или уже отмечен отъезд' });
+
+      // Get employee name for notification
+      const { rows: empRows } = await db.query(`SELECT fio FROM employees WHERE id = $1`, [empId]);
+      const { rows: workRows } = await db.query(`SELECT work_title FROM works WHERE id = $1`, [workId]);
+
+      fastify.log.info(`[departure] ${empRows[0]?.fio || empId} departed from work #${workId} (${workRows[0]?.work_title}), reason: ${reason || 'не указана'}`);
+
+      return { ok: true, departure_date: depDate };
+    } catch (err) {
+      fastify.log.error('[field-manage] departure error:', err);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });

@@ -577,13 +577,27 @@ window.AsgardFieldTab = (function () {
     }
     tr.appendChild(tdSms);
 
+    // Action buttons (departure + remove)
+    const tdActions = document.createElement('td');
+    tdActions.style.cssText = cellStyle + ';text-align:center;white-space:nowrap';
+
+    // Departure button — only for saved assignments
+    if (assignment && employee) {
+      const depBtn = document.createElement('button');
+      depBtn.textContent = '🚪';
+      depBtn.title = 'Отъезд с объекта';
+      depBtn.style.cssText = 'background:none;border:none;color:#f59e0b;cursor:pointer;font-size:16px;padding:4px 6px;transition:transform .15s';
+      depBtn.addEventListener('mouseenter', () => { depBtn.style.transform = 'scale(1.2)'; });
+      depBtn.addEventListener('mouseleave', () => { depBtn.style.transform = ''; });
+      depBtn.addEventListener('click', () => showDepartureModal(employee, assignment));
+      tdActions.appendChild(depBtn);
+    }
+
     // Remove button
-    const tdDel = document.createElement('td');
-    tdDel.style.cssText = cellStyle + ';text-align:center';
     const delBtn = document.createElement('button');
     delBtn.textContent = '✕';
     delBtn.title = 'Удалить из бригады';
-    delBtn.style.cssText = 'background:none;border:none;color:#ef4444;cursor:pointer;font-size:16px;padding:4px 8px';
+    delBtn.style.cssText = 'background:none;border:none;color:#ef4444;cursor:pointer;font-size:16px;padding:4px 6px';
     delBtn.addEventListener('click', () => {
       CREmployeePicker.destroy(pickerId);
       CRSelect.destroy('ft-role-' + rid);
@@ -593,8 +607,8 @@ window.AsgardFieldTab = (function () {
       if (idx !== -1) _ftTariffIds.splice(idx, 1);
       tr.remove();
     });
-    tdDel.appendChild(delBtn);
-    tr.appendChild(tdDel);
+    tdActions.appendChild(delBtn);
+    tr.appendChild(tdActions);
 
     // Tariff/combo change → auto update points & rate (CRSelect onChange)
     function updatePointsRate() {
@@ -2972,6 +2986,170 @@ window.AsgardFieldTab = (function () {
         });
       },
     });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // DEPARTURE MODAL — финансовая сводка при отъезде рабочего
+  // ═══════════════════════════════════════════════════════════════════
+  async function showDepartureModal(employee, assignment) {
+    const workId = assignment.work_id;
+    const empId = employee.id;
+    const empName = employee.fio || employee.full_name || 'Сотрудник';
+
+    // Loading state
+    AsgardUI.showModal('🚪 Отъезд — ' + esc(empName), `
+      <div style="text-align:center;padding:40px">
+        <div style="font-size:32px;animation:spin 1s linear infinite">⏳</div>
+        <div style="color:var(--t2,#8b949e);margin-top:12px">Загрузка финансов…</div>
+      </div>
+    `);
+
+    try {
+      const data = await api(`/projects/${workId}/departure-preview/${empId}`);
+      if (data.error) throw new Error(data.error);
+
+      const fin = data.finances;
+      const asgn = data.assignment;
+
+      // Calculate key values
+      const fot = fin ? fin.fot : 0;
+      const perDiemAccrued = fin ? fin.per_diem_accrued : 0;
+      const perDiemPaid = fin ? fin.per_diem_paid : 0;
+      const perDiemBalance = perDiemAccrued - perDiemPaid;
+      const advancePaid = fin ? fin.advance_paid : 0;
+      const salaryPaid = fin ? fin.salary_paid : 0;
+      const bonusPaid = fin ? fin.bonus_paid : 0;
+      const penalty = fin ? fin.penalty : 0;
+      const totalEarned = fin ? fin.total_earned : 0;
+      const totalPaid = fin ? fin.total_paid : 0;
+      const totalPending = fin ? fin.total_pending : 0;
+
+      const perDiemRate = asgn?.per_diem || 0;
+      const daysOnSite = data.days_on_site || 0;
+
+      // Color logic
+      const pendingColor = totalPending > 0 ? '#ef4444' : totalPending < 0 ? '#10b981' : '#8b949e';
+      const pendingLabel = totalPending > 0 ? 'Компания должна' : totalPending < 0 ? 'Переплата' : 'Баланс';
+      const perDiemColor = perDiemBalance > 0 ? '#ef4444' : perDiemBalance < 0 ? '#10b981' : '#8b949e';
+      const perDiemLabel = perDiemBalance > 0 ? 'Долг по суточным' : perDiemBalance < 0 ? 'Переплата суточных' : 'Суточные в балансе';
+
+      const modalHtml = `
+        <style>
+          .dep-card { background:var(--bg2,#151922); border-radius:12px; padding:16px; margin-bottom:12px; border:1px solid var(--brd,rgba(255,255,255,0.08)); }
+          .dep-card h4 { margin:0 0 12px; font-size:13px; color:var(--t2,#8b949e); text-transform:uppercase; letter-spacing:1px; }
+          .dep-row { display:flex; justify-content:space-between; padding:6px 0; font-size:14px; border-bottom:1px solid rgba(255,255,255,0.04); }
+          .dep-row:last-child { border:none; }
+          .dep-row .lbl { color:var(--t2,#8b949e); }
+          .dep-row .val { font-weight:600; color:var(--t1,#e6edf3); }
+          .dep-big { font-size:28px; font-weight:800; text-align:center; padding:16px 0 8px; }
+          .dep-big-label { font-size:12px; text-align:center; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
+          .dep-divider { height:1px; background:linear-gradient(90deg,transparent,var(--brd,rgba(255,255,255,0.1)),transparent); margin:4px 0 12px; }
+        </style>
+
+        <!-- Header: worker info -->
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+          <div style="width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#D4A843,#B8922E);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#000">
+            ${(empName[0] || '?').toUpperCase()}
+          </div>
+          <div>
+            <div style="font-weight:600;font-size:16px">${esc(empName)}</div>
+            <div style="color:var(--t2,#8b949e);font-size:13px">
+              ${asgn?.position_name || 'Рабочий'} · ${daysOnSite} дн. на объекте · ${money(perDiemRate)} ₽/день суточные
+            </div>
+          </div>
+        </div>
+
+        <!-- Main balance -->
+        <div class="dep-card" style="border-color:${pendingColor}33;background:${pendingColor}08">
+          <div class="dep-big-label" style="color:${pendingColor}">${pendingLabel}</div>
+          <div class="dep-big" style="color:${pendingColor}">${money(Math.abs(totalPending))} ₽</div>
+        </div>
+
+        <!-- Per diem card -->
+        <div class="dep-card">
+          <h4>🌙 Суточные</h4>
+          <div class="dep-row"><span class="lbl">Начислено (${fin?.by_work?.[0]?.days_worked || 0} дн. × ${money(perDiemRate)} ₽)</span><span class="val">${money(perDiemAccrued)} ₽</span></div>
+          <div class="dep-row"><span class="lbl">Выплачено</span><span class="val">${money(perDiemPaid)} ₽</span></div>
+          <div class="dep-divider"></div>
+          <div class="dep-row"><span class="lbl" style="color:${perDiemColor};font-weight:600">${perDiemLabel}</span><span class="val" style="color:${perDiemColor};font-size:16px">${money(Math.abs(perDiemBalance))} ₽</span></div>
+        </div>
+
+        <!-- Earnings card -->
+        <div class="dep-card">
+          <h4>💰 Заработок</h4>
+          <div class="dep-row"><span class="lbl">ФОТ (отработано)</span><span class="val">${money(fot)} ₽</span></div>
+          ${bonusPaid ? `<div class="dep-row"><span class="lbl">Премии</span><span class="val" style="color:#10b981">+${money(bonusPaid)} ₽</span></div>` : ''}
+          ${penalty ? `<div class="dep-row"><span class="lbl">Штрафы</span><span class="val" style="color:#ef4444">−${money(penalty)} ₽</span></div>` : ''}
+          <div class="dep-divider"></div>
+          <div class="dep-row"><span class="lbl" style="font-weight:600">Итого начислено</span><span class="val" style="font-size:16px;color:var(--gold,#D4A843)">${money(totalEarned)} ₽</span></div>
+        </div>
+
+        <!-- Payments card -->
+        <div class="dep-card">
+          <h4>💳 Выплаты</h4>
+          <div class="dep-row"><span class="lbl">Зарплата</span><span class="val">${money(salaryPaid)} ₽</span></div>
+          <div class="dep-row"><span class="lbl">Суточные</span><span class="val">${money(perDiemPaid)} ₽</span></div>
+          ${advancePaid ? `<div class="dep-row"><span class="lbl">Авансы</span><span class="val" style="color:#f59e0b">${money(advancePaid)} ₽</span></div>` : ''}
+          <div class="dep-divider"></div>
+          <div class="dep-row"><span class="lbl" style="font-weight:600">Итого выплачено</span><span class="val" style="font-size:16px">${money(totalPaid)} ₽</span></div>
+        </div>
+
+        <!-- Departure form -->
+        <div class="dep-card" style="border-color:#f59e0b33">
+          <h4>📋 Оформление отъезда</h4>
+          <div style="margin-bottom:12px">
+            <label style="display:block;font-size:12px;color:var(--t2,#8b949e);margin-bottom:4px">Дата отъезда</label>
+            <input type="date" id="depDate" value="${new Date().toISOString().slice(0, 10)}" style="width:100%;padding:8px 12px;border-radius:8px;background:var(--bg1,#0D1117);color:var(--t1,#e6edf3);border:1px solid var(--brd,rgba(255,255,255,0.08));font-size:14px" />
+          </div>
+          <div style="margin-bottom:16px">
+            <label style="display:block;font-size:12px;color:var(--t2,#8b949e);margin-bottom:4px">Причина отъезда</label>
+            <input type="text" id="depReason" placeholder="Завершение работ, по семейным, увольнение…" style="width:100%;padding:8px 12px;border-radius:8px;background:var(--bg1,#0D1117);color:var(--t1,#e6edf3);border:1px solid var(--brd,rgba(255,255,255,0.08));font-size:14px" />
+          </div>
+          <div style="display:flex;gap:10px">
+            <button class="btn" id="depConfirmBtn" style="flex:1;background:linear-gradient(135deg,#f59e0b,#d97706);color:#000;font-weight:700;padding:10px">🚪 Подтвердить отъезд</button>
+            <button class="btn ghost" id="depCancelBtn" style="flex:0 0 auto">Отмена</button>
+          </div>
+        </div>
+      `;
+
+      AsgardUI.showModal('🚪 Отъезд — ' + esc(empName), modalHtml);
+
+      // Bind buttons after render
+      setTimeout(() => {
+        const confirmBtn = document.getElementById('depConfirmBtn');
+        const cancelBtn = document.getElementById('depCancelBtn');
+
+        if (cancelBtn) cancelBtn.addEventListener('click', () => AsgardUI.hideModal());
+
+        if (confirmBtn) confirmBtn.addEventListener('click', async () => {
+          const depDate = document.getElementById('depDate')?.value;
+          const depReason = document.getElementById('depReason')?.value;
+
+          if (!depDate) { toast('Ошибка', 'Укажите дату отъезда', 'err'); return; }
+
+          confirmBtn.disabled = true;
+          confirmBtn.textContent = 'Сохранение…';
+
+          try {
+            const result = await api(`/projects/${workId}/departure/${empId}`, {
+              method: 'POST',
+              body: JSON.stringify({ departure_date: depDate, reason: depReason }),
+            });
+            if (result.error) throw new Error(result.error);
+
+            toast('Отъезд', esc(empName) + ' — отъезд оформлен', 'ok');
+            AsgardUI.hideModal();
+          } catch (e) {
+            toast('Ошибка', String(e), 'err');
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = '🚪 Подтвердить отъезд';
+          }
+        });
+      }, 100);
+
+    } catch (e) {
+      AsgardUI.showModal('❌ Ошибка', `<div style="padding:20px;color:#ef4444">${esc(String(e))}</div>`);
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════
