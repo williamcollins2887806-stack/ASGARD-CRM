@@ -65,6 +65,47 @@ function getRoleTitle(role) {
 /**
  * Получить статистику из БД с учётом ролей
  */
+/**
+ * Получить быструю сводку людей и допусков для обычного чата Мимира
+ */
+async function getPeopleAndPermits(db) {
+  const result = {};
+  try {
+    const emp = await db.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE is_active = true OR is_active IS NULL) as total_active,
+        COUNT(*) FILTER (WHERE role_tag = 'field_worker') as field_workers,
+        COUNT(*) FILTER (WHERE role_tag = 'master') as masters,
+        COUNT(*) FILTER (WHERE role_tag = 'itr') as itr
+      FROM employees
+    `);
+    result.employees = emp.rows[0] || {};
+
+    const freeWorkers = await db.query(`
+      SELECT COUNT(DISTINCT e.id) as cnt
+      FROM employees e
+      WHERE (e.is_active = true OR e.is_active IS NULL)
+        AND e.id NOT IN (
+          SELECT ea.employee_id FROM employee_assignments ea
+          WHERE ea.is_active = true
+            AND (ea.departure_date IS NULL OR ea.departure_date > CURRENT_DATE)
+        )
+    `);
+    result.free_workers = parseInt(freeWorkers.rows[0]?.cnt || 0);
+
+    const permits = await db.query(`
+      SELECT pt.name, COUNT(DISTINCT ep.employee_id) as cnt
+      FROM employee_permits ep
+      JOIN permit_types pt ON pt.id = ep.type_id
+      WHERE ep.is_active = true
+        AND (ep.expiry_date IS NULL OR ep.expiry_date > CURRENT_DATE)
+      GROUP BY pt.name ORDER BY cnt DESC LIMIT 10
+    `);
+    result.top_permits = permits.rows;
+  } catch (_) {}
+  return result;
+}
+
 async function getDbStats(db, user) {
   const stats = {};
   const role = user?.role || 'USER';
@@ -629,6 +670,11 @@ function buildRestrictions(role, userName) {
  */
 async function buildSystemPrompt(db, user) {
   const stats = await getDbStats(db, user);
+  const role = user?.role || 'USER';
+  let peoplePermits = null;
+  if (hasFullAccess(role) || isPM(role)) {
+    try { peoplePermits = await getPeopleAndPermits(db); } catch (_) {}
+  }
   const today = new Date().toLocaleDateString('ru-RU', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
   });
@@ -724,6 +770,18 @@ ${buildRestrictions(role, userName)}
 11. Итого = себестоимость + непредвиденные + маржа
 </tariffs>
 
+${peoplePermits ? `<people_and_permits>
+СОТРУДНИКИ (для просчётов):
+  Всего активных: ${peoplePermits.employees?.total_active || '?'}
+  Полевые рабочие: ${peoplePermits.employees?.field_workers || '?'}
+  Мастера: ${peoplePermits.employees?.masters || '?'}
+  ИТР: ${peoplePermits.employees?.itr || '?'}
+  Свободных (не на объекте): ${peoplePermits.free_workers || '?'}
+
+ТОП ДОПУСКОВ (у свободных):
+${(peoplePermits.top_permits || []).map(p => `  • ${p.name}: ${p.cnt} чел`).join('\n') || '  (нет данных)'}
+</people_and_permits>` : ''}
+
 <capabilities>
 1. Отвечать на вопросы по данным CRM — используй конкретные цифры из crm_data и [ДАННЫЕ ИЗ БД]
 2. Анализировать загруженные документы (ТЗ, КП, договоры, чертежи, таблицы)
@@ -779,6 +837,7 @@ module.exports = {
 
   // Функции данных
   getDbStats,
+  getPeopleAndPermits,
   searchTenders,
   searchWorks,
   searchEmployees,

@@ -144,6 +144,7 @@ window.AsgardEstimateReportPage = (function () {
 
     // Parse calculation JSON
     const calcData = parseCalcData(est, calc);
+    window._lastCalcData = calcData; // доступ из approve handler
     const st = STATUS[est.approval_status] || STATUS.draft;
     const canAct = isDirector(user.role) && est.approval_status === 'sent';
     const isPM = ['PM', 'HEAD_PM'].includes(user.role) || user.role === 'ADMIN';
@@ -160,6 +161,7 @@ window.AsgardEstimateReportPage = (function () {
       ${showReworkBanner ? renderReworkBanner(est) : ''}
       ${showDiff ? renderChangesDiff(diffData, est) : ''}
       ${renderSummaryCards(calcData)}
+      ${renderVatSection(calcData, est)}
       ${renderCostBar(calcData)}
       ${renderObjectInfo(est)}
       ${canEdit ? renderEditableTable(calcData, est) : renderConsolidatedTable(calcData)}
@@ -319,6 +321,80 @@ window.AsgardEstimateReportPage = (function () {
         <div class="er-card__label">Маржа</div>
         <div class="er-card__value">${fmtMoney(margin)}</div>
         <div class="er-card__sub">${fmtNum(marginPct)}%</div>
+      </div>
+    </div>`;
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // COMPONENT: VAT / Tax Breakdown
+  // ──────────────────────────────────────────────────────────────
+  function renderVatSection(cd, est) {
+    const s = cd.summary || {};
+    const price = parseFloat(s.price_no_vat) || parseFloat(est.price_tkp) || 0;
+    const cost  = parseFloat(s.cost_no_vat)  || parseFloat(est.cost_plan)  || 0;
+    const margin = price - cost;
+
+    const VAT_RATE = 0.20;  // 20% НДС
+    const INCOME_TAX_RATE = 0.20; // 20% налог на прибыль
+
+    // НДС к начислению (от цены клиенту)
+    const vatCharged = price * VAT_RATE;
+    // НДС к вычету — ищем в блоках расходы с НДС
+    // Обычно: командировочные, химия, оборудование — с НДС; ФОТ — без НДС
+    const blocks = cd.blocks || [];
+    const vatDeductBlocks = ['chemistry', 'transport', 'travel'];
+    let vatDeductBase = 0;
+    blocks.forEach(b => {
+      if (vatDeductBlocks.includes(b.id)) {
+        vatDeductBase += (b.subtotal || 0);
+      }
+    });
+    const vatDeduct = vatDeductBase * VAT_RATE;
+    const vatNet = vatCharged - vatDeduct;
+
+    // ФОТ блок (без НДС — для справки)
+    const personnelBlock = blocks.find(b => b.id === 'personnel');
+    const fotTotal = personnelBlock?.subtotal || 0;
+
+    // Ориентировочный налог на прибыль
+    const incomeTax = margin > 0 ? margin * INCOME_TAX_RATE : 0;
+
+    if (price <= 0) return '';
+
+    return `
+    <div class="er-vat-section" style="
+      background:linear-gradient(135deg,var(--bg3),var(--bg2));
+      border:1px solid rgba(148,163,184,.15);
+      border-radius:10px; padding:20px; margin-top:16px;
+    ">
+      <div style="font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:14px">
+        Налоги и НДС (справочно)
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
+        <div style="background:var(--bg3);border-radius:8px;padding:12px;border:1px solid rgba(148,163,184,.1)">
+          <div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.8px">НДС к начислению (20%)</div>
+          <div style="font-size:18px;font-weight:800;color:#ef4444;margin-top:4px">${fmtMoney(vatCharged)}</div>
+          <div style="font-size:11px;color:var(--t3);margin-top:2px">от цены клиенту</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:8px;padding:12px;border:1px solid rgba(148,163,184,.1)">
+          <div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.8px">НДС к вычету (20%)</div>
+          <div style="font-size:18px;font-weight:800;color:#22c55e;margin-top:4px">${fmtMoney(vatDeduct)}</div>
+          <div style="font-size:11px;color:var(--t3);margin-top:2px">хим., транспорт, командировочные</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:8px;padding:12px;border:1px solid rgba(148,163,184,.1)">
+          <div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.8px">НДС к уплате</div>
+          <div style="font-size:18px;font-weight:800;color:${vatNet > 0 ? '#f59e0b' : '#22c55e'};margin-top:4px">${fmtMoney(vatNet)}</div>
+          <div style="font-size:11px;color:var(--t3);margin-top:2px">начислено − вычет</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:8px;padding:12px;border:1px solid rgba(148,163,184,.1)">
+          <div style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.8px">Налог на прибыль (20%)</div>
+          <div style="font-size:18px;font-weight:800;color:#a78bfa;margin-top:4px">${fmtMoney(incomeTax)}</div>
+          <div style="font-size:11px;color:var(--t3);margin-top:2px">от маржи ${fmtMoney(margin)}</div>
+        </div>
+      </div>
+      <div style="margin-top:12px;padding:10px 14px;background:rgba(99,102,241,.08);border-radius:8px;font-size:12px;color:var(--t2)">
+        💡 <strong>Разбивка:</strong> ФОТ (без НДС) — ${fmtMoney(fotTotal)} &nbsp;|&nbsp;
+        Расходы с НДС (хим/транспорт/командировочные) — ${fmtMoney(vatDeductBase)}
       </div>
     </div>`;
   }
@@ -779,6 +855,13 @@ window.AsgardEstimateReportPage = (function () {
         <span>Итого себестоимость</span>
         <span class="er-editable__total" id="erTotalCost">${fmtMoney(total)}</span>
       </div>
+      <div style="display:flex;gap:10px;margin-top:12px;align-items:center">
+        <button class="er-btn er-btn--secondary" id="erSaveOverrideBtn" style="background:linear-gradient(135deg,#1E4D8C,#2563eb);color:#fff;border-color:#1E4D8C">
+          💾 Сохранить правки
+        </button>
+        <span id="erOverrideSaveStatus" style="font-size:11px;color:var(--t3)"></span>
+        <span style="font-size:11px;color:var(--muted)">Мимир увидит ваши изменения при следующем пересчёте</span>
+      </div>
     </div>`;
   }
 
@@ -1218,7 +1301,7 @@ window.AsgardEstimateReportPage = (function () {
 
         // Confirm approve
         if (action === 'approve') {
-          if (!confirm('Согласовать этот просчёт?')) return;
+          if (!confirm('Согласовать просчёт?\n\nСумма будет записана в тендер, а отчёт сохранён в документы.')) return;
         }
         if (action === 'reject') {
           if (!confirm('Отклонить просчёт? Это действие нельзя отменить.')) return;
@@ -1229,6 +1312,44 @@ window.AsgardEstimateReportPage = (function () {
 
         try {
           await api('POST', '/approval/estimates/' + estimateId + '/' + action, token, { comment });
+
+          // При согласовании — записать финальные суммы в тендер + сохранить XLSX
+          if (action === 'approve') {
+            try {
+              let xlsxBase64 = null;
+              if (typeof XLSX !== 'undefined' && window._lastCalcData) {
+                const wb = XLSX.utils.book_new();
+                const calcRows = [['Согласованный просчёт']];
+                const blocks = window._lastCalcData.blocks || [];
+                blocks.forEach(b => {
+                  const meta = BLOCK_META[b.id] || {};
+                  calcRows.push([meta.name || b.id]);
+                  calcRows.push(['Позиция','Кол-во','Ставка','Дни','Итого']);
+                  (b.rows||[]).forEach(r => calcRows.push([r.item||'',r.qty||'',r.rate||'',r.days||'',r.total||0]));
+                  calcRows.push(['Итого: '+(meta.name||b.id),'','','',b.subtotal||0]);
+                  calcRows.push([]);
+                });
+                const ws = XLSX.utils.aoa_to_sheet(calcRows);
+                XLSX.utils.book_append_sheet(wb, ws, 'Просчёт');
+                const arrBuf = XLSX.write(wb, { bookType:'xlsx', type:'array' });
+                const bytes = new Uint8Array(arrBuf);
+                let bin = '';
+                bytes.forEach(b => bin += String.fromCharCode(b));
+                xlsxBase64 = btoa(bin);
+              }
+
+              const s = window._lastCalcData?.summary || {};
+              await api('POST', '/estimates/' + estimateId + '/approve-finalize', token, {
+                final_price: parseFloat(s.price_no_vat) || 0,
+                final_cost:  parseFloat(s.cost_no_vat)  || 0,
+                xlsx_base64: xlsxBase64
+              });
+              toast('Просчёт записан в тендер', 'ok');
+            } catch(finErr) {
+              console.warn('[EstReport] approve-finalize error:', finErr.message);
+            }
+          }
+
           toast(ACTION_LABELS[action] || 'Готово', 'ok');
           // Reload page
           setTimeout(() => {
@@ -1251,6 +1372,7 @@ window.AsgardEstimateReportPage = (function () {
 
   function bindEditableTable(estimateId, token, calcData) {
     _calcData = calcData;
+    window._lastCalcData = calcData; // доступ из approve handler
 
     // Toggle blocks
     document.querySelectorAll('.er-eblock__header[data-toggle]').forEach(hdr => {
@@ -1297,11 +1419,33 @@ window.AsgardEstimateReportPage = (function () {
           _calcData.summary.margin_pct = total > 0 ? ((_calcData.summary.price_no_vat - total) / total * 100) : 0;
         }
 
-        // Debounced save
+        // Debounced auto-save
         clearTimeout(_saveTimer);
         _saveTimer = setTimeout(() => saveCalculation(estimateId, token), 2000);
       });
     });
+
+    // Кнопка "Сохранить правки" — сохранить как manual override
+    const saveOverrideBtn = document.getElementById('erSaveOverrideBtn');
+    if (saveOverrideBtn) {
+      saveOverrideBtn.addEventListener('click', async () => {
+        const statusEl = document.getElementById('erOverrideSaveStatus');
+        saveOverrideBtn.disabled = true;
+        saveOverrideBtn.textContent = '⏳ Сохраняю...';
+        if (statusEl) statusEl.textContent = '';
+        try {
+          await saveCalculation(estimateId, token);
+          await api('POST', '/estimates/' + estimateId + '/calc-override', token, { calc_data: _calcData });
+          if (statusEl) statusEl.textContent = '✅ Сохранено ' + new Date().toLocaleTimeString('ru-RU', { hour:'2-digit', minute:'2-digit' });
+          saveOverrideBtn.textContent = '💾 Сохранить правки';
+          saveOverrideBtn.disabled = false;
+        } catch(e) {
+          if (statusEl) statusEl.textContent = '❌ Ошибка: ' + e.message;
+          saveOverrideBtn.textContent = '💾 Сохранить правки';
+          saveOverrideBtn.disabled = false;
+        }
+      });
+    }
   }
 
   function recalcRow(r) {

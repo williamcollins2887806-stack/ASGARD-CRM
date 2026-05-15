@@ -4,22 +4,38 @@ import { fieldApi } from '@/api/fieldClient';
 import { ArrowLeft, Plane, Building, Car, FileText, Shield, Eye, Download, ExternalLink } from 'lucide-react';
 
 const TYPE_CONFIG = {
-  ticket_to: { label: 'Билет туда', Icon: Plane },
-  ticket_back: { label: 'Билет обратно', Icon: Plane },
-  hotel: { label: 'Гостиница', Icon: Building },
-  transfer: { label: 'Трансфер', Icon: Car },
-  visa: { label: 'Виза', Icon: FileText },
-  insurance: { label: 'Страховка', Icon: Shield },
+  ticket_to:    { label: 'Билет туда',      Icon: Plane,     group: 'tickets' },
+  ticket_back:  { label: 'Билет обратно',   Icon: Plane,     group: 'tickets' },
+  flight:       { label: 'Авиабилет',       Icon: Plane,     group: 'tickets' },
+  train:        { label: 'Ж/Д билет',       Icon: FileText,  group: 'tickets' },
+  transfer:     { label: 'Трансфер',        Icon: Car,       group: 'tickets' },
+  hotel:        { label: 'Гостиница',       Icon: Building,  group: 'housing' },
+  housing:      { label: 'Жильё',           Icon: Building,  group: 'housing' },
+  hostel:       { label: 'Хостел',          Icon: Building,  group: 'housing' },
+  visa:         { label: 'Виза',            Icon: FileText,  group: 'tickets' },
+  insurance:    { label: 'Страховка',       Icon: Shield,    group: 'tickets' },
+  directive_mo: { label: 'Направление МО',  Icon: FileText,  group: 'directives' },
+  training:     { label: 'Обучение',        Icon: FileText,  group: 'training' },
+  certification:{ label: 'Аттестация',      Icon: Shield,    group: 'training' },
 };
 
-const STATUS_COLORS = { confirmed: '#22c55e', sent: '#3b82f6', pending: '#f59e0b' };
-const STATUS_LABELS = { confirmed: 'Подтверждено', sent: 'Отправлено', pending: 'Ожидает' };
+const TAB_GROUPS = [
+  { id: 'all',        label: 'Все' },
+  { id: 'tickets',    label: '✈️ Билеты' },
+  { id: 'housing',    label: '🏠 Жильё' },
+  { id: 'directives', label: '📋 МО' },
+  { id: 'training',   label: '📚 Обучение' },
+];
+
+const STATUS_COLORS = { confirmed: '#22c55e', sent: '#3b82f6', pending: '#f59e0b', ready: '#6366f1' };
+const STATUS_LABELS = { confirmed: 'Подтверждено', sent: 'Отправлено', pending: 'Ожидает', ready: 'Готово' };
 
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('ru-RU') : '';
 
 export default function FieldLogistics() {
   const navigate = useNavigate();
   const [tab, setTab] = useState('current');
+  const [groupTab, setGroupTab] = useState('all');
   const [current, setCurrent] = useState([]);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -41,7 +57,13 @@ export default function FieldLogistics() {
     finally { setLoading(false); }
   }
 
-  const items = tab === 'current' ? current : history;
+  const rawItems = tab === 'current' ? current : history;
+  const items = groupTab === 'all'
+    ? rawItems
+    : rawItems.filter(it => {
+        const cfg = TYPE_CONFIG[it.item_type || it.type];
+        return cfg?.group === groupTab;
+      });
 
   if (loading) {
     return (
@@ -63,7 +85,7 @@ export default function FieldLogistics() {
 
       {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>{error}</div>}
 
-      {/* Tabs */}
+      {/* Current / History tabs */}
       <div className="flex gap-2">
         {['current', 'history'].map((t) => (
           <button
@@ -80,6 +102,24 @@ export default function FieldLogistics() {
         ))}
       </div>
 
+      {/* Group filter tabs */}
+      <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
+        {TAB_GROUPS.map((g) => (
+          <button
+            key={g.id}
+            onClick={() => setGroupTab(g.id)}
+            className="py-1.5 px-3 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors"
+            style={{
+              backgroundColor: groupTab === g.id ? 'rgba(242,208,138,0.2)' : 'var(--bg-elevated)',
+              color: groupTab === g.id ? 'var(--gold)' : 'var(--text-secondary)',
+              border: groupTab === g.id ? '1px solid var(--gold)' : '1px solid transparent',
+            }}
+          >
+            {g.label}
+          </button>
+        ))}
+      </div>
+
       {/* Items */}
       {items.length === 0 ? (
         <div className="rounded-xl p-8 text-center" style={{ backgroundColor: 'var(--bg-elevated)' }}>
@@ -89,7 +129,7 @@ export default function FieldLogistics() {
       ) : (
         <div className="space-y-3">
           {items.map((item) => {
-            const cfg = TYPE_CONFIG[item.type] || TYPE_CONFIG.ticket_to;
+            const cfg = TYPE_CONFIG[item.item_type || item.type] || TYPE_CONFIG.ticket_to;
             const Icon = cfg.Icon;
             const statusColor = STATUS_COLORS[item.status] || '#6b7280';
             return (

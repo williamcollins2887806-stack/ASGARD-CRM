@@ -1,417 +1,535 @@
-// Stage 18: Жильё и авиабилеты
-// Расходы на проживание и транспорт с привязкой к проекту/сотруднику
+// Жильё, Билеты и Направления — Логистика сотрудников
+// Использует /api/field/logistics (field-logistics.js)
 
 window.AsgardTravelPage = (function(){
+  'use strict';
   const { $, $$, esc, toast, showModal, formatDate } = AsgardUI;
 
-  // Типы расходов
-  const EXPENSE_TYPES = [
-    { key: 'housing', label: 'Жильё', icon: '🏠', color: 'var(--info)' },
-    { key: 'flight', label: 'Авиабилет', icon: '✈️', color: 'var(--purple)' },
-    { key: 'train', label: 'Ж/Д билет', icon: '🚂', color: 'var(--cyan)' },
-    { key: 'hotel', label: 'Гостиница', icon: '🏨', color: 'var(--amber)' },
-    { key: 'transfer', label: 'Трансфер', icon: '🚐', color: 'var(--ok)' }
+  // Разрешённые роли
+  const ALLOWED_ROLES = ['ADMIN','OFFICE_MANAGER','HR','PM','HEAD_PM','DIRECTOR_COMM','DIRECTOR_GEN','DIRECTOR_DEV','TO'];
+
+  // Типы записей с вкладками
+  const TAB_DEFS = [
+    {
+      id: 'tickets',
+      label: '✈️ Билеты',
+      types: ['ticket_to','ticket_back','flight','train','transfer'],
+    },
+    {
+      id: 'housing',
+      label: '🏠 Жильё',
+      types: ['hotel','housing','hostel'],
+    },
+    {
+      id: 'directives',
+      label: '📋 Направления МО',
+      types: ['directive_mo'],
+    },
+    {
+      id: 'training',
+      label: '📚 Обучение',
+      types: ['training','certification'],
+    },
   ];
 
-  function isoNow(){ return new Date().toISOString(); }
-  function today(){ return new Date().toISOString().slice(0,10); }
+  const TYPE_OPTS = [
+    { key:'ticket_to',   label:'✈️ Билет туда',       tab:'tickets'  },
+    { key:'ticket_back', label:'✈️ Билет обратно',     tab:'tickets'  },
+    { key:'flight',      label:'✈️ Авиабилет',         tab:'tickets'  },
+    { key:'train',       label:'🚂 Ж/Д билет',         tab:'tickets'  },
+    { key:'transfer',    label:'🚐 Трансфер',          tab:'tickets'  },
+    { key:'hotel',       label:'🏨 Гостиница',         tab:'housing'  },
+    { key:'housing',     label:'🏠 Жильё / аренда',    tab:'housing'  },
+    { key:'hostel',      label:'🛏 Хостел',            tab:'housing'  },
+    { key:'directive_mo',label:'📋 Направление МО',    tab:'directives'},
+    { key:'training',    label:'📚 Обучение',          tab:'training' },
+    { key:'certification',label:'🎓 Аттестация/допуск', tab:'training' },
+  ];
 
-  function getTypeInfo(key){
-    return EXPENSE_TYPES.find(t => t.key === key) || { label: key, icon: '💰', color: 'var(--t3)' };
+  function typeLabel(key) {
+    return (TYPE_OPTS.find(t => t.key === key) || { label: key }).label;
   }
 
-  function fmtMoney(n){
-    return AsgardUI.money(n) + ' ₽';
+  function today() { return new Date().toISOString().slice(0,10); }
+
+  async function getToken() {
+    return localStorage.getItem('asgard_token') || '';
   }
 
-  async function render({layout, title}){
+  async function apiGet(path) {
+    const res = await fetch('/api/field/logistics' + path, {
+      headers: { Authorization: 'Bearer ' + await getToken() }
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  }
+
+  async function apiPost(path, body) {
+    const res = await fetch('/api/field/logistics' + path, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + await getToken(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Ошибка');
+    }
+    return res.json();
+  }
+
+  async function uploadFile(logisticsId, file) {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch('/api/field/logistics/' + logisticsId + '/attach', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + await getToken() },
+      body: fd
+    });
+    if (!res.ok) throw new Error('Ошибка загрузки файла');
+    return res.json();
+  }
+
+  async function render({ layout, title }) {
     const auth = await AsgardAuth.requireUser();
-    if(!auth){ location.hash = "#/login"; return; }
+    if (!auth) { location.hash = '#/login'; return; }
     const user = auth.user;
 
-    // Роли с доступом
-    const allowedRoles = ["ADMIN", "OFFICE_MANAGER", "HR", "PM", "DIRECTOR_COMM", "DIRECTOR_GEN", "DIRECTOR_DEV", "DIRECTOR"];
-    if(!allowedRoles.includes(user.role)){
-      toast("Доступ", "Раздел недоступен", "err");
-      location.hash = "#/home";
+    if (!ALLOWED_ROLES.includes(user.role)) {
+      toast('Доступ', 'Раздел недоступен', 'err');
+      location.hash = '#/home';
       return;
     }
 
-    // Загружаем данные
-    let items = [];
-    try { items = await AsgardDB.all('travel_expenses'); } catch(e){}
-    
-    const works = await AsgardDB.all('works');
-    const employees = await AsgardDB.all('employees');
-    const users = await AsgardDB.all('users');
-    
+    // Загрузка данных
+    let items = [], works = [], employees = [];
+    try {
+      const data = await apiGet('/');
+      items = Array.isArray(data.logistics) ? data.logistics : [];
+    } catch(e) { toast('Ошибка', 'Не удалось загрузить данные', 'err'); }
+
+    try { works = await AsgardDB.all('works'); } catch(e){}
+    try { employees = await AsgardDB.all('employees'); } catch(e){}
+
     const worksMap = new Map(works.map(w => [w.id, w]));
-    const employeesMap = new Map(employees.map(e => [e.id, e]));
-    const usersMap = new Map(users.map(u => [u.id, u]));
+    const empMap   = new Map(employees.map(e => [e.id, e]));
 
-    // Текущий год
-    const currentYear = new Date().getFullYear();
-    let filters = { year: currentYear, month: '', type: '', search: '' };
+    let activeTab = 'tickets';
+    let searchQ = '';
 
-    function filterItems(){
-      return items.filter(item => {
-        const date = item.date ? new Date(item.date) : null;
-        if(!date) return false;
-        if(filters.year && date.getFullYear() !== Number(filters.year)) return false;
-        if(filters.month !== '' && date.getMonth() !== Number(filters.month)) return false;
-        if(filters.type && item.expense_type !== filters.type) return false;
-        if(filters.search){
-          const s = filters.search.toLowerCase();
-          const work = worksMap.get(item.work_id);
-          const emp = employeesMap.get(item.employee_id);
-          const match = 
-            (item.description || '').toLowerCase().includes(s) ||
-            (item.supplier || '').toLowerCase().includes(s) ||
-            (work?.work_title || '').toLowerCase().includes(s) ||
-            (emp?.fio || '').toLowerCase().includes(s);
-          if(!match) return false;
+    function filteredItems() {
+      const tab = TAB_DEFS.find(t => t.id === activeTab);
+      if (!tab) return items;
+      return items.filter(it => {
+        if (!tab.types.includes(it.item_type)) return false;
+        if (searchQ) {
+          const s = searchQ.toLowerCase();
+          const emp = empMap.get(it.employee_id);
+          const work = worksMap.get(it.work_id);
+          const match = (it.title || '').toLowerCase().includes(s)
+            || (it.description || '').toLowerCase().includes(s)
+            || (emp?.fio || '').toLowerCase().includes(s)
+            || (work?.work_title || '').toLowerCase().includes(s);
+          if (!match) return false;
         }
         return true;
-      }).sort((a,b) => String(b.date || '').localeCompare(String(a.date || '')));
-    }
-
-    function calcStats(list){
-      let total = 0;
-      const byType = {};
-      EXPENSE_TYPES.forEach(t => { byType[t.key] = 0; });
-      list.forEach(item => {
-        total += Number(item.amount) || 0;
-        if(byType[item.expense_type] !== undefined){
-          byType[item.expense_type] += Number(item.amount) || 0;
-        }
       });
-      return { total, count: list.length, byType };
     }
 
-    function renderPage(){
-      const filtered = filterItems();
-      const stats = calcStats(filtered);
+    function tabCounts() {
+      const counts = {};
+      TAB_DEFS.forEach(tab => {
+        counts[tab.id] = items.filter(it => tab.types.includes(it.item_type)).length;
+      });
+      return counts;
+    }
 
-      const body = `
+    function renderPage() {
+      const filtered = filteredItems();
+      const counts = tabCounts();
+      const totalAmount = items.reduce((s,i) => s + (parseFloat(i.amount)||0), 0);
+
+      const css = `
         <style>
-          .travel-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; margin-bottom:24px; }
-          
-          .travel-kpi { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:24px; }
-          .travel-kpi-card {
-            position:relative;
-            background: linear-gradient(135deg, var(--bg3), var(--bg2));
+          .tl-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; margin-bottom:20px; }
+          .tl-tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+          .tl-tab {
+            padding:8px 16px; border-radius:8px; border:1px solid rgba(148,163,184,.2);
+            background:var(--bg3); color:var(--t2); font-size:13px; font-weight:600; cursor:pointer;
+            transition: all .2s ease;
+          }
+          .tl-tab.active { background:var(--gold); color:#000; border-color:var(--gold); }
+          .tl-tab .badge {
+            display:inline-block; background:rgba(255,255,255,.25); border-radius:10px;
+            padding:1px 7px; font-size:11px; margin-left:6px;
+          }
+          .tl-tab.active .badge { background:rgba(0,0,0,.15); }
+
+          .tl-kpi { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:20px; }
+          .tl-kpi-card {
+            background:linear-gradient(135deg,var(--bg3),var(--bg2));
             border:1px solid rgba(148,163,184,.15);
-            border-radius:6px;
-            padding:16px;
-            overflow:hidden;
-            transition: all .3s ease;
+            border-radius:8px; padding:16px; position:relative; overflow:hidden;
           }
-          .travel-kpi-card::before {
-            content:'';
-            position:absolute;
-            top:0; left:0; right:0;
-            height:3px;
-            background: var(--card-accent, var(--gold));
-            opacity:.6;
+          .tl-kpi-card::before { content:''; position:absolute; top:0;left:0;right:0;height:3px;background:var(--acc,var(--gold)); }
+          .tl-kpi-label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-weight:700; }
+          .tl-kpi-value { font-size:22px; font-weight:900; margin-top:6px; }
+          .tl-kpi-icon { position:absolute; right:12px; top:50%; transform:translateY(-50%); font-size:28px; opacity:.15; }
+
+          .tl-search { width:100%; padding:10px 14px; border-radius:8px; border:1px solid rgba(148,163,184,.2);
+            background:var(--bg3); color:var(--text); font-size:13px; margin-bottom:16px; }
+
+          .tl-grid { display:flex; flex-direction:column; gap:10px; }
+          .tl-card {
+            background:linear-gradient(135deg,var(--bg3),var(--bg2));
+            border:1px solid rgba(148,163,184,.12);
+            border-radius:10px; padding:16px;
+            display:grid; grid-template-columns:1fr auto; gap:12px; align-items:start;
+            transition:border-color .2s;
           }
-          .travel-kpi-card:hover { transform:translateY(-2px); border-color:rgba(242,208,138,.3); }
-          .travel-kpi-label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-weight:700; }
-          .travel-kpi-value { font-size:24px; font-weight:900; margin-top:6px; }
-          .travel-kpi-icon { position:absolute; right:12px; top:50%; transform:translateY(-50%); font-size:32px; opacity:.2; }
-          
-          .travel-filters {
-            display:flex; flex-wrap:wrap; gap:12px;
-            margin-bottom:20px; padding:16px;
-            background:var(--bg2);
-            border:1px solid rgba(148,163,184,.1);
-            border-radius:6px;
-            align-items:flex-end;
+          .tl-card:hover { border-color:rgba(242,208,138,.3); }
+          .tl-card-type {
+            display:inline-flex; align-items:center; gap:5px;
+            padding:3px 10px; border-radius:6px;
+            background:rgba(242,208,138,.12); color:var(--gold);
+            font-size:11px; font-weight:700; margin-bottom:8px;
           }
-          .travel-filter { display:flex; flex-direction:column; gap:4px; min-width:130px; }
-          .travel-filter label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-weight:700; }
-          .travel-filter select, .travel-filter input {
-            padding:10px 12px; border-radius:6px;
-            border:1px solid rgba(148,163,184,.18);
-            background:var(--bg3);
-            color:var(--text); font-size:13px;
+          .tl-card-title { font-size:14px; font-weight:700; color:var(--text); }
+          .tl-card-sub { font-size:12px; color:var(--muted); margin-top:3px; }
+          .tl-card-meta { display:flex; gap:12px; flex-wrap:wrap; margin-top:8px; }
+          .tl-card-meta span { font-size:11px; color:var(--t3); }
+          .tl-card-amount { font-size:16px; font-weight:800; color:var(--gold); }
+          .tl-card-vat { font-size:10px; color:var(--ok); font-weight:600; }
+          .tl-card-actions { display:flex; flex-direction:column; gap:6px; align-items:flex-end; }
+          .tl-btn {
+            padding:6px 12px; border-radius:6px; border:1px solid rgba(148,163,184,.2);
+            background:var(--bg3); color:var(--text); font-size:12px; cursor:pointer;
+            white-space:nowrap; transition:all .15s;
           }
-          
-          .travel-table { width:100%; border-collapse:separate; border-spacing:0 8px; }
-          .travel-table th {
-            font-size:10px; color:var(--muted); font-weight:800;
-            text-align:left; padding:10px 12px;
-            text-transform:uppercase; letter-spacing:1px;
+          .tl-btn:hover { border-color:var(--gold); color:var(--gold); }
+          .tl-btn-send {
+            background:linear-gradient(135deg,var(--ok),#1a7a50);
+            border-color:var(--ok); color:#fff;
           }
-          .travel-table td {
-            padding:14px 12px;
-            background:linear-gradient(135deg, var(--bg3), var(--bg2));
-            border:1px solid rgba(148,163,184,.1);
-            transition: all .2s ease;
+          .tl-btn-send:hover { opacity:.9; }
+          .tl-status-badge {
+            display:inline-block; padding:2px 8px; border-radius:10px;
+            font-size:10px; font-weight:700;
           }
-          .travel-table tr td:first-child { border-radius:6px 0 0 6px; }
-          .travel-table tr td:last-child { border-radius:0 6px 6px 0; }
-          .travel-table tr:hover td { background:rgba(59,130,246,.08); border-color:rgba(242,208,138,.2); }
-          
-          .travel-type {
-            display:inline-flex; align-items:center; gap:6px;
-            padding:4px 10px; border-radius:6px;
-            font-size:12px; font-weight:700;
-          }
-          
-          .travel-amount { font-weight:800; color:var(--gold); font-size:15px; }
-          
-          .travel-link { color:var(--blue); font-size:12px; }
-          .travel-link:hover { text-decoration:underline; }
-          
-          .travel-actions { display:flex; gap:6px; }
-          .travel-btn {
-            padding:6px 10px; border-radius:6px;
-            border:1px solid rgba(148,163,184,.18);
-            background:var(--bg3);
-            color:var(--text); font-size:12px; cursor:pointer;
-            transition: all .2s ease;
-          }
-          .travel-btn:hover { border-color:rgba(242,208,138,.4); }
-          
-          .travel-empty {
-            text-align:center; padding:60px 20px;
-            background:var(--bg3);
-            border:1px dashed rgba(148,163,184,.2);
-            border-radius:6px;
-            color:var(--muted);
-          }
-          .travel-empty-icon { font-size:64px; margin-bottom:16px; opacity:.5; }
+          .st-pending { background:rgba(234,179,8,.15); color:#eab308; }
+          .st-ready { background:rgba(59,130,246,.15); color:#3b82f6; }
+          .st-sent { background:rgba(34,197,94,.15); color:#22c55e; }
+          .tl-empty { text-align:center; padding:60px; color:var(--muted); font-size:14px; }
+          .tl-file-link { font-size:11px; color:var(--blue); text-decoration:none; }
+          .tl-file-link:hover { text-decoration:underline; }
         </style>
+      `;
 
+      const html = css + `
         <div class="panel">
-          <div class="travel-header">
+          <div class="tl-header">
             <div>
-              <h2 class="page-title" style="margin:0">Жильё и билеты</h2>
-              <div class="help" style="margin-top:8px">Расходы на проживание и транспорт сотрудников</div>
+              <h2 class="page-title" style="margin:0">Логистика сотрудников</h2>
+              <div class="help" style="margin-top:6px">Жильё, авиабилеты, ж/д, направления МО и обучение</div>
             </div>
-            <button class="btn" id="btnAddTravel">➕ Добавить расход</button>
+            <button class="btn" id="btnAddItem">➕ Добавить</button>
           </div>
 
-          <div class="travel-kpi">
-            <div class="travel-kpi-card" style="--card-accent:var(--gold-l)">
-              <div class="travel-kpi-label">Всего расходов</div>
-              <div class="travel-kpi-value" style="color:var(--gold)">${fmtMoney(stats.total)}</div>
-              <div class="travel-kpi-icon">💰</div>
+          <div class="tl-kpi">
+            <div class="tl-kpi-card" style="--acc:var(--gold)">
+              <div class="tl-kpi-label">Всего записей</div>
+              <div class="tl-kpi-value" style="color:var(--gold)">${items.length}</div>
+              <div class="tl-kpi-icon">📋</div>
             </div>
-            ${EXPENSE_TYPES.slice(0,4).map(t => {
-              const amt = stats.byType[t.key] || 0;
-              return `
-                <div class="travel-kpi-card" style="--card-accent:${t.color}">
-                  <div class="travel-kpi-label">${t.label}</div>
-                  <div class="travel-kpi-value" style="color:${t.color}">${fmtMoney(amt)}</div>
-                  <div class="travel-kpi-icon">${t.icon}</div>
-                </div>
-              `;
-            }).join('')}
-          </div>
-
-          <div class="travel-filters">
-            <div class="travel-filter">
-              <label>Год</label>
-              <div id="f_year_w" style="min-width:90px"></div>
+            <div class="tl-kpi-card" style="--acc:var(--blue)">
+              <div class="tl-kpi-label">Сумма расходов</div>
+              <div class="tl-kpi-value" style="color:var(--blue)">${AsgardUI.money(totalAmount)} ₽</div>
+              <div class="tl-kpi-icon">💰</div>
             </div>
-            <div class="travel-filter">
-              <label>Месяц</label>
-              <div id="f_month_w" style="min-width:90px"></div>
+            <div class="tl-kpi-card" style="--acc:var(--ok)">
+              <div class="tl-kpi-label">Отправлено рабочим</div>
+              <div class="tl-kpi-value" style="color:var(--ok)">${items.filter(i=>i.sent_to_employee).length}</div>
+              <div class="tl-kpi-icon">✅</div>
             </div>
-            <div class="travel-filter">
-              <label>Тип</label>
-              <div id="f_type_w" style="min-width:140px"></div>
-            </div>
-            <div class="travel-filter" style="flex:1; min-width:180px">
-              <label>Поиск</label>
-              <input id="f_search" placeholder="Проект, сотрудник, описание..."/>
+            <div class="tl-kpi-card" style="--acc:#f59e0b">
+              <div class="tl-kpi-label">Ожидают отправки</div>
+              <div class="tl-kpi-value" style="color:#f59e0b">${items.filter(i=>!i.sent_to_employee && i.status !== 'cancelled').length}</div>
+              <div class="tl-kpi-icon">⏳</div>
             </div>
           </div>
 
-          <div class="help" style="margin-bottom:12px; color:var(--muted)">Найдено: ${filtered.length} записей</div>
+          <div class="tl-tabs">
+            ${TAB_DEFS.map(tab => `
+              <button class="tl-tab ${activeTab===tab.id?'active':''}" data-tab="${tab.id}">
+                ${tab.label}
+                <span class="badge">${counts[tab.id]||0}</span>
+              </button>
+            `).join('')}
+          </div>
+
+          <input class="tl-search" id="tlSearch" placeholder="Поиск по сотруднику, проекту, описанию..." value="${esc(searchQ)}"/>
 
           ${filtered.length ? `
-            <table class="travel-table">
-              <thead>
-                <tr>
-                  <th>Тип</th>
-                  <th>Дата</th>
-                  <th>Сумма</th>
-                  <th>Проект / Сотрудник</th>
-                  <th>Описание</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                ${filtered.slice(0,50).map(item => {
-                  const t = getTypeInfo(item.expense_type);
-                  const work = worksMap.get(item.work_id);
-                  const emp = employeesMap.get(item.employee_id);
-                  
-                  return `
-                    <tr data-id="${item.id}">
-                      <td>
-                        <span class="travel-type" style="background:${t.color}22; color:${t.color}">
-                          ${t.icon} ${t.label}
-                        </span>
-                      </td>
-                      <td>${item.date ? formatDate(item.date) : '—'}</td>
-                      <td class="travel-amount">${fmtMoney(item.amount)}</td>
-                      <td>
-                        ${work ? `<a class="travel-link" href="#/pm-works?id=${work.id}">${esc(work.work_title || 'Проект #'+work.id)}</a>` : ''}
-                        ${emp ? `<div style="font-size:12px; color:var(--muted)">${esc(emp.fio || '')}</div>` : ''}
-                        ${!work && !emp ? '<span style="color:var(--muted)">—</span>' : ''}
-                      </td>
-                      <td style="max-width:200px">
-                        <div style="font-size:13px">${esc(item.description || '—')}</div>
-                        ${item.supplier ? `<div style="font-size:11px; color:var(--muted)">${esc(item.supplier)}</div>` : ''}
-                      </td>
-                      <td>
-                        <div class="travel-actions">
-                          <button class="travel-btn" data-edit="${item.id}">✎</button>
-                          <button class="travel-btn" data-del="${item.id}">🗑</button>
-                        </div>
-                      </td>
-                    </tr>
-                  `;
-                }).join('')}
-              </tbody>
-            </table>
-            ${filtered.length > 50 ? `<div class="help" style="text-align:center; margin-top:12px">Показано 50 из ${filtered.length}</div>` : ''}
+            <div class="tl-grid">
+              ${filtered.map(item => {
+                const emp  = empMap.get(item.employee_id);
+                const work = worksMap.get(item.work_id);
+                const stClass = item.status === 'sent' ? 'st-sent' : item.status === 'ready' ? 'st-ready' : 'st-pending';
+                const stLabel = item.status === 'sent' ? 'Отправлено' : item.status === 'ready' ? 'Готово' : 'Ожидает';
+                const fileUrl = item.download_url || null;
+
+                return `
+                  <div class="tl-card">
+                    <div>
+                      <div class="tl-card-type">${typeLabel(item.item_type)}</div>
+                      <div class="tl-card-title">${esc(item.title || '—')}</div>
+                      ${item.description ? `<div class="tl-card-sub">${esc(item.description)}</div>` : ''}
+                      <div class="tl-card-meta">
+                        ${emp ? `<span>👤 ${esc(emp.fio || '')}</span>` : ''}
+                        ${work ? `<span>📁 ${esc(work.work_title || '')}</span>` : ''}
+                        ${item.date_from ? `<span>📅 ${formatDate(item.date_from)}${item.date_to && item.date_to !== item.date_from ? ' — ' + formatDate(item.date_to) : ''}</span>` : ''}
+                        ${fileUrl ? `<a class="tl-file-link" href="${esc(fileUrl)}" target="_blank">📎 Файл</a>` : ''}
+                        <span class="tl-status-badge ${stClass}">${stLabel}</span>
+                      </div>
+                    </div>
+                    <div class="tl-card-actions">
+                      ${item.amount ? `<div class="tl-card-amount">${AsgardUI.money(item.amount)} ₽</div>` : ''}
+                      ${item.vat_included ? `<div class="tl-card-vat">С НДС</div>` : ''}
+                      <button class="tl-btn" data-upload="${item.id}">📎 Файл</button>
+                      ${!item.sent_to_employee ? `<button class="tl-btn tl-btn-send" data-send="${item.id}">📨 Отправить</button>` : ''}
+                      <button class="tl-btn" data-del="${item.id}">🗑</button>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
           ` : `
-            <div class="travel-empty">
-              <div class="travel-empty-icon">🗺️</div>
-              <div style="font-size:18px; font-weight:700; margin-bottom:8px">Нет расходов</div>
-              <div>Добавьте расходы на жильё или билеты</div>
+            <div class="tl-empty">
+              <div style="font-size:48px;margin-bottom:12px">📋</div>
+              <div style="font-weight:700;margin-bottom:6px">Нет записей</div>
+              <div style="font-size:12px">Добавьте билет, жильё или направление</div>
             </div>
           `}
         </div>
       `;
 
-      layout(body, { title: title || "Жильё и билеты" }).then(bindEvents);
+      layout(html, { title: title || 'Логистика сотрудников' }).then(bindEvents);
     }
 
-    function bindEvents(){
-      // Фильтры
-      // CRSelect init — filters
-      const _yrOpts = [{ value: '', label: 'Все' }, ...[currentYear, currentYear-1, currentYear-2].map(y => ({ value: String(y), label: String(y) }))];
-      const _moOpts = [{ value: '', label: 'Все' }, ...['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'].map((m,i) => ({ value: String(i), label: m }))];
-      const _tyOpts = [{ value: '', label: 'Все' }, ...EXPENSE_TYPES.map(t => ({ value: t.key, label: t.icon + ' ' + t.label }))];
-      $('#f_year_w')?.appendChild(CRSelect.create({ id: 'f_year', options: _yrOpts, value: filters.year ? String(filters.year) : '', onChange: v => { filters.year = v; renderPage(); } }));
-      $('#f_month_w')?.appendChild(CRSelect.create({ id: 'f_month', options: _moOpts, value: filters.month !== '' ? String(filters.month) : '', onChange: v => { filters.month = v; renderPage(); } }));
-      $('#f_type_w')?.appendChild(CRSelect.create({ id: 'f_type', options: _tyOpts, value: filters.type || '', onChange: v => { filters.type = v; renderPage(); } }));
-      $('#f_search')?.addEventListener('input', e => { filters.search = e.target.value; renderPage(); });
+    function bindEvents() {
+      // Вкладки
+      $$('.tl-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+          activeTab = btn.dataset.tab;
+          renderPage();
+        });
+      });
+
+      // Поиск
+      $('#tlSearch')?.addEventListener('input', e => {
+        searchQ = e.target.value;
+        renderPage();
+      });
 
       // Добавить
-      $('#btnAddTravel')?.addEventListener('click', () => openEditModal(null));
+      $('#btnAddItem')?.addEventListener('click', () => openAddModal());
 
-      // Редактировать
-      $$('[data-edit]').forEach(btn => {
+      // Загрузить файл
+      $$('[data-upload]').forEach(btn => {
+        btn.addEventListener('click', () => openUploadModal(Number(btn.dataset.upload)));
+      });
+
+      // Отправить уведомление
+      $$('[data-send]').forEach(btn => {
         btn.addEventListener('click', async () => {
-          const id = Number(btn.dataset.edit);
-          const item = items.find(x => x.id === id);
-          if(item) openEditModal(item);
+          const id = Number(btn.dataset.send);
+          btn.textContent = '⏳';
+          btn.disabled = true;
+          try {
+            const r = await apiPost('/' + id + '/send', {});
+            const parts = [];
+            if (r.sms_sent) parts.push('SMS');
+            if (r.push_sent) parts.push('Push');
+            toast('Отправлено', 'Уведомление: ' + (parts.join(' + ') || 'сохранено'));
+            // Refresh
+            const data = await apiGet('/');
+            items = Array.isArray(data.logistics) ? data.logistics : [];
+            renderPage();
+          } catch(e) {
+            toast('Ошибка', e.message, 'err');
+            btn.textContent = '📨 Отправить';
+            btn.disabled = false;
+          }
         });
       });
 
       // Удалить
       $$('[data-del]').forEach(btn => {
         btn.addEventListener('click', async () => {
-          const id = Number(btn.dataset.del);
-          if(!confirm('Удалить расход?')) return;
-          await AsgardDB.del('travel_expenses', id);
-          items = await AsgardDB.all('travel_expenses');
-          toast('Удалено', 'Расход удалён');
+          if (!confirm('Удалить запись?')) return;
+          // Используем generic data API для удаления
+          await AsgardDB.del('field_logistics', Number(btn.dataset.del));
+          toast('Удалено', 'Запись удалена');
+          const data = await apiGet('/');
+          items = Array.isArray(data.logistics) ? data.logistics : [];
           renderPage();
         });
       });
     }
 
-    function openEditModal(item){
-      const isNew = !item;
-      const modalTitle = isNew ? 'Новый расход' : 'Редактирование';
+    function openAddModal() {
+      const typeOptsHtml = TYPE_OPTS.map(t => `<option value="${t.key}">${t.label}</option>`).join('');
+      const empOptsHtml = [{ id:'', fio:'— Выберите сотрудника —' }, ...employees]
+        .map(e => `<option value="${e.id||''}">${esc(e.fio||'')}</option>`).join('');
+      const workOptsHtml = [{ id:'', work_title:'— Не привязано к проекту —' }, ...works.filter(w=>w.work_status!=='Работы сдали')]
+        .map(w => `<option value="${w.id||''}">${esc(w.work_title||'Проект #'+w.id)}</option>`).join('');
 
       const html = `
         <div class="formrow">
-          <div><label>Тип расхода</label>
-            <div id="te_type_w"></div>
+          <div><label>Тип *</label>
+            <select id="ti_type" class="field">${typeOptsHtml}</select>
           </div>
-          <div><label>Дата</label><input type="date" id="te_date" value="${(item?.date || today()).slice(0,10)}"/></div>
-          <div><label>Сумма, ₽</label><input type="number" id="te_amount" value="${item?.amount || ''}" placeholder="0"/></div>
-        </div>
-        <div class="formrow">
-          <div><label>Проект (работа)</label>
-            <div id="te_work_w"></div>
-          </div>
-          <div><label>Сотрудник</label>
-            <div id="te_emp_w"></div>
+          <div><label>Сотрудник *</label>
+            <select id="ti_emp" class="field">${empOptsHtml}</select>
           </div>
         </div>
         <div class="formrow">
-          <div style="grid-column:1/-1"><label>Описание</label>
-            <input id="te_desc" value="${esc(item?.description || '')}" placeholder="Авиабилет Москва-Сочи, проживание 5 ночей..."/>
+          <div style="grid-column:1/-1"><label>Название / Маршрут *</label>
+            <input id="ti_title" class="field" placeholder="Авиабилет Саратов-Москва / Гостиница Охотник / Направление на МО"/>
           </div>
         </div>
         <div class="formrow">
-          <div><label>Поставщик / Агент</label><input id="te_supplier" value="${esc(item?.supplier || '')}" placeholder="Booking, Aviasales..."/></div>
-          <div><label>№ документа</label><input id="te_doc" value="${esc(item?.doc_number || '')}" placeholder="Номер брони/билета"/></div>
+          <div style="grid-column:1/-1"><label>Описание (необязательно)</label>
+            <input id="ti_desc" class="field" placeholder="Рейс SU-1234, № брони, инструктаж..."/>
+          </div>
         </div>
         <div class="formrow">
-          <div><label>Период (с)</label><input type="date" id="te_from" value="${(item?.date_from || '').slice(0,10)}"/></div>
-          <div><label>Период (по)</label><input type="date" id="te_to" value="${(item?.date_to || '').slice(0,10)}"/></div>
+          <div><label>Дата (с)</label><input type="date" id="ti_from" class="field" value="${today()}"/></div>
+          <div><label>Дата (по)</label><input type="date" id="ti_to" class="field"/></div>
         </div>
-        <hr class="hr"/>
-        <div style="display:flex; gap:10px">
-      
-          <button class="btn" id="btnSaveTravel">${isNew ? 'Добавить' : 'Сохранить'}</button>
+        <div class="formrow">
+          <div><label>Сумма (₽)</label><input type="number" id="ti_amount" class="field" placeholder="0"/></div>
+          <div style="display:flex;align-items:center;gap:10px;padding-top:22px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px">
+              <input type="checkbox" id="ti_vat" style="width:16px;height:16px"/> С НДС
+            </label>
+          </div>
+        </div>
+        <div class="formrow">
+          <div style="grid-column:1/-1"><label>Проект (привязать расход)</label>
+            <select id="ti_work" class="field">${workOptsHtml}</select>
+          </div>
+        </div>
+        <div class="formrow">
+          <div style="grid-column:1/-1"><label>Файл (билет / ваучер / направление)</label>
+            <input type="file" id="ti_file" class="field" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"/>
+          </div>
+        </div>
+        <div class="help" style="margin-bottom:12px">
+          💡 Если указан проект и сумма — расход автоматически добавится к расходам проекта.
+        </div>
+        <div style="display:flex;gap:10px">
+          <button class="btn" id="btnSaveTi">Сохранить</button>
         </div>
       `;
 
-      showModal(modalTitle, html);
-      const _teTypeOpts = EXPENSE_TYPES.map(t => ({ value: t.key, label: t.icon + ' ' + t.label }));
-      const _teWorkOpts = [{ value: '', label: '— Не привязано —' }, ...works.filter(w => w.work_status !== 'Работы сдали').map(w => ({ value: String(w.id), label: w.work_title || 'Проект #' + w.id }))];
-      const _teEmpOpts = [{ value: '', label: '— Не выбран —' }, ...employees.map(e => ({ value: String(e.id), label: e.fio || 'Employee #' + e.id }))];
-      $('#te_type_w')?.appendChild(CRSelect.create({ id: 'te_type', options: _teTypeOpts, value: item?.expense_type || '', dropdownClass: 'z-modal' }));
-      $('#te_work_w')?.appendChild(CRSelect.create({ id: 'te_work', options: _teWorkOpts, value: item?.work_id ? String(item.work_id) : '', searchable: true, dropdownClass: 'z-modal' }));
-      $('#te_emp_w')?.appendChild(CRSelect.create({ id: 'te_emp', options: _teEmpOpts, value: item?.employee_id ? String(item.employee_id) : '', searchable: true, dropdownClass: 'z-modal' }));
+      showModal('Новая запись', html);
 
-      $('#btnSaveTravel')?.addEventListener('click', async () => {
-        const amount = Number($('#te_amount')?.value) || 0;
-        if(amount <= 0){ toast('Ошибка', 'Укажите сумму', 'err'); return; }
+      $('#btnSaveTi')?.addEventListener('click', async () => {
+        const type    = $('#ti_type')?.value;
+        const empId   = parseInt($('#ti_emp')?.value);
+        const title   = $('#ti_title')?.value?.trim();
+        const desc    = $('#ti_desc')?.value?.trim();
+        const from    = $('#ti_from')?.value;
+        const to      = $('#ti_to')?.value;
+        const amount  = parseFloat($('#ti_amount')?.value) || 0;
+        const vat     = $('#ti_vat')?.checked;
+        const workId  = parseInt($('#ti_work')?.value) || null;
+        const file    = $('#ti_file')?.files?.[0];
 
-        const data = {
-          expense_type: CRSelect.getValue('te_type') || 'housing',
-          date: $('#te_date')?.value || today(),
-          amount,
-          work_id: Number(CRSelect.getValue('te_work')) || null,
-          employee_id: Number(CRSelect.getValue('te_emp')) || null,
-          description: $('#te_desc')?.value?.trim() || '',
-          supplier: $('#te_supplier')?.value?.trim() || '',
-          doc_number: $('#te_doc')?.value?.trim() || '',
-          date_from: $('#te_from')?.value || null,
-          date_to: $('#te_to')?.value || null,
-          updated_at: isoNow()
-        };
-
-        if(isNew){
-          data.created_by = user.id;
-          data.created_at = isoNow();
-          await AsgardDB.add('travel_expenses', data);
-          toast('Добавлено', 'Расход сохранён');
-        } else {
-          Object.assign(item, data);
-          await AsgardDB.put('travel_expenses', item);
-          toast('Сохранено', 'Изменения сохранены');
+        if (!type || !empId || !title) {
+          toast('Ошибка', 'Заполните тип, сотрудника и название', 'err');
+          return;
         }
 
-        items = await AsgardDB.all('travel_expenses');
-        renderPage();
+        const btn = $('#btnSaveTi');
+        btn.textContent = 'Сохранение...';
+        btn.disabled = true;
+
+        try {
+          const result = await apiPost('/', {
+            item_type: type,
+            employee_id: empId,
+            title,
+            description: desc || null,
+            date_from: from || null,
+            date_to:   to   || null,
+            amount:    amount || null,
+            vat_included: vat,
+            work_id:   workId,
+          });
+
+          const logId = result.logistics_id;
+
+          if (file && logId) {
+            try {
+              await uploadFile(logId, file);
+              toast('Файл', 'Файл прикреплён');
+            } catch(e) {
+              toast('Файл', 'Запись создана, но файл не загружен: ' + e.message, 'warn');
+            }
+          }
+
+          toast('Добавлено', 'Запись сохранена');
+          const data = await apiGet('/');
+          items = Array.isArray(data.logistics) ? data.logistics : [];
+          // Определить вкладку для нового типа
+          const tabForType = TAB_DEFS.find(t => t.types.includes(type));
+          if (tabForType) activeTab = tabForType.id;
+          // Закрыть модалку
+          document.querySelector('.modal-backdrop')?.click();
+          renderPage();
+        } catch(e) {
+          toast('Ошибка', e.message, 'err');
+          btn.textContent = 'Сохранить';
+          btn.disabled = false;
+        }
+      });
+    }
+
+    function openUploadModal(logId) {
+      const html = `
+        <div class="formrow">
+          <div style="grid-column:1/-1"><label>Файл (билет, ваучер, направление)</label>
+            <input type="file" id="uf_file" class="field" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"/>
+          </div>
+        </div>
+        <button class="btn" id="btnUploadFile">Загрузить</button>
+      `;
+      showModal('Прикрепить файл', html);
+
+      $('#btnUploadFile')?.addEventListener('click', async () => {
+        const file = $('#uf_file')?.files?.[0];
+        if (!file) { toast('Ошибка', 'Выберите файл', 'err'); return; }
+        const btn = $('#btnUploadFile');
+        btn.textContent = 'Загрузка...';
+        btn.disabled = true;
+        try {
+          await uploadFile(logId, file);
+          toast('Готово', 'Файл прикреплён');
+          const data = await apiGet('/');
+          items = Array.isArray(data.logistics) ? data.logistics : [];
+          document.querySelector('.modal-backdrop')?.click();
+          renderPage();
+        } catch(e) {
+          toast('Ошибка', e.message, 'err');
+          btn.textContent = 'Загрузить';
+          btn.disabled = false;
+        }
       });
     }
 
     renderPage();
   }
 
-  return { render, EXPENSE_TYPES };
+  return { render };
 })();

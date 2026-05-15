@@ -178,7 +178,15 @@ async function routes(fastify) {
       [estimate.id, versionNo]
     );
 
-    return { calculation: result.rows[0] || null, version_no: versionNo };
+    const calc = result.rows[0] || null;
+
+    // Если есть ручные правки — Мимир должен видеть их
+    if (calc && calc.has_override && calc.calc_override_json) {
+      calc._active_data = calc.calc_override_json;
+      calc._has_manual_override = true;
+    }
+
+    return { calculation: calc, version_no: versionNo };
   });
 
   // ─── PUT CALCULATION (UPSERT) ───
@@ -752,6 +760,101 @@ async function routes(fastify) {
     );
 
     return { success: true, calculation: result.rows[0] };
+  });
+
+  // ─── POST /:id/calc-override — сохранить ручные правки отчёта ───
+  fastify.post('/:id/calc-override', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const role = request.user.role;
+    if (!CALC_ROLES.includes(role)) {
+      return reply.code(403).send({ error: 'Нет доступа' });
+    }
+
+    const estimate = await checkEstimateAccess(db, request.params.id, request.user, reply);
+    if (!estimate) return;
+
+    const body = request.body || {};
+    const versionNo = estimate.current_version_no || 1;
+
+    // calc_override_json — полная структура отредактированного расчёта
+    const overrideJson = body.calc_data;
+    if (!overrideJson) {
+      return reply.code(400).send({ error: 'Укажите calc_data' });
+    }
+
+    // Пересчитать итоги из override данных
+    const blocks = overrideJson.blocks || [];
+    const totalCost = blocks.reduce((s, b) => s + (parseFloat(b.subtotal) || 0), 0);
+    const marginPct = parseFloat(overrideJson.margin_pct) || parseFloat(estimate.margin) || 0;
+    const totalWithMargin = marginPct > 0 ? totalCost * (1 + marginPct / 100) : totalCost;
+
+    await db.query(
+      `UPDATE estimate_calculation_data
+       SET calc_override_json = $1, override_by = $2, override_at = NOW(), has_override = TRUE,
+           updated_at = NOW()
+       WHERE estimate_id = $3 AND version_no = $4`,
+      [JSON.stringify(overrideJson), request.user.id, estimate.id, versionNo]
+    );
+
+    // Обновить итоговые суммы в estimates
+    await db.query(
+      `UPDATE estimates SET price_tkp = $2, cost_plan = $3, updated_at = NOW() WHERE id = $1`,
+      [estimate.id, totalWithMargin.toFixed(2), totalCost.toFixed(2)]
+    );
+
+    return { success: true, total_cost: totalCost, total_with_margin: totalWithMargin };
+  });
+
+  // ─── POST /:id/approve-finalize — при согласовании записать в тендер + сохранить XLSX ───
+  fastify.post('/:id/approve-finalize', { preHandler: [fastify.requireRoles(['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])] }, async (request, reply) => {
+    const estimate = await checkEstimateAccess(db, request.params.id, request.user, reply);
+    if (!estimate) return;
+
+    const body = request.body || {};
+    const finalPrice = parseFloat(body.final_price) || parseFloat(estimate.price_tkp) || 0;
+    const finalCost  = parseFloat(body.final_cost)  || parseFloat(estimate.cost_plan) || 0;
+
+    // 1. Обновить суммы просчёта
+    await db.query(
+      `UPDATE estimates SET price_tkp = $2, cost_plan = $3, updated_at = NOW() WHERE id = $1`,
+      [estimate.id, finalPrice, finalCost]
+    );
+
+    // 2. Записать в тендер: estimate_value (сумма к клиенту)
+    if (estimate.tender_id) {
+      try {
+        await db.query(
+          `UPDATE tenders SET estimate_value = $2, updated_at = NOW() WHERE id = $1`,
+          [estimate.tender_id, finalPrice]
+        );
+      } catch (e) {
+        fastify.log.warn('[estimates] approve-finalize tender update:', e.message);
+      }
+    }
+
+    // 3. Если указан xlsx_base64 — сохранить как документ тендера
+    if (body.xlsx_base64 && estimate.tender_id) {
+      try {
+        const fs = require('fs').promises;
+        const path = require('path');
+        const uploadDir = path.join(process.env.UPLOAD_DIR || './uploads', 'estimates');
+        await fs.mkdir(uploadDir, { recursive: true });
+
+        const buf = Buffer.from(body.xlsx_base64, 'base64');
+        const fname = `Проcчёт_${estimate.id}_v${estimate.current_version_no || 1}.xlsx`;
+        const safeName = `estimate_${estimate.id}_${Date.now()}.xlsx`;
+        const filePath = path.join(uploadDir, safeName);
+        await fs.writeFile(filePath, buf);
+
+        await db.query(`
+          INSERT INTO documents (filename, original_name, mime_type, size, type, tender_id, uploaded_by, download_url, created_at)
+          VALUES ($1, $2, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', $3, 'estimate', $4, $5, $6, NOW())
+        `, [safeName, fname, buf.length, estimate.tender_id, request.user.id, `/uploads/estimates/${safeName}`]);
+      } catch (xlsxErr) {
+        fastify.log.warn('[estimates] xlsx save error:', xlsxErr.message);
+      }
+    }
+
+    return { success: true, final_price: finalPrice, final_cost: finalCost };
   });
 
   // ─── DELETE ───

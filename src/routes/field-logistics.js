@@ -41,20 +41,28 @@ async function routes(fastify, options) {
   fastify.post('/', crmAuth, async (req, reply) => {
     try {
       const userId = req.user.id;
-      const { work_id, employee_id, item_type, title, description, details, date_from, date_to } = req.body || {};
+      const {
+        work_id, employee_id, item_type, title, description, details,
+        date_from, date_to, amount, vat_included, item_subtype
+      } = req.body || {};
 
-      if (!work_id || !employee_id || !item_type || !title) {
-        return reply.code(400).send({ error: 'Укажите work_id, employee_id, item_type и title' });
+      if (!employee_id || !item_type || !title) {
+        return reply.code(400).send({ error: 'Укажите employee_id, item_type и title' });
       }
 
       const { rows: inserted } = await db.query(`
-        INSERT INTO field_logistics (work_id, employee_id, item_type, title, description,
-          details, date_from, date_to, status, created_by)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9)
+        INSERT INTO field_logistics (work_id, employee_id, item_type, item_subtype, title, description,
+          details, date_from, date_to, amount, vat_included, status, created_by)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending', $12)
         RETURNING id, created_at
-      `, [work_id, employee_id, item_type, title, description || null,
-          details ? JSON.stringify(details) : '{}',
-          date_from || null, date_to || null, userId]);
+      `, [
+        work_id || null, employee_id, item_type, item_subtype || null, title,
+        description || null, details ? JSON.stringify(details) : '{}',
+        date_from || null, date_to || null,
+        amount ? parseFloat(amount) : null,
+        vat_included === true || vat_included === 'true',
+        userId
+      ]);
 
       const logisticsId = inserted[0].id;
 
@@ -86,6 +94,34 @@ async function routes(fastify, options) {
               logisticsId, userId]);
         } catch (stErr) {
           fastify.log.warn('[field-logistics] auto-create travel stage:', stErr.message);
+        }
+      }
+
+      // Auto-create work_expenses record when work_id + amount specified
+      if (work_id && amount && parseFloat(amount) > 0) {
+        try {
+          const expAmount = parseFloat(amount);
+          const expAmountVat = vat_included ? expAmount : null;
+          const { rows: exp } = await db.query(`
+            INSERT INTO work_expenses
+              (work_id, amount, amount_vat, description, expense_type, date, created_by, requires_payment)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, false)
+            RETURNING id
+          `, [
+            work_id, expAmount, expAmountVat,
+            title + (description ? ': ' + description : ''),
+            ['ticket_to','ticket_back','flight','train','transfer'].includes(item_type) ? 'transport' : 'other',
+            date_from || new Date().toISOString().slice(0,10),
+            userId
+          ]);
+          if (exp[0]) {
+            await db.query(
+              `UPDATE field_logistics SET expense_linked = true, expense_id = $1 WHERE id = $2`,
+              [exp[0].id, logisticsId]
+            );
+          }
+        } catch (expErr) {
+          fastify.log.warn('[field-logistics] auto work_expenses:', expErr.message);
         }
       }
 
@@ -220,33 +256,44 @@ async function routes(fastify, options) {
   });
 
   // ─────────────────────────────────────────────────────────────────────
-  // GET / — logistics matrix (CRM view)
+  // GET / — logistics matrix by project (CRM view)
   // ─────────────────────────────────────────────────────────────────────
   fastify.get('/', crmAuth, async (req, reply) => {
     try {
-      const workId = parseInt(req.query.work_id);
-      if (!workId) return reply.code(400).send({ error: 'Укажите work_id' });
+      const workId = req.query.work_id ? parseInt(req.query.work_id) : null;
 
-      const { rows } = await db.query(`
+      let sql = `
         SELECT fl.*, e.fio, e.phone,
+               w.work_title, w.city,
                d.original_name as document_name, d.download_url
         FROM field_logistics fl
         JOIN employees e ON e.id = fl.employee_id
+        LEFT JOIN works w ON w.id = fl.work_id
         LEFT JOIN documents d ON d.id = fl.document_id
-        WHERE fl.work_id = $1
-        ORDER BY e.fio, fl.item_type, fl.created_at DESC
-      `, [workId]);
+      `;
+      const params = [];
 
-      // Group by employee
-      const matrix = {};
-      for (const row of rows) {
-        if (!matrix[row.employee_id]) {
-          matrix[row.employee_id] = { employee_id: row.employee_id, fio: row.fio, phone: row.phone, items: [] };
+      if (workId) {
+        sql += ` WHERE fl.work_id = $1`;
+        params.push(workId);
+      }
+      sql += ` ORDER BY fl.created_at DESC LIMIT 500`;
+
+      const { rows } = await db.query(sql, params);
+
+      if (workId) {
+        // Group by employee for project matrix view
+        const matrix = {};
+        for (const row of rows) {
+          if (!matrix[row.employee_id]) {
+            matrix[row.employee_id] = { employee_id: row.employee_id, fio: row.fio, phone: row.phone, items: [] };
+          }
+          matrix[row.employee_id].items.push(row);
         }
-        matrix[row.employee_id].items.push(row);
+        return { logistics: Object.values(matrix), total: rows.length };
       }
 
-      return { logistics: Object.values(matrix), total: rows.length };
+      return { logistics: rows, total: rows.length };
     } catch (err) {
       fastify.log.error('[field-logistics] GET / error:', err);
       return reply.code(500).send({ error: 'Ошибка сервера' });
@@ -326,12 +373,14 @@ async function routes(fastify, options) {
       const filename = req.params.filename.replace(/[^a-zA-Z0-9._-]/g, '');
       if (!filename) return reply.code(400).send({ error: 'Некорректный файл' });
 
-      // Verify this file belongs to the worker's logistics
+      // Verify this file belongs to the worker's logistics (via document_id or receipt_url)
       const { rows } = await db.query(
         `SELECT fl.id FROM field_logistics fl
-         WHERE fl.employee_id = $1 AND fl.details->>'receipt_url' LIKE $2
+         LEFT JOIN documents d ON d.id = fl.document_id
+         WHERE fl.employee_id = $1
+           AND (d.filename = $2 OR fl.details->>'receipt_url' LIKE $3)
          LIMIT 1`,
-        [empId, `%${filename}%`]
+        [empId, filename, `%${filename}%`]
       );
       if (!rows.length) return reply.code(403).send({ error: 'Нет доступа' });
 
