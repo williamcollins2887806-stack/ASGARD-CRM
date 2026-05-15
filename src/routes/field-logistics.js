@@ -17,7 +17,7 @@ const crypto = require('crypto');
 
 const MANGO_SMS_FROM = process.env.MANGO_SMS_EXTENSION || '101';
 const UPLOAD_BASE = process.env.UPLOAD_DIR || './uploads';
-const LOGISTICS_ROLES = ['PM', 'HEAD_PM', 'OFFICE_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+const LOGISTICS_ROLES = ['PM', 'HEAD_PM', 'TO', 'OFFICE_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 
 const FIELD_QUOTES_LOGISTICS = [
   'Put otkryt! Prover detali v LK',
@@ -203,7 +203,7 @@ async function routes(fastify, options) {
         SELECT fl.*, e.phone, e.fio, e.user_id, w.work_title
         FROM field_logistics fl
         JOIN employees e ON e.id = fl.employee_id
-        JOIN works w ON w.id = fl.work_id
+        LEFT JOIN works w ON w.id = fl.work_id
         WHERE fl.id = $1
       `, [logisticsId]);
 
@@ -215,7 +215,9 @@ async function routes(fastify, options) {
 
       // SMS
       if (rec.phone) {
-        const smsText = `ASGARD: ${rec.title}. Проект "${rec.work_title}". Подробности: asgard-crm.ru/field`;
+        const smsText = rec.work_title
+          ? `ASGARD: ${rec.title}. Проект "${rec.work_title}". Подробности: asgard-crm.ru/field`
+          : `ASGARD: ${rec.title}. Подробности в личном кабинете: asgard-crm.ru/field`;
         try {
           await mango.sendSms(MANGO_SMS_FROM, rec.phone, smsText);
           smsSent = true;
@@ -234,9 +236,11 @@ async function routes(fastify, options) {
           await createNotification(db, {
             user_id: rec.user_id,
             title: rec.title,
-            message: `Проект "${rec.work_title}": ${rec.description || rec.title}`,
+            message: rec.work_title
+              ? `Проект "${rec.work_title}": ${rec.description || rec.title}`
+              : (rec.description || rec.title),
             type: 'field_logistics',
-            link: '/field'
+            link: '/field/logistics'
           });
           pushSent = true;
         } catch (_) {}
@@ -312,7 +316,7 @@ async function routes(fastify, options) {
                d.original_name as document_name, d.download_url,
                COALESCE(d.download_url, fl.details->>'receipt_url') as file_url
         FROM field_logistics fl
-        JOIN works w ON w.id = fl.work_id
+        LEFT JOIN works w ON w.id = fl.work_id
         LEFT JOIN documents d ON d.id = fl.document_id
         WHERE fl.employee_id = $1
         ORDER BY fl.date_from DESC NULLS LAST, fl.created_at DESC
@@ -337,7 +341,7 @@ async function routes(fastify, options) {
                d.original_name as document_name, d.download_url,
                COALESCE(d.download_url, fl.details->>'receipt_url') as file_url
         FROM field_logistics fl
-        JOIN works w ON w.id = fl.work_id
+        LEFT JOIN works w ON w.id = fl.work_id
         LEFT JOIN documents d ON d.id = fl.document_id
         WHERE fl.employee_id = $1
         ORDER BY fl.created_at DESC

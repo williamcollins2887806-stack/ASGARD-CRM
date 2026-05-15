@@ -685,7 +685,7 @@ async function routes(fastify, options) {
       const { rows } = await db.query(`
         SELECT fl.*, w.work_title, w.city
         FROM field_logistics fl
-        JOIN works w ON w.id = fl.work_id
+        LEFT JOIN works w ON w.id = fl.work_id
         WHERE fl.employee_id = $1
           AND (fl.date_to IS NULL OR fl.date_to >= CURRENT_DATE - INTERVAL '7 days')
         ORDER BY fl.date_from ASC NULLS LAST
@@ -707,7 +707,7 @@ async function routes(fastify, options) {
       const { rows } = await db.query(`
         SELECT fl.*, w.work_title, w.city
         FROM field_logistics fl
-        JOIN works w ON w.id = fl.work_id
+        LEFT JOIN works w ON w.id = fl.work_id
         WHERE fl.employee_id = $1
         ORDER BY fl.created_at DESC
       `, [empId]);
