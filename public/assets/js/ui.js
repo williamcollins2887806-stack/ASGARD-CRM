@@ -809,26 +809,26 @@ window.AsgardUI = (function(){
           ).join('') + '</tr>');
         } else {
           const rowIdx = tableRows.length;
-          const bgColor = rowIdx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)';
+          const bgColor = rowIdx % 2 === 0 ? 'transparent' : 'var(--bg3)';
           tableRows.push('<tr style="background:' + bgColor + '">' + cells.map(c => {
             const val = c.trim();
             const isNum = /^[\d\s.,\u20BD%]+$/.test(val) || /^\d/.test(val);
             const align = isNum ? 'right' : 'left';
             const isBold = val.toLowerCase().includes('\u0438\u0442\u043e\u0433\u043e') || val.toLowerCase().includes('\u0432\u0441\u0435\u0433\u043e') || val.toLowerCase().includes('total');
             const fw = isBold ? 'font-weight:700;color:var(--gold)' : '';
-            return '<td style="padding:8px 12px;font-size:13px;border-bottom:1px solid rgba(255,255,255,0.06);text-align:' + align + ';' + fw + '">' + val + '</td>';
+            return '<td style="padding:8px 12px;font-size:13px;border-bottom:1px solid var(--brd-m);text-align:' + align + ';' + fw + '">' + val + '</td>';
           }).join('') + '</tr>');
         }
       } else {
         if (inTable && tableRows.length > 0) {
-          processed.push('<div style="overflow-x:auto;margin:12px 0;border-radius:8px;border:1px solid rgba(255,255,255,0.08)"><table style="width:100%;border-collapse:collapse;min-width:400px">' + tableRows.join('') + '</table></div>');
+          processed.push('<div style="overflow-x:auto;margin:12px 0;border-radius:8px;border:1px solid var(--brd-m)"><table style="width:100%;border-collapse:collapse;min-width:400px">' + tableRows.join('') + '</table></div>');
           tableRows = []; inTable = false; headerDone = false;
         }
         processed.push(line);
       }
     }
     if (tableRows.length > 0) {
-      processed.push('<div style="overflow-x:auto;margin:12px 0;border-radius:8px;border:1px solid rgba(255,255,255,0.08)"><table style="width:100%;border-collapse:collapse;min-width:400px">' + tableRows.join('') + '</table></div>');
+      processed.push('<div style="overflow-x:auto;margin:12px 0;border-radius:8px;border:1px solid var(--brd-m)"><table style="width:100%;border-collapse:collapse;min-width:400px">' + tableRows.join('') + '</table></div>');
     }
     html = processed.join('\n');
     html = html.replace(/\n/g, '<br>');

@@ -177,7 +177,7 @@ window.AsgardCorrespondencePage = (function(){
           .corr-kpi { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:14px; margin-bottom:24px; }
           .corr-kpi-card { 
             position:relative;
-            background: linear-gradient(135deg, rgba(13,20,40,.6) 0%, rgba(13,20,40,.4) 100%);
+            background: linear-gradient(135deg, var(--bg3) 0%, var(--bg2) 100%);
             border: 1px solid rgba(242,208,138,.15);
             border-radius:6px; 
             padding:18px;
@@ -205,7 +205,7 @@ window.AsgardCorrespondencePage = (function(){
           .corr-filters { 
             display:flex; flex-wrap:wrap; gap:12px; 
             margin-bottom:20px; padding:16px; 
-            background: linear-gradient(135deg, rgba(13,20,40,.5), rgba(13,20,40,.3));
+            background: linear-gradient(135deg, var(--bg3), var(--bg3));
             border: 1px solid rgba(148,163,184,.12);
             border-radius:6px;
             align-items:flex-end;
@@ -215,7 +215,7 @@ window.AsgardCorrespondencePage = (function(){
           .corr-filter select, .corr-filter input { 
             padding:10px 14px; border-radius:6px; 
             border:1px solid rgba(148,163,184,.18); 
-            background: rgba(13,20,40,.6); 
+            background: var(--bg3);
             color:var(--text); font-size:13px;
             transition: all .2s ease;
           }
@@ -235,7 +235,7 @@ window.AsgardCorrespondencePage = (function(){
           }
           .corr-table td { 
             padding:14px; 
-            background: linear-gradient(135deg, rgba(13,20,40,.5), rgba(13,20,40,.35));
+            background: linear-gradient(135deg, var(--bg3), var(--bg2));
             border:1px solid rgba(148,163,184,.1);
             transition: all .2s ease;
           }
@@ -279,7 +279,7 @@ window.AsgardCorrespondencePage = (function(){
           .corr-btn { 
             padding:6px 10px; border-radius:6px; 
             border:1px solid rgba(148,163,184,.18); 
-            background: rgba(13,20,40,.5); 
+            background: var(--bg3);
             color:var(--text); font-size:12px; cursor:pointer;
             transition: all .2s ease;
           }
@@ -292,7 +292,7 @@ window.AsgardCorrespondencePage = (function(){
           .corr-empty { 
             text-align:center; padding:60px 20px; 
             color:var(--muted);
-            background: linear-gradient(135deg, rgba(13,20,40,.4), rgba(13,20,40,.2));
+            background: linear-gradient(135deg, var(--bg2), var(--bg3));
             border-radius:6px;
             border: 1px dashed rgba(148,163,184,.2);
           }
@@ -594,7 +594,7 @@ window.AsgardCorrespondencePage = (function(){
             }
             finally {
               btn.disabled = false;
-              btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="rgba(255,255,255,.2)"/></svg> Мимир';
+              btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="var(--brd)"/></svg> Мимир';
               btn.classList.add('pulsing');
             }
           });

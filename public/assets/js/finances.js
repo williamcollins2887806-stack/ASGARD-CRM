@@ -202,7 +202,7 @@ window.AsgardFinancesPage = (function(){
           .fin-pie-label { font-size:11px; color:var(--muted); }
           
           .fin-legend { flex:1; min-width:280px; }
-          .fin-legend-item { display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid rgba(255,255,255,.05); }
+          .fin-legend-item { display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid var(--brd-m); }
           .fin-legend-item:last-child { border-bottom:none; }
           .fin-legend-color { width:12px; height:12px; border-radius:4px; flex-shrink:0; }
           .fin-legend-icon { font-size:18px; }

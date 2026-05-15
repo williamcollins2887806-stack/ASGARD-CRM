@@ -146,7 +146,7 @@ window.AsgardMimir = (function(){
       /* Экран */
       .mimir-iphone-screen {
         flex:1; display:flex; flex-direction:column;
-        background:linear-gradient(180deg, #0d1428 0%, #0a0e1a 100%);
+        background:linear-gradient(180deg, var(--bg2) 0%, var(--bg1) 100%);
         border-radius:40px; overflow:hidden; min-height:0;
       }
 
@@ -195,7 +195,7 @@ window.AsgardMimir = (function(){
       /* Sidebar */
       .mimir-sidebar {
         position:absolute; top:0; left:0; bottom:0;
-        width:220px; background:rgba(10,14,26,0.97);
+        width:220px; background:var(--bg3);
         border-right:1px solid rgba(245,215,142,0.1);
         transform:translateX(-100%); transition:transform 0.3s ease;
         z-index:10; display:flex; flex-direction:column;
@@ -217,7 +217,7 @@ window.AsgardMimir = (function(){
         transition:all 0.2s; font-size:13px; color:var(--t2);
         white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
       }
-      .mimir-sidebar-item:hover { background:rgba(255,255,255,0.06); }
+      .mimir-sidebar-item:hover { background:var(--brd-m); }
       .mimir-sidebar-item.active { background:rgba(245,215,142,0.12); color:#f5d78e; }
       .mimir-sidebar-item.pinned::before { content:'\\1F4CC '; }
 
@@ -366,7 +366,7 @@ window.AsgardMimir = (function(){
         display:flex; align-items:center; justify-content:center;
         transition:all 0.2s; flex-shrink:0;
       }
-      .mimir-plus-btn:hover { background:rgba(255,255,255,0.12); }
+      .mimir-plus-btn:hover { background:var(--brd); }
 
       .mimir-input {
         flex:1; padding:8px 14px;
@@ -411,7 +411,7 @@ window.AsgardMimir = (function(){
       /* Drag & drop */
       .mimir-iphone-screen.drag-over { border:2px dashed #f5d78e; }
       .mimir-drop-overlay {
-        position:absolute; inset:0; background:rgba(10,14,26,0.93);
+        position:absolute; inset:0; background:var(--bg3);
         display:none; align-items:center; justify-content:center;
         flex-direction:column; gap:14px; z-index:20;
         border-radius:40px; backdrop-filter:blur(8px);

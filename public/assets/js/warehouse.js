@@ -136,7 +136,7 @@ window.AsgardWarehouse = (function(){
           ${isDirector ? `
             <div style="background:linear-gradient(135deg,#1e3a5f,#2a3b66);padding:16px;border-radius:6px;text-align:center;border:1px solid var(--accent)">
               <div style="font-size:22px;font-weight:700;color:var(--gold-l)">${formatMoney(stats.total_book_value)}</div>
-              <div style="font-size:11px;color:rgba(255,255,255,0.7)">Балансовая стоимость</div>
+              <div style="font-size:11px;color:var(--t2)">Балансовая стоимость</div>
               <div style="font-size:10px;color:var(--text-muted);margin-top:4px">
                 Закупка: ${formatMoney(stats.total_purchase_value)}
               </div>

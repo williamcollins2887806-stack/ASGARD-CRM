@@ -965,7 +965,7 @@ window.AsgardPreTendersPage = (function(){
         ${it.ai_cost_report ? `
         <details style="margin-top:12px">
           <summary style="cursor:pointer;font-weight:800;font-size:14px;padding:10px 0;color:var(--gold-l);letter-spacing:0.02em">💰 Расчёт себестоимости ${it.ai_cost_estimate ? '(' + money(it.ai_cost_estimate) + ')' : ''}</summary>
-          <div id="ptCostReport" class="pt-full-report" style="font-size:14px;line-height:1.8;max-height:600px;overflow-y:auto;padding:20px 24px;background:linear-gradient(135deg,rgba(13,20,40,0.6),rgba(30,61,114,0.15));border-radius:10px;margin-top:10px;border:1px solid rgba(212,168,67,0.12);box-shadow:inset 0 1px 0 var(--brd)"></div>
+          <div id="ptCostReport" class="pt-full-report" style="font-size:14px;line-height:1.8;max-height:600px;overflow-y:auto;padding:20px 24px;background:linear-gradient(135deg,var(--bg3),rgba(30,61,114,0.15));border-radius:10px;margin-top:10px;border:1px solid rgba(212,168,67,0.12);box-shadow:inset 0 1px 0 var(--brd)"></div>
         </details>` : ''}
 
         <button class="btn ghost mini" id="btnReanalyze" style="margin-top:8px">🔄 Перезапросить анализ</button>

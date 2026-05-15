@@ -469,7 +469,7 @@
     const root = el('div', {
       style: {
         marginTop: '8px', borderRadius: '14px', overflow: 'hidden',
-        background: 'linear-gradient(180deg, rgba(212,168,67,0.10), rgba(255,255,255,0.02))',
+        background: 'linear-gradient(180deg, rgba(212,168,67,0.10), var(--bg3))',
         border: '0.5px solid rgba(212,168,67,0.4)',
         boxShadow: '0 6px 28px rgba(212,168,67,0.15)',
         animation: 'mimirAeStepIn 0.5s cubic-bezier(0.34,1.56,0.64,1) both',

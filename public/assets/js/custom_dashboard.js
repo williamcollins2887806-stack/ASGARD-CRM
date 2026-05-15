@@ -1175,7 +1175,7 @@ window.AsgardCustomDashboard = (function(){
           var ago = date ? _mailAgo(new Date(date)) : '';
           var readStyle = isRead ? 'opacity:0.7' : 'font-weight:700';
           var dot = !isRead ? '<span style="width:8px;height:8px;border-radius:50%;background:var(--blue,#3498db);flex-shrink:0;display:inline-block"></span>' : '';
-          return '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line,rgba(255,255,255,0.06));cursor:pointer;' + readStyle + '" onclick="location.hash=\'' + pageUrl + '\'">'+
+          return '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--brd-m);cursor:pointer;' + readStyle + '" onclick="location.hash=\'' + pageUrl + '\'">'+
             dot +
             '<div style="flex:1;min-width:0">'+
               '<div style="display:flex;justify-content:space-between;align-items:center">'+

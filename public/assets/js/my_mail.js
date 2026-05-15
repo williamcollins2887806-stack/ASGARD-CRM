@@ -1581,12 +1581,12 @@ window.AsgardMyMailPage = (function(){
         const fontSize = fontSizes[zoomClass] || '14px';
         doc.open();
         doc.write(`<!DOCTYPE html><html><head><style>
-          body{margin:0;padding:0;font-family:Inter,-apple-system,sans-serif;font-size:${fontSize};line-height:1.7;color:rgba(255,255,255,0.95);background:transparent;overflow-wrap:break-word;word-break:break-word}
+          body{margin:0;padding:0;font-family:Inter,-apple-system,sans-serif;font-size:${fontSize};line-height:1.7;color:var(--t1);background:transparent;overflow-wrap:break-word;word-break:break-word}
           a{color:#4A90D9}
           img{max-width:100%;height:auto;border-radius:8px}
-          blockquote{border-left:3px solid rgba(255,255,255,0.1);padding-left:16px;margin-left:0;color:rgba(255,255,255,0.65)}
-          pre,code{font-family:'JetBrains Mono',monospace;font-size:0.9em;background:rgba(255,255,255,0.05);padding:2px 6px;border-radius:4px}
-          table{border-collapse:collapse;max-width:100%}td,th{padding:4px 8px;border:1px solid rgba(255,255,255,0.1)}
+          blockquote{border-left:3px solid var(--brd);padding-left:16px;margin-left:0;color:var(--t2)}
+          pre,code{font-family:'JetBrains Mono',monospace;font-size:0.9em;background:var(--bg3);padding:2px 6px;border-radius:4px}
+          table{border-collapse:collapse;max-width:100%}td,th{padding:4px 8px;border:1px solid var(--brd)}
         </style></head><body>${html}</body></html>`);
         doc.close();
 

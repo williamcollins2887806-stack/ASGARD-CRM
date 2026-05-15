@@ -341,7 +341,7 @@ window.AsgardContractsPage = (function(){
 
       /* Спиннер для кнопки */
       @keyframes ncmSpin { to { transform:rotate(360deg) } }
-      .ncm-spinner { display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:ncmSpin .6s linear infinite;vertical-align:middle;margin-right:6px }
+      .ncm-spinner { display:inline-block;width:14px;height:14px;border:2px solid var(--brd);border-top-color: var(--gold);border-radius:50%;animation:ncmSpin .6s linear infinite;vertical-align:middle;margin-right:6px }
 
       /* ═══ WOW: DaData Suggest Dropdown ═══ */
       .ncm-suggest-dropdown { position:absolute;z-index:1250;background:var(--bg2);border:1px solid rgba(212,168,67,.3);border-radius:10px;max-height:240px;overflow-y:auto;display:none;width:100%;box-shadow:var(--shadow-lg);backdrop-filter:blur(8px) }
@@ -395,7 +395,7 @@ window.AsgardContractsPage = (function(){
         <div class="cm-overlay">
           <div class="cm-card" style="max-width:660px">
 
-            <div style="padding:22px 24px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.05)">
+            <div style="padding:22px 24px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--brd-m)">
               <div style="display:flex;align-items:center;gap:14px">
                 <div style="width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,#3b82f6,#6366f1);display:flex;align-items:center;justify-content:center;flex-shrink:0">
                   <svg width="20" height="20" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V4a2 2 0 00-2-2z"/><path d="M8 6h4M8 10h4M8 14h2"/></svg>
@@ -655,14 +655,14 @@ window.AsgardContractsPage = (function(){
       <div id="contractSelectorModal">
         <div class="cm-overlay">
           <div class="cm-card" style="max-width:500px">
-            <div style="padding:22px 24px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.05)">
+            <div style="padding:22px 24px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--brd-m)">
               <div style="display:flex;align-items:center;gap:14px">
                 <div style="width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,#3b82f6,#6366f1);display:flex;align-items:center;justify-content:center;flex-shrink:0">
                   <svg width="18" height="18" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V4a2 2 0 00-2-2z"/><path d="M8 6h4M8 10h4M8 14h2"/></svg>
                 </div>
                 <div style="font-size:16px;font-weight:700;color:#f9fafb">Выберите договор</div>
               </div>
-              <button class="btnClose" style="width:34px;height:34px;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:transparent;color:#6b7280;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px">&#10005;</button>
+              <button class="btnClose" style="width:34px;height:34px;border:1px solid var(--brd);border-radius:8px;background:transparent;color:#6b7280;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px">&#10005;</button>
             </div>
             <div style="padding:20px 24px;max-height:60vh;overflow-y:auto">
               ${contracts.length > 0 ? `
@@ -670,8 +670,8 @@ window.AsgardContractsPage = (function(){
                   ${contracts.map((c, i) => {
                     const st = CONTRACT_STATUSES.find(s => s.id === computeStatus(c)) || CONTRACT_STATUSES[1];
                     return `
-                    <div data-cid="${c.id}" class="csel-item" style="display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:10px;border:2px solid ${i === 0 ? '#3b82f6' : 'rgba(255,255,255,.06)'};cursor:pointer;transition:all .15s;background:${i === 0 ? 'rgba(59,130,246,.05)' : 'transparent'}">
-                      <span class="csel-radio" style="width:20px;height:20px;border-radius:50%;border:2px solid ${i === 0 ? '#3b82f6' : 'rgba(255,255,255,.15)'};display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;background:${i === 0 ? '#3b82f6' : 'transparent'}"><span style="width:8px;height:8px;border-radius:50%;background:#fff;display:${i === 0 ? 'block' : 'none'}"></span></span>
+                    <div data-cid="${c.id}" class="csel-item" style="display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:10px;border:2px solid ${i === 0 ? '#3b82f6' : 'var(--brd-m)'};cursor:pointer;transition:all .15s;background:${i === 0 ? 'rgba(59,130,246,.05)' : 'transparent'}">
+                      <span class="csel-radio" style="width:20px;height:20px;border-radius:50%;border:2px solid ${i === 0 ? '#3b82f6' : 'var(--brd)'};display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s;background:${i === 0 ? '#3b82f6' : 'transparent'}"><span style="width:8px;height:8px;border-radius:50%;background:#fff;display:${i === 0 ? 'block' : 'none'}"></span></span>
                       <div style="flex:1;min-width:0">
                         <div style="font-weight:600;font-size:14px;color:#f3f4f6">${esc(c.number)}</div>
                         <div style="font-size:12px;color:#6b7280;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(c.subject || 'Без предмета')}${c.amount ? ' &middot; ' + formatMoney(c.amount) : ''}</div>
@@ -680,7 +680,7 @@ window.AsgardContractsPage = (function(){
                     </div>`;
                   }).join('')}
                 </div>
-                <div style="text-align:center;margin:12px 0;font-size:12px;color:#4b5563;display:flex;align-items:center;gap:12px"><span style="flex:1;height:1px;background:rgba(255,255,255,.06)"></span>или<span style="flex:1;height:1px;background:rgba(255,255,255,.06)"></span></div>
+                <div style="text-align:center;margin:12px 0;font-size:12px;color:#4b5563;display:flex;align-items:center;gap:12px"><span style="flex:1;height:1px;background:var(--brd-m)"></span>или<span style="flex:1;height:1px;background:var(--brd-m)"></span></div>
               ` : '<div style="text-align:center;padding:24px;color:#6b7280;font-size:14px">Договоров с этим контрагентом не найдено</div>'}
               <button id="btnCreateNewContract" style="width:100%;padding:12px;border-radius:10px;border:1px dashed var(--brd);background:transparent;color:var(--t2);font-size:14px;cursor:pointer;font-family:inherit;transition:all .15s" onmouseover="this.style.borderColor='#3b82f6';this.style.color='#3b82f6'" onmouseout="this.style.borderColor='var(--brd)';this.style.color='var(--t2)'">+ Создать новый договор</button>
             </div>
@@ -771,7 +771,7 @@ window.AsgardContractsPage = (function(){
         <div class="cm-overlay">
           <div class="cm-card" style="max-width:580px">
 
-            <div style="padding:22px 24px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,.05)">
+            <div style="padding:22px 24px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--brd-m)">
               <div style="display:flex;align-items:center;gap:14px">
                 <div style="width:46px;height:46px;border-radius:13px;background:linear-gradient(135deg,#10b981,#059669);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 4px 16px rgba(16,185,129,.3)">
                   <svg width="22" height="22" fill="none" stroke="#fff" stroke-width="1.8"><path d="M16 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="10" cy="7" r="4"/><line x1="18" y1="8" x2="18" y2="14"/><line x1="15" y1="11" x2="21" y2="11"/></svg>
@@ -864,7 +864,7 @@ window.AsgardContractsPage = (function(){
 
             <div class="cm-footer" style="justify-content:space-between">
               <button type="button" class="ncm-mimir-btn pulsing" id="ncmMimirBtn" title="Мимир заполнит форму по контексту">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="rgba(255,255,255,.2)"/></svg>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="var(--brd)"/></svg>
                 Мимир заполнит
               </button>
               <div style="display:flex;gap:10px">
@@ -1188,7 +1188,7 @@ window.AsgardContractsPage = (function(){
         MimirForms.showBubble(mimirBtn, (err.message || 'Ошибка') + ' Попробуй ввести ИНН или название и нажми снова.', true);
       } finally {
         mimirBtn.disabled = false;
-        mimirBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="rgba(255,255,255,.2)"/></svg> Мимир заполнит';
+        mimirBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="var(--brd)"/></svg> Мимир заполнит';
         mimirBtn.classList.add('pulsing');
       }
     });

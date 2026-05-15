@@ -185,7 +185,7 @@ console.log('[ASGARD] Global period functions loaded');
   .barrow{display:grid; grid-template-columns: minmax(100px,200px) 1fr minmax(80px,auto); gap:12px; align-items:center; margin:6px 0; font-size:13px}
   .barrow > div:first-child{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-secondary)}
   .barrow > div:last-child{text-align:right; white-space:nowrap; color:var(--text-primary)}
-  .bar{height:14px; border-radius:999px; background:rgba(255,255,255,.06); overflow:hidden}
+  .bar{height:14px; border-radius:999px; background:var(--bg3); overflow:hidden}
   .bar > div{height:100%}
 </style>
 `;
@@ -1485,11 +1485,11 @@ var _setupPinKeypad = null;
     overlay.innerHTML = '<div style="text-align:center;padding:20px;">'
       + '<img src="' + ASSETS_BASE + 'img/logo.png" style="width:80px;height:80px;border-radius:20px;margin-bottom:24px;animation:pulse 2s ease-in-out infinite;" onerror="this.style.display=\'none\'">'
       + '<div style="position:relative;width:60px;height:60px;margin:0 auto 24px;">'
-      + '<div style="position:absolute;inset:0;border:3px solid rgba(255,255,255,0.1);border-top-color:#e2b340;border-radius:50%;animation:spin 1s linear infinite;"></div>'
-      + '<div style="position:absolute;inset:6px;border:3px solid rgba(255,255,255,0.1);border-bottom-color:#4fc3f7;border-radius:50%;animation:spin 1.5s linear infinite reverse;"></div>'
+      + '<div style="position:absolute;inset:0;border:3px solid var(--brd);border-top-color:#e2b340;border-radius:50%;animation:spin 1s linear infinite;"></div>'
+      + '<div style="position:absolute;inset:6px;border:3px solid var(--brd);border-bottom-color:#4fc3f7;border-radius:50%;animation:spin 1.5s linear infinite reverse;"></div>'
       + '</div>'
-      + '<div style="color:rgba(255,255,255,0.7);font-size:13px;max-width:260px;line-height:1.5;font-style:italic;">' + esc(q) + '</div>'
-      + '<div style="margin-top:16px;color:rgba(255,255,255,0.3);font-size:11px;letter-spacing:3px;">ASGARD</div>'
+      + '<div style="color:var(--t2);font-size:13px;max-width:260px;line-height:1.5;font-style:italic;">' + esc(q) + '</div>'
+      + '<div style="margin-top:16px;color:var(--t3);font-size:11px;letter-spacing:3px;">ASGARD</div>'
       + '</div>';
     document.body.appendChild(overlay);
     if (!document.getElementById('asgard-loading-keyframes')) {
@@ -2215,7 +2215,7 @@ AsgardRouter.add("/assembly", ()=>AsgardAssemblyPage.render({layout, title:"Сб
             background:linear-gradient(135deg, rgba(30,40,70,.95), rgba(20,30,55,.95));
             border-radius:20px; padding:24px 20px; margin-bottom:20px;
             border:1px solid rgba(212,168,67,.15);
-            box-shadow:0 8px 32px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.05);
+            box-shadow:0 8px 32px rgba(0,0,0,.3), inset 0 1px 0 var(--brd-m);
             position:relative; overflow:hidden;
           }
           .m-premium-card::before {
@@ -2252,8 +2252,8 @@ AsgardRouter.add("/assembly", ()=>AsgardAssemblyPage.render({layout, title:"Сб
           .m-p-actions { display:flex; gap:8px; margin-top:16px; }
           .m-p-action {
             flex:1; display:flex; flex-direction:column; align-items:center; gap:4px;
-            padding:10px 8px; background:rgba(255,255,255,.04);
-            border-radius:12px; border:1px solid rgba(255,255,255,.06);
+            padding:10px 8px; background:var(--bg3);
+            border-radius:12px; border:1px solid var(--brd-m);
             text-decoration:none; color:var(--t2); font-size:11px; font-weight:600;
             transition:all .2s ease;
           }
@@ -2272,14 +2272,14 @@ AsgardRouter.add("/assembly", ()=>AsgardAssemblyPage.render({layout, title:"Сб
           .m-sec-item {
             display:flex; align-items:center; gap:14px;
             padding:15px 16px; color:var(--t1); text-decoration:none;
-            border-bottom:1px solid rgba(255,255,255,.04);
+            border-bottom:1px solid var(--brd-m);
             transition:all .15s ease; -webkit-tap-highlight-color:transparent;
           }
           .m-sec-item:last-child { border-bottom:none; }
           .m-sec-item:active { background:rgba(212,168,67,.06); }
           .m-sec-icon {
             width:38px; height:38px; border-radius:11px;
-            background:rgba(255,255,255,.04); display:flex;
+            background:var(--bg3); display:flex;
             align-items:center; justify-content:center; font-size:18px;
             flex-shrink:0; transition:all .2s ease;
           }
@@ -2525,7 +2525,7 @@ _sseSource.addEventListener("call:missed", (e) => {        try {          if (wi
   boot({startRouter:true}).catch(e=>{
     console.error(e);
     toast("Ошибка запуска", e.message||String(e), "err", 7000);
-    $("#app").innerHTML = `<div style="padding:18px;color:#fff">Ошибка запуска: ${esc(e.message||e)}</div>`;
+    $("#app").innerHTML = `<div style="padding:18px;color:var(--t1)">Ошибка запуска: ${esc(e.message||e)}</div>`;
   });
 
   // v8.4.0 — Yandex-style offline/online indicator

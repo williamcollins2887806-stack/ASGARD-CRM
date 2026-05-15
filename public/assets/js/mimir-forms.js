@@ -37,7 +37,7 @@ window.MimirForms = (function() {
       /* Shimmer effect on button */
       .mimir-form-btn::after {
         content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;
-        background:linear-gradient(90deg,transparent,rgba(255,255,255,.15),transparent);
+        background:linear-gradient(90deg,transparent,var(--brd),transparent);
         transition:none;
       }
       .mimir-form-btn.pulsing::after {
@@ -58,7 +58,7 @@ window.MimirForms = (function() {
       @keyframes mimirFormSpin { to{transform:rotate(360deg)} }
       .mimir-form-spinner {
         display:inline-block;width:14px;height:14px;
-        border:2px solid rgba(255,255,255,.25);border-top-color:#fff;
+        border:2px solid var(--t3);border-top-color:#fff;
         border-radius:50%;animation:mimirFormSpin .6s linear infinite;
       }
 
@@ -255,7 +255,7 @@ window.MimirForms = (function() {
     btn.className = 'mimir-form-btn pulsing';
     btn.innerHTML = `
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="rgba(255,255,255,.2)"/>
+        <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="var(--brd)"/>
       </svg>
       ${text || 'Мимир заполнит'}
     `;
@@ -344,7 +344,7 @@ window.MimirForms = (function() {
         btn.disabled = false;
         btn.innerHTML = `
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="rgba(255,255,255,.2)"/>
+            <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="var(--brd)"/>
           </svg>
           ${opts.buttonText || 'Мимир заполнит'}
         `;

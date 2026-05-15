@@ -31,7 +31,7 @@ window.AsgardEngineerDashboard = (function(){
     const body = `
       ${window.__ASG_SHARED_TABLE_CSS__||""}
       <style>
-        .pm-card { background:rgba(13,20,40,.40); border:none; border-radius:6px; padding:16px; margin-bottom:14px; }
+        .pm-card { background:var(--bg2); border:none; border-radius:6px; padding:16px; margin-bottom:14px; }
         .pm-header { display:flex; justify-content:space-between; align-items:center; cursor:pointer; }
         .pm-header:hover { background:rgba(42,59,102,.25); margin:-16px; padding:16px; border-radius:6px; }
         .pm-name { font-weight:700; font-size:16px; }

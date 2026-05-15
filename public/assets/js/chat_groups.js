@@ -903,7 +903,7 @@ window.AsgardChatGroups = (function(){
         const marginColor = meta.margin_pct >= 25 ? '#10b981' : meta.margin_pct >= 15 ? '#d4a843' : '#ef4444';
         const marginGauge = meta.margin_pct != null ? `<div style="position:relative;width:48px;height:48px;margin:0 auto 4px">
           <svg viewBox="0 0 48 48" style="transform:rotate(-90deg)">
-            <circle cx="24" cy="24" r="20" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="4"/>
+            <circle cx="24" cy="24" r="20" fill="none" stroke="var(--brd)" stroke-width="4"/>
             <circle cx="24" cy="24" r="20" fill="none" stroke="${marginColor}" stroke-width="4" stroke-linecap="round"
               stroke-dasharray="${Math.min(meta.margin_pct, 50) / 50 * 125.6} 125.6"/>
           </svg>
@@ -935,7 +935,7 @@ window.AsgardChatGroups = (function(){
               </div>
             </div>
             <div class="ec-pinned-card__links" style="display:flex;gap:12px">
-              <a class="ec-pinned-card__link" href="#/estimate-report?id=${meta.estimate_id || ''}" style="flex:1;text-align:center;padding:8px;border-radius:6px;background:rgba(255,255,255,0.04)">Просчёт \u2192</a>
+              <a class="ec-pinned-card__link" href="#/estimate-report?id=${meta.estimate_id || ''}" style="flex:1;text-align:center;padding:8px;border-radius:6px;background:var(--bg3)">Просчёт \u2192</a>
               ${meta.work_id ? `<a class="ec-pinned-card__link" href="#/work-report?id=${meta.work_id}" style="flex:1;text-align:center;padding:8px;border-radius:6px;background:rgba(16,185,129,0.1);color:#10b981">Фин. отчёт \u2192</a>` : ''}
             </div>
           </div>`;

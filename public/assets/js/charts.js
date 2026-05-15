@@ -34,7 +34,7 @@ window.AsgardCharts = (function(){
     // Always paint a subtle dark backdrop so charts are readable in dark UI
     ctx.clearRect(0,0,w,h);
     try{
-      const bg = themeVar("--paper2", "rgba(13,20,40,.25)");
+      const bg = themeVar("--paper2", themeVar("--bg2", "rgba(13,20,40,.25)"));
       ctx.save();
       ctx.fillStyle = bg;
       ctx.globalAlpha = 0.55;

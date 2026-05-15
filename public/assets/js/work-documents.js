@@ -46,8 +46,8 @@ window.AsgardWorkDocuments = (function () {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgba(255,255,255,.15);
-  color: rgba(255,255,255,.9);
+  background: var(--brd);
+  color: var(--t1);
   border-radius: 20px;
   padding: 3px 10px;
   font-size: 12px;
@@ -141,15 +141,15 @@ window.AsgardWorkDocuments = (function () {
 .wd-btn-pdf {
   padding: 10px 18px;
   border-radius: 8px;
-  border: 1.5px solid rgba(255,255,255,.15);
-  background: rgba(255,255,255,.05);
+  border: 1.5px solid var(--brd);
+  background: var(--bg3);
   color: var(--t1);
   cursor: pointer;
   font-size: 14px;
   transition: all .2s;
   display: none;
 }
-.wd-btn-pdf:hover { background: rgba(255,255,255,.1); }
+.wd-btn-pdf:hover { background: var(--brd-m); }
 .wd-btn-submit {
   padding: 10px 22px;
   border-radius: 8px;

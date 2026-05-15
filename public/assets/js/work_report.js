@@ -197,7 +197,7 @@ window.AsgardWorkReport = (function () {
     var ny = cy - (r + 3) * Math.sin(angle);
     var nc = clamp >= 25 ? '#10b981' : clamp >= 15 ? '#d4a843' : '#ef4444';
     return '<svg width="44" height="28" viewBox="0 0 44 28">' +
-      '<path d="' + arcP + '" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="4"/>' +
+      '<path d="' + arcP + '" fill="none" stroke="var(--brd)" stroke-width="4"/>' +
       '<path d="' + arcP + '" fill="none" stroke="#ef4444" stroke-width="4" stroke-dasharray="' + (0.3*halfC) + ' ' + (0.7*halfC) + '" opacity="0.4"/>' +
       '<path d="' + arcP + '" fill="none" stroke="#f59e0b" stroke-width="4" stroke-dasharray="' + (0.2*halfC) + ' ' + (0.8*halfC) + '" stroke-dashoffset="-' + (0.3*halfC) + '" opacity="0.4"/>' +
       '<path d="' + arcP + '" fill="none" stroke="#10b981" stroke-width="4" stroke-dasharray="' + (0.5*halfC) + ' ' + (0.5*halfC) + '" stroke-dashoffset="-' + (0.5*halfC) + '" opacity="0.4"/>' +
@@ -397,7 +397,7 @@ window.AsgardWorkReport = (function () {
     const nby = CY - 12 * Math.sin(angle);
 
     const gaugeSvg = '<svg viewBox="0 0 200 100" style="width:100%;max-width:200px;height:auto">' +
-      '<path d="' + arcPath + '" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="' + SW + '" stroke-linecap="round"/>' +
+      '<path d="' + arcPath + '" fill="none" stroke="var(--brd)" stroke-width="' + SW + '" stroke-linecap="round"/>' +
       '<path d="' + arcPath + '" fill="none" stroke="#ef4444" stroke-width="' + SW + '" stroke-dasharray="' + zoneRed + ' ' + (halfCirc - zoneRed) + '" stroke-dashoffset="0" opacity="0.4" stroke-linecap="butt"/>' +
       '<path d="' + arcPath + '" fill="none" stroke="#f59e0b" stroke-width="' + SW + '" stroke-dasharray="' + zoneYel + ' ' + (halfCirc - zoneYel) + '" stroke-dashoffset="-' + zoneRed + '" opacity="0.4" stroke-linecap="butt"/>' +
       '<path d="' + arcPath + '" fill="none" stroke="#10b981" stroke-width="' + SW + '" stroke-dasharray="' + zoneGrn + ' ' + (halfCirc - zoneGrn) + '" stroke-dashoffset="-' + (zoneRed + zoneYel) + '" opacity="0.4" stroke-linecap="butt"/>' +
@@ -488,7 +488,7 @@ window.AsgardWorkReport = (function () {
     const svgParts = [];
 
     // Dashed zero baseline
-    svgParts.push(`<line x1="${padLeft}" y1="${zeroY}" x2="${W - padRight}" y2="${zeroY}" stroke="rgba(255,255,255,0.12)" stroke-dasharray="4 3" stroke-width="1"/>`);
+    svgParts.push(`<line x1="${padLeft}" y1="${zeroY}" x2="${W - padRight}" y2="${zeroY}" stroke="var(--brd)" stroke-dasharray="4 3" stroke-width="1"/>`);
 
     items.forEach((item, i) => {
       const x = padLeft + i * (barW + barGap);
@@ -525,7 +525,7 @@ window.AsgardWorkReport = (function () {
       if (i > 0 && item.type !== 'total') {
         const connY = yOf(prevRunning);
         const prevX = padLeft + (i - 1) * (barW + barGap) + barW;
-        svgParts.push(`<line x1="${prevX}" y1="${connY}" x2="${x}" y2="${connY}" stroke="rgba(255,255,255,0.15)" stroke-dasharray="3 2" stroke-width="1"/>`);
+        svgParts.push(`<line x1="${prevX}" y1="${connY}" x2="${x}" y2="${connY}" stroke="var(--brd)" stroke-dasharray="3 2" stroke-width="1"/>`);
       }
 
       // Bar with rounded top
@@ -1015,15 +1015,15 @@ window.AsgardWorkReport = (function () {
 .wr-hero-bg{position:absolute;inset:0;background:linear-gradient(135deg,#0d1428 0%,#1a2d52 60%,#0f1d3a 100%);z-index:0}
 .wr-hero-content{position:relative;z-index:1;padding:28px 32px 24px}
 .wr-hero-top{display:flex;justify-content:space-between;align-items:flex-start;gap:20px}
-.wr-hero-number{font-size:12px;color:rgba(255,255,255,.45);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px}
+.wr-hero-number{font-size:12px;color:var(--t3);letter-spacing:.5px;text-transform:uppercase;margin-bottom:4px}
 .wr-hero-title{font-size:22px;font-weight:700;color:#fff;margin:0 0 10px;line-height:1.3}
-.wr-hero-meta{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:rgba(255,255,255,.6)}
+.wr-hero-meta{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--t2)}
 .wr-hero-inn{background:rgba(212,168,67,.15);color:#d4a843;padding:1px 8px;border-radius:4px;font-size:12px}
-.wr-hero-pm{margin-top:8px;font-size:13px;color:rgba(255,255,255,.5)}
-.wr-hero-pm strong{color:rgba(255,255,255,.85)}
+.wr-hero-pm{margin-top:8px;font-size:13px;color:var(--t2)}
+.wr-hero-pm strong{color:var(--t1)}
 .wr-hero-right{text-align:right;flex-shrink:0}
 .wr-hero-status{display:inline-block;padding:4px 14px;border-radius:20px;font-size:12px;font-weight:600;color:#fff}
-.wr-hero-margin-label{margin-top:12px;font-size:11px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.5px}
+.wr-hero-margin-label{margin-top:12px;font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px}
 .wr-hero-margin{font-size:36px;font-weight:800;line-height:1}
 
 /* ── KPI Strip ── */
@@ -1069,11 +1069,11 @@ window.AsgardWorkReport = (function () {
 .wr-donut-legend-val{color:var(--t2);white-space:nowrap}
 
 /* ── Accordion ── */
-.wr-acc{border-bottom:1px solid rgba(255,255,255,.04);transition:background .2s}
-.wr-acc[data-open="1"]{background:rgba(255,255,255,.02)}
+.wr-acc{border-bottom:1px solid var(--brd-m);transition:background .2s}
+.wr-acc[data-open="1"]{background:var(--bg3)}
 .wr-acc-head{display:flex;align-items:center;padding:10px 0;cursor:pointer;gap:10px;user-select:none}
-.wr-acc-head:hover{background:rgba(255,255,255,.03)}
-.wr-acc-bar-bg{width:60px;height:6px;background:rgba(255,255,255,.06);border-radius:3px;flex-shrink:0;overflow:hidden}
+.wr-acc-head:hover{background:var(--bg3)}
+.wr-acc-bar-bg{width:60px;height:6px;background:var(--bg3);border-radius:3px;flex-shrink:0;overflow:hidden}
 .wr-acc-bar{height:100%;border-radius:3px;transition:width .4s}
 .wr-acc-info{flex:1;display:flex;align-items:center;gap:8px;font-size:13px;min-width:0;flex-wrap:wrap}
 .wr-acc-icon{font-size:16px}
@@ -1088,7 +1088,7 @@ window.AsgardWorkReport = (function () {
 .wr-acc[data-open="1"] .wr-acc-body{max-height:800px}
 .wr-acc-table{width:100%;border-collapse:collapse;font-size:12px;margin:4px 0 8px}
 .wr-acc-table th{text-align:left;padding:4px 8px;color:var(--t2);font-weight:500;border-bottom:1px solid var(--brd);font-size:11px}
-.wr-acc-table td{padding:4px 8px;border-bottom:1px solid rgba(255,255,255,.03);color:var(--t1)}
+.wr-acc-table td{padding:4px 8px;border-bottom:1px solid var(--brd-m);color:var(--t1)}
 .wr-acc-total{display:flex;justify-content:space-between;padding:12px 0 2px;font-weight:700;font-size:14px;border-top:1px solid var(--brd);margin-top:8px}
 .wr-acc-total-sub{display:flex;justify-content:space-between;padding:2px 0 0;font-size:12px;color:var(--t2)}
 
@@ -1121,7 +1121,7 @@ window.AsgardWorkReport = (function () {
 .wr-pvf-val{font-size:15px;font-weight:600}
 
 /* ── Crew ── */
-.wr-crew-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.wr-crew-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--brd-m)}
 .wr-crew-row:last-child{border-bottom:none}
 .wr-crew-avatar{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700;flex-shrink:0}
 .wr-crew-info{flex:1;min-width:0}
@@ -1134,18 +1134,18 @@ window.AsgardWorkReport = (function () {
 .wr-pay-section{margin-bottom:20px}
 .wr-pay-progress{margin-bottom:16px}
 .wr-pay-progress-head{display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;color:var(--t2)}
-.wr-pay-bar-bg{height:10px;background:rgba(255,255,255,.06);border-radius:5px;overflow:hidden}
+.wr-pay-bar-bg{height:10px;background:var(--bg3);border-radius:5px;overflow:hidden}
 .wr-pay-bar{height:100%;border-radius:5px;transition:width .8s ease}
 .wr-pay-progress-foot{display:flex;justify-content:space-between;font-size:11px;color:var(--t2);margin-top:4px}
 .wr-pay-table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:14px}
 .wr-pay-table th{text-align:left;padding:6px 10px;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px}
-.wr-pay-table td{padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.04)}
+.wr-pay-table td{padding:7px 10px;border-bottom:1px solid var(--brd-m)}
 .wr-pay-row-overdue{background:rgba(239,68,68,.06)}
 .wr-pay-ok{color:#10b981;font-weight:600;font-size:12px}
 .wr-pay-overdue{color:#ef4444;font-weight:600;font-size:12px}
 .wr-pay-wait{color:#d4a843;font-size:12px}
 .wr-pay-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-.wr-pay-stat{background:rgba(255,255,255,.03);border-radius:10px;padding:12px;text-align:center}
+.wr-pay-stat{background:var(--bg3);border-radius:10px;padding:12px;text-align:center}
 .wr-pay-stat-label{font-size:11px;color:var(--t2);margin-bottom:2px}
 .wr-pay-stat-val{font-size:17px;font-weight:700}
 .wr-pay-alert{margin-top:12px;padding:8px 14px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:8px;font-size:12px;color:#ef4444;font-weight:600}

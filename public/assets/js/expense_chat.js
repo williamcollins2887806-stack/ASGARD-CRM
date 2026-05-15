@@ -81,7 +81,7 @@
         for (const w of works.slice(0, 10)) {
           const btn = document.createElement('button');
           btn.style.cssText = 'padding:10px 14px;border-radius:12px;border:0.5px solid rgba(212,168,67,0.15);background:rgba(212,168,67,0.04);text-align:left;cursor:pointer;color:#fff;font-size:13px;display:flex;justify-content:space-between;align-items:center';
-          btn.innerHTML = `<span>${w.work_title || '#' + w.work_number}</span><span style="color:rgba(255,255,255,0.4);font-size:11px">${money(w.cost_fact)} / ${money(w.contract_value)}</span>`;
+          btn.innerHTML = `<span>${w.work_title || '#' + w.work_number}</span><span style="color:var(--t3);font-size:11px">${money(w.cost_fact)} / ${money(w.contract_value)}</span>`;
           btn.onclick = () => { list.remove(); initChat(w.id); };
           list.appendChild(btn);
         }
@@ -165,7 +165,7 @@
       const src = preview.source === 'fns' ? '<span style="background:rgba(63,185,80,0.15);color:#3FB950;font-size:10px;padding:2px 8px;border-radius:10px">ФНС</span>' : '';
 
       card.innerHTML = `
-        <div style="padding:10px 14px;display:flex;align-items:center;gap:8px;background:rgba(212,168,67,0.06);border-bottom:0.5px solid rgba(255,255,255,0.06)">
+        <div style="padding:10px 14px;display:flex;align-items:center;gap:8px;background:rgba(212,168,67,0.06);border-bottom:0.5px solid var(--brd-m)">
           <span style="color:#D4A843;font-size:14px">✨</span>
           <span style="color:#D4A843;font-size:12px;font-weight:600">Мимир распознал</span>
           ${src}
@@ -178,13 +178,13 @@
             </div>
             <span style="font-size:18px;font-weight:700;color:#fff">${money(preview.amount)}</span>
           </div>
-          ${preview.supplier ? `<div style="font-size:12px;color:rgba(255,255,255,0.6);margin-bottom:4px">${preview.supplier}${preview.inn ? ' (ИНН: ' + preview.inn + ')' : ''}</div>` : ''}
-          ${preview.description ? `<div style="font-size:11px;color:rgba(255,255,255,0.4);margin-bottom:4px">${preview.description}</div>` : ''}
-          <div style="font-size:10px;color:rgba(255,255,255,0.3)">${preview.date || ''}${preview.items && preview.items.length ? ' / ' + preview.items.length + ' позиций' : ''}</div>
+          ${preview.supplier ? `<div style="font-size:12px;color:var(--t2);margin-bottom:4px">${preview.supplier}${preview.inn ? ' (ИНН: ' + preview.inn + ')' : ''}</div>` : ''}
+          ${preview.description ? `<div style="font-size:11px;color:var(--t3);margin-bottom:4px">${preview.description}</div>` : ''}
+          <div style="font-size:10px;color:var(--t3)">${preview.date || ''}${preview.items && preview.items.length ? ' / ' + preview.items.length + ' позиций' : ''}</div>
         </div>
-        <div style="display:flex;border-top:0.5px solid rgba(255,255,255,0.06)">
+        <div style="display:flex;border-top:0.5px solid var(--brd-m)">
           <button class="ec-reject" style="flex:1;padding:11px;border:none;background:none;color:#F85149;font-size:13px;font-weight:600;cursor:pointer">✕ Отмена</button>
-          <div style="width:0.5px;background:rgba(255,255,255,0.06)"></div>
+          <div style="width:0.5px;background:var(--brd-m)"></div>
           <button class="ec-confirm" style="flex:1;padding:11px;border:none;background:rgba(63,185,80,0.06);color:#3FB950;font-size:13px;font-weight:700;cursor:pointer">✓ Внести</button>
         </div>
       `;
@@ -242,22 +242,22 @@
         </div>
         <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:8px">
           <div>
-            <div style="color:rgba(255,255,255,0.4)">Себестоимость (с налогами)</div>
+            <div style="color:var(--t3)">Себестоимость (с налогами)</div>
             <div style="color:#fff">${money(res.before.cost_with_tax)} → <b>${money(res.after.cost_with_tax)}</b></div>
           </div>
           <div style="text-align:right">
-            <div style="color:rgba(255,255,255,0.4)">Маржа</div>
+            <div style="color:var(--t3)">Маржа</div>
             <div style="color:${res.delta.margin_pct < 0 ? '#F85149' : '#3FB950'}">${res.before.margin_pct}% → <b>${res.after.margin_pct}%</b> (${res.delta.margin_pct > 0 ? '+' : ''}${res.delta.margin_pct}%)</div>
           </div>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:12px">
           <div>
-            <div style="color:rgba(255,255,255,0.4)">Чистая прибыль</div>
+            <div style="color:var(--t3)">Чистая прибыль</div>
             <div style="color:${res.after.profit >= 0 ? '#3FB950' : '#F85149'};font-weight:700">${money(res.before.profit)} → <b>${money(res.after.profit)}</b></div>
           </div>
           <div style="text-align:right">
-            <div style="color:rgba(255,255,255,0.4)">Налог. нагрузка</div>
-            <div style="color:rgba(255,255,255,0.6)">${money(res.after.tax_burden)}</div>
+            <div style="color:var(--t3)">Налог. нагрузка</div>
+            <div style="color:var(--t2)">${money(res.after.tax_burden)}</div>
           </div>
         </div>
       `;
@@ -270,7 +270,7 @@
   function addMimirMsg(container, text) {
     const div = document.createElement('div');
     div.style.cssText = 'display:flex;gap:8px;align-items:flex-start;animation:slideUp .2s ease-out';
-    div.innerHTML = `<div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#D4A843,#B88B2E);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0">M</div><div style="padding:8px 12px;border-radius:4px 14px 14px 14px;background:rgba(255,255,255,0.04);border:0.5px solid rgba(255,255,255,0.06);color:rgba(255,255,255,0.85);font-size:13px;max-width:80%">${text}</div>`;
+    div.innerHTML = `<div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#D4A843,#B88B2E);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0">M</div><div style="padding:8px 12px;border-radius:4px 14px 14px 14px;background:var(--bg3);border:0.5px solid var(--brd-m);color:var(--t1);font-size:13px;max-width:80%">${text}</div>`;
     container.appendChild(div);
     div.scrollIntoView({ behavior: 'smooth' });
   }

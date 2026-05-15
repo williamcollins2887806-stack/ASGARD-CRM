@@ -185,7 +185,7 @@ window.AsgardTelephonyPage = (function () {
 
       /* ═══ TRANSCRIPT SEGMENTS (diarization) ═══ */
       .transcript-seg-row{display:flex;gap:10px;padding:8px 12px;border-radius:6px;transition:background .15s;align-items:flex-start}
-      .transcript-seg-row:hover{background:rgba(255,255,255,.03)}
+      .transcript-seg-row:hover{background:var(--bg3)}
       .transcript-seg-row--active{background:var(--blue-bg,rgba(59,130,246,.1)) !important}
       .transcript-seg-time{font-size:11px;font-family:var(--mono,monospace);color:var(--blue,#3b82f6);cursor:pointer;white-space:nowrap;min-width:44px;padding-top:2px;transition:color .15s}
       .transcript-seg-time:hover{color:#D4A843}

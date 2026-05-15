@@ -332,7 +332,7 @@ window.AsgardKpiMoneyPage = (function(){
       for(let i = 0; i <= 4; i++){
         const y = 250 - (i * 50);
         const val = Math.round(maxVal * i / 4);
-        html += `<line x1="50" y1="${y}" x2="980" y2="${y}" stroke="rgba(255,255,255,0.1)" stroke-dasharray="4"/>`;
+        html += `<line x1="50" y1="${y}" x2="980" y2="${y}" stroke="var(--brd)" stroke-dasharray="4"/>`;
         html += `<text x="45" y="${y+4}" fill="var(--text-muted)" font-size="11" text-anchor="end">${(val/1000000).toFixed(1)}М</text>`;
       }
 

@@ -45,26 +45,26 @@ window.AsgardPaymentsReportPage = (function(){
 .wpr-filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .wpr-filters select,.wpr-filters input{padding:6px 10px;border-radius:6px;border:1px solid var(--brd);background:var(--bg3);color:var(--text);font-size:13px}
 .wpr-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px}
-.wpr-kpi .k{background:rgba(13,20,40,.5);border-radius:8px;padding:14px;text-align:center}
+.wpr-kpi .k{background:var(--bg2);border-radius:8px;padding:14px;text-align:center}
 .wpr-kpi .k .t{font-size:10px;color:rgba(184,196,231,.75);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
 .wpr-kpi .k .v{font-size:22px;font-weight:900;margin-top:4px;color:rgba(242,208,138,.95)}
 .wpr-kpi .k .v.blue{color:rgba(96,165,250,.9)}
 .wpr-kpi .k .v.red{color:rgba(239,68,68,.85)}
-.wpr-tabs{display:flex;gap:4px;background:rgba(13,20,40,.6);padding:4px;border-radius:6px;margin-bottom:16px}
+.wpr-tabs{display:flex;gap:4px;background:var(--bg3);padding:4px;border-radius:6px;margin-bottom:16px}
 .wpr-tab{padding:7px 14px;border-radius:6px;border:none;background:transparent;color:var(--muted);font-weight:700;cursor:pointer;font-size:12px;transition:all .2s}
 .wpr-tab:hover{color:var(--text)}
 .wpr-tab.active{background:linear-gradient(135deg,rgba(59,130,246,.3),rgba(34,197,94,.2));color:var(--text)}
 .wpr-tbl{width:100%;border-collapse:collapse;font-size:12px}
 .wpr-tbl th{text-align:left;padding:8px 6px;border-bottom:2px solid var(--brd);font-size:10px;text-transform:uppercase;color:var(--muted);font-weight:700}
 .wpr-tbl td{padding:7px 6px;border-bottom:1px solid var(--brd-m)}
-.wpr-tbl tr:hover td{background:rgba(255,255,255,.02)}
+.wpr-tbl tr:hover td{background:var(--bg3)}
 .wpr-tbl .num{text-align:right;font-variant-numeric:tabular-nums}
 .wpr-tbl .bold{font-weight:700}
 .wpr-tbl .gold{color:var(--gold)}
 .wpr-btn{padding:7px 14px;border-radius:6px;border:none;cursor:pointer;font-weight:700;font-size:12px;transition:all .2s}
 .wpr-btn.gold{background:linear-gradient(135deg,#D4A843,#c49a2a);color:#000}
 .wpr-btn.ghost{background:transparent;border:1px solid var(--brd);color:var(--text)}
-.wpr-btn.ghost:hover{background:rgba(255,255,255,.05)}
+.wpr-btn.ghost:hover{background:var(--bg3)}
 </style>`;
 
   async function render({layout, title}){

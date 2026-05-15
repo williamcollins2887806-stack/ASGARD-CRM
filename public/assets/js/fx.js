@@ -270,7 +270,7 @@ window.AsgardFX = (function(){
         height: ${size}px;
         left: ${x}px;
         top: ${y}px;
-        background: rgba(255, 255, 255, 0.3);
+        background: var(--bg3);
         border-radius: 50%;
         transform: scale(0);
         animation: ripple 0.6s ease-out;

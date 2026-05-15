@@ -74,7 +74,7 @@
     '@keyframes ogWingR{0%,100%{transform:rotate(0)}50%{transform:rotate(8deg)}}' +
 
     '.og-title{font-size:28px;font-weight:700;color:#f5d78e;margin:20px 0 8px;}' +
-    '.og-subtitle{font-size:16px;color:rgba(255,255,255,0.6);animation:ogPulseText 2s ease-in-out infinite;}' +
+    '.og-subtitle{font-size:16px;color:var(--t2);animation:ogPulseText 2s ease-in-out infinite;}' +
     '@keyframes ogPulseText{0%,100%{opacity:0.6}50%{opacity:1}}' +
 
     '.og-spinner{width:40px;height:40px;margin:24px auto 0;' +

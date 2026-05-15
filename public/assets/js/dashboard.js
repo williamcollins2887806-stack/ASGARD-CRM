@@ -213,7 +213,7 @@ window.AsgardDashboardPage = (function(){
           .dash-card-sub { font-size:13px; color:var(--t3); }
           .dash-card-icon { position:absolute; right:16px; top:50%; transform:translateY(-50%); font-size:48px; opacity:.15; pointer-events:none; z-index:0; }
 
-          .dash-card-row { display:flex; gap:16px; margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,.06); }
+          .dash-card-row { display:flex; gap:16px; margin-top:12px; padding-top:12px; border-top:1px solid var(--brd-m); }
           .dash-card-row .mini { flex:1; }
           .dash-card-row .mini-label { font-size:10px; color:var(--gold-dim); text-transform:uppercase; letter-spacing:0.06em; font-weight:700; }
           .dash-card-row .mini-value { font-size:18px; font-weight:800; margin-top:2px; }
@@ -276,7 +276,7 @@ window.AsgardDashboardPage = (function(){
           .dash-alert-item:last-child { padding-bottom:0; border-bottom:none; }
 
           .dash-progress {
-            height:8px; background:rgba(255,255,255,.06);
+            height:8px; background:var(--brd-m);
             border-radius:var(--r-full); overflow:hidden; margin-top:8px;
           }
           .dash-progress-bar { height:100%; border-radius:var(--r-full); transition:width .5s ease; }
