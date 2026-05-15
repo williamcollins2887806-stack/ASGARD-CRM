@@ -1829,16 +1829,51 @@ async function mimirRoutes(fastify, options) {
         pmName = pmResult.rows[0]?.name || 'РП';
       }
 
-      // 4. Собрать расчёт summary
+      // 4. Собрать расчёт summary с детализацией по блокам
       let calcSummary = 'Расчёт пока не создан.';
       if (calcData) {
-        const blocks = [];
-        if (calcData.personnel_json) blocks.push(`Персонал: ${JSON.stringify(calcData.personnel_json).length > 10 ? 'есть данные' : 'пусто'}`);
-        blocks.push(`Итого себестоимость: ${calcData.total_cost || '?'} ₽`);
-        blocks.push(`Клиенту: ${calcData.total_with_margin || '?'} ₽`);
-        blocks.push(`Маржа: ${calcData.margin_pct || '?'}%`);
-        blocks.push(`Непредвиденные: ${calcData.contingency_pct || 5}%`);
-        calcSummary = blocks.join('\n');
+        const fmt = v => Math.round(Number(v) || 0).toLocaleString('ru-RU');
+
+        const parseBlock = (json) => {
+          try {
+            const arr = typeof json === 'string' ? JSON.parse(json) : (json || []);
+            return arr.map(r => ({
+              name: r.item || r.role || r.description || '—',
+              total: Number(r.total || r.amount || 0)
+            }));
+          } catch { return []; }
+        };
+
+        const blockSection = (label, rows) => {
+          if (!rows.length) return null;
+          const sum = rows.reduce((s, r) => s + r.total, 0);
+          const lines = rows.map(r => `  • ${r.name}: ${fmt(r.total)} ₽`).join('\n');
+          return `${label} (итого ${fmt(sum)} ₽):\n${lines}`;
+        };
+
+        const personnel  = parseBlock(calcData.personnel_json);
+        const currCosts  = parseBlock(calcData.current_costs_json);
+        const travel     = parseBlock(calcData.travel_json);
+        const transport  = parseBlock(calcData.transport_json);
+        const chemistry  = parseBlock(calcData.chemistry_json);
+
+        const parts = [
+          blockSection('ПЕРСОНАЛ', personnel),
+          blockSection('ТЕКУЩИЕ РАСХОДЫ', currCosts),
+          blockSection('КОМАНДИРОВОЧНЫЕ', travel),
+          blockSection('ТРАНСПОРТ', transport),
+          blockSection('ХИМИЯ/МАТЕРИАЛЫ', chemistry),
+        ].filter(Boolean);
+
+        const contPct = calcData.contingency_pct || 5;
+        const contAmt = Number(calcData.contingency_amount || 0);
+        parts.push(`НЕПРЕДВИДЕННЫЕ (${contPct}%): ${fmt(contAmt)} ₽`);
+        parts.push(`─────────────────────`);
+        parts.push(`ИТОГО себестоимость: ${fmt(calcData.total_cost)} ₽`);
+        parts.push(`Клиенту (с маржой): ${fmt(calcData.total_with_margin)} ₽`);
+        parts.push(`Маржа: ${calcData.margin_pct || '?'}%`);
+
+        calcSummary = parts.join('\n');
       }
 
       let analogsSummary = 'Аналогов нет.';
