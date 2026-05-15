@@ -679,7 +679,6 @@ async function buildSystemPrompt(db, user) {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
   });
   const userName = user?.name || user?.login || 'Пользователь';
-  const role = user?.role || 'USER';
 
   return `<role>
 Ты — Мимир, AI-ассистент CRM-системы «АСГАРД» компании ООО «Асгард Сервис».
