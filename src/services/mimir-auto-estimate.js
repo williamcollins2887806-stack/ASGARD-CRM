@@ -39,7 +39,7 @@ const DEFAULT_SETTINGS = {
 const MAX_DOCUMENTS_PARSED = 8;
 const MAX_ANALOGS = 10;
 const MAX_CUSTOMER_HISTORY = 15;
-const MAX_WAREHOUSE_ITEMS = 200;
+const MAX_WAREHOUSE_ITEMS = 2000;
 // AP3.5: Снят лимит для полевых — выгружаем ВСЕХ. В prompt передаём агрегаты,
 // не поимённый список (агрегация по role_tag + позициям).
 const MAX_FIELD_EMPLOYEES = 2000;
@@ -789,7 +789,7 @@ function warehouseToPrompt(items) {
     byCat[cat].push(`${it.name}: ${it.quantity || 1}${it.unit ? ' ' + it.unit : ''}`);
   }
   return Object.entries(byCat).map(([cat, list]) =>
-    `[${cat}] ${list.slice(0, 15).join(', ')}${list.length > 15 ? ` … и ещё ${list.length - 15}` : ''}`
+    `[${cat}] ${list.join(', ')}`
   ).join('\n');
 }
 
