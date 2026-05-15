@@ -898,6 +898,121 @@ async function routes(fastify) {
           ? `<div class="override-note">⚠️ Отчёт содержит ручные правки (изменён: ${calc.override_at ? new Date(calc.override_at).toLocaleString('ru-RU') : ''})</div>`
           : '';
 
+        // Извлекаем mimir_suggestions для шпаргалки и предупреждений
+        let ms = {};
+        try {
+          const raw = calc.mimir_suggestions;
+          ms = typeof raw === 'string' ? JSON.parse(raw) : (raw || {});
+        } catch (_) {}
+        const mn = ms.mimir_notes || {};
+        const warnings = ms.warnings || [];
+        const purchases = ms.purchases_needed || [];
+        const permitsStatus = ms.permits_status || null;
+        const routePlan = ms.route_plan || null;
+
+        // Секция: Шпаргалка Мимира
+        const cheatsheetHtml = (mn.cheatsheet || mn.client_questions?.length || mn.implementation_tips?.length || mn.risk_areas?.length) ? `
+        <section class="section cheatsheet">
+          <h2>🧠 Шпаргалка Мимира</h2>
+          ${mn.cheatsheet ? `<div class="cs-summary">${String(mn.cheatsheet).replace(/\n/g,'<br>')}</div>` : ''}
+          ${mn.client_questions?.length ? `
+            <div class="cs-block">
+              <div class="cs-block-title">❓ Уточнить у клиента до начала работ</div>
+              <ul>${mn.client_questions.map(q => `<li>${q}</li>`).join('')}</ul>
+            </div>` : ''}
+          ${mn.implementation_tips?.length ? `
+            <div class="cs-block">
+              <div class="cs-block-title">💡 Практические рекомендации</div>
+              <ul>${mn.implementation_tips.map(t => `<li>${t}</li>`).join('')}</ul>
+            </div>` : ''}
+          ${mn.risk_areas?.length ? `
+            <div class="cs-block">
+              <div class="cs-block-title">⚠️ Потенциальные сложности</div>
+              ${mn.risk_areas.map(r => `
+                <div class="risk-card">
+                  <div class="risk-title">${r.title || ''}</div>
+                  <div class="risk-desc">${r.description || ''}</div>
+                  ${r.mitigation ? `<div class="risk-mit">→ ${r.mitigation}</div>` : ''}
+                </div>`).join('')}
+            </div>` : ''}
+        </section>` : '';
+
+        // Секция: Предупреждения
+        const warningsHtml = warnings.length ? `
+        <section class="section">
+          <h2>⚡ Предупреждения</h2>
+          ${warnings.map(w => {
+            const color = w.level === 'critical' ? '#ef4444' : w.level === 'warning' ? '#f59e0b' : '#6366f1';
+            return `<div class="warn-card" style="border-left-color:${color}">
+              <div class="warn-title" style="color:${color}">${w.level === 'critical' ? '🔴' : w.level === 'warning' ? '🟡' : '🔵'} ${w.title || ''}</div>
+              <div class="warn-text">${w.text || ''}</div>
+            </div>`;
+          }).join('')}
+        </section>` : '';
+
+        // Секция: Закупки
+        const purchasesHtml = purchases.length ? `
+        <section class="section">
+          <h2>🛒 Необходимые закупки / аренда</h2>
+          <table>
+            <thead><tr><th>Позиция</th><th>Кол-во</th><th style="text-align:right">Цена</th><th style="text-align:right">Итого</th></tr></thead>
+            <tbody>
+              ${purchases.map(p => `<tr>
+                <td>${p.item || ''} <span style="font-size:11px;color:#8890b0">${p.reason || ''}</span></td>
+                <td>${p.quantity || 1}</td>
+                <td class="num">${fmt(p.price || 0)}</td>
+                <td class="num">${fmt(p.total || 0)}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </section>` : '';
+
+        // Секция: Допуска
+        const permitsHtml = permitsStatus ? `
+        <section class="section">
+          <h2>📋 Допуска и сертификаты</h2>
+          ${permitsStatus.summary ? `<div style="margin-bottom:12px;font-size:13px;color:#5a6280">${permitsStatus.summary}</div>` : ''}
+          ${(permitsStatus.available_crew || []).length ? `
+            <table>
+              <thead><tr><th>Допуск</th><th>Нужно</th><th>Доступно</th><th>Статус</th></tr></thead>
+              <tbody>
+                ${permitsStatus.available_crew.map(p => `<tr>
+                  <td>${p.permit || ''}</td>
+                  <td>${p.needed || '—'}</td>
+                  <td>${p.available || '—'}</td>
+                  <td style="color:${p.enough ? '#27ae60' : '#e74c3c'};font-weight:700">${p.enough ? '✓ Есть' : '✗ Нехватка'}</td>
+                </tr>`).join('')}
+              </tbody>
+            </table>` : ''}
+          ${(permitsStatus.training_needed || []).length ? `
+            <div style="margin-top:12px;font-size:12px;color:#856404;background:#fff8e1;padding:10px 14px;border-radius:6px;border-left:3px solid #f39c12">
+              Требуется обучение: ${permitsStatus.training_needed.map(t => `${t.permit} — ${t.people_count} чел (~${fmt(t.total || 0)})`).join('; ')}
+            </div>` : ''}
+        </section>` : '';
+
+        // Секция: Маршрут
+        const routeHtml = routePlan ? `
+        <section class="section">
+          <h2>🗺️ Маршрут и логистика</h2>
+          ${routePlan.summary ? `<div style="margin-bottom:12px;font-size:13px;color:#5a6280">${routePlan.summary}</div>` : ''}
+          ${routePlan.warehouse_stop ? `
+            <div style="background:#f0f4ff;border-radius:8px;padding:12px 16px;margin-bottom:12px;border-left:3px solid #4a6ff5">
+              <b>🏭 Склад Москва (${routePlan.warehouse_stop.days || 2} дн.):</b> ${routePlan.warehouse_stop.activities || 'Комплектация, погрузка, проверка СИЗ'}
+            </div>` : ''}
+          ${(routePlan.legs || []).length ? `
+            <table>
+              <thead><tr><th>Маршрут</th><th>Транспорт</th><th>Дней</th><th style="text-align:right">Стоимость/чел</th></tr></thead>
+              <tbody>
+                ${routePlan.legs.map(l => `<tr>
+                  <td>${l.from || ''} → ${l.to || ''}</td>
+                  <td>${l.transport || '—'}</td>
+                  <td>${l.duration_days || '—'}</td>
+                  <td class="num">${l.cost_per_person ? fmt(l.cost_per_person) : '—'}</td>
+                </tr>`).join('')}
+              </tbody>
+            </table>` : ''}
+        </section>` : '';
+
         const chatHtml = chatMessages.length > 0
           ? `<section class="section">
               <h2>Комментарии Мимира</h2>
@@ -948,6 +1063,22 @@ async function routes(fastify) {
   .msg-time { font-weight: 400; margin-left: 8px; }
   .msg-body { font-size: 13px; line-height: 1.55; }
   .footer { text-align: center; color: #8890b0; font-size: 11px; margin-top: 24px; padding-top: 12px; border-top: 1px solid #e8ecf5; }
+  /* Шпаргалка */
+  .cheatsheet { border-left: 4px solid #4a6ff5; }
+  .cheatsheet h2 { color: #3a5fd9; }
+  .cs-summary { font-size: 13px; line-height: 1.7; color: #2d3656; background: #f0f4ff; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px; }
+  .cs-block { margin-top: 14px; }
+  .cs-block-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #5a6280; margin-bottom: 8px; }
+  .cs-block ul { padding-left: 18px; display: flex; flex-direction: column; gap: 5px; }
+  .cs-block li { font-size: 13px; color: #2d3656; line-height: 1.5; }
+  .risk-card { background: #fff8f0; border: 1px solid #f39c1240; border-left: 3px solid #f39c12; border-radius: 6px; padding: 10px 14px; margin-bottom: 8px; }
+  .risk-title { font-size: 13px; font-weight: 700; color: #8a4e00; margin-bottom: 3px; }
+  .risk-desc { font-size: 12px; color: #5a4020; line-height: 1.5; }
+  .risk-mit { font-size: 12px; color: #27ae60; margin-top: 4px; font-style: italic; }
+  /* Предупреждения */
+  .warn-card { border-left: 3px solid #f59e0b; background: #fffbeb; border-radius: 0 6px 6px 0; padding: 10px 14px; margin-bottom: 8px; }
+  .warn-title { font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+  .warn-text { font-size: 12px; color: #5a4020; line-height: 1.5; }
 </style>
 </head>
 <body>
@@ -995,6 +1126,11 @@ async function routes(fastify) {
     </table>
   </section>
 
+  ${cheatsheetHtml}
+  ${warningsHtml}
+  ${purchasesHtml}
+  ${permitsHtml}
+  ${routeHtml}
   ${chatHtml}
 
   <div class="footer">Документ сформирован автоматически CRM АСГАРД · ${approvedAt}</div>

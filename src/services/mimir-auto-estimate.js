@@ -1317,6 +1317,22 @@ ${tariffsToPrompt(ctx.tariffs)}
     "purchases_needed": [
       {"item": "<позиция>", "quantity": <N>, "price": <за единицу>, "total": <итого>, "reason": "нет на складе"}
     ]
+  },
+  "mimir_notes": {
+    "client_questions": [
+      "Конкретный вопрос клиенту 1 (уточнить ТЗ, условия доступа, режим работ)",
+      "Конкретный вопрос 2",
+      "Конкретный вопрос 3"
+    ],
+    "implementation_tips": [
+      "Практический совет по выполнению 1 (специфика объекта, технология)",
+      "Совет 2",
+      "Совет 3"
+    ],
+    "risk_areas": [
+      {"title": "Название риска", "description": "Что может пойти не так и почему", "mitigation": "Как снизить риск"}
+    ],
+    "cheatsheet": "Краткая шпаргалка для РП и ТО на 2-3 абзаца: что сделать в первую очередь до выезда, на что обратить особое внимание на объекте, ключевые моменты которые нельзя упустить именно для ЭТОГО проекта."
   }
 }
 
@@ -1340,6 +1356,16 @@ ${tariffsToPrompt(ctx.tariffs)}
       - activities: что конкретно делают на складе
     - Маршрут ВСЕГДА: Саратов → Москва (склад) → город объекта
 
+14) Заполни блок MIMIR_NOTES — шпаргалка для РП и ТО:
+    - client_questions: 3-5 конкретных вопросов клиенту ДО начала работ
+      (доступ на объект, режим работы, наличие воды/электричества, требования к документам, конкретика по ТЗ)
+    - implementation_tips: 3-5 практических советов по ЭТОМУ конкретному объекту
+      (специфика работ, последовательность, технические нюансы)
+    - risk_areas: 2-4 реальных риска для ЭТОГО проекта с mitigation
+      (не общие слова — конкретные риски исходя из ТЗ, расстояния, типа работ, допусков)
+    - cheatsheet: шпаргалка 2-3 абзаца для РП: что подготовить перед выездом,
+      что проверить на месте, ключевые нормативные требования для этого типа работ
+
 ВАЖНО:
 - Возвращай ТОЛЬКО валидный JSON, без \`\`\`json блока, без текста до/после
 - Все суммы в рублях (число, не строка)
@@ -1347,7 +1373,8 @@ ${tariffsToPrompt(ctx.tariffs)}
 - В travel total = count × price
 - ИТР всегда rate_per_day=10000 (не из тарифной сетки)
 - НЕ добавляй в purchases_needed то что есть на складе
-- warnings: до 4 штук, level: "warning"|"info"|"critical"`;
+- warnings: до 4 штук, level: "warning"|"info"|"critical"
+- mimir_notes ОБЯЗАТЕЛЕН — всегда заполняй все 4 поля`;
 }
 
 /**
@@ -1613,6 +1640,7 @@ async function createDraftEstimate(db, ctx, ai, recomputed, user) {
     equipment_status: ai.equipment_status || null,
     permits_status: ai.permits_status || null,
     route_plan: ai.route_plan || null,
+    mimir_notes: ai.mimir_notes || null,
     chat_history: [],
     generated_at: new Date().toISOString(),
     ai_model: ai._meta?.model || null,
@@ -1792,6 +1820,9 @@ async function updateDraftEstimate(db, estimateId, ai, recomputed, user, chatTur
     purchases_needed: ai.analysis?.purchases_needed || [],
     workers_status: ai.analysis?.workers_status || null,
     warehouse_status: ai.analysis?.warehouse_status || null,
+    permits_status: ai.permits_status || null,
+    route_plan: ai.route_plan || null,
+    mimir_notes: ai.mimir_notes || null,
     chat_history: prevHistory,
     updated_at: new Date().toISOString(),
     ai_model: ai._meta?.model || null

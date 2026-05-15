@@ -876,8 +876,46 @@ window.AsgardEstimateReportPage = (function () {
     const equipment = ms.equipment_status;
     const permits = ms.permits_status;
     const route = ms.route_plan;
+    const mn = ms.mimir_notes || null;
 
     let html = '<div class="er-mimir-blocks" style="margin-top:24px">';
+
+    // ── Шпаргалка Мимира ──
+    if (mn && (mn.cheatsheet || (mn.client_questions && mn.client_questions.length) || (mn.implementation_tips && mn.implementation_tips.length) || (mn.risk_areas && mn.risk_areas.length))) {
+      html += '<div class="er-eblock er-eblock--open" style="margin-bottom:16px;border-left:3px solid #4a6ff5">';
+      html += '<div class="er-eblock__head" style="background:rgba(74,111,245,0.08);border-left:3px solid #4a6ff5;padding:10px 14px;border-radius:8px 8px 0 0;cursor:pointer">';
+      html += '<b style="color:#4a6ff5">🧠 Шпаргалка Мимира — рекомендации по проекту</b></div>';
+      html += '<div class="er-eblock__body" style="padding:14px;background:var(--bg3);border-radius:0 0 8px 8px;border:0.5px solid rgba(74,111,245,.2)">';
+
+      if (mn.cheatsheet) {
+        html += '<div style="background:rgba(74,111,245,.07);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px;line-height:1.7;color:var(--t1)">' + esc(mn.cheatsheet).replace(/\n/g,'<br>') + '</div>';
+      }
+
+      if (mn.client_questions && mn.client_questions.length) {
+        html += '<p style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">❓ Уточнить у клиента</p><ul style="padding-left:18px;margin-bottom:12px">';
+        mn.client_questions.forEach(function(q) { html += '<li style="font-size:12px;color:var(--t2);margin-bottom:4px;line-height:1.5">' + esc(q) + '</li>'; });
+        html += '</ul>';
+      }
+
+      if (mn.implementation_tips && mn.implementation_tips.length) {
+        html += '<p style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">💡 Рекомендации по выполнению</p><ul style="padding-left:18px;margin-bottom:12px">';
+        mn.implementation_tips.forEach(function(t) { html += '<li style="font-size:12px;color:var(--t2);margin-bottom:4px;line-height:1.5">' + esc(t) + '</li>'; });
+        html += '</ul>';
+      }
+
+      if (mn.risk_areas && mn.risk_areas.length) {
+        html += '<p style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px">⚠️ Потенциальные сложности</p>';
+        mn.risk_areas.forEach(function(r) {
+          html += '<div style="background:rgba(245,158,11,.07);border-left:3px solid #f59e0b;border-radius:0 6px 6px 0;padding:8px 12px;margin-bottom:8px">';
+          html += '<p style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:2px">' + esc(r.title || '') + '</p>';
+          html += '<p style="font-size:12px;color:var(--t2);line-height:1.5">' + esc(r.description || '') + '</p>';
+          if (r.mitigation) html += '<p style="font-size:11px;color:var(--ok-t);margin-top:4px;font-style:italic">→ ' + esc(r.mitigation) + '</p>';
+          html += '</div>';
+        });
+      }
+
+      html += '</div></div>';
+    }
 
     // ── Оборудование ──
     html += '<div class="er-eblock er-eblock--open" style="margin-bottom:16px">';
