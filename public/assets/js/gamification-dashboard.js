@@ -22,9 +22,9 @@ window.AsgardGamificationDashboard = (function () {
 
   async function render({ layout, title }) {
     layout.innerHTML = `<div style="max-width:1200px;margin:0 auto;padding:24px 16px">
-      <h1 style="font-size:22px;font-weight:800;color:var(--gold,#D4A843);margin-bottom:4px">${esc(title)}</h1>
-      <p style="font-size:13px;color:var(--t3,#888);margin-bottom:24px">Экономика и активность рабочих</p>
-      <div id="gd-loading" style="text-align:center;padding:40px;color:var(--t3,#888)">Загрузка данных…</div>
+      <h1 style="font-size:22px;font-weight:800;color:var(--gold);margin-bottom:4px">${esc(title)}</h1>
+      <p style="font-size:13px;color:var(--t3);margin-bottom:24px">Экономика и активность рабочих</p>
+      <div id="gd-loading" style="text-align:center;padding:40px;color:var(--t3)">Загрузка данных…</div>
       <div id="gd-content" style="display:none"></div>
     </div>`;
 
@@ -75,12 +75,12 @@ window.AsgardGamificationDashboard = (function () {
     const topPrizes = data.top_prizes || [];
     const prizesCard = makeCard('🏆 Топ призов', topPrizes.length > 0
       ? '<table style="width:100%;font-size:12px">' + topPrizes.map((p, i) =>
-        `<tr style="border-bottom:1px solid var(--brd,rgba(255,255,255,.04))">
-          <td style="padding:6px 0;color:var(--t3,#888)">${i + 1}.</td>
-          <td style="padding:6px 8px;color:var(--t1,#fff);font-weight:600">${esc(p.prize_name)}</td>
-          <td style="padding:6px 0;text-align:right;color:var(--gold,#D4A843);font-weight:700">${p.cnt}x</td>
+        `<tr style="border-bottom:1px solid var(--brd-m)">
+          <td style="padding:6px 0;color:var(--t3)">${i + 1}.</td>
+          <td style="padding:6px 8px;color:var(--t1);font-weight:600">${esc(p.prize_name)}</td>
+          <td style="padding:6px 0;text-align:right;color:var(--gold);font-weight:700">${p.cnt}x</td>
         </tr>`).join('') + '</table>'
-      : '<div style="padding:20px;text-align:center;color:var(--t3,#888)">Нет данных</div>'
+      : '<div style="padding:20px;text-align:center;color:var(--t3)">Нет данных</div>'
     );
     cols.appendChild(prizesCard);
 
@@ -88,12 +88,12 @@ window.AsgardGamificationDashboard = (function () {
     const topWorkers = data.top_workers || [];
     const workersCard = makeCard('⚔ Топ рабочих', topWorkers.length > 0
       ? '<table style="width:100%;font-size:12px">' + topWorkers.map((w, i) =>
-        `<tr style="border-bottom:1px solid var(--brd,rgba(255,255,255,.04))">
-          <td style="padding:6px 0;color:var(--t3,#888)">${i + 1}.</td>
-          <td style="padding:6px 8px;color:var(--t1,#fff);font-weight:600">${esc(w.name)}</td>
-          <td style="padding:6px 0;text-align:right;color:var(--gold,#D4A843);font-weight:700">${w.spins} спинов</td>
+        `<tr style="border-bottom:1px solid var(--brd-m)">
+          <td style="padding:6px 0;color:var(--t3)">${i + 1}.</td>
+          <td style="padding:6px 8px;color:var(--t1);font-weight:600">${esc(w.name)}</td>
+          <td style="padding:6px 0;text-align:right;color:var(--gold);font-weight:700">${w.spins} спинов</td>
         </tr>`).join('') + '</table>'
-      : '<div style="padding:20px;text-align:center;color:var(--t3,#888)">Нет данных</div>'
+      : '<div style="padding:20px;text-align:center;color:var(--t3)">Нет данных</div>'
     );
     cols.appendChild(workersCard);
     content.appendChild(cols);
@@ -104,7 +104,7 @@ window.AsgardGamificationDashboard = (function () {
       const opsCard = makeCard('📜 Последние операции', '');
       const table = document.createElement('table');
       table.style.cssText = 'width:100%;border-collapse:collapse;font-size:12px';
-      table.innerHTML = `<thead><tr style="color:var(--t3,#888);border-bottom:1px solid var(--brd,rgba(255,255,255,.08))">
+      table.innerHTML = `<thead><tr style="color:var(--t3);border-bottom:1px solid var(--brd)">
         <th style="text-align:left;padding:6px 8px">Время</th>
         <th style="text-align:left;padding:6px 8px">Рабочий</th>
         <th style="text-align:left;padding:6px 8px">Тип</th>
@@ -114,14 +114,14 @@ window.AsgardGamificationDashboard = (function () {
       const tbody = table.querySelector('tbody');
       recentOps.forEach(op => {
         const tr = document.createElement('tr');
-        tr.style.cssText = 'border-bottom:1px solid var(--brd,rgba(255,255,255,.04))';
+        tr.style.cssText = 'border-bottom:1px solid var(--brd-m)';
         const opColor = op.amount > 0 ? '#22c55e' : '#ef4444';
         const opLabel = { spin_win: '🎰 Спин', shop_buy: '🛍 Покупка', convert: '🔄 Конверт', quest_claim: '⚔ Квест' }[op.operation] || op.operation;
-        tr.innerHTML = `<td style="padding:6px 8px;color:var(--t3,#888);white-space:nowrap">${new Date(op.created_at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
-          <td style="padding:6px 8px;color:var(--t1,#fff)">${esc(op.employee_name || '—')}</td>
-          <td style="padding:6px 8px;color:var(--t2,#aaa)">${op.currency}</td>
+        tr.innerHTML = `<td style="padding:6px 8px;color:var(--t3);white-space:nowrap">${new Date(op.created_at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
+          <td style="padding:6px 8px;color:var(--t1)">${esc(op.employee_name || '—')}</td>
+          <td style="padding:6px 8px;color:var(--t2)">${op.currency}</td>
           <td style="padding:6px 8px;text-align:right;color:${opColor};font-weight:700">${op.amount > 0 ? '+' : ''}${op.amount}</td>
-          <td style="padding:6px 8px;color:var(--t3,#888)">${opLabel}</td>`;
+          <td style="padding:6px 8px;color:var(--t3)">${opLabel}</td>`;
         tbody.appendChild(tr);
       });
       opsCard.querySelector('.gd-card-body').appendChild(table);
@@ -131,8 +131,8 @@ window.AsgardGamificationDashboard = (function () {
 
   function makeCard(title, bodyHTML) {
     const card = document.createElement('div');
-    card.style.cssText = 'border-radius:16px;background:var(--card,#141828);border:1px solid var(--brd,rgba(255,255,255,.06));overflow:hidden';
-    card.innerHTML = `<div style="padding:12px 16px;border-bottom:1px solid var(--brd,rgba(255,255,255,.06));font-size:14px;font-weight:700;color:var(--t1,#fff)">${title}</div>
+    card.style.cssText = 'border-radius:16px;background:var(--bg2);border:1px solid var(--brd);overflow:hidden';
+    card.innerHTML = `<div style="padding:12px 16px;border-bottom:1px solid var(--brd);font-size:14px;font-weight:700;color:var(--t1)">${title}</div>
       <div class="gd-card-body" style="padding:12px 16px">${bodyHTML}</div>`;
     return card;
   }

@@ -309,12 +309,41 @@ async function directorApprove(db, { entityType, entityId, actor, comment }) {
       const { sql: dirSql, values: dirVals } = buildUpdate('estimates', entityId, dirFields);
       await client.query(dirSql, dirVals);
 
-      // Автоматически перевести тендер из «Согласование ТКП» → «ТКП согласовано»
+      // Автоматически перевести тендер → «ТКП согласовано» + скопировать цену (без НДС и с НДС)
       if (record.tender_id) {
+        // Читаем актуальную цену из estimate_calculation_data (источник правды),
+        // fallback на estimates.price_tkp если calculation_data нет
+        let priceNoVat = null;
+        try {
+          const calcRow = await client.query(
+            `SELECT total_with_margin, total_cost FROM estimate_calculation_data
+             WHERE estimate_id = $1 ORDER BY version_no DESC LIMIT 1`,
+            [entityId]
+          );
+          if (calcRow.rows[0]?.total_with_margin) {
+            priceNoVat = parseFloat(calcRow.rows[0].total_with_margin);
+            // Синхронизируем estimates.price_tkp чтобы не расходились
+            await client.query(
+              `UPDATE estimates SET price_tkp = $2, cost_plan = COALESCE($3, cost_plan), updated_at = NOW() WHERE id = $1`,
+              [entityId, priceNoVat, calcRow.rows[0].total_cost ? parseFloat(calcRow.rows[0].total_cost) : null]
+            );
+          }
+        } catch (e) { /* ok — fallback ниже */ }
+        if (!priceNoVat) priceNoVat = record.price_tkp || record.total_sum || null;
+        let vatPct = record.vat_pct;
+        if (!vatPct) {
+          const vatRow = await client.query("SELECT value_json FROM settings WHERE key = 'vat_default_pct'");
+          vatPct = vatRow.rows[0] ? parseFloat(vatRow.rows[0].value_json) || 20 : 20;
+        }
+        const priceWithVat = priceNoVat ? Math.round(priceNoVat * (1 + vatPct / 100) * 100) / 100 : null;
         await client.query(`
-          UPDATE tenders SET tender_status = 'ТКП согласовано', updated_at = NOW()
-          WHERE id = $1 AND tender_status = 'Согласование ТКП'
-        `, [record.tender_id]);
+          UPDATE tenders SET tender_status = 'ТКП согласовано',
+            tender_price = COALESCE($2, tender_price),
+            tender_price_with_vat = COALESCE($3, tender_price_with_vat),
+            vat_pct = $4,
+            updated_at = NOW()
+          WHERE id = $1 AND tender_status IN ('Согласование ТКП', 'Отправлено на просчёт')
+        `, [record.tender_id, priceNoVat, priceWithVat, vatPct]);
       }
     }
 
@@ -601,6 +630,14 @@ async function directorReject(db, { entityType, entityId, actor, comment }) {
     const dirFields = { director_id: actor.id, last_director_comment: comment.trim() };
     const { sql: dirSql, values: dirVals } = buildUpdate('estimates', entityId, dirFields);
     await db.query(dirSql, dirVals);
+
+    // Вернуть тендер в «Отправлено на просчёт» при отклонении
+    if (record.tender_id) {
+      await db.query(`
+        UPDATE tenders SET tender_status = 'Отправлено на просчёт', updated_at = NOW()
+        WHERE id = $1 AND tender_status IN ('Согласование ТКП', 'ТКП согласовано')
+      `, [record.tender_id]);
+    }
   }
 
   const label = `${getLabel(entityType)} #${entityId}`;
@@ -683,6 +720,14 @@ async function resubmit(db, { entityType, entityId, actor }) {
     message: `${actor.name || 'РП'} переотправил ${getLabel(entityType)} #${entityId} после доработки`,
     requiresPayment: false
   });
+
+  // Перевести тендер в «Согласование ТКП» при повторной отправке
+  if (entityType === 'estimates' && record.tender_id) {
+    await db.query(`
+      UPDATE tenders SET tender_status = 'Согласование ТКП', updated_at = NOW()
+      WHERE id = $1 AND tender_status = 'Отправлено на просчёт'
+    `, [record.tender_id]);
+  }
 
   // H1: Обновить карточку просчёта в чате + системное сообщение
   if (entityType === 'estimates') {

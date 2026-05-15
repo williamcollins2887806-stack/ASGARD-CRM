@@ -9,14 +9,14 @@ window.AsgardGamificationCrud = (function () {
 
   const { $, esc, toast } = AsgardUI;
 
-  const GOLD = 'var(--gold,#D4A843)';
+  const GOLD = 'var(--gold)';
   const TIER_COLORS = { common: '#22c55e', rare: '#4A90FF', epic: '#A56EFF', legendary: '#F0C850' };
   const TIER_RU = { common: 'Обычный', rare: 'Редкий', epic: 'Эпик', legendary: 'Легенда' };
   const CAT_RU = { merch: 'Мерч', digital: 'Цифровое', privilege: 'Привилегия', cosmetic: 'Косметика', food: 'Еда' };
   const DELIVERY_RU = { pending: '⏳ Ожидает', ready: '📦 Готово к выдаче', delivered: '✅ Выдано' };
   const DELIVERY_COLOR = { pending: '#f59e0b', ready: '#4A90FF', delivered: '#22c55e' };
 
-  const inputStyle = 'width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:#141828;color:#fff;font-size:13px;box-sizing:border-box;';
+  const inputStyle = 'width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--brd);background:var(--bg3);color:var(--t1);font-size:13px;box-sizing:border-box;';
 
   let currentTab = 'shop';
   let layoutEl = null;
@@ -123,7 +123,7 @@ window.AsgardGamificationCrud = (function () {
 
     items.forEach(item => {
       const card = document.createElement('div');
-      card.style.cssText = `background:#141828;border-radius:14px;padding:16px;border:1px solid rgba(255,255,255,.06);
+      card.style.cssText = `background:var(--bg3);border-radius:14px;padding:16px;border:1px solid var(--brd);
         transition:transform .15s,box-shadow .15s;cursor:pointer;position:relative;
         opacity:${item.is_active ? 1 : 0.5}`;
       card.addEventListener('mouseenter', () => { card.style.transform = 'translateY(-2px)'; card.style.boxShadow = '0 8px 24px rgba(0,0,0,.4)'; });
@@ -433,7 +433,7 @@ window.AsgardGamificationCrud = (function () {
 
     // Filter bar
     const filterBar = document.createElement('div');
-    filterBar.style.cssText = 'display:flex;align-items:flex-end;gap:10px;margin-bottom:16px;flex-wrap:wrap;background:#141828;padding:14px;border-radius:14px;border:1px solid rgba(255,255,255,.06)';
+    filterBar.style.cssText = 'display:flex;align-items:flex-end;gap:10px;margin-bottom:16px;flex-wrap:wrap;background:var(--bg3);padding:14px;border-radius:14px;border:1px solid var(--brd)';
     filterBar.innerHTML = `
       <div>
         <label style="font-size:11px;color:rgba(255,255,255,.4);display:block;margin-bottom:4px">Статус</label>
@@ -499,19 +499,19 @@ window.AsgardGamificationCrud = (function () {
       if (statsEl) {
         statsEl.innerHTML = `
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:16px">
-            <div style="background:#141828;border-radius:12px;padding:14px;border:1px solid rgba(255,255,255,.06);text-align:center">
+            <div style="background:var(--bg3);border-radius:12px;padding:14px;border:1px solid var(--brd);text-align:center">
               <div style="font-size:24px;font-weight:800;color:#fff">${stats.total_spins}</div>
               <div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:4px">Всего спинов</div>
             </div>
-            <div style="background:#141828;border-radius:12px;padding:14px;border:1px solid rgba(255,255,255,.06);text-align:center">
+            <div style="background:var(--bg3);border-radius:12px;padding:14px;border:1px solid var(--brd);text-align:center">
               <div style="font-size:24px;font-weight:800;color:#f59e0b">${stats.pending_deliveries}</div>
               <div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:4px">Ждут выдачи</div>
             </div>
-            <div style="background:#141828;border-radius:12px;padding:14px;border:1px solid rgba(255,255,255,.06);text-align:center">
+            <div style="background:var(--bg3);border-radius:12px;padding:14px;border:1px solid var(--brd);text-align:center">
               <div style="font-size:24px;font-weight:800;color:#22c55e">${stats.delivered}</div>
               <div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:4px">Выдано</div>
             </div>
-            <div style="background:#141828;border-radius:12px;padding:14px;border:1px solid rgba(255,255,255,.06);text-align:center">
+            <div style="background:var(--bg3);border-radius:12px;padding:14px;border:1px solid var(--brd);text-align:center">
               <div style="font-size:24px;font-weight:800;color:${GOLD}">${stats.rare_wins}</div>
               <div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:4px">Редких призов</div>
             </div>

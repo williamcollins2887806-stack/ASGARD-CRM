@@ -97,7 +97,7 @@ window.AsgardEstimateReportPage = (function () {
     const res = await fetch('/api' + path, opts);
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || 'Ошибка API');
+      throw new Error(err.error || err.message || 'Ошибка API');
     }
     return res.json();
   }
@@ -164,7 +164,7 @@ window.AsgardEstimateReportPage = (function () {
       ${renderObjectInfo(est)}
       ${canEdit ? renderEditableTable(calcData, est) : renderConsolidatedTable(calcData)}
       ${renderMimirBlocks(calcData, est)}
-      ${canEdit ? renderMimirChat() : ''}
+      ${canEdit ? renderMimirChat(est) : ''}
       ${renderAnalogs(analogs)}
       ${renderComments(comments)}
       ${canAct ? renderActionPanel() : ''}
@@ -282,6 +282,7 @@ window.AsgardEstimateReportPage = (function () {
       </div>
       <div class="er-header-right">
         ${canEdit ? '<button class="er-btn er-btn--mimir" id="erAutoCalcBtn">🧙 Авторасчёт</button>' : ''}
+        ${canEdit ? '<button class="er-btn er-btn--mimir" id="erMimirRecalcBtn" style="background:linear-gradient(135deg,#C8293B,#1E4D8C)">🔄 Пересчитать через Мимира</button>' : ''}
         <button class="er-btn er-btn--secondary" id="erExcelBtn">Excel</button>
         <a href="${_getBackUrl()}" class="er-btn er-btn--secondary">← Назад</a>
       </div>
@@ -799,10 +800,10 @@ window.AsgardEstimateReportPage = (function () {
     html += '<div class="er-eblock er-eblock--open" style="margin-bottom:16px">';
     html += '<div class="er-eblock__head" style="background:rgba(30,77,140,0.08);border-left:3px solid #1E4D8C;padding:10px 14px;border-radius:8px 8px 0 0;cursor:pointer">';
     html += '<b style="color:#4D90E0">🔧 Оборудование</b></div>';
-    html += '<div class="er-eblock__body" style="padding:12px 14px;background:var(--bg-2,#1a1d24);border-radius:0 0 8px 8px;border:0.5px solid rgba(255,255,255,0.06)">';
+    html += '<div class="er-eblock__body" style="padding:12px 14px;background:var(--bg3);border-radius:0 0 8px 8px;border:0.5px solid var(--brd)">';
     if (equipment) {
       if (equipment.from_warehouse && equipment.from_warehouse.length > 0) {
-        html += '<p style="font-size:12px;font-weight:700;color:var(--ok-t,#4CAF50);margin-bottom:6px">✅ Со склада:</p>';
+        html += '<p style="font-size:12px;font-weight:700;color:var(--ok-t);margin-bottom:6px">✅ Со склада:</p>';
         html += '<table class="er-mini-table"><tbody>';
         equipment.from_warehouse.forEach(function(r) {
           html += '<tr><td>' + esc(r.item || '—') + '</td><td style="text-align:right">' + (r.quantity || 1) + ' шт</td><td style="color:var(--t3)">' + esc(r.condition || '') + '</td></tr>';
@@ -829,12 +830,12 @@ window.AsgardEstimateReportPage = (function () {
     html += '<div class="er-eblock er-eblock--open" style="margin-bottom:16px">';
     html += '<div class="er-eblock__head" style="background:rgba(76,175,80,0.08);border-left:3px solid #4CAF50;padding:10px 14px;border-radius:8px 8px 0 0;cursor:pointer">';
     html += '<b style="color:#66BB6A">🛡 Допуска и персонал</b></div>';
-    html += '<div class="er-eblock__body" style="padding:12px 14px;background:var(--bg-2,#1a1d24);border-radius:0 0 8px 8px;border:0.5px solid rgba(255,255,255,0.06)">';
+    html += '<div class="er-eblock__body" style="padding:12px 14px;background:var(--bg3);border-radius:0 0 8px 8px;border:0.5px solid var(--brd)">';
     if (permits) {
       if (permits.available_crew && permits.available_crew.length > 0) {
         html += '<table class="er-mini-table"><thead><tr><th>Допуск</th><th>Нужно</th><th>Свободных</th><th>Статус</th></tr></thead><tbody>';
         permits.available_crew.forEach(function(r) {
-          var statusColor = r.enough ? 'var(--ok-t,#4CAF50)' : '#E67381';
+          var statusColor = r.enough ? 'var(--ok-t)' : '#E67381';
           var statusText = r.enough ? '✅ Хватает' : '⚠️ Не хватает';
           html += '<tr><td>' + esc(r.permit || '—') + '</td><td style="text-align:center">' + (r.needed || '?') + '</td>';
           html += '<td style="text-align:center">' + (r.available || '?') + '</td>';
@@ -858,12 +859,12 @@ window.AsgardEstimateReportPage = (function () {
     html += '<div class="er-eblock er-eblock--open" style="margin-bottom:16px">';
     html += '<div class="er-eblock__head" style="background:rgba(212,168,67,0.08);border-left:3px solid #D4A843;padding:10px 14px;border-radius:8px 8px 0 0;cursor:pointer">';
     html += '<b style="color:#D4A843">🗺 Маршрут и логистика</b></div>';
-    html += '<div class="er-eblock__body" style="padding:12px 14px;background:var(--bg-2,#1a1d24);border-radius:0 0 8px 8px;border:0.5px solid rgba(255,255,255,0.06)">';
+    html += '<div class="er-eblock__body" style="padding:12px 14px;background:var(--bg3);border-radius:0 0 8px 8px;border:0.5px solid var(--brd)">';
     if (route) {
       if (route.legs && route.legs.length > 0) {
         html += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">';
         route.legs.forEach(function(leg, i) {
-          html += '<div style="flex:1;min-width:180px;padding:8px 12px;background:rgba(255,255,255,0.03);border-radius:8px;border:0.5px solid rgba(255,255,255,0.08)">';
+          html += '<div style="flex:1;min-width:180px;padding:8px 12px;background:var(--bg3);border-radius:8px;border:0.5px solid var(--brd)">';
           html += '<p style="font-size:11px;color:var(--t3)">Этап ' + (i + 1) + '</p>';
           html += '<p style="font-size:13px;font-weight:600;color:var(--t1)">' + esc(leg.from || '?') + ' → ' + esc(leg.to || '?') + '</p>';
           html += '<p style="font-size:11px;color:var(--t2)">' + esc(leg.transport || '?') + ' • ' + (leg.duration_days || '?') + ' дн' + (leg.cost_per_person ? ' • ' + fmtMoney(leg.cost_per_person) + '/чел' : '') + '</p>';
@@ -910,15 +911,23 @@ window.AsgardEstimateReportPage = (function () {
   // ──────────────────────────────────────────────────────────────
   // COMPONENT: MimirChat (mini, below table for PM)
   // ──────────────────────────────────────────────────────────────
-  function renderMimirChat() {
+  function renderMimirChat(est) {
+    const isRework = ['rework', 'question'].includes(est?.approval_status);
+    const dirComment = est?.last_director_comment || '';
+    const reworkHint = isRework && dirComment
+      ? `<div class="er-mimir__msg er-mimir__msg--system" style="background:rgba(212,168,67,0.12);border-left:3px solid #D4A843;padding:8px 12px;border-radius:8px;margin-bottom:8px;font-size:12px">
+           <b>${est.approval_status === 'question' ? 'Вопрос директора' : 'Замечание директора'}:</b> ${esc(dirComment)}
+         </div>
+         <div class="er-mimir__hint" style="font-size:12px;color:var(--t3)">Напишите Мимиру что изменить — он учтёт замечание и пересчитает.</div>`
+      : `<div class="er-mimir__hint">Мимир подскажет по химии, тарифам и логистике. Напишите вопрос или нажмите «Авторасчёт».</div>`;
     return `
-    <div class="er-mimir" id="erMimir">
+    <div class="er-mimir" id="erMimir" data-work-id="${est?.work_id||''}" data-tender-id="${est?.tender_id||''}" data-director-comment="${esc(dirComment)}" data-rework="${isRework?'1':''}">
       <div class="er-mimir__header">
         <span class="er-mimir__avatar">M</span>
         <span class="er-mimir__name">Мимир — ассистент расчёта</span>
       </div>
       <div class="er-mimir__body" id="erMimirBody">
-        <div class="er-mimir__hint">Мимир подскажет по химии, тарифам и логистике. Напишите вопрос или нажмите «Авторасчёт».</div>
+        ${reworkHint}
       </div>
       <div class="er-mimir__legend">
         <span class="er-src er-src--tariff">тариф</span> надёжный источник
@@ -926,7 +935,7 @@ window.AsgardEstimateReportPage = (function () {
         <span class="er-src er-src--fixed" style="margin-left:8px">фикс.</span> константа
       </div>
       <div class="er-mimir__input">
-        <input type="text" id="erMimirInput" placeholder="Спросить Мимира..." />
+        <input type="text" id="erMimirInput" placeholder="${isRework ? 'Написать Мимиру для пересчёта...' : 'Спросить Мимира...'}" />
         <button class="er-mimir__send" id="erMimirSend">↗</button>
       </div>
     </div>`;
@@ -1350,29 +1359,63 @@ window.AsgardEstimateReportPage = (function () {
     const input = document.getElementById('erMimirInput');
     const sendBtn = document.getElementById('erMimirSend');
     const body = document.getElementById('erMimirBody');
+    const mimirEl = document.getElementById('erMimir');
     if (!input || !sendBtn || !body) return;
+
+    const workId = mimirEl?.dataset?.workId || '';
+    const tenderId = mimirEl?.dataset?.tenderId || '';
+    const directorComment = mimirEl?.dataset?.directorComment || '';
+    const isRework = mimirEl?.dataset?.rework === '1';
+    const chatHistory = [];
 
     const sendMsg = async () => {
       const text = input.value.trim();
       if (!text) return;
       input.value = '';
 
+      // Если доработка — добавляем контекст директора к первому сообщению
+      let fullMessage = text;
+      if (isRework && directorComment && chatHistory.length === 0) {
+        fullMessage = `Замечание директора: "${directorComment}"\n\nМой комментарий: ${text}`;
+      }
+
       // Add user message
       body.insertAdjacentHTML('beforeend', `<div class="er-mimir__msg er-mimir__msg--user">${esc(text)}</div>`);
 
       // Add typing indicator
-      body.insertAdjacentHTML('beforeend', '<div class="er-mimir__msg er-mimir__msg--typing" id="erMimirTyping">Мимир думает…</div>');
+      body.insertAdjacentHTML('beforeend', '<div class="er-mimir__msg er-mimir__msg--typing" id="erMimirTyping">Мимир пересчитывает…</div>');
       body.scrollTop = body.scrollHeight;
 
       try {
-        const res = await api('POST', '/mimir/chat', token, {
-          message: text,
-          context: { estimate_id: estimateId, type: 'calculation' }
-        });
+        // Используем auto-estimate-chat если есть work_id (полный пересчёт с контекстом)
+        let res;
+        if (workId) {
+          res = await api('POST', '/mimir/auto-estimate-chat', token, {
+            work_id: workId,
+            tender_id: tenderId || undefined,
+            estimate_id: estimateId,
+            message: fullMessage,
+            history: chatHistory
+          });
+        } else {
+          res = await api('POST', '/mimir/chat', token, {
+            message: fullMessage,
+            context: 'estimate_id=' + estimateId
+          });
+        }
         const typing = document.getElementById('erMimirTyping');
         if (typing) typing.remove();
-        const reply = res.reply || res.message || 'Без ответа';
+        const reply = res.response || res.reply || res.message || 'Без ответа';
         body.insertAdjacentHTML('beforeend', `<div class="er-mimir__msg er-mimir__msg--bot">${esc(reply)}</div>`);
+
+        chatHistory.push({ role: 'user', text });
+        chatHistory.push({ role: 'mimir', text: reply });
+
+        // Если пересчёт — перезагрузить страницу через 2 сек чтобы увидеть новые цифры
+        if (workId && res.updated_card) {
+          body.insertAdjacentHTML('beforeend', '<div class="er-mimir__msg er-mimir__msg--system" style="font-size:11px;color:var(--t3)">Расчёт обновлён. Перезагружаю страницу...</div>');
+          setTimeout(() => location.reload(), 2000);
+        }
       } catch (e) {
         const typing = document.getElementById('erMimirTyping');
         if (typing) typing.remove();
@@ -1399,6 +1442,22 @@ window.AsgardEstimateReportPage = (function () {
           autoBtn.disabled = false;
           autoBtn.textContent = '🧙 Авторасчёт';
         }
+      });
+    }
+
+    // Кнопка «Пересчитать через Мимира» — прокрутка к чату + фокус
+    const recalcBtn = document.getElementById('erMimirRecalcBtn');
+    if (recalcBtn) {
+      recalcBtn.addEventListener('click', () => {
+        const chat = document.getElementById('erMimir');
+        const inp = document.getElementById('erMimirInput');
+        if (chat) {
+          chat.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Подсветить чат на секунду
+          chat.style.boxShadow = '0 0 20px rgba(200,41,59,0.4), 0 0 40px rgba(30,77,140,0.3)';
+          setTimeout(() => { chat.style.boxShadow = ''; }, 2000);
+        }
+        if (inp) setTimeout(() => inp.focus(), 400);
       });
     }
   }

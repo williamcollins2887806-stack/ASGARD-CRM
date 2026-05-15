@@ -685,6 +685,7 @@ try{
           </div>
           <div class="badges">${[
   ...(user ? [
+    `<button class="themebtn" id="btnTheme" type="button" title="Переключить тему" aria-label="Переключить тему"><svg id="themeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg></button>`,
     `<button class="topbar-search" id="btnTopSearch" type="button" title="Поиск (Ctrl+K)"><span class="ts-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span><span class="ts-label">Поиск</span><kbd class="ts-kbd">⌘K</kbd></button>`,
     `<button class="bellbtn" id="btnBell" type="button" aria-label="Уведомления">
       <span class="bell"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></span>
@@ -947,17 +948,32 @@ try{
       if($("#btnTheme")){
         const b = $("#btnTheme");
         const ic = $("#themeIcon");
+        const sunSVG = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
+        const moonSVG = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
         function syncTheme(){
           if(!b || !document.contains(b)) return;
           const t = (window.AsgardTheme?AsgardTheme.get():"dark")==="light" ? "light" : "dark";
           const msg = (t==="light") ? "Переключить на тёмную тему" : "Переключить на светлую тему";
           b.title = msg;
           try{ b.setAttribute("aria-label", msg); }catch(e){}
+          if(ic) ic.innerHTML = (t==="light") ? moonSVG : sunSVG;
         }
         syncTheme();
         addMobileClick(b, ()=>{
-          if(window.AsgardTheme) AsgardTheme.toggle();
-          syncTheme();
+          // Анимация вращения иконки
+          if(ic){
+            ic.style.transition = 'transform 0.4s ease';
+            ic.style.transform = 'rotate(180deg) scale(0.8)';
+            setTimeout(()=>{
+              if(window.AsgardTheme) AsgardTheme.toggleSimple();
+              syncTheme();
+              ic.style.transform = 'rotate(360deg) scale(1)';
+              setTimeout(()=>{ ic.style.transition = ''; ic.style.transform = ''; }, 400);
+            }, 200);
+          } else {
+            if(window.AsgardTheme) AsgardTheme.toggleSimple();
+            syncTheme();
+          }
         });
         window.addEventListener("asgard:theme", syncTheme);
       }
@@ -1464,7 +1480,7 @@ var _setupPinKeypad = null;
     var overlay = document.createElement('div');
     overlay.id = 'asgard-loading-overlay';
     overlay.className = 'loading-screen';
-    overlay.style.background = 'linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%)';
+    overlay.style.background = 'linear-gradient(135deg, var(--bg1) 0%, var(--bg2) 50%, var(--bg3) 100%)';
     var q = LOADING_QUOTES[Math.floor(Math.random() * LOADING_QUOTES.length)];
     overlay.innerHTML = '<div style="text-align:center;padding:20px;">'
       + '<img src="' + ASSETS_BASE + 'img/logo.png" style="width:80px;height:80px;border-radius:20px;margin-bottom:24px;animation:pulse 2s ease-in-out infinite;" onerror="this.style.display=\'none\'">'

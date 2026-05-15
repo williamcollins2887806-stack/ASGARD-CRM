@@ -70,14 +70,14 @@ window.AsgardUserRequestsPage = (function(){
         <style>
           .ur-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; margin-bottom:24px; }
           .ur-tabs { display:flex; gap:8px; margin-bottom:20px; }
-          .ur-tab { padding:10px 18px; border-radius:6px; background:rgba(13,20,40,.4); border:1px solid rgba(148,163,184,.15); color:var(--muted); font-weight:700; cursor:pointer; transition: all .2s ease; }
+          .ur-tab { padding:10px 18px; border-radius:6px; background:var(--bg3); border:1px solid var(--brd); color:var(--muted); font-weight:700; cursor:pointer; transition: all .2s ease; }
           .ur-tab:hover { border-color:rgba(242,208,138,.3); }
           .ur-tab.active { background:linear-gradient(135deg, rgba(242,208,138,.2), rgba(242,208,138,.1)); border-color:rgba(242,208,138,.4); color:var(--gold); }
           .ur-tab .count { display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px; margin-left:8px; padding:0 6px; background:rgba(59,130,246,.6); color:#fff; border-radius:999px; font-size:11px; font-weight:900; }
           .ur-tab.active .count { background:var(--gold); color:#000; }
           .ur-tab .count.red { background:rgba(239,68,68,.8); }
           .ur-list { display:grid; gap:12px; }
-          .ur-card { background: linear-gradient(135deg, rgba(13,20,40,.6), rgba(13,20,40,.4)); border:1px solid rgba(148,163,184,.15); border-radius:6px; padding:16px 20px; display:grid; grid-template-columns:1fr auto; gap:16px; align-items:start; transition: all .3s ease; }
+          .ur-card { background: var(--bg2); border:1px solid var(--brd); border-radius:6px; padding:16px 20px; display:grid; grid-template-columns:1fr auto; gap:16px; align-items:start; transition: all .3s ease; }
           .ur-card:hover { border-color:rgba(242,208,138,.25); }
           .ur-card.blocked { opacity:.6; border-color:rgba(239,68,68,.3); }
           .ur-info h3 { margin:0 0 6px; font-size:16px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
@@ -88,19 +88,19 @@ window.AsgardUserRequestsPage = (function(){
           .ur-meta span { display:flex; align-items:center; gap:4px; }
           .ur-actions { display:flex; gap:8px; flex-wrap:wrap; }
           .ur-actions .btn { padding:8px 12px; font-size:12px; }
-          .ur-empty { text-align:center; padding:60px 20px; background:rgba(13,20,40,.3); border:1px dashed rgba(148,163,184,.2); border-radius:6px; color:var(--muted); }
+          .ur-empty { text-align:center; padding:60px 20px; background:var(--bg3); border:1px dashed var(--brd); border-radius:6px; color:var(--muted); }
           .ur-empty-icon { font-size:64px; margin-bottom:16px; opacity:.5; }
-          .ur-search { display:flex; gap:12px; margin-bottom:16px; padding:12px; background:rgba(13,20,40,.3); border-radius:6px; align-items:center; }
-          .ur-search input { flex:1; padding:10px 14px; border-radius:6px; border:1px solid rgba(148,163,184,.15); background:rgba(13,20,40,.5); color:var(--text); font-size:14px; }
+          .ur-search { display:flex; gap:12px; margin-bottom:16px; padding:12px; background:var(--bg3); border-radius:6px; align-items:center; }
+          .ur-search input { flex:1; padding:10px 14px; border-radius:6px; border:1px solid var(--brd); background:var(--bg3); color:var(--t1); font-size:14px; }
 
           /* Mail status section */
-          .ur-mail { display:flex; align-items:center; gap:8px; margin-top:10px; padding:10px 12px; border-radius:6px; background:rgba(13,20,40,.5); border:1px solid rgba(148,163,184,.1); flex-wrap:wrap; font-size:13px; }
+          .ur-mail { display:flex; align-items:center; gap:8px; margin-top:10px; padding:10px 12px; border-radius:6px; background:var(--bg3); border:1px solid var(--brd); flex-wrap:wrap; font-size:13px; }
           .ur-mail-icon { font-size:16px; flex-shrink:0; }
-          .ur-mail-addr { color:var(--text); font-weight:600; font-family:var(--mono); font-size:12px; }
+          .ur-mail-addr { color:var(--t1); font-weight:600; font-family:var(--mono); font-size:12px; }
           .ur-mail-badge { display:inline-flex; align-items:center; gap:3px; padding:2px 8px; border-radius:999px; font-size:10px; font-weight:800; }
           .ur-mail-badge.green { background:rgba(34,197,94,.15); color:#22c55e; }
           .ur-mail-badge.red { background:rgba(239,68,68,.15); color:#ef4444; }
-          .ur-mail-badge.gray { background:rgba(148,163,184,.15); color:var(--muted); }
+          .ur-mail-badge.gray { background:var(--bg3); color:var(--muted); }
           .ur-mail-sync { color:var(--muted); font-size:11px; }
           .ur-mail-error { color:#ef4444; font-size:11px; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
           .ur-mail-none { color:var(--muted); font-style:italic; }
@@ -108,7 +108,7 @@ window.AsgardUserRequestsPage = (function(){
           .ur-mail-actions .btn { padding:4px 10px; font-size:11px; }
 
           /* Bind mail modal */
-          .bind-advanced { display:none; margin-top:12px; padding:12px; background:rgba(13,20,40,.3); border-radius:6px; border:1px solid rgba(148,163,184,.1); }
+          .bind-advanced { display:none; margin-top:12px; padding:12px; background:var(--bg3); border-radius:6px; border:1px solid var(--brd); }
           .bind-advanced.show { display:block; }
           .bind-test-result { margin-top:12px; padding:12px; border-radius:6px; font-size:13px; }
           .bind-test-result.ok { background:rgba(34,197,94,.1); border:1px solid rgba(34,197,94,.3); color:#22c55e; }
@@ -414,7 +414,7 @@ window.AsgardUserRequestsPage = (function(){
     function openBindEmailModal(u) {
       const html = `
         <div style="margin-bottom:16px; color:var(--muted); font-size:13px">
-          Привязать существующий почтовый ящик к пользователю <strong style="color:var(--text)">${esc(u.name)}</strong>.
+          Привязать существующий почтовый ящик к пользователю <strong style="color:var(--t1)">${esc(u.name)}</strong>.
           <br/>По умолчанию настройки для Яндекс Почты.
         </div>
 
@@ -551,7 +551,7 @@ window.AsgardUserRequestsPage = (function(){
 
       const html = `
         <div style="margin-bottom:16px; color:var(--muted); font-size:13px">
-          Создать новый почтовый ящик в Яндекс 360 для <strong style="color:var(--text)">${esc(u.name)}</strong>
+          Создать новый почтовый ящик в Яндекс 360 для <strong style="color:var(--t1)">${esc(u.name)}</strong>
           и автоматически привязать к CRM.
         </div>
 
@@ -630,7 +630,7 @@ window.AsgardUserRequestsPage = (function(){
 
       const html = `
         <div style="margin-bottom:16px; color:var(--muted); font-size:13px">
-          Привязать существующий корпоративный ящик к <strong style="color:var(--text)">${esc(u.name)}</strong>
+          Привязать существующий корпоративный ящик к <strong style="color:var(--t1)">${esc(u.name)}</strong>
           через Яндекс 360 Admin API.
         </div>
 
@@ -697,7 +697,7 @@ window.AsgardUserRequestsPage = (function(){
     function openMailSettingsModal(u, acc) {
       const html = `
         <div style="margin-bottom:16px; color:var(--muted); font-size:13px">
-          Настройки почтового аккаунта <strong style="color:var(--text)">${esc(acc.email_address)}</strong>
+          Настройки почтового аккаунта <strong style="color:var(--t1)">${esc(acc.email_address)}</strong>
           для ${esc(u.name)}.
         </div>
 
@@ -724,7 +724,7 @@ window.AsgardUserRequestsPage = (function(){
         <div class="formrow">
           <div style="grid-column:1/-1">
             <label>HTML-подпись</label>
-            <textarea id="ms_signature" rows="4" style="width:100%; resize:vertical; padding:10px; border-radius:6px; border:1px solid rgba(148,163,184,.15); background:rgba(13,20,40,.5); color:var(--text); font-size:13px">${esc(acc.signature_html || '')}</textarea>
+            <textarea id="ms_signature" rows="4" style="width:100%; resize:vertical; padding:10px; border-radius:6px; border:1px solid var(--brd); background:var(--bg3); color:var(--t1); font-size:13px">${esc(acc.signature_html || '')}</textarea>
           </div>
         </div>
 
@@ -821,7 +821,7 @@ window.AsgardUserRequestsPage = (function(){
           После создания пользователю будет отправлен временный пароль в Telegram (если указан ID).<br/>
           При первом входе он должен сменить пароль и установить PIN.
           <br/><br/>
-          <strong style="color:var(--text)">Почту можно привязать позже</strong> через кнопку «Привязать» или «Создать ящик» в карточке пользователя.
+          <strong style="color:var(--t1)">Почту можно привязать позже</strong> через кнопку «Привязать» или «Создать ящик» в карточке пользователя.
         </div>
         <div class="formrow">
           <div><label>Логин *</label><input id="cu_login" placeholder="ivanov"/></div>

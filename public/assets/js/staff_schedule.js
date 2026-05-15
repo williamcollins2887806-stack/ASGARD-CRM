@@ -676,14 +676,14 @@ window.AsgardStaffSchedulePage=(function(){
       empAssigns.forEach(function(a){ var g=empGroups.get(a.employee_id); if(g) g.assigns.push(a); });
 
       // Style
-      var styleTag = '<style>.g-bar{transition:transform .15s,box-shadow .15s;z-index:1;cursor:pointer}.g-bar:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.3);z-index:10!important}</style>';
+      var styleTag = '<style>.g-bar{transition:transform .15s,box-shadow .15s;z-index:1;cursor:pointer}.g-bar:hover{transform:translateY(-1px);box-shadow:var(--shadow-md);z-index:10!important}</style>';
 
       // Header
       var hdr = '<div style="display:flex;position:sticky;top:0;z-index:3;background:var(--bg2)">';
       hdr += '<div style="width:'+nameW+'px;min-width:'+nameW+'px;padding:6px 10px;font-size:11px;font-weight:700;color:var(--t2);border-bottom:1px solid var(--brd);border-right:1px solid var(--brd)">'+esc("\u0421\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a")+'</div>';
       hdr += '<div style="display:flex;border-bottom:1px solid var(--brd)">';
       months.forEach(function(m){
-        hdr += '<div style="width:'+monthW+'px;min-width:'+monthW+'px;text-align:center;font-size:10px;color:var(--t3);padding:6px 0;border-right:1px solid rgba(255,255,255,0.04)">'+m.label+'</div>';
+        hdr += '<div style="width:'+monthW+'px;min-width:'+monthW+'px;text-align:center;font-size:10px;color:var(--t3);padding:6px 0;border-right:1px solid var(--brd)">'+m.label+'</div>';
       });
       hdr += '</div></div>';
 
@@ -710,8 +710,8 @@ window.AsgardStaffSchedulePage=(function(){
         if(!subRows.length) subRows.push({items:[], end:minD});
 
         var empRowH = Math.max(36, subRows.length*(barH+rowGap)+8);
-        var bgR = ri%2===0 ? 'rgba(255,255,255,0.01)' : 'transparent';
-        bodyH += '<div style="display:flex;min-height:'+empRowH+'px;background:'+bgR+';border-bottom:1px solid rgba(255,255,255,0.04)">';
+        var bgR = ri%2===0 ? 'var(--bg3)' : 'transparent';
+        bodyH += '<div style="display:flex;min-height:'+empRowH+'px;background:'+bgR+';border-bottom:1px solid var(--brd)">';
 
         // Name cell with status indicator
         var nameStyle = 'width:'+nameW+'px;min-width:'+nameW+'px;padding:4px 10px;font-size:12px;border-right:1px solid var(--brd);display:flex;align-items:center;gap:6px;overflow:hidden';
@@ -731,7 +731,7 @@ window.AsgardStaffSchedulePage=(function(){
 
         // Bars area
         bodyH += '<div style="position:relative;width:'+totalW+'px;min-width:'+totalW+'px">';
-        months.forEach(function(m,mi){ bodyH += '<div style="position:absolute;left:'+(mi*monthW)+'px;top:0;bottom:0;width:1px;background:rgba(255,255,255,0.03)"></div>'; });
+        months.forEach(function(m,mi){ bodyH += '<div style="position:absolute;left:'+(mi*monthW)+'px;top:0;bottom:0;width:1px;background:var(--brd)"></div>'; });
         subRows.forEach(function(sr,sri){
           sr.items.forEach(function(a){
             var d1 = a.date_from ? new Date(a.date_from) : minD;

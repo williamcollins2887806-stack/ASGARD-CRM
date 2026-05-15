@@ -93,7 +93,7 @@ window.AsgardReceiptScanner = (function(){
         }
         
         .scanner-container {
-          background: var(--bg-card);
+          background: var(--bg2);
           border-radius: 6px;
           width: 100%;
           max-width: 500px;
@@ -105,7 +105,7 @@ window.AsgardReceiptScanner = (function(){
         
         .scanner-header {
           padding: 16px 20px;
-          border-bottom: 1px solid var(--line);
+          border-bottom: 1px solid var(--brd);
           display: flex;
           justify-content: space-between;
           align-items: center;
@@ -178,7 +178,7 @@ window.AsgardReceiptScanner = (function(){
         .scanner-ocr {
           margin-top: 16px;
           padding: 16px;
-          background: var(--bg-elevated);
+          background: var(--bg3);
           border-radius: 6px;
         }
         
@@ -193,7 +193,7 @@ window.AsgardReceiptScanner = (function(){
         .scanner-spinner {
           width: 24px;
           height: 24px;
-          border: 3px solid var(--line);
+          border: 3px solid var(--brd);
           border-top-color: var(--blue);
           border-radius: 50%;
           animation: spin 1s linear infinite;
@@ -205,7 +205,7 @@ window.AsgardReceiptScanner = (function(){
         
         .scanner-actions {
           padding: 16px 20px;
-          border-top: 1px solid var(--line);
+          border-top: 1px solid var(--brd);
           display: flex;
           gap: 12px;
           justify-content: center;
@@ -517,7 +517,7 @@ window.AsgardReceiptScanner = (function(){
       
       <details style="margin-bottom:16px">
         <summary class="help" style="cursor:pointer">Показать распознанный текст</summary>
-        <pre style="font-size:11px;background:var(--bg-card);padding:8px;border-radius:6px;white-space:pre-wrap;margin-top:8px">${esc(rawText)}</pre>
+        <pre style="font-size:11px;background:var(--bg3);padding:8px;border-radius:6px;white-space:pre-wrap;margin-top:8px">${esc(rawText)}</pre>
       </details>
       
       ${renderManualForm(parsed)}

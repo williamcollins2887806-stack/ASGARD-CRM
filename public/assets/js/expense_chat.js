@@ -34,13 +34,13 @@
     document.body.appendChild(overlay);
 
     const panel = document.createElement('div');
-    panel.style.cssText = 'width:560px;max-height:85vh;background:var(--surface,#1a1a2e);border-radius:20px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.5);animation:slideUp .3s ease-out';
+    panel.style.cssText = 'width:560px;max-height:85vh;background:var(--bg2);border-radius:20px;display:flex;flex-direction:column;overflow:hidden;box-shadow:var(--shadow-xl);animation:slideUp .3s ease-out';
     overlay.appendChild(panel);
 
     // Header
     const header = document.createElement('div');
-    header.style.cssText = 'padding:18px 20px;border-bottom:0.5px solid rgba(255,255,255,0.08);display:flex;align-items:center;gap:12px';
-    header.innerHTML = '<span style="font-size:22px">💰</span><div style="flex:1"><div style="font-size:15px;font-weight:700;color:#fff">Кошелёк проекта</div><div id="ecSubtitle" style="font-size:11px;color:rgba(255,255,255,0.4)">Загружаю...</div></div><button id="ecClose" style="background:none;border:none;color:rgba(255,255,255,0.4);font-size:20px;cursor:pointer">✕</button>';
+    header.style.cssText = 'padding:18px 20px;border-bottom:0.5px solid var(--brd);display:flex;align-items:center;gap:12px';
+    header.innerHTML = '<span style="font-size:22px">💰</span><div style="flex:1"><div style="font-size:15px;font-weight:700;color:var(--t1)">Кошелёк проекта</div><div id="ecSubtitle" style="font-size:11px;color:var(--t3)">Загружаю...</div></div><button id="ecClose" style="background:none;border:none;color:var(--t3);font-size:20px;cursor:pointer">✕</button>';
     panel.appendChild(header);
 
     // Messages area
@@ -50,12 +50,12 @@
 
     // Input area
     const inputArea = document.createElement('div');
-    inputArea.style.cssText = 'padding:12px 16px;border-top:0.5px solid rgba(255,255,255,0.08);display:flex;align-items:end;gap:8px';
+    inputArea.style.cssText = 'padding:12px 16px;border-top:0.5px solid var(--brd);display:flex;align-items:end;gap:8px';
     inputArea.innerHTML = `
       <input type="file" id="ecFileInput" accept="image/*,.pdf,.xlsx,.xls,.doc,.docx" style="display:none">
       <button id="ecQrBtn" style="width:36px;height:36px;border-radius:10px;border:none;background:rgba(212,168,67,0.1);color:#D4A843;cursor:pointer;font-size:16px" title="QR-код">📱</button>
       <button id="ecPhotoBtn" style="width:36px;height:36px;border-radius:10px;border:none;background:rgba(212,168,67,0.1);color:#D4A843;cursor:pointer;font-size:16px" title="Фото/файл">📎</button>
-      <input id="ecTextInput" placeholder="Опишите расход..." style="flex:1;padding:8px 14px;border-radius:14px;border:0.5px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:#fff;font-size:13px;outline:none">
+      <input id="ecTextInput" placeholder="Опишите расход..." style="flex:1;padding:8px 14px;border-radius:14px;border:0.5px solid var(--brd);background:var(--bg3);color:var(--t1);font-size:13px;outline:none">
       <button id="ecSendBtn" style="width:36px;height:36px;border-radius:10px;border:none;background:linear-gradient(135deg,#D4A843,#B88B2E);color:#fff;cursor:pointer;font-size:14px" title="Отправить">↗</button>
     `;
     panel.appendChild(inputArea);

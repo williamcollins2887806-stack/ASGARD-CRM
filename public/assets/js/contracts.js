@@ -258,19 +258,19 @@ window.AsgardContractsPage = (function(){
 
       #contractModal .cm-card,
       #contractSelectorModal .cm-card,
-      #newCustomerModal .cm-card { width:100%;background:#111827;border:1px solid rgba(255,255,255,.08);border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.04) inset;animation:cmSlideUp .25s ease;color:#e5e7eb }
+      #newCustomerModal .cm-card { width:100%;background:var(--bg2);border:1px solid var(--brd);border-radius:14px;box-shadow:var(--shadow-xl);animation:cmSlideUp .25s ease;color:var(--t1) }
 
       /* ── Premium inputs ── */
       #contractModal .cm-inp,
       #contractSelectorModal .cm-inp {
-        width:100%;height:42px;padding:0 14px;font-size:14px;font-family:inherit;color:#f3f4f6;
-        background:#0d1117;border:1px solid rgba(255,255,255,.1);border-radius:8px;
+        width:100%;height:42px;padding:0 14px;font-size:14px;font-family:inherit;color:var(--t1);
+        background:var(--bg3);border:1px solid var(--brd);border-radius:8px;
         outline:none;transition:border .15s,box-shadow .15s;
         -webkit-appearance:none;appearance:none;
       }
-      #contractModal .cm-inp:hover { border-color:rgba(255,255,255,.2) }
+      #contractModal .cm-inp:hover { border-color:var(--t3) }
       #contractModal .cm-inp:focus { border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.2) }
-      #contractModal .cm-inp::placeholder { color:rgba(255,255,255,.25) }
+      #contractModal .cm-inp::placeholder { color:var(--t3) }
       #contractModal .cm-inp:disabled { opacity:.35;cursor:not-allowed }
       #contractModal .cm-inp.cm-err { border-color:#ef4444;box-shadow:0 0 0 3px rgba(239,68,68,.15) }
 
@@ -283,29 +283,29 @@ window.AsgardContractsPage = (function(){
         background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
         background-repeat:no-repeat;background-position:right 12px center;background-size:12px;
       }
-      #contractModal select.cm-inp option { background:#1f2937;color:#e5e7eb }
+      #contractModal select.cm-inp option { background:var(--bg2);color:var(--t1) }
 
       /* Date inputs */
-      #contractModal input[type=date].cm-inp { color-scheme:dark }
+      #contractModal input[type=date].cm-inp { color-scheme:var(--color-scheme, dark) }
       #contractModal input[type=number].cm-inp::-webkit-inner-spin-button { opacity:.5 }
 
       /* Section */
-      .cm-section { padding:18px;border-radius:10px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);margin-bottom:14px }
-      .cm-section-title { display:flex;align-items:center;gap:8px;margin-bottom:14px;font-weight:600;font-size:12px;color:#9ca3af;text-transform:uppercase;letter-spacing:.6px }
-      .cm-label { display:block;font-size:12px;font-weight:500;color:#9ca3af;margin-bottom:5px }
+      .cm-section { padding:18px;border-radius:10px;background:var(--bg3);border:1px solid var(--brd);margin-bottom:14px }
+      .cm-section-title { display:flex;align-items:center;gap:8px;margin-bottom:14px;font-weight:600;font-size:12px;color:var(--t2);text-transform:uppercase;letter-spacing:.6px }
+      .cm-label { display:block;font-size:12px;font-weight:500;color:var(--t2);margin-bottom:5px }
       .cm-label .req { color:#ef4444;margin-left:2px }
       .cm-grid2 { display:grid;grid-template-columns:1fr 1fr;gap:12px }
       .cm-mt { margin-top:14px }
 
       /* Toggle switch */
-      .cm-toggle { display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;padding:9px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.1);transition:all .15s;white-space:nowrap }
-      .cm-toggle:hover { border-color:rgba(255,255,255,.2) }
+      .cm-toggle { display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;padding:9px 14px;border-radius:8px;border:1px solid var(--brd);transition:all .15s;white-space:nowrap }
+      .cm-toggle:hover { border-color:var(--t3) }
       .cm-toggle.active { border-color:#3b82f6;background:rgba(59,130,246,.08) }
-      .cm-toggle-track { width:36px;height:20px;border-radius:10px;background:rgba(255,255,255,.12);position:relative;transition:background .2s;flex-shrink:0 }
+      .cm-toggle-track { width:36px;height:20px;border-radius:10px;background:var(--bg4);position:relative;transition:background .2s;flex-shrink:0 }
       .cm-toggle.active .cm-toggle-track { background:#3b82f6 }
       .cm-toggle-thumb { position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.3) }
       .cm-toggle.active .cm-toggle-thumb { transform:translateX(16px) }
-      .cm-toggle-text { font-size:13px;color:#9ca3af }
+      .cm-toggle-text { font-size:13px;color:var(--t2) }
 
       /* Hint */
       .cm-hint { margin-top:8px;font-size:12px;padding:6px 10px;border-radius:6px;display:inline-flex;align-items:center;gap:6px }
@@ -314,28 +314,28 @@ window.AsgardContractsPage = (function(){
       .cm-hint-red { background:rgba(239,68,68,.08);color:#ef4444 }
 
       /* Footer */
-      .cm-footer { display:flex;gap:10px;justify-content:flex-end;padding:16px 24px;border-top:1px solid rgba(255,255,255,.05) }
+      .cm-footer { display:flex;gap:10px;justify-content:flex-end;padding:16px 24px;border-top:1px solid var(--brd) }
       .cm-btn { padding:10px 22px;border-radius:8px;font-size:14px;font-weight:600;border:none;cursor:pointer;transition:all .15s;font-family:inherit }
-      .cm-btn-ghost { background:transparent;color:#9ca3af;border:1px solid rgba(255,255,255,.1) }
-      .cm-btn-ghost:hover { background:rgba(255,255,255,.04);color:#e5e7eb }
+      .cm-btn-ghost { background:transparent;color:var(--t2);border:1px solid var(--brd) }
+      .cm-btn-ghost:hover { background:var(--bg3);color:var(--t1) }
       .cm-btn-primary { background:#3b82f6;color:#fff }
       .cm-btn-primary:hover { background:#2563eb;box-shadow:0 4px 12px rgba(59,130,246,.3) }
 
       /* Amount suffix */
       .cm-amount-wrap { position:relative }
-      .cm-amount-wrap .cm-suffix { position:absolute;right:12px;top:50%;transform:translateY(-50%);color:#6b7280;font-size:14px;pointer-events:none;font-weight:500 }
+      .cm-amount-wrap .cm-suffix { position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--t3);font-size:14px;pointer-events:none;font-weight:500 }
       .cm-amount-wrap .cm-inp { padding-right:36px }
 
       /* Кнопка «+ контрагент» */
-      .cm-btn-add-customer { width:42px;height:42px;flex-shrink:0;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:transparent;color:#3b82f6;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s }
+      .cm-btn-add-customer { width:42px;height:42px;flex-shrink:0;border-radius:8px;border:1px solid var(--brd);background:transparent;color:#3b82f6;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s }
       .cm-btn-add-customer:hover { background:rgba(59,130,246,.1);border-color:#3b82f6 }
 
       /* ═══ WOW Модалка контрагента — z-index:1200 поверх модалки договора (1100) ═══ */
       #newCustomerModal .cm-overlay { z-index:1200 }
-      #newCustomerModal .cm-inp { width:100%;height:42px;padding:0 14px;font-size:14px;font-family:inherit;color:#f3f4f6;background:#0d1117;border:1px solid rgba(255,255,255,.1);border-radius:8px;outline:none;transition:border .15s,box-shadow .15s,background .3s;-webkit-appearance:none;appearance:none }
-      #newCustomerModal .cm-inp:hover { border-color:rgba(255,255,255,.2) }
+      #newCustomerModal .cm-inp { width:100%;height:42px;padding:0 14px;font-size:14px;font-family:inherit;color:var(--t1);background:var(--bg3);border:1px solid var(--brd);border-radius:8px;outline:none;transition:border .15s,box-shadow .15s,background .3s;-webkit-appearance:none;appearance:none }
+      #newCustomerModal .cm-inp:hover { border-color:var(--t3) }
       #newCustomerModal .cm-inp:focus { border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.2) }
-      #newCustomerModal .cm-inp::placeholder { color:rgba(255,255,255,.25) }
+      #newCustomerModal .cm-inp::placeholder { color:var(--t3) }
       #newCustomerModal .cm-inp.cm-err { border-color:#ef4444;box-shadow:0 0 0 3px rgba(239,68,68,.15) }
       #newCustomerModal select.cm-inp { padding-right:36px;cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M2 4l4 4 4-4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:12px }
 
@@ -344,12 +344,12 @@ window.AsgardContractsPage = (function(){
       .ncm-spinner { display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:ncmSpin .6s linear infinite;vertical-align:middle;margin-right:6px }
 
       /* ═══ WOW: DaData Suggest Dropdown ═══ */
-      .ncm-suggest-dropdown { position:absolute;z-index:1250;background:#111827;border:1px solid rgba(212,168,67,.3);border-radius:10px;max-height:240px;overflow-y:auto;display:none;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.5),0 0 0 1px rgba(212,168,67,.1) inset;backdrop-filter:blur(8px) }
-      .ncm-suggest-item { padding:12px 16px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.04);transition:all .15s }
+      .ncm-suggest-dropdown { position:absolute;z-index:1250;background:var(--bg2);border:1px solid rgba(212,168,67,.3);border-radius:10px;max-height:240px;overflow-y:auto;display:none;width:100%;box-shadow:var(--shadow-lg);backdrop-filter:blur(8px) }
+      .ncm-suggest-item { padding:12px 16px;cursor:pointer;border-bottom:1px solid var(--brd-m);transition:all .15s }
       .ncm-suggest-item:last-child { border-bottom:none }
       .ncm-suggest-item:hover { background:rgba(212,168,67,.08) }
-      .ncm-suggest-item .ncm-s-name { font-weight:600;font-size:14px;color:#f3f4f6 }
-      .ncm-suggest-item .ncm-s-meta { color:#6b7280;font-size:11px;margin-top:2px }
+      .ncm-suggest-item .ncm-s-name { font-weight:600;font-size:14px;color:var(--t1) }
+      .ncm-suggest-item .ncm-s-meta { color:var(--t3);font-size:11px;margin-top:2px }
 
       /* ═══ WOW: Cascade fill animations ═══ */
       @keyframes ncmFieldFill { from{opacity:.3;transform:translateX(-8px)} to{opacity:1;transform:translateX(0)} }
@@ -372,7 +372,7 @@ window.AsgardContractsPage = (function(){
 
       /* ═══ WOW: Skeleton loading in fields ═══ */
       @keyframes ncmSkeleton { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
-      .ncm-skeleton-inp { background:linear-gradient(90deg,#0d1117 25%,rgba(212,168,67,.08) 50%,#0d1117 75%) !important;background-size:200% 100% !important;animation:ncmSkeleton 1.5s ease infinite !important;color:transparent !important;pointer-events:none !important }
+      .ncm-skeleton-inp { background:linear-gradient(90deg,var(--bg3) 25%,rgba(212,168,67,.08) 50%,var(--bg3) 75%) !important;background-size:200% 100% !important;animation:ncmSkeleton 1.5s ease infinite !important;color:transparent !important;pointer-events:none !important }
     `;
     document.head.appendChild(s);
   }
@@ -407,7 +407,7 @@ window.AsgardContractsPage = (function(){
               </div>
               <div style="display:flex;align-items:center;gap:10px">
                 ${statusBadge}
-                <button class="btnClose" style="width:34px;height:34px;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:transparent;color:#6b7280;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;font-size:16px" onmouseover="this.style.background='rgba(255,255,255,.05)';this.style.color='#e5e7eb'" onmouseout="this.style.background='transparent';this.style.color='#6b7280'">&#10005;</button>
+                <button class="btnClose" style="width:34px;height:34px;border:1px solid var(--brd);border-radius:8px;background:transparent;color:var(--t3);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;font-size:16px" onmouseover="this.style.background='var(--bg3)';this.style.color='var(--t1)'" onmouseout="this.style.background='transparent';this.style.color='var(--t3)'">&#10005;</button>
               </div>
             </div>
 
@@ -682,7 +682,7 @@ window.AsgardContractsPage = (function(){
                 </div>
                 <div style="text-align:center;margin:12px 0;font-size:12px;color:#4b5563;display:flex;align-items:center;gap:12px"><span style="flex:1;height:1px;background:rgba(255,255,255,.06)"></span>или<span style="flex:1;height:1px;background:rgba(255,255,255,.06)"></span></div>
               ` : '<div style="text-align:center;padding:24px;color:#6b7280;font-size:14px">Договоров с этим контрагентом не найдено</div>'}
-              <button id="btnCreateNewContract" style="width:100%;padding:12px;border-radius:10px;border:1px dashed rgba(255,255,255,.12);background:transparent;color:#9ca3af;font-size:14px;cursor:pointer;font-family:inherit;transition:all .15s" onmouseover="this.style.borderColor='#3b82f6';this.style.color='#3b82f6'" onmouseout="this.style.borderColor='rgba(255,255,255,.12)';this.style.color='#9ca3af'">+ Создать новый договор</button>
+              <button id="btnCreateNewContract" style="width:100%;padding:12px;border-radius:10px;border:1px dashed var(--brd);background:transparent;color:var(--t2);font-size:14px;cursor:pointer;font-family:inherit;transition:all .15s" onmouseover="this.style.borderColor='#3b82f6';this.style.color='#3b82f6'" onmouseout="this.style.borderColor='var(--brd)';this.style.color='var(--t2)'">+ Создать новый договор</button>
             </div>
             <div class="cm-footer">
               <button class="cm-btn cm-btn-ghost btnClose">Отмена</button>
@@ -702,10 +702,10 @@ window.AsgardContractsPage = (function(){
     modal.querySelectorAll('.csel-item').forEach(item => {
       item.addEventListener('click', () => {
         modal.querySelectorAll('.csel-item').forEach(el => {
-          el.style.borderColor = 'rgba(255,255,255,.06)';
+          el.style.borderColor = 'var(--brd)';
           el.style.background = 'transparent';
           const r = el.querySelector('.csel-radio'), d = r.querySelector('span');
-          r.style.borderColor = 'rgba(255,255,255,.15)'; r.style.background = 'transparent'; d.style.display = 'none';
+          r.style.borderColor = 'var(--brd)'; r.style.background = 'transparent'; d.style.display = 'none';
         });
         item.style.borderColor = '#3b82f6'; item.style.background = 'rgba(59,130,246,.05)';
         const r = item.querySelector('.csel-radio'), d = r.querySelector('span');
@@ -781,7 +781,7 @@ window.AsgardContractsPage = (function(){
                   <div style="font-size:12px;color:#6b7280;margin-top:2px">Начните вводить название или ИНН</div>
                 </div>
               </div>
-              <button class="ncm-close" style="width:34px;height:34px;border:1px solid rgba(255,255,255,.08);border-radius:8px;background:transparent;color:#6b7280;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;font-size:16px" onmouseover="this.style.background='rgba(255,255,255,.05)';this.style.color='#e5e7eb'" onmouseout="this.style.background='transparent';this.style.color='#6b7280'">&#10005;</button>
+              <button class="ncm-close" style="width:34px;height:34px;border:1px solid var(--brd);border-radius:8px;background:transparent;color:var(--t3);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;font-size:16px" onmouseover="this.style.background='var(--bg3)';this.style.color='var(--t1)'" onmouseout="this.style.background='transparent';this.style.color='var(--t3)'">&#10005;</button>
             </div>
 
             <div style="max-height:64vh;overflow-y:auto;padding:22px 24px">

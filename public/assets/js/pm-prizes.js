@@ -62,16 +62,16 @@ window.AsgardPmPrizesPage = (function () {
     overlay.id = 'pp-deliver-modal';
     overlay.style.cssText = `position:fixed;inset:0;z-index:1100;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:20px`;
     overlay.innerHTML = `
-      <div style="background:linear-gradient(180deg,#1a2040,#141828);border-radius:20px;border:1px solid rgba(255,255,255,.08);padding:28px;width:100%;max-width:440px;box-shadow:0 20px 60px rgba(0,0,0,.5)">
+      <div style="background:var(--bg2);border-radius:20px;border:1px solid var(--brd);padding:28px;width:100%;max-width:440px;box-shadow:var(--shadow-xl)">
         <h3 style="font-family:'Cinzel',serif;font-size:18px;font-weight:800;color:#F0C850;margin:0 0 4px">⚔️ Выдача приза</h3>
-        <p style="font-size:13px;color:rgba(255,255,255,.5);margin:0 0 20px">
-          ${esc(row.employee_name)} — <strong style="color:rgba(255,255,255,.85)">${esc(row.item_name)}</strong>
+        <p style="font-size:13px;color:var(--t3);margin:0 0 20px">
+          ${esc(row.employee_name)} — <strong style="color:var(--t1)">${esc(row.item_name)}</strong>
         </p>
-        <label style="display:block;font-size:12px;color:rgba(255,255,255,.5);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">Заметка о выдаче (необязательно)</label>
+        <label style="display:block;font-size:12px;color:var(--t3);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">Заметка о выдаче (необязательно)</label>
         <textarea id="pp-deliver-note" rows="3" placeholder="Например: выдано на объекте ул. Ленина"
-          style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.04);border:1.5px solid rgba(255,255,255,.1);border-radius:12px;padding:12px;color:#fff;font-size:14px;resize:vertical;outline:none;font-family:-apple-system,system-ui,sans-serif"></textarea>
+          style="width:100%;box-sizing:border-box;background:var(--bg3);border:1.5px solid var(--brd);border-radius:12px;padding:12px;color:var(--t1);font-size:14px;resize:vertical;outline:none;font-family:-apple-system,system-ui,sans-serif"></textarea>
         <div style="display:flex;gap:10px;margin-top:16px">
-          <button id="pp-deliver-cancel" style="flex:1;padding:14px;border-radius:12px;border:1.5px solid rgba(255,255,255,.1);background:transparent;color:rgba(255,255,255,.6);font-size:14px;font-weight:700;cursor:pointer">Отмена</button>
+          <button id="pp-deliver-cancel" style="flex:1;padding:14px;border-radius:12px;border:1.5px solid var(--brd);background:transparent;color:var(--t2);font-size:14px;font-weight:700;cursor:pointer">Отмена</button>
           <button id="pp-deliver-confirm" style="flex:2;padding:14px;border-radius:12px;border:none;background:linear-gradient(135deg,#C8940A,#F0C850);color:#1a1000;font-size:14px;font-weight:800;cursor:pointer;box-shadow:0 4px 0 #8B6914">⚔️ Подтвердить выдачу</button>
         </div>
       </div>`;
@@ -97,9 +97,9 @@ window.AsgardPmPrizesPage = (function () {
   function renderRequests(container, deliveries, onDeliver) {
     if (!deliveries || deliveries.length === 0) {
       container.innerHTML = `
-        <div style="text-align:center;padding:80px 20px;color:rgba(255,255,255,.3)">
+        <div style="text-align:center;padding:80px 20px;color:var(--t3)">
           <div style="font-size:56px;margin-bottom:16px;opacity:.35">⚔️</div>
-          <div style="font-family:'Cinzel',serif;font-size:16px;margin-bottom:8px;color:rgba(255,255,255,.4)">Нет активных запросов</div>
+          <div style="font-family:'Cinzel',serif;font-size:16px;margin-bottom:8px;color:var(--t3)">Нет активных запросов</div>
           <div style="font-size:13px">Воины ещё не запросили свои призы</div>
         </div>`;
       return;
@@ -133,40 +133,40 @@ window.AsgardPmPrizesPage = (function () {
 <style>
 @keyframes pp-urgent-pulse { 0%,100%{box-shadow:0 0 0 0 rgba(251,191,36,0)} 50%{box-shadow:0 0 22px 3px rgba(251,191,36,.12)} }
 .pp-chip { display:inline-flex;align-items:center;gap:4px;padding:6px 13px;border-radius:20px;font-size:12px;font-weight:700;
-  cursor:pointer;border:1.5px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:rgba(255,255,255,.45);
+  cursor:pointer;border:1.5px solid var(--brd);background:var(--bg3);color:var(--t3);
   transition:all .17s;user-select:none;white-space:nowrap; }
-.pp-chip:hover:not(.pp-active) { background:rgba(255,255,255,.08);color:rgba(255,255,255,.75); }
+.pp-chip:hover:not(.pp-active) { background:var(--brd);color:var(--t2); }
 .pp-chip.pp-active { border-color:rgba(240,200,80,.5);background:rgba(240,200,80,.12);color:#F0C850; }
-.pp-wcard { border-radius:18px;border:1.5px solid rgba(255,255,255,.07);overflow:hidden;margin-bottom:10px;
-  background:linear-gradient(160deg,rgba(255,255,255,.025) 0%,rgba(12,18,40,.6) 100%);transition:border-color .25s,box-shadow .25s; }
+.pp-wcard { border-radius:18px;border:1.5px solid var(--brd);overflow:hidden;margin-bottom:10px;
+  background:var(--bg2);transition:border-color .25s,box-shadow .25s; }
 .pp-wcard.pp-urgent { border-color:rgba(251,191,36,.3);animation:pp-urgent-pulse 3s ease-in-out infinite; }
 .pp-whdr { display:flex;align-items:center;gap:12px;padding:14px 18px;cursor:pointer;user-select:none;transition:background .15s; }
-.pp-whdr:hover { background:rgba(255,255,255,.025); }
+.pp-whdr:hover { background:var(--bg3); }
 .pp-wavatar { width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;
   font-size:15px;font-weight:900;flex-shrink:0; }
-.pp-wname { font-size:14px;font-weight:700;color:#e2e8f0;line-height:1.3; }
-.pp-wmeta { font-size:11px;color:rgba(255,255,255,.37);margin-top:2px;display:flex;flex-wrap:wrap;gap:8px; }
+.pp-wname { font-size:14px;font-weight:700;color:var(--t1);line-height:1.3; }
+.pp-wmeta { font-size:11px;color:var(--t3);margin-top:2px;display:flex;flex-wrap:wrap;gap:8px; }
 .pp-cbadge { display:inline-flex;align-items:center;gap:3px;padding:3px 9px;border-radius:10px;font-size:11px;font-weight:800; }
 .pp-cbadge-req  { background:rgba(251,191,36,.15);color:#fbbf24;border:1px solid rgba(251,191,36,.25); }
-.pp-cbadge-pend { background:rgba(156,163,175,.1);color:#9ca3af;border:1px solid rgba(156,163,175,.2); }
-.pp-chevron { color:rgba(255,255,255,.22);font-size:11px;transition:transform .2s;flex-shrink:0; }
+.pp-cbadge-pend { background:rgba(156,163,175,.1);color:var(--t2);border:1px solid rgba(156,163,175,.2); }
+.pp-chevron { color:var(--t3);font-size:11px;transition:transform .2s;flex-shrink:0; }
 .pp-chevron.pp-open { transform:rotate(180deg); }
-.pp-wbody { border-top:1px solid rgba(255,255,255,.06); }
+.pp-wbody { border-top:1px solid var(--brd); }
 .pp-item { display:flex;align-items:center;gap:11px;padding:11px 18px;
-  border-bottom:1px solid rgba(255,255,255,.04);transition:background .12s; }
+  border-bottom:1px solid var(--brd);transition:background .12s; }
 .pp-item:last-child { border-bottom:none; }
-.pp-item:hover { background:rgba(255,255,255,.02); }
+.pp-item:hover { background:var(--bg3); }
 .pp-item.pp-req { background:rgba(251,191,36,.04); }
 .pp-iicon { width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0; }
-.pp-iname { font-size:13px;font-weight:600;color:#e2e8f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
-.pp-idate { font-size:10px;color:rgba(255,255,255,.3);margin-top:2px; }
+.pp-iname { font-size:13px;font-weight:600;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+.pp-idate { font-size:10px;color:var(--t3);margin-top:2px; }
 .pp-dbtn { padding:7px 13px;border-radius:10px;border:none;
   background:linear-gradient(135deg,#C8940A,#F0C850);color:#1a1000;
   font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap;flex-shrink:0;
   box-shadow:0 2px 0 #7a5a10;transition:all .12s; }
 .pp-dbtn:hover { transform:translateY(-1px);box-shadow:0 3px 8px rgba(240,200,80,.25); }
 .pp-dbtn:active { transform:translateY(1px);box-shadow:none; }
-.pp-no-match { text-align:center;padding:32px 20px;color:rgba(255,255,255,.3);font-size:13px; }
+.pp-no-match { text-align:center;padding:32px 20px;color:var(--t3);font-size:13px; }
 </style>
 
 <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px;align-items:center">
@@ -174,9 +174,9 @@ window.AsgardPmPrizesPage = (function () {
     <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);pointer-events:none;font-size:14px">🔍</span>
     <input id="pp-search" placeholder="Поиск по воину…"
       style="width:100%;box-sizing:border-box;padding:8px 12px 8px 34px;border-radius:20px;
-      background:rgba(255,255,255,.05);border:1.5px solid rgba(255,255,255,.1);
-      color:#fff;font-size:13px;outline:none;transition:border-color .2s"
-      onfocus="this.style.borderColor='rgba(240,200,80,.4)'" onblur="this.style.borderColor='rgba(255,255,255,.1)'">
+      background:var(--bg3);border:1.5px solid var(--brd);
+      color:var(--t1);font-size:13px;outline:none;transition:border-color .2s"
+      onfocus="this.style.borderColor='rgba(240,200,80,.4)'" onblur="this.style.borderColor='var(--brd)'">
   </div>
   <div style="display:flex;gap:5px;flex-wrap:wrap" id="pp-status-chips">
     <button class="pp-chip pp-active" data-filter="all">Все <span id="pp-cnt-all" style="opacity:.6"></span></button>
@@ -196,9 +196,9 @@ ${workers.map(w => {
   const hasReq = w.items.some(i => i.status === 'requested');
   const reqCnt = w.items.filter(i => i.status === 'requested').length;
   const pendCnt = w.items.filter(i => i.status === 'pending').length;
-  const ac = hasReq ? '#D4A843' : '#6b7280';
-  const ab = hasReq ? 'linear-gradient(135deg,rgba(212,168,67,.22),rgba(180,130,8,.1))' : 'rgba(255,255,255,.06)';
-  const abord = hasReq ? '2px solid rgba(212,168,67,.4)' : '2px solid rgba(255,255,255,.08)';
+  const ac = hasReq ? '#D4A843' : 'var(--t3)';
+  const ab = hasReq ? 'linear-gradient(135deg,rgba(212,168,67,.22),rgba(180,130,8,.1))' : 'var(--bg3)';
+  const abord = hasReq ? '2px solid rgba(212,168,67,.4)' : '2px solid var(--brd)';
   return `
 <div class="pp-wcard${hasReq ? ' pp-urgent' : ''}" data-wid="${w.id}" data-wname="${esc(w.name)}">
   <div class="pp-whdr">
@@ -325,28 +325,28 @@ ${workers.map(w => {
   function renderHistory(container, history) {
     if (!history || history.length === 0) {
       container.innerHTML = `
-        <div style="text-align:center;padding:80px 20px;color:rgba(255,255,255,.3)">
+        <div style="text-align:center;padding:80px 20px;color:var(--t3)">
           <div style="font-size:56px;margin-bottom:16px;opacity:.35">📜</div>
-          <div style="font-family:'Cinzel',serif;font-size:16px;margin-bottom:8px;color:rgba(255,255,255,.4)">История пуста</div>
+          <div style="font-family:'Cinzel',serif;font-size:16px;margin-bottom:8px;color:var(--t3)">История пуста</div>
           <div style="font-size:13px">Ещё ни один приз не был выдан</div>
         </div>`;
       return;
     }
     container.innerHTML = history.map(row => `
       <div style="display:flex;align-items:center;gap:14px;padding:13px 16px;border-radius:14px;
-        background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.04);margin-bottom:8px">
+        background:var(--bg3);border:1px solid var(--brd);margin-bottom:8px">
         <div style="width:38px;height:38px;border-radius:10px;background:rgba(74,222,128,.08);
           display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">✅</div>
         <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.85);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(row.item_name)}</div>
-          <div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:2px">
+          <div style="font-size:13px;font-weight:600;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(row.item_name)}</div>
+          <div style="font-size:11px;color:var(--t3);margin-top:2px">
             👤 ${esc(row.employee_name)}${row.delivered_by_name ? ` &nbsp;|&nbsp; Выдал: ${esc(row.delivered_by_name)}` : ''}
           </div>
-          ${row.delivery_note ? `<div style="font-size:11px;color:rgba(255,255,255,.35);margin-top:2px;font-style:italic">"${esc(row.delivery_note)}"</div>` : ''}
+          ${row.delivery_note ? `<div style="font-size:11px;color:var(--t3);margin-top:2px;font-style:italic">"${esc(row.delivery_note)}"</div>` : ''}
         </div>
         <div style="text-align:right;flex-shrink:0">
           ${statusBadge(row.status)}
-          <div style="font-size:10px;color:rgba(255,255,255,.3);margin-top:4px">${fmtDate(row.delivered_at)}</div>
+          <div style="font-size:10px;color:var(--t3);margin-top:4px">${fmtDate(row.delivered_at)}</div>
         </div>
       </div>`).join('');
   }
@@ -355,10 +355,10 @@ ${workers.map(w => {
   async function render({ layout, title }) {
     await layout(`
       <style>
-        .pp-tab-btn { background:rgba(255,255,255,.04);border:1.5px solid rgba(255,255,255,.07);color:rgba(255,255,255,.5);
+        .pp-tab-btn { background:var(--bg3);border:1.5px solid var(--brd);color:var(--t3);
           padding:10px 22px;border-radius:12px;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s; }
         .pp-tab-btn.active { background:rgba(240,200,80,.1);border-color:rgba(240,200,80,.35);color:#F0C850; }
-        .pp-tab-btn:not(.active):hover { background:rgba(255,255,255,.07);color:rgba(255,255,255,.75); }
+        .pp-tab-btn:not(.active):hover { background:var(--brd);color:var(--t2); }
       </style>
       <div style="max-width:960px;margin:0 auto;padding:24px 16px">
         <div style="display:flex;align-items:center;gap:16px;margin-bottom:8px">
@@ -366,11 +366,11 @@ ${workers.map(w => {
             border:1.5px solid rgba(240,200,80,.25);display:flex;align-items:center;justify-content:center;font-size:24px">⚔️</div>
           <div>
             <h1 style="font-family:'Cinzel',serif;font-size:22px;font-weight:900;color:#F0C850;margin:0;line-height:1.2">Призы воинов</h1>
-            <p style="font-size:13px;color:rgba(255,255,255,.4);margin:2px 0 0">Запросы на выдачу и история призов</p>
+            <p style="font-size:13px;color:var(--t3);margin:2px 0 0">Запросы на выдачу и история призов</p>
           </div>
           <button id="pp-refresh" title="Обновить"
-            style="margin-left:auto;width:36px;height:36px;border-radius:10px;border:1.5px solid rgba(255,255,255,.1);
-            background:rgba(255,255,255,.04);color:rgba(255,255,255,.5);cursor:pointer;font-size:16px;
+            style="margin-left:auto;width:36px;height:36px;border-radius:10px;border:1.5px solid var(--brd);
+            background:var(--bg3);color:var(--t3);cursor:pointer;font-size:16px;
             display:flex;align-items:center;justify-content:center;transition:all .2s">↻</button>
         </div>
         <div id="pp-stats" style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap"></div>
@@ -378,7 +378,7 @@ ${workers.map(w => {
           <button class="pp-tab-btn active" id="pp-tab-requests" data-tab="requests">📩 Запросы</button>
           <button class="pp-tab-btn" id="pp-tab-history" data-tab="history">📜 История</button>
         </div>
-        <div id="pp-loading" style="text-align:center;padding:40px;color:rgba(255,255,255,.4)">
+        <div id="pp-loading" style="text-align:center;padding:40px;color:var(--t3)">
           <div style="font-size:28px;margin-bottom:8px">⚔️</div>Загрузка данных…
         </div>
         <div id="pp-requests-content" style="display:none"></div>
@@ -414,7 +414,7 @@ ${workers.map(w => {
           <span style="font-size:20px">${s.icon}</span>
           <div>
             <div style="font-size:20px;font-weight:800;color:${s.color};line-height:1">${s.val}</div>
-            <div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:1px">${s.label}</div>
+            <div style="font-size:11px;color:var(--t3);margin-top:1px">${s.label}</div>
           </div>
         </div>`).join('');
     }

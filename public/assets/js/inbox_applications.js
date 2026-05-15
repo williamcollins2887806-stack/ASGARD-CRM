@@ -92,9 +92,9 @@ window.AsgardInboxApplicationsPage = (function(){
         .badge-muted{background:#94a3b822;color:var(--t2);padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700}
         .inbox-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}
         .inbox-actions .btn{min-width:120px;padding:10px 20px;font-size:13px;font-weight:700;letter-spacing:.3px}
-        .inbox-actions .btn.success{background:var(--grad-green, linear-gradient(135deg,var(--ok),var(--ok)));border-color:var(--ok);color:#fff}
+        .inbox-actions .btn.success{background:var(--grad-green);border-color:var(--ok);color:#fff}
         .inbox-actions .btn.success:hover{box-shadow:0 4px 15px rgba(22,163,74,.35);transform:translateY(-1px)}
-        .inbox-actions .btn.danger{background:var(--grad-red, linear-gradient(135deg,var(--red),var(--red-h)));border-color:var(--red);color:#fff}
+        .inbox-actions .btn.danger{background:var(--grad-red);border-color:var(--red);color:#fff}
         .inbox-actions .btn.danger:hover{box-shadow:0 4px 15px rgba(220,38,38,.35);transform:translateY(-1px)}
         .inbox-actions .btn.secondary{background:var(--grad-blue);border-color:var(--info);color:#fff}
         .inbox-actions .btn.secondary:hover{box-shadow:0 4px 15px rgba(59,130,246,.35);transform:translateY(-1px)}

@@ -190,20 +190,20 @@ window.AsgardWorkExpenses = (function(){
 
     const html = `
       <style>
-        .exp-summary { display:flex; gap:16px; flex-wrap:wrap; margin-bottom:16px; padding:12px; background:rgba(13,20,40,.4); border-radius:6px; }
+        .exp-summary { display:flex; gap:16px; flex-wrap:wrap; margin-bottom:16px; padding:12px; background:var(--bg3); border-radius:6px; }
         .exp-summary-item { flex:1; min-width:150px; }
         .exp-summary-label { font-size:11px; color:var(--muted); text-transform:uppercase; }
         .exp-summary-value { font-size:24px; font-weight:900; color:var(--gold); }
-        .exp-mode-toggle { display:flex; gap:4px; background:rgba(13,20,40,.6); padding:4px; border-radius:6px; margin-bottom:16px; }
+        .exp-mode-toggle { display:flex; gap:4px; background:var(--bg3); padding:4px; border-radius:6px; margin-bottom:16px; }
         .exp-mode-btn { padding:8px 16px; border-radius:6px; border:none; background:transparent; color:var(--muted); font-weight:700; cursor:pointer; }
         .exp-mode-btn.active { background:var(--glass); color:var(--text); }
         .exp-category { margin-bottom:12px; border:1px solid var(--line); border-radius:6px; overflow:hidden; }
-        .exp-cat-header { display:flex; align-items:center; gap:10px; padding:10px 14px; background:rgba(13,20,40,.5); }
+        .exp-cat-header { display:flex; align-items:center; gap:10px; padding:10px 14px; background:var(--bg4); }
         .exp-cat-icon { font-size:18px; }
         .exp-cat-label { font-weight:700; flex:1; }
         .exp-cat-total { font-weight:700; color:var(--gold); }
         .exp-cat-items { padding:8px 14px; }
-        .exp-item { display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid rgba(255,255,255,.05); }
+        .exp-item { display:flex; align-items:center; gap:10px; padding:6px 0; border-bottom:1px solid var(--brd); }
         .exp-item:last-child { border-bottom:none; }
         .exp-item-main { flex:1; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
         .exp-date { font-size:12px; color:var(--muted); }
@@ -325,7 +325,7 @@ window.AsgardWorkExpenses = (function(){
           let html = '<table style="width:100%;border-collapse:collapse;font-size:12px">';
           html += '<tr style="color:var(--t2);border-bottom:1px solid var(--brd)"><th style="text-align:left;padding:4px">Наименование</th><th style="text-align:center;padding:4px">Кол</th><th style="text-align:right;padding:4px">Цена</th><th style="text-align:right;padding:4px">Сумма</th></tr>';
           rows.forEach(r => {
-            html += `<tr style="border-bottom:1px solid rgba(255,255,255,0.03)">
+            html += `<tr style="border-bottom:1px solid var(--brd)">
               <td style="padding:3px 4px">${esc(r.name || '—')}</td>
               <td style="text-align:center;padding:3px 4px;color:var(--t2)">${r.quantity || ''} ${esc(r.unit || '')}</td>
               <td style="text-align:right;padding:3px 4px;color:var(--t2)">${r.price ? money(r.price) : ''}</td>

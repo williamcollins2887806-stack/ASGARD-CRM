@@ -126,20 +126,20 @@ window.AsgardFieldTab = (function () {
 
     // Tab buttons
     const tabBar = document.createElement('div');
-    tabBar.style.cssText = 'display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--brd, rgba(255,255,255,0.08));padding-bottom:8px;flex-wrap:wrap';
+    tabBar.style.cssText = 'display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--brd);padding-bottom:8px;flex-wrap:wrap';
     tabs.forEach((tab, i) => {
       const btn = document.createElement('button');
       btn.className = 'btn ghost';
       btn.textContent = tab.label;
       btn.dataset.ftab = tab.id;
-      btn.style.cssText = 'padding:8px 16px;font-size:13px;border-radius:8px 8px 0 0;' + (i === 0 ? 'border-bottom:2px solid var(--gold, #D4A843);color:var(--gold, #D4A843);' : '');
+      btn.style.cssText = 'padding:8px 16px;font-size:13px;border-radius:8px 8px 0 0;' + (i === 0 ? 'border-bottom:2px solid var(--gold);color:var(--gold);' : '');
       btn.addEventListener('click', () => {
         tabBar.querySelectorAll('button').forEach(b => {
           b.style.borderBottom = 'none';
           b.style.color = '';
         });
-        btn.style.borderBottom = '2px solid var(--gold, #D4A843)';
-        btn.style.color = 'var(--gold, #D4A843)';
+        btn.style.borderBottom = '2px solid var(--gold)';
+        btn.style.color = 'var(--gold)';
         tab.render();
       });
       tabBar.appendChild(btn);
@@ -187,12 +187,12 @@ window.AsgardFieldTab = (function () {
 
     // ── Settings bar ──
     const settingsBar = document.createElement('div');
-    settingsBar.style.cssText = 'display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px;padding:12px;background:var(--bg2, #151922);border-radius:8px;border:1px solid var(--brd, rgba(255,255,255,0.08))';
+    settingsBar.style.cssText = 'display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px;padding:12px;background:var(--bg2);border-radius:8px;border:1px solid var(--brd)';
 
     // Category selector
     const catLabel = document.createElement('span');
     catLabel.textContent = 'Категория объекта:';
-    catLabel.style.cssText = 'font-size:13px;color:var(--t2, #8b949e)';
+    catLabel.style.cssText = 'font-size:13px;color:var(--t2)';
     settingsBar.appendChild(catLabel);
 
     const catWrap = document.createElement('span');
@@ -209,13 +209,13 @@ window.AsgardFieldTab = (function () {
     // Per diem
     const pdLabel = document.createElement('span');
     pdLabel.textContent = 'Суточные ₽/день:';
-    pdLabel.style.cssText = 'font-size:13px;color:var(--t2, #8b949e);margin-left:16px';
+    pdLabel.style.cssText = 'font-size:13px;color:var(--t2);margin-left:16px';
     settingsBar.appendChild(pdLabel);
 
     const pdInput = document.createElement('input');
     pdInput.id = 'fieldPerDiem';
     pdInput.value = settingsData?.per_diem || '0';
-    pdInput.style.cssText = 'width:80px;padding:6px 10px;border-radius:6px;background:var(--bg1, #0D1117);color:var(--t1, #e6edf3);border:1px solid var(--brd, rgba(255,255,255,0.08));font-size:13px';
+    pdInput.style.cssText = 'width:80px;padding:6px 10px;border-radius:6px;background:var(--bg1);color:var(--t1);border:1px solid var(--brd);font-size:13px';
     settingsBar.appendChild(pdInput);
 
     // Activate button
@@ -266,8 +266,8 @@ window.AsgardFieldTab = (function () {
 
     // Header
     const thead = document.createElement('thead');
-    thead.innerHTML = `<tr style="background:var(--bg2, #151922)">
-      <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--brd, rgba(255,255,255,0.08));color:var(--t2, #8b949e);font-weight:500;font-size:12px">ФИО</th>
+    thead.innerHTML = `<tr style="background:var(--bg2)">
+      <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">ФИО</th>
       <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">Роль</th>
       <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">Тариф</th>
       <th style="padding:8px 6px;text-align:center;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">Баллы</th>
@@ -420,7 +420,7 @@ window.AsgardFieldTab = (function () {
     const tr = document.createElement('tr');
     tr.dataset.crewRow = '1';
     tr.dataset.crewRid = rid;
-    tr.style.cssText = 'border-bottom:1px solid var(--brd, rgba(255,255,255,0.06))';
+    tr.style.cssText = 'border-bottom:1px solid var(--brd-m)';
 
     const cellStyle = 'padding:6px 8px;vertical-align:middle';
 
@@ -543,7 +543,7 @@ window.AsgardFieldTab = (function () {
 
     // Rate (auto)
     const tdRate = document.createElement('td');
-    tdRate.style.cssText = cellStyle + ';text-align:right;font-weight:600;color:var(--gold, #D4A843)';
+    tdRate.style.cssText = cellStyle + ';text-align:right;font-weight:600;color:var(--gold)';
     tdRate.dataset.field = 'rate';
     tdRate.textContent = '—';
     tr.appendChild(tdRate);
@@ -692,10 +692,10 @@ window.AsgardFieldTab = (function () {
     const table = document.createElement('table');
     table.style.cssText = 'width:100%;border-collapse:collapse;font-size:13px';
 
-    const thStyle = 'padding:8px 10px;text-align:center;border-bottom:1px solid var(--brd, rgba(255,255,255,0.08));color:var(--t2, #8b949e);font-weight:500;font-size:12px;white-space:nowrap';
+    const thStyle = 'padding:8px 10px;text-align:center;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px;white-space:nowrap';
 
     const thead = document.createElement('thead');
-    let headerHtml = `<tr style="background:var(--bg2, #151922)"><th style="${thStyle};text-align:left">Сотрудник</th>`;
+    let headerHtml = `<tr style="background:var(--bg2)"><th style="${thStyle};text-align:left">Сотрудник</th>`;
     LOG_TYPES.forEach(lt => { headerHtml += `<th style="${thStyle}">${lt.label}</th>`; });
     headerHtml += '</tr>';
     thead.innerHTML = headerHtml;
@@ -714,7 +714,7 @@ window.AsgardFieldTab = (function () {
       const emp = empsMap[a.employee_id];
       if (!emp) continue;
       const tr = document.createElement('tr');
-      tr.style.cssText = 'border-bottom:1px solid var(--brd, rgba(255,255,255,0.06))';
+      tr.style.cssText = 'border-bottom:1px solid var(--brd-m)';
 
       // Employee name
       const tdName = document.createElement('td');
@@ -760,8 +760,8 @@ window.AsgardFieldTab = (function () {
           const addBtn = document.createElement('button');
           addBtn.textContent = '+';
           addBtn.title = `Добавить ${lt.short}`;
-          addBtn.style.cssText = 'width:32px;height:32px;border-radius:8px;border:1px dashed var(--brd, rgba(255,255,255,0.15));background:transparent;color:var(--t2, #8b949e);cursor:pointer;font-size:16px;transition:all .15s';
-          addBtn.addEventListener('mouseenter', () => { addBtn.style.borderColor = 'var(--gold, #D4A843)'; addBtn.style.color = 'var(--gold, #D4A843)'; });
+          addBtn.style.cssText = 'width:32px;height:32px;border-radius:8px;border:1px dashed var(--brd);background:transparent;color:var(--t2);cursor:pointer;font-size:16px;transition:all .15s';
+          addBtn.addEventListener('mouseenter', () => { addBtn.style.borderColor = 'var(--gold)'; addBtn.style.color = 'var(--gold)'; });
           addBtn.addEventListener('mouseleave', () => { addBtn.style.borderColor = ''; addBtn.style.color = ''; });
           addBtn.addEventListener('click', () => {
             openLogisticsForm(container, work, user, emp, lt);
@@ -887,9 +887,9 @@ window.AsgardFieldTab = (function () {
     cards.forEach(c => {
       const card = document.createElement('div');
       card.className = 'k';
-      card.style.cssText = `padding:16px;border-radius:10px;background:var(--bg2, #151922);border:1px solid var(--brd, rgba(255,255,255,0.08))`;
+      card.style.cssText = `padding:16px;border-radius:10px;background:var(--bg2);border:1px solid var(--brd)`;
       card.innerHTML = `
-        <div style="font-size:12px;color:var(--t2, #8b949e);margin-bottom:6px">${esc(c.title)}</div>
+        <div style="font-size:12px;color:var(--t2);margin-bottom:6px">${esc(c.title)}</div>
         <div style="font-size:24px;font-weight:700;color:${c.color}">${esc(String(c.value))}</div>
         <div style="font-size:11px;color:var(--t2);margin-top:4px">${esc(c.sub)}</div>
       `;
@@ -906,9 +906,9 @@ window.AsgardFieldTab = (function () {
       progWrap.innerHTML = `
         <div style="display:flex;justify-content:space-between;margin-bottom:8px">
           <span style="font-size:13px;font-weight:600">Прогресс</span>
-          <span style="font-size:13px;color:var(--gold, #D4A843);font-weight:600">${pct}%</span>
+          <span style="font-size:13px;color:var(--gold);font-weight:600">${pct}%</span>
         </div>
-        <div style="width:100%;height:8px;background:var(--bg1, #0D1117);border-radius:4px;overflow:hidden">
+        <div style="width:100%;height:8px;background:var(--bg1);border-radius:4px;overflow:hidden">
           <div style="width:${Math.min(pct, 100)}%;height:100%;background:linear-gradient(90deg,#D4A843,#B8922E);border-radius:4px;transition:width .5s"></div>
         </div>
         <div style="font-size:12px;color:var(--t2);margin-top:6px">${data.progress.done || 0} / ${data.progress.total || '?'} ${esc(data.progress.unit || '')}</div>
@@ -954,12 +954,12 @@ window.AsgardFieldTab = (function () {
       const weekBody = document.createElement('tbody');
       data.week_summary.forEach(d => {
         const tr = document.createElement('tr');
-        tr.style.borderBottom = '1px solid var(--brd, rgba(255,255,255,0.04))';
+        tr.style.borderBottom = '1px solid var(--brd-m)';
         tr.innerHTML = `
           <td style="padding:6px 8px">${formatDate ? formatDate(d.date) : d.date}</td>
           <td style="padding:6px 8px;text-align:center">${d.workers}</td>
           <td style="padding:6px 8px;text-align:center">${parseFloat(d.hours).toFixed(1)}</td>
-          <td style="padding:6px 8px;text-align:right;color:var(--gold, #D4A843)">${money(Math.round(parseFloat(d.earned)))} ₽</td>
+          <td style="padding:6px 8px;text-align:right;color:var(--gold)">${money(Math.round(parseFloat(d.earned)))} ₽</td>
         `;
         weekBody.appendChild(tr);
       });
@@ -1141,7 +1141,7 @@ window.AsgardFieldTab = (function () {
     table.style.cssText = 'width:100%;border-collapse:collapse;font-size:12px';
 
     // Header
-    const thStyle = 'padding:6px 8px;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:11px;white-space:nowrap;position:sticky;top:0;background:var(--bg2, #151922)';
+    const thStyle = 'padding:6px 8px;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:11px;white-space:nowrap;position:sticky;top:0;background:var(--bg2)';
     let headerHtml = `<tr><th style="${thStyle};text-align:left;min-width:150px">ФИО</th>`;
     dates.forEach(d => {
       // d может быть 'YYYY-MM-DD' или 'YYYY-MM-DDT12:00:00.000Z' (после TZ-фикса)
@@ -1169,7 +1169,7 @@ window.AsgardFieldTab = (function () {
 
     timesheet.forEach(emp => {
       const tr = document.createElement('tr');
-      tr.style.borderBottom = '1px solid var(--brd, rgba(255,255,255,0.04))';
+      tr.style.borderBottom = '1px solid var(--brd-m)';
 
       // Name
       const tdName = document.createElement('td');
@@ -1189,7 +1189,7 @@ window.AsgardFieldTab = (function () {
         if (editMode) {
           // Editable mode — show points + shift icon
           td.style.cursor = 'pointer';
-          td.style.border = '1px dashed var(--brd, rgba(255,255,255,0.15))';
+          td.style.border = '1px dashed var(--brd)';
           td.style.borderRadius = '4px';
           if (day) {
             const pts = Math.round(parseFloat(day.day_rate || 0) / pv) || 0;
@@ -1201,7 +1201,7 @@ window.AsgardFieldTab = (function () {
             td.addEventListener('click', () => editCheckinCell(td, day, emp, d, work, pv));
           } else {
             td.textContent = '+';
-            td.style.color = 'var(--t2, #4b5563)';
+            td.style.color = 'var(--t3)';
             td.style.opacity = '0.5';
             td.title = 'Добавить смену';
             td.addEventListener('click', () => addCheckinCell(td, emp, d, work, pv));
@@ -1217,7 +1217,7 @@ window.AsgardFieldTab = (function () {
             td.title = `${d}: ${si.label} ${pts} бал. = ${money(pts * pv)} ₽`;
           } else {
             td.textContent = '—';
-            td.style.color = 'var(--t2, #4b5563)';
+            td.style.color = 'var(--t3)';
           }
         }
         tr.appendChild(td);
@@ -1244,7 +1244,7 @@ window.AsgardFieldTab = (function () {
       ].forEach(c => {
         const td = document.createElement('td');
         td.style.cssText = `padding:6px 8px;text-align:${c.align};font-weight:${c.gold ? '700' : '500'}`;
-        if (c.gold) td.style.color = 'var(--gold, #D4A843)';
+        if (c.gold) td.style.color = 'var(--gold)';
         td.textContent = c.v;
         tr.appendChild(td);
       });
@@ -1260,7 +1260,7 @@ window.AsgardFieldTab = (function () {
 
     // Totals row
     const totalTr = document.createElement('tr');
-    totalTr.style.cssText = 'border-top:2px solid var(--brd);font-weight:700;background:var(--bg2, #151922)';
+    totalTr.style.cssText = 'border-top:2px solid var(--brd);font-weight:700;background:var(--bg2)';
     const tdTotalLabel = document.createElement('td');
     tdTotalLabel.colSpan = dates.length + 1;
     tdTotalLabel.style.cssText = 'padding:8px 10px;text-align:right';
@@ -1274,7 +1274,7 @@ window.AsgardFieldTab = (function () {
       { v: money(Math.round(grandTotal)) + ' ₽', gold: true },
     ].forEach(c => {
       const td = document.createElement('td');
-      td.style.cssText = `padding:8px 8px;text-align:right;${c.gold ? 'color:var(--gold, #D4A843)' : ''}`;
+      td.style.cssText = `padding:8px 8px;text-align:right;${c.gold ? 'color:var(--gold)' : ''}`;
       td.textContent = c.v;
       totalTr.appendChild(td);
     });
@@ -1332,13 +1332,13 @@ window.AsgardFieldTab = (function () {
       btn.type = 'button';
       btn.textContent = st.icon;
       btn.title = st.label;
-      btn.style.cssText = 'width:22px;height:22px;border:1px solid var(--brd);border-radius:4px;font-size:11px;cursor:pointer;padding:0;line-height:1;background:' + (st.value === selectedShift ? 'var(--gold,#D4A843)' : 'var(--bg1)');
+      btn.style.cssText = 'width:22px;height:22px;border:1px solid var(--brd);border-radius:4px;font-size:11px;cursor:pointer;padding:0;line-height:1;background:' + (st.value === selectedShift ? 'var(--gold)' : 'var(--bg1)');
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         selectedShift = st.value;
         // Highlight selected
         btnsRow.querySelectorAll('button').forEach(b => { b.style.background = 'var(--bg1)'; });
-        btn.style.background = 'var(--gold,#D4A843)';
+        btn.style.background = 'var(--gold)';
         // Auto-fill default points for this shift type
         if (!input.dataset.userEdited) input.value = st.defaultPts;
       });
@@ -1510,7 +1510,7 @@ window.AsgardFieldTab = (function () {
         <td style="text-align:right">${money(f.amount)} ₽</td>
         <td style="text-align:right;color:#ef4444">${money(f.spent)} ₽</td>
         <td style="text-align:right;color:#22c55e">${money(f.returned)} ₽</td>
-        <td style="text-align:right;color:var(--gold,#D4A843);font-weight:600">${money(remainder)} ₽</td>
+        <td style="text-align:right;color:var(--gold);font-weight:600">${money(remainder)} ₽</td>
         <td><span style="font-size:11px">${FUND_STATUS_LABELS[f.status] || f.status}</span></td>
         <td>${f.status !== 'closed' ? '<button class="btn ghost close-fund" data-id="' + f.id + '" style="font-size:11px;padding:4px 8px">Закрыть</button>' : ''}</td>
       `;
@@ -1665,24 +1665,24 @@ window.AsgardFieldTab = (function () {
       html: `
         <div style="max-width:700px">
           <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
-            <div style="background:var(--bg-2,#1a1a2e);padding:12px;border-radius:10px;text-align:center">
-              <div style="font-size:11px;color:var(--text-sec,#aaa);text-transform:uppercase">Выдано</div>
+            <div style="background:var(--bg3);padding:12px;border-radius:10px;text-align:center">
+              <div style="font-size:11px;color:var(--t2);text-transform:uppercase">Выдано</div>
               <div style="font-size:18px;font-weight:700;margin-top:4px">${money(f.amount)}₽</div>
             </div>
-            <div style="background:var(--bg-2,#1a1a2e);padding:12px;border-radius:10px;text-align:center">
-              <div style="font-size:11px;color:var(--text-sec,#aaa);text-transform:uppercase">Потрачено</div>
+            <div style="background:var(--bg3);padding:12px;border-radius:10px;text-align:center">
+              <div style="font-size:11px;color:var(--t2);text-transform:uppercase">Потрачено</div>
               <div style="font-size:18px;font-weight:700;color:#ef4444;margin-top:4px">${money(f.spent)}₽</div>
             </div>
-            <div style="background:var(--bg-2,#1a1a2e);padding:12px;border-radius:10px;text-align:center">
-              <div style="font-size:11px;color:var(--text-sec,#aaa);text-transform:uppercase">Возврат</div>
+            <div style="background:var(--bg3);padding:12px;border-radius:10px;text-align:center">
+              <div style="font-size:11px;color:var(--t2);text-transform:uppercase">Возврат</div>
               <div style="font-size:18px;font-weight:700;color:#22c55e;margin-top:4px">${money(f.returned)}₽</div>
             </div>
-            <div style="background:var(--bg-2,#1a1a2e);padding:12px;border-radius:10px;text-align:center">
-              <div style="font-size:11px;color:var(--text-sec,#aaa);text-transform:uppercase">Остаток</div>
-              <div style="font-size:18px;font-weight:700;color:var(--gold,#D4A843);margin-top:4px">${money(remainder)}₽</div>
+            <div style="background:var(--bg3);padding:12px;border-radius:10px;text-align:center">
+              <div style="font-size:11px;color:var(--t2);text-transform:uppercase">Остаток</div>
+              <div style="font-size:18px;font-weight:700;color:var(--gold);margin-top:4px">${money(remainder)}₽</div>
             </div>
           </div>
-          <div style="font-size:12px;color:var(--text-sec,#aaa);margin-bottom:4px">Мастер: <strong>${esc(f.master_name || '—')}</strong> · Статус: ${FUND_STATUS_LABELS[f.status] || f.status}</div>
+          <div style="font-size:12px;color:var(--t2);margin-bottom:4px">Мастер: <strong>${esc(f.master_name || '—')}</strong> · Статус: ${FUND_STATUS_LABELS[f.status] || f.status}</div>
           ${data.expenses.length ? '<div style="font-weight:600;font-size:13px;margin-top:12px">Расходы:</div>' : ''}
           ${expensesHtml}
           ${returnsHtml}
@@ -1743,11 +1743,11 @@ window.AsgardFieldTab = (function () {
       const tr = document.createElement('tr');
       tr.style.cursor = 'pointer';
       tr.innerHTML = `
-        <td><strong>${esc(l.title)}</strong>${l.description ? '<br><span style="font-size:10px;color:var(--text-sec)">' + esc(l.description.substring(0, 60)) + '</span>' : ''}</td>
+        <td><strong>${esc(l.title)}</strong>${l.description ? '<br><span style="font-size:10px;color:var(--t2)">' + esc(l.description.substring(0, 60)) + '</span>' : ''}</td>
         <td>${esc(l.assigned_to_name || '—')}</td>
         <td>
           <div style="display:flex;align-items:center;gap:6px">
-            <div style="flex:1;height:6px;background:var(--bg-3,#333);border-radius:3px;overflow:hidden"><div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#D4A843,#E5C06E);border-radius:3px"></div></div>
+            <div style="flex:1;height:6px;background:var(--bg3);border-radius:3px;overflow:hidden"><div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#D4A843,#E5C06E);border-radius:3px"></div></div>
             <span style="font-size:11px;white-space:nowrap">${l.items_packed}/${l.items_total}</span>
           </div>
         </td>
@@ -1867,16 +1867,16 @@ window.AsgardFieldTab = (function () {
       html: `
         <div style="max-width:700px">
           <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
-            <div style="flex:1;height:8px;background:var(--bg-3,#333);border-radius:4px;overflow:hidden"><div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#D4A843,#E5C06E);border-radius:4px"></div></div>
+            <div style="flex:1;height:8px;background:var(--bg3);border-radius:4px;overflow:hidden"><div style="height:100%;width:${pct}%;background:linear-gradient(90deg,#D4A843,#E5C06E);border-radius:4px"></div></div>
             <span style="font-size:13px;font-weight:600">${pct}%</span>
-            <span style="font-size:12px;color:var(--text-sec,#aaa)">${PACK_STATUS_LABELS[l.status] || l.status}</span>
+            <span style="font-size:12px;color:var(--t2)">${PACK_STATUS_LABELS[l.status] || l.status}</span>
           </div>
-          <div style="font-size:12px;color:var(--text-sec,#aaa);margin-bottom:4px">
+          <div style="font-size:12px;color:var(--t2);margin-bottom:4px">
             Назначен: <strong>${esc(l.assigned_to_name || 'не назначен')}</strong>
             ${l.due_date ? ' · Срок: ' + formatDate(l.due_date) : ''}
             ${l.tracking_number ? ' · Трек: ' + esc(l.tracking_number) : ''}
           </div>
-          ${l.description ? '<div style="font-size:12px;margin-bottom:8px;color:var(--text-sec,#aaa)">' + esc(l.description) + '</div>' : ''}
+          ${l.description ? '<div style="font-size:12px;margin-bottom:8px;color:var(--t2)">' + esc(l.description) + '</div>' : ''}
           ${itemsHtml}
         </div>
       `,
@@ -1979,7 +1979,7 @@ window.AsgardFieldTab = (function () {
     // ── Calendar grid ──
     if (calData && calData.employees && calData.employees.length > 0) {
       const calWrap = document.createElement('div');
-      calWrap.style.cssText = 'overflow-x:auto;margin-bottom:20px;border:1px solid var(--brd, rgba(255,255,255,0.08));border-radius:8px';
+      calWrap.style.cssText = 'overflow-x:auto;margin-bottom:20px;border:1px solid var(--brd);border-radius:8px';
 
       const table = document.createElement('table');
       table.style.cssText = 'border-collapse:collapse;font-size:11px;min-width:100%';
@@ -1995,11 +1995,11 @@ window.AsgardFieldTab = (function () {
 
       const thead = document.createElement('thead');
       const headerRow = document.createElement('tr');
-      headerRow.innerHTML = '<th style="padding:4px 8px;text-align:left;white-space:nowrap;position:sticky;left:0;background:var(--bg2,#151922);z-index:1">Сотрудник</th>';
+      headerRow.innerHTML = '<th style="padding:4px 8px;text-align:left;white-space:nowrap;position:sticky;left:0;background:var(--bg2);z-index:1">Сотрудник</th>';
       for (const d of dates) {
         const dd = new Date(d);
         const isToday = d === now.toISOString().slice(0, 10);
-        headerRow.innerHTML += `<th style="padding:2px 1px;text-align:center;min-width:22px;font-weight:${isToday ? '700' : '400'};${isToday ? 'color:var(--gold,#D4A843)' : ''}">${dd.getDate()}</th>`;
+        headerRow.innerHTML += `<th style="padding:2px 1px;text-align:center;min-width:22px;font-weight:${isToday ? '700' : '400'};${isToday ? 'color:var(--gold)' : ''}">${dd.getDate()}</th>`;
       }
       thead.appendChild(headerRow);
       table.appendChild(thead);
@@ -2007,12 +2007,12 @@ window.AsgardFieldTab = (function () {
       const tbody = document.createElement('tbody');
       for (const emp of calData.employees) {
         const tr = document.createElement('tr');
-        tr.innerHTML = `<td style="padding:4px 8px;white-space:nowrap;position:sticky;left:0;background:var(--bg2,#151922);z-index:1;border-top:1px solid var(--brd,rgba(255,255,255,0.06))">${esc(emp.fio)}</td>`;
+        tr.innerHTML = `<td style="padding:4px 8px;white-space:nowrap;position:sticky;left:0;background:var(--bg2);z-index:1;border-top:1px solid var(--brd-m)">${esc(emp.fio)}</td>`;
         for (const d of dates) {
           const cell = emp.days[d];
           const bg = cell ? STAGE_COLORS[cell.type] || '#666' : 'transparent';
           const title = cell ? `${STAGE_LABELS_DT[cell.type] || cell.type} (${cell.status})` : '';
-          tr.innerHTML += `<td style="padding:2px 1px;text-align:center;border-top:1px solid var(--brd,rgba(255,255,255,0.06))" title="${esc(title)}"><span style="display:inline-block;width:16px;height:16px;border-radius:4px;background:${bg}${cell ? '' : ';opacity:0.15'}"></span></td>`;
+          tr.innerHTML += `<td style="padding:2px 1px;text-align:center;border-top:1px solid var(--brd-m)" title="${esc(title)}"><span style="display:inline-block;width:16px;height:16px;border-radius:4px;background:${bg}${cell ? '' : ';opacity:0.15'}"></span></td>`;
         }
         tbody.appendChild(tr);
       }
@@ -2030,11 +2030,11 @@ window.AsgardFieldTab = (function () {
 
     for (const emp of employees) {
       const card = document.createElement('div');
-      card.style.cssText = 'background:var(--bg2,#151922);border:1px solid var(--brd,rgba(255,255,255,0.08));border-radius:8px;padding:12px;margin-bottom:12px';
+      card.style.cssText = 'background:var(--bg2);border:1px solid var(--brd);border-radius:8px;padding:12px;margin-bottom:12px';
 
       const header = document.createElement('div');
       header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px';
-      header.innerHTML = `<strong>${esc(emp.fio)}</strong><span style="color:var(--gold,#D4A843);font-size:12px">${emp.total_days} дн. · ${money(emp.total_earned)}₽</span>`;
+      header.innerHTML = `<strong>${esc(emp.fio)}</strong><span style="color:var(--gold);font-size:12px">${emp.total_days} дн. · ${money(emp.total_earned)}₽</span>`;
       card.appendChild(header);
 
       for (const s of emp.stages) {
@@ -2046,7 +2046,7 @@ window.AsgardFieldTab = (function () {
         const statusBadge = s.status === 'approved' ? '✅' : s.status === 'rejected' ? '❌' : s.status === 'active' ? '🔵' : s.status === 'completed' ? '✅' : '⬜';
         sRow.innerHTML = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${col}"></span>` +
           `<span>${esc(STAGE_LABELS_DT[s.stage_type] || s.stage_type)}</span>` +
-          `<span style="color:var(--text2,#999)">${df2}${dt2} · ${s.days_count || 1}д.</span>` +
+          `<span style="color:var(--t2)">${df2}${dt2} · ${s.days_count || 1}д.</span>` +
           `<span style="margin-left:auto;font-weight:600">${money(s.amount_earned)}₽ ${statusBadge}</span>`;
 
         // Action buttons for non-approved
@@ -2085,7 +2085,7 @@ window.AsgardFieldTab = (function () {
       const addBtn = document.createElement('button');
       addBtn.className = 'btn ghost';
       addBtn.textContent = '+ Добавить этап';
-      addBtn.style.cssText = 'margin-top:8px;font-size:12px;color:var(--gold,#D4A843)';
+      addBtn.style.cssText = 'margin-top:8px;font-size:12px;color:var(--gold)';
       addBtn.addEventListener('click', () => showAddStageModal(container, work, user, emp.employee_id, emp.fio));
       card.appendChild(addBtn);
 
@@ -2240,13 +2240,13 @@ window.AsgardFieldTab = (function () {
       { label: 'Суточные выплач.', value: t.per_diem_paid || 0, color: '#10b981' },
       { label: 'Остаток суточных', value: Math.abs(pdBal), color: pdBalColor, suffix: pdBalLabel },
       { label: 'Авансы выплачено', value: t.advance_paid || 0, color: '#8b5cf6' },
-      { label: 'К выплате ИТОГО', value: t.net_to_pay || 0, color: 'var(--gold, #D4A843)' },
+      { label: 'К выплате ИТОГО', value: t.net_to_pay || 0, color: 'var(--gold)' },
     ];
     const kpiRow = document.createElement('div');
     kpiRow.style.cssText = 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px';
     for (const k of kpiItems) {
       const card = document.createElement('div');
-      card.style.cssText = 'background:var(--bg-2,#1a1a2e);padding:12px;border-radius:10px;text-align:center';
+      card.style.cssText = 'background:var(--bg3);padding:12px;border-radius:10px;text-align:center';
       card.innerHTML = `<div style="font-size:11px;opacity:.6">${k.label}</div>
         <div style="font-size:18px;font-weight:700;color:${k.color};margin-top:4px">${money(k.value)} ₽${k.suffix ? ' <span style="font-size:11px;opacity:.7">' + k.suffix + '</span>' : ''}</div>`;
       kpiRow.appendChild(card);
@@ -2477,7 +2477,7 @@ window.AsgardFieldTab = (function () {
     var pdColor = pd.balance < 0 ? '#3b82f6' : pd.balance > 0 ? '#f59e0b' : '#10b981';
     var salLabel = sal.balance > 0 ? '\u0414\u043E\u043B\u0433 \u043A\u043E\u043C\u043F\u0430\u043D\u0438\u0438' : sal.balance < 0 ? '\u041F\u0435\u0440\u0435\u043F\u043B\u0430\u0442\u0430' : '\u0412\u0441\u0451 \u0432\u044B\u043F\u043B\u0430\u0447\u0435\u043D\u043E';
     var salColor = sal.balance > 0 ? '#f59e0b' : sal.balance < 0 ? '#ef4444' : '#10b981';
-    var brd = 'var(--brd, rgba(255,255,255,0.08))';
+    var brd = 'var(--brd)';
 
     var html = '<div style="max-height:70vh;overflow-y:auto">' +
       '<div style="border:1px solid ' + brd + ';border-radius:8px;padding:12px;margin-bottom:12px">' +
@@ -2637,14 +2637,14 @@ window.AsgardFieldTab = (function () {
     // Insert form directly into payments tab container (no nested modal)
     const formDiv = document.createElement('div');
     formDiv.className = 'pd-inline-form';
-    formDiv.style.cssText = 'background:var(--bg2,#151922);border:1px solid var(--gold,#D4A843);border-radius:10px;padding:16px;margin:12px 0;';
+    formDiv.style.cssText = 'background:var(--bg2);border:1px solid var(--gold);border-radius:10px;padding:16px;margin:12px 0;';
     formDiv.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <div style="font-weight:600;font-size:14px;color:var(--gold,#D4A843)">🌙 Начислить суточные</div>
+        <div style="font-weight:600;font-size:14px;color:var(--gold)">🌙 Начислить суточные</div>
         <button class="pd-close" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:18px">✕</button>
       </div>
       <div style="font-size:13px;margin-bottom:8px">Сотрудники:</div>
-      <div style="max-height:160px;overflow-y:auto;border:1px solid var(--brd,rgba(255,255,255,0.1));border-radius:8px;padding:8px;margin-bottom:10px">
+      <div style="max-height:160px;overflow-y:auto;border:1px solid var(--brd);border-radius:8px;padding:8px;margin-bottom:10px">
         ${checkboxesHtml || '<span class="help">Нет сотрудников в бригаде</span>'}
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
@@ -2710,7 +2710,7 @@ window.AsgardFieldTab = (function () {
 
     const formDiv = document.createElement('div');
     formDiv.className = 'sp-inline-form';
-    formDiv.style.cssText = 'background:var(--bg2,#151922);border:1px solid var(--brd);border-radius:10px;padding:16px;margin:12px 0;';
+    formDiv.style.cssText = 'background:var(--bg2);border:1px solid var(--brd);border-radius:10px;padding:16px;margin:12px 0;';
     formDiv.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
         <div style="font-weight:600;font-size:14px">${typeIcon} ${esc(typeLabel)}</div>
@@ -2765,7 +2765,7 @@ window.AsgardFieldTab = (function () {
 
     const formDiv = document.createElement('div');
     formDiv.className = 'sal-inline-form';
-    formDiv.style.cssText = 'background:var(--bg2,#151922);border:1px solid var(--brd);border-radius:10px;padding:16px;margin:12px 0;';
+    formDiv.style.cssText = 'background:var(--bg2);border:1px solid var(--brd);border-radius:10px;padding:16px;margin:12px 0;';
     formDiv.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
         <div style="font-weight:600;font-size:14px">📋 Сгенерировать ведомость ЗП</div>
@@ -2812,7 +2812,7 @@ window.AsgardFieldTab = (function () {
   }
 
   async function renderPrizesTab(container, work, user) {
-    container.innerHTML = '<div class="help" style="padding:20px;text-align:center;color:var(--t3,#888)">Загрузка призов…</div>';
+    container.innerHTML = '<div class="help" style="padding:20px;text-align:center;color:var(--t3)">Загрузка призов…</div>';
 
     let deliveries, history;
     try {
@@ -2863,10 +2863,10 @@ window.AsgardFieldTab = (function () {
     if (delivered.length > 0) {
       const sect = document.createElement('div');
       sect.style.cssText = 'margin-top:16px';
-      sect.innerHTML = `<div style="font-size:13px;font-weight:700;color:var(--t2,#aaa);margin-bottom:8px">✅ Выдано (последние 30 дней)</div>`;
+      sect.innerHTML = `<div style="font-size:13px;font-weight:700;color:var(--t2);margin-bottom:8px">✅ Выдано (последние 30 дней)</div>`;
       const table = document.createElement('table');
       table.style.cssText = 'width:100%;border-collapse:collapse;font-size:12px';
-      table.innerHTML = `<thead><tr style="color:var(--t3,#888);border-bottom:1px solid var(--brd,rgba(255,255,255,.08))">
+      table.innerHTML = `<thead><tr style="color:var(--t3);border-bottom:1px solid var(--brd)">
         <th style="text-align:left;padding:6px 8px">Рабочий</th>
         <th style="text-align:left;padding:6px 8px">Приз</th>
         <th style="text-align:left;padding:6px 8px">Выдал</th>
@@ -2875,11 +2875,11 @@ window.AsgardFieldTab = (function () {
       const tbody = table.querySelector('tbody');
       delivered.forEach(d => {
         const tr = document.createElement('tr');
-        tr.style.cssText = 'border-bottom:1px solid var(--brd,rgba(255,255,255,.04))';
-        tr.innerHTML = `<td style="padding:6px 8px;color:var(--t1,#fff)">${esc(d.employee_name || '—')}</td>
-          <td style="padding:6px 8px;color:var(--t2,#aaa)">${esc(d.item_name || '—')}</td>
-          <td style="padding:6px 8px;color:var(--t3,#888)">${esc(d.delivered_by_name || '—')}</td>
-          <td style="padding:6px 8px;color:var(--t3,#888)">${d.delivered_at ? new Date(d.delivered_at).toLocaleDateString('ru-RU') : '—'}</td>`;
+        tr.style.cssText = 'border-bottom:1px solid var(--brd-m)';
+        tr.innerHTML = `<td style="padding:6px 8px;color:var(--t1)">${esc(d.employee_name || '—')}</td>
+          <td style="padding:6px 8px;color:var(--t2)">${esc(d.item_name || '—')}</td>
+          <td style="padding:6px 8px;color:var(--t3)">${esc(d.delivered_by_name || '—')}</td>
+          <td style="padding:6px 8px;color:var(--t3)">${d.delivered_at ? new Date(d.delivered_at).toLocaleDateString('ru-RU') : '—'}</td>`;
         tbody.appendChild(tr);
       });
       sect.appendChild(table);
@@ -2890,8 +2890,8 @@ window.AsgardFieldTab = (function () {
     if (ready.length === 0 && pending.length === 0 && delivered.length === 0) {
       container.innerHTML = `<div style="padding:40px;text-align:center">
         <div style="font-size:48px;margin-bottom:12px;opacity:.4">🎁</div>
-        <div style="font-size:14px;color:var(--t3,#888)">Нет призов на выдачу</div>
-        <div style="font-size:12px;color:var(--t3,#666);margin-top:4px">Рабочие могут получить призы через рулетку, магазин и квесты</div>
+        <div style="font-size:14px;color:var(--t3)">Нет призов на выдачу</div>
+        <div style="font-size:12px;color:var(--t3);margin-top:4px">Рабочие могут получить призы через рулетку, магазин и квесты</div>
       </div>`;
     }
   }
@@ -2904,13 +2904,13 @@ window.AsgardFieldTab = (function () {
     items.forEach(item => {
       const row = document.createElement('div');
       row.style.cssText = `display:flex;align-items:center;gap:12px;padding:10px 14px;margin-bottom:6px;border-radius:12px;
-        background:var(--card,#141828);border:1px solid ${color}20;transition:all .2s`;
+        background:var(--bg2);border:1px solid ${color}20;transition:all .2s`;
 
       const info = document.createElement('div');
       info.style.cssText = 'flex:1;min-width:0';
-      info.innerHTML = `<div style="font-size:13px;font-weight:700;color:var(--t1,#fff)">${esc(item.employee_name || 'Рабочий #' + item.employee_id)}</div>
-        <div style="font-size:12px;color:var(--t2,#aaa);margin-top:2px">${esc(item.item_name)}</div>
-        <div style="font-size:10px;color:var(--t3,#888);margin-top:2px">${esc(item.work_name || '')} · ${new Date(item.created_at).toLocaleDateString('ru-RU')}</div>`;
+      info.innerHTML = `<div style="font-size:13px;font-weight:700;color:var(--t1)">${esc(item.employee_name || 'Рабочий #' + item.employee_id)}</div>
+        <div style="font-size:12px;color:var(--t2);margin-top:2px">${esc(item.item_name)}</div>
+        <div style="font-size:10px;color:var(--t3);margin-top:2px">${esc(item.work_name || '')} · ${new Date(item.created_at).toLocaleDateString('ru-RU')}</div>`;
       row.appendChild(info);
 
       if (showDeliver) {
@@ -2926,7 +2926,7 @@ window.AsgardFieldTab = (function () {
         // "Mark as ready" button for pending items
         const btn = document.createElement('button');
         btn.className = 'btn ghost';
-        btn.style.cssText = 'padding:6px 12px;border-radius:10px;font-size:11px;font-weight:600;color:var(--t3,#888);white-space:nowrap';
+        btn.style.cssText = 'padding:6px 12px;border-radius:10px;font-size:11px;font-weight:600;color:var(--t3);white-space:nowrap';
         btn.textContent = '📦 Готов';
         btn.addEventListener('click', async () => {
           try {
@@ -2949,12 +2949,12 @@ window.AsgardFieldTab = (function () {
       title: '✅ Выдача приза',
       html: `<div style="padding:16px">
         <div style="margin-bottom:16px;padding:12px;border-radius:12px;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.15)">
-          <div style="font-size:14px;font-weight:700;color:var(--t1,#fff)">${esc(item.employee_name)}</div>
-          <div style="font-size:13px;color:var(--t2,#aaa);margin-top:4px">${esc(item.item_name)}</div>
+          <div style="font-size:14px;font-weight:700;color:var(--t1)">${esc(item.employee_name)}</div>
+          <div style="font-size:13px;color:var(--t2);margin-top:4px">${esc(item.item_name)}</div>
         </div>
-        <label style="display:block;font-size:12px;font-weight:600;color:var(--t3,#888);margin-bottom:6px">Комментарий (необязательно)</label>
-        <textarea id="deliverNote" rows="3" style="width:100%;border-radius:10px;border:1px solid var(--brd,rgba(255,255,255,.1));
-          background:var(--card,#141828);color:var(--t1,#fff);padding:10px;font-size:13px;resize:vertical"
+        <label style="display:block;font-size:12px;font-weight:600;color:var(--t3);margin-bottom:6px">Комментарий (необязательно)</label>
+        <textarea id="deliverNote" rows="3" style="width:100%;border-radius:10px;border:1px solid var(--brd);
+          background:var(--bg2);color:var(--t1);padding:10px;font-size:13px;resize:vertical"
           placeholder="Например: Выдал на объекте, роспись получил"></textarea>
         <button id="deliverConfirmBtn" style="width:100%;margin-top:16px;padding:14px;border-radius:14px;border:none;
           font-size:15px;font-weight:800;color:#fff;cursor:pointer;
@@ -3000,7 +3000,7 @@ window.AsgardFieldTab = (function () {
     AsgardUI.showModal('🚪 Отъезд — ' + esc(empName), `
       <div style="text-align:center;padding:40px">
         <div style="font-size:32px;animation:spin 1s linear infinite">⏳</div>
-        <div style="color:var(--t2,#8b949e);margin-top:12px">Загрузка финансов…</div>
+        <div style="color:var(--t2);margin-top:12px">Загрузка финансов…</div>
       </div>
     `);
 
@@ -3035,15 +3035,15 @@ window.AsgardFieldTab = (function () {
 
       const modalHtml = `
         <style>
-          .dep-card { background:var(--bg2,#151922); border-radius:12px; padding:16px; margin-bottom:12px; border:1px solid var(--brd,rgba(255,255,255,0.08)); }
-          .dep-card h4 { margin:0 0 12px; font-size:13px; color:var(--t2,#8b949e); text-transform:uppercase; letter-spacing:1px; }
-          .dep-row { display:flex; justify-content:space-between; padding:6px 0; font-size:14px; border-bottom:1px solid rgba(255,255,255,0.04); }
+          .dep-card { background:var(--bg2); border-radius:12px; padding:16px; margin-bottom:12px; border:1px solid var(--brd); }
+          .dep-card h4 { margin:0 0 12px; font-size:13px; color:var(--t2); text-transform:uppercase; letter-spacing:1px; }
+          .dep-row { display:flex; justify-content:space-between; padding:6px 0; font-size:14px; border-bottom:1px solid var(--brd-m); }
           .dep-row:last-child { border:none; }
-          .dep-row .lbl { color:var(--t2,#8b949e); }
-          .dep-row .val { font-weight:600; color:var(--t1,#e6edf3); }
+          .dep-row .lbl { color:var(--t2); }
+          .dep-row .val { font-weight:600; color:var(--t1); }
           .dep-big { font-size:28px; font-weight:800; text-align:center; padding:16px 0 8px; }
           .dep-big-label { font-size:12px; text-align:center; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
-          .dep-divider { height:1px; background:linear-gradient(90deg,transparent,var(--brd,rgba(255,255,255,0.1)),transparent); margin:4px 0 12px; }
+          .dep-divider { height:1px; background:linear-gradient(90deg,transparent,var(--brd),transparent); margin:4px 0 12px; }
         </style>
 
         <!-- Header: worker info -->
@@ -3053,7 +3053,7 @@ window.AsgardFieldTab = (function () {
           </div>
           <div>
             <div style="font-weight:600;font-size:16px">${esc(empName)}</div>
-            <div style="color:var(--t2,#8b949e);font-size:13px">
+            <div style="color:var(--t2);font-size:13px">
               ${asgn?.position_name || 'Рабочий'} · ${daysOnSite} дн. на объекте · ${money(perDiemRate)} ₽/день суточные
             </div>
           </div>
@@ -3081,7 +3081,7 @@ window.AsgardFieldTab = (function () {
           ${bonusPaid ? `<div class="dep-row"><span class="lbl">Премии</span><span class="val" style="color:#10b981">+${money(bonusPaid)} ₽</span></div>` : ''}
           ${penalty ? `<div class="dep-row"><span class="lbl">Штрафы</span><span class="val" style="color:#ef4444">−${money(penalty)} ₽</span></div>` : ''}
           <div class="dep-divider"></div>
-          <div class="dep-row"><span class="lbl" style="font-weight:600">Итого начислено</span><span class="val" style="font-size:16px;color:var(--gold,#D4A843)">${money(totalEarned)} ₽</span></div>
+          <div class="dep-row"><span class="lbl" style="font-weight:600">Итого начислено</span><span class="val" style="font-size:16px;color:var(--gold)">${money(totalEarned)} ₽</span></div>
         </div>
 
         <!-- Payments card -->
@@ -3098,12 +3098,12 @@ window.AsgardFieldTab = (function () {
         <div class="dep-card" style="border-color:#f59e0b33">
           <h4>📋 Оформление отъезда</h4>
           <div style="margin-bottom:12px">
-            <label style="display:block;font-size:12px;color:var(--t2,#8b949e);margin-bottom:4px">Дата отъезда</label>
-            <input type="date" id="depDate" value="${new Date().toISOString().slice(0, 10)}" style="width:100%;padding:8px 12px;border-radius:8px;background:var(--bg1,#0D1117);color:var(--t1,#e6edf3);border:1px solid var(--brd,rgba(255,255,255,0.08));font-size:14px" />
+            <label style="display:block;font-size:12px;color:var(--t2);margin-bottom:4px">Дата отъезда</label>
+            <input type="date" id="depDate" value="${new Date().toISOString().slice(0, 10)}" style="width:100%;padding:8px 12px;border-radius:8px;background:var(--bg1);color:var(--t1);border:1px solid var(--brd);font-size:14px" />
           </div>
           <div style="margin-bottom:16px">
-            <label style="display:block;font-size:12px;color:var(--t2,#8b949e);margin-bottom:4px">Причина отъезда</label>
-            <input type="text" id="depReason" placeholder="Завершение работ, по семейным, увольнение…" style="width:100%;padding:8px 12px;border-radius:8px;background:var(--bg1,#0D1117);color:var(--t1,#e6edf3);border:1px solid var(--brd,rgba(255,255,255,0.08));font-size:14px" />
+            <label style="display:block;font-size:12px;color:var(--t2);margin-bottom:4px">Причина отъезда</label>
+            <input type="text" id="depReason" placeholder="Завершение работ, по семейным, увольнение…" style="width:100%;padding:8px 12px;border-radius:8px;background:var(--bg1);color:var(--t1);border:1px solid var(--brd);font-size:14px" />
           </div>
           <div style="display:flex;gap:10px">
             <button class="btn" id="depConfirmBtn" style="flex:1;background:linear-gradient(135deg,#f59e0b,#d97706);color:#000;font-weight:700;padding:10px">🚪 Подтвердить отъезд</button>

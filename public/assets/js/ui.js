@@ -783,10 +783,10 @@ window.AsgardUI = (function(){
     if (!md) return '';
     let html = esc(md);
     // Headers
-    html = html.replace(/^### (.+)$/gm, '<h4 style="font-size:13px;font-weight:700;color:var(--blue-l,#4A90D9);margin:12px 0 6px">$1</h4>');
-    html = html.replace(/^## (\d+\..+)$/gm, '<h3 style="font-size:15px;font-weight:700;color:var(--gold-l,#d4af37);margin:18px 0 10px;border-bottom:2px solid rgba(212,168,67,0.2);padding-bottom:6px">$1</h3>');
-    html = html.replace(/^## (.+)$/gm, '<h3 style="font-size:15px;font-weight:700;color:var(--gold-l,#d4af37);margin:18px 0 10px">$1</h3>');
-    html = html.replace(/^# (.+)$/gm, '<h2 style="font-size:17px;font-weight:800;color:var(--gold,#D4A843);margin:20px 0 12px;border-bottom:2px solid rgba(212,168,67,0.3);padding-bottom:8px">$1</h2>');
+    html = html.replace(/^### (.+)$/gm, '<h4 style="font-size:13px;font-weight:700;color:var(--blue-l);margin:12px 0 6px">$1</h4>');
+    html = html.replace(/^## (\d+\..+)$/gm, '<h3 style="font-size:15px;font-weight:700;color:var(--gold-l);margin:18px 0 10px;border-bottom:2px solid rgba(212,168,67,0.2);padding-bottom:6px">$1</h3>');
+    html = html.replace(/^## (.+)$/gm, '<h3 style="font-size:15px;font-weight:700;color:var(--gold-l);margin:18px 0 10px">$1</h3>');
+    html = html.replace(/^# (.+)$/gm, '<h2 style="font-size:17px;font-weight:800;color:var(--gold);margin:20px 0 12px;border-bottom:2px solid rgba(212,168,67,0.3);padding-bottom:8px">$1</h2>');
     // Bold
     html = html.replace(/\*\*(.+?)\*\*/g, '<b style="color:var(--t1)">$1</b>');
     // Lists with better styling
@@ -805,7 +805,7 @@ window.AsgardUI = (function(){
         if (!inTable) { inTable = true; headerDone = false; tableRows = []; }
         if (!headerDone && tableRows.length === 0) {
           tableRows.push('<tr>' + cells.map(c =>
-            '<th style="padding:10px 12px;font-size:12px;font-weight:700;color:var(--gold-l,#d4af37);background:rgba(212,168,67,0.08);border-bottom:2px solid rgba(212,168,67,0.2);text-align:left;white-space:nowrap">' + c.trim() + '</th>'
+            '<th style="padding:10px 12px;font-size:12px;font-weight:700;color:var(--gold-l);background:rgba(212,168,67,0.08);border-bottom:2px solid rgba(212,168,67,0.2);text-align:left;white-space:nowrap">' + c.trim() + '</th>'
           ).join('') + '</tr>');
         } else {
           const rowIdx = tableRows.length;

@@ -72,10 +72,10 @@ window.AsgardAI = (function(){
         max-width: calc(100vw - 48px);
         height: 500px;
         max-height: calc(100vh - 120px);
-        background: linear-gradient(180deg, var(--bg2) 0%, #16162a 100%);
+        background: linear-gradient(180deg, var(--bg2) 0%, var(--bg3) 100%);
         border-radius: 6px;
         border: 1px solid rgba(192, 57, 43, 0.3);
-        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        box-shadow: var(--shadow-xl);
         display: none;
         flex-direction: column;
         overflow: hidden;
@@ -98,7 +98,7 @@ window.AsgardAI = (function(){
       .ai-header {
         padding: 16px;
         background: linear-gradient(135deg, rgba(192, 57, 43, 0.2) 0%, rgba(42, 59, 102, 0.2) 100%);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        border-bottom: 1px solid var(--brd);
         display: flex;
         align-items: center;
         gap: 12px;
@@ -128,12 +128,12 @@ window.AsgardAI = (function(){
       .ai-header-title {
         font-weight: 700;
         font-size: 14px;
-        color: #fff;
+        color: var(--t1);
       }
-      
+
       .ai-header-status {
         font-size: 12px;
-        color: rgba(255, 255, 255, 0.6);
+        color: var(--t2);
       }
       
       .ai-header-actions {
@@ -146,18 +146,18 @@ window.AsgardAI = (function(){
         height: 28px;
         border-radius: 6px;
         border: none;
-        background: rgba(255, 255, 255, 0.1);
-        color: rgba(255, 255, 255, 0.7);
+        background: var(--brd);
+        color: var(--t2);
         cursor: pointer;
         display: flex;
         align-items: center;
         justify-content: center;
         transition: all 0.2s;
       }
-      
+
       .ai-header-btn:hover {
-        background: rgba(255, 255, 255, 0.2);
-        color: #fff;
+        background: var(--brd-m);
+        color: var(--t1);
       }
       
       .ai-messages {
@@ -193,7 +193,7 @@ window.AsgardAI = (function(){
       .ai-message.assistant {
         align-self: flex-start;
         background: rgba(42, 59, 102, 0.5);
-        color: rgba(255, 255, 255, 0.9);
+        color: var(--t1);
         border-bottom-left-radius: 4px;
       }
       
@@ -213,10 +213,10 @@ window.AsgardAI = (function(){
         align-items: center;
         gap: 4px;
         padding: 4px 8px;
-        background: rgba(255, 255, 255, 0.15);
+        background: var(--brd);
         border-radius: 6px;
         font-size: 11px;
-        color: rgba(255, 255, 255, 0.8);
+        color: var(--t1);
       }
       
       .ai-typing {
@@ -229,7 +229,7 @@ window.AsgardAI = (function(){
       .ai-typing span {
         width: 8px;
         height: 8px;
-        background: rgba(255, 255, 255, 0.4);
+        background: var(--t3);
         border-radius: 50%;
         animation: aiTyping 1.4s infinite;
       }
@@ -244,8 +244,8 @@ window.AsgardAI = (function(){
       
       .ai-input-area {
         padding: 12px 16px;
-        border-top: 1px solid rgba(255, 255, 255, 0.1);
-        background: rgba(0, 0, 0, 0.2);
+        border-top: 1px solid var(--brd);
+        background: var(--bg3);
       }
       
       .ai-attachments {
@@ -264,16 +264,16 @@ window.AsgardAI = (function(){
         border: 1px solid rgba(192, 57, 43, 0.3);
         border-radius: 6px;
         font-size: 12px;
-        color: rgba(255, 255, 255, 0.8);
+        color: var(--t1);
       }
-      
+
       .ai-attachment-remove {
         width: 16px;
         height: 16px;
         border-radius: 50%;
         border: none;
-        background: rgba(255, 255, 255, 0.2);
-        color: #fff;
+        background: var(--brd-m);
+        color: var(--t1);
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -291,9 +291,9 @@ window.AsgardAI = (function(){
         width: 40px;
         height: 40px;
         border-radius: 6px;
-        border: 1px solid rgba(255, 255, 255, 0.2);
+        border: 1px solid var(--brd);
         background: transparent;
-        color: rgba(255, 255, 255, 0.6);
+        color: var(--t2);
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -304,9 +304,9 @@ window.AsgardAI = (function(){
       
       .ai-attach-btn:hover {
         border-color: rgba(192, 57, 43, 0.5);
-        color: #fff;
+        color: var(--t1);
       }
-      
+
       .ai-input-wrap {
         flex: 1;
         position: relative;
@@ -316,9 +316,9 @@ window.AsgardAI = (function(){
         width: 100%;
         padding: 10px 14px;
         border-radius: 6px;
-        border: 1px solid rgba(255, 255, 255, 0.2);
-        background: rgba(255, 255, 255, 0.05);
-        color: #fff;
+        border: 1px solid var(--brd);
+        background: var(--bg3);
+        color: var(--t1);
         font-size: 14px;
         resize: none;
         min-height: 40px;
@@ -328,7 +328,7 @@ window.AsgardAI = (function(){
       }
       
       .ai-input::placeholder {
-        color: rgba(255, 255, 255, 0.4);
+        color: var(--t3);
       }
       
       .ai-input:focus {
@@ -363,7 +363,7 @@ window.AsgardAI = (function(){
       .ai-welcome {
         text-align: center;
         padding: 32px 24px;
-        color: rgba(255, 255, 255, 0.7);
+        color: var(--t2);
       }
       
       .ai-welcome-icon {
@@ -380,11 +380,11 @@ window.AsgardAI = (function(){
       .ai-welcome-icon svg {
         width: 32px;
         height: 32px;
-        fill: rgba(255, 255, 255, 0.6);
+        fill: var(--t3);
       }
       
       .ai-welcome h3 {
-        color: #fff;
+        color: var(--t1);
         font-size: 18px;
         margin-bottom: 8px;
       }
@@ -399,10 +399,10 @@ window.AsgardAI = (function(){
       
       .ai-suggestion {
         padding: 8px 14px;
-        background: rgba(255, 255, 255, 0.1);
-        border: 1px solid rgba(255, 255, 255, 0.15);
+        background: var(--bg3);
+        border: 1px solid var(--brd);
         border-radius: 6px;
-        color: rgba(255, 255, 255, 0.8);
+        color: var(--t1);
         font-size: 13px;
         cursor: pointer;
         transition: all 0.2s;

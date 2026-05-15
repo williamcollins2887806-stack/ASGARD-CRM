@@ -107,7 +107,7 @@ window.AsgardMailboxPage = (function(){
         white-space: normal !important;
         overflow: visible !important;
         text-overflow: unset !important;
-        background: var(--bg-elevated, rgba(0,0,0,0.06));
+        background: var(--bg3);
         position: relative;
         z-index: 2;
       }
@@ -117,17 +117,17 @@ window.AsgardMailboxPage = (function(){
       }
       .ai-popup {
         position: fixed; z-index: 9999;
-        background: var(--bg-card, #1e293b); border: 1px solid var(--border, #334155);
+        background: var(--bg2); border: 1px solid var(--brd);
         border-radius: 8px; padding: 16px; max-width: 420px; min-width: 280px;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.4); font-size: 13px; color: var(--text-primary, #e2e8f0);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.4); font-size: 13px; color: var(--t1);
         line-height: 1.5;
       }
       .ai-popup-title {
         font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;
-        margin-bottom: 8px; color: var(--text-muted, #94a3b8);
+        margin-bottom: 8px; color: var(--t3);
       }
       .ai-popup-field { margin-bottom: 6px; }
-      .ai-popup-label { font-weight: 600; color: var(--text-muted, #94a3b8); font-size: 11px; }
+      .ai-popup-label { font-weight: 600; color: var(--t3); font-size: 11px; }
       .ai-popup-value { margin-top: 1px; }
     </style>
     <div style="display:flex; height:calc(100vh - 56px); overflow:hidden;">

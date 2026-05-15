@@ -248,6 +248,12 @@ async function routes(fastify) {
       ]
     );
 
+    // Синхронизировать price_tkp и cost_plan в estimates (чтобы не расходились с calculation_data)
+    await db.query(
+      `UPDATE estimates SET price_tkp = $2, cost_plan = $3, margin_pct = $4, updated_at = NOW() WHERE id = $1`,
+      [estimate.id, totalWithMargin.toFixed(2), totalCost.toFixed(2), marginPct]
+    );
+
     return { calculation: result.rows[0] };
   });
 
@@ -369,6 +375,14 @@ async function routes(fastify) {
       const estimate = result.rows[0];
 
       if (sendForApproval) {
+        // Перевести тендер в «Согласование ТКП»
+        if (estimate.tender_id) {
+          await client.query(`
+            UPDATE tenders SET tender_status = 'Согласование ТКП', updated_at = NOW()
+            WHERE id = $1 AND tender_status = 'Отправлено на просчёт'
+          `, [estimate.tender_id]);
+        }
+
         await approvalService.notifyDirectorsForApproval(client, {
           entityType: 'estimates', entityId: estimate.id,
           actorName: request.user.name,
@@ -731,6 +745,12 @@ async function routes(fastify) {
       ]
     );
 
+    // Синхронизировать price_tkp и cost_plan в estimates
+    await db.query(
+      `UPDATE estimates SET price_tkp = $2, cost_plan = $3, margin_pct = $4, updated_at = NOW() WHERE id = $1`,
+      [estimate.id, totalWithMargin.toFixed(2), totalCost.toFixed(2), marginPct]
+    );
+
     return { success: true, calculation: result.rows[0] };
   });
 
@@ -738,8 +758,27 @@ async function routes(fastify) {
   fastify.delete('/:id', {
     preHandler: [fastify.requireRoles(['ADMIN'])]
   }, async (request, reply) => {
-    const result = await db.query('DELETE FROM estimates WHERE id = $1 RETURNING id', [request.params.id]);
-    if (!result.rows[0]) return reply.code(404).send({ error: 'Не найден' });
+    // Получить tender_id перед удалением для отката статуса
+    const est = await db.query('SELECT id, tender_id, approval_status FROM estimates WHERE id = $1', [request.params.id]);
+    if (!est.rows[0]) return reply.code(404).send({ error: 'Не найден' });
+
+    const { tender_id, approval_status } = est.rows[0];
+    await db.query('DELETE FROM estimates WHERE id = $1', [request.params.id]);
+
+    // Откат тендера в «Отправлено на просчёт» если нет других активных просчётов
+    if (tender_id && ['sent', 'approved'].includes(approval_status)) {
+      const remaining = await db.query(
+        "SELECT COUNT(*) as cnt FROM estimates WHERE tender_id = $1 AND approval_status IN ('sent', 'approved')",
+        [tender_id]
+      );
+      if (parseInt(remaining.rows[0].cnt) === 0) {
+        await db.query(`
+          UPDATE tenders SET tender_status = 'Отправлено на просчёт', updated_at = NOW()
+          WHERE id = $1 AND tender_status IN ('Согласование ТКП', 'ТКП согласовано')
+        `, [tender_id]);
+      }
+    }
+
     return { message: 'Удалено' };
   });
 }

@@ -94,7 +94,7 @@ window.AsgardMimir = (function(){
       /* Tooltip */
       .mimir-fab-tooltip {
         position:absolute; right:72px; top:50%; transform:translateY(-50%) translateX(8px);
-        background:rgba(26,26,26,0.95); color:#f5d78e; padding:8px 14px;
+        background:var(--bg2); color:#f5d78e; padding:8px 14px;
         border-radius:10px; font-size:13px; font-weight:500;
         white-space:nowrap; pointer-events:none;
         opacity:0; transition:all 0.25s ease;
@@ -120,9 +120,9 @@ window.AsgardMimir = (function(){
       /* Корпус iPhone */
       .mimir-iphone-body {
         flex:1; display:flex; flex-direction:column;
-        background:#1a1a1a; border-radius:44px; padding:4px;
+        background:var(--bg2); border-radius:44px; padding:4px;
         box-shadow:
-          inset 0 0 0 1px rgba(255,255,255,0.08),
+          inset 0 0 0 1px var(--brd-m),
           0 25px 80px rgba(0,0,0,0.6),
           0 0 0 2px rgba(60,60,60,0.5);
         position:relative; overflow:hidden;
@@ -160,7 +160,7 @@ window.AsgardMimir = (function(){
       /* Status bar */
       .mimir-status-bar {
         display:flex; align-items:center; justify-content:space-between;
-        padding:4px 24px 8px; font-size:14px; font-weight:600; color:#fff;
+        padding:4px 24px 8px; font-size:14px; font-weight:600; color:var(--t1);
       }
       .mimir-status-bar-time { min-width:40px; }
       .mimir-status-bar-icons { display:flex; align-items:center; gap:6px; }
@@ -188,7 +188,7 @@ window.AsgardMimir = (function(){
         font-size:16px; font-weight:700; color:#f5d78e; letter-spacing:0.5px;
       }
       .mimir-chat-subtitle {
-        font-size:11px; color:rgba(255,255,255,0.5); margin-top:1px;
+        font-size:11px; color:var(--t2); margin-top:1px;
         white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
       }
 
@@ -213,8 +213,8 @@ window.AsgardMimir = (function(){
       .mimir-sidebar-list { flex:1; overflow-y:auto; padding:8px; }
       .mimir-sidebar-item {
         padding:10px 12px; margin-bottom:4px; border-radius:10px;
-        background:rgba(255,255,255,0.03); cursor:pointer;
-        transition:all 0.2s; font-size:13px; color:rgba(255,255,255,0.65);
+        background:var(--bg3); cursor:pointer;
+        transition:all 0.2s; font-size:13px; color:var(--t2);
         white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
       }
       .mimir-sidebar-item:hover { background:rgba(255,255,255,0.06); }
@@ -241,8 +241,8 @@ window.AsgardMimir = (function(){
       }
       .mimir-msg.assistant {
         align-self:flex-start;
-        background:rgba(255,255,255,0.05);
-        color:rgba(255,255,255,0.9); border-radius:18px 18px 18px 4px;
+        background:var(--bg3);
+        color:var(--t1); border-radius:18px 18px 18px 4px;
         margin-left:38px; position:relative;
       }
       .mimir-msg-bot-avatar {
@@ -255,7 +255,7 @@ window.AsgardMimir = (function(){
       .mimir-msg-meta {
         display:flex; align-items:center; justify-content:flex-end;
         gap:4px; margin-top:4px;
-        font-size:9.5px; color:rgba(255,255,255,0.35);
+        font-size:9.5px; color:var(--t3);
       }
       .mimir-msg.user .mimir-msg-meta::after {
         content:'\\2713\\2713'; font-size:10px; color:rgba(100,180,255,0.6); margin-left:2px;
@@ -265,7 +265,7 @@ window.AsgardMimir = (function(){
       .mimir-msg-copy {
         position:absolute; top:6px; right:6px;
         width:24px; height:24px; border-radius:6px;
-        background:rgba(0,0,0,0.3); border:none; color:rgba(255,255,255,0.45);
+        background:var(--bg3); border:none; color:var(--t3);
         cursor:pointer; font-size:11px; opacity:0; transition:opacity 0.2s;
         display:flex; align-items:center; justify-content:center;
       }
@@ -294,11 +294,11 @@ window.AsgardMimir = (function(){
       .mimir-welcome { text-align:center; padding:40px 20px; }
       .mimir-welcome-icon { font-size:48px; margin-bottom:12px; }
       .mimir-welcome h3 { color:#f5d78e; font-size:17px; margin:0 0 8px; font-weight:600; }
-      .mimir-welcome p { color:rgba(255,255,255,0.55); font-size:13px; margin:0 0 18px; line-height:1.5; }
+      .mimir-welcome p { color:var(--t2); font-size:13px; margin:0 0 18px; line-height:1.5; }
       .mimir-welcome-chips { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; }
       .mimir-welcome-chip {
         padding:7px 16px; border-radius:100px;
-        background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08);
+        background:var(--bg3); border:1px solid var(--brd-m);
         color:#f5d78e; font-size:12px; cursor:pointer; transition:all 0.2s;
       }
       .mimir-welcome-chip:hover {
@@ -306,9 +306,9 @@ window.AsgardMimir = (function(){
       }
 
       /* Markdown */
-      .mimir-code { background:rgba(0,0,0,0.4); border-radius:10px; padding:12px; margin:8px 0;
+      .mimir-code { background:var(--bg3); border-radius:10px; padding:12px; margin:8px 0;
         font-family:'JetBrains Mono','Fira Code',monospace; font-size:12px; overflow-x:auto; white-space:pre; }
-      .mimir-inline-code { background:rgba(0,0,0,0.3); padding:2px 6px; border-radius:4px; font-size:13px; font-family:monospace; }
+      .mimir-inline-code { background:var(--bg3); padding:2px 6px; border-radius:4px; font-size:13px; font-family:monospace; }
       .mimir-h2 { font-size:16px; font-weight:700; color:#f5d78e; margin:14px 0 8px; }
       .mimir-h3 { font-size:14px; font-weight:600; color:#cbd5e1; margin:12px 0 6px; }
       .mimir-li { padding-left:16px; margin:3px 0; position:relative; }
@@ -317,7 +317,7 @@ window.AsgardMimir = (function(){
       .mimir-table { width:100%; border-collapse:collapse; margin:10px 0; font-size:13px; }
       .mimir-table th { background:rgba(245,215,142,0.15); color:#f5d78e; font-weight:600;
         padding:8px 10px; text-align:left; border-bottom:1px solid rgba(245,215,142,0.3); }
-      .mimir-table td { padding:6px 10px; border-bottom:1px solid rgba(255,255,255,0.06); }
+      .mimir-table td { padding:6px 10px; border-bottom:1px solid var(--brd-m); }
       .mimir-msg strong { color:#f5d78e; }
 
       /* Streaming cursor */
@@ -330,12 +330,12 @@ window.AsgardMimir = (function(){
 
       /* Result cards */
       .mimir-result-card {
-        background:rgba(0,0,0,0.2); border-radius:12px;
+        background:var(--bg3); border-radius:12px;
         padding:12px; margin-top:8px; font-size:13px;
       }
       .mimir-result-card table { width:100%; border-collapse:collapse; }
       .mimir-result-card th, .mimir-result-card td {
-        padding:4px 8px; text-align:left; border-bottom:1px solid rgba(255,255,255,0.08);
+        padding:4px 8px; text-align:left; border-bottom:1px solid var(--brd-m);
       }
       .mimir-result-card th { color:#f5d78e; font-weight:600; }
 
@@ -354,14 +354,14 @@ window.AsgardMimir = (function(){
       /* Input area — iMessage style */
       .mimir-input-area {
         padding:8px 12px 4px;
-        background:rgba(0,0,0,0.15);
-        border-top:1px solid rgba(255,255,255,0.05);
+        background:var(--bg3);
+        border-top:1px solid var(--brd-m);
       }
       .mimir-input-row { display:flex; gap:8px; align-items:flex-end; }
 
       .mimir-plus-btn {
         width:34px; height:34px; border-radius:50%;
-        background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12);
+        background:var(--bg3); border:1px solid var(--brd);
         color:#f5d78e; cursor:pointer; font-size:20px; font-weight:300;
         display:flex; align-items:center; justify-content:center;
         transition:all 0.2s; flex-shrink:0;
@@ -371,7 +371,7 @@ window.AsgardMimir = (function(){
       .mimir-input {
         flex:1; padding:8px 14px;
         background:transparent; border:1px solid rgba(245,215,142,0.08);
-        border-radius:20px; color:#fff; font-size:14px;
+        border-radius:20px; color:var(--t1); font-size:14px;
         resize:none; min-height:34px; max-height:100px;
         line-height:1.4; font-family:inherit;
       }
@@ -387,7 +387,7 @@ window.AsgardMimir = (function(){
         font-size:16px; transition:all 0.2s; flex-shrink:0;
       }
       .mimir-send-btn.mic-mode {
-        background:transparent; color:rgba(255,255,255,0.4);
+        background:transparent; color:var(--t3);
       }
       .mimir-send-btn.send-mode {
         background:linear-gradient(135deg, #c0392b, #2a3b66);
@@ -404,7 +404,7 @@ window.AsgardMimir = (function(){
 
       /* Home indicator */
       .mimir-home-indicator {
-        width:134px; height:5px; background:rgba(255,255,255,0.15);
+        width:134px; height:5px; background:var(--brd);
         border-radius:3px; margin:6px auto 8px;
       }
 
@@ -1360,25 +1360,25 @@ window.AsgardMimir = (function(){
       '<div style="padding:14px">' +
         '<h3 style="color:#f5d78e;margin:0 0 14px;font-size:15px">\uD83D\uDCDD Генератор ТКП</h3>' +
         '<div style="margin-bottom:10px">' +
-          '<label style="display:block;color:rgba(255,255,255,0.5);font-size:11px;margin-bottom:3px">Заказчик</label>' +
-          '<input id="tkp_customer" style="width:100%;background:rgba(0,0,0,0.3);border:1px solid rgba(245,215,142,0.1);color:#fff;padding:8px;border-radius:8px;font-size:13px" placeholder="ООО Газпром"/>' +
+          '<label style="display:block;color:var(--t2);font-size:11px;margin-bottom:3px">Заказчик</label>' +
+          '<input id="tkp_customer" style="width:100%;background:var(--bg3);border:1px solid var(--brd-m);color:var(--t1);padding:8px;border-radius:8px;font-size:13px" placeholder="ООО Газпром"/>' +
         '</div>' +
         '<div style="margin-bottom:10px">' +
-          '<label style="display:block;color:rgba(255,255,255,0.5);font-size:11px;margin-bottom:3px">Название работ</label>' +
-          '<input id="tkp_title" style="width:100%;background:rgba(0,0,0,0.3);border:1px solid rgba(245,215,142,0.1);color:#fff;padding:8px;border-radius:8px;font-size:13px" placeholder="Техническое обслуживание..."/>' +
+          '<label style="display:block;color:var(--t2);font-size:11px;margin-bottom:3px">Название работ</label>' +
+          '<input id="tkp_title" style="width:100%;background:var(--bg3);border:1px solid var(--brd-m);color:var(--t1);padding:8px;border-radius:8px;font-size:13px" placeholder="Техническое обслуживание..."/>' +
         '</div>' +
         '<div style="margin-bottom:10px">' +
-          '<label style="display:block;color:rgba(255,255,255,0.5);font-size:11px;margin-bottom:3px">Перечень услуг</label>' +
-          '<textarea id="tkp_services" style="width:100%;background:rgba(0,0,0,0.3);border:1px solid rgba(245,215,142,0.1);color:#fff;padding:8px;border-radius:8px;resize:vertical;font-size:13px" rows="3" placeholder="Диагностика, ремонт..."></textarea>' +
+          '<label style="display:block;color:var(--t2);font-size:11px;margin-bottom:3px">Перечень услуг</label>' +
+          '<textarea id="tkp_services" style="width:100%;background:var(--bg3);border:1px solid var(--brd-m);color:var(--t1);padding:8px;border-radius:8px;resize:vertical;font-size:13px" rows="3" placeholder="Диагностика, ремонт..."></textarea>' +
         '</div>' +
         '<div style="display:flex;gap:10px;margin-bottom:12px">' +
-          '<div style="flex:1"><label style="display:block;color:rgba(255,255,255,0.5);font-size:11px;margin-bottom:3px">Сумма (руб)</label>' +
-            '<input id="tkp_sum" type="number" style="width:100%;background:rgba(0,0,0,0.3);border:1px solid rgba(245,215,142,0.1);color:#fff;padding:8px;border-radius:8px;font-size:13px" placeholder="500000"/></div>' +
-          '<div style="flex:1"><label style="display:block;color:rgba(255,255,255,0.5);font-size:11px;margin-bottom:3px">Срок</label>' +
-            '<input id="tkp_deadline" style="width:100%;background:rgba(0,0,0,0.3);border:1px solid rgba(245,215,142,0.1);color:#fff;padding:8px;border-radius:8px;font-size:13px" placeholder="14 дней"/></div>' +
+          '<div style="flex:1"><label style="display:block;color:var(--t2);font-size:11px;margin-bottom:3px">Сумма (руб)</label>' +
+            '<input id="tkp_sum" type="number" style="width:100%;background:var(--bg3);border:1px solid var(--brd-m);color:var(--t1);padding:8px;border-radius:8px;font-size:13px" placeholder="500000"/></div>' +
+          '<div style="flex:1"><label style="display:block;color:var(--t2);font-size:11px;margin-bottom:3px">Срок</label>' +
+            '<input id="tkp_deadline" style="width:100%;background:var(--bg3);border:1px solid var(--brd-m);color:var(--t1);padding:8px;border-radius:8px;font-size:13px" placeholder="14 дней"/></div>' +
         '</div>' +
         '<div style="display:flex;gap:8px;justify-content:flex-end">' +
-          '<button id="tkp_cancel" style="padding:8px 16px;border-radius:8px;background:rgba(255,255,255,0.06);border:none;color:rgba(255,255,255,0.6);cursor:pointer;font-size:13px">Отмена</button>' +
+          '<button id="tkp_cancel" style="padding:8px 16px;border-radius:8px;background:var(--bg3);border:none;color:var(--t2);cursor:pointer;font-size:13px">Отмена</button>' +
           '<button id="tkp_generate" style="padding:8px 16px;border-radius:8px;background:linear-gradient(135deg,#c0392b,#2a3b66);border:none;color:#fff;cursor:pointer;font-size:13px;font-weight:600">Сгенерировать</button>' +
         '</div>' +
       '</div>';

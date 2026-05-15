@@ -17,9 +17,9 @@ window.AsgardWorkDocuments = (function () {
   to   { opacity: 1; transform: translateY(0); }
 }
 @keyframes wdGoldFlash {
-  0%   { color: var(--gold, #D4A843); transform: scale(1.04); }
+  0%   { color: var(--gold); transform: scale(1.04); }
   50%  { color: #FFD700; }
-  100% { color: var(--gold, #D4A843); transform: scale(1); }
+  100% { color: var(--gold); transform: scale(1); }
 }
 @keyframes wdPulseCheck {
   0%   { transform: scale(0); opacity: 0; }
@@ -73,14 +73,14 @@ window.AsgardWorkDocuments = (function () {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: .5px;
-  color: var(--t2, #888);
+  color: var(--t2);
 }
 .wd-field input, .wd-field textarea {
   padding: 9px 12px;
   border-radius: 7px;
-  border: 1.5px solid var(--border, #333);
-  background: var(--bg-input, #1a1f2e);
-  color: var(--text, #e0e6f0);
+  border: 1.5px solid var(--brd);
+  background: var(--bg3);
+  color: var(--t1);
   font-size: 14px;
   transition: border-color .2s;
   width: 100%;
@@ -91,11 +91,11 @@ window.AsgardWorkDocuments = (function () {
   border-color: #4338ca;
 }
 .wd-field input.gold-prefill {
-  border-color: var(--gold, #D4A843);
+  border-color: var(--gold);
   box-shadow: 0 0 0 2px rgba(212,168,67,.2);
 }
 .wd-total-bar {
-  background: var(--bg-card, #141820);
+  background: var(--bg2);
   border-radius: 8px;
   padding: 14px 18px;
   margin: 16px 0;
@@ -109,12 +109,12 @@ window.AsgardWorkDocuments = (function () {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: .5px;
-  color: var(--t2, #888);
+  color: var(--t2);
 }
 .wd-total-value {
   font-size: 22px;
   font-weight: 800;
-  color: var(--gold, #D4A843);
+  color: var(--gold);
   transition: all .2s;
 }
 .wd-total-value.flash {
@@ -130,20 +130,20 @@ window.AsgardWorkDocuments = (function () {
 .wd-btn-cancel {
   padding: 10px 18px;
   border-radius: 8px;
-  border: 1.5px solid var(--border, #333);
+  border: 1.5px solid var(--brd);
   background: transparent;
-  color: var(--t2, #888);
+  color: var(--t2);
   cursor: pointer;
   font-size: 14px;
   transition: all .2s;
 }
-.wd-btn-cancel:hover { border-color: var(--text, #e0e6f0); color: var(--text, #e0e6f0); }
+.wd-btn-cancel:hover { border-color: var(--t1); color: var(--t1); }
 .wd-btn-pdf {
   padding: 10px 18px;
   border-radius: 8px;
   border: 1.5px solid rgba(255,255,255,.15);
   background: rgba(255,255,255,.05);
-  color: var(--text, #e0e6f0);
+  color: var(--t1);
   cursor: pointer;
   font-size: 14px;
   transition: all .2s;
@@ -182,7 +182,7 @@ window.AsgardWorkDocuments = (function () {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: var(--ok, #27ae60);
+  background: var(--ok);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -191,8 +191,8 @@ window.AsgardWorkDocuments = (function () {
   animation: wdPulseCheck 0.4s ease both;
 }
 .wd-success-text { flex: 1; }
-.wd-success-text b { color: var(--ok-t, #2ecc71); font-size: 15px; }
-.wd-success-text p { margin: 4px 0 0; font-size: 12px; color: var(--t2, #888); }
+.wd-success-text b { color: var(--ok-t); font-size: 15px; }
+.wd-success-text p { margin: 4px 0 0; font-size: 12px; color: var(--t2); }
 .wd-open-link {
   color: #4338ca;
   font-size: 13px;

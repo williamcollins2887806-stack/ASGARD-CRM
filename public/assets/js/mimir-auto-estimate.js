@@ -65,13 +65,15 @@
         animation: 'mimirAeFadeIn 0.25s ease',
       },
     });
+    overlay.dataset.workId = state.workId || '';
+    overlay.dataset.tenderId = state.tenderId || '';
 
     const card = el('div', {
       class: 'mimir-ae-card',
       style: {
         width: 'min(720px, 92vw)', maxHeight: '88vh', display: 'flex', flexDirection: 'column',
-        background: 'var(--bg-1, #0f1218)',
-        border: '0.5px solid color-mix(in srgb, #D4A843 35%, rgba(255,255,255,0.08))',
+        background: 'var(--bg1)',
+        border: '0.5px solid color-mix(in srgb, #D4A843 35%, var(--brd))',
         borderRadius: '16px', overflow: 'hidden',
         boxShadow: '0 24px 80px rgba(0,0,0,0.6), 0 0 60px rgba(212,168,67,0.08)',
       },
@@ -81,7 +83,7 @@
     const header = el('div', {
       style: {
         display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 18px',
-        borderBottom: '0.5px solid rgba(255,255,255,0.08)',
+        borderBottom: '0.5px solid var(--brd)',
         background: 'linear-gradient(90deg, rgba(200,41,59,0.08), rgba(30,77,140,0.08), rgba(212,168,67,0.08))',
       },
     });
@@ -95,11 +97,11 @@
     }, '⚡');
     const titleBox = el('div', { style: { flex: '1', minWidth: '0' } });
     titleBox.appendChild(el('div', { style: { fontSize: '14px', fontWeight: '700', color: '#D4A843' } }, 'Мимир считает'));
-    titleBox.appendChild(el('div', { style: { fontSize: '11px', color: 'rgba(255,255,255,0.45)' } }, String(workId).startsWith('t') ? 'Тендер #' + String(workId).slice(1) : 'Работа #' + workId));
+    titleBox.appendChild(el('div', { style: { fontSize: '11px', color: 'var(--t3)' } }, String(workId).startsWith('t') ? 'Тендер #' + String(workId).slice(1) : 'Работа #' + workId));
     const closeBtn = el('button', {
       style: {
         width: '32px', height: '32px', borderRadius: '8px', border: 'none',
-        background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)',
+        background: 'var(--bg3)', color: 'var(--t2)',
         cursor: 'pointer', fontSize: '20px', lineHeight: '1',
       },
       onclick: () => closeModal(overlay),
@@ -112,7 +114,7 @@
     const body = el('div', {
       style: {
         flex: '1', overflowY: 'auto', padding: '18px 20px',
-        background: 'var(--bg-1, #0f1218)',
+        background: 'var(--bg1)',
       },
     });
 
@@ -132,7 +134,7 @@
     }, '⚡');
     const greetBubble = el('div', {
       style: {
-        background: 'rgba(255,255,255,0.04)',
+        background: 'var(--bg3)',
         border: '0.5px solid rgba(212,168,67,0.18)',
         borderRadius: '12px', padding: '10px 14px', maxWidth: '85%',
       },
@@ -141,7 +143,7 @@
       style: { fontSize: '11px', fontWeight: '700', color: '#D4A843', marginBottom: '4px' },
     }, 'Мимир'));
     greetBubble.appendChild(el('div', {
-      style: { fontSize: '13px', color: 'rgba(255,255,255,0.85)', lineHeight: '1.45' },
+      style: { fontSize: '13px', color: 'var(--t1)', lineHeight: '1.45' },
     }, 'Сейчас соберу всё что нужно для просчёта: документы тендера, аналогичные работы, историю заказчика, остатки склада, свободных рабочих и тарифы. Это займёт несколько секунд.'));
     greet.appendChild(greetAv);
     greet.appendChild(greetBubble);
@@ -159,16 +161,16 @@
     const footer = el('div', {
       style: {
         display: 'flex', gap: '10px', padding: '14px 18px',
-        borderTop: '0.5px solid rgba(255,255,255,0.08)',
-        background: 'rgba(0,0,0,0.2)',
+        borderTop: '0.5px solid var(--brd)',
+        background: 'var(--bg3)',
       },
     });
     const closeFt = el('button', {
       class: 'btn ghost',
       style: {
         flex: '1', padding: '12px', borderRadius: '10px',
-        background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.85)',
-        border: '0.5px solid rgba(255,255,255,0.1)', cursor: 'pointer',
+        background: 'var(--bg3)', color: 'var(--t1)',
+        border: '0.5px solid var(--brd)', cursor: 'pointer',
         fontSize: '13px', fontWeight: '600',
       },
       onclick: () => closeModal(overlay),
@@ -189,8 +191,8 @@
       style: {
         display: 'none',
         gap: '8px', padding: '10px 14px',
-        borderTop: '0.5px solid rgba(255,255,255,0.08)',
-        background: 'rgba(0,0,0,0.18)',
+        borderTop: '0.5px solid var(--brd)',
+        background: 'var(--bg3)',
         alignItems: 'flex-end',
       },
     });
@@ -199,8 +201,8 @@
       rows: '1',
       style: {
         flex: '1', padding: '10px 12px', borderRadius: '10px',
-        background: 'rgba(255,255,255,0.04)', color: '#fff',
-        border: '0.5px solid rgba(255,255,255,0.12)',
+        background: 'var(--bg3)', color: 'var(--t1)',
+        border: '0.5px solid var(--brd)',
         fontSize: '13px', fontFamily: 'inherit', resize: 'none',
         outline: 'none', maxHeight: '120px', minHeight: '38px',
       },
@@ -243,13 +245,41 @@
 
   function closeModal(overlay) {
     _aeRunning = false;
+    // Снять localStorage lock и серверный джоб
+    try {
+      var keys = Object.keys(localStorage);
+      for (var i = 0; i < keys.length; i++) {
+        if (keys[i].startsWith('ae_lock_')) localStorage.removeItem(keys[i]);
+      }
+    } catch (e) {}
+    // Сбросить серверный джоб при закрытии модалки
+    try {
+      var wid = overlay.dataset.workId;
+      var tid = overlay.dataset.tenderId;
+      var qp = wid ? 'work_id=' + wid : 'tender_id=' + tid;
+      var token = localStorage.getItem('token');
+      if (qp && token) {
+        fetch('/api/mimir/auto-estimate-status?' + qp, {
+          method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token }
+        }).catch(function() {});
+      }
+    } catch (e) {}
     overlay.style.animation = 'mimirAeFadeOut 0.2s ease forwards';
     setTimeout(() => overlay.remove(), 200);
   }
 
-  // Очередь шагов — 1.5с задержка для сбора данных, но heartbeat/result сразу
+  // Очередь шагов — 2.5с задержка между шагами сбора, имитация вдумчивого анализа
   var _stepQueue = [];
   var _stepTimer = null;
+  var _stepDelays = {
+    'documents': 3000,    // «Читаю документы» — 3 сек
+    'analogs':   2500,    // «Ищу аналоги» — 2.5 сек
+    'customer_history': 2000,
+    'warehouse': 2000,
+    'workers':   2000,
+    'tariffs':   1500,
+    'collected': 1000,    // «Всё собрано» — быстро
+  };
 
   function enqueueStep(stepsBox, event) {
     // ai_thinking и после — показываем сразу (Claude думает в реальном времени)
@@ -269,7 +299,8 @@
     if (_stepQueue.length === 0) { _stepTimer = null; return; }
     var item = _stepQueue.shift();
     if (item && item.event) appendStepNow(item.stepsBox, item.event);
-    _stepTimer = setTimeout(drainStepQueue, 1500);
+    var delay = (item && item.event && _stepDelays[item.event.step]) || 2500;
+    _stepTimer = setTimeout(drainStepQueue, delay);
   }
 
   // ID для "thinking" анимации — чтобы удалить когда придёт следующий шаг
@@ -305,7 +336,7 @@
     const text = el('div', {
       style: {
         fontSize: '13px',
-        color: isThinking ? '#D4A843' : 'rgba(255,255,255,0.85)',
+        color: isThinking ? '#D4A843' : 'var(--t1)',
         paddingTop: '4px',
         fontWeight: isThinking ? '600' : 'normal',
       },
@@ -403,7 +434,7 @@
     }, '⚡'));
     const bubble = el('div', {
       style: {
-        background: 'rgba(255,255,255,0.04)',
+        background: 'var(--bg3)',
         border: '0.5px solid rgba(212,168,67,0.18)',
         borderRadius: '12px', padding: '10px 14px', maxWidth: '85%',
       },
@@ -412,7 +443,7 @@
       style: { fontSize: '11px', fontWeight: '700', color: '#D4A843', marginBottom: '4px' },
     }, label || 'Мимир'));
     const t = el('div', {
-      style: { fontSize: '13px', color: 'rgba(255,255,255,0.88)', lineHeight: '1.5', whiteSpace: 'pre-wrap' },
+      style: { fontSize: '13px', color: 'var(--t1)', lineHeight: '1.5', whiteSpace: 'pre-wrap' },
     });
     t.textContent = text;
     bubble.appendChild(t);
@@ -468,7 +499,7 @@
       }, card.title));
       if (card.customer) {
         titleBox.appendChild(el('div', {
-          style: { fontSize: '12px', color: 'rgba(255,255,255,0.55)', marginTop: '3px' },
+          style: { fontSize: '12px', color: 'var(--t3)', marginTop: '3px' },
         }, card.customer));
       }
       root.appendChild(titleBox);
@@ -514,7 +545,7 @@
     breakBox.appendChild(el('div', {
       style: {
         fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px',
-        fontWeight: '700', color: 'rgba(255,255,255,0.5)', marginBottom: '6px',
+        fontWeight: '700', color: 'var(--t3)', marginBottom: '6px',
       },
     }, 'Структура себестоимости'));
     breakBox.appendChild(buildBreakRow('ФОТ + налог', card.fot_subtotal));
@@ -528,8 +559,8 @@
       root.appendChild(el('div', {
         style: {
           padding: '6px 16px', fontSize: '10px',
-          color: 'rgba(255,255,255,0.45)',
-          borderTop: '0.5px solid rgba(255,255,255,0.06)',
+          color: 'var(--t3)',
+          borderTop: '0.5px solid var(--brd-m)',
         },
       }, 'ⓘ Сервер пересчитал — отклонение AI от формул: ' + card.drift_pct + '%'));
     }
@@ -542,19 +573,19 @@
       style: {
         padding: '10px 12px', borderRadius: '10px',
         background: highlight ? 'rgba(212,168,67,0.10)' : 'rgba(0,0,0,0.18)',
-        border: '0.5px solid ' + (highlight ? 'rgba(212,168,67,0.35)' : 'rgba(255,255,255,0.06)'),
+        border: '0.5px solid ' + (highlight ? 'rgba(212,168,67,0.35)' : 'var(--brd-m)'),
       },
     });
     box.appendChild(el('div', {
       style: {
         fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.5px',
-        color: 'rgba(255,255,255,0.5)', marginBottom: '3px',
+        color: 'var(--t3)', marginBottom: '3px',
       },
     }, label));
     box.appendChild(el('div', {
       style: {
         fontSize: '18px', fontWeight: '800',
-        color: highlight ? '#D4A843' : 'rgba(255,255,255,0.95)',
+        color: highlight ? '#D4A843' : 'var(--t1)',
         lineHeight: '1',
       },
     }, value));
@@ -568,10 +599,10 @@
       },
     });
     box.appendChild(el('div', {
-      style: { fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'rgba(255,255,255,0.5)' },
+      style: { fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--t3)' },
     }, label));
     box.appendChild(el('div', {
-      style: { fontSize: '13px', fontWeight: '800', color: 'rgba(255,255,255,0.95)' },
+      style: { fontSize: '13px', fontWeight: '800', color: 'var(--t1)' },
     }, value));
     return box;
   }
@@ -579,16 +610,16 @@
     const row = el('div', {
       style: { display: 'flex', justifyContent: 'space-between', padding: '2px 0' },
     });
-    row.appendChild(el('span', { style: { fontSize: '12px', color: 'rgba(255,255,255,0.5)' } }, label));
-    row.appendChild(el('span', { style: { fontSize: '13px', fontWeight: '600', color: 'rgba(255,255,255,0.92)' } }, value));
+    row.appendChild(el('span', { style: { fontSize: '12px', color: 'var(--t3)' } }, label));
+    row.appendChild(el('span', { style: { fontSize: '13px', fontWeight: '600', color: 'var(--t1)' } }, value));
     return row;
   }
   function buildBreakRow(label, value) {
     const row = el('div', {
       style: { display: 'flex', justifyContent: 'space-between', padding: '2px 0' },
     });
-    row.appendChild(el('span', { style: { fontSize: '12px', color: 'rgba(255,255,255,0.5)' } }, label));
-    row.appendChild(el('span', { style: { fontSize: '12px', fontWeight: '600', color: 'rgba(255,255,255,0.85)' } }, fmtMoney(value)));
+    row.appendChild(el('span', { style: { fontSize: '12px', color: 'var(--t3)' } }, label));
+    row.appendChild(el('span', { style: { fontSize: '12px', fontWeight: '600', color: 'var(--t1)' } }, fmtMoney(value)));
     return row;
   }
 
@@ -616,7 +647,7 @@
       }, w.title));
     }
     inner.appendChild(el('div', {
-      style: { fontSize: '12px', color: 'rgba(255,255,255,0.85)', lineHeight: '1.4' },
+      style: { fontSize: '12px', color: 'var(--t1)', lineHeight: '1.4' },
     }, w.text || w.message || ''));
     box.appendChild(inner);
     return box;
@@ -666,7 +697,7 @@
         placeholder: 'Ваш ответ...',
         style: {
           width: '100%', padding: '8px 10px', borderRadius: '8px', fontSize: '13px',
-          background: 'rgba(255,255,255,0.04)', color: '#fff', border: '0.5px solid rgba(255,255,255,0.12)',
+          background: 'var(--bg3)', color: 'var(--t1)', border: '0.5px solid var(--brd)',
           fontFamily: 'inherit', resize: 'vertical', outline: 'none', minHeight: '36px'
         }
       });
@@ -807,7 +838,7 @@
         fontSize: '14px',
       },
     }, '⚡'));
-    loader.appendChild(el('span', { style: { fontSize: '12px', color: 'rgba(255,255,255,0.6)' } }, 'Мимир пересчитывает...'));
+    loader.appendChild(el('span', { style: { fontSize: '12px', color: 'var(--t2)' } }, 'Мимир пересчитывает...'));
     resultBox.appendChild(loader);
     resultBox.scrollIntoView({ block: 'end', behavior: 'smooth' });
 
@@ -874,7 +905,7 @@
       style: { fontSize: '12px', fontWeight: '700', color: '#E67381', marginBottom: '4px' },
     }, 'Ошибка'));
     card.appendChild(el('div', {
-      style: { fontSize: '12px', color: 'rgba(255,255,255,0.7)' },
+      style: { fontSize: '12px', color: 'var(--t2)' },
     }, String(message || 'Неизвестная ошибка')));
     stepsBox.appendChild(card);
   }
@@ -941,6 +972,7 @@
       showError(stepsBox, err.message);
     } finally {
       _aeRunning = false;
+      try { var ks = Object.keys(localStorage); for (var i = 0; i < ks.length; i++) { if (ks[i].startsWith('ae_lock_')) localStorage.removeItem(ks[i]); } } catch (e) {}
       retryBtn.disabled = false;
       retryBtn.style.opacity = '1';
     }
@@ -982,10 +1014,56 @@
   }
 
   let _aeRunning = false;
-  window.openMimirAutoEstimate = function (workId, tenderId) {
+  // localStorage guard — блокирует повторный запуск даже после перезахода (TTL 5 мин)
+  function _aeIsLocked(key) {
+    try {
+      var ts = parseInt(localStorage.getItem('ae_lock_' + key) || '0');
+      return ts > 0 && (Date.now() - ts) < 300000; // 5 min TTL
+    } catch (e) { return false; }
+  }
+  function _aeLock(key) {
+    try { localStorage.setItem('ae_lock_' + key, String(Date.now())); } catch (e) {}
+  }
+  function _aeUnlock(key) {
+    try { localStorage.removeItem('ae_lock_' + key); } catch (e) {}
+  }
+  window.openMimirAutoEstimate = async function (workId, tenderId) {
     if (!workId && !tenderId) return;
-    if (_aeRunning) { AsgardUI.toast('Мимир', 'Просчёт уже запущен, дождитесь результата', 'warn'); return; }
+    var lockKey = workId ? 'w' + workId : 't' + tenderId;
+    if (_aeRunning) {
+      AsgardUI.toast('Мимир', 'Просчёт уже запущен, дождитесь результата', 'warn');
+      return;
+    }
+
+    // Проверяем серверный статус — вдруг просчёт уже бежит/готов
+    try {
+      var qp = workId ? 'work_id=' + workId : 'tender_id=' + tenderId;
+      var token = localStorage.getItem('token');
+      var statusResp = await fetch('/api/mimir/auto-estimate-status?' + qp, {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      if (statusResp.ok) {
+        var statusData = await statusResp.json();
+        if (statusData.status === 'running') {
+          AsgardUI.toast('Мимир', 'Просчёт уже выполняется на сервере, подождите...', 'warn');
+          return;
+        }
+        if (statusData.status === 'done' && statusData.result && statusData.result.estimate_id) {
+          // Просчёт готов — перейти к нему
+          AsgardUI.toast('Мимир', 'Просчёт готов! Открываю...', 'ok');
+          if (window.openPage) window.openPage('estimate_report', { id: statusData.result.estimate_id });
+          // Очистить джоб
+          fetch('/api/mimir/auto-estimate-status?' + qp, {
+            method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token }
+          }).catch(function() {});
+          return;
+        }
+        // status === 'error' или 'none' — разрешаем запуск нового
+      }
+    } catch (e) { /* сервер недоступен — пробуем всё равно */ }
+
     _aeRunning = true;
+    _aeLock(lockKey);
     injectStyles();
     const state = {
       workId: workId || null,

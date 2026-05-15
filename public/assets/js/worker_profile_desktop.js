@@ -225,7 +225,7 @@ window.WorkerProfileDesktop = (function () {
     bgCirc.setAttribute('cy', size / 2);
     bgCirc.setAttribute('r', r);
     bgCirc.setAttribute('fill', 'none');
-    bgCirc.setAttribute('stroke', 'rgba(255,255,255,0.1)');
+    bgCirc.setAttribute('stroke', 'var(--brd)');
     bgCirc.setAttribute('stroke-width', strokeW);
     svg.appendChild(bgCirc);
 
@@ -257,7 +257,7 @@ window.WorkerProfileDesktop = (function () {
     txt2.setAttribute('x', size / 2);
     txt2.setAttribute('y', size / 2 + 12);
     txt2.setAttribute('text-anchor', 'middle');
-    txt2.setAttribute('fill', 'rgba(255,255,255,0.6)');
+    txt2.setAttribute('fill', 'var(--t3)');
     txt2.setAttribute('font-size', '9');
     txt2.textContent = lbl;
     svg.appendChild(txt2);
@@ -268,7 +268,7 @@ window.WorkerProfileDesktop = (function () {
   /* Rune SVG instead of unicode */
   function runeSvg() {
     return `<svg class="wp-desktop-hero-rune" width="72" height="90" viewBox="0 0 72 90" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M36 5L36 85M36 5L56 30M36 5L16 30M36 45L56 30M36 45L16 30" stroke="rgba(255,255,255,0.06)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M36 5L36 85M36 5L56 30M36 5L16 30M36 45L56 30M36 45L16 30" stroke="var(--brd)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>`;
   }
 

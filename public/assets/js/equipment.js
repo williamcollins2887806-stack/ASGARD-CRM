@@ -460,7 +460,7 @@ window.AsgardEquipment = (function () {
   border-bottom:2px solid var(--border); font-weight:600; text-transform:uppercase; letter-spacing:.5px; white-space:nowrap; }
 .fk-table td { padding:10px 12px; font-size:13px; border-bottom:1px solid var(--border); vertical-align:middle; }
 .fk-table tr { cursor:pointer; transition:background .15s; }
-.fk-table tr:hover { background:var(--bg-hover,rgba(255,255,255,.03)); }
+.fk-table tr:hover { background:var(--bg3); }
 .fk-table .fk-thumb { width:36px; height:36px; border-radius:8px; object-fit:cover; background:var(--bg);
   display:flex; align-items:center; justify-content:center; font-size:18px; }
 
@@ -548,7 +548,7 @@ window.AsgardEquipment = (function () {
 @keyframes fk-shimmer { to { background-position:-200% 0; } }
 .fk-spinner { display:inline-block; width:14px; height:14px; border:2px solid currentColor;
   border-right-color:transparent; border-radius:50%; animation:fk-spin .6s linear infinite; vertical-align:middle; }
-.fk-skeleton { background:linear-gradient(90deg, var(--bg-card,#1a1a2e) 25%, var(--border,#2a2a3e) 50%, var(--bg-card,#1a1a2e) 75%);
+.fk-skeleton { background:linear-gradient(90deg, var(--bg2) 25%, var(--brd) 50%, var(--bg2) 75%);
   background-size:200% 100%; animation:fk-shimmer 1.5s infinite; border-radius:8px; min-height:20px; }
 .fk-skeleton-card { height:200px; border-radius:14px; }
 .fk-skeleton-metric { height:80px; min-width:150px; border-radius:12px; flex:0 0 auto; }

@@ -114,7 +114,7 @@ window.AsgardPmCalcsPage = (function(){
         .qc-section{background:var(--bg-card);border:none;border-radius:var(--radius-md);padding:16px;margin-bottom:16px}
         .qc-section h4{margin:0 0 12px;font-size:14px;color:var(--gold)}
         .qc-kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-top:16px}
-        .qc-kpi .k{background:rgba(13,20,40,.5);border-radius:6px;padding:12px;text-align:center}
+        .qc-kpi .k{background:var(--bg3);border-radius:6px;padding:12px;text-align:center}
         .qc-kpi .k .t{font-size:11px;color:var(--muted)}
         .qc-kpi .k .v{font-size:18px;font-weight:700;color:var(--gold)}
         .qc-zone{padding:16px;border-radius:6px;text-align:center;margin-top:16px}
@@ -451,7 +451,7 @@ window.AsgardPmCalcsPage = (function(){
       ${window.__ASG_SHARED_TABLE_CSS__||""}
       <style>
         .st{display:inline-flex; align-items:center; gap:8px}
-        .dot{width:10px;height:10px;border-radius:999px; box-shadow:0 0 0 2px rgba(255,255,255,.05) inset}
+        .dot{width:10px;height:10px;border-radius:999px; box-shadow:0 0 0 2px var(--brd) inset}
       </style>
 
       <div class="panel">

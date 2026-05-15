@@ -119,7 +119,7 @@ window.AsgardHints = (function() {
       '}' +
       /* ── Точки золотая пульсация (thinking) ── */
       '@keyframes mhDotGold{' +
-        '0%,100%{background:var(--bg2,#1e2330);border-color:rgba(245,215,142,0.08)}' +
+        '0%,100%{background:var(--bg2);border-color:rgba(245,215,142,0.08)}' +
         '50%{background:rgba(212,168,67,0.35);border-color:rgba(212,168,67,0.5)}' +
       '}' +
       /* ── Облачко появление ── */
@@ -192,7 +192,7 @@ window.AsgardHints = (function() {
       '.mh-avatar{' +
         'width:56px;height:56px;border-radius:50%;' +
         'background:linear-gradient(135deg,#c0392b 0%,#2a3b66 100%);' +
-        'border:2px solid var(--gold-l,#c4a84e);' +
+        'border:2px solid var(--gold-l);' +
         'display:flex;align-items:center;justify-content:center;' +
         'font-size:26px;position:relative;cursor:pointer;' +
         'flex-shrink:0;z-index:2;' +
@@ -209,7 +209,7 @@ window.AsgardHints = (function() {
       '.mh-rune{' +
         'position:absolute;top:-2px;left:-2px;' +
         'width:20px;height:20px;border-radius:50%;' +
-        'background:var(--gold-l,#c4a84e);' +
+        'background:var(--gold-l);' +
         'color:#2a3b66;font-size:11px;font-weight:800;' +
         'display:flex;align-items:center;justify-content:center;' +
         'line-height:1' +
@@ -219,7 +219,7 @@ window.AsgardHints = (function() {
       '.mh-dots{position:absolute;z-index:1}' +
       '.mh-dot{' +
         'position:absolute;border-radius:50%;' +
-        'background:var(--bg2,#1e2330);' +
+        'background:var(--bg2);' +
         'border:1px solid rgba(245,215,142,0.08);' +
         'transform:scale(0);opacity:0' +
       '}' +
@@ -229,7 +229,7 @@ window.AsgardHints = (function() {
       /* Cloud */
       '.mh-cloud{' +
         'position:relative;' +
-        'background:var(--bg2,#1e2330);' +
+        'background:var(--bg2);' +
         'border:1px solid rgba(192,57,43,0.2);' +
         'border-radius:20px;' +
         'box-shadow:0 4px 20px rgba(0,0,0,0.3),0 0 0 1px rgba(245,215,142,0.05);' +
@@ -247,14 +247,14 @@ window.AsgardHints = (function() {
       '.mh-cloud::before{' +
         'content:"";position:absolute;bottom:-6px;left:18px;' +
         'width:16px;height:12px;border-radius:50%;' +
-        'background:var(--bg2,#1e2330);' +
+        'background:var(--bg2);' +
         'border:1px solid rgba(192,57,43,0.15);' +
         'border-top-color:transparent' +
       '}' +
       '.mh-cloud::after{' +
         'content:"";position:absolute;top:-5px;right:30px;' +
         'width:14px;height:10px;border-radius:50%;' +
-        'background:var(--bg2,#1e2330);' +
+        'background:var(--bg2);' +
         'border:1px solid rgba(192,57,43,0.12);' +
         'border-bottom-color:transparent' +
       '}' +
@@ -263,32 +263,32 @@ window.AsgardHints = (function() {
       '.mh-label-row{display:flex;align-items:center;gap:6px;margin-bottom:8px}' +
       '.mh-label-dot{' +
         'width:6px;height:6px;border-radius:50%;' +
-        'background:var(--gold-l,#c4a84e);' +
+        'background:var(--gold-l);' +
         'animation:mhLabelDot 2s ease infinite;flex-shrink:0' +
       '}' +
       '.mh-label{' +
         'font-size:10px;font-weight:700;text-transform:uppercase;' +
-        'letter-spacing:1.2px;color:var(--gold-l,#c4a84e);opacity:0.7' +
+        'letter-spacing:1.2px;color:var(--gold-l);opacity:0.7' +
       '}' +
-      '.mh-counter{font-size:10px;color:var(--t3,#666);margin-left:2px;text-transform:none;letter-spacing:0}' +
+      '.mh-counter{font-size:10px;color:var(--t3);margin-left:2px;text-transform:none;letter-spacing:0}' +
 
       /* Dismiss X */
       '.mh-dismiss{' +
         'position:absolute;top:10px;right:12px;' +
-        'background:none;border:none;color:var(--t3,#666);' +
+        'background:none;border:none;color:var(--t3);' +
         'cursor:pointer;font-size:16px;padding:2px 6px;' +
         'border-radius:4px;transition:color .2s,opacity .2s;' +
         'opacity:0;line-height:1' +
       '}' +
       '.mh-cloud:hover .mh-dismiss{opacity:1}' +
-      '.mh-dismiss:hover{color:var(--t1,#eee)}' +
+      '.mh-dismiss:hover{color:var(--t1)}' +
 
       /* Teaser text */
-      '.mh-teaser{font-size:13.5px;color:var(--t1,#eee);line-height:1.5;margin-bottom:6px}' +
+      '.mh-teaser{font-size:13.5px;color:var(--t1);line-height:1.5;margin-bottom:6px}' +
 
       /* CTA */
       '.mh-cta{' +
-        'font-size:11px;color:var(--gold-l,#c4a84e);opacity:0.5;' +
+        'font-size:11px;color:var(--gold-l);opacity:0.5;' +
         'cursor:pointer;display:inline-flex;align-items:center;gap:4px;' +
         'background:none;border:none;padding:0;transition:opacity .2s' +
       '}' +
@@ -298,18 +298,18 @@ window.AsgardHints = (function() {
 
       /* Скрыть все */
       '.mh-dismiss-all{' +
-        'font-size:10px;color:var(--t3,#666);opacity:0;' +
+        'font-size:10px;color:var(--t3);opacity:0;' +
         'cursor:pointer;background:none;border:none;padding:0;' +
         'transition:opacity .2s;position:absolute;top:12px;right:34px' +
       '}' +
       '.mh-cloud:hover .mh-dismiss-all{opacity:0.7}' +
-      '.mh-dismiss-all:hover{opacity:1!important;color:var(--t2,#aaa)}' +
+      '.mh-dismiss-all:hover{opacity:1!important;color:var(--t2)}' +
 
       /* Thinking dots */
       '.mh-think-dots{display:flex;align-items:center;justify-content:center;gap:8px;padding:12px 0}' +
       '.mh-think-dot{' +
         'width:8px;height:8px;border-radius:50%;' +
-        'background:var(--gold-l,#c4a84e);' +
+        'background:var(--gold-l);' +
         'animation:mhThinkDot 1s ease infinite' +
       '}' +
 
@@ -319,8 +319,8 @@ window.AsgardHints = (function() {
         'margin-top:10px;padding-top:10px;' +
         'animation:mhExpandReveal .5s ease forwards;overflow:hidden' +
       '}' +
-      '.mh-expanded-text{font-size:13px;line-height:1.6;color:var(--t2,#aaa)}' +
-      '.mh-expanded-text.mh-typed{color:var(--t1,#eee)}' +
+      '.mh-expanded-text{font-size:13px;line-height:1.6;color:var(--t2)}' +
+      '.mh-expanded-text.mh-typed{color:var(--t1)}' +
 
       /* Shimmer on expanded */
       '.mh-expanded.mh-shimmer{position:relative;overflow:hidden}' +
@@ -343,7 +343,7 @@ window.AsgardHints = (function() {
       '.mh-btn-primary:hover{filter:brightness(1.1);box-shadow:0 0 10px rgba(212,168,67,0.3)}' +
       '.mh-btn-ghost{' +
         'background:none;' +
-        'border:1px solid rgba(196,168,78,0.3);color:var(--gold-l,#c4a84e);' +
+        'border:1px solid rgba(196,168,78,0.3);color:var(--gold-l);' +
         'padding:5px 14px;border-radius:8px;' +
         'font-size:12px;cursor:pointer;' +
         'transition:all .2s;white-space:nowrap' +
@@ -352,7 +352,7 @@ window.AsgardHints = (function() {
 
       /* Next hint button */
       '.mh-next{' +
-        'font-size:11px;color:var(--gold-l,#c4a84e);opacity:0.6;' +
+        'font-size:11px;color:var(--gold-l);opacity:0.6;' +
         'cursor:pointer;background:none;border:none;padding:0;' +
         'transition:opacity .2s;margin-left:auto' +
       '}' +
@@ -378,10 +378,10 @@ window.AsgardHints = (function() {
       '.mh-pill{' +
         'display:inline-flex;align-items:center;gap:6px;' +
         'margin-left:12px;margin-top:14px;' +
-        'background:var(--bg2,#1e2330);' +
+        'background:var(--bg2);' +
         'border:1px solid rgba(192,57,43,0.2);' +
         'border-radius:20px;padding:6px 14px;' +
-        'font-size:12px;color:var(--gold-l,#c4a84e);' +
+        'font-size:12px;color:var(--gold-l);' +
         'cursor:pointer;opacity:0.8;' +
         'transition:opacity .2s,border-color .2s,box-shadow .2s;' +
         'animation:mhPillIn .4s ease both' +
@@ -776,7 +776,7 @@ window.AsgardHints = (function() {
         var ext = (isTkp && TKP_EXTENDED[hint.id]) ? TKP_EXTENDED[hint.id] : null;
         if (ext && ext.subtitle) {
           var sub = document.createElement('div');
-          sub.style.cssText = 'font-size:12px;color:var(--t3,#666);margin-top:4px;line-height:1.4';
+          sub.style.cssText = 'font-size:12px;color:var(--t3);margin-top:4px;line-height:1.4';
           sub.textContent = ext.subtitle;
           expanded.appendChild(sub);
         }

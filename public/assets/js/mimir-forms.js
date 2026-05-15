@@ -130,7 +130,7 @@ window.MimirForms = (function() {
         padding:10px 14px;
         border-radius:12px;
         font-size:12px;line-height:1.5;
-        color:#e5e7eb;
+        color:var(--t1);
         animation:mimirBubbleIn .3s ease;
         max-width:320px;
       }

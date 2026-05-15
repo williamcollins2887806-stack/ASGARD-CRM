@@ -161,7 +161,7 @@ window.AsgardEmployeeCollections = (function(){
     var employees = data.employees || [];
 
     var empHtml = employees.length ? employees.map(function(e) {
-      return '<div class="col-emp" style="display:flex;align-items:center;gap:12px;padding:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:8px">' +
+      return '<div class="col-emp" style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--bg3);border:1px solid var(--brd);border-radius:8px">' +
         '<div style="flex:1;min-width:0">' +
           '<div style="font-weight:600;font-size:13px;color:var(--t1)">' + esc(e.fio||e.full_name||"") + '</div>' +
           '<div style="font-size:11px;color:var(--t2)">' + esc(e.role_tag||"") + (e.city?" \u00B7 "+esc(e.city):"") + (e.phone?" \u00B7 "+esc(e.phone):"") + '</div>' +

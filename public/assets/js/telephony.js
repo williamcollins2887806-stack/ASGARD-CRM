@@ -55,42 +55,42 @@ window.AsgardTelephonyPage = (function () {
     const style = document.createElement('style');
     style.id = 'telephony-v3-styles';
     style.textContent = `
-/* --- Filter inputs dark theme --- */      .telephony-filters input,.telephony-filters select{background:var(--bg3,#1e1e2f);color:var(--t1,#e5e7eb);border:1px solid var(--brd,#444);border-radius:6px;padding:8px 12px;font-size:14px;outline:none}      .telephony-filters input::placeholder{color:var(--t3,#6b7280)}      .telephony-filters input:focus,.telephony-filters select:focus{border-color:var(--blue,#3b82f6)}      .telephony-filters select option{background:var(--bg2,#161625);color:var(--t1,#e5e7eb)}      .telephony-page label input,.telephony-page label select{background:var(--bg3,#1e1e2f);color:var(--t1,#e5e7eb);border:1px solid var(--brd,#444);border-radius:6px;padding:8px 12px;font-size:14px}      .telephony-page label{color:var(--t2,#d1d5db)}
+/* --- Filter inputs dark theme --- */      .telephony-filters input,.telephony-filters select{background:var(--bg3);color:var(--t1);border:1px solid var(--brd);border-radius:6px;padding:8px 12px;font-size:14px;outline:none}      .telephony-filters input::placeholder{color:var(--t3)}      .telephony-filters input:focus,.telephony-filters select:focus{border-color:var(--blue,#3b82f6)}      .telephony-filters select option{background:var(--bg2);color:var(--t1)}      .telephony-page label input,.telephony-page label select{background:var(--bg3);color:var(--t1);border:1px solid var(--brd);border-radius:6px;padding:8px 12px;font-size:14px}      .telephony-page label{color:var(--t2)}
       /* --- Skeleton shimmer --- */
-      .skeleton{background:linear-gradient(90deg,var(--bg3,#2a2a3e) 25%,var(--bg4,#33334d) 50%,var(--bg3,#2a2a3e) 75%);background-size:200% 100%;animation:skeleton-shimmer 1.5s infinite;border-radius:4px;display:inline-block}
+      .skeleton{background:linear-gradient(90deg,var(--bg3) 25%,var(--bg4) 50%,var(--bg3) 75%);background-size:200% 100%;animation:skeleton-shimmer 1.5s infinite;border-radius:4px;display:inline-block}
       @keyframes skeleton-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
-      .skeleton-row{display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid var(--brd,#333)}
+      .skeleton-row{display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid var(--brd)}
       .skeleton-bar{height:14px}
-      .skeleton-card{border:1px solid var(--brd,#333);border-radius:8px;padding:16px;margin-bottom:12px}
-      .skeleton-kpi{border:1px solid var(--brd,#333);border-radius:8px;padding:20px;text-align:center;min-width:140px;flex:1}
-      .skeleton-chart{border:1px solid var(--brd,#333);border-radius:8px;height:280px;margin-top:16px}
+      .skeleton-card{border:1px solid var(--brd);border-radius:8px;padding:16px;margin-bottom:12px}
+      .skeleton-kpi{border:1px solid var(--brd);border-radius:8px;padding:20px;text-align:center;min-width:140px;flex:1}
+      .skeleton-chart{border:1px solid var(--brd);border-radius:8px;height:280px;margin-top:16px}
 
       /* --- Tab content transition --- */
       #telContent{transition:opacity 0.15s ease}
 
       /* --- CSS-only tooltips --- */
       [data-tooltip]{position:relative}
-      [data-tooltip]::after{content:attr(data-tooltip);position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%) scale(0.9);padding:4px 10px;background:var(--bg1,#1a1a2e);color:#fff;font-size:12px;border-radius:4px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity 0.15s,transform 0.15s;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+      [data-tooltip]::after{content:attr(data-tooltip);position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%) scale(0.9);padding:4px 10px;background:var(--bg1);color:var(--t1);font-size:12px;border-radius:4px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity 0.15s,transform 0.15s;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.3)}
       [data-tooltip]:hover::after{opacity:1;transform:translateX(-50%) scale(1)}
 
       /* --- Chart tooltip --- */
-      .chart-crosshair-tooltip{position:absolute;pointer-events:none;z-index:50;background:var(--bg1,#1a1a2e);color:#fff;font-size:12px;border-radius:6px;padding:8px 12px;box-shadow:0 4px 16px rgba(0,0,0,.35);line-height:1.6;white-space:nowrap}
+      .chart-crosshair-tooltip{position:absolute;pointer-events:none;z-index:50;background:var(--bg1);color:var(--t1);font-size:12px;border-radius:6px;padding:8px 12px;box-shadow:0 4px 16px rgba(0,0,0,.35);line-height:1.6;white-space:nowrap}
       .chart-crosshair-tooltip .ct-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle}
-      .chart-legend{display:flex;gap:20px;padding:6px 0 10px;font-size:13px;color:var(--t2,#9ca3af)}
+      .chart-legend{display:flex;gap:20px;padding:6px 0 10px;font-size:13px;color:var(--t2)}
       .chart-legend-item{display:flex;align-items:center;gap:6px}
       .chart-legend-dot{width:10px;height:10px;border-radius:50%}
 
       /* --- AI Analysis Card --- */
       .ai-analysis-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;margin-top:8px;font-size:13px}
-      .ai-analysis-grid dt{color:var(--t3,#6b7280);font-weight:500}
-      .ai-analysis-grid dd{color:var(--t1,#e5e7eb);margin:0}
-      .ai-analysis-section{margin-top:12px;padding-top:10px;border-top:1px solid var(--brd,#333)}
-      .ai-analysis-section-title{font-size:12px;font-weight:600;color:var(--t3,#6b7280);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+      .ai-analysis-grid dt{color:var(--t3);font-weight:500}
+      .ai-analysis-grid dd{color:var(--t1);margin:0}
+      .ai-analysis-section{margin-top:12px;padding-top:10px;border-top:1px solid var(--brd)}
+      .ai-analysis-section-title{font-size:12px;font-weight:600;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
       .ai-next-steps{list-style:none;padding:0;margin:4px 0 0}
-      .ai-next-steps li{padding:4px 0;color:var(--t2,#d1d5db);font-size:13px}
+      .ai-next-steps li{padding:4px 0;color:var(--t2);font-size:13px}
       .ai-next-steps li::before{content:"→ ";color:var(--blue,#3b82f6)}
-      .ai-key-reqs{list-style:disc;padding-left:16px;margin:4px 0 0;font-size:13px;color:var(--t2,#d1d5db)}
-      .ai-quality-bar{height:6px;border-radius:3px;background:var(--bg4,#33334d);margin-top:4px;overflow:hidden}
+      .ai-key-reqs{list-style:disc;padding-left:16px;margin:4px 0 0;font-size:13px;color:var(--t2)}
+      .ai-quality-bar{height:6px;border-radius:3px;background:var(--bg4);margin-top:4px;overflow:hidden}
       .ai-quality-fill{height:100%;border-radius:3px;transition:width .3s}
       .ai-urgency-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
       .ai-urgency--critical{background:#dc262622;color:#ef4444;border:1px solid #ef444444}
@@ -100,14 +100,14 @@ window.AsgardTelephonyPage = (function () {
       .ai-action-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
       
       /* --- Transcript viewer --- */
-      .transcript-viewer{max-height:340px;overflow-y:auto;padding:12px;background:var(--bg3,#1e1e2f);border-radius:6px;font-family:'Fira Code','JetBrains Mono',monospace;font-size:13px;line-height:1.75}
+      .transcript-viewer{max-height:340px;overflow-y:auto;padding:12px;background:var(--bg3);border-radius:6px;font-family:'Fira Code','JetBrains Mono',monospace;font-size:13px;line-height:1.75}
       .transcript-line{padding:3px 0}
       .transcript-speaker{font-weight:600;margin-right:8px;padding:1px 6px;border-radius:3px;font-size:12px}
       .transcript-speaker--client{background:var(--blue,#3b82f6);color:#fff}
       .transcript-speaker--manager{background:var(--green,#22c55e);color:#fff}
-      .transcript-text{color:var(--t2,#d1d5db)}
-      .transcript-copy-btn{cursor:pointer;font-size:13px;margin-left:8px;vertical-align:middle;background:none;border:1px solid var(--brd,#444);border-radius:4px;padding:2px 8px;color:var(--t2,#9ca3af)}
-      .transcript-copy-btn:hover{background:var(--bg4,#33334d)}
+      .transcript-text{color:var(--t2)}
+      .transcript-copy-btn{cursor:pointer;font-size:13px;margin-left:8px;vertical-align:middle;background:none;border:1px solid var(--brd);border-radius:4px;padding:2px 8px;color:var(--t2)}
+      .transcript-copy-btn:hover{background:var(--bg4)}
 
       /* --- Drag-and-drop routing --- */
       .routing-rule-card{transition:transform 0.15s,box-shadow 0.15s;cursor:grab}
@@ -141,19 +141,19 @@ window.AsgardTelephonyPage = (function () {
       .call-dadata-badge{display:inline-block;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:500;background:rgba(212,168,67,.1);color:#D4A843;border:1px solid rgba(212,168,67,.2);margin-left:6px;vertical-align:middle;white-space:nowrap}
 
       /* AI preview popup on hover */
-      .call-ai-preview{position:absolute;z-index:200;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:var(--bg1,#1a1a2e);color:#fff;padding:10px 14px;border-radius:8px;font-size:12px;line-height:1.5;max-width:320px;white-space:normal;box-shadow:0 8px 24px rgba(0,0,0,.4);pointer-events:none;opacity:0;transition:opacity .2s;border:1px solid rgba(212,168,67,.15)}
+      .call-ai-preview{position:absolute;z-index:200;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:var(--bg1);color:var(--t1);padding:10px 14px;border-radius:8px;font-size:12px;line-height:1.5;max-width:320px;white-space:normal;box-shadow:0 8px 24px rgba(0,0,0,.4);pointer-events:none;opacity:0;transition:opacity .2s;border:1px solid rgba(212,168,67,.15)}
       .call-row-wow:hover .call-ai-preview{opacity:1}
 
       /* Pill filter buttons */
       .tel-filter-pills{display:flex;gap:4px;flex-wrap:wrap}
-      .tel-filter-pill{padding:6px 14px;border-radius:20px;border:1px solid var(--brd,#444);background:transparent;color:var(--t2,#9ca3af);font-size:12px;font-weight:500;cursor:pointer;transition:all .2s}
-      .tel-filter-pill:hover{border-color:rgba(212,168,67,.3);color:var(--t1,#e5e7eb)}
+      .tel-filter-pill{padding:6px 14px;border-radius:20px;border:1px solid var(--brd);background:transparent;color:var(--t2);font-size:12px;font-weight:500;cursor:pointer;transition:all .2s}
+      .tel-filter-pill:hover{border-color:rgba(212,168,67,.3);color:var(--t1)}
       .tel-filter-pill--active{background:linear-gradient(135deg,rgba(200,41,59,.15),rgba(30,77,140,.15));color:#D4A843;border-color:rgba(212,168,67,.3);box-shadow:0 0 8px rgba(212,168,67,.1)}
 
       /* ═══ KPI CARDS — WOW ═══ */
-      .telephony-kpi-wow{position:relative;background:var(--bg3,#1e1e2f);border:none;border-radius:12px;padding:20px 18px;text-align:center;overflow:hidden;transition:transform .25s,box-shadow .25s}
+      .telephony-kpi-wow{position:relative;background:var(--bg3);border:none;border-radius:12px;padding:20px 18px;text-align:center;overflow:hidden;transition:transform .25s,box-shadow .25s}
       .telephony-kpi-wow::before{content:'';position:absolute;inset:-1px;border-radius:12px;background:linear-gradient(135deg,#C8293B,#1E4D8C);z-index:0;opacity:.7}
-      .telephony-kpi-wow::after{content:'';position:absolute;inset:1px;border-radius:11px;background:var(--bg3,#1e1e2f);z-index:1}
+      .telephony-kpi-wow::after{content:'';position:absolute;inset:1px;border-radius:11px;background:var(--bg3);z-index:1}
       .telephony-kpi-wow>*{position:relative;z-index:2}
       .telephony-kpi-wow:hover{transform:translateY(-4px);box-shadow:0 8px 24px rgba(212,168,67,.12);animation:telGoldenGlow 1.5s ease-in-out}
       .telephony-kpi-icon-wow{width:42px;height:42px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:8px}
@@ -170,18 +170,18 @@ window.AsgardTelephonyPage = (function () {
       .missed-card-wow--unack{animation:telCardSlideUp .35s ease both,telMissedPulse 2s ease-in-out 3;border:1px solid var(--red,#ef4444)}
       .missed-card-wow--unack::after{content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;background:linear-gradient(90deg,transparent,rgba(239,68,68,.06),transparent);animation:telShimmerSweep 3s ease-in-out infinite;pointer-events:none}
       .missed-time-ago{display:inline-block;padding:2px 8px;border-radius:8px;font-size:11px;font-weight:600;background:rgba(239,68,68,.1);color:var(--red,#ef4444);margin-left:6px}
-      .missed-dadata-info{display:inline-block;font-size:10px;color:var(--t3,#6b7280);margin-left:6px;padding:1px 6px;background:rgba(212,168,67,.08);border-radius:8px}
+      .missed-dadata-info{display:inline-block;font-size:10px;color:var(--t3);margin-left:6px;padding:1px 6px;background:rgba(212,168,67,.08);border-radius:8px}
 
       /* ═══ AI INSIGHTS CARD ═══ */
-      .tel-ai-insights{position:relative;background:var(--bg3,#1e1e2f);border-radius:12px;padding:20px;margin-bottom:20px;overflow:hidden;border:1px solid rgba(212,168,67,.2)}
+      .tel-ai-insights{position:relative;background:var(--bg3);border-radius:12px;padding:20px;margin-bottom:20px;overflow:hidden;border:1px solid rgba(212,168,67,.2)}
       .tel-ai-insights::before{content:'';position:absolute;inset:-1px;border-radius:12px;background:linear-gradient(135deg,rgba(212,168,67,.3),rgba(59,130,246,.2));z-index:0;pointer-events:none}
-      .tel-ai-insights::after{content:'';position:absolute;inset:1px;border-radius:11px;background:var(--bg3,#1e1e2f);z-index:1}
+      .tel-ai-insights::after{content:'';position:absolute;inset:1px;border-radius:11px;background:var(--bg3);z-index:1}
       .tel-ai-insights>*{position:relative;z-index:2}
       .tel-ai-insights-title{font-size:14px;font-weight:600;color:#D4A843;margin-bottom:12px;display:flex;align-items:center;gap:8px}
       .tel-ai-insights-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
       .tel-ai-insight-item{text-align:center}
-      .tel-ai-insight-value{font-size:24px;font-weight:700;color:var(--t1,#e5e7eb)}
-      .tel-ai-insight-label{font-size:11px;color:var(--t3,#6b7280);text-transform:uppercase;letter-spacing:.04em;margin-top:2px}
+      .tel-ai-insight-value{font-size:24px;font-weight:700;color:var(--t1)}
+      .tel-ai-insight-label{font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.04em;margin-top:2px}
 
       /* ═══ TRANSCRIPT SEGMENTS (diarization) ═══ */
       .transcript-seg-row{display:flex;gap:10px;padding:8px 12px;border-radius:6px;transition:background .15s;align-items:flex-start}
@@ -191,7 +191,7 @@ window.AsgardTelephonyPage = (function () {
       .transcript-seg-time:hover{color:#D4A843}
       .transcript-seg-speaker--0{font-size:11px;font-weight:700;color:var(--blue-l,#60a5fa);min-width:60px;padding-top:2px}
       .transcript-seg-speaker--1{font-size:11px;font-weight:700;color:#D4A843;min-width:60px;padding-top:2px}
-      .transcript-seg-text{font-size:13px;color:var(--t1,#e5e7eb);line-height:1.5;flex:1}
+      .transcript-seg-text{font-size:13px;color:var(--t1);line-height:1.5;flex:1}
 
       /* ═══ DETAIL DADATA CHIPS ═══ */
       .detail-dadata-chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
@@ -706,7 +706,7 @@ window.AsgardTelephonyPage = (function () {
         var ld = {};
         try { ld = typeof c.ai_lead_data === 'string' ? JSON.parse(c.ai_lead_data) : (c.ai_lead_data || {}); } catch(_){}
         if (ld.quality_score) {
-          tags += '<span class="cr-badge" style="background:var(--gold-bg,#3d350d);color:var(--gold)">\u2B50 ' + ld.quality_score + '/10</span>';
+          tags += '<span class="cr-badge" style="background:var(--gold-bg);color:var(--gold)">\u2B50 ' + ld.quality_score + '/10</span>';
         }
 
         expandRow = '<tr class="cr-call-expand" data-call-id="' + c.id + '" style="display:none">' +
@@ -810,7 +810,7 @@ window.AsgardTelephonyPage = (function () {
             (timeAgo ? '<span class="missed-time-ago">' + esc(timeAgo) + '</span>' : '') +
             '<span>' + esc(fmtDate(c.created_at)) + dadataInfo + '</span>' +
             (c.client_name ? '<span>' + esc(c.client_name) + '</span>' : '') +
-            (c.manager_name ? '<span style="color:var(--t2,#9ca3af);font-size:12px">' + esc(c.manager_name) + '</span>' : '') +
+            (c.manager_name ? '<span style="color:var(--t2);font-size:12px">' + esc(c.manager_name) + '</span>' : '') +
           '</div>' +
           '<div class="missed-call-card-actions">' +
             '<button class="btn missed-call-btn--callback" data-phone="' + esc(c.from_number) + '" data-tooltip="Позвонить клиенту">\u260E Перезвонить</button>' +
@@ -846,7 +846,7 @@ window.AsgardTelephonyPage = (function () {
   function initiateCallback(phone) {
     showModal({
       title: 'Перезвонить',
-      body: '<p>Позвонить на номер <strong>' + esc(fmtPhone(phone)) + '</strong>?</p><p style="font-size:13px;color:var(--t2,#9ca3af);margin-top:8px">Сначала позвонит ваш телефон, затем произойдёт соединение с клиентом.</p>',
+      body: '<p>Позвонить на номер <strong>' + esc(fmtPhone(phone)) + '</strong>?</p><p style="font-size:13px;color:var(--t2);margin-top:8px">Сначала позвонит ваш телефон, затем произойдёт соединение с клиентом.</p>',
       confirmText: 'Позвонить',
       onConfirm: async function () {
         try {
@@ -1815,7 +1815,7 @@ window.AsgardTelephonyPage = (function () {
       var qColor = qs >= 8 ? '#22c55e' : qs >= 5 ? '#eab308' : '#ef4444';
       html += '<div class="ai-analysis-section"><div class="ai-analysis-section-title">Качество разговора: ' + qs + '/10</div>';
       html += '<div class="ai-quality-bar"><div class="ai-quality-fill" style="width:' + (qs * 10) + '%;background:' + qColor + '"></div></div>';
-      if (ld.quality_notes) html += '<div style="margin-top:6px;font-size:12px;color:var(--t3,#6b7280)">' + esc(ld.quality_notes) + '</div>';
+      if (ld.quality_notes) html += '<div style="margin-top:6px;font-size:12px;color:var(--t3)">' + esc(ld.quality_notes) + '</div>';
       html += '</div>';
     }
     html += '</div></div>';

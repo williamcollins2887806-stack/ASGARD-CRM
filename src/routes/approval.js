@@ -121,6 +121,11 @@ async function routes(fastify) {
       const entityId = parseInt(request.params.id);
       const actor = request.user;
 
+      // TO и HEAD_TO не могут отправлять на согласование (только проверка)
+      if (entityType === 'estimates' && ['TO', 'HEAD_TO'].includes(actor.role)) {
+        throw Object.assign(new Error('Тендерный отдел может делать просчёт только для проверки'), { statusCode: 403 });
+      }
+
       // Verify entity exists and is draft
       const result = await db.query(`SELECT * FROM ${entityType} WHERE id = $1`, [entityId]);
       const entity = result.rows[0];
@@ -157,6 +162,14 @@ async function routes(fastify) {
         message: `${actor.name || 'РП'} отправил на согласование #${entityId}`,
         requiresPayment: false
       });
+
+      // Перевести тендер в «Согласование ТКП» при отправке просчёта
+      if (entityType === 'estimates' && entity.tender_id) {
+        await db.query(`
+          UPDATE tenders SET tender_status = 'Согласование ТКП', updated_at = NOW()
+          WHERE id = $1 AND tender_status = 'Отправлено на просчёт'
+        `, [entity.tender_id]);
+      }
 
       // H1: Создать чат в Хугинне для просчётов
       if (entityType === 'estimates') {

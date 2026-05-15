@@ -180,10 +180,10 @@ window.AsgardAllEstimatesPage = (function() {
           <input id="a_comm" value="" placeholder="Ваш комментарий" style="width:100%;margin-top:4px"/>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn" id="btnApprove" style="background:var(--green,#22c55e);color:#fff">✅ Согласовать</button>
-          <button class="btn" id="btnRework" style="background:var(--amber,#f59e0b);color:#fff">🔄 Доработка</button>
-          <button class="btn" id="btnQuestion" style="background:var(--purple,#a855f7);color:#fff">❓ Вопрос</button>
-          <button class="btn" id="btnReject" style="background:var(--red,#ef4444);color:#fff">❌ Отклонить</button>
+          <button class="btn" id="btnApprove" style="background:var(--ok);color:#fff">✅ Согласовать</button>
+          <button class="btn" id="btnRework" style="background:var(--amber);color:#fff">🔄 Доработка</button>
+          <button class="btn" id="btnQuestion" style="background:var(--purple);color:#fff">❓ Вопрос</button>
+          <button class="btn" id="btnReject" style="background:var(--red);color:#fff">❌ Отклонить</button>
         </div>` : '';
 
       const pmHint = isPmRework ? `

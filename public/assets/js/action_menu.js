@@ -42,8 +42,8 @@ window.AsgardActionMenu = (function () {
 
       /* ═══ Panel ═══ */
       .aam-panel {
-        background: linear-gradient(145deg, var(--bg2, #151922), var(--bg1, #0D1117));
-        border: 1px solid var(--brd, rgba(255,255,255,0.08));
+        background: linear-gradient(145deg, var(--bg2), var(--bg1));
+        border: 1px solid var(--brd);
         border-radius: var(--r-lg, 12px);
         box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(212,168,67,0.08);
         max-width: 680px;
@@ -65,18 +65,18 @@ window.AsgardActionMenu = (function () {
         align-items: center;
         justify-content: space-between;
         padding: 16px 20px 12px;
-        border-bottom: 1px solid var(--brd, rgba(255,255,255,0.08));
+        border-bottom: 1px solid var(--brd);
       }
       .aam-title {
         font-size: 15px;
         font-weight: 700;
-        color: var(--t1, rgba(255,255,255,0.95));
+        color: var(--t1);
         letter-spacing: 0.3px;
       }
       .aam-close {
         width: 32px; height: 32px;
         border: none; background: transparent;
-        color: var(--t3, rgba(255,255,255,0.4));
+        color: var(--t3);
         font-size: 18px;
         cursor: pointer;
         border-radius: 6px;
@@ -85,7 +85,7 @@ window.AsgardActionMenu = (function () {
       }
       .aam-close:hover {
         background: rgba(255,255,255,0.06);
-        color: var(--t1, rgba(255,255,255,0.95));
+        color: var(--t1);
       }
 
       /* ═══ Body (scrollable grid) ═══ */
@@ -101,7 +101,7 @@ window.AsgardActionMenu = (function () {
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 1.2px;
-        color: var(--t3, rgba(255,255,255,0.4));
+        color: var(--t3);
         margin: 16px 0 8px;
         padding-left: 2px;
       }
@@ -121,7 +121,7 @@ window.AsgardActionMenu = (function () {
         align-items: flex-start;
         gap: 12px;
         padding: 14px 16px;
-        background: var(--bg3, #1C2130);
+        background: var(--bg3);
         border: 1px solid transparent;
         border-radius: var(--r-md, 8px);
         cursor: pointer;
@@ -148,7 +148,7 @@ window.AsgardActionMenu = (function () {
       }
       .aam-card.aam-success:hover {
         background: rgba(45,134,89,0.1);
-        border-color: var(--ok, #2D8659);
+        border-color: var(--ok);
       }
       .aam-card.aam-disabled {
         opacity: 0.4;
@@ -174,12 +174,12 @@ window.AsgardActionMenu = (function () {
       .aam-label {
         font-size: 13px;
         font-weight: 600;
-        color: var(--t1, rgba(255,255,255,0.95));
+        color: var(--t1);
         line-height: 1.3;
       }
       .aam-desc {
         font-size: 11px;
-        color: var(--t3, rgba(255,255,255,0.4));
+        color: var(--t3);
         line-height: 1.3;
         margin-top: 2px;
       }
@@ -200,7 +200,7 @@ window.AsgardActionMenu = (function () {
       }
       .aam-badge-count {
         background: rgba(212,168,67,0.2);
-        color: var(--gold, #D4A843);
+        color: var(--gold);
       }
 
       /* ═══ Responsive ═══ */

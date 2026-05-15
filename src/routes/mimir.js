@@ -316,9 +316,20 @@ async function mimirRoutes(fastify, options) {
         `, [user.id, prov, mdl, String(error.message || error).slice(0, 2000)]);
       } catch (e) { /* ignore */ }
 
+      // Человеческие сообщения для известных ошибок
+      const errMsg = String(error.message || '');
+      let userMessage = 'Один из воронов заблудился... Попробуйте позже.';
+      if (errMsg.includes('402') || errMsg.includes('Недостаточно средств') || errMsg.includes('insufficient')) {
+        userMessage = 'AI-провайдер временно недоступен (баланс исчерпан). Обратитесь к администратору.';
+      } else if (errMsg.includes('403') || errMsg.includes('PermissionDenied')) {
+        userMessage = 'Нет доступа к AI-сервису. Обратитесь к администратору.';
+      } else if (errMsg.includes('timeout') || errMsg.includes('AbortError')) {
+        userMessage = 'AI-сервис не ответил вовремя. Попробуйте ещё раз.';
+      }
       return reply.code(500).send({
         success: false,
-        message: 'Ошибка. Один из воронов заблудился...'
+        error: userMessage,
+        message: userMessage
       });
     }
   });
@@ -1939,16 +1950,47 @@ ${analogsSummary}
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // Серверный трекер активных авто-просчётов (персистентный между вкладками)
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (!fastify._aeJobs) fastify._aeJobs = new Map();
+  const AE_JOB_TTL = 600000; // 10 мин макс время жизни
+
+  // GET /api/mimir/auto-estimate-status — проверить, есть ли активный/готовый просчёт
+  fastify.get('/auto-estimate-status', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { work_id, tender_id } = request.query || {};
+    const key = work_id ? 'w' + work_id : 't' + tender_id;
+    if (!key || key === 'wundefined') return { status: 'none' };
+
+    const job = fastify._aeJobs.get(key);
+    if (!job || (Date.now() - job.startedAt > AE_JOB_TTL)) {
+      fastify._aeJobs.delete(key);
+      return { status: 'none' };
+    }
+    return {
+      status: job.status,  // 'running', 'questions', 'done', 'error'
+      result: job.result || null,
+      session_id: job.session_id || null,
+      questions: job.questions || null,
+      error: job.error || null,
+      elapsed_ms: Date.now() - job.startedAt
+    };
+  });
+
+  // DELETE /api/mimir/auto-estimate-status — сбросить джоб (пользователь закрыл модалку)
+  fastify.delete('/auto-estimate-status', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { work_id, tender_id } = request.query || {};
+    const key = work_id ? 'w' + work_id : 't' + tender_id;
+    fastify._aeJobs.delete(key);
+    return { ok: true };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // AP1: POST /api/mimir/auto-estimate — Авто-просчёт работы (SSE прогресс)
   // ═══════════════════════════════════════════════════════════════════════════
-  // Принимает { work_id }, открывает SSE, эмитит progress events для каждого
-  // шага сбора контекста (documents, analogs, customer_history, warehouse,
-  // workers, tariffs). В AP1 — без AI вызова, отдаёт мок result в конце с
-  // полным собранным контекстом для проверки.
-  //
-  // AP2 добавит: вызов Claude Sonnet 4.6 → парсинг JSON → создание estimate
-  // → диалог с Мимиром (через отдельные эндпоинты или extension этого).
-  //
   // Клиент: fetch streaming (POST с body, читает чанки как SSE).
   fastify.post('/auto-estimate', {
     preHandler: [fastify.authenticate]
@@ -1972,6 +2014,15 @@ ${analogsSummary}
     if (!workId && !tenderId) {
       return reply.code(400).send({ success: false, message: 'work_id или tender_id обязателен' });
     }
+
+    // Проверка: уже бежит просчёт?
+    const jobKey = workId ? 'w' + workId : 't' + tenderId;
+    const existingJob = fastify._aeJobs.get(jobKey);
+    if (existingJob && (Date.now() - existingJob.startedAt < AE_JOB_TTL) && existingJob.status === 'running') {
+      return reply.code(409).send({ success: false, message: 'Просчёт уже запущен', status: 'running' });
+    }
+    // Регистрируем джоб
+    fastify._aeJobs.set(jobKey, { status: 'running', startedAt: Date.now(), result: null });
 
     // SSE headers
     reply.raw.writeHead(200, {
@@ -2047,8 +2098,13 @@ ${analogsSummary}
 
       // Фаза вопросов — сохраняем контекст для /auto-estimate-answer
       if (parsed.phase === 'questions' && parsed.questions) {
-        // Кэшируем контекст (5 мин TTL)
         const sessionId = `ae_${workId || 't' + tenderId}_${Date.now()}`;
+        // Обновить джоб-трекер: фаза вопросов
+        fastify._aeJobs.set(jobKey, {
+          status: 'questions', startedAt: Date.now(),
+          session_id: sessionId, questions: parsed.questions, result: null
+        });
+        // Кэшируем контекст (5 мин TTL)
         if (!fastify._aeQuestionCache) fastify._aeQuestionCache = new Map();
         fastify._aeQuestionCache.set(sessionId, {
           workId, tenderId, dataText, systemPrompt, ctx, user,
@@ -2136,11 +2192,26 @@ ${analogsSummary}
         elapsed_ms: Date.now() - startTime
       });
 
+      // Сохранить результат в серверный кэш джобов
+      fastify._aeJobs.set(jobKey, {
+        status: 'done', startedAt: Date.now(),
+        result: { estimate_id: created.estimate_id, version_no: created.version_no, card: {
+          title: ai.estimate?.title || ctx.work.work_title,
+          total_with_margin: totals.total_with_margin,
+          total_with_vat: totals.total_with_vat,
+          crew_count: ai.estimate?.crew_count, work_days: ai.estimate?.work_days
+        }}
+      });
+
       sendEvent({ type: 'done' });
 
     } catch (error) {
       console.error('[Mimir auto-estimate ERROR]:', error.message);
       console.error(error.stack);
+      fastify._aeJobs.set(jobKey, {
+        status: 'error', startedAt: Date.now(),
+        error: String(error.message || 'Неизвестная ошибка').substring(0, 500)
+      });
       sendEvent({
         type: 'error',
         message: String(error.message || 'Неизвестная ошибка').substring(0, 500),
@@ -2265,6 +2336,17 @@ ${analogsSummary}
         ai_meta: { model: aiResult.model, tokens: aiResult.usage, duration_ms: aiResult.durationMs },
         elapsed_ms: Date.now() - startTime
       });
+
+      // Обновить серверный кэш джобов
+      const ansJobKey = cache.workId ? 'w' + cache.workId : 't' + cache.tenderId;
+      fastify._aeJobs.set(ansJobKey, {
+        status: 'done', startedAt: Date.now(),
+        result: { estimate_id: created.estimate_id, card: {
+          title: ai.estimate?.title || ctx.work.work_title,
+          total_with_margin: totals.total_with_margin
+        }}
+      });
+
       sendEvent({ type: 'done' });
     } catch (err) {
       console.error('[auto-estimate-answer ERROR]:', err.message, err.stack);
@@ -2288,14 +2370,25 @@ ${analogsSummary}
   fastify.post('/auto-estimate-chat', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
-    const { work_id, estimate_id, message, history } = request.body || {};
+    const { work_id, tender_id, estimate_id, message, history } = request.body || {};
     const user = request.user;
 
-    if (!work_id || !estimate_id || !message?.trim()) {
-      return reply.code(400).send({ success: false, message: 'work_id, estimate_id и message обязательны' });
+    if (!estimate_id || !message?.trim()) {
+      return reply.code(400).send({ success: false, message: 'estimate_id и message обязательны' });
     }
-    const workId = parseInt(work_id);
+
+    // work_id может прийти напрямую или через estimate
+    let workId = work_id ? parseInt(work_id) : null;
     const estimateId = parseInt(estimate_id);
+
+    // Если work_id не передан — достаём из estimate
+    if (!workId) {
+      const estRow = await db.query('SELECT work_id FROM estimates WHERE id = $1', [estimateId]);
+      workId = estRow.rows[0]?.work_id || null;
+    }
+    if (!workId) {
+      return reply.code(400).send({ success: false, message: 'Не удалось определить work_id для просчёта' });
+    }
 
     try {
       const mimirAutoEstimate = require('../services/mimir-auto-estimate');
@@ -2306,8 +2399,21 @@ ${analogsSummary}
       const ctx = await collector.collectAll(db, workId, null);
       const dataText = serializeContext(ctx);
 
-      // 2. AI вызов через Claude с по��ным контекстом + сообщение РП
-      const userTurn = `Данные просчёта:\n${dataText}\n\n---\nРУКОВОДИТЕЛЬ ПРОЕКТА (${user.name || user.login}) ПИШЕТ:
+      // Проверяем комментарий директора (для доработки)
+      let directorContext = '';
+      try {
+        const estInfo = await db.query('SELECT approval_status, last_director_comment, director_id FROM estimates WHERE id = $1', [estimateId]);
+        const est = estInfo.rows[0];
+        if (est && ['rework', 'question'].includes(est.approval_status) && est.last_director_comment) {
+          const dirName = est.director_id
+            ? (await db.query('SELECT name FROM users WHERE id = $1', [est.director_id])).rows[0]?.name || 'Директор'
+            : 'Директор';
+          directorContext = `\n\nЗАМЕЧАНИЕ ДИРЕКТОРА (${dirName}):\n"${est.last_director_comment}"\nСтатус просчёта: ${est.approval_status === 'question' ? 'Вопрос от директора' : 'Отправлено на доработку'}.\nУчти замечание директора при пересчёте.\n`;
+        }
+      } catch (e) { /* ok */ }
+
+      // 2. AI вызов через Claude с полным контекстом + сообщение РП
+      const userTurn = `Данные просчёта:\n${dataText}${directorContext}\n\n---\nРУКОВОДИТЕЛЬ ПРОЕКТА (${user.name || user.login}) ПИШЕТ:
 "${message.trim()}"
 
 ${history && history.length > 0 ? `\nКОНТЕКСТ ДИАЛОГА:\n${history.slice(-6).map(h => `${h.role === 'user' ? 'РП' : 'Мимир'}: ${h.text}`).join('\n')}` : ''}

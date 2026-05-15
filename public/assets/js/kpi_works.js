@@ -484,9 +484,9 @@ window.AsgardKpiWorksPage=(function(){
           segH += '<div title="'+esc(seg.key)+': '+seg.value+'" style="width:'+pct+'%;min-width:4px;background:'+(colorMap[seg.key]||'#666')+';height:100%;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;font-weight:700;overflow:hidden">'+(seg.value>=2?seg.value:'')+'</div>';
         });
         sH += '<div style="display:grid;grid-template-columns:170px 1fr 40px;align-items:center;gap:12px">';
-        sH += '<div style="font-size:13px;color:var(--text-primary,#e0e0e0);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+esc(r.label)+'">'+esc(r.label)+'</div>';
+        sH += '<div style="font-size:13px;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+esc(r.label)+'">'+esc(r.label)+'</div>';
         sH += '<div style="display:flex;gap:2px;height:28px;width:'+barW+'%;border-radius:6px;overflow:hidden;background:rgba(255,255,255,.05)">'+segH+'</div>';
-        sH += '<div style="font-size:14px;font-weight:700;color:var(--text-muted,#999);text-align:right">'+r.total+'</div>';
+        sH += '<div style="font-size:14px;font-weight:700;color:var(--t3);text-align:right">'+r.total+'</div>';
         sH += '</div>';
       });
       sH += '</div>';

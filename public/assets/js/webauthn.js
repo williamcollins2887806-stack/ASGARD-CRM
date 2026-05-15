@@ -243,10 +243,10 @@ async function registerBiometric() {
         +     '<div style="display:flex;gap:10px;align-items:center;margin-bottom:8px"><span style="font-size:22px;line-height:1">' + getBiometricIcon() + '</span><div style="font-size:22px;font-weight:800;line-height:1.1;letter-spacing:-.5px">Вход через ' + modeLabel + '</div></div>'
         +     '<div style="font-size:13px;line-height:1.45;opacity:.86">Подключите биометрию на устройстве и входите в CRM без ввода пароля.</div>'
         +   '</div>'
-        +   '<div style="display:flex;gap:10px;align-items:flex-start;padding:14px 16px;border-radius:16px;background:var(--surface-alt);border:1px solid var(--border)"><div style="font-size:18px;line-height:1">⚡</div><div><div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:2px">Быстро и без пароля</div><div style="font-size:12px;line-height:1.45;color:var(--text-sec)">Face ID сохраняется как passkey и позволяет входить без ввода пароля.</div></div></div>'
+        +   '<div style="display:flex;gap:10px;align-items:flex-start;padding:14px 16px;border-radius:16px;background:var(--bg2);border:1px solid var(--border)"><div style="font-size:18px;line-height:1">⚡</div><div><div style="font-size:14px;font-weight:700;color:var(--t1);margin-bottom:2px">Быстро и без пароля</div><div style="font-size:12px;line-height:1.45;color:var(--t2)">Face ID сохраняется как passkey и позволяет входить без ввода пароля.</div></div></div>'
         +   '<div style="display:grid;gap:10px;padding-top:2px">'
         +     '<button id="' + promptId + '-yes" type="button" style="height:52px;border:none;border-radius:16px;background:var(--hero-grad);color:#fff;font-size:15px;font-weight:800;letter-spacing:-.2px;box-shadow:var(--fab-shadow);cursor:pointer">Подключить Face ID</button>'
-        +     '<button id="' + promptId + '-no" type="button" style="height:48px;border-radius:16px;border:1px solid var(--border);background:var(--surface-alt);color:var(--text-sec);font-size:14px;font-weight:700;cursor:pointer">Позже</button>'
+        +     '<button id="' + promptId + '-no" type="button" style="height:48px;border-radius:16px;border:1px solid var(--border);background:var(--bg2);color:var(--t2);font-size:14px;font-weight:700;cursor:pointer">Позже</button>'
         +   '</div>'
         + '</div>';
 
@@ -295,11 +295,11 @@ async function registerBiometric() {
 
       var html = ''
         + '<div style="display:grid;gap:12px;margin:14px 0 10px">'
-        +   '<div style="padding:16px;border-radius:18px;background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));border:1px solid var(--border);box-shadow:var(--shadow)">'
-        +     '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px"><div style="width:44px;height:44px;border-radius:14px;background:var(--hero-grad);display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;box-shadow:var(--fab-shadow)">' + getBiometricIcon() + '</div><div style="min-width:0"><div style="font-size:15px;font-weight:800;letter-spacing:-.2px;color:var(--text)">' + getBiometricLabel() + '</div><div style="margin-top:3px;font-size:12px;line-height:1.4;color:var(--text-sec);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + lastUser + '</div></div></div>'
+        +   '<div style="padding:16px;border-radius:18px;background:var(--bg3);border:1px solid var(--border);box-shadow:var(--shadow)">'
+        +     '<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px"><div style="width:44px;height:44px;border-radius:14px;background:var(--hero-grad);display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;box-shadow:var(--fab-shadow)">' + getBiometricIcon() + '</div><div style="min-width:0"><div style="font-size:15px;font-weight:800;letter-spacing:-.2px;color:var(--t1)">' + getBiometricLabel() + '</div><div style="margin-top:3px;font-size:12px;line-height:1.4;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + lastUser + '</div></div></div>'
         +     '<button id="btnBiometricLogin" type="button" style="width:100%;height:50px;border:none;border-radius:16px;background:var(--hero-grad);color:#fff;font-size:15px;font-weight:800;letter-spacing:-.2px;box-shadow:var(--fab-shadow);cursor:pointer">Войти через биометрию</button>'
         +   '</div>'
-        +   '<div style="text-align:center;font-size:12px;color:var(--text-sec)">или войдите по логину и паролю</div>'
+        +   '<div style="text-align:center;font-size:12px;color:var(--t2)">или войдите по логину и паролю</div>'
         + '</div>';
 
       container.innerHTML = html;
@@ -326,8 +326,8 @@ async function registerBiometric() {
   }
 
   function renderDevicesSection() {
-    return '<div style="margin-top:14px;padding:18px;border-radius:20px;background:var(--surface);border:1px solid var(--border);box-shadow:var(--shadow)" id="webauthn-devices-section">'
-      + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><div style="width:34px;height:34px;border-radius:12px;background:var(--hero-grad);display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px">🔐</div><div><div style="font-size:15px;font-weight:800;color:var(--text)">Ваши устройства</div><div style="font-size:12px;color:var(--text-sec)">Face ID и passkey для быстрого входа</div></div></div>'
+    return '<div style="margin-top:14px;padding:18px;border-radius:20px;background:var(--bg2);border:1px solid var(--border);box-shadow:var(--shadow)" id="webauthn-devices-section">'
+      + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><div style="width:34px;height:34px;border-radius:12px;background:var(--hero-grad);display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px">🔐</div><div><div style="font-size:15px;font-weight:800;color:var(--t1)">Ваши устройства</div><div style="font-size:12px;color:var(--t2)">Face ID и passkey для быстрого входа</div></div></div>'
       + '<div id="webauthn-devices-list"><div class="help">Загрузка...</div></div>'
       + '</div>';
   }
@@ -353,11 +353,11 @@ async function registerBiometric() {
 
       if (creds.length === 0) {
         var html = '<div style="display:grid;gap:12px">';
-        html += '<div style="padding:14px 16px;border-radius:16px;background:var(--surface-alt);border:1px solid var(--border);font-size:13px;line-height:1.5;color:var(--text-sec)">Биометрия пока не подключена. Добавьте устройство через Face ID, Touch ID, отпечаток пальца или защитный ключ с PIN.</div>';
+        html += '<div style="padding:14px 16px;border-radius:16px;background:var(--bg2);border:1px solid var(--border);font-size:13px;line-height:1.5;color:var(--t2)">Биометрия пока не подключена. Добавьте устройство через Face ID, Touch ID, отпечаток пальца или защитный ключ с PIN.</div>';
         if (supported) {
           html += '<button class="btn" id="btnAddDevice" style="height:48px;border:none;border-radius:16px;background:var(--hero-grad);color:#fff;font-size:14px;font-weight:800;box-shadow:var(--fab-shadow)">Добавить устройство</button>';
         } else {
-          html += '<div class="help" style="padding:12px 14px;border-radius:14px;background:var(--surface-alt);border:1px solid var(--border)">Это устройство не поддерживает биометрическую аутентификацию.</div>';
+          html += '<div class="help" style="padding:12px 14px;border-radius:14px;background:var(--bg2);border:1px solid var(--border)">Это устройство не поддерживает биометрическую аутентификацию.</div>';
         }
         html += '</div>';
         container.innerHTML = html;
@@ -372,11 +372,11 @@ async function registerBiometric() {
 
           html += '<td>' + created + '</td>';
           html += '<td>' + lastUsed + '</td>';
-          html += '<td><button class="btn ghost" data-delete-id="' + c.id + '" style="color:var(--red,#ef4444);padding:4px 8px;font-size:12px">Удалить</button></td>';
+          html += '<td><button class="btn ghost" data-delete-id="' + c.id + '" style="color:var(--red);padding:4px 8px;font-size:12px">Удалить</button></td>';
           html += '</tr>';
         });
         html += '</tbody></table>';
-        html += '<div style="font-size:12px;color:var(--text-sec);margin-top:-2px;margin-bottom:12px">Если устройство потеряно, удалите его из списка.</div>';
+        html += '<div style="font-size:12px;color:var(--t2);margin-top:-2px;margin-bottom:12px">Если устройство потеряно, удалите его из списка.</div>';
 
         if (supported) {
           html += '<button class="btn ghost" id="btnAddDevice" style="height:46px;border-radius:14px">+ Добавить устройство</button>';
@@ -437,7 +437,7 @@ async function registerBiometric() {
       });
 
     } catch (e) {
-      container.innerHTML = '<div class="help" style="padding:12px 14px;border-radius:14px;background:var(--surface-alt);border:1px solid var(--border);color:var(--red)">Ошибка загрузки: ' + (e.message || 'неизвестная ошибка') + '</div>';
+      container.innerHTML = '<div class="help" style="padding:12px 14px;border-radius:14px;background:var(--bg2);border:1px solid var(--border);color:var(--red)">Ошибка загрузки: ' + (e.message || 'неизвестная ошибка') + '</div>';
     }
   }
 

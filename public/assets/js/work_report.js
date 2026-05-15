@@ -1028,7 +1028,7 @@ window.AsgardWorkReport = (function () {
 
 /* ── KPI Strip ── */
 .wr-kpi-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
-.wr-kpi-card{background:var(--bg2,#151922);border:1px solid var(--brd);border-radius:14px;padding:16px 18px;display:flex;align-items:center;gap:14px;transition:transform .2s,box-shadow .2s;contain:layout style paint}
+.wr-kpi-card{background:var(--bg2);border:1px solid var(--brd);border-radius:14px;padding:16px 18px;display:flex;align-items:center;gap:14px;transition:transform .2s,box-shadow .2s;contain:layout style paint}
 .wr-kpi-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.3)}
 .wr-kpi-icon{flex-shrink:0;opacity:.85}
 .wr-kpi-body{flex:1;min-width:0}
@@ -1041,7 +1041,7 @@ window.AsgardWorkReport = (function () {
 .wr-grid-main,.wr-grid-side{display:flex;flex-direction:column;gap:16px}
 
 /* ── Card ── */
-.wr-card{background:var(--bg2,#151922);border:1px solid var(--brd);border-radius:14px;padding:18px 20px;transition:box-shadow .2s}
+.wr-card{background:var(--bg2);border:1px solid var(--brd);border-radius:14px;padding:18px 20px;transition:box-shadow .2s}
 .wr-card:hover{box-shadow:0 4px 16px rgba(0,0,0,.2)}
 .wr-card-title{font-size:14px;font-weight:700;margin-bottom:14px;color:var(--t1)}
 
@@ -1049,7 +1049,7 @@ window.AsgardWorkReport = (function () {
 .wr-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-size:13px}
 .wr-row-bold{font-weight:700}
 .wr-row-big{font-size:18px;padding:10px 0;border-top:1px solid var(--brd);margin-top:6px}
-.wr-row-desc{font-size:11px;color:var(--t2,#888);margin:-2px 0 4px;padding-left:2px}
+.wr-row-desc{font-size:11px;color:var(--t2);margin:-2px 0 4px;padding-left:2px}
 .wr-divider{height:1px;background:var(--brd);margin:6px 0}
 .wr-red{color:#ef4444}
 .wr-blue{color:#3b82f6}
@@ -1102,8 +1102,8 @@ window.AsgardWorkReport = (function () {
 /* Анимации убраны: каскадные transform на SVG барах блокировали main thread
    во время скролла (10 баров × 600мс с разными delay) */
 .wr-wf-bar{transform-origin:bottom}
-.wr-wf-val{fill:var(--t1,#fff);font-size:10px;font-weight:600}
-.wr-wf-label{fill:var(--t2,#888);font-size:8px}
+.wr-wf-val{fill:var(--t1);font-size:10px;font-weight:600}
+.wr-wf-label{fill:var(--t2);font-size:8px}
 
 /* ── Timeline ── */
 .wr-tl{position:relative;padding-left:28px}

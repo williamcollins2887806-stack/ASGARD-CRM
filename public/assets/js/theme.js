@@ -89,10 +89,16 @@
     return apply(next);
   }
 
-  // Simple toggle: just dark <-> light
+  // Simple toggle: just dark <-> light with smooth transition
   function toggleSimple(){
     const current = get();
-    return apply(current === "light" ? "dark" : "light");
+    const html = document.documentElement;
+    // Add transition class for smooth animation
+    html.classList.add('theme-transitioning');
+    const result = apply(current === "light" ? "dark" : "light");
+    // Remove transition class after animation completes
+    setTimeout(function(){ html.classList.remove('theme-transitioning'); }, 500);
+    return result;
   }
 
   // Initialize theme

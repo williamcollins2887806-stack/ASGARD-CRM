@@ -352,7 +352,7 @@ window.AsgardMango = (function(){
         }
         
         .call-popup-content {
-          background: linear-gradient(135deg, var(--bg2), #0d1428);
+          background: linear-gradient(135deg, var(--bg2), var(--bg3));
           border: 2px solid var(--green);
           border-radius: 6px;
           padding: 20px;
@@ -405,7 +405,7 @@ window.AsgardMango = (function(){
         .call-number {
           font-size: 20px;
           font-weight: 700;
-          color: #fff;
+          color: var(--t1);
         }
         
         .call-name {

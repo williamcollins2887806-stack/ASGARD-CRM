@@ -97,7 +97,7 @@ window.AsgardPayrollPage = (function(){
 .otp-card[data-status="rejected"]{border-left-color:var(--err-t)}
 .payroll-table{width:100%;border-collapse:collapse;font-size:13px}
 .payroll-table th{text-align:left;padding:8px 6px;font-size:11px;color:var(--muted);text-transform:uppercase;border-bottom:1px solid rgba(255,255,255,.06);white-space:nowrap}
-.payroll-table td{padding:6px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle}
+.payroll-table td{padding:6px;border-bottom:1px solid var(--brd-m);vertical-align:middle}
 .payroll-table tr:hover{background:rgba(59,130,246,.05)}
 .payroll-table tfoot td{font-weight:800;border-top:2px solid rgba(242,208,138,.4);color:rgba(242,208,138,.95)}
 .payroll-filters{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;align-items:center}
@@ -200,8 +200,8 @@ window.AsgardPayrollPage = (function(){
       const yearOpts = [curY-2, curY-1, curY, curY+1].map(y => `<option value="${y}" ${y === gridYear ? 'selected' : ''}>${y}</option>`).join('');
 
       let selectorBar = `<div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
-        <select id="gridMonthSel" class="payroll-filters select" style="padding:6px 12px;background:rgba(13,20,40,.4);border:1px solid var(--border-input);border-radius:6px;color:var(--text);font-size:13px">${monthOpts}</select>
-        <select id="gridYearSel" class="payroll-filters select" style="padding:6px 12px;background:rgba(13,20,40,.4);border:1px solid var(--border-input);border-radius:6px;color:var(--text);font-size:13px">${yearOpts}</select>
+        <select id="gridMonthSel" class="payroll-filters select" style="padding:6px 12px;background:var(--bg3);border:1px solid var(--border-input);border-radius:6px;color:var(--text);font-size:13px">${monthOpts}</select>
+        <select id="gridYearSel" class="payroll-filters select" style="padding:6px 12px;background:var(--bg3);border:1px solid var(--border-input);border-radius:6px;color:var(--text);font-size:13px">${yearOpts}</select>
         <button class="btn primary" id="btnLoadGrid">Сформировать</button>
         <button class="btn ghost" id="btnGridEdit" style="display:${gridData ? '' : 'none'}">✏ Редактировать</button>
         <button class="btn ghost" id="btnGridSave" style="display:none">💾 Сохранить</button>
@@ -230,7 +230,7 @@ window.AsgardPayrollPage = (function(){
       </div>`;
 
       // === GRID TABLE (Excel-стиль) ===
-      const hBg = 'background:#1e3a5f;color:#d5e8f0'; // шапка — тёмно-синяя
+      const hBg = 'background:var(--bg4);color:var(--t1)';
       const hS = 'padding:6px 4px;font-weight:700;font-size:11px;text-align:center;white-space:nowrap;border:1px solid rgba(255,255,255,.1);' + hBg;
 
       let dayHeaders = '';
@@ -239,23 +239,23 @@ window.AsgardPayrollPage = (function(){
       }
 
       let thead = '<thead><tr>' +
-        '<th style="' + hS + ';text-align:left;min-width:180px;position:sticky;left:0;z-index:3;background:#1e3a5f">ФИО</th>' +
+        '<th style="' + hS + ';text-align:left;min-width:180px;position:sticky;left:0;z-index:3;background:var(--bg4)">ФИО</th>' +
         dayHeaders +
         '<th style="' + hS + '">Дней</th>' +
         '<th style="' + hS + '">Баллов</th>' +
         '<th style="' + hS + '">Заработок</th>' +
         '<th style="' + hS + '">Суточные</th>' +
-        '<th style="' + hS + ';background:#2d4a1f;color:#c8e6a0">ИТОГО</th>' +
+        '<th style="' + hS + ';background:var(--bg4);color:var(--ok-t)">ИТОГО</th>' +
         '</tr></thead>';
 
       let tbody = '<tbody>';
       let colTotals = new Array(daysInMonth).fill(0);
       let grandPts = 0, grandAmt = 0, grandPd = 0;
-      const cellBorder = 'border:1px solid rgba(255,255,255,.06)';
+      const cellBorder = 'border:1px solid var(--brd)';
 
       employees.forEach((emp, idx) => {
         const days = emp.days || {};
-        const rowBg = idx % 2 === 0 ? 'background:rgba(13,20,40,.3)' : 'background:rgba(13,20,40,.5)';
+        const rowBg = idx % 2 === 0 ? 'background:var(--bg2)' : 'background:var(--bg3)';
         let cells = '';
         for (let d = 1; d <= daysInMonth; d++) {
           const pts = Number(days[d] || 0);
@@ -266,13 +266,13 @@ window.AsgardPayrollPage = (function(){
             cells += '<td style="padding:2px;text-align:center;' + cellBorder + ';' + rowBg + '">' +
               '<input type="number" class="pgrid-inp" data-emp="' + emp.employee_id + '" data-day="' + d + '"' +
               ' value="' + val + '" min="0" max="24"' +
-              ' style="width:32px;padding:3px 0;text-align:center;background:transparent;border:1px dashed rgba(242,208,138,.4);border-radius:4px;color:#fff;font-size:12px;font-weight:700"/></td>';
+              ' style="width:32px;padding:3px 0;text-align:center;background:transparent;border:1px dashed rgba(242,208,138,.4);border-radius:4px;color:var(--t1);font-size:12px;font-weight:700"/></td>';
           } else {
             const bg = pts ? ptsBg(pts) : '';
             const fg = pts ? ptsFg(pts) : '';
             const cellStyle = bg
               ? 'padding:4px 2px;text-align:center;' + cellBorder + ';background:' + bg + ';color:' + fg + ';font-weight:800;font-size:13px;border-radius:0'
-              : 'padding:4px 2px;text-align:center;' + cellBorder + ';' + rowBg + ';color:rgba(255,255,255,.15);font-size:11px';
+              : 'padding:4px 2px;text-align:center;' + cellBorder + ';' + rowBg + ';color:var(--t3);font-size:11px';
             cells += '<td style="' + cellStyle + '">' + (pts || '·') + '</td>';
           }
         }
@@ -1415,13 +1415,13 @@ window.AsgardPayrollPage = (function(){
           const editKey = emp.id + '_' + d;
           if(editMode){
             const val = pendingEdits[editKey] !== undefined ? pendingEdits[editKey] : (pts || '');
-            rowCells += `<td style="padding:2px;text-align:center;border-bottom:1px solid rgba(255,255,255,.04)">
+            rowCells += `<td style="padding:2px;text-align:center;border-bottom:1px solid var(--brd-m)">
               <input type="number" class="pgrid-cell" data-emp="${emp.id}" data-day="${d}"
                 value="${val}" min="0" max="24"
                 style="width:32px;padding:2px 0;text-align:center;background:rgba(13,20,40,.3);border:1px dashed var(--border-input);border-radius:4px;color:${pts ? ptsColor(pts) : 'var(--t2)'};font-size:12px;font-weight:700"/>
             </td>`;
           } else {
-            rowCells += `<td style="padding:4px 2px;text-align:center;border-bottom:1px solid rgba(255,255,255,.04);color:${color};font-weight:${pts ? 700 : 400};font-size:12px">${pts || ''}</td>`;
+            rowCells += `<td style="padding:4px 2px;text-align:center;border-bottom:1px solid var(--brd-m);color:${color};font-weight:${pts ? 700 : 400};font-size:12px">${pts || ''}</td>`;
           }
         }
 
@@ -1431,13 +1431,13 @@ window.AsgardPayrollPage = (function(){
         const grandTotal = totalAmt + perDiem;
 
         tbody += `<tr>
-          <td style="padding:6px 8px;border-bottom:1px solid rgba(255,255,255,.04);white-space:nowrap;font-weight:600;position:sticky;left:0;background:var(--bg);z-index:1">${esc(emp.name || emp.fio || '')}</td>
+          <td style="padding:6px 8px;border-bottom:1px solid var(--brd-m);white-space:nowrap;font-weight:600;position:sticky;left:0;background:var(--bg);z-index:1">${esc(emp.name || emp.fio || '')}</td>
           ${rowCells}
-          <td style="padding:4px 6px;text-align:center;border-bottom:1px solid rgba(255,255,255,.04);font-weight:700">${emp.days_count || 0}</td>
-          <td style="padding:4px 6px;text-align:center;border-bottom:1px solid rgba(255,255,255,.04);font-weight:700;color:${ptsColor(totalPts)}">${totalPts}</td>
-          <td style="padding:4px 6px;text-align:right;border-bottom:1px solid rgba(255,255,255,.04)">${money(totalAmt)}</td>
-          <td style="padding:4px 6px;text-align:right;border-bottom:1px solid rgba(255,255,255,.04)">${money(perDiem)}</td>
-          <td style="padding:4px 6px;text-align:right;border-bottom:1px solid rgba(255,255,255,.04);font-weight:700;color:var(--gold, #D4A843)">${money(grandTotal)}</td>
+          <td style="padding:4px 6px;text-align:center;border-bottom:1px solid var(--brd-m);font-weight:700">${emp.days_count || 0}</td>
+          <td style="padding:4px 6px;text-align:center;border-bottom:1px solid var(--brd-m);font-weight:700;color:${ptsColor(totalPts)}">${totalPts}</td>
+          <td style="padding:4px 6px;text-align:right;border-bottom:1px solid var(--brd-m)">${money(totalAmt)}</td>
+          <td style="padding:4px 6px;text-align:right;border-bottom:1px solid var(--brd-m)">${money(perDiem)}</td>
+          <td style="padding:4px 6px;text-align:right;border-bottom:1px solid var(--brd-m);font-weight:700;color:var(--gold)">${money(grandTotal)}</td>
         </tr>`;
       });
       tbody += '</tbody>';
@@ -1461,7 +1461,7 @@ window.AsgardPayrollPage = (function(){
         <td style="padding:6px;text-align:center;font-weight:700;border-top:2px solid rgba(242,208,138,.4);color:rgba(242,208,138,.95)">${footPts}</td>
         <td style="padding:6px;text-align:right;font-weight:700;border-top:2px solid rgba(242,208,138,.4);color:rgba(242,208,138,.95)">${money(footAmt)}</td>
         <td style="padding:6px;text-align:right;font-weight:700;border-top:2px solid rgba(242,208,138,.4);color:rgba(242,208,138,.95)">${money(footPD)}</td>
-        <td style="padding:6px;text-align:right;font-weight:700;border-top:2px solid rgba(242,208,138,.4);color:var(--gold, #D4A843)">${money(footTotal)}</td>
+        <td style="padding:6px;text-align:right;font-weight:700;border-top:2px solid rgba(242,208,138,.4);color:var(--gold)">${money(footTotal)}</td>
       </tr></tfoot>`;
 
       return kpi + `<div class="card" style="overflow-x:auto">

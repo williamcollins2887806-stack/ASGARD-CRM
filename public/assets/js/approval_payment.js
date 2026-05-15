@@ -20,7 +20,7 @@ window.AsgardApprovalPaymentPage = (function() {
   };
 
   function paymentPill(status) {
-    const s = PAYMENT_STATUS_MAP[status] || { label: status || '—', color: '#6b7280', bg: 'rgba(107,114,128,.12)' };
+    const s = PAYMENT_STATUS_MAP[status] || { label: status || '—', color: 'var(--t3)', bg: 'rgba(107,114,128,.12)' };
     return `<span style="display:inline-block;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:600;color:${s.color};background:${s.bg};border:1px solid ${s.color}30">${s.label}</span>`;
   }
   function getHeaders() {

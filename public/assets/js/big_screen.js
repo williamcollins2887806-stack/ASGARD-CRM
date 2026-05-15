@@ -51,12 +51,12 @@ window.AsgardBigScreen = (function(){
         .bs-brand{display:flex;align-items:center;gap:14px;flex-shrink:0}
         .bs-brand-icon{font-size:28px}
         .bs-brand-name{font-size:22px;font-weight:900;color:var(--gold-l);letter-spacing:3px;text-transform:uppercase}
-        .bs-brand-sub{font-size:11px;color:rgba(255,255,255,.3);letter-spacing:1px;margin-top:2px}
+        .bs-brand-sub{font-size:11px;color:var(--t3);letter-spacing:1px;margin-top:2px}
         .bs-hdr-spacer{flex:1}
         .bs-clock{text-align:right;flex-shrink:0}
-        .bs-clock-time{font-size:32px;font-weight:300;color:rgba(255,255,255,.9);font-variant-numeric:tabular-nums;letter-spacing:1px}
-        .bs-clock-date{font-size:13px;color:rgba(255,255,255,.35);margin-top:2px}
-        .bs-exit{flex-shrink:0;margin-left:16px;background:none;border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.25);width:36px;height:36px;border-radius:50%;cursor:pointer;font-size:14px;transition:all .3s;display:flex;align-items:center;justify-content:center}
+        .bs-clock-time{font-size:32px;font-weight:300;color:var(--t1);font-variant-numeric:tabular-nums;letter-spacing:1px}
+        .bs-clock-date{font-size:13px;color:var(--t3);margin-top:2px}
+        .bs-exit{flex-shrink:0;margin-left:16px;background:none;border:1px solid var(--brd);color:var(--t3);width:36px;height:36px;border-radius:50%;cursor:pointer;font-size:14px;transition:all .3s;display:flex;align-items:center;justify-content:center}
         .bs-exit:hover{border-color:var(--gold-l);color:var(--gold-l)}
 
         /* ── Body ── */
@@ -67,20 +67,20 @@ window.AsgardBigScreen = (function(){
         /* ── Slide title ── */
         .bs-title{text-align:center;margin-bottom:28px;flex-shrink:0}
         .bs-title h2{font-size:26px;font-weight:800;color:var(--gold-l);margin:0 0 4px;letter-spacing:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-        .bs-title .bs-subtitle{font-size:13px;color:rgba(255,255,255,.3)}
+        .bs-title .bs-subtitle{font-size:13px;color:var(--t3)}
 
         /* ── Footer (dots + page indicator) ── */
         .bs-foot{padding:16px 40px 20px;display:flex;justify-content:center;align-items:center;gap:20px;flex-shrink:0}
         .bs-dots{display:flex;gap:8px}
-        .bs-dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.1);transition:all .4s;cursor:pointer}
-        .bs-dot:hover{background:rgba(255,255,255,.25)}
+        .bs-dot{width:8px;height:8px;border-radius:50%;background:var(--brd);transition:all .4s;cursor:pointer}
+        .bs-dot:hover{background:var(--brd-m)}
         .bs-dot.active{background:var(--gold-l);width:24px;border-radius:4px}
-        .bs-page{font-size:11px;color:rgba(255,255,255,.2);font-variant-numeric:tabular-nums}
+        .bs-page{font-size:11px;color:var(--t3);font-variant-numeric:tabular-nums}
         .bs-progress{position:absolute;bottom:0;left:0;height:2px;background:linear-gradient(90deg,var(--gold-l),#c9302c);transition:width linear}
 
         /* ── KPI Cards ── */
-        .bs-kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;background:rgba(148,163,184,.06);border-radius:12px;overflow:hidden;border:1px solid rgba(148,163,184,.08)}
-        .bs-kpi-card{background:rgba(15,22,42,.85);border:none;border-radius:0;padding:28px 24px;text-align:center;position:relative;overflow:hidden}
+        .bs-kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;background:var(--brd);border-radius:12px;overflow:hidden;border:1px solid var(--brd)}
+        .bs-kpi-card{background:var(--bg2);border:none;border-radius:0;padding:28px 24px;text-align:center;position:relative;overflow:hidden}
         .bs-kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
         .bs-kpi-card.c-blue::before{background:linear-gradient(90deg,var(--info),var(--info-t))}
         .bs-kpi-card.c-gold::before{background:linear-gradient(90deg,var(--gold-l),#d4a853)}
@@ -90,32 +90,32 @@ window.AsgardBigScreen = (function(){
         .bs-kpi-card.c-amber::before{background:linear-gradient(90deg,var(--amber),#fbbf24)}
         .bs-kpi-card.c-cyan::before{background:linear-gradient(90deg,var(--cyan),var(--cyan-l))}
         .bs-kpi-card.c-pink::before{background:linear-gradient(90deg,#ec4899,#f472b6)}
-        .bs-kpi-lbl{font-size:11px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:2px;font-weight:800;margin-bottom:12px}
+        .bs-kpi-lbl{font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:2px;font-weight:800;margin-bottom:12px}
         .bs-kpi-val{font-size:48px;font-weight:900;line-height:1.1}
-        .bs-kpi-sub{font-size:13px;color:rgba(255,255,255,.35);margin-top:10px}
+        .bs-kpi-sub{font-size:13px;color:var(--t3);margin-top:10px}
         .bs-kpi-delta{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;margin-top:8px}
         .bs-kpi-delta.up{background:rgba(34,197,94,.15);color:var(--ok-t)}
         .bs-kpi-delta.down{background:rgba(239,68,68,.15);color:var(--err-t)}
 
         /* ── Table ── */
         .bs-tbl{width:100%;border-collapse:separate;border-spacing:0 6px;table-layout:fixed}
-        .bs-tbl th{font-size:11px;color:rgba(255,255,255,.25);text-transform:uppercase;letter-spacing:1px;text-align:left;padding:8px 16px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-        .bs-tbl td{padding:14px 16px;background:rgba(15,22,42,.6);font-size:15px;color:rgba(255,255,255,.85);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0}
+        .bs-tbl th{font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:1px;text-align:left;padding:8px 16px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .bs-tbl td{padding:14px 16px;background:var(--bg2);font-size:15px;color:var(--t1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0}
         .bs-tbl tr td:first-child{border-radius:8px 0 0 8px}
         .bs-tbl tr td:last-child{border-radius:0 8px 8px 0}
-        .bs-tbl .rank{font-size:13px;color:rgba(255,255,255,.2);font-weight:700;width:40px}
+        .bs-tbl .rank{font-size:13px;color:var(--t3);font-weight:700;width:40px}
         .bs-tbl .highlight{color:var(--gold-l);font-weight:700}
 
         /* ── Bar chart ── */
         .bs-bar{display:flex;align-items:center;gap:16px;margin:10px 0}
-        .bs-bar-lbl{width:140px;font-size:14px;color:rgba(255,255,255,.6);text-align:right}
-        .bs-bar-track{flex:1;background:rgba(255,255,255,.05);border-radius:6px;height:28px;overflow:hidden}
-        .bs-bar-fill{height:100%;border-radius:6px;transition:width .8s cubic-bezier(.16,1,.3,1);display:flex;align-items:center;padding-left:12px;font-size:12px;font-weight:700;color:rgba(255,255,255,.9)}
+        .bs-bar-lbl{width:140px;font-size:14px;color:var(--t2);text-align:right}
+        .bs-bar-track{flex:1;background:var(--bg3);border-radius:6px;height:28px;overflow:hidden}
+        .bs-bar-fill{height:100%;border-radius:6px;transition:width .8s cubic-bezier(.16,1,.3,1);display:flex;align-items:center;padding-left:12px;font-size:12px;font-weight:700;color:var(--t1)}
         .bs-bar-val{width:70px;text-align:right;font-size:18px;font-weight:800}
 
         /* ── Two-column layout ── */
         .bs-cols{display:grid;grid-template-columns:1fr 1fr;gap:24px}
-        .bs-col-title{font-size:13px;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:1.5px;font-weight:800;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.06)}
+        .bs-col-title{font-size:13px;color:var(--t3);text-transform:uppercase;letter-spacing:1.5px;font-weight:800;margin-bottom:14px;padding-bottom:8px;border-bottom:1px solid var(--brd)}
 
         /* ── Status dot ── */
         .bs-status{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:8px}
@@ -123,7 +123,7 @@ window.AsgardBigScreen = (function(){
         /* ── Colors ── */
         .c-green{color:var(--ok-t)} .c-red{color:var(--err-t)} .c-amber{color:#fbbf24}
         .c-blue{color:var(--info-t)} .c-gold{color:var(--gold-l)} .c-purple{color:var(--purple-l)}
-        .c-cyan{color:var(--cyan-l)} .c-white{color:rgba(255,255,255,.85)}
+        .c-cyan{color:var(--cyan-l)} .c-white{color:var(--t1)}
 
         @media (max-width:1200px){
           .bs-kpi{grid-template-columns:repeat(2,1fr)}
@@ -305,7 +305,7 @@ window.AsgardBigScreen = (function(){
   // ═══════════════════════════════════════════════════════════
   function buildSlides() {
     const d = cachedData;
-    if (!d.tenders) return ['<div style="text-align:center;color:rgba(255,255,255,.4);font-size:20px">Загрузка данных...</div>'];
+    if (!d.tenders) return ['<div style="text-align:center;color:var(--t3);font-size:20px">Загрузка данных...</div>'];
 
     const result = [];
     result.push(slideKPI(d));
@@ -378,7 +378,7 @@ window.AsgardBigScreen = (function(){
       <div class="bs-kpi" style="margin-top:20px">
         <div class="bs-kpi-card c-amber" style="grid-column:span 2"><div class="bs-kpi-lbl">Касса: выдано (не закрыто)</div><div class="bs-kpi-val c-amber">${_m(cashOut)}</div><div class="bs-kpi-sub">Ожидает выдачи: ${_m(cashPending)}</div></div>
         <div class="bs-kpi-card c-cyan" style="grid-column:span 2"><div class="bs-kpi-lbl">Собираемость</div>
-          <div style="margin-top:14px;background:rgba(255,255,255,.06);border-radius:8px;height:24px;overflow:hidden">
+          <div style="margin-top:14px;background:var(--bg3);border-radius:8px;height:24px;overflow:hidden">
             <div style="height:100%;width:${receivedPct}%;background:var(--grad-green, linear-gradient(90deg,var(--ok),var(--ok-t)));border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff">${receivedPct}%</div>
           </div>
           <div class="bs-kpi-sub" style="margin-top:10px">Получено ${_m(received)} из ${_m(contractTotal)}</div>
@@ -436,12 +436,12 @@ window.AsgardBigScreen = (function(){
               const h = Math.max(8, Math.round((m.total / mMax) * 140));
               const wh = m.total > 0 ? Math.round((m.won / m.total) * h) : 0;
               return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
-                <div style="font-size:12px;font-weight:700;color:rgba(255,255,255,.7)">${m.total}</div>
+                <div style="font-size:12px;font-weight:700;color:var(--t2)">${m.total}</div>
                 <div style="width:100%;display:flex;flex-direction:column;justify-content:flex-end;height:${h}px;border-radius:6px;overflow:hidden">
                   <div style="height:${h - wh}px;background:var(--info)"></div>
                   <div style="height:${wh}px;background:var(--ok-t)"></div>
                 </div>
-                <div style="font-size:11px;color:rgba(255,255,255,.3)">${esc(m.label)}</div>
+                <div style="font-size:11px;color:var(--t3)">${esc(m.label)}</div>
               </div>`;
             }).join('')}
           </div>
@@ -470,7 +470,7 @@ window.AsgardBigScreen = (function(){
       return { name: pm.name, active, completed, overdue, total: pw.length, contract };
     }).sort((a,b) => b.contract - a.contract).slice(0, 10);
 
-    if (!rows.length) return '<div class="bs-title"><h2>Руководители проектов</h2></div><div style="text-align:center;color:rgba(255,255,255,.3);font-size:18px;padding:40px">Нет данных</div>';
+    if (!rows.length) return '<div class="bs-title"><h2>Руководители проектов</h2></div><div style="text-align:center;color:var(--t3);font-size:18px;padding:40px">Нет данных</div>';
 
     return `
       <div class="bs-title"><h2>Руководители проектов</h2><div class="bs-subtitle">Загрузка и результативность</div></div>
@@ -536,7 +536,7 @@ window.AsgardBigScreen = (function(){
         <div style="text-align:center;padding:60px 0">
           <div style="font-size:80px;margin-bottom:20px">&#9989;</div>
           <div style="font-size:28px;color:var(--ok-t);font-weight:700">Все работы в графике</div>
-          <div style="font-size:14px;color:rgba(255,255,255,.3);margin-top:12px">Просроченных работ нет</div>
+          <div style="font-size:14px;color:var(--t3);margin-top:12px">Просроченных работ нет</div>
         </div>`;
     }
 
@@ -616,7 +616,7 @@ window.AsgardBigScreen = (function(){
                 return `<tr><td style="font-weight:600">${esc(empName)}</td><td>${esc(typeName)}</td><td class="${color}" style="font-weight:700">${days} \u0434\u043d.</td></tr>`;
               }).join('');
             })()}</tbody>
-          </table>` : '<div style="text-align:center;padding:40px;color:rgba(255,255,255,.3)"><div style="font-size:40px;margin-bottom:8px">&#9989;</div>Все допуски в порядке</div>'}
+          </table>` : '<div style="text-align:center;padding:40px;color:var(--t3)"><div style="font-size:40px;margin-bottom:8px">&#9989;</div>Все допуски в порядке</div>'}
         </div>
       </div>
     `;
@@ -660,7 +660,7 @@ window.AsgardBigScreen = (function(){
           ].map(s => `
             <div style="text-align:center;min-width:100px">
               <div style="font-size:32px;font-weight:900;color:${s.color}">${cashByStatus[s.key] || 0}</div>
-              <div style="font-size:11px;color:rgba(255,255,255,.3);margin-top:4px">${s.label}</div>
+              <div style="font-size:11px;color:var(--t3);margin-top:4px">${s.label}</div>
             </div>
           `).join('')}
         </div>

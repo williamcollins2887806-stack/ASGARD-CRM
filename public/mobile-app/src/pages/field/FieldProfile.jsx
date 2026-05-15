@@ -2,7 +2,7 @@
  * FieldProfile.jsx — WOW Viking Character Card
  * Полноростовой персонаж, уровень, руны, снаряжение
  */
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Shield, ChevronDown, ChevronUp,
@@ -512,6 +512,29 @@ const BADGE_SVGS = {
   'Эффект "Молния"': `<svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="19" fill="#08081a" stroke="#F0C850" stroke-width="1.5"/><path d="M22 4 L16 20 L22 20 L18 36 L26 17 L20 17 Z" fill="#F0C850" stroke="#ff6a00" stroke-width=".5"/><circle cx="20" cy="20" r="15" fill="none" stroke="rgba(240,200,80,.15)" stroke-width=".5"/><text x="20" y="37" text-anchor="middle" font-size="4" fill="#C8A800" font-family="sans-serif" font-weight="700" letter-spacing=".3">МОЛНИЯ</text></svg>`,
 };
 
+function normalizeCosmeticName(s) {
+  if (!s || typeof s !== 'string') return '';
+  return s
+    .trim()
+    .replace(/\u00A0/g, ' ')
+    .replace(/[«»""„]/g, '"')
+    .replace(/\s+/g, ' ');
+}
+
+/** Имя аватара из БД → ключ в AVATAR_SVGS (разные кавычки / пробелы / ё-е). */
+function resolveAvatarKey(raw) {
+  if (!raw) return null;
+  if (AVATAR_SVGS[raw]) return raw;
+  const n = normalizeCosmeticName(raw);
+  if (AVATAR_SVGS[n]) return n;
+  const keys = Object.keys(AVATAR_SVGS);
+  const hit = keys.find((k) => normalizeCosmeticName(k) === n);
+  if (hit) return hit;
+  const loose = (s) => normalizeCosmeticName(s).replace(/ё/g, 'е').replace(/Ё/g, 'е');
+  const nl = loose(raw);
+  return keys.find((k) => loose(k) === nl) || null;
+}
+
 /* ═══════════════════════════════════════════════════════════════════
    RUNE ORBIT RING — animates around character card
 ═══════════════════════════════════════════════════════════════════ */
@@ -631,7 +654,8 @@ function VikingHeroCard({ profile, runes, xp, level, totalShifts, cosmetics }) {
   const xpCurrent = xp - xpFloor;
   const xpNext    = xpCeil - xpFloor;
 
-  const hasAvatar = !!cosmetics?.active_avatar && AVATAR_SVGS[cosmetics.active_avatar];
+  const avatarKey = resolveAvatarKey(cosmetics?.active_avatar);
+  const hasAvatar = !!avatarKey && AVATAR_SVGS[avatarKey];
   const hasFrame  = !!cosmetics?.active_frame;
   const hasBadge  = !!cosmetics?.active_badge  && BADGE_SVGS[cosmetics.active_badge];
   const frameAnim = isThemeFire ? 'fireFrost' : isThemeIce ? 'iceFrost' : 'goldPulse';
@@ -671,7 +695,7 @@ function VikingHeroCard({ profile, runes, xp, level, totalShifts, cosmetics }) {
           }}>
             {hasAvatar ? (
               <div style={{ width: '100%', height: '100%' }}
-                dangerouslySetInnerHTML={{ __html: AVATAR_SVGS[cosmetics.active_avatar] }} />
+                dangerouslySetInnerHTML={{ __html: AVATAR_SVGS[avatarKey] }} />
             ) : (
               /* Default: stylized initials portrait */
               <div style={{
@@ -889,23 +913,44 @@ export default function FieldProfile() {
   const [saving, setSaving] = useState(false);
   const [darkMode, setDarkMode] = useState(() => document.documentElement.classList.contains('dark'));
 
-  useEffect(() => {
-    (async () => {
+  const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  const loadProfile = useCallback(async () => {
+    const maxAttempts = 4;
+    let me = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        const [me, perms, pers, proj] = await Promise.all([
-          fieldApi.get('/worker/me'),
-          fieldApi.get('/worker/permits').catch(() => []),
-          fieldApi.get('/worker/personal').catch(() => null),
-          fieldApi.get('/worker/active-project').catch(() => null),
-        ]);
-        setProfile(me);
-        setPermits(Array.isArray(perms) ? perms : perms?.permits || []);
-        setPersonal(pers?.employee || pers);
-        setWorkData(proj?.project || proj);
-      } catch {}
-      setLoading(false);
-    })();
+        me = await fieldApi.get('/worker/me');
+        break;
+      } catch {
+        if (attempt < maxAttempts) await delay(400 * attempt);
+      }
+    }
+    if (me) setProfile(me);
+    setLoading(false);
+    if (!me) return;
+
+    const [perms, pers, proj] = await Promise.all([
+      fieldApi.get('/worker/permits').catch(() => []),
+      fieldApi.get('/worker/personal').catch(() => null),
+      fieldApi.get('/worker/active-project').catch(() => null),
+    ]);
+    setPermits(Array.isArray(perms) ? perms : perms?.permits || []);
+    setPersonal(pers?.employee || pers);
+    setWorkData(proj?.project || proj);
   }, []);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'visible') loadProfile();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [loadProfile]);
 
   const toggleTheme = () => {
     haptic.light();

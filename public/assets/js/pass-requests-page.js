@@ -110,10 +110,10 @@ window.AsgardPassRequestsPage = (function() {
         <label>Сотрудники</label>
         <div id="prEmpsSelected" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px"></div>
         <input id="prEmpsSearch" type="text" placeholder="Поиск по ФИО, роли, разряду..." style="width:100%;margin-bottom:6px" />
-        <div id="prEmpsList" style="max-height:300px;overflow-y:auto;border:1px solid var(--border,#333);border-radius:8px;padding:4px;position:relative">
+        <div id="prEmpsList" style="max-height:300px;overflow-y:auto;border:1px solid var(--brd);border-radius:8px;padding:4px;position:relative">
           <div style="text-align:center;padding:20px;opacity:0.5">Загрузка сотрудников...</div>
         </div>
-        <div style="position:sticky;bottom:0;background:var(--bg2,#1e1e2e);padding:8px 0 0 0;z-index:2">
+        <div style="position:sticky;bottom:0;background:var(--bg2);padding:8px 0 0 0;z-index:2">
           <button type="button" class="btn primary" id="btnAddSelectedEmps" style="width:100%">Добавить выбранных</button>
         </div>
       </div></div>
@@ -210,7 +210,7 @@ window.AsgardPassRequestsPage = (function() {
       container.innerHTML = filtered.map(e => {
         const isChecked = selectedIds.has(String(e.id)) || selectedNames.has((e.fio || '').toLowerCase());
         return '<label style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;transition:background .15s" ' +
-          'onmouseenter="this.style.background=\'var(--bg3,rgba(255,255,255,0.05))\'" onmouseleave="this.style.background=\'transparent\'">' +
+          'onmouseenter="this.style.background=\'var(--bg3)\'" onmouseleave="this.style.background=\'transparent\'">' +
           '<input type="checkbox" class="empCheckbox" data-emp-id="' + e.id + '" data-emp-fio="' + esc(e.fio || '') + '" ' + (isChecked ? 'checked' : '') + ' style="flex-shrink:0" />' +
           '<div style="flex:1;min-width:0">' +
             '<div style="font-weight:500;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(e.fio || 'Без имени') + '</div>' +

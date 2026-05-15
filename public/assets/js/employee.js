@@ -478,7 +478,7 @@ window.AsgardEmployeePage=(function(){
 
       var headerH = '<div style="display:flex;border-bottom:1px solid var(--brd)">';
       months.forEach(function(m2){
-        headerH += '<div style="width:'+monthW+'px;flex-shrink:0;text-align:center;font-size:10px;color:var(--t3);padding:4px 0;border-right:1px solid rgba(255,255,255,0.03)">'+m2.label+'</div>';
+        headerH += '<div style="width:'+monthW+'px;flex-shrink:0;text-align:center;font-size:10px;color:var(--t3);padding:4px 0;border-right:1px solid var(--brd)">'+m2.label+'</div>';
       });
       headerH += '</div>';
 
@@ -515,7 +515,7 @@ window.AsgardEmployeePage=(function(){
         headerH +
         '<div style="position:relative;height:'+totalHeight+'px;margin-top:4px">' +
           // grid lines
-          months.map(function(m2,i2){ return '<div style="position:absolute;left:'+(i2*monthW)+'px;top:0;bottom:0;width:1px;background:rgba(255,255,255,0.03)"></div>'; }).join('') +
+          months.map(function(m2,i2){ return '<div style="position:absolute;left:'+(i2*monthW)+'px;top:0;bottom:0;width:1px;background:var(--brd)"></div>'; }).join('') +
           barsH + todayLine +
         '</div>' +
         '<div style="display:flex;gap:16px;margin-top:8px;font-size:11px;color:var(--t3)">' +

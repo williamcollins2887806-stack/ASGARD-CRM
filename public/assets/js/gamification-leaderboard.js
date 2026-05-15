@@ -51,19 +51,19 @@ window.AsgardGamificationLeaderboard = (function () {
 @keyframes gl-fire      { 0%,100%{transform:translateY(0);opacity:.9} 50%{transform:translateY(-6px);opacity:.4} }
 @keyframes gl-champion  { 0%,100%{text-shadow:0 0 8px #FFD700} 50%{text-shadow:0 0 20px #FFD700,0 0 40px #fbbf24} }
 .gl-wrap  { max-width:1200px;margin:0 auto;padding:24px 16px }
-.gl-card  { background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:20px }
+.gl-card  { background:var(--bg2);border:1px solid var(--brd);border-radius:14px;padding:20px }
 .gl-tab   { padding:8px 20px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;border:none;transition:all .2s }
 .gl-tab.active{ background:#D4A843;color:#000 }
-.gl-tab:not(.active){ background:rgba(255,255,255,.06);color:#9ca3af }
+.gl-tab:not(.active){ background:var(--bg3);color:var(--t2) }
 .gl-sort  { padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid;transition:all .2s }
 .gl-row   { display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:12px;animation:gl-row-in .3s ease both }
-.gl-row:hover { background:rgba(255,255,255,.04) }
+.gl-row:hover { background:var(--bg3) }
 .gl-row.self  { background:rgba(212,168,67,.08);border:1.5px solid #D4A84355 }
 .gl-row.top1  { animation:gl-gold-pulse 2.5s infinite }
 .gl-avatar{ width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;flex-shrink:0 }
-.gl-bar   { height:6px;border-radius:4px;background:rgba(255,255,255,.06);overflow:hidden;margin-top:4px }
+.gl-bar   { height:6px;border-radius:4px;background:var(--brd);overflow:hidden;margin-top:4px }
 .gl-bar-fill{ height:100%;border-radius:4px;transition:width 1.2s ease }
-.gl-match { border:1px solid rgba(255,255,255,.08);border-radius:8px;overflow:hidden;min-width:120px;background:rgba(255,255,255,.025) }
+.gl-match { border:1px solid var(--brd);border-radius:8px;overflow:hidden;min-width:120px;background:var(--bg3) }
 .gl-match-row { display:flex;align-items:center;justify-content:space-between;padding:6px 10px;gap:8px }
 .gl-match-row.winner { background:rgba(212,168,67,.12);border-left:2px solid #D4A843 }
 .gl-podium{ display:flex;align-items:flex-end;gap:12px;justify-content:center;padding:20px 0 0 }
@@ -73,7 +73,7 @@ window.AsgardGamificationLeaderboard = (function () {
     <div style="font-size:24px">🏆</div>
     <div style="flex:1">
       <h1 style="font-size:22px;font-weight:800;color:#D4A843;margin:0">Зал Одина — Рейтинг рабочих</h1>
-      <p id="gl-subtitle" style="font-size:13px;color:#6b7280;margin:4px 0 0">Загрузка…</p>
+      <p id="gl-subtitle" style="font-size:13px;color:var(--t3);margin:4px 0 0">Загрузка…</p>
     </div>
     <div style="display:flex;gap:6px">
       <button class="gl-tab active" data-tab="rating">⚔️ Рейтинг</button>
@@ -88,16 +88,16 @@ window.AsgardGamificationLeaderboard = (function () {
   <div id="gl-tab-rating">
     <!-- Sort controls -->
     <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-      <span style="font-size:12px;color:#6b7280;align-self:center">Сортировка:</span>
+      <span style="font-size:12px;color:var(--t3);align-self:center">Сортировка:</span>
       <button class="gl-sort active-sort" data-sort="runes" style="color:#D4A843;border-color:#D4A84355;background:rgba(212,168,67,.1)">ᚱ Руны</button>
-      <button class="gl-sort" data-sort="xp"    style="color:#9ca3af;border-color:rgba(255,255,255,.1);background:transparent">⚡ XP</button>
-      <button class="gl-sort" data-sort="shifts" style="color:#9ca3af;border-color:rgba(255,255,255,.1);background:transparent">📅 Смены</button>
-      <button class="gl-sort" data-sort="monthly" style="color:#9ca3af;border-color:rgba(255,255,255,.1);background:transparent">📆 За месяц</button>
+      <button class="gl-sort" data-sort="xp"    style="color:var(--t2);border-color:var(--brd);background:transparent">⚡ XP</button>
+      <button class="gl-sort" data-sort="shifts" style="color:var(--t2);border-color:var(--brd);background:transparent">📅 Смены</button>
+      <button class="gl-sort" data-sort="monthly" style="color:var(--t2);border-color:var(--brd);background:transparent">📆 За месяц</button>
     </div>
 
     <!-- Podium -->
     <div class="gl-card" style="margin-bottom:16px">
-      <div style="font-size:11px;color:rgba(212,168,67,.5);text-align:center;letter-spacing:3px;margin-bottom:12px">— ВАЛГАЛЛА —</div>
+      <div style="font-size:11px;color:var(--gold);opacity:.5;text-align:center;letter-spacing:3px;margin-bottom:12px">— ВАЛГАЛЛА —</div>
       <div class="gl-podium" id="gl-podium"></div>
     </div>
 
@@ -153,10 +153,10 @@ window.AsgardGamificationLeaderboard = (function () {
       { icon: '🔥',  label: 'Лидер месяца', val: (leaderboard[0]?.fio||'').split(' ')[0], color: '#f97316', counter: false },
     ];
     summaryEl.innerHTML = summaryItems.map((s, i) => `
-      <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:14px;text-align:center">
+      <div style="background:var(--bg2);border:1px solid var(--brd);border-radius:12px;padding:14px;text-align:center">
         <div style="font-size:20px">${esc(String(s.icon))}</div>
         <div id="gl-sum-${i}" style="font-size:18px;font-weight:800;color:${s.color};margin:4px 0">${s.counter ? '0' : esc(String(s.val))}</div>
-        <div style="font-size:11px;color:#6b7280">${esc(s.label)}</div>
+        <div style="font-size:11px;color:var(--t3)">${esc(s.label)}</div>
       </div>
     `).join('');
     // Animate counters
@@ -195,9 +195,9 @@ window.AsgardGamificationLeaderboard = (function () {
             </div>
             <div style="text-align:center;background:${c}18;border:1.5px solid ${c}44;border-radius:10px;padding:8px 10px;width:100%;
               ${rank===1?'animation:gl-gold-pulse 2.5s ease-in-out infinite':''}">
-              <div style="font-size:12px;font-weight:700;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(firstName)}</div>
+              <div style="font-size:12px;font-weight:700;color:var(--t1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(firstName)}</div>
               <div style="font-size:14px;font-weight:800;color:${c};margin:3px 0">${esc(statVal)}</div>
-              <div style="font-size:10px;color:${rt.color||'#9ca3af'};background:${rt.color||'#9ca3af'}22;border-radius:5px;padding:1px 6px;display:inline-block">${esc(rt.icon||'')} ${esc(rt.title||'')}</div>
+              <div style="font-size:10px;color:${rt.color||'var(--t2)'};background:${rt.color ? rt.color+'22' : 'var(--bg3)'};border-radius:5px;padding:1px 6px;display:inline-block">${esc(rt.icon||'')} ${esc(rt.title||'')}</div>
             </div>
             <div style="width:85%;height:${rank===1?18:rank===2?12:8}px;border-radius:6px 6px 0 0;
               background:linear-gradient(180deg,${c}88,${c}33);border:1px solid ${c}55"></div>
@@ -228,7 +228,7 @@ window.AsgardGamificationLeaderboard = (function () {
       tableEl.innerHTML = `
         <table style="width:100%;border-collapse:collapse;font-size:13px">
           <thead>
-            <tr style="color:#6b7280;font-size:11px;font-weight:700;border-bottom:1px solid rgba(255,255,255,.07)">
+            <tr style="color:var(--t3);font-size:11px;font-weight:700;border-bottom:1px solid var(--brd)">
               <th style="text-align:left;padding:8px 0 8px 6px;width:36px">#</th>
               <th style="text-align:left;padding:8px 0">Воин</th>
               <th style="text-align:right;padding:8px 4px">ᚱ Всего</th>
@@ -251,20 +251,20 @@ window.AsgardGamificationLeaderboard = (function () {
                         : parseInt(p.earned_runes);
               const pct = Math.round((val / maxVal) * 100);
               return `
-                <tr class="gl-row${isTop3 ? (rank===1?' top1':'') : ''}" style="animation-delay:${i*0.03}s;border-bottom:1px solid rgba(255,255,255,.04)">
-                  <td style="padding:10px 0 10px 6px;font-size:${isTop3?18:12}px;font-weight:700;color:#6b7280;text-align:center">
+                <tr class="gl-row${isTop3 ? (rank===1?' top1':'') : ''}" style="animation-delay:${i*0.03}s;border-bottom:1px solid var(--brd)">
+                  <td style="padding:10px 0 10px 6px;font-size:${isTop3?18:12}px;font-weight:700;color:var(--t3);text-align:center">
                     ${isTop3 ? MEDALS[rank] : '#'+rank}
                   </td>
                   <td style="padding:10px 4px">
                     <div style="display:flex;align-items:center;gap:10px">
-                      <div class="gl-avatar" style="background:${isTop3?'linear-gradient(135deg,'+['#FFD700','#C0C0C0','#CD7F32'][rank-1]+','+['#FFD700','#C0C0C0','#CD7F32'][rank-1]+'99)':'rgba(255,255,255,.06)'};color:${isTop3?'#000':'#9ca3af'};border:1px solid ${isTop3?['#FFD700','#C0C0C0','#CD7F32'][rank-1]:'rgba(255,255,255,.1)'}">
+                      <div class="gl-avatar" style="background:${isTop3?'linear-gradient(135deg,'+['#FFD700','#C0C0C0','#CD7F32'][rank-1]+','+['#FFD700','#C0C0C0','#CD7F32'][rank-1]+'99)':'var(--bg3)'};color:${isTop3?'#000':'var(--t2)'};border:1px solid ${isTop3?['#FFD700','#C0C0C0','#CD7F32'][rank-1]:'var(--brd)'}">
                         ${esc(initials)}
                       </div>
                       <div style="flex:1;min-width:0">
-                        <div style="font-weight:700;color:#e2e8f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px">${esc(p.fio||'')}</div>
+                        <div style="font-weight:700;color:var(--t1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px">${esc(p.fio||'')}</div>
                         <div style="display:flex;align-items:center;gap:6px;margin-top:2px;flex-wrap:wrap">
                           <span style="font-size:10px;color:${rc};background:${rc}22;border:1px solid ${rc}44;border-radius:5px;padding:1px 6px">${esc(rt.icon||'')} ${esc(rt.title||'')}</span>
-                          <span style="font-size:10px;color:#6b7280">Ур.${esc(String(p.level||1))}</span>
+                          <span style="font-size:10px;color:var(--t3)">Ур.${esc(String(p.level||1))}</span>
                           ${p.streak > 0 ? `<span style="font-size:10px;color:#f97316">🔥 ${esc(String(p.streak))}</span>` : ''}
                         </div>
                         <div class="gl-bar" style="max-width:160px">
@@ -290,8 +290,8 @@ window.AsgardGamificationLeaderboard = (function () {
       btn.addEventListener('click', () => {
         sortBy = btn.dataset.sort;
         document.querySelectorAll('.gl-sort').forEach(b => {
-          b.style.color = '#9ca3af';
-          b.style.borderColor = 'rgba(255,255,255,.1)';
+          b.style.color = 'var(--t2)';
+          b.style.borderColor = 'var(--brd)';
           b.style.background = 'transparent';
         });
         btn.style.color = '#D4A843';
@@ -306,7 +306,7 @@ window.AsgardGamificationLeaderboard = (function () {
     function renderTournament() {
       const tEl = document.getElementById('gl-tournament');
       if (!tournament) {
-        tEl.innerHTML = '<p style="color:#6b7280;text-align:center;padding:40px">Недостаточно данных для турнира</p>';
+        tEl.innerHTML = '<p style="color:var(--t3);text-align:center;padding:40px">Недостаточно данных для турнира</p>';
         return;
       }
       const { month, week, rounds, champion } = tournament;
@@ -315,25 +315,25 @@ window.AsgardGamificationLeaderboard = (function () {
       tEl.innerHTML = `
         <div style="text-align:center;margin-bottom:20px">
           <div style="font-size:20px;font-weight:800;color:#D4A843;animation:gl-champion 3s ease-in-out infinite">⚔️ Битва за Вальхаллу</div>
-          <div style="font-size:13px;color:#6b7280;margin-top:4px">${esc(month)} · Неделя ${week}/4</div>
+          <div style="font-size:13px;color:var(--t3);margin-top:4px">${esc(month)} · Неделя ${week}/4</div>
           ${champion ? `<div style="margin-top:8px;font-size:14px;color:#D4A843;font-weight:700">👑 Текущий лидер: ${esc(champion.name)} (${fmt(champion.monthly_runes)}ᚱ за месяц)</div>` : ''}
         </div>
         <div style="overflow-x:auto;padding-bottom:8px">
           <div style="display:flex;gap:0;min-width:max-content">
             ${rounds.map((round, ri) => `
               <div style="display:flex;flex-direction:column">
-                <div style="text-align:center;font-size:10px;font-weight:700;color:#6b7280;padding:0 8px;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">${ROUND_LABELS[ri]}</div>
+                <div style="text-align:center;font-size:10px;font-weight:700;color:var(--t3);padding:0 8px;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px">${ROUND_LABELS[ri]}</div>
                 <div style="display:flex;flex-direction:column;justify-content:space-around;flex:1;gap:${ri===0?8:ri===1?24:ri===2?48:96}px;padding:0 4px">
                   ${round.map(match => {
                     if (!match) return '';
                     const { p1, p2, winner_id } = match;
                     function pLine(p, side) {
-                      if (!p) return `<div class="gl-match-row" style="color:#4b5563;font-size:11px;font-style:italic">TBD</div>`;
+                      if (!p) return `<div class="gl-match-row" style="color:var(--t3);font-size:11px;font-style:italic">TBD</div>`;
                       const isW = winner_id === p.employee_id;
                       return `
                         <div class="gl-match-row${isW?' winner':''}">
-                          <span style="font-size:11px;font-weight:${isW?800:500};color:${isW?'#D4A843':'#9ca3af'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:90px">${esc(p.name||'?')}</span>
-                          <span style="font-size:10px;color:${isW?'#D4A843':'#6b7280'};font-weight:700;flex-shrink:0">${fmt(p.monthly_runes)}ᚱ</span>
+                          <span style="font-size:11px;font-weight:${isW?800:500};color:${isW?'#D4A843':'var(--t2)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:90px">${esc(p.name||'?')}</span>
+                          <span style="font-size:10px;color:${isW?'#D4A843':'var(--t3)'};font-weight:700;flex-shrink:0">${fmt(p.monthly_runes)}ᚱ</span>
                         </div>
                       `;
                     }
@@ -341,10 +341,10 @@ window.AsgardGamificationLeaderboard = (function () {
                       <div style="display:flex;align-items:center;gap:2px">
                         <div class="gl-match">
                           ${pLine(p1)}
-                          <div style="height:1px;background:rgba(255,255,255,.06)"></div>
+                          <div style="height:1px;background:var(--brd)"></div>
                           ${pLine(p2)}
                         </div>
-                        ${ri < rounds.length-1 ? '<div style="color:#374151;font-size:12px;padding:0 2px">→</div>' : ''}
+                        ${ri < rounds.length-1 ? '<div style="color:var(--t3);font-size:12px;padding:0 2px">→</div>' : ''}
                       </div>
                     `;
                   }).join('')}
@@ -353,7 +353,7 @@ window.AsgardGamificationLeaderboard = (function () {
             `).join('')}
           </div>
         </div>
-        <p style="font-size:11px;color:#4b5563;text-align:center;margin-top:12px">Лидер каждого матча — по рунам за текущий месяц</p>
+        <p style="font-size:11px;color:var(--t3);text-align:center;margin-top:12px">Лидер каждого матча — по рунам за текущий месяц</p>
       `;
     }
 

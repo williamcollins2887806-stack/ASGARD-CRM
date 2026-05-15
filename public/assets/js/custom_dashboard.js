@@ -484,7 +484,7 @@ window.AsgardCustomDashboard = (function(){
     } else {
       dispatcherHtml = `
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-          <span style="width:10px;height:10px;border-radius:50%;background:var(--text-sec,#666);flex-shrink:0"></span>
+          <span style="width:10px;height:10px;border-radius:50%;background:var(--t3);flex-shrink:0"></span>
           <span style="color:var(--text-sec)">Диспетчер не активен</span>
         </div>`;
     }
@@ -511,7 +511,7 @@ window.AsgardCustomDashboard = (function(){
         </div>`;
       }).join('');
       
-      callsHtml = `<div style="border-top:1px solid var(--border,rgba(255,255,255,.08));padding-top:8px;margin-top:4px">
+      callsHtml = `<div style="border-top:1px solid var(--brd);padding-top:8px;margin-top:4px">
         <div style="font-size:11px;color:var(--text-sec);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Последние звонки</div>
         ${callsHtml}
       </div>`;
@@ -1161,7 +1161,7 @@ window.AsgardCustomDashboard = (function(){
       // Stats badge
       var unreadBadge = unread > 0
         ? '<span style="background:var(--red,#e74c3c);color:#fff;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;margin-left:8px">' + unread + ' \u043d\u043e\u0432\u044b\u0445</span>'
-        : '<span style="color:var(--ok,#2ecc71);font-size:12px;margin-left:8px">\u0432\u0441\u0451 \u043f\u0440\u043e\u0447\u0438\u0442\u0430\u043d\u043e</span>';
+        : '<span style="color:var(--ok-t);font-size:12px;margin-left:8px">\u0432\u0441\u0451 \u043f\u0440\u043e\u0447\u0438\u0442\u0430\u043d\u043e</span>';
 
       // Email list
       var listHtml = '';

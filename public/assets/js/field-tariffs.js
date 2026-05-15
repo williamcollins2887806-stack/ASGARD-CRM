@@ -78,7 +78,7 @@ window.AsgardFieldTariffsPage = (function () {
       section.style.cssText = 'margin-bottom:20px';
 
       const catHeader = document.createElement('div');
-      catHeader.style.cssText = 'font-weight:600;font-size:14px;padding:8px 12px;background:var(--bg2, #151922);border-radius:8px 8px 0 0;border-bottom:2px solid var(--gold, #D4A843)';
+      catHeader.style.cssText = 'font-weight:600;font-size:14px;padding:8px 12px;background:var(--bg2);border-radius:8px 8px 0 0;border-bottom:2px solid var(--gold)';
       catHeader.textContent = CATEGORY_LABELS[cat] || cat;
       section.appendChild(catHeader);
 
@@ -97,7 +97,7 @@ window.AsgardFieldTariffsPage = (function () {
       const tbody = document.createElement('tbody');
       for (const t of items) {
         const tr = document.createElement('tr');
-        tr.style.borderBottom = '1px solid var(--brd, rgba(255,255,255,0.04))';
+        tr.style.borderBottom = '1px solid var(--brd-m)';
         tr.dataset.id = t.id;
 
         tr.innerHTML = `
@@ -197,7 +197,7 @@ window.AsgardFieldTariffsPage = (function () {
     overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1200;display:flex;align-items:center;justify-content:center';
 
     const modal = document.createElement('div');
-    modal.style.cssText = 'background:var(--bg1, #0d1117);border:1px solid var(--brd);border-radius:12px;padding:24px;width:480px;max-width:90vw';
+    modal.style.cssText = 'background:var(--bg1);border:1px solid var(--brd);border-radius:12px;padding:24px;width:480px;max-width:90vw';
     modal.innerHTML = `
       <h3 style="margin:0 0 16px;font-size:16px">Новый тариф</h3>
       <div style="display:grid;gap:12px">

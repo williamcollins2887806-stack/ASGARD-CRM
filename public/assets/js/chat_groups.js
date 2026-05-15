@@ -911,7 +911,7 @@ window.AsgardChatGroups = (function(){
         </div>` : '';
 
         pinnedCardHtml = `
-          <div class="ec-pinned-card" style="background:linear-gradient(135deg, var(--bg3,#1e1e1e) 0%, rgba(212,168,67,0.08) 100%);border:1px solid rgba(212,168,67,0.2)">
+          <div class="ec-pinned-card" style="background:linear-gradient(135deg, var(--bg3) 0%, rgba(212,168,67,0.08) 100%);border:1px solid rgba(212,168,67,0.2)">
             <div class="ec-pinned-card__header">
               <div>
                 <div class="ec-pinned-card__title">${esc(cardTitle)}</div>
@@ -954,7 +954,7 @@ window.AsgardChatGroups = (function(){
     let headerTitle, headerStatus, headerAvatar, headerActions;
     if (isMimir) {
       headerTitle = 'Мимир';
-      headerStatus = '<span style="color:var(--gold,#D4A843)">AI-помощник ASGARD</span>';
+      headerStatus = '<span style="color:var(--gold)">AI-помощник ASGARD</span>';
       headerAvatar = '<div class="chat-header-avatar hg-mimir-avatar"><span>⚡</span></div>';
       headerActions = '';
     } else if (isDirect) {
@@ -1116,7 +1116,7 @@ window.AsgardChatGroups = (function(){
       : '';
     const bubbleClass = useMimirEstimateStyle ? ' ec-mimir-bubble' : (isMimirBot ? ' hg-mimir-bubble' : '');
     const senderHtml = !isOwn
-      ? `<div class="chat-message-sender" ${isMimirBot ? 'style="color:var(--gold,#D4A843)"' : `style="color:${avatarColor}"`}>${useMimirEstimateStyle ? '\u041C\u0438\u043C\u0438\u0440 <span class="ec-mimir-pill">\u0430\u0441\u0441\u0438\u0441\u0442\u0435\u043D\u0442</span>' : (isMimirBot ? '\u041C\u0438\u043C\u0438\u0440' : esc(msg.user_name))}${actionBadgeHtml}</div>`
+      ? `<div class="chat-message-sender" ${isMimirBot ? 'style="color:var(--gold)"' : `style="color:${avatarColor}"`}>${useMimirEstimateStyle ? '\u041C\u0438\u043C\u0438\u0440 <span class="ec-mimir-pill">\u0430\u0441\u0441\u0438\u0441\u0442\u0435\u043D\u0442</span>' : (isMimirBot ? '\u041C\u0438\u043C\u0438\u0440' : esc(msg.user_name))}${actionBadgeHtml}</div>`
       : (actionBadgeHtml ? `<div class="chat-message-sender" style="color:${avatarColor};text-align:right">${esc(msg.user_name)}${actionBadgeHtml}</div>` : '');
 
     // Voice message?

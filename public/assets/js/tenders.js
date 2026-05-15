@@ -161,6 +161,7 @@ window.AsgardTendersPage = (function(){
       tender_title: document.getElementById("e_title")?.value || '',
       tender_type: (typeof _typeChipsEl !== 'undefined' && _typeChipsEl && _typeChipsEl._crGetValue) ? (_typeChipsEl._crGetValue() || '') : (CRSelect.getValue('e_type') || ''),
       tender_price: document.getElementById("e_price")?.value || '',
+      tender_price_with_vat: document.getElementById("e_price_vat")?.value || '',
       tag_id: (typeof CRSelect !== 'undefined' && CRSelect.getValue('e_tag')) || '',
       work_start_plan: (typeof CRDatePicker !== 'undefined' && CRDatePicker.getValue('e_ws')) || '',
       work_end_plan: (typeof CRDatePicker !== 'undefined' && CRDatePicker.getValue('e_we')) || '',
@@ -467,7 +468,7 @@ window.AsgardTendersPage = (function(){
       <td>${tenderStatusBadge(t.tender_status)}${(t.distribution_requested_at && !t.handoff_at)?" <span class=\"badge\">На распределении</span>":""}</td>
       <td>${ddl}</td>
       <td>${esc(createdByName||"—")}</td>
-      <td>${t.tender_price?money(t.tender_price):"—"}</td>
+      <td>${['ТКП согласовано','КП отправлено','Выиграли','Проиграли'].includes(t.tender_status) && t.tender_price?money(t.tender_price)+(t.tender_price_with_vat?'<div style="font-size:11px;color:var(--t3)">с НДС '+money(t.tender_price_with_vat)+'</div>':''):"—"}</td>
       <td>${ds} → ${de}</td>
       <td>${link}</td>
       <td style="white-space:nowrap">
@@ -489,7 +490,8 @@ window.AsgardTendersPage = (function(){
   function tenderCard(t, pmName, createdByName) {
     const fmtDate = AsgardUI.formatDate || (d => d ? new Date(d).toLocaleDateString('ru-RU') : '—');
     const ddl = fmtDate(t.docs_deadline);
-    const price = t.tender_price ? money(t.tender_price) : '—';
+    const _priceVisible = ['ТКП согласовано','КП отправлено','Выиграли','Проиграли'].includes(t.tender_status);
+    const price = _priceVisible && t.tender_price ? money(t.tender_price) : '—';
 
     // Status badge color
     let statusCls = '';
@@ -514,7 +516,7 @@ window.AsgardTendersPage = (function(){
         '<div class="m-tc-field"><span class="m-tc-label">РП</span><span>' + esc(pmName || '—') + '</span></div>' +
         '<div class="m-tc-field"><span class="m-tc-label">Тип</span><span>' + esc(t.tender_type || '—') + '</span></div>' +
         '<div class="m-tc-field"><span class="m-tc-label">Дедлайн</span><span>' + ddl + '</span></div>' +
-        '<div class="m-tc-field"><span class="m-tc-label">Сумма</span><span class="m-tc-price">' + price + '</span></div>' +
+        '<div class="m-tc-field"><span class="m-tc-label">Сумма</span><span class="m-tc-price">' + price + (_priceVisible && t.tender_price_with_vat ? '<span style="font-size:11px;color:var(--t3);margin-left:4px">(с НДС ' + money(t.tender_price_with_vat) + ')</span>' : '') + '</span></div>' +
       '</div>' +
       '<div class="m-tc-footer">' +
         '<span class="m-tc-period">' + fmtPeriod(t.period) + '</span>' +
@@ -1431,13 +1433,20 @@ window.AsgardTendersPage = (function(){
 
           <div class="cr-f-row--2">
             <div class="cr-f-field">
-              <div class="cr-f-label">Сумма, ₽</div>
+              <div class="cr-f-label">Сумма без НДС, ₽</div>
               <input id="e_price" class="cr-f-mono" value="${esc((t&&t.tender_price)!=null?String(t.tender_price):"")}" ${full?"":"disabled"} placeholder="0"/>
             </div>
+            <div class="cr-f-field">
+              <div class="cr-f-label">Сумма с НДС, ₽</div>
+              <input id="e_price_vat" class="cr-f-mono" value="${esc((t&&t.tender_price_with_vat)!=null?String(t.tender_price_with_vat):"")}" ${full?"":"disabled"} placeholder="0" style="color:var(--t3)"/>
+            </div>
+          </div>
+          <div class="cr-f-row--2">
             <div class="cr-f-field">
               <div class="cr-f-label">Тип заявки</div>
               <div id="e_type_w"></div>
             </div>
+            <div class="cr-f-field"></div>
           </div>
 
           <div class="cr-f-row--2">
@@ -1715,6 +1724,23 @@ window.AsgardTendersPage = (function(){
       $('#e_ws_w')?.appendChild(CRDatePicker.create({ id:'e_ws', value:(t&&t.work_start_plan)||'', placeholder:'Выберите дату', disabled:!full, clearable:true, dropdownClass:'z-modal' }));
       $('#e_we_w')?.appendChild(CRDatePicker.create({ id:'e_we', value:(t&&t.work_end_plan)||'', placeholder:'Выберите дату', disabled:!full, clearable:true, dropdownClass:'z-modal' }));
       $('#e_deadline_w')?.appendChild(CRDatePicker.create({ id:'e_docs_deadline', value:(t&&t.docs_deadline)||'', placeholder:'Выберите дату', disabled:!(full||limited), clearable:true, dropdownClass:'z-modal' }));
+
+      // Авторасчёт НДС: ставка из настроек
+      const _vatSetting = await AsgardDB.get('settings', 'vat_default_pct');
+      const _vatPct = _vatSetting ? (parseFloat(_vatSetting.value_json) || 20) : 20;
+      const _vatMul = 1 + _vatPct / 100;
+      const ePriceEl = document.getElementById('e_price');
+      const ePriceVatEl = document.getElementById('e_price_vat');
+      if (ePriceEl && ePriceVatEl) {
+        ePriceEl.addEventListener('input', () => {
+          const v = Number(ePriceEl.value.replace(/\s/g,'').replace(',','.'));
+          ePriceVatEl.value = v > 0 ? Math.round(v * _vatMul * 100) / 100 : '';
+        });
+        ePriceVatEl.addEventListener('input', () => {
+          const v = Number(ePriceVatEl.value.replace(/\s/g,'').replace(',','.'));
+          ePriceEl.value = v > 0 ? Math.round(v / _vatMul * 100) / 100 : '';
+        });
+      }
 
       // BUG5 FIX: ALL mounts done. Now hide steps for wizard mode.
       // Components mounted while visible → no layout bugs.
@@ -2475,6 +2501,8 @@ window.AsgardTendersPage = (function(){
         const status = CRSelect.getValue('e_status') || '';
         const priceRaw=document.getElementById("e_price").value.trim();
         const price = priceRaw ? Number(priceRaw.replace(/\s/g,"").replace(",", ".")) : null;
+        const priceVatRaw=document.getElementById("e_price_vat")?.value?.trim()||"";
+        const priceVat = priceVatRaw ? Number(priceVatRaw.replace(/\s/g,"").replace(",", ".")) : (price ? Math.round(price * _vatMul * 100) / 100 : null);
         const ws = CRDatePicker.getValue('e_ws') || null;
         const we = CRDatePicker.getValue('e_we') || null;
         const url=document.getElementById("e_url").value.trim()||null;
@@ -2491,7 +2519,8 @@ window.AsgardTendersPage = (function(){
             customer_inn: customer_inn||null, customer_name:customer||'',
             tender_title:title||'', tender_type: tenderType||'Тендер',
             responsible_pm_id:pmId, tender_status:'Черновик',
-            tender_price: price, work_start_plan: ws, work_end_plan: we,
+            tender_price: price, tender_price_with_vat: priceVat,
+            work_start_plan: ws, work_end_plan: we,
             purchase_url: url, docs_deadline: docsDeadline,
             reject_reason: reject, group_tag: tag, tag_id: tagId, tender_comment_to: cto,
             created_by_user_id: user.id,
@@ -2535,7 +2564,7 @@ window.AsgardTendersPage = (function(){
             tender_type: tenderType,
             responsible_pm_id:pmId,
             tender_status:"Новый",
-            tender_price: price,
+            tender_price: price, tender_price_with_vat: priceVat,
             work_start_plan: ws, work_end_plan: we,
             purchase_url: url,
             docs_deadline: docsDeadline,
@@ -2579,7 +2608,7 @@ window.AsgardTendersPage = (function(){
             cur.customer_name=customer; cur.tender_title=title;
             cur.responsible_pm_id=pmId;
             cur.tender_status=status;
-            cur.tender_price=price;
+            cur.tender_price=price; cur.tender_price_with_vat=priceVat;
             cur.work_start_plan=ws; cur.work_end_plan=we;
             cur.reject_reason=reject;
             cur.purchase_url=url; cur.docs_deadline=docsDeadline; cur.group_tag=tag; cur.tag_id=tagId; cur.tender_comment_to=cto;
@@ -2630,9 +2659,9 @@ window.AsgardTendersPage = (function(){
             const _overlay = document.createElement('div');
             _overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:10000;display:flex;align-items:center;justify-content:center';
             _overlay.innerHTML = `
-              <div style="background:var(--card,#1e1e2e);padding:24px;border-radius:12px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.3)">
+              <div style="background:var(--bg2);padding:24px;border-radius:12px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.3)">
                 <div style="font-weight:600;font-size:16px;margin-bottom:12px">Не заполнены обязательные поля</div>
-                <div style="margin-bottom:16px;color:var(--text-secondary,#aaa)">${esc(missingFields.join(', '))}</div>
+                <div style="margin-bottom:16px;color:var(--t2)">${esc(missingFields.join(', '))}</div>
                 <div style="display:flex;gap:10px;flex-wrap:wrap">
                   <button class="btn" id="btnFillMissing">Заполнить поля</button>
                   <button class="btn ghost" id="btnDraftMissing">Сохранить как черновик</button>

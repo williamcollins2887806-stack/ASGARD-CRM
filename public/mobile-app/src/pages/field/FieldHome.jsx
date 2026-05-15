@@ -111,6 +111,26 @@ export default function FieldHome() {
   const touchStartY = useRef(0);
   const [pulling, setPulling] = useState(false);
 
+  const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  /** Рейтинг / Мимир: повторы при сбое, при ошибке не затираем уже загруженный рейтинг. */
+  const fetchGamification = useCallback(async () => {
+    const maxAttempts = 4;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const res = await fieldApi.get('/gamification/leaderboard');
+        if (res?.my_rank) setMyRank(res.my_rank);
+        break;
+      } catch {
+        if (attempt < maxAttempts) await delay(400 * attempt);
+      }
+    }
+    try {
+      const res = await fieldApi.get('/gamification/mimir-tip');
+      if (res?.tip) setMimirTip(res.tip);
+    } catch { /* подсказка не критична */ }
+  }, []);
+
   const fetchData = useCallback(async () => {
     try {
       setError(null);
@@ -130,15 +150,17 @@ export default function FieldHome() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Fetch my rank + Mimir tip
   useEffect(() => {
-    fieldApi.get('/gamification/leaderboard').then((res) => {
-      if (res?.my_rank) setMyRank(res.my_rank);
-    }).catch(() => {});
-    fieldApi.get('/gamification/mimir-tip').then((res) => {
-      if (res?.tip) setMimirTip(res.tip);
-    }).catch(() => {});
-  }, []);
+    fetchGamification();
+  }, [fetchGamification]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'visible') fetchGamification();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [fetchGamification]);
 
   // Live timer
   useEffect(() => {
@@ -166,6 +188,7 @@ export default function FieldHome() {
       await fieldApi.post('/checkin/', { work_id: wid, ...geo, client_date, client_time, client_local_hour });
       haptic.success();
       await fetchData();
+      fetchGamification().catch(() => {});
     } catch (e) {
       haptic.error();
       setError(e.message);
@@ -183,6 +206,7 @@ export default function FieldHome() {
       await fieldApi.post('/checkin/checkout', { ...geo, checkin_id: checkin?.id, client_time });
       haptic.success();
       await fetchData();
+      fetchGamification().catch(() => {});
     } catch (e) {
       haptic.error();
       setError(e.message);
@@ -198,7 +222,7 @@ export default function FieldHome() {
     const diff = e.changedTouches[0].clientY - touchStartY.current;
     if (diff > 80 && window.scrollY === 0) {
       setPulling(true);
-      await fetchData();
+      await Promise.all([fetchData(), fetchGamification()]);
       setPulling(false);
     }
   };

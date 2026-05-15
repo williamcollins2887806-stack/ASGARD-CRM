@@ -135,7 +135,7 @@
 \n\
 /* Имя пользователя */\n\
 .sg-user {\n\
-  color: rgba(255,255,255,.7);\n\
+  color: var(--t2);\n\
   font-size: 15px;\n\
   font-weight: 500;\n\
   letter-spacing: .3px;\n\
@@ -144,7 +144,7 @@
 \n\
 /* Подсказка */\n\
 .sg-hint {\n\
-  color: rgba(255,255,255,.35);\n\
+  color: var(--t3);\n\
   font-size: 12px;\n\
   text-align: center;\n\
   min-height: 18px;\n\
@@ -163,7 +163,7 @@
   width: 14px;\n\
   height: 14px;\n\
   border-radius: 50%;\n\
-  border: 2px solid rgba(255,255,255,.25);\n\
+  border: 2px solid var(--brd-m);\n\
   background: transparent;\n\
   transition: all .2s cubic-bezier(.4,0,.2,1);\n\
 }\n\
@@ -211,9 +211,9 @@
   width: 72px;\n\
   height: 72px;\n\
   border-radius: 50%;\n\
-  border: 1.5px solid rgba(255,255,255,.12);\n\
-  background: rgba(255,255,255,.04);\n\
-  color: #fff;\n\
+  border: 1.5px solid var(--brd);\n\
+  background: var(--bg3);\n\
+  color: var(--t1);\n\
   font-size: 26px;\n\
   font-weight: 300;\n\
   display: flex;\n\
@@ -230,7 +230,7 @@
 }\n\
 .sg-key:active {\n\
   transform: scale(.9);\n\
-  background: rgba(255,255,255,.1);\n\
+  background: var(--brd-m);\n\
   border-color: rgba(212,168,67,.4);\n\
 }\n\
 .sg-key.action {\n\
@@ -239,7 +239,7 @@
   background: transparent;\n\
 }\n\
 .sg-key.action:active {\n\
-  background: rgba(255,255,255,.06);\n\
+  background: var(--bg3);\n\
 }\n\
 .sg-key.biometric {\n\
   border-color: rgba(212,168,67,.3);\n\
@@ -267,7 +267,7 @@
 /* ═══ Выход ═══ */\n\
 .sg-logout {\n\
   margin-top: 16px;\n\
-  color: rgba(255,255,255,.25);\n\
+  color: var(--t3);\n\
   font-size: 12px;\n\
   cursor: pointer;\n\
   border: none;\n\
@@ -276,7 +276,7 @@
   transition: color .2s;\n\
 }\n\
 .sg-logout:hover,\n\
-.sg-logout:active { color: rgba(255,255,255,.5); }\n\
+.sg-logout:active { color: var(--t2); }\n\
 \n\
 /* ═══ Сплэш при разблокировке ═══ */\n\
 .sg-splash {\n\
@@ -339,7 +339,7 @@
 }\n\
 \n\
 .sg-splash-quote {\n\
-  color: rgba(255,255,255,.45);\n\
+  color: var(--t3);\n\
   font-size: 13px;\n\
   font-style: italic;\n\
   text-align: center;\n\
@@ -373,7 +373,7 @@
 @supports (padding: env(safe-area-inset-bottom)) {\n\
   .sg-center { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }\n\
 }\n\
-\n/* PIN form on login page - prevent native keyboard */\n#pinKeypadContainer { -webkit-touch-callout:none; -webkit-user-select:none; user-select:none; }\n#pinKeypadContainer .sg-key { background:rgba(255,255,255,.06); border-color:rgba(255,255,255,.15); }\n#pinKeypadContainer .sg-dot { border-color:rgba(255,255,255,.3); }\n#pinForm input { display:none !important; }\n';
+\n/* PIN form on login page - prevent native keyboard */\n#pinKeypadContainer { -webkit-touch-callout:none; -webkit-user-select:none; user-select:none; }\n#pinKeypadContainer .sg-key { background:var(--bg3); border-color:var(--brd); }\n#pinKeypadContainer .sg-dot { border-color:var(--brd-m); }\n#pinForm input { display:none !important; }\n';
     document.head.appendChild(style);
   }
 

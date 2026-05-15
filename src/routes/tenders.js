@@ -296,9 +296,9 @@ async function routes(fastify, options) {
       // SECURITY: Filter to allowed DB columns only
       const allowedCols = [
         'customer_name', 'customer_inn', 'tender_title', 'tender_type',
-        'tender_status', 'period', 'docs_deadline', 'tender_price', 'responsible_pm_id',
-        'group_tag', 'tag_id', 'purchase_url', 'comment_to', 'comment_dir', 'reject_reason',
-        'created_by', 'created_at'
+        'tender_status', 'period', 'docs_deadline', 'tender_price', 'tender_price_with_vat', 'vat_pct',
+        'responsible_pm_id', 'group_tag', 'tag_id', 'purchase_url', 'comment_to', 'comment_dir',
+        'reject_reason', 'created_by', 'created_at'
       ];
       const data = {};
       for (const k of allowedCols) {
@@ -415,7 +415,7 @@ async function routes(fastify, options) {
     const allowedFields = [
       'customer', 'customer_name', 'customer_inn', 'tender_number', 'tender_title',
       'tender_type', 'tender_status', 'period', 'deadline', 'docs_deadline',
-      'tender_price', 'responsible_pm_id', 'tag', 'group_tag', 'tag_id',
+      'tender_price', 'tender_price_with_vat', 'vat_pct', 'responsible_pm_id', 'tag', 'group_tag', 'tag_id',
       'docs_link', 'purchase_url', 'comment_to', 'comment_dir', 'reject_reason'
     ];
 

@@ -76,10 +76,10 @@ window.AsgardPreTendersPage = (function(){
     if (!md) return '';
     let html = esc(md);
     // Headers
-    html = html.replace(/^### (.+)$/gm, '<h4 style="font-size:13px;font-weight:700;color:var(--blue-l,#4A90D9);margin:12px 0 6px">$1</h4>');
-    html = html.replace(/^## (\d+\..+)$/gm, '<h3 style="font-size:15px;font-weight:700;color:var(--gold-l,#d4af37);margin:18px 0 10px;border-bottom:2px solid rgba(212,168,67,0.2);padding-bottom:6px">$1</h3>');
-    html = html.replace(/^## (.+)$/gm, '<h3 style="font-size:15px;font-weight:700;color:var(--gold-l,#d4af37);margin:18px 0 10px">$1</h3>');
-    html = html.replace(/^# (.+)$/gm, '<h2 style="font-size:17px;font-weight:800;color:var(--gold,#D4A843);margin:20px 0 12px;border-bottom:2px solid rgba(212,168,67,0.3);padding-bottom:8px">$1</h2>');
+    html = html.replace(/^### (.+)$/gm, '<h4 style="font-size:13px;font-weight:700;color:var(--blue-l);margin:12px 0 6px">$1</h4>');
+    html = html.replace(/^## (\d+\..+)$/gm, '<h3 style="font-size:15px;font-weight:700;color:var(--gold-l);margin:18px 0 10px;border-bottom:2px solid rgba(212,168,67,0.2);padding-bottom:6px">$1</h3>');
+    html = html.replace(/^## (.+)$/gm, '<h3 style="font-size:15px;font-weight:700;color:var(--gold-l);margin:18px 0 10px">$1</h3>');
+    html = html.replace(/^# (.+)$/gm, '<h2 style="font-size:17px;font-weight:800;color:var(--gold);margin:20px 0 12px;border-bottom:2px solid rgba(212,168,67,0.3);padding-bottom:8px">$1</h2>');
     // Bold
     html = html.replace(/\*\*(.+?)\*\*/g, '<b style="color:var(--t1)">$1</b>');
     // Lists with better styling
@@ -107,23 +107,23 @@ window.AsgardPreTendersPage = (function(){
         // First row before separator is header
         if (!headerDone && tableRows.length === 0) {
           tableRows.push('<tr>' + cells.map(c =>
-            '<th style="padding:10px 12px;font-size:12px;font-weight:700;color:var(--gold-l,#d4af37);background:rgba(212,168,67,0.08);border-bottom:2px solid rgba(212,168,67,0.2);text-align:left;white-space:nowrap">' + c.trim() + '</th>'
+            '<th style="padding:10px 12px;font-size:12px;font-weight:700;color:var(--gold-l);background:rgba(212,168,67,0.08);border-bottom:2px solid rgba(212,168,67,0.2);text-align:left;white-space:nowrap">' + c.trim() + '</th>'
           ).join('') + '</tr>');
         } else {
           const rowIdx = tableRows.length;
-          const bgColor = rowIdx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)';
+          const bgColor = rowIdx % 2 === 0 ? 'transparent' : 'var(--bg3)';
           tableRows.push('<tr style="background:' + bgColor + '">' + cells.map((c, ci) => {
             const val = c.trim();
             const isNum = /^[\d\s.,₽%]+$/.test(val) || /^\d/.test(val);
             const align = isNum ? 'right' : 'left';
             const isBold = val.toLowerCase().includes('итого') || val.toLowerCase().includes('всего') || val.toLowerCase().includes('total');
             const fw = isBold ? 'font-weight:700;color:var(--gold)' : '';
-            return '<td style="padding:8px 12px;font-size:13px;border-bottom:1px solid rgba(255,255,255,0.06);text-align:' + align + ';' + fw + '">' + val + '</td>';
+            return '<td style="padding:8px 12px;font-size:13px;border-bottom:1px solid var(--brd);text-align:' + align + ';' + fw + '">' + val + '</td>';
           }).join('') + '</tr>');
         }
       } else {
         if (inTable && tableRows.length > 0) {
-          processed.push('<div style="overflow-x:auto;margin:12px 0;border-radius:8px;border:1px solid rgba(255,255,255,0.08)"><table style="width:100%;border-collapse:collapse;min-width:400px">' + tableRows.join('') + '</table></div>');
+          processed.push('<div style="overflow-x:auto;margin:12px 0;border-radius:8px;border:1px solid var(--brd)"><table style="width:100%;border-collapse:collapse;min-width:400px">' + tableRows.join('') + '</table></div>');
           tableRows = [];
           inTable = false;
           headerDone = false;
@@ -132,7 +132,7 @@ window.AsgardPreTendersPage = (function(){
       }
     }
     if (tableRows.length > 0) {
-      processed.push('<div style="overflow-x:auto;margin:12px 0;border-radius:8px;border:1px solid rgba(255,255,255,0.08)"><table style="width:100%;border-collapse:collapse;min-width:400px">' + tableRows.join('') + '</table></div>');
+      processed.push('<div style="overflow-x:auto;margin:12px 0;border-radius:8px;border:1px solid var(--brd)"><table style="width:100%;border-collapse:collapse;min-width:400px">' + tableRows.join('') + '</table></div>');
     }
     html = processed.join('\n');
     // Newlines
@@ -185,25 +185,25 @@ window.AsgardPreTendersPage = (function(){
 
     // ── Header: Total + Confidence ──
     html += '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">';
-    html += '<div style="font-size:28px;font-weight:800;color:var(--gold,#d4af37);letter-spacing:-0.5px">' + m(total) + ' ₽</div>';
+    html += '<div style="font-size:28px;font-weight:800;color:var(--gold);letter-spacing:-0.5px">' + m(total) + ' ₽</div>';
     html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 14px;border-radius:20px;background:' + conf.bg + ';border:1px solid ' + conf.color + '30;font-size:12px;font-weight:600;color:' + conf.color + '">' + conf.icon + ' ' + conf.label + '</div>';
     html += '</div>';
 
     // ── Summary text ──
     if (d.summary) {
-      html += '<div style="padding:14px 16px;background:rgba(255,255,255,0.03);border-radius:10px;border-left:3px solid var(--gold,#d4af37);margin-bottom:20px;font-size:13px;line-height:1.7;color:var(--t2,#94a3b8)">' + esc(d.summary) + '</div>';
+      html += '<div style="padding:14px 16px;background:var(--bg3);border-radius:10px;border-left:3px solid var(--gold);margin-bottom:20px;font-size:13px;line-height:1.7;color:var(--t2)">' + esc(d.summary) + '</div>';
     }
 
     // ── Cost breakdown visual cards ──
     html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:24px">';
     costItems.forEach(function(ci) {
       var p = pct(ci.value, total);
-      html += '<div style="padding:12px 14px;background:rgba(255,255,255,0.03);border-radius:10px;border:1px solid rgba(255,255,255,0.06);position:relative;overflow:hidden">';
+      html += '<div style="padding:12px 14px;background:var(--bg3);border-radius:10px;border:1px solid var(--brd);position:relative;overflow:hidden">';
       html += '<div style="position:absolute;bottom:0;left:0;width:' + p + '%;height:3px;background:' + ci.color + ';border-radius:0 3px 0 0;opacity:0.7"></div>';
       html += '<div style="font-size:18px;margin-bottom:4px">' + ci.icon + '</div>';
-      html += '<div style="font-size:11px;color:var(--t2,#94a3b8);margin-bottom:2px">' + ci.label + '</div>';
-      html += '<div style="font-size:15px;font-weight:700;color:var(--t1,#e2e8f0)">' + m(ci.value) + ' ₽</div>';
-      html += '<div style="font-size:10px;color:var(--t3,#64748b);margin-top:2px">' + p + '% от итого</div>';
+      html += '<div style="font-size:11px;color:var(--t2);margin-bottom:2px">' + ci.label + '</div>';
+      html += '<div style="font-size:15px;font-weight:700;color:var(--t1)">' + m(ci.value) + ' ₽</div>';
+      html += '<div style="font-size:10px;color:var(--t3);margin-top:2px">' + p + '% от итого</div>';
       html += '</div>';
     });
     html += '</div>';
@@ -211,42 +211,42 @@ window.AsgardPreTendersPage = (function(){
     // ── Brigade table ──
     if (d.brigade && d.brigade.length > 0) {
       html += '<div style="margin-bottom:20px">';
-      html += '<div style="font-size:14px;font-weight:700;color:var(--gold-l,#d4af37);margin-bottom:10px;display:flex;align-items:center;gap:8px">👷 Состав бригады</div>';
-      html += '<div style="overflow-x:auto;border-radius:8px;border:1px solid rgba(255,255,255,0.08)">';
+      html += '<div style="font-size:14px;font-weight:700;color:var(--gold-l);margin-bottom:10px;display:flex;align-items:center;gap:8px">👷 Состав бригады</div>';
+      html += '<div style="overflow-x:auto;border-radius:8px;border:1px solid var(--brd)">';
       html += '<table style="width:100%;border-collapse:collapse;min-width:500px">';
       html += '<thead><tr>';
       var bHeaders = ['Специальность', 'Чел.', 'Дней', 'Ставка/день', 'Итого'];
       bHeaders.forEach(function(h, i) {
         var align = i >= 1 ? 'right' : 'left';
-        html += '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--gold-l,#d4af37);background:rgba(212,168,67,0.06);border-bottom:2px solid rgba(212,168,67,0.15);text-align:' + align + '">' + h + '</th>';
+        html += '<th style="padding:10px 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--gold-l);background:rgba(212,168,67,0.06);border-bottom:2px solid rgba(212,168,67,0.15);text-align:' + align + '">' + h + '</th>';
       });
       html += '</tr></thead><tbody>';
 
       var brigadeTotal = 0;
       d.brigade.forEach(function(b, idx) {
-        var bg = idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)';
+        var bg = idx % 2 === 0 ? 'transparent' : 'var(--bg3)';
         var rowTotal = b.total || (b.count * b.days * b.rate);
         brigadeTotal += rowTotal;
         html += '<tr style="background:' + bg + '">';
-        html += '<td style="padding:8px 12px;font-size:13px;border-bottom:1px solid rgba(255,255,255,0.04)">' + esc(b.role || b.position || '—') + '</td>';
-        html += '<td style="padding:8px 12px;font-size:13px;border-bottom:1px solid rgba(255,255,255,0.04);text-align:right;font-weight:600">' + (b.count || 1) + '</td>';
-        html += '<td style="padding:8px 12px;font-size:13px;border-bottom:1px solid rgba(255,255,255,0.04);text-align:right">' + (b.days || 0) + '</td>';
-        html += '<td style="padding:8px 12px;font-size:13px;border-bottom:1px solid rgba(255,255,255,0.04);text-align:right">' + m(b.rate || 0) + ' ₽</td>';
-        html += '<td style="padding:8px 12px;font-size:13px;border-bottom:1px solid rgba(255,255,255,0.04);text-align:right;font-weight:700;color:var(--t1,#e2e8f0)">' + m(rowTotal) + ' ₽</td>';
+        html += '<td style="padding:8px 12px;font-size:13px;border-bottom:1px solid var(--brd)">' + esc(b.role || b.position || '—') + '</td>';
+        html += '<td style="padding:8px 12px;font-size:13px;border-bottom:1px solid var(--brd);text-align:right;font-weight:600">' + (b.count || 1) + '</td>';
+        html += '<td style="padding:8px 12px;font-size:13px;border-bottom:1px solid var(--brd);text-align:right">' + (b.days || 0) + '</td>';
+        html += '<td style="padding:8px 12px;font-size:13px;border-bottom:1px solid var(--brd);text-align:right">' + m(b.rate || 0) + ' ₽</td>';
+        html += '<td style="padding:8px 12px;font-size:13px;border-bottom:1px solid var(--brd);text-align:right;font-weight:700;color:var(--t1)">' + m(rowTotal) + ' ₽</td>';
         html += '</tr>';
       });
 
       // Total row
       html += '<tr style="background:rgba(212,168,67,0.06)">';
-      html += '<td colspan="4" style="padding:10px 12px;font-size:13px;font-weight:700;color:var(--gold,#d4af37);text-align:right;border-top:2px solid rgba(212,168,67,0.2)">Итого ФОТ:</td>';
-      html += '<td style="padding:10px 12px;font-size:14px;font-weight:800;color:var(--gold,#d4af37);text-align:right;border-top:2px solid rgba(212,168,67,0.2)">' + m(d.fot_total || brigadeTotal) + ' ₽</td>';
+      html += '<td colspan="4" style="padding:10px 12px;font-size:13px;font-weight:700;color:var(--gold);text-align:right;border-top:2px solid rgba(212,168,67,0.2)">Итого ФОТ:</td>';
+      html += '<td style="padding:10px 12px;font-size:14px;font-weight:800;color:var(--gold);text-align:right;border-top:2px solid rgba(212,168,67,0.2)">' + m(d.fot_total || brigadeTotal) + ' ₽</td>';
       html += '</tr>';
 
       // Taxes row
       if (d.fot_taxes) {
         html += '<tr>';
-        html += '<td colspan="4" style="padding:6px 12px;font-size:12px;color:var(--t2,#94a3b8);text-align:right">Налоги и взносы (~30.2%):</td>';
-        html += '<td style="padding:6px 12px;font-size:13px;font-weight:600;color:var(--t2,#94a3b8);text-align:right">' + m(d.fot_taxes) + ' ₽</td>';
+        html += '<td colspan="4" style="padding:6px 12px;font-size:12px;color:var(--t2);text-align:right">Налоги и взносы (~30.2%):</td>';
+        html += '<td style="padding:6px 12px;font-size:13px;font-weight:600;color:var(--t2);text-align:right">' + m(d.fot_taxes) + ' ₽</td>';
         html += '</tr>';
       }
 
@@ -256,8 +256,8 @@ window.AsgardPreTendersPage = (function(){
     // ── Travel expenses ──
     if (d.travel && d.travel.total > 0) {
       html += '<div style="margin-bottom:20px">';
-      html += '<div style="font-size:14px;font-weight:700;color:var(--gold-l,#d4af37);margin-bottom:10px;display:flex;align-items:center;gap:8px">✈️ Командировочные расходы</div>';
-      html += '<div style="overflow-x:auto;border-radius:8px;border:1px solid rgba(255,255,255,0.08)">';
+      html += '<div style="font-size:14px;font-weight:700;color:var(--gold-l);margin-bottom:10px;display:flex;align-items:center;gap:8px">✈️ Командировочные расходы</div>';
+      html += '<div style="overflow-x:auto;border-radius:8px;border:1px solid var(--brd)">';
       html += '<table style="width:100%;border-collapse:collapse">';
 
       var travelItems = [
@@ -268,10 +268,10 @@ window.AsgardPreTendersPage = (function(){
       ].filter(function(x) { return x.val > 0; });
 
       travelItems.forEach(function(ti, idx) {
-        var bg = idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)';
+        var bg = idx % 2 === 0 ? 'transparent' : 'var(--bg3)';
         html += '<tr style="background:' + bg + '">';
-        html += '<td style="padding:8px 12px;font-size:13px;border-bottom:1px solid rgba(255,255,255,0.04)">' + ti.icon + ' ' + ti.label + '</td>';
-        html += '<td style="padding:8px 12px;font-size:13px;border-bottom:1px solid rgba(255,255,255,0.04);text-align:right;font-weight:600;color:var(--t1,#e2e8f0)">' + m(ti.val) + ' ₽</td>';
+        html += '<td style="padding:8px 12px;font-size:13px;border-bottom:1px solid var(--brd)">' + ti.icon + ' ' + ti.label + '</td>';
+        html += '<td style="padding:8px 12px;font-size:13px;border-bottom:1px solid var(--brd);text-align:right;font-weight:600;color:var(--t1)">' + m(ti.val) + ' ₽</td>';
         html += '</tr>';
       });
 
@@ -291,7 +291,7 @@ window.AsgardPreTendersPage = (function(){
       if (d.materials > 0) {
         html += '<div style="padding:16px;background:rgba(245,158,11,0.06);border-radius:10px;border:1px solid rgba(245,158,11,0.12)">';
         html += '<div style="font-size:20px;margin-bottom:6px">🧱</div>';
-        html += '<div style="font-size:12px;color:var(--t2,#94a3b8);margin-bottom:4px">Материалы и расходники</div>';
+        html += '<div style="font-size:12px;color:var(--t2);margin-bottom:4px">Материалы и расходники</div>';
         html += '<div style="font-size:18px;font-weight:700;color:#f59e0b">' + m(d.materials) + ' ₽</div>';
         html += '</div>';
       }
@@ -299,7 +299,7 @@ window.AsgardPreTendersPage = (function(){
       if (d.equipment > 0) {
         html += '<div style="padding:16px;background:rgba(16,185,129,0.06);border-radius:10px;border:1px solid rgba(16,185,129,0.12)">';
         html += '<div style="font-size:20px;margin-bottom:6px">⚙️</div>';
-        html += '<div style="font-size:12px;color:var(--t2,#94a3b8);margin-bottom:4px">Оборудование</div>';
+        html += '<div style="font-size:12px;color:var(--t2);margin-bottom:4px">Оборудование</div>';
         html += '<div style="font-size:18px;font-weight:700;color:#10b981">' + m(d.equipment) + ' ₽</div>';
         html += '</div>';
       }
@@ -309,7 +309,7 @@ window.AsgardPreTendersPage = (function(){
 
     // ── Summary costs table ──
     html += '<div style="margin-bottom:20px;border-radius:10px;overflow:hidden;border:1px solid rgba(212,168,67,0.15)">';
-    html += '<div style="padding:12px 16px;background:rgba(212,168,67,0.08);font-size:14px;font-weight:700;color:var(--gold,#d4af37)">📊 Сводка затрат</div>';
+    html += '<div style="padding:12px 16px;background:rgba(212,168,67,0.08);font-size:14px;font-weight:700;color:var(--gold)">📊 Сводка затрат</div>';
     html += '<table style="width:100%;border-collapse:collapse">';
 
     var summaryRows = [
@@ -321,10 +321,10 @@ window.AsgardPreTendersPage = (function(){
     ].filter(function(x) { return (x.val || 0) > 0; });
 
     summaryRows.forEach(function(sr, idx) {
-      var bg = idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)';
+      var bg = idx % 2 === 0 ? 'transparent' : 'var(--bg3)';
       html += '<tr style="background:' + bg + '">';
-      html += '<td style="padding:8px 16px;font-size:13px;border-bottom:1px solid rgba(255,255,255,0.04)">' + sr.label + '</td>';
-      html += '<td style="padding:8px 16px;font-size:13px;border-bottom:1px solid rgba(255,255,255,0.04);text-align:right">' + m(sr.val) + ' ₽</td>';
+      html += '<td style="padding:8px 16px;font-size:13px;border-bottom:1px solid var(--brd)">' + sr.label + '</td>';
+      html += '<td style="padding:8px 16px;font-size:13px;border-bottom:1px solid var(--brd);text-align:right">' + m(sr.val) + ' ₽</td>';
       html += '</tr>';
     });
 
@@ -339,15 +339,15 @@ window.AsgardPreTendersPage = (function(){
     // Overhead
     if (d.overhead > 0) {
       html += '<tr>';
-      html += '<td style="padding:8px 16px;font-size:13px;color:var(--t2,#94a3b8)">Накладные расходы (~10%)</td>';
-      html += '<td style="padding:8px 16px;font-size:13px;color:var(--t2,#94a3b8);text-align:right">' + m(d.overhead) + ' ₽</td>';
+      html += '<td style="padding:8px 16px;font-size:13px;color:var(--t2)">Накладные расходы (~10%)</td>';
+      html += '<td style="padding:8px 16px;font-size:13px;color:var(--t2);text-align:right">' + m(d.overhead) + ' ₽</td>';
       html += '</tr>';
     }
 
     // TOTAL
     html += '<tr style="background:rgba(212,168,67,0.1)">';
-    html += '<td style="padding:14px 16px;font-size:16px;font-weight:800;color:var(--gold,#d4af37);border-top:2px solid rgba(212,168,67,0.3)">ИТОГО СЕБЕСТОИМОСТЬ</td>';
-    html += '<td style="padding:14px 16px;font-size:18px;font-weight:800;color:var(--gold,#d4af37);text-align:right;border-top:2px solid rgba(212,168,67,0.3)">' + m(total) + ' ₽</td>';
+    html += '<td style="padding:14px 16px;font-size:16px;font-weight:800;color:var(--gold);border-top:2px solid rgba(212,168,67,0.3)">ИТОГО СЕБЕСТОИМОСТЬ</td>';
+    html += '<td style="padding:14px 16px;font-size:18px;font-weight:800;color:var(--gold);text-align:right;border-top:2px solid rgba(212,168,67,0.3)">' + m(total) + ' ₽</td>';
     html += '</tr>';
 
     html += '</table></div>';
@@ -355,8 +355,8 @@ window.AsgardPreTendersPage = (function(){
     // ── Notes / Assumptions ──
     if (d.notes) {
       html += '<div style="margin-bottom:16px">';
-      html += '<div style="font-size:13px;font-weight:700;color:var(--t1,#e2e8f0);margin-bottom:8px;display:flex;align-items:center;gap:6px">📝 Допущения и примечания</div>';
-      html += '<div style="padding:12px 16px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid rgba(255,255,255,0.06);font-size:12px;line-height:1.8;color:var(--t2,#94a3b8)">';
+      html += '<div style="font-size:13px;font-weight:700;color:var(--t1);margin-bottom:8px;display:flex;align-items:center;gap:6px">📝 Допущения и примечания</div>';
+      html += '<div style="padding:12px 16px;background:var(--bg3);border-radius:8px;border:1px solid var(--brd);font-size:12px;line-height:1.8;color:var(--t2)">';
       var notes = esc(d.notes);
       html += notes.replace(/(\d+\))/g, '<br><b>$1</b>');
       html += '</div></div>';
@@ -367,7 +367,7 @@ window.AsgardPreTendersPage = (function(){
       html += '<div style="margin-bottom:12px">';
       html += '<div style="font-size:13px;font-weight:700;color:#ef4444;margin-bottom:8px;display:flex;align-items:center;gap:6px">⚠️ Риски и неопределённости</div>';
       d.risks.forEach(function(risk, idx) {
-        html += '<div style="display:flex;gap:10px;padding:10px 14px;margin-bottom:6px;background:rgba(239,68,68,0.04);border-radius:8px;border-left:3px solid rgba(239,68,68,0.3);font-size:12px;line-height:1.6;color:var(--t2,#94a3b8)">';
+        html += '<div style="display:flex;gap:10px;padding:10px 14px;margin-bottom:6px;background:rgba(239,68,68,0.04);border-radius:8px;border-left:3px solid rgba(239,68,68,0.3);font-size:12px;line-height:1.6;color:var(--t2)">';
         html += '<span style="flex-shrink:0;font-weight:700;color:#ef4444;font-size:11px">' + (idx + 1) + '</span>';
         html += '<span>' + esc(risk) + '</span>';
         html += '</div>';
@@ -964,8 +964,8 @@ window.AsgardPreTendersPage = (function(){
         <!-- Себестоимость -->
         ${it.ai_cost_report ? `
         <details style="margin-top:12px">
-          <summary style="cursor:pointer;font-weight:800;font-size:14px;padding:10px 0;color:var(--gold-l,#d4af37);letter-spacing:0.02em">💰 Расчёт себестоимости ${it.ai_cost_estimate ? '(' + money(it.ai_cost_estimate) + ')' : ''}</summary>
-          <div id="ptCostReport" class="pt-full-report" style="font-size:14px;line-height:1.8;max-height:600px;overflow-y:auto;padding:20px 24px;background:linear-gradient(135deg,rgba(13,20,40,0.6),rgba(30,61,114,0.15));border-radius:10px;margin-top:10px;border:1px solid rgba(212,168,67,0.12);box-shadow:inset 0 1px 0 rgba(255,255,255,0.04)"></div>
+          <summary style="cursor:pointer;font-weight:800;font-size:14px;padding:10px 0;color:var(--gold-l);letter-spacing:0.02em">💰 Расчёт себестоимости ${it.ai_cost_estimate ? '(' + money(it.ai_cost_estimate) + ')' : ''}</summary>
+          <div id="ptCostReport" class="pt-full-report" style="font-size:14px;line-height:1.8;max-height:600px;overflow-y:auto;padding:20px 24px;background:linear-gradient(135deg,rgba(13,20,40,0.6),rgba(30,61,114,0.15));border-radius:10px;margin-top:10px;border:1px solid rgba(212,168,67,0.12);box-shadow:inset 0 1px 0 var(--brd)"></div>
         </details>` : ''}
 
         <button class="btn ghost mini" id="btnReanalyze" style="margin-top:8px">🔄 Перезапросить анализ</button>

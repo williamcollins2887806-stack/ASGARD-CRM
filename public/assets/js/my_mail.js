@@ -1181,7 +1181,7 @@ window.AsgardMyMailPage = (function(){
       title: 'Ответ',
       to: e.from_email || '',
       subject: e.subject?.startsWith('Re:') ? e.subject : 'Re: ' + (e.subject || ''),
-      body: `<br><br><blockquote style="border-left:3px solid rgba(255,255,255,0.1);padding-left:16px;margin-left:0;color:rgba(255,255,255,0.5)">${fmtFullDate(e.email_date)}, ${esc(e.from_name || e.from_email || '')}:<br>${e.body_html || (e.body_text || '').replace(/\n/g, '<br>')}</blockquote>`,
+      body: `<br><br><blockquote style="border-left:3px solid var(--brd);padding-left:16px;margin-left:0;color:var(--t2)">${fmtFullDate(e.email_date)}, ${esc(e.from_name || e.from_email || '')}:<br>${e.body_html || (e.body_text || '').replace(/\n/g, '<br>')}</blockquote>`,
       reply_to_email_id: emailId
     });
   }
@@ -1198,7 +1198,7 @@ window.AsgardMyMailPage = (function(){
       to: toFiltered.join(', '),
       cc: (e.cc_emails || []).map(c => c.address || c).filter(Boolean).join(', '),
       subject: e.subject?.startsWith('Re:') ? e.subject : 'Re: ' + (e.subject || ''),
-      body: `<br><br><blockquote style="border-left:3px solid rgba(255,255,255,0.1);padding-left:16px;margin-left:0;color:rgba(255,255,255,0.5)">${fmtFullDate(e.email_date)}, ${esc(e.from_name || e.from_email || '')}:<br>${e.body_html || (e.body_text || '').replace(/\n/g, '<br>')}</blockquote>`,
+      body: `<br><br><blockquote style="border-left:3px solid var(--brd);padding-left:16px;margin-left:0;color:var(--t2)">${fmtFullDate(e.email_date)}, ${esc(e.from_name || e.from_email || '')}:<br>${e.body_html || (e.body_text || '').replace(/\n/g, '<br>')}</blockquote>`,
       reply_to_email_id: emailId
     });
   }
