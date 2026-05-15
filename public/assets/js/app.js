@@ -2086,11 +2086,11 @@ var _setupPinKeypad = null;
     AsgardRouter.add("/alerts", ()=>AsgardAlertsPage.render({layout, title:"Уведомления"}), {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/personnel", () => {
       AsgardPersonnelPage.render({layout, title:"Дружина • Персонал"});
-    }, {auth:true, roles:["ADMIN","HR","HR_MANAGER","PM","HEAD_PM",...DIRECTOR_ROLES]});
+    }, {auth:true, roles:["ADMIN","HR","HR_MANAGER","PM","HEAD_PM","TO","OFFICE_MANAGER",...DIRECTOR_ROLES]});
     AsgardRouter.add("/hr-rating", ()=>AsgardHrRatingPage.render({layout, title:"Рейтинг Дружины"}), {auth:true, roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES]});
     AsgardRouter.add("/employee", () => {
       AsgardEmployeePage.render({layout, title:"Личное дело"});
-    }, {auth:true, roles:["ADMIN","HR","PM","TO",...DIRECTOR_ROLES]});
+    }, {auth:true, roles:["ADMIN","HR","HR_MANAGER","PM","HEAD_PM","TO","OFFICE_MANAGER",...DIRECTOR_ROLES]});
     AsgardRouter.add("/collections", () => { AsgardEmployeeCollections.render({layout, title:"Подборки Дружины"}); }, {auth:true, roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES]});
     AsgardRouter.add("/hr-requests", () => {
       AsgardHrRequestsPage.render({layout, title:"Заявки персонала"});
