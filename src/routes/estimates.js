@@ -804,7 +804,7 @@ async function routes(fastify) {
     return { success: true, total_cost: totalCost, total_with_margin: totalWithMargin };
   });
 
-  // ─── POST /:id/approve-finalize — при согласовании записать в тендер + сохранить XLSX ───
+  // ─── POST /:id/approve-finalize — при согласовании записать в тендер + сохранить HTML отчёт ───
   fastify.post('/:id/approve-finalize', { preHandler: [fastify.requireRoles(['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])] }, async (request, reply) => {
     const estimate = await checkEstimateAccess(db, request.params.id, request.user, reply);
     if (!estimate) return;
@@ -819,7 +819,7 @@ async function routes(fastify) {
       [estimate.id, finalPrice, finalCost]
     );
 
-    // 2. Записать в тендер: estimate_value (сумма к клиенту)
+    // 2. Записать в тендер: estimate_value
     if (estimate.tender_id) {
       try {
         await db.query(
@@ -831,26 +831,190 @@ async function routes(fastify) {
       }
     }
 
-    // 3. Если указан xlsx_base64 — сохранить как документ тендера
-    if (body.xlsx_base64 && estimate.tender_id) {
+    // 3. Сгенерировать красивый HTML-отчёт и сохранить как документ тендера
+    if (estimate.tender_id) {
       try {
-        const fs = require('fs').promises;
-        const path = require('path');
-        const uploadDir = path.join(process.env.UPLOAD_DIR || './uploads', 'estimates');
-        await fs.mkdir(uploadDir, { recursive: true });
+        const fsP = require('fs').promises;
+        const pathLib = require('path');
 
-        const buf = Buffer.from(body.xlsx_base64, 'base64');
-        const fname = `Проcчёт_${estimate.id}_v${estimate.current_version_no || 1}.xlsx`;
-        const safeName = `estimate_${estimate.id}_${Date.now()}.xlsx`;
-        const filePath = path.join(uploadDir, safeName);
-        await fs.writeFile(filePath, buf);
+        // Получаем данные расчёта
+        const calcRes = await db.query(
+          `SELECT * FROM estimate_calculation_data WHERE estimate_id = $1 ORDER BY created_at DESC LIMIT 1`,
+          [estimate.id]
+        );
+        const calc = calcRes.rows[0] || {};
+        const blocks = calc.has_override && calc.calc_override_json
+          ? calc.calc_override_json
+          : calc.blocks_json || {};
+
+        // Получаем чат-сообщения Мимира по этому просчёту (последние 30)
+        let chatMessages = [];
+        try {
+          const chatRes = await db.query(`
+            SELECT cm.content, cm.role, cm.created_at, u.login as sender
+            FROM chat_messages cm
+            LEFT JOIN chat_groups cg ON cg.id = cm.group_id
+            LEFT JOIN users u ON u.id = cm.user_id
+            WHERE cg.entity_type = 'estimate' AND cg.entity_id = $1
+            ORDER BY cm.created_at ASC
+            LIMIT 50
+          `, [estimate.id]);
+          chatMessages = chatRes.rows;
+        } catch (_) {}
+
+        // Детали тендера
+        let tenderName = '';
+        try {
+          const tRes = await db.query('SELECT tender_title, customer_name FROM tenders WHERE id = $1', [estimate.tender_id]);
+          if (tRes.rows[0]) {
+            tenderName = `${tRes.rows[0].tender_title || ''} — ${tRes.rows[0].customer_name || ''}`;
+          }
+        } catch (_) {}
+
+        const approver = request.user.name || request.user.login || 'Директор';
+        const approvedAt = new Date().toLocaleString('ru-RU');
+        const versionNo = estimate.current_version_no || 1;
+
+        const fmt = (n) => {
+          const v = parseFloat(n) || 0;
+          return v.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
+        };
+
+        const blockLabels = {
+          personnel: 'Персонал (ФОТ + налоги)',
+          current: 'Текущие расходы',
+          travel: 'Командировочные',
+          transport: 'Транспорт и логистика',
+          chemistry: 'Химия и материалы',
+          contingency: 'Непредвиденные расходы',
+        };
+
+        const blockRows = Object.entries(blockLabels).map(([key, label]) => {
+          const val = parseFloat(blocks[key] || 0);
+          return `<tr><td>${label}</td><td class="num">${fmt(val)}</td></tr>`;
+        }).join('');
+
+        const overrideNote = calc.has_override
+          ? `<div class="override-note">⚠️ Отчёт содержит ручные правки (изменён: ${calc.override_at ? new Date(calc.override_at).toLocaleString('ru-RU') : ''})</div>`
+          : '';
+
+        const chatHtml = chatMessages.length > 0
+          ? `<section class="section">
+              <h2>Комментарии Мимира</h2>
+              <div class="chat">
+                ${chatMessages.map(m => `
+                  <div class="msg ${m.role === 'assistant' ? 'mimir' : 'user'}">
+                    <div class="msg-header">${m.role === 'assistant' ? '🧠 Мимир' : ('👤 ' + (m.sender || 'Пользователь'))} <span class="msg-time">${new Date(m.created_at).toLocaleString('ru-RU')}</span></div>
+                    <div class="msg-body">${String(m.content || '').replace(/</g, '&lt;').replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>')}</div>
+                  </div>
+                `).join('')}
+              </div>
+            </section>`
+          : '';
+
+        const html = `<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Просчёт №${estimate.id} — Асгард Сервис</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #f5f6fa; color: #1a1d2e; font-size: 14px; }
+  .page { max-width: 900px; margin: 0 auto; padding: 32px 24px; }
+  .header { background: linear-gradient(135deg, #1a1d2e 0%, #252a42 100%); color: #fff; border-radius: 12px; padding: 28px 32px; margin-bottom: 24px; }
+  .header h1 { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+  .header .sub { opacity: .75; font-size: 13px; margin-top: 4px; }
+  .badge-approved { display: inline-block; background: #2ecc71; color: #fff; border-radius: 20px; padding: 3px 12px; font-size: 12px; font-weight: 700; margin-top: 10px; }
+  .section { background: #fff; border-radius: 10px; padding: 20px 24px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.07); }
+  .section h2 { font-size: 15px; font-weight: 700; color: #252a42; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 2px solid #e8ecf5; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #f0f2fa; text-align: left; padding: 8px 12px; font-size: 12px; color: #5a6280; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  td { padding: 9px 12px; border-bottom: 1px solid #f0f2fa; }
+  td.num { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+  tr:last-child td { border-bottom: none; }
+  .total-row td { font-size: 15px; font-weight: 700; color: #252a42; background: #f8f9ff; border-top: 2px solid #e0e4f5; }
+  .kpi-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
+  .kpi-card { flex: 1; min-width: 180px; background: #f8f9ff; border-radius: 8px; padding: 14px 16px; }
+  .kpi-card .label { font-size: 11px; color: #8890b0; text-transform: uppercase; letter-spacing: .05em; }
+  .kpi-card .value { font-size: 20px; font-weight: 700; color: #252a42; margin-top: 4px; }
+  .kpi-card .value.green { color: #27ae60; }
+  .override-note { background: #fff8e1; border-left: 4px solid #f39c12; padding: 10px 14px; border-radius: 0 6px 6px 0; margin-bottom: 14px; font-size: 12px; color: #856404; }
+  .chat { display: flex; flex-direction: column; gap: 12px; }
+  .msg { border-radius: 8px; padding: 12px 16px; max-width: 90%; }
+  .msg.mimir { background: #f0f4ff; border-left: 3px solid #4a6ff5; align-self: flex-start; }
+  .msg.user { background: #f9f9f9; border-left: 3px solid #ccc; align-self: flex-end; }
+  .msg-header { font-size: 11px; font-weight: 700; color: #8890b0; margin-bottom: 6px; }
+  .msg-time { font-weight: 400; margin-left: 8px; }
+  .msg-body { font-size: 13px; line-height: 1.55; }
+  .footer { text-align: center; color: #8890b0; font-size: 11px; margin-top: 24px; padding-top: 12px; border-top: 1px solid #e8ecf5; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <div class="sub">ООО «Асгард Сервис» · Просчёт TКП</div>
+    <h1>${estimate.estimate_title || estimate.title || ('Просчёт №' + estimate.id)}</h1>
+    <div class="sub">${tenderName}</div>
+    <div class="badge-approved">✓ Согласован</div>
+    <div class="sub" style="margin-top:8px">Версия ${versionNo} · Согласовал: ${approver} · ${approvedAt}</div>
+  </div>
+
+  ${overrideNote ? `<section class="section">${overrideNote}</section>` : ''}
+
+  <section class="section">
+    <h2>Итоговые показатели</h2>
+    <div class="kpi-row">
+      <div class="kpi-card">
+        <div class="label">Цена для клиента</div>
+        <div class="value">${fmt(finalPrice)}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">Себестоимость</div>
+        <div class="value">${fmt(finalCost)}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">Маржа</div>
+        <div class="value green">${fmt(finalPrice - finalCost)}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">Маржа %</div>
+        <div class="value green">${finalPrice > 0 ? ((finalPrice - finalCost) / finalPrice * 100).toFixed(1) : '0'}%</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Разбивка по блокам</h2>
+    <table>
+      <thead><tr><th>Статья затрат</th><th style="text-align:right;width:200px">Сумма</th></tr></thead>
+      <tbody>
+        ${blockRows}
+        <tr class="total-row"><td>ИТОГО себестоимость</td><td class="num">${fmt(finalCost)}</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  ${chatHtml}
+
+  <div class="footer">Документ сформирован автоматически CRM АСГАРД · ${approvedAt}</div>
+</div>
+</body>
+</html>`;
+
+        const uploadDir = pathLib.join(process.env.UPLOAD_DIR || './uploads', 'estimates');
+        await fsP.mkdir(uploadDir, { recursive: true });
+        const safeName = `estimate_${estimate.id}_${Date.now()}.html`;
+        const displayName = `Просчёт_${estimate.id}_v${versionNo}.html`;
+        const filePath = pathLib.join(uploadDir, safeName);
+        await fsP.writeFile(filePath, html, 'utf8');
 
         await db.query(`
           INSERT INTO documents (filename, original_name, mime_type, size, type, tender_id, uploaded_by, download_url, created_at)
-          VALUES ($1, $2, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', $3, 'estimate', $4, $5, $6, NOW())
-        `, [safeName, fname, buf.length, estimate.tender_id, request.user.id, `/uploads/estimates/${safeName}`]);
-      } catch (xlsxErr) {
-        fastify.log.warn('[estimates] xlsx save error:', xlsxErr.message);
+          VALUES ($1, $2, 'text/html', $3, 'estimate', $4, $5, $6, NOW())
+        `, [safeName, displayName, Buffer.byteLength(html, 'utf8'), estimate.tender_id, request.user.id, `/uploads/estimates/${safeName}`]);
+      } catch (htmlErr) {
+        fastify.log.warn('[estimates] html report save error:', htmlErr.message);
       }
     }
 

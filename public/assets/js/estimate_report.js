@@ -1313,38 +1313,15 @@ window.AsgardEstimateReportPage = (function () {
         try {
           await api('POST', '/approval/estimates/' + estimateId + '/' + action, token, { comment });
 
-          // При согласовании — записать финальные суммы в тендер + сохранить XLSX
+          // При согласовании — записать финальные суммы в тендер + сохранить HTML-отчёт
           if (action === 'approve') {
             try {
-              let xlsxBase64 = null;
-              if (typeof XLSX !== 'undefined' && window._lastCalcData) {
-                const wb = XLSX.utils.book_new();
-                const calcRows = [['Согласованный просчёт']];
-                const blocks = window._lastCalcData.blocks || [];
-                blocks.forEach(b => {
-                  const meta = BLOCK_META[b.id] || {};
-                  calcRows.push([meta.name || b.id]);
-                  calcRows.push(['Позиция','Кол-во','Ставка','Дни','Итого']);
-                  (b.rows||[]).forEach(r => calcRows.push([r.item||'',r.qty||'',r.rate||'',r.days||'',r.total||0]));
-                  calcRows.push(['Итого: '+(meta.name||b.id),'','','',b.subtotal||0]);
-                  calcRows.push([]);
-                });
-                const ws = XLSX.utils.aoa_to_sheet(calcRows);
-                XLSX.utils.book_append_sheet(wb, ws, 'Просчёт');
-                const arrBuf = XLSX.write(wb, { bookType:'xlsx', type:'array' });
-                const bytes = new Uint8Array(arrBuf);
-                let bin = '';
-                bytes.forEach(b => bin += String.fromCharCode(b));
-                xlsxBase64 = btoa(bin);
-              }
-
               const s = window._lastCalcData?.summary || {};
               await api('POST', '/estimates/' + estimateId + '/approve-finalize', token, {
                 final_price: parseFloat(s.price_no_vat) || 0,
-                final_cost:  parseFloat(s.cost_no_vat)  || 0,
-                xlsx_base64: xlsxBase64
+                final_cost:  parseFloat(s.cost_no_vat)  || 0
               });
-              toast('Просчёт записан в тендер', 'ok');
+              toast('Просчёт записан в тендер. Отчёт сохранён в документы.', 'ok');
             } catch(finErr) {
               console.warn('[EstReport] approve-finalize error:', finErr.message);
             }

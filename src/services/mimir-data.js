@@ -9,7 +9,7 @@
 'use strict';
 
 // Роли с полным доступом ко всем данным
-const FULL_ACCESS_ROLES = ['ADMIN', 'DIR', 'FIN_DIR', 'DIRECTOR', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+const FULL_ACCESS_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ХЕЛПЕРЫ РОЛЕЙ
@@ -97,8 +97,15 @@ async function getPeopleAndPermits(db) {
       SELECT pt.name, COUNT(DISTINCT ep.employee_id) as cnt
       FROM employee_permits ep
       JOIN permit_types pt ON pt.id = ep.type_id
+      JOIN employees e ON e.id = ep.employee_id
       WHERE ep.is_active = true
         AND (ep.expiry_date IS NULL OR ep.expiry_date > CURRENT_DATE)
+        AND (e.is_active = true OR e.is_active IS NULL)
+        AND ep.employee_id NOT IN (
+          SELECT ea.employee_id FROM employee_assignments ea
+          WHERE ea.is_active = true
+            AND (ea.departure_date IS NULL OR ea.departure_date > CURRENT_DATE)
+        )
       GROUP BY pt.name ORDER BY cnt DESC LIMIT 10
     `);
     result.top_permits = permits.rows;
@@ -622,6 +629,17 @@ ${statusList}
     section = 'ОБОРУДОВАНИЕ/ТМЦ — основная зона ответственности.';
     section += buildEquipmentSection(stats);
 
+  } else if (role === 'OFFICE_MANAGER') {
+    section = 'Зона ответственности: офисная логистика, договоры, корреспонденция, расходы, персонал (Дружина).';
+    if (stats.employeesTotal) {
+      section += `\nСОТРУДНИКИ: ${stats.employeesTotal}`;
+      if (stats.employeesByDept && stats.employeesByDept.length > 0) {
+        section += '\nПо подразделениям:\n' +
+          stats.employeesByDept.map(d => `  • ${d.department}: ${d.cnt}`).join('\n');
+      }
+    }
+    section += buildEquipmentSection(stats);
+
   } else {
     section = 'Ограниченный доступ к данным.';
   }
@@ -634,7 +652,7 @@ ${statusList}
  */
 function buildRestrictions(role, userName) {
   if (hasFullAccess(role)) {
-    return 'У тебя ПО��НЫЙ доступ ко всем данным системы. Все цифры в crm_data — глобальная статистика компании.';
+    return 'У тебя ПОЛНЫЙ доступ ко всем данным системы. Все цифры в crm_data — глобальная статистика компании.';
   }
 
   const restrictions = [];
@@ -642,8 +660,8 @@ function buildRestrictions(role, userName) {
   if (isPM(role)) {
     restrictions.push(`ВСЕ цифры в crm_data — это ТОЛЬКО данные РП "${userName}". Не говори "в компании" — говори "у тебя"`);
     restrictions.push('НЕ придумывай цифры. Если в crm_data написано 2 работы — значит 2, не 168');
-    restrictions.push('НЕ ра��крывай тендеры и работы других руководителей проектов');
-    restrictions.push('НЕ раскрыв��й зарплаты сотруд��иков');
+    restrictions.push('НЕ раскрывай тендеры и работы других руководителей проектов');
+    restrictions.push('НЕ раскрывай зарплаты сотрудников');
     restrictions.push('НЕ раскрывай общую прибыль компании');
   } else if (isTO(role)) {
     restrictions.push('Показывай информацию только по тендерам');
@@ -657,6 +675,14 @@ function buildRestrictions(role, userName) {
     restrictions.push('Показывай информацию о финансах и работах');
     restrictions.push('НЕ раскрывай прибыль компании (только доходы и расходы)');
     restrictions.push('НЕ раскрывай информацию о персонале кроме ФОТ');
+  } else if (role === 'OFFICE_MANAGER') {
+    restrictions.push('Помогай с офисными вопросами: договоры, корреспонденция, расходы, логистика, персонал');
+    restrictions.push('НЕ раскрывай финансовую прибыль компании');
+    restrictions.push('НЕ раскрывай детали тендеров и коммерческие условия');
+    restrictions.push('Можешь отвечать на вопросы о сотрудниках (контакты, должности, допуски)');
+  } else if (['CHIEF_ENGINEER', 'WAREHOUSE'].includes(role)) {
+    restrictions.push('Фокус на складе и оборудовании');
+    restrictions.push('НЕ раскрывай финансовую и HR информацию');
   } else {
     restrictions.push('Отвечай только на общие вопросы о работе CRM');
     restrictions.push('НЕ раскрывай никакую конфиденциальную информацию');
@@ -672,7 +698,7 @@ async function buildSystemPrompt(db, user) {
   const stats = await getDbStats(db, user);
   const role = user?.role || 'USER';
   let peoplePermits = null;
-  if (hasFullAccess(role) || isPM(role)) {
+  if (hasFullAccess(role) || isPM(role) || role === 'OFFICE_MANAGER') {
     try { peoplePermits = await getPeopleAndPermits(db); } catch (_) {}
   }
   const today = new Date().toLocaleDateString('ru-RU', {
