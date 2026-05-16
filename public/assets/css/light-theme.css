@@ -1904,6 +1904,797 @@ html[data-theme="light"] .avatar img { outline: none !important; }
 
 
 /* ═══════════════════════════════════════════════════════════════════════════════
+   §44. ФИНАЛЬНЫЙ АУДИТ — исправление багов + premium polish
+   Устраняет все хардкоженые чужеродные цвета и добавляет финальную полировку.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+
+/* ── A. CR-METRIC — убираем нeon-градиентную рамку, ставим физическую тень ── */
+
+html[data-theme="light"] .cr-metric {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  box-shadow: var(--shadow-md) !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease !important;
+}
+html[data-theme="light"] .cr-metric:hover {
+  transform: translateY(-3px) !important;
+  box-shadow: var(--shadow-lg) !important;
+  border-color: rgba(184,132,26,0.35) !important;
+}
+/* Убиваем neon-border через pseudo-элемент */
+html[data-theme="light"] .cr-metric::before {
+  background: none !important;
+  opacity: 0 !important;
+}
+/* Убиваем inner-fill pseudo-элемент (он не нужен без градиентной рамки) */
+html[data-theme="light"] .cr-metric::after {
+  background: none !important;
+  inset: 0 !important;
+}
+/* cr-insight — убираем neon-border, ставим золотую */
+html[data-theme="light"] .cr-insight {
+  background: rgba(252,249,243,1) !important;
+  border: 1px solid rgba(184,132,26,0.22) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+html[data-theme="light"] .cr-insight::before,
+html[data-theme="light"] .cr-insight::after {
+  background: none !important;
+  opacity: 0 !important;
+}
+
+
+/* ── B. CR-SELECT — золотой focus вместо хардкоженого #5b8def ── */
+
+html[data-theme="light"] .cr-select--open .cr-select__trigger,
+html[data-theme="light"] .cr-select__trigger:focus {
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 0 3px rgba(184,132,26,0.12) !important;
+}
+html[data-theme="light"] .cr-select__search-input:focus {
+  border-color: var(--gold) !important;
+  outline: none !important;
+}
+html[data-theme="light"] .cr-select__option--selected {
+  background: rgba(184,132,26,0.09) !important;
+  color: var(--gold) !important;
+}
+/* Checkmark в выбранном пункте — меняем синий на золото */
+html[data-theme="light"] .cr-select__option--selected::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23B8841A'%3E%3Cpath d='M6.5 12.5l-4-4 1.4-1.4 2.6 2.6 5.6-5.6 1.4 1.4z'/%3E%3C/svg%3E") !important;
+  background-position: center/contain !important;
+  background-repeat: no-repeat !important;
+}
+html[data-theme="light"] .cr-select__trigger {
+  background: var(--bg2) !important;
+  border-color: var(--brd) !important;
+}
+html[data-theme="light"] .cr-select__dropdown {
+  box-shadow: var(--shadow-lg) !important;
+  border: 1px solid var(--brd) !important;
+}
+
+
+/* ── C. CR-EMP-PICKER — золотой выбор вместо синего #5b8def ── */
+
+html[data-theme="light"] .cr-emp-picker__row--sel {
+  background: rgba(184,132,26,0.10) !important;
+}
+html[data-theme="light"] .cr-emp-picker__row--sel:hover {
+  background: rgba(184,132,26,0.16) !important;
+}
+html[data-theme="light"] .cr-emp-picker__search:focus,
+html[data-theme="light"] .cr-emp-picker__search:focus-visible {
+  border-color: var(--gold) !important;
+  outline: none !important;
+}
+html[data-theme="light"] .cr-emp-picker__trigger {
+  background: var(--bg2) !important;
+  border-color: var(--brd) !important;
+}
+html[data-theme="light"] .cr-emp-picker__trigger:hover {
+  border-color: rgba(139,120,90,0.40) !important;
+}
+html[data-theme="light"] .cr-emp-picker__modal {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  box-shadow: var(--shadow-xl) !important;
+}
+html[data-theme="light"] .cr-emp-picker__header {
+  background: var(--bg3) !important;
+  border-bottom: 1px solid var(--brd) !important;
+}
+html[data-theme="light"] .cr-emp-picker__filters {
+  border-bottom: 1px solid var(--brd) !important;
+}
+/* Аватары — чуть приглушить яркость для бумажного фона */
+html[data-theme="light"] [class^="cr-emp-picker__av--c"],
+html[data-theme="light"] [class*=" cr-emp-picker__av--c"] {
+  filter: saturate(0.80) brightness(0.90) !important;
+}
+html[data-theme="light"] .cr-emp-picker__chip {
+  background: rgba(184,132,26,0.10) !important;
+  color: var(--t1) !important;
+}
+
+
+/* ── D. CR-MODAL — тёплая рамка вместо rgba(white,0.10) ── */
+
+html[data-theme="light"] .cr-m {
+  border: 1px solid var(--brd) !important;
+  box-shadow: var(--shadow-xl) !important;
+}
+html[data-theme="light"] .cr-m-overlay {
+  background: rgba(28,25,20,0.52) !important;
+}
+html[data-theme="light"] .cr-m__body-title {
+  border-left-color: var(--gold) !important;
+  color: var(--gold) !important;
+}
+
+
+/* ── E. MY-MAIL — убираем синие тени, ставим тёплые ── */
+
+html[data-theme="light"] .mymail-compose-btn {
+  box-shadow: var(--shadow-md) !important;
+}
+html[data-theme="light"] .mymail-email-row.selected,
+html[data-theme="light"] .mymail-thread-item.current {
+  background: rgba(184,132,26,0.09) !important;
+  border-color: rgba(184,132,26,0.20) !important;
+}
+html[data-theme="light"] .mymail-new-mail-banner {
+  background: rgba(184,132,26,0.06) !important;
+  border-bottom: 1px solid rgba(184,132,26,0.14) !important;
+}
+html[data-theme="light"] .mymail-new-mail-banner:hover {
+  background: rgba(184,132,26,0.12) !important;
+}
+html[data-theme="light"] .mymail-avatar,
+html[data-theme="light"] .mymail-compose-avatar {
+  box-shadow: none !important;
+}
+html[data-theme="light"] .mymail-folder-item.active {
+  background: rgba(184,132,26,0.10) !important;
+  border-left: 3px solid var(--gold) !important;
+  color: var(--gold) !important;
+}
+html[data-theme="light"] .mymail-folder-item:hover {
+  background: var(--bg3) !important;
+}
+html[data-theme="light"] .mymail-unread-badge {
+  background: var(--red) !important;
+  color: #fff !important;
+}
+
+
+/* ── F. COMPONENTS — убиваем все neon box-shadow glows ── */
+
+/* Синие/золотые/красные neon glows из components.css */
+html[data-theme="light"] [class*="navitem"]:hover,
+html[data-theme="light"] [class*="nav-item"]:hover {
+  box-shadow: none !important;
+}
+html[data-theme="light"] .dot-gold,
+html[data-theme="light"] .dot--gold {
+  box-shadow: none !important;
+}
+/* Убиваем все glow-анимации */
+html[data-theme="light"] * {
+  animation-name: none !important;
+}
+/* Возвращаем нужные анимации (transitions, loading, skeleton) */
+html[data-theme="light"] .cr-skeleton,
+html[data-theme="light"] .cr-skeleton--card,
+html[data-theme="light"] .cr-skeleton--chart,
+html[data-theme="light"] .cr-skeleton--row {
+  animation-name: cr-shimmer !important;
+}
+html[data-theme="light"] .cr-wow-card {
+  animation-name: cr-slideUp !important;
+}
+html[data-theme="light"] .cr-chart__line--animate {
+  animation-name: cr-pathDraw !important;
+}
+html[data-theme="light"] .gl-row {
+  animation-name: gl-row-in !important;
+}
+html[data-theme="light"] .mimir-streaming-cursor {
+  animation-name: blink !important;
+}
+html[data-theme="light"] #asgard-splash [style*="animation"] {
+  animation-name: unset !important;
+}
+html[data-theme="light"] #asgard-splash img {
+  animation-name: asgard-splash-float !important;
+}
+html[data-theme="light"] #asgard-splash div[style*="spin"] {
+  animation-name: asgard-splash-spin !important;
+}
+
+
+/* ── G. UTILITY — muted, text-muted, help, dot ── */
+
+html[data-theme="light"] .muted,
+html[data-theme="light"] .text-muted { color: var(--t3) !important; }
+html[data-theme="light"] .help { color: var(--t3) !important; }
+html[data-theme="light"] .dot {
+  display: inline-block;
+  border-radius: 50%;
+  box-shadow: none !important;
+}
+html[data-theme="light"] .mini { font-size: 11px !important; }
+
+
+/* ── H. WELCOME LEFT PANEL — ASGARD текст и руны (декоративно) ── */
+
+/* Объединяем все радиальные градиенты в ::before */
+html[data-theme="light"] .welcome-page::before {
+  background: #16325A !important;
+  background-image:
+    radial-gradient(ellipse 70% 55% at 50% 45%, rgba(184,132,26,0.13), transparent 65%),
+    radial-gradient(ellipse 45% 65% at 15% 82%, rgba(168,32,48,0.09), transparent 60%),
+    linear-gradient(rgba(184,132,26,0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(184,132,26,0.055) 1px, transparent 1px) !important;
+  background-size: 100% 100%, 100% 100%, 32px 32px, 32px 32px !important;
+}
+
+/* ::after — декоративный текст "ASGARD" на левой панели */
+html[data-theme="light"] .welcome-page::after {
+  content: 'ASGARD' !important;
+  position: fixed !important;
+  left: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  width: 42% !important;
+  background: none !important;
+  z-index: 1 !important;
+  pointer-events: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 72px !important;
+  font-weight: 900 !important;
+  letter-spacing: 14px !important;
+  color: rgba(212,168,67,0.10) !important;
+  text-indent: 14px !important;
+  writing-mode: vertical-rl !important;
+  text-orientation: mixed !important;
+}
+
+@media (max-width: 900px) {
+  html[data-theme="light"] .welcome-page::before {
+    width: 35% !important;
+  }
+  html[data-theme="light"] .welcome-page::after {
+    width: 35% !important;
+    font-size: 52px !important;
+  }
+}
+@media (max-width: 640px) {
+  html[data-theme="light"] .welcome-page::after {
+    display: none !important;
+  }
+}
+
+
+/* ── I. PREMIUM — детали которые поднимают тему на уровень выше ── */
+
+/* 1. Топбар — тонкая полоска тепла снизу (уже есть бордер, делаем акцент) */
+html[data-theme="light"] .topbar,
+html[data-theme="light"] .asg-header {
+  box-shadow: 0 1px 0 rgba(184,132,26,0.10) !important;
+}
+
+/* 2. Золотой глоссированный блик на карточках при hover */
+html[data-theme="light"] .card:hover,
+html[data-theme="light"] .panel:hover,
+html[data-theme="light"] .widget:hover {
+  box-shadow:
+    3px 4px 0 rgba(0,0,0,0.05),
+    0 4px 20px rgba(0,0,0,0.08),
+    0 0 0 1px rgba(184,132,26,0.14) !important;
+}
+
+/* 3. Section headers — более выразительные, с тонкой золотой линией */
+html[data-theme="light"] .card h3,
+html[data-theme="light"] .panel h3,
+html[data-theme="light"] .section-title {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+html[data-theme="light"] .card h3::before,
+html[data-theme="light"] .panel h3::before,
+html[data-theme="light"] .section-title::before {
+  content: '' !important;
+  display: inline-block !important;
+  width: 3px !important;
+  height: 1em !important;
+  background: var(--gold) !important;
+  border-radius: 2px !important;
+  flex-shrink: 0 !important;
+}
+
+/* 4. Форма входа — золотое кольцо при фокусе на любом input */
+html[data-theme="light"] .welcome-form input:focus {
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 0 4px rgba(184,132,26,0.10) !important;
+}
+
+/* 5. Активная вкладка — плавное появление золотой линии */
+html[data-theme="light"] .tab.active,
+html[data-theme="light"] .tab-btn.active {
+  position: relative !important;
+}
+html[data-theme="light"] .tab.active::after,
+html[data-theme="light"] .tab-btn.active::after {
+  content: '' !important;
+  position: absolute !important;
+  bottom: -1px !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: 2px !important;
+  background: var(--gold) !important;
+  border-radius: 1px 1px 0 0 !important;
+}
+
+/* 6. KPI карточки — тонкая золотая рамка справа, создаёт "глубину документа" */
+html[data-theme="light"] .kpi .k {
+  position: relative !important;
+}
+html[data-theme="light"] .kpi .k::after {
+  content: '' !important;
+  position: absolute !important;
+  top: 20% !important;
+  right: 0 !important;
+  bottom: 20% !important;
+  width: 1px !important;
+  background: var(--brd) !important;
+}
+html[data-theme="light"] .kpi .k:last-child::after {
+  display: none !important;
+}
+
+/* 7. Таблица — более выразительные заголовки */
+html[data-theme="light"] table th,
+html[data-theme="light"] .tbl th,
+html[data-theme="light"] table.asg th {
+  text-transform: uppercase !important;
+  letter-spacing: 0.4px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+}
+
+/* 8. Breadcrumbs — более живые */
+html[data-theme="light"] .breadcrumbs {
+  font-size: 12px !important;
+}
+html[data-theme="light"] .bc-sep {
+  color: rgba(139,120,90,0.35) !important;
+}
+
+/* 9. Toast — улучшенный вид */
+html[data-theme="light"] .toast {
+  border-left: 4px solid var(--gold) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+html[data-theme="light"] .toast.error,
+html[data-theme="light"] .toast.danger {
+  border-left-color: var(--red) !important;
+}
+html[data-theme="light"] .toast.success {
+  border-left-color: var(--ok) !important;
+}
+html[data-theme="light"] .toast.info {
+  border-left-color: var(--blue) !important;
+}
+
+/* 10. Скроллбар — тоньше и элегантнее */
+html[data-theme="light"] ::-webkit-scrollbar {
+  width: 5px !important;
+  height: 5px !important;
+}
+
+/* 11. Горизонтальные разделители — золотой fade */
+html[data-theme="light"] .hr,
+html[data-theme="light"] hr {
+  border: none !important;
+  height: 1px !important;
+  background: linear-gradient(90deg, transparent, rgba(184,132,26,0.18), transparent) !important;
+  margin: 16px 0 !important;
+}
+
+/* 12. Sidebar logo area — более premium */
+html[data-theme="light"] .brand img,
+html[data-theme="light"] .brand svg {
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.08)) !important;
+}
+
+/* 13. User pill в topbar — более деловой */
+html[data-theme="light"] .pill {
+  background: var(--bg3) !important;
+  border: 1px solid var(--brd) !important;
+}
+html[data-theme="light"] .pill .who {
+  color: var(--t1) !important;
+  font-weight: 600 !important;
+}
+html[data-theme="light"] .pill .role {
+  background: rgba(184,132,26,0.10) !important;
+  color: var(--gold) !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.3px !important;
+}
+
+/* 14. Pagination — элегантнее */
+html[data-theme="light"] .pagination a,
+html[data-theme="light"] .pagination button {
+  font-weight: 500 !important;
+}
+html[data-theme="light"] .pagination .active {
+  font-weight: 700 !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+/* 15. Progress bar — warm gold */
+html[data-theme="light"] .progress-bar-fill,
+html[data-theme="light"] [class*="progress-fill"],
+html[data-theme="light"] [class*="bar-fill"] {
+  background: linear-gradient(90deg, var(--gold), #d4a020) !important;
+}
+
+/* 16. Procurement — карточки закупок */
+html[data-theme="light"] .procurement.css,
+html[data-theme="light"] .tmc-card,
+html[data-theme="light"] .pass-card {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+/* 17. Статусы inline (pill-стиль в таблицах) */
+html[data-theme="light"] .pill[style*="border-color"] {
+  font-weight: 600 !important;
+  font-size: 12px !important;
+}
+
+/* 18. Inline gradient кнопки — убираем neon, оставляем цвет */
+html[data-theme="light"] [style*="linear-gradient(135deg,#C8293B,#1E4D8C)"] {
+  background: var(--blue) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+html[data-theme="light"] [style*="background:linear-gradient(135deg,#C8293B"] {
+  background: var(--blue) !important;
+}
+
+/* 19. Инпуты типа .input (альтернативный класс) */
+html[data-theme="light"] .input:not([type="checkbox"]):not([type="radio"]):not([type="file"]) {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  color: var(--t1) !important;
+}
+html[data-theme="light"] .input:focus {
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 0 3px rgba(184,132,26,0.12) !important;
+}
+
+/* 20. formrow — контейнер полей формы */
+html[data-theme="light"] .formrow {
+  color: var(--t1) !important;
+}
+html[data-theme="light"] .formrow label { color: var(--t2) !important; }
+
+/* 21. Tools toolbar — панель фильтров */
+html[data-theme="light"] .tools {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+html[data-theme="light"] .tools .field label { color: var(--t3) !important; font-size: 11px !important; }
+
+/* 22. Kanban column top accent — warm gold для светлой темы */
+html[data-theme="light"] .kanban-column::before,
+html[data-theme="light"] .funnel-column::before {
+  background: rgba(184,132,26,0.25) !important;
+  box-shadow: none !important;
+}
+html[data-theme="light"] .kanban-column {
+  background: var(--bg3) !important;
+  border: 1px solid var(--brd) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+html[data-theme="light"] .kanban-column-header {
+  color: var(--t1) !important;
+  font-weight: 700 !important;
+  border-bottom: 1px solid var(--brd) !important;
+}
+html[data-theme="light"] .kanban-column-count {
+  background: var(--bg4) !important;
+  color: var(--t2) !important;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* 23. Кнопка добавить в kanban */
+html[data-theme="light"] .kanban-add-btn {
+  border: 1px dashed rgba(139,120,90,0.30) !important;
+  color: var(--t3) !important;
+  background: transparent !important;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+html[data-theme="light"] .kanban-add-btn:hover {
+  border-color: var(--gold) !important;
+  color: var(--gold) !important;
+  background: rgba(184,132,26,0.05) !important;
+}
+
+/* 24. Chart tooltip */
+html[data-theme="light"] .cr-chart__tooltip {
+  background: var(--t1) !important;
+  color: #fff !important;
+  border: none !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+/* 25. CR-Detail (детали отчёта по звонку) */
+html[data-theme="light"] .cr-detail__mini {
+  background: var(--bg3) !important;
+  border: 1px solid var(--brd) !important;
+}
+html[data-theme="light"] .cr-detail__mini-value { color: var(--gold) !important; }
+html[data-theme="light"] .cr-detail__mini-label { color: var(--t3) !important; }
+html[data-theme="light"] .cr-detail__summary { color: var(--t2) !important; }
+html[data-theme="light"] .cr-detail__recs-list li::marker { color: var(--gold) !important; }
+html[data-theme="light"] .cr-detail__recs-list li { color: var(--t2) !important; }
+html[data-theme="light"] .cr-html-report {
+  background: var(--bg3) !important;
+  border: 1px solid var(--brd) !important;
+}
+html[data-theme="light"] .cr-accordion {
+  border: 1px solid var(--brd) !important;
+}
+html[data-theme="light"] .cr-accordion__head {
+  background: var(--bg3) !important;
+  color: var(--t1) !important;
+}
+html[data-theme="light"] .cr-accordion__head:hover { background: var(--bg4) !important; }
+html[data-theme="light"] .cr-accordion__arrow { color: var(--t3) !important; }
+html[data-theme="light"] .cr-accordion__content { color: var(--t1) !important; }
+
+/* 26. cr-list (список отчётов) */
+html[data-theme="light"] .cr-list {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+}
+html[data-theme="light"] .cr-list__row:hover { background: var(--bg3) !important; }
+html[data-theme="light"] .cr-list__table th {
+  background: var(--bg4) !important;
+  color: var(--t2) !important;
+}
+html[data-theme="light"] .cr-list__table td { color: var(--t1) !important; }
+html[data-theme="light"] .cr-badge--monthly {
+  background: rgba(139,92,246,0.10) !important;
+  color: #7C3AED !important;
+}
+html[data-theme="light"] .cr-badge--daily {
+  background: rgba(26,63,116,0.10) !important;
+  color: var(--blue) !important;
+}
+html[data-theme="light"] .cr-badge--weekly {
+  background: rgba(45,106,79,0.10) !important;
+  color: var(--ok) !important;
+}
+html[data-theme="light"] .cr-badge--manual {
+  background: rgba(184,132,26,0.10) !important;
+  color: var(--gold) !important;
+}
+
+/* 27. Worker profile desktop — улучшение */
+html[data-theme="light"] .wp-desktop-hero {
+  background: linear-gradient(135deg, rgba(26,63,116,0.06) 0%, rgba(184,132,26,0.04) 50%, rgba(168,32,48,0.04) 100%) !important;
+  border-bottom: 1px solid var(--brd) !important;
+}
+html[data-theme="light"] .wp-desktop-name { color: var(--t1) !important; }
+html[data-theme="light"] .wp-desktop-role {
+  background: rgba(184,132,26,0.10) !important;
+  color: var(--gold) !important;
+  font-weight: 700 !important;
+  border-radius: 20px;
+}
+
+/* 28. Approval timeline — правки */
+html[data-theme="light"] .approval-timeline-dot {
+  background: var(--bg2) !important;
+  border: 2px solid var(--brd) !important;
+}
+html[data-theme="light"] .approval-timeline-dot.active,
+html[data-theme="light"] .approval-timeline-dot.done {
+  background: var(--gold) !important;
+  border-color: var(--gold) !important;
+}
+
+/* 29. Gantt — chart bars */
+html[data-theme="light"] .cr-gantt-bar {
+  box-shadow: var(--shadow-sm) !important;
+}
+html[data-theme="light"] .cr-gantt-grid-line {
+  stroke: rgba(139,120,90,0.10) !important;
+}
+html[data-theme="light"] .cr-gantt-today-line {
+  stroke: rgba(168,32,48,0.40) !important;
+}
+
+/* 30. PROCUREMENT.CSS — карточки закупок */
+html[data-theme="light"] .tmc-req-card,
+html[data-theme="light"] .pass-req-card {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+html[data-theme="light"] .tmc-req-card:hover,
+html[data-theme="light"] .pass-req-card:hover {
+  border-color: rgba(184,132,26,0.30) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+
+/* ── J. ESTIMATE-REPORT — цветовые pill и статусы ── */
+
+/* Cost-bar segments — делаем чуть приглушённее для пергаментного фона */
+html[data-theme="light"] .er-costbar__seg--personnel    { filter: saturate(0.85) !important; }
+html[data-theme="light"] .er-costbar__seg--current      { filter: saturate(0.85) !important; }
+html[data-theme="light"] .er-costbar__seg--travel       { filter: saturate(0.85) !important; }
+html[data-theme="light"] .er-costbar__seg--transport    { filter: saturate(0.85) !important; }
+html[data-theme="light"] .er-costbar__seg--chemistry    { filter: saturate(0.85) !important; }
+html[data-theme="light"] .er-costbar__seg--contingency  { filter: saturate(0.85) !important; }
+
+/* er-card значения */
+html[data-theme="light"] .er-card {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+html[data-theme="light"] .er-card__label { color: var(--t3) !important; }
+html[data-theme="light"] .er-card__value { color: var(--t1) !important; }
+html[data-theme="light"] .er-card--green .er-card__value {
+  color: var(--ok) !important;
+}
+
+/* er-wtype badges */
+html[data-theme="light"] .er-wtype--HYDRO {
+  background: rgba(26,63,116,0.10) !important;
+  color: var(--blue) !important;
+}
+html[data-theme="light"] .er-wtype--ELEC {
+  background: rgba(184,132,26,0.10) !important;
+  color: var(--gold) !important;
+}
+html[data-theme="light"] .er-wtype--HVAC {
+  background: rgba(45,106,79,0.10) !important;
+  color: var(--ok) !important;
+}
+html[data-theme="light"] .er-wtype--COMBO {
+  background: rgba(139,92,246,0.10) !important;
+  color: #7C3AED !important;
+}
+
+/* er-comment actions */
+html[data-theme="light"] .er-comment__action--approve {
+  background: rgba(45,106,79,0.10) !important;
+  color: var(--ok) !important;
+}
+html[data-theme="light"] .er-comment__action--question {
+  background: rgba(26,63,116,0.10) !important;
+  color: var(--blue) !important;
+}
+html[data-theme="light"] .er-comment__action--resubmit {
+  background: rgba(184,132,26,0.10) !important;
+  color: var(--gold) !important;
+}
+html[data-theme="light"] .er-ok-badge {
+  background: rgba(45,106,79,0.10) !important;
+  color: var(--ok) !important;
+}
+
+
+/* ── K. ФИНАЛЬНЫЕ МИКРО-ДЕТАЛИ — то что замечают профессионалы ── */
+
+/* Placeholder у всех инпутов — warm tone */
+html[data-theme="light"] *::placeholder {
+  color: var(--t3) !important;
+  opacity: 0.7 !important;
+}
+
+/* Selection highlight */
+html[data-theme="light"] *::selection {
+  background: rgba(184,132,26,0.18) !important;
+  color: var(--t1) !important;
+}
+
+/* Focus outline — убираем стандартный синий */
+html[data-theme="light"] *:focus-visible {
+  outline: 2px solid rgba(184,132,26,0.40) !important;
+  outline-offset: 2px !important;
+}
+html[data-theme="light"] input:focus-visible,
+html[data-theme="light"] textarea:focus-visible,
+html[data-theme="light"] select:focus-visible {
+  outline: none !important;
+}
+
+/* Disabled элементы */
+html[data-theme="light"] [disabled],
+html[data-theme="light"] :disabled {
+  opacity: 0.55 !important;
+  cursor: not-allowed !important;
+}
+
+/* Divider между секциями sidebar */
+html[data-theme="light"] .nav-group + .nav-group {
+  border-top: 1px solid var(--brd-m) !important;
+}
+
+/* Страница настроек */
+html[data-theme="light"] .settings-nav-item:hover {
+  background: var(--bg3) !important;
+}
+html[data-theme="light"] .settings-nav-item.active {
+  background: rgba(184,132,26,0.08) !important;
+  border-left: 3px solid var(--gold) !important;
+  color: var(--gold) !important;
+}
+
+/* Всплывающие окна, которые используют фикс background: var(--bg0) */
+html[data-theme="light"] [style*="background: var(--bg0)"],
+html[data-theme="light"] [style*="background:var(--bg0)"] {
+  background: var(--bg2) !important;
+  color: var(--t1) !important;
+}
+
+/* Inline badge count в навигации */
+html[data-theme="light"] .nav-badge {
+  background: var(--red) !important;
+  color: #fff !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+}
+
+/* Switch toggle general */
+html[data-theme="light"] input[type="checkbox"].toggle-input:checked + .toggle-track {
+  background: var(--gold) !important;
+}
+
+/* Sortable drag placeholder */
+html[data-theme="light"] .sortable-ghost {
+  opacity: 0.4 !important;
+  background: rgba(184,132,26,0.06) !important;
+  border: 2px dashed rgba(184,132,26,0.30) !important;
+}
+
+/* File drop zone */
+html[data-theme="light"] .drop-zone,
+html[data-theme="light"] .dropzone {
+  border: 2px dashed var(--brd) !important;
+  background: var(--bg3) !important;
+  color: var(--t3) !important;
+  transition: border-color 0.2s, background 0.2s;
+}
+html[data-theme="light"] .drop-zone:hover,
+html[data-theme="light"] .dropzone:hover,
+html[data-theme="light"] .drop-zone.active,
+html[data-theme="light"] .dropzone.active {
+  border-color: var(--gold) !important;
+  background: rgba(184,132,26,0.05) !important;
+  color: var(--gold) !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
    §34. ТЕНДЕРЫ — детальная проработка
    Страница тендеров — одна из главных. Каждый элемент.
    ═══════════════════════════════════════════════════════════════════════════════ */
@@ -3289,3 +4080,857 @@ html[data-theme="light"] .er-status--rework {
   background: rgba(168,32,48,0.10) !important;
   color: var(--red) !important;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §44. ФИНАЛЬНЫЙ АУДИТ — Premium Polish & Bug Fixes
+   Устранение хардкодных цветов, анимационных конфликтов, микро-детали.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ─── §44-A: cr-metric — убираем неоновую рамку ::before ─── */
+html[data-theme="light"] .cr-metric::before {
+  opacity: 0 !important;
+}
+html[data-theme="light"] .cr-metric {
+  box-shadow: 2px 3px 0 rgba(0,0,0,0.04), 0 1px 6px rgba(0,0,0,0.06) !important;
+  border: 1px solid var(--brd) !important;
+}
+html[data-theme="light"] .cr-metric:hover {
+  box-shadow: 3px 4px 0 rgba(184,132,26,0.12), 0 2px 10px rgba(0,0,0,0.08) !important;
+  border-color: rgba(184,132,26,0.30) !important;
+}
+
+/* ─── §44-B: cr-select — золотой фокус вместо #5b8def ─── */
+html[data-theme="light"] .cr-select:focus,
+html[data-theme="light"] .cr-select:focus-visible {
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 0 3px rgba(184,132,26,0.18) !important;
+  outline: none !important;
+}
+html[data-theme="light"] .cr-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23B8841A' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 10px center !important;
+}
+
+/* ─── §44-C: cr-emp-picker — золотой выбранный ряд ─── */
+html[data-theme="light"] .cr-emp-picker__row--sel,
+html[data-theme="light"] .cr-emp-picker__row--sel:hover {
+  background: rgba(184,132,26,0.10) !important;
+  border-left: 3px solid var(--gold) !important;
+}
+html[data-theme="light"] .cr-emp-picker__search:focus {
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 0 3px rgba(184,132,26,0.15) !important;
+}
+
+/* ─── §44-D: cr-modal — тёплая рамка (не прозрачная) ─── */
+html[data-theme="light"] .cr-modal,
+html[data-theme="light"] .cr-dialog,
+html[data-theme="light"] [class*="cr-m "],
+html[data-theme="light"] [class^="cr-m"] {
+  border: 1px solid var(--brd) !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06) !important;
+}
+html[data-theme="light"] .cr-modal__header,
+html[data-theme="light"] .cr-dialog__header {
+  border-bottom: 1px solid var(--brd) !important;
+  background: var(--bg3) !important;
+}
+html[data-theme="light"] .cr-modal__footer,
+html[data-theme="light"] .cr-dialog__footer {
+  border-top: 1px solid var(--brd) !important;
+  background: var(--bg3) !important;
+}
+
+/* ─── §44-E: my-mail — золотые акценты вместо синих ─── */
+html[data-theme="light"] .my-mail__item--active,
+html[data-theme="light"] .my-mail__item.active {
+  background: rgba(184,132,26,0.08) !important;
+  border-left: 3px solid var(--gold) !important;
+  box-shadow: none !important;
+}
+html[data-theme="light"] .my-mail__item:hover {
+  background: var(--bg4) !important;
+}
+html[data-theme="light"] .my-mail__unread-dot {
+  background: var(--gold) !important;
+}
+html[data-theme="light"] .my-mail__tag--primary {
+  background: rgba(184,132,26,0.12) !important;
+  color: var(--gold) !important;
+}
+
+/* ─── §44-F: Глобальное подавление анимаций (неоновых) ─── */
+/* Убиваем все анимации типа goldenGlow, countFlash, borderPulse */
+html[data-theme="light"] *,
+html[data-theme="light"] *::before,
+html[data-theme="light"] *::after {
+  animation-name: none !important;
+}
+/* Восстанавливаем нужные анимации */
+html[data-theme="light"] .cr-shimmer,
+html[data-theme="light"] .cr-shimmer::after {
+  animation-name: cr-shimmer !important;
+}
+html[data-theme="light"] [class*="cr-slide"],
+html[data-theme="light"] .cr-slideUp {
+  animation-name: cr-slideUp !important;
+}
+html[data-theme="light"] .gl-row-in,
+html[data-theme="light"] .gl-row-in > * {
+  animation-name: gl-row-in !important;
+}
+html[data-theme="light"] .mimir-streaming-cursor {
+  animation-name: blink !important;
+}
+html[data-theme="light"] .asgard-splash__logo {
+  animation-name: asgard-splash-float !important;
+}
+html[data-theme="light"] .asgard-splash__rune {
+  animation-name: asgard-splash-spin !important;
+}
+html[data-theme="light"] .cr-spinner,
+html[data-theme="light"] .spinner,
+html[data-theme="light"] [class*="spin"] {
+  animation-name: spin !important;
+}
+html[data-theme="light"] .cr-path-draw {
+  animation-name: cr-pathDraw !important;
+}
+
+/* ─── §44-G: Утилиты текста ─── */
+html[data-theme="light"] .text-muted,
+html[data-theme="light"] .muted {
+  color: var(--t3) !important;
+}
+html[data-theme="light"] .help-text,
+html[data-theme="light"] .form-hint {
+  color: var(--t3) !important;
+  font-size: 12px;
+}
+html[data-theme="light"] .dot--online { background: var(--ok) !important; }
+html[data-theme="light"] .dot--busy   { background: var(--gold) !important; }
+html[data-theme="light"] .dot--offline { background: var(--t3) !important; }
+
+/* ─── §44-H: Welcome — левая панель «АСГАРД» ─── */
+html[data-theme="light"] .welcome-page::before {
+  background:
+    radial-gradient(ellipse 60% 40% at 30% 35%, rgba(184,132,26,0.12) 0%, transparent 65%),
+    radial-gradient(ellipse 50% 60% at 70% 70%, rgba(168,32,48,0.08) 0%, transparent 60%),
+    radial-gradient(ellipse 80% 80% at 50% 50%, rgba(26,63,116,0.05) 0%, transparent 70%),
+    linear-gradient(160deg, #1A0A0F 0%, #0D1117 40%, #0A1828 100%) !important;
+}
+html[data-theme="light"] .welcome-page::after {
+  content: 'ASGARD' !important;
+  position: fixed !important;
+  left: 0 !important;
+  top: 50% !important;
+  width: 42% !important;
+  transform: translateY(-50%) !important;
+  font-family: 'Cinzel', 'Trajan Pro', serif !important;
+  font-size: clamp(60px, 8vw, 96px) !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.25em !important;
+  color: rgba(212,168,67,0.08) !important;
+  text-align: center !important;
+  writing-mode: horizontal-tb !important;
+  pointer-events: none !important;
+  z-index: 0 !important;
+  white-space: nowrap !important;
+}
+
+/* ─── §44-I: Премиум детали интерфейса ─── */
+
+/* Топбар: тонкая нижняя тень */
+html[data-theme="light"] .topbar,
+html[data-theme="light"] .cr-topbar,
+html[data-theme="light"] header.main-header {
+  box-shadow: 0 1px 0 var(--brd), 0 2px 8px rgba(0,0,0,0.04) !important;
+}
+
+/* Карточки: золотое кольцо при hover */
+html[data-theme="light"] .cr-card:hover,
+html[data-theme="light"] .panel:hover,
+html[data-theme="light"] .card:hover {
+  outline: 1.5px solid rgba(184,132,26,0.20) !important;
+  box-shadow: 2px 4px 0 rgba(184,132,26,0.08), 0 2px 12px rgba(0,0,0,0.07) !important;
+}
+
+/* Section заголовки: золотая левая полоса */
+html[data-theme="light"] .section-title,
+html[data-theme="light"] .cr-section-title,
+html[data-theme="light"] h3.page-title {
+  position: relative !important;
+  padding-left: 14px !important;
+}
+html[data-theme="light"] .section-title::before,
+html[data-theme="light"] .cr-section-title::before,
+html[data-theme="light"] h3.page-title::before {
+  content: '' !important;
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  width: 3px !important;
+  background: linear-gradient(180deg, var(--gold) 0%, rgba(184,132,26,0.3) 100%) !important;
+  border-radius: 2px !important;
+  animation-name: none !important;
+}
+
+/* Tabs: золотая нижняя линия активного */
+html[data-theme="light"] .cr-tab--active::after,
+html[data-theme="light"] .tab--active::after,
+html[data-theme="light"] .nav-tab.active::after {
+  content: '' !important;
+  display: block !important;
+  position: absolute !important;
+  bottom: -1px !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: 2px !important;
+  background: var(--gold) !important;
+  animation-name: none !important;
+}
+
+/* KPI: вертикальный разделитель */
+html[data-theme="light"] .kpi-row .cr-kpi + .cr-kpi,
+html[data-theme="light"] .kpi-group .kpi + .kpi {
+  border-left: 1px solid var(--brd) !important;
+}
+
+/* Таблицы: заглавные буквы в шапке */
+html[data-theme="light"] table thead th,
+html[data-theme="light"] .cr-table thead th {
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: var(--t2) !important;
+}
+
+/* HR-линия: золотое затухание */
+html[data-theme="light"] hr,
+html[data-theme="light"] .divider {
+  border: none !important;
+  height: 1px !important;
+  background: linear-gradient(90deg, transparent 0%, var(--brd) 20%, var(--brd) 80%, transparent 100%) !important;
+}
+
+/* Прогресс-бар: золотой градиент */
+html[data-theme="light"] .cr-progress__fill,
+html[data-theme="light"] .progress-bar,
+html[data-theme="light"] [class*="progress-fill"] {
+  background: linear-gradient(90deg, var(--gold) 0%, #D4A843 100%) !important;
+  box-shadow: none !important;
+}
+html[data-theme="light"] .cr-progress,
+html[data-theme="light"] .progress-track {
+  background: var(--bg4) !important;
+  border-radius: 4px !important;
+}
+
+/* Канбан-колонки */
+html[data-theme="light"] .kanban-col,
+html[data-theme="light"] .kanban-column {
+  background: var(--bg3) !important;
+  border: 1px solid var(--brd) !important;
+  border-radius: 8px !important;
+}
+html[data-theme="light"] .kanban-col__header,
+html[data-theme="light"] .kanban-column-header {
+  background: var(--bg4) !important;
+  border-bottom: 1px solid var(--brd) !important;
+  padding: 10px 14px !important;
+  font-weight: 700 !important;
+  color: var(--t1) !important;
+}
+html[data-theme="light"] .kanban-card,
+html[data-theme="light"] .kanban-item {
+  background: var(--bg1) !important;
+  border: 1px solid var(--brd) !important;
+  box-shadow: 1px 2px 0 rgba(0,0,0,0.04) !important;
+  border-radius: 6px !important;
+}
+html[data-theme="light"] .kanban-card:hover,
+html[data-theme="light"] .kanban-item:hover {
+  border-color: rgba(184,132,26,0.25) !important;
+  box-shadow: 2px 3px 0 rgba(184,132,26,0.08) !important;
+}
+
+/* Drop zone при перетаскивании */
+html[data-theme="light"] .kanban-col--over,
+html[data-theme="light"] .drop-zone--active {
+  background: rgba(184,132,26,0.05) !important;
+  border-color: rgba(184,132,26,0.30) !important;
+}
+
+/* Pagination */
+html[data-theme="light"] .pagination .page-btn,
+html[data-theme="light"] .cr-page-btn {
+  background: var(--bg3) !important;
+  border: 1px solid var(--brd) !important;
+  color: var(--t2) !important;
+}
+html[data-theme="light"] .pagination .page-btn:hover,
+html[data-theme="light"] .cr-page-btn:hover {
+  border-color: var(--gold) !important;
+  color: var(--gold) !important;
+}
+html[data-theme="light"] .pagination .page-btn--active,
+html[data-theme="light"] .cr-page-btn--active {
+  background: var(--gold) !important;
+  color: #fff !important;
+  border-color: var(--gold) !important;
+}
+
+/* ─── §44-J: Estimate Report дополнительные фиксы ─── */
+html[data-theme="light"] .er-card {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  box-shadow: 1px 2px 0 rgba(0,0,0,0.04) !important;
+}
+html[data-theme="light"] .er-wtype {
+  color: var(--t2) !important;
+  font-weight: 600;
+}
+html[data-theme="light"] .er-comment {
+  background: var(--bg4) !important;
+  border-left: 3px solid var(--gold) !important;
+  color: var(--t2) !important;
+  font-style: italic;
+}
+/* Cost bars — убираем насыщенность */
+html[data-theme="light"] .er-cost-bar,
+html[data-theme="light"] [class*="cost-bar"] {
+  filter: saturate(0.6) brightness(1.1) !important;
+}
+
+/* ─── §44-K: Финальные микро-детали ─── */
+
+/* Placeholder */
+html[data-theme="light"] ::placeholder {
+  color: var(--t3) !important;
+  opacity: 0.7 !important;
+}
+
+/* Выделение текста */
+html[data-theme="light"] ::selection {
+  background: rgba(184,132,26,0.20) !important;
+  color: var(--t1) !important;
+}
+
+/* Focus-visible: золотое кольцо */
+html[data-theme="light"] :focus-visible {
+  outline: 2px solid rgba(184,132,26,0.50) !important;
+  outline-offset: 2px !important;
+}
+
+/* Задизейбленные элементы */
+html[data-theme="light"] :disabled,
+html[data-theme="light"] [disabled],
+html[data-theme="light"] .disabled {
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+}
+
+/* Группы навигации (settings) */
+html[data-theme="light"] .nav-group-label,
+html[data-theme="light"] .settings-nav-group {
+  border-bottom: 1px solid var(--brd) !important;
+  color: var(--t3) !important;
+  font-size: 11px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+  padding-bottom: 4px !important;
+  margin-bottom: 4px !important;
+}
+
+/* bg0 — самый тёмный bg в светлой теме = чуть темнее bg1 */
+html[data-theme="light"] .bg0,
+html[data-theme="light"] [class*="bg0"] {
+  background: #EDE8DE !important;
+}
+
+/* Sortable ghost */
+html[data-theme="light"] .sortable-ghost {
+  opacity: 0.35 !important;
+  background: rgba(184,132,26,0.06) !important;
+  border: 1px dashed rgba(184,132,26,0.30) !important;
+}
+
+/* Upload dropzone */
+html[data-theme="light"] .dropzone,
+html[data-theme="light"] .upload-zone,
+html[data-theme="light"] [class*="drop-zone"] {
+  background: var(--bg3) !important;
+  border: 2px dashed var(--brd) !important;
+  color: var(--t3) !important;
+}
+html[data-theme="light"] .dropzone:hover,
+html[data-theme="light"] .dropzone--active,
+html[data-theme="light"] .upload-zone:hover {
+  border-color: var(--gold) !important;
+  background: rgba(184,132,26,0.04) !important;
+  color: var(--gold) !important;
+}
+
+/* Тонкая золотая черта под логотипом в сайдбаре */
+html[data-theme="light"] .sidebar-logo,
+html[data-theme="light"] .cr-sidebar__logo {
+  border-bottom: 1px solid rgba(184,132,26,0.15) !important;
+  padding-bottom: 12px !important;
+  margin-bottom: 8px !important;
+}
+
+/* Скроллбар-трек: тёплый */
+html[data-theme="light"] ::-webkit-scrollbar-track {
+  background: var(--bg3) !important;
+}
+html[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: rgba(184,132,26,0.25) !important;
+  border-radius: 4px !important;
+}
+html[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(184,132,26,0.40) !important;
+}
+
+/* ─── §44 END — Light Theme v2.2.0 complete ─── */
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §45. АУДИТ CR-COMPONENTS — Скрытые синие цвета и невидимые рамки
+   cr-select, cr-ac, cr-datepicker, cr-emp-picker, color-scheme, logout glow.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ─── §45-A: color-scheme — нативные инпуты в светлом режиме ─── */
+/* Без этого браузер рендерит date/time/select в тёмном режиме браузера */
+html[data-theme="light"] {
+  color-scheme: light !important;
+}
+html[data-theme="light"] input,
+html[data-theme="light"] select,
+html[data-theme="light"] textarea,
+html[data-theme="light"] button {
+  color-scheme: light;
+}
+
+/* ─── §45-B: cr-select — полный пакет золотых состояний ─── */
+/* Trigger border — rgba(255,255,255,0.12) невидима на светлом фоне */
+html[data-theme="light"] .cr-select__trigger {
+  border: 1px solid var(--brd) !important;
+  background: var(--bg2) !important;
+  color: var(--t1) !important;
+}
+html[data-theme="light"] .cr-select__trigger:hover {
+  border-color: rgba(184,132,26,0.30) !important;
+}
+html[data-theme="light"] .cr-select--open .cr-select__trigger {
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 0 2px rgba(184,132,26,0.18) !important;
+}
+/* Dropdown */
+html[data-theme="light"] .cr-select__dropdown {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+/* Search внутри dropdown */
+html[data-theme="light"] .cr-select__search-input {
+  background: var(--bg3) !important;
+  border: 1px solid var(--brd) !important;
+  color: var(--t1) !important;
+}
+html[data-theme="light"] .cr-select__search-input:focus {
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 0 2px rgba(184,132,26,0.15) !important;
+}
+/* Опции */
+html[data-theme="light"] .cr-select__option:hover,
+html[data-theme="light"] .cr-select__option--focused {
+  background: rgba(184,132,26,0.06) !important;
+}
+html[data-theme="light"] .cr-select__option--selected {
+  background: rgba(184,132,26,0.10) !important;
+  color: var(--t1) !important;
+}
+/* Галочка выбранного: синяя SVG → золотая */
+html[data-theme="light"] .cr-select__option--selected::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23B8841A'%3E%3Cpath d='M6.5 12.5l-4-4 1.4-1.4 2.6 2.6 5.6-5.6 1.4 1.4z'/%3E%3C/svg%3E") !important;
+}
+/* Group labels */
+html[data-theme="light"] .cr-select__group-label {
+  color: var(--t3) !important;
+  border-bottom: 1px solid var(--brd-m) !important;
+}
+
+/* ─── §45-C: cr-ac (Autocomplete) — золотой фокус + тёплый dropdown ─── */
+html[data-theme="light"] .cr-ac__input {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  color: var(--t1) !important;
+}
+html[data-theme="light"] .cr-ac__input:hover {
+  border-color: rgba(184,132,26,0.30) !important;
+}
+html[data-theme="light"] .cr-ac__input:focus {
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 0 2px rgba(184,132,26,0.18) !important;
+  outline: none !important;
+}
+html[data-theme="light"] .cr-ac__dropdown {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+html[data-theme="light"] .cr-ac__option:hover,
+html[data-theme="light"] .cr-ac__option--focused {
+  background: rgba(184,132,26,0.06) !important;
+}
+
+/* ─── §45-D: cr-datepicker — ПОЛНЫЙ пакет ─── */
+/* Trigger: невидимая рамка rgba(255,255,255,0.12) */
+html[data-theme="light"] .cr-datepicker__trigger {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  color: var(--t1) !important;
+}
+html[data-theme="light"] .cr-datepicker__trigger:hover {
+  border-color: rgba(184,132,26,0.30) !important;
+}
+html[data-theme="light"] .cr-datepicker--open .cr-datepicker__trigger {
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 0 2px rgba(184,132,26,0.18) !important;
+}
+/* Dropdown: невидимая рамка + слишком тёмная тень */
+html[data-theme="light"] .cr-datepicker__dropdown {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  box-shadow: var(--shadow-lg) !important;
+}
+/* Навигация */
+html[data-theme="light"] .cr-dp__nav:hover {
+  background: var(--bg4) !important;
+  color: var(--t1) !important;
+}
+/* Дни: сегодня — золотая рамка */
+html[data-theme="light"] .cr-dp__day:hover {
+  background: var(--bg4) !important;
+}
+html[data-theme="light"] .cr-dp__day--today {
+  border: 1px solid var(--gold) !important;
+  color: var(--gold) !important;
+  font-weight: 700 !important;
+}
+/* Выбранный день: синий → золотой */
+html[data-theme="light"] .cr-dp__day--sel {
+  background: var(--gold) !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+}
+html[data-theme="light"] .cr-dp__day--sel:hover {
+  background: var(--gold-h) !important;
+}
+/* Footer */
+html[data-theme="light"] .cr-dp__footer {
+  border-top: 1px solid var(--brd) !important;
+}
+html[data-theme="light"] .cr-dp__today-btn {
+  color: var(--gold) !important;
+}
+html[data-theme="light"] .cr-dp__today-btn:hover,
+html[data-theme="light"] .cr-dp__clear-btn:hover {
+  background: var(--bg4) !important;
+}
+
+/* ─── §45-E: cr-emp-picker — золотые кнопка и чекбокс ─── */
+/* Primary button "Выбрать" — синий → золотой */
+html[data-theme="light"] .cr-emp-picker__btn--primary {
+  background: var(--gold) !important;
+  border-color: var(--gold) !important;
+  color: #fff !important;
+}
+html[data-theme="light"] .cr-emp-picker__btn--primary:hover {
+  background: var(--gold-h) !important;
+  border-color: var(--gold-h) !important;
+}
+/* Чекбокс выбранного сотрудника — синий → золотой */
+html[data-theme="light"] .cr-emp-picker__row--sel .cr-emp-picker__checkbox {
+  background: var(--gold) !important;
+  border-color: var(--gold) !important;
+}
+/* Footer picker */
+html[data-theme="light"] .cr-emp-picker__footer {
+  border-top: 1px solid var(--brd) !important;
+  background: var(--bg3) !important;
+}
+/* Secondary button */
+html[data-theme="light"] .cr-emp-picker__btn--secondary {
+  background: var(--bg3) !important;
+  border: 1px solid var(--brd) !important;
+  color: var(--t1) !important;
+}
+html[data-theme="light"] .cr-emp-picker__btn--secondary:hover {
+  background: var(--bg4) !important;
+}
+
+/* ─── §45-F: Logout кнопка — убираем неоновый красный glow ─── */
+html[data-theme="light"] .sidefoot #btnLogout:hover {
+  background: rgba(168,32,48,0.08) !important;
+  border-color: rgba(168,32,48,0.25) !important;
+  box-shadow: none !important;
+}
+html[data-theme="light"] .sidefoot #btnLogout:hover::before {
+  color: var(--red) !important;
+}
+
+/* ─── §45-G: cr-components глобальные рамки (белые → тёплые) ─── */
+/* Некоторые компоненты используют rgba(255,255,255,...) напрямую */
+html[data-theme="light"] .cr-select__dropdown,
+html[data-theme="light"] .cr-ac__dropdown,
+html[data-theme="light"] .cr-datepicker__dropdown {
+  border-color: var(--brd) !important;
+}
+/* Теги/chips внутри пикеров */
+html[data-theme="light"] .cr-tag,
+html[data-theme="light"] .cr-chip {
+  background: var(--bg4) !important;
+  border: 1px solid var(--brd) !important;
+  color: var(--t1) !important;
+}
+html[data-theme="light"] .cr-tag--primary,
+html[data-theme="light"] .cr-chip--primary {
+  background: rgba(184,132,26,0.12) !important;
+  color: var(--gold) !important;
+  border-color: rgba(184,132,26,0.25) !important;
+}
+html[data-theme="light"] .cr-tag--danger,
+html[data-theme="light"] .cr-chip--danger {
+  background: rgba(168,32,48,0.10) !important;
+  color: var(--red) !important;
+  border-color: rgba(168,32,48,0.20) !important;
+}
+
+/* ─── §45 END — Light Theme v2.2.0 + patch 45 ─── */
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §46. ФИНАЛЬНЫЕ 5 ПУНКТОВ — Чекбоксы, нативные date, inline-стили, аватары, печать
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ─── §46-1: Чекбоксы и радио — accent-color золото вместо синего ─── */
+/* Нативные input[type=checkbox/radio] используют accent-color: var(--blue) */
+html[data-theme="light"] input[type="checkbox"],
+html[data-theme="light"] input[type="radio"] {
+  accent-color: var(--gold) !important;
+}
+/* Toggle-switch — синий фон при active → золотой */
+html[data-theme="light"] .toggle-switch.active,
+html[data-theme="light"] .toggle-switch:checked,
+html[data-theme="light"] .toggle-switch[data-on="true"] {
+  background: var(--gold) !important;
+}
+/* Нестандартный toggle-track */
+html[data-theme="light"] .toggle-track,
+html[data-theme="light"] .switch-track {
+  background: var(--bg4) !important;
+  border: 1px solid var(--brd) !important;
+}
+html[data-theme="light"] .toggle-track.on,
+html[data-theme="light"] .switch-track.on,
+html[data-theme="light"] .toggle-track--on,
+html[data-theme="light"] .switch-track--active {
+  background: var(--gold) !important;
+  border-color: var(--gold) !important;
+}
+/* Thumb (ползунок) */
+html[data-theme="light"] .toggle-thumb,
+html[data-theme="light"] .switch-thumb {
+  background: #fff !important;
+  box-shadow: 1px 1px 4px rgba(0,0,0,0.15) !important;
+}
+/* Custom checkbox-лейблы (визуальные квадратики) */
+html[data-theme="light"] .checkbox-custom,
+html[data-theme="light"] .cr-checkbox-box,
+html[data-theme="light"] .custom-check {
+  border: 2px solid var(--brd) !important;
+  background: var(--bg2) !important;
+}
+html[data-theme="light"] input[type="checkbox"]:checked + .checkbox-custom,
+html[data-theme="light"] input[type="checkbox"]:checked + .cr-checkbox-box,
+html[data-theme="light"] input[type="checkbox"]:checked + .custom-check,
+html[data-theme="light"] .checkbox-custom.checked,
+html[data-theme="light"] .cr-checkbox-box.checked {
+  background: var(--gold) !important;
+  border-color: var(--gold) !important;
+}
+/* Emp-selector чекбокс (кастомный в HR-пикере) */
+html[data-theme="light"] .emp-selector-check {
+  border: 2px solid var(--brd) !important;
+  background: var(--bg2) !important;
+}
+html[data-theme="light"] input[type="checkbox"]:checked ~ .emp-selector-check {
+  background: var(--gold) !important;
+  border-color: var(--gold) !important;
+}
+
+/* ─── §46-2: Нативные date/time/datetime-local — принудительно светлые ─── */
+/* color-scheme: light уже задан в §45-A на html и inputs,
+   но некоторые браузеры требуют явного указания на конкретных типах */
+html[data-theme="light"] input[type="date"],
+html[data-theme="light"] input[type="datetime-local"],
+html[data-theme="light"] input[type="time"],
+html[data-theme="light"] input[type="month"],
+html[data-theme="light"] input[type="week"] {
+  color-scheme: light !important;
+  background: var(--bg2) !important;
+  color: var(--t1) !important;
+  border: 1px solid var(--brd) !important;
+}
+html[data-theme="light"] input[type="date"]:focus,
+html[data-theme="light"] input[type="datetime-local"]:focus,
+html[data-theme="light"] input[type="time"]:focus,
+html[data-theme="light"] input[type="month"]:focus,
+html[data-theme="light"] input[type="week"]:focus {
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 0 2px rgba(184,132,26,0.18) !important;
+  outline: none !important;
+}
+/* Иконка-календарь в webkit */
+html[data-theme="light"] input[type="date"]::-webkit-calendar-picker-indicator,
+html[data-theme="light"] input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+html[data-theme="light"] input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.3) sepia(1) hue-rotate(15deg) saturate(2) !important;
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+/* ─── §46-3: Inline-стили из JS — перекрываем хардкодные градиенты ─── */
+/* Самый частый паттерн: linear-gradient(135deg, #C8293B, #1E4D8C) на кнопках */
+html[data-theme="light"] [style*="C8293B"][style*="1E4D8C"],
+html[data-theme="light"] [style*="C8293B"][style*="4D8C"] {
+  background: linear-gradient(135deg, var(--red), var(--blue)) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+/* Одиночный красный фон из JS */
+html[data-theme="light"] button[style*="#C8293B"],
+html[data-theme="light"] a[style*="#C8293B"],
+html[data-theme="light"] span[style*="background.*C8293B"] {
+  background: var(--red) !important;
+}
+/* Одиночный синий фон из JS */
+html[data-theme="light"] button[style*="#1E4D8C"],
+html[data-theme="light"] a[style*="#1E4D8C"] {
+  background: var(--blue) !important;
+}
+/* Золотой из JS */
+html[data-theme="light"] button[style*="#D4A843"],
+html[data-theme="light"] a[style*="#D4A843"] {
+  background: var(--gold) !important;
+}
+/* Тёмный фон из JS (#0D1117, #1A1F2E, #161B27) — заменяем на карточный bg */
+html[data-theme="light"] [style*="#0D1117"],
+html[data-theme="light"] [style*="#1A1F2E"],
+html[data-theme="light"] [style*="#161B27"],
+html[data-theme="light"] [style*="#12161F"] {
+  background: var(--bg3) !important;
+  color: var(--t1) !important;
+}
+/* Neon text-shadow из inline-стилей */
+html[data-theme="light"] [style*="text-shadow"] {
+  text-shadow: none !important;
+}
+/* Neon box-shadow из inline: "0 0 Xpx" паттерн */
+html[data-theme="light"] [style*="box-shadow: 0 0 "],
+html[data-theme="light"] [style*="box-shadow:0 0 "] {
+  box-shadow: var(--shadow-sm) !important;
+}
+
+/* ─── §46-4: sr-avatar цвета — категориальные аватары в HR ─── */
+/* c0 (#5b8def синий) → используем var(--blue) = #1A3F74 */
+html[data-theme="light"] .sr-avatar--c0,
+html[data-theme="light"] .cr-emp-picker__av--c0 {
+  background: var(--blue) !important;
+}
+/* Остальные категориальные цвета — проверяем нет ли слишком ярких */
+html[data-theme="light"] .sr-avatar--c1 { background: #2D6A4F !important; }  /* зелёный */
+html[data-theme="light"] .sr-avatar--c2 { background: var(--red) !important; } /* красный */
+html[data-theme="light"] .sr-avatar--c3 { background: var(--gold) !important; } /* золото */
+html[data-theme="light"] .sr-avatar--c4 { background: #6B4F9E !important; }  /* фиолет */
+html[data-theme="light"] .sr-avatar--c5 { background: #2B7A8C !important; }  /* бирюза */
+
+/* ─── §46-5: @media print — правильная печать из светлой темы ─── */
+/* Светлая тема уже близка к идеалу для печати, но нужны точечные правила */
+@media print {
+  html[data-theme="light"] body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  html[data-theme="light"] .sidenav,
+  html[data-theme="light"] .topbar,
+  html[data-theme="light"] .cr-topbar,
+  html[data-theme="light"] .sidebar,
+  html[data-theme="light"] #sidebar,
+  html[data-theme="light"] .no-print,
+  html[data-theme="light"] .cr-fab,
+  html[data-theme="light"] .floating-btn {
+    display: none !important;
+  }
+  html[data-theme="light"] .main-content,
+  html[data-theme="light"] #main,
+  html[data-theme="light"] .content-area {
+    margin-left: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+  }
+  /* Карточки — убираем тени, оставляем рамку */
+  html[data-theme="light"] .cr-card,
+  html[data-theme="light"] .panel,
+  html[data-theme="light"] .card {
+    box-shadow: none !important;
+    border: 1px solid #ccc !important;
+    break-inside: avoid;
+  }
+  /* Кнопки — скрываем */
+  html[data-theme="light"] button:not(.print-show),
+  html[data-theme="light"] .btn:not(.print-show) {
+    display: none !important;
+  }
+  /* Таблицы — чёткие рамки */
+  html[data-theme="light"] table,
+  html[data-theme="light"] th,
+  html[data-theme="light"] td {
+    border: 1px solid #999 !important;
+    background: transparent !important;
+    color: #000 !important;
+  }
+  html[data-theme="light"] thead th {
+    background: #f0ece4 !important;
+    color: #000 !important;
+    font-weight: 700 !important;
+  }
+  /* Заголовки страниц */
+  html[data-theme="light"] h1,
+  html[data-theme="light"] h2,
+  html[data-theme="light"] h3 {
+    color: #000 !important;
+    page-break-after: avoid;
+  }
+  /* Статус-бейджи — убираем яркие фоны */
+  html[data-theme="light"] [class*="badge"],
+  html[data-theme="light"] [class*="status-pill"],
+  html[data-theme="light"] [class*="chip"] {
+    background: transparent !important;
+    border: 1px solid #999 !important;
+    color: #000 !important;
+  }
+  /* Ссылки — убираем подчёркивание */
+  html[data-theme="light"] a {
+    color: #000 !important;
+    text-decoration: none !important;
+  }
+  /* Разрывы страниц */
+  html[data-theme="light"] .page-break,
+  html[data-theme="light"] .print-break {
+    page-break-before: always !important;
+  }
+}
+
+/* ─── §46 END — Light Theme v2.2.0 complete (все пробелы закрыты) ─── */

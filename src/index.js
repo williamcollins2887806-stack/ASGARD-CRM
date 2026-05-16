@@ -463,6 +463,7 @@ fastify.register(require('./routes/field-achievements'), { prefix: '/api/field/a
 fastify.register(require('./routes/field-gamification'), { prefix: '/api/field/gamification' });
 fastify.register(require('./routes/field-academy'),      { prefix: '/api/field/academy' });
 fastify.register(require('./routes/field-earnings'),     { prefix: '/api/field/earnings' });
+fastify.register(require('./routes/field-pm'),           { prefix: '/api/pm' });
 fastify.register(require('./routes/gamification-admin'), { prefix: '/api/gamification/admin' });
 fastify.register(require('./routes/gamification-crud'), { prefix: '/api/gamification/crud' });
 fastify.register(require('./routes/auth'), { prefix: '/api/auth' });

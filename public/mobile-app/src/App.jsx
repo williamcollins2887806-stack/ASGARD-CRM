@@ -38,6 +38,12 @@ import FieldLesson from '@/pages/field/FieldLesson';
 import FieldAcademyQuiz from '@/pages/field/FieldAcademyQuiz';
 import FieldAcademyLibrary from '@/pages/field/FieldAcademyLibrary';
 import FieldEarningsMonthly from '@/pages/field/FieldEarningsMonthly';
+import PmDashboard from '@/pages/pm/PmDashboard';
+import PmWorkers from '@/pages/pm/PmWorkers';
+import PmWorkerProfile from '@/pages/pm/PmWorkerProfile';
+import PmTimesheet from '@/pages/pm/PmTimesheet';
+import PmPayments from '@/pages/pm/PmPayments';
+import PmAcademy from '@/pages/pm/PmAcademy';
 import Welcome from '@/pages/Welcome';
 import Login from '@/pages/Login';
 import PinEntry from '@/pages/PinEntry';
@@ -117,7 +123,8 @@ function AppLayout() {
     location.pathname.startsWith('/estimate-report/') ||
     location.pathname.startsWith('/mimir-estimate/') ||
     location.pathname.startsWith('/huginn-chat/') ||
-    location.pathname.startsWith('/field');
+    location.pathname.startsWith('/field') ||
+    location.pathname.startsWith('/pm');
 
   return (
     <div className="h-full relative" style={{ backgroundColor: 'var(--bg-primary)' }}>
@@ -182,6 +189,14 @@ function AppLayout() {
           <Route path="/huginn-chat/:chatId" element={<ProtectedRoute section="chat"><PinGuard><HuginnEstimateChat /></PinGuard></ProtectedRoute>} />
           <Route path="/expense-chat/:workId" element={<ProtectedRoute section="finances"><PinGuard><ExpenseChat /></PinGuard></ProtectedRoute>} />
           <Route path="/more" element={<ProtectedRoute><PinGuard><More /></PinGuard></ProtectedRoute>} />
+
+          {/* ═══ PM Panel routes ═══ */}
+          <Route path="/pm" element={<ProtectedRoute section="works"><PinGuard><PmDashboard /></PinGuard></ProtectedRoute>} />
+          <Route path="/pm/workers" element={<ProtectedRoute section="works"><PinGuard><PmWorkers /></PinGuard></ProtectedRoute>} />
+          <Route path="/pm/workers/:id" element={<ProtectedRoute section="works"><PinGuard><PmWorkerProfile /></PinGuard></ProtectedRoute>} />
+          <Route path="/pm/timesheet" element={<ProtectedRoute section="works"><PinGuard><PmTimesheet /></PinGuard></ProtectedRoute>} />
+          <Route path="/pm/payments" element={<ProtectedRoute section="works"><PinGuard><PmPayments /></PinGuard></ProtectedRoute>} />
+          <Route path="/pm/academy" element={<ProtectedRoute section="works"><PinGuard><PmAcademy /></PinGuard></ProtectedRoute>} />
 
           {/* ═══ Field Worker routes (feature-flagged) ═══ */}
           {features.FIELD_REACT_MIGRATION && (

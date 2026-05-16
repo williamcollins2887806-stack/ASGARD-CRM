@@ -34,8 +34,8 @@ export default function PmCalcs() {
     setLoading(true);
     try {
       const [eRes, tRes] = await Promise.all([
-        api.get('/data/estimates'),
-        api.get('/data/tenders').catch(() => null),
+        api.get('/estimates?limit=200'),
+        api.get('/tenders?limit=500').catch(() => null),
       ]);
       setEstimates(api.extractRows(eRes) || []);
       if (tRes) {

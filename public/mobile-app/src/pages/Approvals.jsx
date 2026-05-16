@@ -32,8 +32,8 @@ export default function Approvals() {
     setLoading(true);
     try {
       const [estRes, tendRes] = await Promise.all([
-        api.get('/data/estimates?limit=500'),
-        api.get('/data/tenders?limit=500'),
+        api.get('/estimates?limit=500'),
+        api.get('/tenders?limit=500'),
       ]);
       const allEstimates = api.extractRows(estRes) || [];
       setEstimates(allEstimates.filter((e) => e.approval_status === 'sent'));
@@ -56,7 +56,7 @@ export default function Approvals() {
   const handleAction = async (estimateId, action, comment) => {
     haptic.light();
     try {
-      await api.put(`/data/estimates/${estimateId}`, {
+      await api.put(`/estimates/${estimateId}`, {
         approval_status: action,
         approval_comment: comment || null,
       });

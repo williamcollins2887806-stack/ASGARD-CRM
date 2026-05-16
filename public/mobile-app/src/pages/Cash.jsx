@@ -6,35 +6,36 @@ import { BottomSheet } from '@/components/shared/BottomSheet';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
-import { Wallet, Plus, ChevronRight, Check } from 'lucide-react';
+import { StatusBadge } from '@/components/shared/StatusBadge';
+import { Wallet, Plus, ChevronRight, Check, Clock, CircleCheck, CircleX } from 'lucide-react';
 import { formatMoney, formatDate, relativeTime } from '@/lib/utils';
 
 const STATUS_MAP = {
-  requested: { label: 'На согласовании', color: 'var(--blue)' },
-  approved: { label: 'Согласовано', color: 'var(--green)' },
-  money_issued: { label: 'Наличные выданы', color: 'var(--blue)' },
-  received: { label: 'Получено', color: 'var(--gold)' },
-  reporting: { label: 'На отчёте', color: 'var(--gold)' },
-  closed: { label: 'Закрыто', color: 'var(--green)' },
-  rejected: { label: 'Отклонено', color: 'var(--red-soft)' },
-  question: { label: 'Вопрос', color: 'var(--gold)' },
+  requested:    { label: 'На согласовании', color: 'var(--blue)' },
+  approved:     { label: 'Согласовано',     color: 'var(--green)' },
+  money_issued: { label: 'Наличные выданы', color: 'var(--gold)' },  // золото — деньги в пути
+  received:     { label: 'Получено',        color: 'var(--green)' },
+  reporting:    { label: 'На отчёте',       color: 'var(--gold)' },
+  closed:       { label: 'Закрыто',         color: 'var(--green)' },
+  rejected:     { label: 'Отклонено',       color: 'var(--red-soft)' },
+  question:     { label: 'Вопрос',          color: 'var(--gold)' },
 };
 
 const FILTERS = [
-  { id: 'all', label: 'Все' },
-  { id: 'pending', label: 'На согласовании' },
+  { id: 'all',      label: 'Все' },
+  { id: 'pending',  label: 'Ожидание' },
   { id: 'approved', label: 'Одобрено' },
-  { id: 'closed', label: 'Закрыто' },
+  { id: 'closed',   label: 'Закрыто' },
 ];
 
 export default function Cash() {
-  const haptic = useHaptic();
-  const [balance, setBalance] = useState(null);
-  const [requests, setRequests] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('all');
-  const [detail, setDetail] = useState(null);
-  const [showCreate, setShowCreate] = useState(false);
+  const haptic   = useHaptic();
+  const [balance,     setBalance]     = useState(null);
+  const [requests,    setRequests]    = useState([]);
+  const [loading,     setLoading]     = useState(true);
+  const [filter,      setFilter]      = useState('all');
+  const [detail,      setDetail]      = useState(null);
+  const [showCreate,  setShowCreate]  = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -45,17 +46,20 @@ export default function Cash() {
       ]);
       setBalance(balRes);
       setRequests(api.extractRows(reqRes) || []);
-    } catch { setRequests([]); }
-    finally { setLoading(false); }
+    } catch {
+      setRequests([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const filtered = useMemo(() => {
     let list = requests;
-    if (filter === 'pending') list = list.filter((r) => r.status === 'requested' || r.status === 'question');
-    else if (filter === 'approved') list = list.filter((r) => ['approved', 'money_issued', 'received'].includes(r.status));
-    else if (filter === 'closed') list = list.filter((r) => ['closed', 'reporting'].includes(r.status));
+    if (filter === 'pending')  list = list.filter((r) => r.status === 'requested' || r.status === 'question');
+    if (filter === 'approved') list = list.filter((r) => ['approved', 'money_issued', 'received'].includes(r.status));
+    if (filter === 'closed')   list = list.filter((r) => ['closed', 'reporting'].includes(r.status));
     return list;
   }, [requests, filter]);
 
@@ -68,45 +72,140 @@ export default function Cash() {
     } catch {}
   };
 
+  const totalOnHand = balance?.balance ?? balance?.on_hand ?? 0;
+  const totalIssued = balance?.issued ?? balance?.total_issued ?? 0;
+  const totalReturned = balance?.returned ?? 0;
+
   return (
-    <PageShell title="Касса" headerRight={
-      <button onClick={() => { haptic.light(); setShowCreate(true); }} className="btn-icon spring-tap c-blue"><Plus size={22} /></button>
-    }>
+    <PageShell
+      title="Касса"
+      headerRight={
+        <button
+          onClick={() => { haptic.light(); setShowCreate(true); }}
+          className="flex items-center justify-center spring-tap"
+          style={{ width: 44, height: 44, color: 'var(--blue)' }}
+        >
+          <Plus size={22} />
+        </button>
+      }
+    >
       <PullToRefresh onRefresh={fetchData}>
-        {/* Balance hero */}
+
+        {/* Баланс-герой */}
         {balance && !loading && (
-          <div className="card-hero mb-3" style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards' }}>
-            <p className="text-[11px] font-semibold uppercase tracking-wider mb-1 c-tertiary">Баланс на руках</p>
-            <p className="text-[24px] font-bold c-primary">{formatMoney(balance.balance || balance.on_hand || 0)}</p>
-            <div className="flex items-center gap-4 mt-2">
-              <span className="text-[12px] c-secondary">Получено: {formatMoney(balance.issued || balance.total_issued || 0, { short: true })}</span>
-              <span className="text-[12px] c-green">Возвращено: {formatMoney(balance.returned || 0, { short: true })}</span>
+          <div
+            className="rounded-2xl px-5 py-4 mb-3"
+            style={{
+              background: 'linear-gradient(135deg, color-mix(in srgb, var(--gold) 14%, var(--bg-surface)), color-mix(in srgb, var(--green) 6%, var(--bg-surface)))',
+              border: '0.5px solid color-mix(in srgb, var(--gold) 25%, var(--border-norse))',
+              animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards',
+            }}
+          >
+            <p className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-tertiary)' }}>
+              Баланс на руках
+            </p>
+            <p className="text-[28px] font-bold leading-tight" style={{ color: 'var(--gold)' }}>
+              {formatMoney(totalOnHand)}
+            </p>
+            <div className="flex items-center gap-5 mt-2">
+              <span className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+                Выдано: {formatMoney(totalIssued, { short: true })}
+              </span>
+              <span className="text-[12px]" style={{ color: 'var(--green)' }}>
+                Возврат: {formatMoney(totalReturned, { short: true })}
+              </span>
             </div>
           </div>
         )}
 
-        <div className="flex gap-1.5 px-1 pb-3 overflow-x-auto no-scrollbar">
+        {/* Фильтры */}
+        <div className="flex gap-1.5 pb-3 overflow-x-auto no-scrollbar">
           {FILTERS.map((f) => (
-            <button key={f.id} onClick={() => { haptic.light(); setFilter(f.id); }} className="filter-pill spring-tap" data-active={filter === f.id ? 'true' : undefined}>{f.label}</button>
+            <button
+              key={f.id}
+              onClick={() => { haptic.light(); setFilter(f.id); }}
+              className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold spring-tap"
+              style={{
+                background: filter === f.id ? 'var(--bg-elevated)' : 'transparent',
+                color:      filter === f.id ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                border:     filter === f.id ? '0.5px solid var(--border-light)' : '0.5px solid transparent',
+              }}
+            >
+              {f.label}
+            </button>
           ))}
         </div>
 
-        {loading ? <SkeletonList count={4} /> : filtered.length === 0 ? (
-          <EmptyState icon={Wallet} iconColor="var(--gold)" iconBg="color-mix(in srgb, var(--gold) 10%, transparent)" title="Нет заявок" description="Создайте первую заявку" />
+        {loading ? (
+          <SkeletonList count={4} />
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon={Wallet}
+            iconColor="var(--gold)"
+            iconBg="color-mix(in srgb, var(--gold) 10%, transparent)"
+            title="Нет заявок"
+            description="Создайте первую заявку"
+          />
         ) : (
           <div className="flex flex-col gap-2 pb-4">
             {filtered.map((req, i) => {
               const st = STATUS_MAP[req.status] || { label: req.status, color: 'var(--text-tertiary)' };
+              const isActionable = req.status === 'money_issued';
               return (
-                <button key={req.id} onClick={() => { haptic.light(); setDetail(req); }} className="card-glass w-full text-left px-4 py-3 spring-tap" style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 50}ms both` }}>
+                <button
+                  key={req.id}
+                  onClick={() => { haptic.light(); setDetail(req); }}
+                  className="w-full text-left rounded-2xl px-4 py-3.5 spring-tap"
+                  style={{
+                    background:    'color-mix(in srgb, var(--bg-surface) 92%, transparent)',
+                    backdropFilter:'blur(8px)',
+                    border:        isActionable
+                      ? '0.5px solid color-mix(in srgb, var(--gold) 30%, var(--border-norse))'
+                      : '0.5px solid var(--border-norse)',
+                    animation:     `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both`,
+                  }}
+                >
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-[14px] font-semibold leading-tight c-primary">{req.purpose || req.description || `Заявка #${req.id}`}</p>
-                    <ChevronRight size={16} className="c-tertiary" style={{ flexShrink: 0, marginTop: 2 }} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[15px] font-semibold leading-tight truncate" style={{ color: 'var(--text-primary)' }}>
+                        {req.purpose || req.description || `Заявка #${req.id}`}
+                      </p>
+                      {req.work_title && (
+                        <p className="text-[12px] mt-0.5 truncate" style={{ color: 'var(--text-secondary)' }}>
+                          {req.work_title}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[15px] font-bold" style={{ color: 'var(--gold)' }}>
+                        {formatMoney(req.amount || 0, { short: true })}
+                      </span>
+                      <ChevronRight size={16} style={{ color: 'var(--text-tertiary)' }} />
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                    <span className="status-badge" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}>{st.label}</span>
-                    <span className="text-[12px] font-semibold c-gold">{formatMoney(req.amount || 0)}</span>
-                    {req.created_at && <span className="text-[10px] c-tertiary">{relativeTime(req.created_at)}</span>}
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    <span
+                      className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                      style={{
+                        background: `color-mix(in srgb, ${st.color} 14%, transparent)`,
+                        color: st.color,
+                      }}
+                    >
+                      {st.label}
+                    </span>
+                    {req.created_at && (
+                      <span className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
+                        {relativeTime(req.created_at)}
+                      </span>
+                    )}
+                    {isActionable && (
+                      <span
+                        className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                        style={{ background: 'color-mix(in srgb, var(--gold) 14%, transparent)', color: 'var(--gold)' }}
+                      >
+                        Подтвердите получение
+                      </span>
+                    )}
                   </div>
                 </button>
               );
@@ -115,7 +214,6 @@ export default function Cash() {
         )}
       </PullToRefresh>
 
-      {/* Detail sheet */}
       <CashDetailSheet request={detail} onClose={() => setDetail(null)} onConfirm={confirmReceive} />
       <CreateCashSheet open={showCreate} onClose={() => setShowCreate(false)} onCreated={fetchData} />
     </PageShell>
@@ -124,28 +222,62 @@ export default function Cash() {
 
 function CashDetailSheet({ request, onClose, onConfirm }) {
   if (!request) return null;
-  const r = request;
+  const r  = request;
   const st = STATUS_MAP[r.status] || { label: r.status, color: 'var(--text-tertiary)' };
+
   const fields = [
-    { label: 'Статус', value: st.label, color: st.color },
-    { label: 'Назначение', value: r.purpose || r.description || '—' },
-    { label: 'Сумма', value: formatMoney(r.amount || 0) },
-    r.work_title && { label: 'Работа', value: r.work_title },
-    r.created_at && { label: 'Создано', value: relativeTime(r.created_at) },
-    r.comment && { label: 'Комментарий', value: r.comment, full: true },
+    { label: 'Назначение',   value: r.purpose || r.description || '—' },
+    { label: 'Сумма',        value: formatMoney(r.amount || 0) },
+    r.work_title && { label: 'Работа',       value: r.work_title },
+    r.created_at && { label: 'Создано',      value: relativeTime(r.created_at) },
+    r.comment    && { label: 'Комментарий',  value: r.comment, full: true },
   ].filter(Boolean);
+
   return (
     <BottomSheet open={!!request} onClose={onClose} title={r.purpose || `Заявка #${r.id}`}>
       <div className="flex flex-col gap-3 pb-4">
-        {fields.map((f, i) => (
-          <div key={i}>
-            <p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">{f.label}</p>
-            {f.color ? <span className="status-badge px-2.5 py-1 text-[12px] inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className={`text-[14px] c-primary ${f.full ? 'whitespace-pre-wrap' : ''}`}>{f.value}</p>}
-          </div>
-        ))}
+        {/* Статус */}
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-tertiary)' }}>
+            Статус
+          </p>
+          <span
+            className="px-3 py-1.5 rounded-full text-[13px] font-semibold inline-block"
+            style={{ background: `color-mix(in srgb, ${st.color} 14%, transparent)`, color: st.color }}
+          >
+            {st.label}
+          </span>
+        </div>
+
+        {/* Поля */}
+        <div className="rounded-xl overflow-hidden" style={{ border: '0.5px solid var(--border-norse)' }}>
+          {fields.map((f, i) => (
+            <div
+              key={i}
+              className="px-4 py-3"
+              style={{
+                background:   'var(--bg-surface)',
+                borderBottom: i < fields.length - 1 ? '0.5px solid var(--border-norse)' : 'none',
+              }}
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                {f.label}
+              </p>
+              <p className={`text-[14px] ${f.full ? 'whitespace-pre-wrap' : ''}`} style={{ color: 'var(--text-primary)' }}>
+                {f.value}
+              </p>
+            </div>
+          ))}
+        </div>
+
         {r.status === 'money_issued' && (
-          <button onClick={() => onConfirm(r.id)} className="btn-action spring-tap mt-2 c-green" style={{ background: 'color-mix(in srgb, var(--green) 15%, transparent)' }}>
-            <Check size={16} /> Получил
+          <button
+            onClick={() => onConfirm(r.id)}
+            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-semibold text-[15px] spring-tap"
+            style={{ background: 'color-mix(in srgb, var(--green) 15%, transparent)', color: 'var(--green)' }}
+          >
+            <Check size={18} />
+            Подтвердить получение
           </button>
         )}
       </div>
@@ -154,27 +286,65 @@ function CashDetailSheet({ request, onClose, onConfirm }) {
 }
 
 function CreateCashSheet({ open, onClose, onCreated }) {
-  const haptic = useHaptic();
-  const [purpose, setPurpose] = useState('');
-  const [amount, setAmount] = useState('');
-  const [comment, setComment] = useState('');
-  const [saving, setSaving] = useState(false);
-  const is = 'input-field';
+  const haptic   = useHaptic();
+  const [purpose,  setPurpose]  = useState('');
+  const [amount,   setAmount]   = useState('');
+  const [comment,  setComment]  = useState('');
+  const [saving,   setSaving]   = useState(false);
+
   const handleSubmit = async () => {
     if (!purpose.trim() || !amount) return;
-    haptic.light(); setSaving(true);
+    haptic.light();
+    setSaving(true);
     try {
-      await api.post('/cash', { purpose: purpose.trim(), amount: Number(amount), comment: comment || null });
-      haptic.success(); setPurpose(''); setAmount(''); setComment(''); onClose(); onCreated();
-    } catch {} setSaving(false);
+      await api.post('/cash', {
+        purpose: purpose.trim(),
+        amount:  Number(amount),
+        comment: comment || null,
+      });
+      haptic.success();
+      setPurpose(''); setAmount(''); setComment('');
+      onClose(); onCreated();
+    } catch {}
+    setSaving(false);
   };
+
   return (
     <BottomSheet open={open} onClose={onClose} title="Новая заявка">
       <div className="flex flex-col gap-3 pb-4">
-        <div><label className="input-label">Назначение *</label><input type="text" value={purpose} onChange={(e) => setPurpose(e.target.value)} placeholder="Командировка, закупка..." className={is} /></div>
-        <div><label className="input-label">Сумма (₽) *</label><input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="50000" className={is} /></div>
-        <div><label className="input-label">Комментарий</label><textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Детали заявки..." rows={2} className={`${is} resize-none`} /></div>
-        <button onClick={handleSubmit} disabled={!purpose.trim() || !amount || saving} className="btn-primary spring-tap mt-1" style={{ opacity: saving ? 0.6 : 1 }}>{saving ? 'Сохранение...' : 'Создать заявку'}</button>
+        <div>
+          <label className="input-label">Назначение *</label>
+          <input
+            type="text" value={purpose} onChange={(e) => setPurpose(e.target.value)}
+            placeholder="Командировка, закупка, аванс..."
+            className="input-field"
+          />
+        </div>
+        <div>
+          <label className="input-label">Сумма (₽) *</label>
+          <input
+            type="number" value={amount} onChange={(e) => setAmount(e.target.value)}
+            placeholder="50 000"
+            className="input-field"
+          />
+        </div>
+        <div>
+          <label className="input-label">Комментарий</label>
+          <textarea
+            value={comment} onChange={(e) => setComment(e.target.value)}
+            placeholder="Детали заявки..."
+            rows={2}
+            className="input-field resize-none"
+          />
+        </div>
+        <button
+          onClick={handleSubmit}
+          disabled={!purpose.trim() || !amount || saving}
+          className="btn-primary spring-tap mt-1"
+          style={{ opacity: saving ? 0.6 : 1 }}
+        >
+          {saving ? 'Сохранение...' : 'Создать заявку'}
+        </button>
       </div>
     </BottomSheet>
   );

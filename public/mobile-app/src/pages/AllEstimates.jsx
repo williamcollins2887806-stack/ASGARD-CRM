@@ -8,6 +8,7 @@ import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { Calculator, ChevronRight } from 'lucide-react';
 import { formatMoney, relativeTime } from '@/lib/utils';
+import { StatCard, StatRow } from '@/components/shared/StatCard';
 
 const STATUS_MAP = {
   draft: { label: 'Черновик', color: 'var(--text-tertiary)' },
@@ -36,7 +37,7 @@ export default function AllEstimates() {
     try {
       const [eRes, tRes] = await Promise.all([
         api.get('/estimates?limit=200'),
-        api.get('/data/tenders').catch(() => null),
+        api.get('/tenders?limit=500').catch(() => null),
       ]);
       setEstimates(api.extractRows(eRes) || []);
       if (tRes) {
@@ -67,12 +68,11 @@ export default function AllEstimates() {
     <PageShell title="Расчёты">
       <PullToRefresh onRefresh={fetchData}>
         {!loading && estimates.length > 0 && (
-          <div className="grid grid-cols-4 gap-1.5 px-1 pb-3" style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards' }}>
-            <div className="card-glass flex flex-col items-center gap-0.5 py-2.5"><p className="text-[13px] font-bold c-primary">{stats.total}</p><p className="text-[9px] c-tertiary">Всего</p></div>
-            <div className="card-glass flex flex-col items-center gap-0.5 py-2.5"><p className="text-[13px] font-bold c-green">{stats.approved}</p><p className="text-[9px] c-tertiary">Одобрено</p></div>
-            <div className="card-glass flex flex-col items-center gap-0.5 py-2.5"><p className="text-[13px] font-bold c-blue">{stats.sent}</p><p className="text-[9px] c-tertiary">На рассмотр.</p></div>
-            <div className="card-glass flex flex-col items-center gap-0.5 py-2.5"><p className="text-[13px] font-bold c-red">{stats.rejected}</p><p className="text-[9px] c-tertiary">Отклонено</p></div>
-          </div>
+          <StatRow cols={3}>
+            <StatCard icon={Calculator} label="Всего"        value={stats.total}    color="var(--text-primary)" delay={0} />
+            <StatCard icon={Calculator} label="Одобрено"     value={stats.approved} color="var(--green)"        delay={60} />
+            <StatCard icon={Calculator} label="На рассмотр." value={stats.sent}     color="var(--blue)"         delay={120} />
+          </StatRow>
         )}
         <div className="flex gap-1.5 px-1 pb-3 overflow-x-auto no-scrollbar">
           {FILTERS.map((f) => <button key={f.id} onClick={() => { haptic.light(); setFilter(f.id); }} className="filter-pill spring-tap" data-active={filter === f.id ? 'true' : undefined}>{f.label}</button>)}

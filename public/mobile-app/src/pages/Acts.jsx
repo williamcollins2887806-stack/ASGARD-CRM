@@ -8,6 +8,7 @@ import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { FileCheck, Search, ChevronRight, X, ExternalLink, DollarSign } from 'lucide-react';
 import { formatDate, formatMoney } from '@/lib/utils';
+import { StatCard, StatRow } from '@/components/shared/StatCard';
 
 const STATUS_MAP = {
   draft: { label: 'Черновик', color: 'var(--text-tertiary)' },
@@ -56,11 +57,11 @@ export default function Acts() {
       <PullToRefresh onRefresh={fetchActs}>
         {showSearch && <SearchBar search={search} setSearch={setSearch} placeholder="Поиск актов..." />}
         {!loading && acts.length > 0 && (
-          <div className="grid grid-cols-3 gap-1.5 px-1 pb-3" style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards' }}>
-            <MiniStat label="Всего" value={stats.total} colorClass="c-primary" />
-            <MiniStat label="Подписано" value={stats.signed} colorClass="c-green" />
-            <MiniStat label="Сумма" value={formatMoney(stats.sum, { short: true })} colorClass="c-gold" />
-          </div>
+          <StatRow cols={3}>
+            <StatCard icon={FileCheck} label="Всего"     value={stats.total}                          color="var(--text-primary)" delay={0} />
+            <StatCard icon={FileCheck} label="Подписано" value={stats.signed}                         color="var(--green)"        delay={60} />
+            <StatCard icon={FileCheck} label="Сумма"     value={formatMoney(stats.sum, { short: true })} color="var(--gold)"     delay={120} />
+          </StatRow>
         )}
         <FilterPills filters={FILTERS} active={filter} onChange={(f) => { haptic.light(); setFilter(f); }} />
         {loading ? <SkeletonList count={5} /> : filtered.length === 0 ? (

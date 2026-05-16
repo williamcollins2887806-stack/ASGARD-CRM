@@ -8,6 +8,7 @@ import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { Filter, ChevronRight } from 'lucide-react';
 import { formatMoney, formatDate } from '@/lib/utils';
+import { StatCard, StatRow } from '@/components/shared/StatCard';
 
 const STAGES = [
   { id: 'new', label: 'Новые', color: 'var(--text-tertiary)', match: ['черновик', 'новый', 'получен'] },
@@ -35,7 +36,7 @@ export default function Funnel() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    try { const res = await api.get('/data/tenders'); setTenders(api.extractRows(res) || []); }
+    try { const res = await api.get('/tenders?limit=500'); setTenders(api.extractRows(res) || []); }
     catch { setTenders([]); } finally { setLoading(false); }
   }, []);
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -64,12 +65,11 @@ export default function Funnel() {
     <PageShell title="Воронка">
       <PullToRefresh onRefresh={fetchData}>
         {!loading && tenders.length > 0 && (
-          <div className="grid grid-cols-4 gap-1.5 px-1 pb-3" style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards' }}>
-            <div className="card-glass flex flex-col items-center gap-0.5 py-2.5"><p className="text-[13px] font-bold c-primary">{stats.total}</p><p className="text-[9px] c-tertiary">Всего</p></div>
-            <div className="card-glass flex flex-col items-center gap-0.5 py-2.5"><p className="text-[13px] font-bold c-gold">{formatMoney(stats.sum, { short: true })}</p><p className="text-[9px] c-tertiary">Сумма</p></div>
-            <div className="card-glass flex flex-col items-center gap-0.5 py-2.5"><p className="text-[13px] font-bold c-green">{stats.won}</p><p className="text-[9px] c-tertiary">Выиграно</p></div>
-            <div className="card-glass flex flex-col items-center gap-0.5 py-2.5"><p className="text-[13px] font-bold c-blue">{stats.newCount}</p><p className="text-[9px] c-tertiary">Новые</p></div>
-          </div>
+          <StatRow cols={3}>
+            <StatCard icon={Filter} label="Всего"    value={stats.total}                           color="var(--text-primary)" delay={0} />
+            <StatCard icon={Filter} label="Выиграно" value={stats.won}                             color="var(--green)"        delay={60} />
+            <StatCard icon={Filter} label="Сумма"    value={formatMoney(stats.sum, { short: true })} color="var(--gold)"      delay={120} />
+          </StatRow>
         )}
         <div className="flex gap-1.5 px-1 pb-3 overflow-x-auto no-scrollbar">
           <button onClick={() => { haptic.light(); setActiveStage('all'); }} className="filter-pill spring-tap" data-active={activeStage === 'all' ? 'true' : undefined}>Все</button>

@@ -8,6 +8,7 @@ import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { Receipt, Search, ChevronRight, X, ExternalLink, DollarSign } from 'lucide-react';
 import { formatDate, formatMoney } from '@/lib/utils';
+import { StatCard, StatRow } from '@/components/shared/StatCard';
 
 const STATUS_MAP = {
   unpaid: { label: 'Неоплачен', color: 'var(--red-soft)' },
@@ -55,11 +56,11 @@ export default function Invoices() {
       <PullToRefresh onRefresh={fetchInvoices}>
         {showSearch && <SearchBar search={search} setSearch={setSearch} placeholder="Поиск счетов..." />}
         {!loading && invoices.length > 0 && (
-          <div className="grid grid-cols-3 gap-1.5 px-1 pb-3" style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards' }}>
-            <MiniStat label="Всего" value={stats.total} color="var(--text-primary)" />
-            <MiniStat label="Оплачено" value={formatMoney(stats.paidSum, { short: true })} color="var(--green)" />
-            <MiniStat label="К оплате" value={formatMoney(stats.unpaidSum, { short: true })} color="var(--gold)" />
-          </div>
+          <StatRow cols={3}>
+            <StatCard icon={Receipt} label="Всего"     value={stats.total}                                 color="var(--text-primary)" delay={0} />
+            <StatCard icon={Receipt} label="Оплачено"  value={formatMoney(stats.paidSum, { short: true })}  color="var(--green)"        delay={60} />
+            <StatCard icon={Receipt} label="К оплате"  value={formatMoney(stats.unpaidSum, { short: true })} color="var(--gold)"        delay={120} />
+          </StatRow>
         )}
         <FilterPills filters={FILTERS} active={filter} onChange={(f) => { haptic.light(); setFilter(f); }} />
         {loading ? <SkeletonList count={5} /> : filtered.length === 0 ? (

@@ -9,6 +9,7 @@ import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { Banknote, ChevronRight, Check, Send } from 'lucide-react';
 import { formatMoney, relativeTime } from '@/lib/utils';
+import { StatCard, StatRow } from '@/components/shared/StatCard';
 
 const STATUS_MAP = {
   draft: { label: 'Черновик', color: 'var(--text-tertiary)' },
@@ -68,12 +69,11 @@ export default function Payroll() {
     <PageShell title="Ведомости ЗП">
       <PullToRefresh onRefresh={fetchData}>
         {!loading && sheets.length > 0 && (
-          <div className="grid grid-cols-4 gap-1.5 px-1 pb-3" style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards' }}>
-            <div className="card-glass flex flex-col items-center gap-0.5 py-2.5"><p className="text-[13px] font-bold c-primary">{stats.total}</p><p className="text-[9px] c-tertiary">Всего</p></div>
-            <div className="card-glass flex flex-col items-center gap-0.5 py-2.5"><p className="text-[13px] font-bold c-blue">{stats.pending}</p><p className="text-[9px] c-tertiary">Ожидает</p></div>
-            <div className="card-glass flex flex-col items-center gap-0.5 py-2.5"><p className="text-[13px] font-bold c-green">{stats.paid}</p><p className="text-[9px] c-tertiary">Оплачено</p></div>
-            <div className="card-glass flex flex-col items-center gap-0.5 py-2.5"><p className="text-[13px] font-bold c-gold">{formatMoney(stats.sum, { short: true })}</p><p className="text-[9px] c-tertiary">Сумма</p></div>
-          </div>
+          <StatRow cols={3}>
+            <StatCard icon={Banknote} label="Всего"    value={stats.total}                          color="var(--text-primary)" delay={0} />
+            <StatCard icon={Banknote} label="Ожидает"  value={stats.pending}                        color="var(--blue)"         delay={60} />
+            <StatCard icon={Banknote} label="Сумма"    value={formatMoney(stats.sum, { short: true })} color="var(--gold)"      delay={120} />
+          </StatRow>
         )}
         <div className="flex gap-1.5 px-1 pb-3 overflow-x-auto no-scrollbar">
           {FILTERS.map((f) => <button key={f.id} onClick={() => { haptic.light(); setFilter(f.id); }} className="filter-pill spring-tap" data-active={filter === f.id ? 'true' : undefined}>{f.label}</button>)}
