@@ -14,16 +14,9 @@ async function routes(fastify) {
   const db = fastify.db;
   const auth = { preHandler: [fastify.requireRoles(['PM', 'HEAD_PM', 'ADMIN'])] };
 
-  // Хелпер: получить список work_id для текущего PM
   function pmFilter(user) {
     const isAdmin = user.role === 'ADMIN';
     return { isAdmin, userId: user.id };
-  }
-
-  function worksSql(isAdmin, userId) {
-    return isAdmin
-      ? `SELECT id FROM works WHERE deleted_at IS NULL AND work_status NOT IN ('Закрыта', 'Отменена')`
-      : `SELECT id FROM works WHERE pm_id = $1 AND deleted_at IS NULL AND work_status NOT IN ('Закрыта', 'Отменена')`;
   }
 
   // ═══════════════════════════════════════════════════════════════════
@@ -143,7 +136,7 @@ async function routes(fastify) {
           : `SELECT id FROM works WHERE id = $1 AND pm_id = $2 AND deleted_at IS NULL`,
         isAdmin ? [work_id] : [work_id, userId]
       );
-      if (!check.length) return fastify.httpErrors.forbidden('Нет доступа к объекту');
+      if (!check.length) return reply.code(403).send({ error: 'Нет доступа к объекту' });
       workIds = [parseInt(work_id)];
     } else {
       const { rows } = await db.query(
@@ -204,7 +197,7 @@ async function routes(fastify) {
            WHERE ea.employee_id = $1 AND w.pm_id = $2 AND ea.is_active = true LIMIT 1`,
       isAdmin ? [empId] : [empId, userId]
     );
-    if (!accessCheck.length) return req.server.httpErrors.notFound('Рабочий не найден');
+    if (!accessCheck.length) return reply.code(404).send({ error: 'Рабочий не найден' });
 
     const [empRes, assignRes, shiftsRes, paymentsRes, achRes, academyRes, spinRes] = await Promise.all([
       // Данные сотрудника
@@ -285,7 +278,7 @@ async function routes(fastify) {
     ]);
 
     const emp = empRes.rows[0];
-    if (!emp) return req.server.httpErrors.notFound();
+    if (!emp) return reply.code(404).send({ error: 'Не найден' });
 
     return {
       employee: emp,
@@ -315,7 +308,7 @@ async function routes(fastify) {
         isAdmin ? `SELECT id FROM works WHERE id=$1` : `SELECT id FROM works WHERE id=$1 AND pm_id=$2`,
         isAdmin ? [workId] : [workId, userId]
       );
-      if (!check.length) return fastify.httpErrors.forbidden();
+      if (!check.length) return reply.code(403).send({ error: 'Нет доступа к объекту' });
       workIds = [workId];
     } else {
       const { rows } = await db.query(
@@ -485,7 +478,7 @@ async function routes(fastify) {
         isAdmin ? `SELECT id FROM works WHERE id=$1` : `SELECT id FROM works WHERE id=$1 AND pm_id=$2`,
         isAdmin ? [work_id] : [work_id, userId]
       );
-      if (!check.length) return fastify.httpErrors.forbidden();
+      if (!check.length) return reply.code(403).send({ error: 'Нет доступа к объекту' });
       workIds = [parseInt(work_id)];
     } else {
       const { rows } = await db.query(
@@ -686,7 +679,7 @@ async function routes(fastify) {
     const { rows: [lesson] } = await db.query(`
       SELECT * FROM academy_lessons WHERE id = $1
     `, [req.params.id]);
-    if (!lesson) return req.server.httpErrors.notFound();
+    if (!lesson) return reply.code(404).send({ error: 'Урок не найден' });
 
     const { rows: questions } = await db.query(`
       SELECT * FROM academy_quiz_questions WHERE lesson_id = $1 ORDER BY order_index
@@ -732,15 +725,22 @@ async function routes(fastify) {
     );
     if (!lesson) return reply.code(404).send({ error: 'Урок не найден' });
 
-    // Помечаем как archived (отклонён) — статус 'draft' уже был
-    // Добавляем комментарий в поле тегов/мета чтобы Мимир видел
-    await db.query(`
-      UPDATE academy_lessons SET
-        status = 'archived',
-        tags = array_append(COALESCE(tags, '{}'), $2),
-        published_at = NULL
-      WHERE id = $1
-    `, [lessonId, comment ? `rejected:${comment.slice(0, 100)}` : 'rejected']);
+    // Удаляем черновик целиком — освобождаем week_number, чтобы Мимир
+    // мог сгенерировать замену на ту же неделю при следующем запуске крона.
+    // Комментарий сохраняем в app_updates для аудита.
+    await db.query(`DELETE FROM academy_lessons WHERE id = $1`, [lessonId]);
+
+    if (comment) {
+      await db.query(`
+        INSERT INTO app_updates (version, title, changes, target)
+        VALUES ($1, $2, $3::jsonb, 'field')
+        ON CONFLICT (version) DO NOTHING
+      `, [
+        `academy-reject-${lessonId}`,
+        `Урок «${lesson.title}» отклонён РП`,
+        JSON.stringify([comment]),
+      ]);
+    }
 
     return { ok: true, message: 'Урок отклонён, Мимир создаст новый' };
   });

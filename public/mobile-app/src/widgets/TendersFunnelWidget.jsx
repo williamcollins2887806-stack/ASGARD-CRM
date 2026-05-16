@@ -58,7 +58,7 @@ export default function TendersFunnelWidget() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await api.get('/data/tenders?limit=50');
+        const res = await api.get('/tenders?limit=500');
         const rows = api.extractRows(res);
 
         const stageCounts = STAGES.map((stage) => {

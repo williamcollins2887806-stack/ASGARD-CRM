@@ -17,11 +17,7 @@ export default function PayrollPendingWidget() {
   useEffect(() => {
     (async () => {
       try {
-        const [sheetsRes] = await Promise.all([
-          api.get('/payroll/sheets'),
-          api.get('/data/users?limit=200'),
-        ]);
-
+        const sheetsRes = await api.get('/payroll/sheets');
         const sheets = api.extractRows(sheetsRes);
         const pending = sheets.filter((s) => s.status === 'pending');
 

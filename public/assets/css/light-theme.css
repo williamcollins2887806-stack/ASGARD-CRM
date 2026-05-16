@@ -4934,3 +4934,249 @@ html[data-theme="light"] .sr-avatar--c5 { background: #2B7A8C !important; }  /* 
 }
 
 /* ─── §46 END — Light Theme v2.2.0 complete (все пробелы закрыты) ─── */
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §47. ГЛУБОКИЙ АУДИТ — Невидимые рамки, wp-desktop, прокьюремент, чат
+   Найдено в components.css и procurement.css при полном сканировании.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ─── §47-A: dash-widget — баг в components.css (rgba(255,255,255,0.15)) ─── */
+html[data-theme="light"] .dash-widget {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+html[data-theme="light"] .dash-widget:hover {
+  border-color: rgba(184,132,26,0.30) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+html[data-theme="light"] .dash-widget-header {
+  background: var(--bg3) !important;
+  border-bottom: 1px solid var(--brd) !important;
+}
+
+/* ─── §47-B: viking-welcome — убираем неоновый glow из light-theme правила ─── */
+html[data-theme="light"] .viking-welcome .vw-rune {
+  color: var(--red) !important;
+  text-shadow: none !important;
+}
+html[data-theme="light"] .viking-welcome .vw-saga-wrap {
+  background: linear-gradient(135deg, rgba(168,32,48,0.05), rgba(26,63,116,0.03)) !important;
+  border-color: rgba(168,32,48,0.12) !important;
+}
+
+/* ─── §47-C: stat-card — невидимая рамка ─── */
+html[data-theme="light"] .stat-card {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+html[data-theme="light"] .stat-card:hover {
+  border-color: rgba(184,132,26,0.25) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+html[data-theme="light"] .stat-card .stat-value {
+  color: var(--t1) !important;
+}
+html[data-theme="light"] .stat-card .stat-label {
+  color: var(--t2) !important;
+}
+
+/* ─── §47-D: tag, pill — невидимая рамка ─── */
+html[data-theme="light"] .tag,
+html[data-theme="light"] .pill {
+  background: var(--bg4) !important;
+  border: 1px solid var(--brd) !important;
+  color: var(--t2) !important;
+}
+html[data-theme="light"] .tag:hover,
+html[data-theme="light"] .pill:hover {
+  border-color: rgba(184,132,26,0.25) !important;
+  color: var(--t1) !important;
+}
+
+/* ─── §47-E: modal-content — невидимая рамка, тяжёлая тень ─── */
+html[data-theme="light"] .modal-content {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  box-shadow: var(--shadow-xl) !important;
+}
+html[data-theme="light"] .modal-content::before {
+  opacity: 0 !important;
+}
+
+/* ─── §47-F: tab-list — невидимая рамка ─── */
+html[data-theme="light"] .tab-list,
+html[data-theme="light"] .tabs {
+  background: var(--bg3) !important;
+  border: 1px solid var(--brd) !important;
+}
+html[data-theme="light"] .tab,
+html[data-theme="light"] .tab-btn {
+  color: var(--t2) !important;
+}
+html[data-theme="light"] .tab.active,
+html[data-theme="light"] .tab-btn.active,
+html[data-theme="light"] .tab--active {
+  background: var(--bg1) !important;
+  color: var(--t1) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+/* ─── §47-G: Чат — реакции, разделители дат, скроллбар ─── */
+/* chat-msg-reaction: невидимая рамка + hover */
+html[data-theme="light"] .chat-msg-reaction {
+  background: var(--bg3) !important;
+  border: 1px solid var(--brd) !important;
+  color: var(--t2) !important;
+}
+html[data-theme="light"] .chat-msg-reaction:hover {
+  background: var(--bg4) !important;
+  border-color: rgba(184,132,26,0.25) !important;
+}
+html[data-theme="light"] .chat-msg-reaction.active {
+  background: rgba(184,132,26,0.12) !important;
+  border-color: rgba(184,132,26,0.30) !important;
+}
+/* chat-date-divider: чёрный фон + белый текст → тёплый */
+html[data-theme="light"] .chat-date-divider span {
+  background: rgba(139,120,90,0.12) !important;
+  color: var(--t2) !important;
+  backdrop-filter: none !important;
+}
+/* Чат скроллбар: белый → тёплый */
+html[data-theme="light"] .chat-messages::-webkit-scrollbar-thumb {
+  background: rgba(184,132,26,0.20) !important;
+}
+html[data-theme="light"] .chat-messages::-webkit-scrollbar-thumb:hover {
+  background: rgba(184,132,26,0.35) !important;
+}
+/* Контейнер чата: белая рамка → тёплая */
+html[data-theme="light"] .chat-container,
+html[data-theme="light"] .chat-wrap {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+/* ─── §47-H: Worker Profile (wp-desktop-*) — полный оверхол ─── */
+/* Hero: тёмный градиент → тёплый пергаментный */
+html[data-theme="light"] .wp-desktop-hero {
+  background: linear-gradient(135deg, #1A3F74 0%, #A82030 100%) !important;
+  /* Оставляем тёмный hero как брендовый акцент — светлые элементы внутри уберём */
+}
+/* Текст внутри hero — оставляем белым (он на тёмном фоне) */
+html[data-theme="light"] .wp-desktop-hero-name { color: #fff !important; }
+html[data-theme="light"] .wp-desktop-hero-role { color: rgba(255,255,255,0.75) !important; }
+html[data-theme="light"] .wp-desktop-hero-meta { color: rgba(255,255,255,0.55) !important; }
+html[data-theme="light"] .wp-desktop-hero-progress { color: rgba(255,255,255,0.65) !important; }
+/* Avatar border — тёплое золото */
+html[data-theme="light"] .wp-desktop-avatar {
+  border: 2px solid rgba(212,168,67,0.50) !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.20) !important;
+}
+html[data-theme="light"] .wp-desktop-avatar-placeholder {
+  background: rgba(255,255,255,0.15) !important;
+  color: rgba(255,255,255,0.80) !important;
+}
+/* Icon кнопки в hero */
+html[data-theme="light"] .wp-desktop-icon-btn {
+  background: rgba(255,255,255,0.15) !important;
+  border: 1px solid rgba(255,255,255,0.25) !important;
+  color: #fff !important;
+}
+html[data-theme="light"] .wp-desktop-icon-btn:hover {
+  background: rgba(255,255,255,0.25) !important;
+}
+/* Progress bar track */
+html[data-theme="light"] .wp-desktop-progress-bar {
+  background: rgba(255,255,255,0.20) !important;
+}
+/* Основная сетка — тёплый фон */
+html[data-theme="light"] .wp-desktop-grid {
+  background: var(--bg1) !important;
+}
+/* Секции */
+html[data-theme="light"] .wp-desktop-section {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  border-radius: 8px !important;
+  padding: 16px !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+/* Pills (фильтры) */
+html[data-theme="light"] .wp-desktop-pill {
+  background: var(--bg3) !important;
+  border: 1px solid var(--brd) !important;
+  color: var(--t2) !important;
+}
+html[data-theme="light"] .wp-desktop-pill:hover {
+  background: var(--bg4) !important;
+  border-color: rgba(184,132,26,0.25) !important;
+}
+html[data-theme="light"] .wp-desktop-pill.selected {
+  background: rgba(184,132,26,0.12) !important;
+  border-color: rgba(184,132,26,0.35) !important;
+  color: var(--gold) !important;
+}
+/* Скелетон */
+html[data-theme="light"] .wp-desktop-skel-hero {
+  background: linear-gradient(135deg, rgba(26,63,116,0.15), rgba(168,32,48,0.10)) !important;
+}
+html[data-theme="light"] .wp-desktop-skel-row {
+  border-bottom: 1px solid var(--brd) !important;
+}
+html[data-theme="light"] .wp-desktop-skel-label {
+  background: rgba(139,120,90,0.12) !important;
+}
+html[data-theme="light"] .wp-desktop-skel-value {
+  background: rgba(139,120,90,0.08) !important;
+}
+
+/* ─── §47-I: Procurement — хардкодный Tailwind-синий #2563eb ─── */
+/* Primary button доставки — синий Tailwind → золотой */
+html[data-theme="light"] .proc-deliver__btn--primary {
+  background: linear-gradient(135deg, var(--gold), var(--gold-h)) !important;
+  color: #fff !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+html[data-theme="light"] .proc-deliver__btn--primary:hover {
+  box-shadow: var(--shadow-md) !important;
+  transform: translateY(-1px) !important;
+}
+/* Progress bar доставки */
+html[data-theme="light"] .proc-deliver__progress-bar {
+  background: linear-gradient(90deg, var(--gold), var(--ok)) !important;
+}
+/* Transit badge */
+html[data-theme="light"] .proc-eq-badge--transit {
+  background: rgba(26,63,116,0.09) !important;
+  color: var(--blue) !important;
+}
+/* Card hover glow → физическая тень */
+html[data-theme="light"] .proc-deliver-card:hover {
+  border-color: rgba(184,132,26,0.25) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+/* Ссылка внутри прокьюремент */
+html[data-theme="light"] .proc-deliver__link:hover,
+html[data-theme="light"] .proc-deliver-done__link:hover {
+  background: var(--gold) !important;
+  color: #fff !important;
+}
+
+/* ─── §47-J: Кнопка Loading spinner — видимый трек ─── */
+/* .btn.loading::after имеет rgba(255,255,255,0.3) трек — на светлых кнопках невидим */
+html[data-theme="light"] .btn.loading::after {
+  border-color: rgba(139,120,90,0.30) !important;
+  border-top-color: var(--t1) !important;
+}
+/* На первичных кнопках (тёмный фон) — оставляем белый */
+html[data-theme="light"] .btn.primary.loading::after,
+html[data-theme="light"] .btn.gold.loading::after,
+html[data-theme="light"] .btn.red.loading::after {
+  border-color: rgba(255,255,255,0.35) !important;
+  border-top-color: #fff !important;
+}
+
+/* ─── §47 END ─── */

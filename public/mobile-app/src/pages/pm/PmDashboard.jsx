@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/api/client';
+import PmTabBar from '@/components/pm/PmTabBar';
 
 const C = {
   bg: '#0d0d12', card: '#16161f', gold: '#c8a84b',
@@ -52,7 +53,7 @@ export default function PmDashboard() {
   ];
 
   return (
-    <div style={{ minHeight: '100vh', background: C.bg, paddingBottom: 30 }}>
+    <div style={{ minHeight: '100vh', background: C.bg, paddingBottom: 80 }}>
       {/* Header */}
       <div style={{ padding: '48px 16px 20px', background: 'linear-gradient(180deg, #0d1a2e 0%, transparent 100%)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
@@ -143,6 +144,7 @@ export default function PmDashboard() {
           ))
         )}
       </div>
+      <PmTabBar />
     </div>
   );
 }

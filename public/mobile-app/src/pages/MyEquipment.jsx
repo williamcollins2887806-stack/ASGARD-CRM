@@ -9,6 +9,7 @@ import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { HardDrive, ChevronRight } from 'lucide-react';
 import { formatMoney } from '@/lib/utils';
+import { StatCard, StatRow } from '@/components/shared/StatCard';
 
 const STATUS_MAP = {
   active: { label: 'Активно', color: 'var(--green)' },
@@ -37,10 +38,10 @@ export default function MyEquipment() {
     <PageShell title="Моё оборудование">
       <PullToRefresh onRefresh={fetchData}>
         {!loading && items.length > 0 && (
-          <div className="grid grid-cols-2 gap-1.5 px-1 pb-3" style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards' }}>
-            <div className="flex flex-col items-center gap-0.5 py-2.5 rounded-xl card-glass"><p className="text-[13px] font-bold c-primary">{items.length}</p><p className="text-[9px] c-tertiary">Единиц</p></div>
-            <div className="flex flex-col items-center gap-0.5 py-2.5 rounded-xl card-glass"><p className="text-[13px] font-bold c-gold">{formatMoney(totalValue, { short: true })}</p><p className="text-[9px] c-tertiary">Стоимость</p></div>
-          </div>
+          <StatRow cols={2} className="mb-3">
+            <StatCard icon="📦" label="Единиц" value={items.length} color="var(--blue)" />
+            <StatCard icon="💰" label="Стоимость" value={formatMoney(totalValue, { short: true })} color="var(--gold)" />
+          </StatRow>
         )}
         {loading ? <SkeletonList count={4} /> : items.length === 0 ? (
           <EmptyState icon={HardDrive} iconColor="var(--blue)" iconBg="rgba(74,144,217,0.1)" title="Нет оборудования" description="Закреплённое за вами оборудование появится здесь" />

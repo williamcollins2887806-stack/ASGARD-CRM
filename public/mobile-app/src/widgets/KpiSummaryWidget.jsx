@@ -16,9 +16,9 @@ export default function KpiSummaryWidget() {
       try {
         const currentYear = new Date().getFullYear();
         const [tendersRes, worksRes, estimatesRes] = await Promise.all([
-          api.get('/data/tenders?limit=50'),
+          api.get('/tenders?limit=200'),
           api.get('/works?limit=200'),
-          api.get('/data/estimates?limit=50'),
+          api.get('/estimates?limit=200'),
         ]);
 
         const tenders = api.extractRows(tendersRes);

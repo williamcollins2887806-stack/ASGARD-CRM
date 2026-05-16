@@ -5,7 +5,7 @@ import { WidgetShell } from '@/widgets/WidgetShell';
 
 /**
  * PermitsExpiryWidget (WIDE) — истекающие допуски (<=30 дней)
- * API: GET /data/permits + GET /data/users (parallel)
+ * API: GET /permits + GET /staff/employees (parallel)
  */
 export default function PermitsExpiryWidget() {
   const [items, setItems] = useState([]);
@@ -14,29 +14,30 @@ export default function PermitsExpiryWidget() {
   useEffect(() => {
     (async () => {
       try {
-        const [permitsRes, usersRes] = await Promise.all([
-          api.get('/data/permits?limit=500'),
-          api.get('/data/users?limit=200'),
+        const [permitsRes, empRes] = await Promise.all([
+          api.get('/permits?limit=500'),
+          api.get('/staff/employees?limit=1000').catch(() => null),
         ]);
 
         const permits = api.extractRows(permitsRes);
-        const users = api.extractRows(usersRes);
-        const usersMap = {};
-        users.forEach((u) => {
-          usersMap[u.id] = u.name || u.full_name || u.login || '—';
-        });
+        const empMap = {};
+        if (empRes) {
+          api.extractRows(empRes).forEach((e) => {
+            empMap[e.id] = e.full_name || e.fio || e.last_name || '—';
+          });
+        }
 
         const now = Date.now();
         const expiring = permits
-          .filter((p) => p.expiry_date)
+          .filter((p) => p.valid_to)
           .map((p) => {
             const days = Math.floor(
-              (new Date(p.expiry_date).getTime() - now) / 86400000
+              (new Date(p.valid_to).getTime() - now) / 86400000
             );
             return {
               id: p.id,
-              userName: usersMap[p.user_id] || '—',
-              type: p.type || p.permit_type || '—',
+              userName: empMap[p.employee_id] || '—',
+              type: p.permit_type || p.type_name || '—',
               days,
             };
           })

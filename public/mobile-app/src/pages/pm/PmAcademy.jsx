@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/api/client';
+import PmTabBar from '@/components/pm/PmTabBar';
 
 const C = {
   bg: '#0d0d12', card: '#16161f', gold: '#c8a84b',
@@ -70,7 +71,7 @@ export default function PmAcademy() {
   // Детальный просмотр урока
   if (lesson && selected) {
     return (
-      <div style={{ minHeight: '100vh', background: C.bg, paddingBottom: 40 }}>
+      <div style={{ minHeight: '100vh', background: C.bg, paddingBottom: 90 }}>
         <div style={{ padding: '48px 16px 16px' }}>
           <button onClick={() => { setSelected(null); setLesson(null); }}
             style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 14, marginBottom: 10, padding: 0 }}>
@@ -185,13 +186,14 @@ export default function PmAcademy() {
             </div>
           )}
         </div>
+        <PmTabBar />
       </div>
     );
   }
 
   // Главный экран академии
   return (
-    <div style={{ minHeight: '100vh', background: C.bg, paddingBottom: 30 }}>
+    <div style={{ minHeight: '100vh', background: C.bg, paddingBottom: 90 }}>
       <div style={{ padding: '48px 16px 16px', background: 'linear-gradient(180deg, #1a0d2e 0%, transparent 100%)' }}>
         <button onClick={() => navigate('/pm')}
           style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 14, marginBottom: 10, padding: 0 }}>
@@ -323,6 +325,7 @@ export default function PmAcademy() {
           </>
         )}
       </div>
+      <PmTabBar />
     </div>
   );
 }

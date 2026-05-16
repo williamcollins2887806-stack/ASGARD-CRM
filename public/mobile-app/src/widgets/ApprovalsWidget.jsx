@@ -17,17 +17,15 @@ export default function ApprovalsWidget() {
       try {
         const [bonusRes, estimatesRes] = await Promise.all([
           api.get('/data/bonus_requests'),
-          api.get('/data/estimates?limit=50'),
+          api.get('/estimates?limit=200'),
         ]);
 
-        const bonuses = api.extractRows(bonusRes);
+        const bonuses   = api.extractRows(bonusRes);
         const estimates = api.extractRows(estimatesRes);
 
-        const pendingBonuses = bonuses.filter(
-          (b) => b.status === 'pending'
-        );
+        const pendingBonuses   = bonuses.filter((b) => b.status === 'pending');
         const pendingEstimates = estimates.filter(
-          (e) => e.status === 'sent' || e.status === 'pending'
+          (e) => e.approval_status === 'sent'
         );
 
         const all = [...pendingBonuses, ...pendingEstimates];

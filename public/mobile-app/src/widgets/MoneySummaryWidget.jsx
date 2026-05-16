@@ -29,17 +29,11 @@ export default function MoneySummaryWidget() {
     (async () => {
       try {
         const currentYear = new Date().getFullYear();
-        const [worksRes, tendersRes] = await Promise.all([
-          api.get('/works?limit=200'),
-          api.get('/data/tenders?limit=50'),
-        ]);
-
+        const worksRes = await api.get('/works?limit=200');
         const works = api.extractRows(worksRes);
-        const tenders = api.extractRows(tendersRes);
-        const all = [...works, ...tenders];
 
-        // Filter current year
-        const yearRows = all.filter((r) => {
+        // Filter current year — только по работам, tender_price не является выручкой
+        const yearRows = works.filter((r) => {
           const d = r.created_at ? new Date(r.created_at) : null;
           return d && d.getFullYear() === currentYear;
         });
@@ -49,9 +43,9 @@ export default function MoneySummaryWidget() {
         const monthlyRevenue = Array(12).fill(0);
 
         yearRows.forEach((r) => {
-          const sum = Number(r.contract_value) || 0;
-          const cost = Number(r.total_cost || r.expenses) || 0;
-          revenue += sum;
+          const sum  = Number(r.contract_value) || 0;
+          const cost = Number(r.cost_fact || r.total_cost || r.expenses) || 0;
+          revenue  += sum;
           expenses += cost;
 
           if (sum > 0) {
@@ -127,7 +121,7 @@ export default function MoneySummaryWidget() {
           textTransform: 'uppercase',
         }}
       >
-        ФИНАНСЫ 2026
+        ФИНАНСЫ {new Date().getFullYear()}
       </span>
 
       {/* Revenue */}

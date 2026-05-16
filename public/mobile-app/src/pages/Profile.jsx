@@ -7,18 +7,38 @@ import { api } from '@/api/client';
 import { PageShell } from '@/components/layout/PageShell';
 import { BottomSheet } from '@/components/shared/BottomSheet';
 import {
-  User, Mail, Phone, Shield, Bell, Sun, Moon,
-  LogOut, ChevronRight, Lock, Key,
+  User, Mail, Phone, Sun, Moon,
+  LogOut, ChevronRight, Lock,
 } from 'lucide-react';
 
+const ROLE_NAMES = {
+  ADMIN:          'Администратор',
+  PM:             'Руководитель проекта',
+  TO:             'Тендерный отдел',
+  HEAD_PM:        'Главный РП',
+  HEAD_TO:        'Начальник ТО',
+  HR:             'HR специалист',
+  HR_MANAGER:     'HR менеджер',
+  BUH:            'Бухгалтер',
+  DIRECTOR_GEN:   'Генеральный директор',
+  DIRECTOR_COMM:  'Коммерческий директор',
+  DIRECTOR_DEV:   'Директор по развитию',
+  OFFICE_MANAGER: 'Офис-менеджер',
+  CHIEF_ENGINEER: 'Главный инженер',
+  WAREHOUSE:      'Склад',
+  PROC:           'Закупки',
+};
+
 export default function Profile() {
-  const user = useAuthStore((s) => s.user);
+  const user   = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const { theme, toggleTheme } = useThemeStore();
   const haptic = useHaptic();
   const navigate = useNavigate();
-  const [editField, setEditField] = useState(null);
+  const [editField,    setEditField]    = useState(null);
   const [showPassword, setShowPassword] = useState(false);
+
+  const roleName = ROLE_NAMES[user?.role] || user?.role || 'Пользователь';
 
   const roleBadgeColor = (() => {
     if (!user?.role) return 'var(--blue)';
@@ -26,6 +46,9 @@ export default function Profile() {
     if (user.role.startsWith('DIRECTOR')) return 'var(--gold)';
     return 'var(--blue)';
   })();
+
+  const initials = (user?.full_name || user?.login || 'A')
+    .split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 
   return (
     <PageShell title="Профиль">
@@ -39,20 +62,55 @@ export default function Profile() {
           animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards',
         }}
       >
-        <div
-          className="w-20 h-20 rounded-full flex items-center justify-center text-2xl font-bold mb-3"
-          style={{ background: 'var(--hero-gradient)', color: '#fff' }}
-        >
-          {(user?.full_name || user?.login || 'A').charAt(0).toUpperCase()}
+        {/* Аватар с градиентной рамкой */}
+        <div className="relative mb-3">
+          <div
+            style={{
+              padding: 3,
+              background: 'linear-gradient(135deg, var(--brand-red), var(--brand-blue), var(--brand-gold))',
+              borderRadius: '50%',
+            }}
+          >
+            <div
+              style={{
+                width: 76,
+                height: 76,
+                borderRadius: '50%',
+                background: 'var(--hero-gradient)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 26,
+                fontWeight: 700,
+                color: '#fff',
+              }}
+            >
+              {initials}
+            </div>
+          </div>
+          {/* Онлайн-индикатор */}
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 3,
+              right: 3,
+              width: 13,
+              height: 13,
+              borderRadius: '50%',
+              background: 'var(--green)',
+              border: '2.5px solid var(--bg-surface)',
+            }}
+          />
         </div>
-        <p className="text-[17px] font-bold c-primary">
+
+        <p className="text-[18px] font-bold c-primary text-center">
           {user?.full_name || user?.login || 'Пользователь'}
         </p>
         <span
-          className="px-3 py-0.5 rounded-full text-[11px] font-semibold mt-1.5"
+          className="px-3 py-0.5 rounded-full text-[12px] font-semibold mt-1.5"
           style={{ background: `color-mix(in srgb, ${roleBadgeColor} 15%, transparent)`, color: roleBadgeColor }}
         >
-          {user?.role || '—'}
+          {roleName}
         </span>
       </div>
 

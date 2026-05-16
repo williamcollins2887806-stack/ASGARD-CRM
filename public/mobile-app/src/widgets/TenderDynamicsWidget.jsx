@@ -19,7 +19,7 @@ export default function TenderDynamicsWidget() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await api.get('/data/tenders?limit=50');
+        const res = await api.get('/tenders?limit=500');
         const rows = api.extractRows(res);
         const currentYear = new Date().getFullYear();
         const monthly = new Array(12).fill(0);
