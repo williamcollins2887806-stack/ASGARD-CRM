@@ -123,7 +123,7 @@ async function routes(fastify) {
   // ═══════════════════════════════════════════════════════════════════
   // GET /workers?work_id= — рабочие на проекте с сегодняшним статусом
   // ═══════════════════════════════════════════════════════════════════
-  fastify.get('/workers', auth, async (req) => {
+  fastify.get('/workers', auth, async (req, reply) => {
     const { isAdmin, userId } = pmFilter(req.user);
     const { work_id } = req.query;
 
@@ -184,7 +184,7 @@ async function routes(fastify) {
   // ═══════════════════════════════════════════════════════════════════
   // GET /workers/:id — профиль рабочего
   // ═══════════════════════════════════════════════════════════════════
-  fastify.get('/workers/:id', auth, async (req) => {
+  fastify.get('/workers/:id', auth, async (req, reply) => {
     const { isAdmin, userId } = pmFilter(req.user);
     const empId = parseInt(req.params.id);
 
@@ -294,7 +294,7 @@ async function routes(fastify) {
   // ═══════════════════════════════════════════════════════════════════
   // GET /timesheet?work_id=&year=&month=
   // ═══════════════════════════════════════════════════════════════════
-  fastify.get('/timesheet', auth, async (req) => {
+  fastify.get('/timesheet', auth, async (req, reply) => {
     const { isAdmin, userId } = pmFilter(req.user);
     const now = new Date();
     const year  = parseInt(req.query.year)  || now.getFullYear();
@@ -468,7 +468,7 @@ async function routes(fastify) {
   // ═══════════════════════════════════════════════════════════════════
   // GET /payments?work_id=&status=&month=&year=
   // ═══════════════════════════════════════════════════════════════════
-  fastify.get('/payments', auth, async (req) => {
+  fastify.get('/payments', auth, async (req, reply) => {
     const { isAdmin, userId } = pmFilter(req.user);
     const { work_id, status, month, year } = req.query;
 
@@ -675,7 +675,7 @@ async function routes(fastify) {
   // ═══════════════════════════════════════════════════════════════════
   // GET /academy/lesson/:id — детальный просмотр урока
   // ═══════════════════════════════════════════════════════════════════
-  fastify.get('/academy/lesson/:id', auth, async (req) => {
+  fastify.get('/academy/lesson/:id', auth, async (req, reply) => {
     const { rows: [lesson] } = await db.query(`
       SELECT * FROM academy_lessons WHERE id = $1
     `, [req.params.id]);
