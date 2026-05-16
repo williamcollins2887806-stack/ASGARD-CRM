@@ -461,6 +461,7 @@ fastify.register(require('./routes/field-packing'), { prefix: '/api/field/packin
 fastify.register(require('./routes/field-stages'), { prefix: '/api/field/stages' });
 fastify.register(require('./routes/field-achievements'), { prefix: '/api/field/achievements' });
 fastify.register(require('./routes/field-gamification'), { prefix: '/api/field/gamification' });
+fastify.register(require('./routes/field-academy'),      { prefix: '/api/field/academy' });
 fastify.register(require('./routes/gamification-admin'), { prefix: '/api/gamification/admin' });
 fastify.register(require('./routes/gamification-crud'), { prefix: '/api/gamification/crud' });
 fastify.register(require('./routes/auth'), { prefix: '/api/auth' });
@@ -578,6 +579,17 @@ try {
   });
 } catch (cronErr) {
   fastify.log.warn('[MimirCron] Init skipped: ' + cronErr.message);
+}
+
+// ── Academy Cron: daily fact + weekly lesson generation ──
+try {
+  const academyCron = require('./services/academy-cron');
+  fastify.addHook('onReady', async () => {
+    academyCron.init();
+    fastify.log.info('[AcademyCron] Academy cron started (daily fact + weekly lesson)');
+  });
+} catch (cronErr) {
+  fastify.log.warn('[AcademyCron] Init skipped: ' + cronErr.message);
 }
 
 // ── Per-Diem Cron: daily check unpaid per-diem ──

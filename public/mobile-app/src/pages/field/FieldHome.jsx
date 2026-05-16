@@ -88,6 +88,7 @@ const GAMIFICATION_TILES = [
   { emoji: '🎰', label: 'Рулетка', path: '/field/wheel', bg: 'linear-gradient(135deg,#3a0a10,#1a0508)', border: 'rgba(232,64,87,.25)' },
   { emoji: '🛍', label: 'Магазин', path: '/field/shop', bg: 'linear-gradient(135deg,#2a2008,#1a1505)', border: 'rgba(240,200,80,.25)' },
   { emoji: '🎁', label: 'Инвентарь', path: '/field/inventory', bg: 'linear-gradient(135deg,#0a1a2a,#081020)', border: 'rgba(74,144,255,.25)' },
+  { emoji: '🏛️', label: 'Чертоги Мимира', path: '/field/academy', bg: 'linear-gradient(135deg,#1a0d2e,#0d0a1a)', border: 'rgba(123,97,255,.35)' },
   { emoji: '⚔️', label: 'Квесты', path: '/field/quests', bg: 'linear-gradient(135deg,#1a0a2a,#100818)', border: 'rgba(165,110,255,.25)' },
   { emoji: '🏆', label: 'Рейтинг', path: '/field/leaderboard', bg: 'linear-gradient(135deg,#1a1400,#0e0c00)', border: 'rgba(212,168,67,.35)' },
   { emoji: '🗺️', label: 'Подвиги', path: '/field/journey', bg: 'linear-gradient(135deg,#0a2020,#081818)', border: 'rgba(61,220,132,.25)' },
@@ -190,6 +191,13 @@ export default function FieldHome() {
       await fetchData();
       fetchGamification().catch(() => {});
     } catch (e) {
+      // Academy block — special UI
+      if (e.message?.includes('Чертогах Мимира') || e.message?.includes('ACADEMY_BLOCKED') || e.message?.includes('Испытание')) {
+        haptic.error();
+        setError('🏛️ ' + (e.message || 'Пройди Испытание недели в Чертогах Мимира'));
+        setActionLoading(false);
+        return;
+      }
       haptic.error();
       setError(e.message);
     } finally {

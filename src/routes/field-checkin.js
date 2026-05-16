@@ -106,10 +106,45 @@ async function routes(fastify, options) {
       `, [empId, work_id]);
 
       if (assignments.length === 0) {
-        return reply.code(403).send({ error: 'Нет активно��о назначения на этот проект' });
+        return reply.code(403).send({ error: 'Нет активного назначения на этот проект' });
       }
 
       const assignmentId = assignments[0].id;
+
+      // Academy check: если дедлайн прошёл и тест не сдан — блокировка
+      try {
+        const now = new Date();
+        const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon...
+        // Дедлайн = конец воскресенья текущей недели
+        const sun = new Date(now);
+        sun.setDate(now.getDate() + (dayOfWeek === 0 ? 0 : 7 - dayOfWeek));
+        sun.setHours(23, 59, 59, 999);
+
+        if (now > sun) {
+          // Воскресенье прошло — проверяем прошлую неделю
+          const { rows: [lesson] } = await db.query(`
+            SELECT al.id, al.title,
+                   awp.passed
+            FROM academy_lessons al
+            LEFT JOIN academy_worker_progress awp
+              ON awp.lesson_id = al.id AND awp.employee_id = $1
+            WHERE al.status = 'published'
+            ORDER BY al.week_number DESC
+            LIMIT 1
+          `, [empId]);
+
+          if (lesson && !lesson.passed) {
+            return reply.code(403).send({
+              error: `Пройди Испытание «${lesson.title}» в Чертогах Мимира`,
+              code: 'ACADEMY_BLOCKED',
+              lesson_id: lesson.id,
+              lesson_title: lesson.title,
+            });
+          }
+        }
+      } catch (academyErr) {
+        fastify.log.warn('[field-checkin] Academy check failed (non-fatal):', academyErr.message);
+      }
 
       // Determine shift type: use assignment setting if set, otherwise auto-detect from worker's local hour
       // Auto-detect: 04:00–15:59 local → day, 16:00–03:59 local → night

@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
 import { Outlet, useLocation, Navigate } from 'react-router-dom';
+import { UpdateChangelogModal, PwaInstallBanner, PushPermissionBanner } from '@/components/field/AcademyBanners';
 
 export default function FieldLayout() {
   const location = useLocation();
@@ -20,6 +21,9 @@ export default function FieldLayout() {
       <div className="flex-1 overflow-auto">
         <Outlet />
       </div>
+      <UpdateChangelogModal />
+      <PwaInstallBanner />
+      <PushPermissionBanner />
     </div>
   );
 }
