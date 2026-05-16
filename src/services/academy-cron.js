@@ -262,10 +262,12 @@ async function notifyAdmins(lessonTitle, lessonId) {
     `);
 
     for (const admin of admins) {
-      await pushService.sendToUser(admin.id, {
+      await pushService.sendPush(db, admin.id, {
         title: '🏛️ Мимир создал новую Руну',
         body: `«${lessonTitle}» — проверь и опубликуй перед понедельником`,
-        data: { type: 'academy_lesson', lesson_id: lessonId, url: '/?page=academy-admin' },
+        tag: 'academy-lesson-draft',
+        url: '/?page=academy-admin',
+        data: { type: 'academy_lesson', lesson_id: lessonId },
       }).catch(() => {});
     }
   } catch (e) {

@@ -178,8 +178,22 @@ async function routes(fastify) {
         (employee_id, lesson_id, read_started_at, read_completed_at, read_time_seconds)
       VALUES ($1, $2, NOW(), NOW(), $3)
       ON CONFLICT (employee_id, lesson_id) DO UPDATE
-        SET read_completed_at   = COALESCE(academy_worker_progress.read_completed_at, NOW()),
-            read_time_seconds   = GREATEST(academy_worker_progress.read_time_seconds, $3)
+        SET read_completed_at = COALESCE(academy_worker_progress.read_completed_at, NOW()),
+            read_time_seconds = GREATEST(COALESCE(academy_worker_progress.read_time_seconds, 0), $3),
+            attempts = CASE
+              WHEN academy_worker_progress.read_completed_at IS NULL
+               AND academy_worker_progress.blocked_until IS NOT NULL
+               AND academy_worker_progress.blocked_until < NOW()
+              THEN 0
+              ELSE academy_worker_progress.attempts
+            END,
+            blocked_until = CASE
+              WHEN academy_worker_progress.read_completed_at IS NULL
+               AND academy_worker_progress.blocked_until IS NOT NULL
+               AND academy_worker_progress.blocked_until < NOW()
+              THEN NULL
+              ELSE academy_worker_progress.blocked_until
+            END
     `, [eid, lessonId, time_spent_seconds]);
 
     return { ok: true, can_take_quiz: true };
@@ -374,7 +388,7 @@ async function routes(fastify) {
 
     const { rows } = await db.query(`
       SELECT al.id, al.week_number, al.saga, al.title, al.cover_icon, al.cover_color,
-             al.estimated_minutes, al.tags, al.published_at,
+             al.estimated_minutes, al.tags, al.published_at, al.blocks,
              awp.read_completed_at, awp.passed, awp.score, awp.attempts,
              awp.runes_earned, awp.passed_at
       FROM academy_lessons al
@@ -467,27 +481,28 @@ async function routes(fastify) {
   // ─────────────────────────────────────────────────────────────────────────
   fastify.get('/shift-allowed', auth, async (req) => {
     const eid = req.fieldEmployee.id;
-    const { sun } = currentWeekRange();
 
-    // Найти урок текущей недели
+    const now = new Date();
+    const dayOfWeek = now.getDay() || 7; // 1=Mon...7=Sun
+    const mon = new Date(now);
+    mon.setDate(now.getDate() - (dayOfWeek - 1));
+    mon.setHours(0, 0, 0, 0);
+
+    // Самый свежий урок, опубликованный ДО этого понедельника (дедлайн прошёл)
     const { rows: [lesson] } = await db.query(`
-      SELECT al.id, al.title,
-             awp.passed
+      SELECT al.id, al.title, awp.passed
       FROM academy_lessons al
       LEFT JOIN academy_worker_progress awp
         ON awp.lesson_id = al.id AND awp.employee_id = $1
       WHERE al.status = 'published'
+        AND al.published_at < $2
       ORDER BY al.week_number DESC
       LIMIT 1
-    `, [eid]);
+    `, [eid, mon.toISOString()]);
 
     if (!lesson) return { allowed: true, reason: null };
 
-    // Если дедлайн прошёл и тест не сдан — блокировать
-    const now = new Date();
-    const deadline = sun;
-
-    if (!lesson.passed && now > deadline) {
+    if (!lesson.passed) {
       return {
         allowed: false,
         reason: `Пройди Испытание «${lesson.title}» чтобы выйти на смену`,
