@@ -210,7 +210,7 @@ export function PushPermissionBanner() {
 
   return (
     <div style={{
-      position: 'fixed', bottom: visible ? 140 : 80, left: 16, right: 16, zIndex: 999,
+      position: 'fixed', bottom: 140, left: 16, right: 16, zIndex: 999,
       background: `linear-gradient(135deg, #0d1a2e, ${C.card})`,
       border: `1px solid #3b82f644`,
       borderRadius: 16, padding: 16,

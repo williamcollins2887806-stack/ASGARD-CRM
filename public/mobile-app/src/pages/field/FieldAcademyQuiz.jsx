@@ -168,6 +168,7 @@ export default function FieldAcademyQuiz() {
   const [error, setError] = useState(null);
 
   const timerRef = useRef(null);
+  const submitRef = useRef(null); // always points to latest handleSubmit
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -186,14 +187,14 @@ export default function FieldAcademyQuiz() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Timer
+  // Timer — uses submitRef to avoid stale closure over answers
   useEffect(() => {
     if (loading || result) return;
     timerRef.current = setInterval(() => {
       setTimeLeft(t => {
         if (t <= 1) {
           clearInterval(timerRef.current);
-          handleSubmit(true);
+          submitRef.current(true);
           return 0;
         }
         return t - 1;
@@ -224,9 +225,10 @@ export default function FieldAcademyQuiz() {
     clearInterval(timerRef.current);
     setSubmitting(true);
 
+    const currentAnswers = answers; // captured from this render's closure
     const payload = questions.map(q => ({
       question_id: q.id,
-      selected_option_id: answers[q.id] || null,
+      selected_option_id: currentAnswers[q.id] || null,
     }));
 
     try {
@@ -238,6 +240,7 @@ export default function FieldAcademyQuiz() {
       setSubmitting(false);
     }
   }
+  submitRef.current = handleSubmit; // keep ref fresh on every render
 
   if (loading) {
     return (

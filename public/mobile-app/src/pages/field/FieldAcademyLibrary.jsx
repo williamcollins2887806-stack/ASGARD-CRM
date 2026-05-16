@@ -35,10 +35,11 @@ function LessonCard({ lesson, navigate }) {
     statusIcon = '⚔️';
     statusColor = C.amber;
     statusText = 'Прочитана';
-  } else if (lesson.read_completed_at === null && lesson.attempts > 0) {
-    statusIcon = '📖';
-    statusColor = C.amber;
-    statusText = 'Читается';
+  } else if (!isRead && lesson.attempts > 0) {
+    // read_completed_at was reset after 2 failed attempts
+    statusIcon = '❌';
+    statusColor = C.red;
+    statusText = 'Перечитай';
   }
 
   return (
