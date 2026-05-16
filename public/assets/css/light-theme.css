@@ -109,8 +109,8 @@ html[data-theme="light"] .nav-group .navitem.active {
   border-color: var(--blue) !important;
 }
 html[data-theme="light"] .nav-group .navitem .ico {
-  background: var(--bg3) !important;
-  border-color: var(--brd) !important;
+  background: transparent !important;
+  border: none !important;
 }
 html[data-theme="light"] .nav-group .navitem .lbl .name {
   color: #1A1D24 !important;
@@ -200,12 +200,13 @@ html[data-theme="light"] #btnTheme:hover {
 
 /* Bell button */
 html[data-theme="light"] .bellbtn {
-  border-color: var(--brd) !important;
-  background: var(--bg3) !important;
+  border: none !important;
+  background: transparent !important;
   color: #5A6170 !important;
 }
 html[data-theme="light"] .bellbtn:hover {
-  border-color: var(--blue) !important;
+  background: var(--bg3) !important;
+  color: var(--blue) !important;
 }
 html[data-theme="light"] .bellcount {
   background: var(--red) !important;
@@ -800,7 +801,7 @@ html[data-theme="light"] .ec-card {
 html[data-theme="light"] .badge,
 html[data-theme="light"] .tag {
   background: var(--bg3) !important;
-  border-color: var(--brd) !important;
+  border-color: transparent !important;
   color: #5A6170 !important;
 }
 html[data-theme="light"] .status-badge {
@@ -812,11 +813,15 @@ html[data-theme="light"] .status-badge {
    ═══════════════════════════════════════════════════════════════════════════════ */
 html[data-theme="light"] .tabs {
   background: #FFFFFF !important;
-  border: 1px solid var(--brd) !important;
+  border-bottom: 1px solid var(--brd) !important;
+  border-top: none !important;
+  border-left: none !important;
+  border-right: none !important;
 }
 html[data-theme="light"] .tab,
 html[data-theme="light"] .tab-btn {
   color: #5A6170 !important;
+  border: none !important;
 }
 html[data-theme="light"] .tab.active,
 html[data-theme="light"] .tab-btn.active {
@@ -1396,7 +1401,7 @@ html[data-theme="light"] .settings-section {
 
 /* ── Avatar ──────────────────────────────────────────────────────────────── */
 html[data-theme="light"] .avatar {
-  border-color: var(--brd) !important;
+  border-color: transparent !important;
 }
 html[data-theme="light"] .status-dot {
   box-shadow: 0 0 0 2px #FFFFFF !important;
@@ -1519,6 +1524,64 @@ html[data-theme="light"] .asg-action-menu {
 }
 html[data-theme="light"] .asg-action-menu .action-item:hover {
   background: var(--bg3) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   BORDER CLEANUP — убираем рамки с элементов где их не должно быть
+   В тёмной теме --brd почти прозрачный, в светлой он жёсткий.
+   Элементы с собственным фоном или цветом не нуждаются в рамке.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Иконки в навигации — не нужна рамка, иконка сама по себе */
+html[data-theme="light"] .nav-group .navitem .ico {
+  border: none !important;
+  background: transparent !important;
+}
+
+/* Статусные бейджи с цветным фоном — граница лишняя */
+html[data-theme="light"] .status-badge,
+html[data-theme="light"] [class*="status-"],
+html[data-theme="light"] [class*="-status"] {
+  border-color: transparent !important;
+}
+
+/* Pill кнопки в тулбарах — border виден только при hover/active */
+html[data-theme="light"] .pill-btn,
+html[data-theme="light"] .filter-pill {
+  border-color: transparent !important;
+}
+html[data-theme="light"] .pill-btn:hover,
+html[data-theme="light"] .filter-pill:hover,
+html[data-theme="light"] .pill-btn.active,
+html[data-theme="light"] .filter-pill.active {
+  border-color: var(--brd) !important;
+}
+
+/* Иконки-кнопки (icon-only buttons) — без рамки */
+html[data-theme="light"] .icon-btn,
+html[data-theme="light"] .iconbtn,
+html[data-theme="light"] .btn-icon {
+  border: none !important;
+  background: transparent !important;
+}
+html[data-theme="light"] .icon-btn:hover,
+html[data-theme="light"] .iconbtn:hover,
+html[data-theme="light"] .btn-icon:hover {
+  background: var(--bg3) !important;
+}
+
+/* Аватары с фото — рамка не нужна если есть изображение */
+html[data-theme="light"] .avatar img,
+html[data-theme="light"] .ava img {
+  outline: none !important;
+}
+
+/* Активные табы — только нижний акцент, не полная рамка */
+html[data-theme="light"] .tab.active,
+html[data-theme="light"] .tab-btn.active {
+  border: none !important;
+  border-bottom: 2px solid var(--blue) !important;
+  background: transparent !important;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
