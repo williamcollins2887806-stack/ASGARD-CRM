@@ -448,51 +448,102 @@ a:hover {
    ───────────────────────────────────────────────────────────────────────────────── */
 html[data-theme="light"] {
 
+  /* ═══════════════════════════════════════════════════════════════════════════
+     SOLDAG LIGHT THEME — Nordic Manuscript
+     Пергамент · Кованое золото · Чернила
+     Та же Viking-идентичность при дневном свете
+     ═══════════════════════════════════════════════════════════════════════════ */
+
   --color-scheme: light;
 
-  /* Фоны */
-  --bg0: #E8EDF2;
-  --bg1: #F2F5F8;
-  --bg2: #FFFFFF;
-  --bg3: #F0F2F5;
-  --bg4: #E8EBF0;
-  --bg5: #DCE0E8;
-  --overlay: rgba(0,0,0,0.45);
+  /* ── Фоны: тёплая пергаментная иерархия ── */
+  --bg0: #EAE3D6;           /* Самый тёмный — оверлеи, command palette */
+  --bg1: #F4EFE6;           /* Основной фон — пергамент */
+  --bg2: #FDFAF5;           /* Карточки, панели — тёплый белый */
+  --bg3: #EDE8DC;           /* Hover, вложенные элементы */
+  --bg4: #E3DCCE;           /* Заголовки таблиц, elevated */
+  --bg5: #D8D0C0;           /* Самый тёмный bg (редко) */
+  --overlay: rgba(28,25,20,0.50);  /* Тёплый, не холодный чёрный */
 
-  /* Текст */
-  --t1: #1A1D24;
-  --t2: #5A6170;
-  --t3: #8890A0;
+  /* ── Текст: чернила на бумаге ── */
+  --t1: #1C1914;            /* Чернильный чёрный (тёплый) */
+  --t2: #4A4236;            /* Состаренные чернила */
+  --t3: #7A7062;            /* Выцветший, muted */
 
-  /* Границы */
-  --brd: #D0D5DE;
-  --brd-m: #E0E4EB;
+  /* ── Акцентные цвета: матовые, не неоновые ── */
+  --red:    #A82030;        /* Лаковый красный */
+  --red-h:  #8C1828;
+  --red-l:  #C8293B;        /* Оставляем для legacy */
+  --red-bg: rgba(168,32,48,0.09);
+  --red-glow: none;
 
-  /* Тени */
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
-  --shadow-lg: 0 8px 28px rgba(0,0,0,0.10);
-  --shadow-xl: 0 20px 50px rgba(0,0,0,0.14);
+  --blue:   #1A3F74;        /* Чернильный синий */
+  --blue-h: #16325A;
+  --blue-l: #2B5F9E;
+  --blue-bg: rgba(26,63,116,0.09);
+  --blue-glow: none;
 
-  /* Красный (light mode) */
-  --red-bg:  rgba(200,41,59,0.08);
-  --red-glow: 0 0 20px rgba(200,41,59,0.15);
+  --gold:   #B8841A;        /* Кованое золото — состаренное */
+  --gold-h: #9A6E12;
+  --gold-l: #D4A843;        /* Оставляем для legacy */
+  --gold-bg: rgba(184,132,26,0.10);
+  --gold-glow: none;
 
-  /* Синий (light mode) */
-  --blue-bg:  rgba(30,77,140,0.08);
-  --blue-glow: 0 0 20px rgba(30,77,140,0.18);
+  /* ── Семантические ── */
+  --ok:     #2D6A4F;
+  --ok-t:   #3A8A65;
+  --ok-bg:  rgba(45,106,79,0.09);
 
-  /* Золотой (light mode) */
-  --gold-bg:  rgba(212,168,67,0.08);
-  --gold-glow: 0 0 20px rgba(212,168,67,0.12);
+  --warn:   #B8841A;
+  --warn-t: #9A6E12;
+  --warn-bg: rgba(184,132,26,0.09);
 
-  /* Семантические (light mode) */
-  --ok-bg:   rgba(45,134,89,0.08);
-  --warn-bg: rgba(212,168,67,0.08);
-  --err-bg:  rgba(200,41,59,0.08);
-  --info-bg: rgba(59,130,246,0.08);
+  --err:    #A82030;
+  --err-t:  #C8293B;
+  --err-bg: rgba(168,32,48,0.09);
 
-  /* Обновляем зависимые алиасы */
-  --glass-bg: var(--bg3);
-  --glass:    var(--bg3);
+  --info:   #1A3F74;
+  --info-t: #2B5F9E;
+  --info-bg: rgba(26,63,116,0.09);
+
+  /* ── Границы: янтарные, тёплые ── */
+  --brd:   rgba(139,120,90,0.20);   /* Основные (карточки, инпуты) */
+  --brd-m: rgba(139,120,90,0.11);   /* Внутренние разделители */
+
+  /* ── Тени: физические (offset), не glow ──
+     x/y смещение создаёт эффект "карточка лежит на столе"          */
+  --shadow-sm: 2px 3px 0 rgba(0,0,0,0.04), 0 1px 6px rgba(0,0,0,0.06);
+  --shadow-md: 3px 4px 0 rgba(0,0,0,0.05), 0 4px 20px rgba(0,0,0,0.08);
+  --shadow-lg: 4px 5px 0 rgba(0,0,0,0.06), 0 8px 36px rgba(0,0,0,0.10);
+  --shadow-xl: 5px 6px 0 rgba(0,0,0,0.07), 0 16px 52px rgba(0,0,0,0.12);
+
+  /* ── Градиенты (адаптированы для светлой) ── */
+  --grad-corp:    linear-gradient(135deg, #A82030, #1A3F74);
+  --grad-corp-90: linear-gradient(90deg, #A82030, #1A3F74);
+  --grad-gold:    linear-gradient(90deg, #B8841A, #D4A843);
+
+  /* ── Зависимые алиасы ── */
+  --glass-bg:  var(--bg3);
+  --glass:     var(--bg3);
+  --card:      var(--bg2);
+  --surface:   var(--bg2);
+  --surface-alt: var(--bg3);
+  --bg-input:  var(--bg2);
+  --bg-surface: var(--bg2);
+  --primary:   var(--blue);
+  --secondary: var(--gold);
+  --danger:    var(--red);
+  --amber:     var(--gold);
+  --success:   var(--ok);
+  --warning:   var(--warn);
+  --error:     var(--err);
+  --text-primary:   var(--t1);
+  --text-secondary: var(--t2);
+  --text-muted:     var(--t3);
+  --border:         var(--brd);
+  --border-default: var(--brd);
+  --shadow:         var(--shadow-md);
+  --shadow-hover:   var(--shadow-lg);
+  --gold-border: rgba(184,132,26,0.30);
+  --gold-dim:    rgba(184,132,26,0.65);
 }

@@ -1,1145 +1,1495 @@
 /* ═══════════════════════════════════════════════════════════════════════════════
-   ASGARD CRM — Light Theme (Complete Override)
-   Business Viking 2026 Design System
-   v1.1.0
+   ASGARD CRM — Soldag Light Theme v2.0
+   "Nordic Manuscript" — Пергамент · Кованое золото · Чернила
 
-   Полный светлый режим для десктопной версии.
-   Перекрывает ВСЕ hardcoded dark цвета из app.css, components.css, cr-modal.css,
-   JS inline-стилей, и компонентов.
+   Концепция: Viking-идентичность при дневном свете.
+   Тёмная тема = Viking Night (аврора, неон, казино).
+   Светлая тема = Soldag (пергамент, чернила, физические тени).
 
-   Порядок загрузки: design-tokens → components → app → ... → light-theme (LAST)
-   Поэтому наши !important правила гарантированно побеждают.
+   Порядок: design-tokens → ... → light-theme (LAST)
    ═══════════════════════════════════════════════════════════════════════════════ */
 
+
 /* ═══════════════════════════════════════════════════════════════════════════════
-   0. SMOOTH TRANSITION — плавное переключение тем
+   §0. THEME SELECTOR — первый выбор темы
+   Работает поверх любой темы. Все цвета хардкожены.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+#asgard-theme-selector {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  background: rgba(6,8,14,0.97);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+#asgard-theme-selector.ats-visible { opacity: 1; }
+
+.ats-card {
+  background: #131820;
+  border: 1px solid rgba(212,168,67,0.22);
+  border-radius: 20px;
+  padding: 44px 48px 36px;
+  max-width: 700px;
+  width: 92%;
+  text-align: center;
+  box-shadow: 0 40px 100px rgba(0,0,0,0.7), 0 0 0 1px rgba(212,168,67,0.08);
+  transform: translateY(28px);
+  transition: transform 0.5s cubic-bezier(0.34,1.56,0.64,1);
+}
+#asgard-theme-selector.ats-visible .ats-card { transform: translateY(0); }
+
+.ats-rune-bar {
+  font-size: 15px;
+  letter-spacing: 10px;
+  color: rgba(212,168,67,0.30);
+  margin-bottom: 14px;
+}
+.ats-title {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 3px;
+  margin: 0 0 8px;
+  background: linear-gradient(135deg, #fde68a 0%, #D4A843 50%, #b8841a 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.ats-sub {
+  font-size: 13px;
+  color: rgba(255,255,255,0.30);
+  margin: 0 0 32px;
+}
+
+.ats-themes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.ats-theme-card {
+  border: 2px solid rgba(255,255,255,0.07);
+  border-radius: 14px;
+  cursor: pointer;
+  overflow: hidden;
+  position: relative;
+  background: #1a2030;
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  text-align: left;
+}
+.ats-theme-card:hover {
+  border-color: rgba(212,168,67,0.35);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.35);
+}
+.ats-theme-card.ats-selected {
+  border-color: #D4A843;
+  box-shadow: 0 0 0 3px rgba(212,168,67,0.14), 0 8px 28px rgba(0,0,0,0.35);
+}
+
+/* Preview miniature */
+.ats-preview {
+  height: 130px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.ats-preview--dark { background: #0D1117; }
+.ats-preview--light { background: #F4EFE6; }
+
+.ats-prev-topbar {
+  height: 26px;
+  background: #151922;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  flex-shrink: 0;
+}
+.ats-prev-topbar--light {
+  background: #FDFAF5;
+  border-bottom-color: rgba(139,120,90,0.18);
+}
+.ats-prev-logo {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: rgba(212,168,67,0.40);
+}
+.ats-prev-logo--light { background: rgba(184,132,26,0.40); }
+.ats-prev-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  opacity: 0.8;
+}
+
+.ats-prev-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+.ats-prev-sidebar {
+  width: 36px;
+  background: #151922;
+  border-right: 1px solid rgba(255,255,255,0.06);
+  padding: 8px 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.ats-prev-sidebar--light {
+  background: #FDFAF5;
+  border-right-color: rgba(139,120,90,0.18);
+}
+.ats-prev-item {
+  height: 9px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.07);
+}
+.ats-prev-item--light { background: rgba(139,120,90,0.10); }
+.ats-prev-item--active { background: rgba(212,168,67,0.22); border-left: 2px solid #D4A843; }
+.ats-prev-item--active-light { background: rgba(184,132,26,0.14); border-left: 2px solid #B8841A; }
+
+.ats-prev-content {
+  flex: 1;
+  background: #0D1117;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ats-prev-content--light { background: #F4EFE6; }
+
+.ats-prev-row {
+  display: flex;
+  gap: 5px;
+}
+.ats-prev-kpi {
+  flex: 1;
+  height: 22px;
+  border-radius: 4px;
+  background: #1C2130;
+}
+.ats-prev-kpi--light {
+  background: #FDFAF5;
+  box-shadow: 2px 2px 0 rgba(0,0,0,0.05);
+}
+.ats-prev-card-dark {
+  flex: 1;
+  border-radius: 4px;
+  background: #1C2130;
+  min-height: 18px;
+}
+.ats-prev-card-light {
+  flex: 1;
+  border-radius: 4px;
+  background: #FDFAF5;
+  min-height: 18px;
+  box-shadow: 2px 2px 0 rgba(0,0,0,0.05), 0 2px 8px rgba(0,0,0,0.06);
+}
+
+/* Check mark */
+.ats-theme-check {
+  position: absolute;
+  top: 8px; right: 8px;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: #D4A843;
+  color: #000;
+  font-size: 11px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transform: scale(0.5);
+  transition: opacity 0.2s, transform 0.25s cubic-bezier(0.34,1.56,0.64,1);
+}
+.ats-theme-card.ats-selected .ats-theme-check {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.ats-theme-info { padding: 12px 14px 14px; }
+.ats-theme-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.88);
+  margin-bottom: 3px;
+}
+.ats-theme-desc {
+  font-size: 11px;
+  color: rgba(255,255,255,0.35);
+  line-height: 1.4;
+}
+
+.ats-btn {
+  background: linear-gradient(135deg, #9a6e12, #D4A843);
+  border: none;
+  border-radius: 10px;
+  padding: 14px 0;
+  width: 100%;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: opacity 0.2s, transform 0.15s;
+}
+.ats-btn:disabled { opacity: 0.28; cursor: not-allowed; }
+.ats-btn:not(:disabled):hover { opacity: 0.88; transform: translateY(-1px); }
+
+.ats-hint {
+  font-size: 11px;
+  color: rgba(255,255,255,0.18);
+  margin: 12px 0 0;
+  letter-spacing: 0.3px;
+}
+
+@media (max-width: 560px) {
+  .ats-card { padding: 32px 20px 28px; }
+  .ats-themes { grid-template-columns: 1fr; }
+  .ats-title { font-size: 20px; letter-spacing: 2px; }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §1. SMOOTH TRANSITION
    ═══════════════════════════════════════════════════════════════════════════════ */
 html.theme-transitioning,
 html.theme-transitioning *,
 html.theme-transitioning *::before,
 html.theme-transitioning *::after {
-  transition: background-color 0.4s ease, color 0.3s ease, border-color 0.3s ease,
-              box-shadow 0.3s ease, fill 0.3s ease, stroke 0.3s ease !important;
+  transition:
+    background-color 0.38s ease,
+    color 0.28s ease,
+    border-color 0.28s ease,
+    box-shadow 0.28s ease,
+    fill 0.28s ease,
+    stroke 0.28s ease !important;
 }
+
 
 /* ═══════════════════════════════════════════════════════════════════════════════
-   1. GLOBAL — Body, selection, links (overrides app.css §1)
+   §2. GLOBAL — body, grain texture, base
    ═══════════════════════════════════════════════════════════════════════════════ */
+
 html[data-theme="light"],
 html[data-theme="light"] body {
-  background: #F2F5F8 !important;
-  color: #1A1D24 !important;
+  background: var(--bg1) !important;
+  color: var(--t1) !important;
 }
 
+/* Paper grain — тактильность бумаги */
+html[data-theme="light"] body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.028;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+}
+
+/* Top accent line — та же трилогия Red/Blue/Gold, синергия тем */
 html[data-theme="light"] body::before {
-  /* Keep the gold gradient line — it looks great in light mode too */
   background: linear-gradient(90deg, var(--red), var(--gold) 50%, var(--blue)) !important;
 }
 
 html[data-theme="light"] ::selection {
-  background: rgba(30,77,140,0.2) !important;
-  color: #1A1D24 !important;
+  background: rgba(184,132,26,0.18) !important;
+  color: var(--t1) !important;
 }
 
 html[data-theme="light"] a {
-  color: var(--blue, #1E4D8C) !important;
+  color: var(--blue) !important;
 }
 html[data-theme="light"] a:hover {
-  color: var(--blue-h, #2563A8) !important;
+  color: var(--blue-h) !important;
 }
 
+
 /* ═══════════════════════════════════════════════════════════════════════════════
-   2. SIDEBAR — white with subtle borders (overrides app.css §2)
+   §3. SIDEBAR — белая панель с янтарными акцентами
    ═══════════════════════════════════════════════════════════════════════════════ */
+
 html[data-theme="light"] .sidenav {
-  background: linear-gradient(180deg, #FFFFFF, #F8FAFC) !important;
+  background: var(--bg2) !important;
   border-right: 1px solid var(--brd) !important;
-  box-shadow: 2px 0 8px rgba(0,0,0,0.04) !important;
+  box-shadow: none !important;
 }
 
 html[data-theme="light"] .sidebar-header {
   border-bottom: 1px solid var(--brd) !important;
+  background: var(--bg2) !important;
 }
 
 html[data-theme="light"] .brand {
-  border: 1px solid rgba(200,41,59,0.15) !important;
-  background: linear-gradient(135deg, rgba(200,41,59,0.04), rgba(30,77,140,0.04)) !important;
+  border: 1px solid var(--brd) !important;
+  background: transparent !important;
 }
 html[data-theme="light"] .brand:hover {
-  border-color: rgba(200,41,59,0.4) !important;
-  box-shadow: 0 0 16px rgba(200,41,59,0.1) !important;
+  border-color: var(--gold) !important;
+  background: rgba(184,132,26,0.06) !important;
+  box-shadow: none !important;
 }
 
 html[data-theme="light"] .nav-group-header {
-  color: #5A6170 !important;
+  color: var(--t3) !important;
 }
 html[data-theme="light"] .nav-group-header:hover {
   background: var(--bg3) !important;
-  color: #1A1D24 !important;
+  color: var(--t1) !important;
 }
 html[data-theme="light"] .nav-group.has-active > .nav-group-header {
-  background: rgba(30,77,140,0.08) !important;
-  border-color: rgba(30,77,140,0.3) !important;
-  color: var(--blue) !important;
-  box-shadow: 0 0 8px rgba(30,77,140,0.08) !important;
+  background: rgba(184,132,26,0.07) !important;
+  border-color: rgba(184,132,26,0.25) !important;
+  color: var(--gold) !important;
+  box-shadow: none !important;
 }
 html[data-theme="light"] .nav-group.has-active > .nav-group-header::after {
   background: linear-gradient(180deg, var(--red), var(--blue)) !important;
 }
 
 html[data-theme="light"] .nav-group-items {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border-color: var(--brd) !important;
-  box-shadow: 4px 0 20px rgba(0,0,0,0.06) !important;
+  box-shadow: var(--shadow-md) !important;
 }
 html[data-theme="light"] .nav-group-items::before {
-  color: #5A6170 !important;
+  color: var(--t3) !important;
   border-bottom-color: var(--brd) !important;
 }
 
+/* Navitem — золотая левая полоса на активном */
 html[data-theme="light"] .nav-group .navitem {
-  color: #1A1D24 !important;
+  color: var(--t1) !important;
+  border-color: transparent !important;
 }
 html[data-theme="light"] .nav-group .navitem:hover {
   background: var(--bg3) !important;
-  border-color: var(--brd) !important;
+  border-color: transparent !important;
 }
 html[data-theme="light"] .nav-group .navitem.active {
-  background: rgba(30,77,140,0.08) !important;
-  border-color: var(--blue) !important;
+  background: rgba(184,132,26,0.09) !important;
+  border-left: 3px solid var(--gold) !important;
+  border-right-color: transparent !important;
+  border-top-color: transparent !important;
+  border-bottom-color: transparent !important;
 }
 html[data-theme="light"] .nav-group .navitem .ico {
   background: transparent !important;
   border: none !important;
 }
+html[data-theme="light"] .nav-group .navitem.active .ico {
+  color: var(--gold) !important;
+}
 html[data-theme="light"] .nav-group .navitem .lbl .name {
-  color: #1A1D24 !important;
+  color: var(--t1) !important;
 }
 html[data-theme="light"] .nav-group .navitem .lbl .desc {
-  color: #8890A0 !important;
+  color: var(--t3) !important;
 }
 
 html[data-theme="light"] .sidefoot {
   border-top: 1px solid var(--brd) !important;
+  background: var(--bg2) !important;
 }
 html[data-theme="light"] .sidefoot .btn.red,
 html[data-theme="light"] .sidefoot #btnLogout {
-  background: rgba(200,41,59,0.06) !important;
-  border: 1px solid rgba(200,41,59,0.2) !important;
-  color: rgba(200,41,59,0.8) !important;
+  background: rgba(168,32,48,0.06) !important;
+  border: 1px solid rgba(168,32,48,0.18) !important;
+  color: rgba(168,32,48,0.85) !important;
 }
 html[data-theme="light"] .sidefoot .btn.red:hover,
 html[data-theme="light"] .sidefoot #btnLogout:hover {
-  background: rgba(200,41,59,0.1) !important;
-  border-color: rgba(200,41,59,0.4) !important;
+  background: rgba(168,32,48,0.10) !important;
+  border-color: rgba(168,32,48,0.35) !important;
 }
 
 html[data-theme="light"] .sidebar-search-btn {
   border-color: var(--brd) !important;
-  color: #5A6170 !important;
+  color: var(--t3) !important;
+  background: transparent !important;
 }
 
+
 /* ═══════════════════════════════════════════════════════════════════════════════
-   3. MAIN AREA (overrides app.css §3)
+   §4. MAIN AREA
    ═══════════════════════════════════════════════════════════════════════════════ */
+
 html[data-theme="light"] .main,
 html[data-theme="light"] .asg-main-wrap {
-  background: #F2F5F8 !important;
+  background: var(--bg1) !important;
 }
 
+
 /* ═══════════════════════════════════════════════════════════════════════════════
-   4. TOPBAR (overrides app.css §4)
+   §5. TOPBAR — чистый белый с янтарной нижней линией
    ═══════════════════════════════════════════════════════════════════════════════ */
+
 html[data-theme="light"] .topbar,
 html[data-theme="light"] .asg-header {
-  background: #FFFFFF !important;
-  border-bottom: none !important;
-  box-shadow: 0 1px 0 rgba(30,77,140,0.06), 0 2px 8px rgba(0,0,0,0.04) !important;
+  background: var(--bg2) !important;
+  border-bottom: 1px solid var(--brd) !important;
+  box-shadow: none !important;
 }
 
 html[data-theme="light"] .topbar .title h1,
 html[data-theme="light"] .topbar .page-title,
-html[data-theme="light"] .topbar h1.page-title,
 html[data-theme="light"] h1.page-title {
-  color: #1A1D24 !important;
+  color: var(--t1) !important;
 }
 
-html[data-theme="light"] .breadcrumbs a {
-  color: var(--blue) !important;
-}
-html[data-theme="light"] .bc-sep {
-  color: #C0C6D0 !important;
-}
-html[data-theme="light"] .bc-current {
-  color: #5A6170 !important;
-}
+html[data-theme="light"] .breadcrumbs a { color: var(--blue) !important; }
+html[data-theme="light"] .bc-sep { color: var(--brd) !important; }
+html[data-theme="light"] .bc-current { color: var(--t2) !important; }
 
-/* Topbar search */
 html[data-theme="light"] .topbar-search {
   background: var(--bg3) !important;
   border-color: var(--brd) !important;
-  color: #5A6170 !important;
+  color: var(--t2) !important;
 }
 html[data-theme="light"] .topbar-search:hover {
-  border-color: var(--blue) !important;
-  background: var(--bg4) !important;
+  border-color: var(--gold) !important;
 }
 html[data-theme="light"] .ts-kbd {
   background: var(--bg4) !important;
-  color: #8890A0 !important;
+  color: var(--t3) !important;
 }
 
-/* Theme toggle button */
-html[data-theme="light"] #btnTheme {
-  color: #5A6170 !important;
+/* Icon buttons — без рамок, чистые */
+html[data-theme="light"] #btnTheme,
+html[data-theme="light"] .iconbtn {
+  color: var(--t2) !important;
+  border: none !important;
+  background: transparent !important;
 }
-html[data-theme="light"] #btnTheme:hover {
-  color: var(--blue) !important;
+html[data-theme="light"] #btnTheme:hover,
+html[data-theme="light"] .iconbtn:hover {
+  color: var(--gold) !important;
   background: var(--bg3) !important;
 }
 
-/* Bell button */
 html[data-theme="light"] .bellbtn {
   border: none !important;
   background: transparent !important;
-  color: #5A6170 !important;
+  color: var(--t2) !important;
 }
 html[data-theme="light"] .bellbtn:hover {
   background: var(--bg3) !important;
-  color: var(--blue) !important;
+  color: var(--gold) !important;
 }
 html[data-theme="light"] .bellcount {
   background: var(--red) !important;
-  color: #FFFFFF !important;
+  color: #fff !important;
 }
 
-/* Icon buttons (menu, etc) */
-html[data-theme="light"] .iconbtn {
-  color: #5A6170 !important;
-}
-html[data-theme="light"] .iconbtn:hover {
-  color: var(--blue) !important;
-  background: var(--bg3) !important;
-}
 
 /* ═══════════════════════════════════════════════════════════════════════════════
-   6. CARDS & PANELS (overrides app.css §6)
+   §6. CARDS & PANELS — "бумага на столе" с физической тенью
    ═══════════════════════════════════════════════════════════════════════════════ */
+
 html[data-theme="light"] .card,
 html[data-theme="light"] .panel,
 html[data-theme="light"] .widget {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border: 1px solid var(--brd) !important;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.04) !important;
+  box-shadow: var(--shadow-md) !important;
 }
 html[data-theme="light"] .card:hover,
 html[data-theme="light"] .panel:hover,
 html[data-theme="light"] .widget:hover {
-  border-color: rgba(30,77,140,0.2) !important;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.06) !important;
+  border-color: rgba(184,132,26,0.30) !important;
+  box-shadow: var(--shadow-lg) !important;
 }
 
-/* Card headings — keep gold */
+/* Золотые заголовки секций */
 html[data-theme="light"] .card h3,
 html[data-theme="light"] .panel h3,
 html[data-theme="light"] .form-section,
 html[data-theme="light"] .section-title {
-  color: var(--gold, #B8922E) !important;
+  color: var(--gold) !important;
+  border-bottom: 1px solid var(--brd) !important;
+  padding-bottom: 8px !important;
+  margin-bottom: 16px !important;
 }
 
-/* Cards inside #layout fallback */
 html[data-theme="light"] #layout [style*="background: transparent"] .card,
 html[data-theme="light"] #layout [style*="background:transparent"] .card {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
 }
 
+
 /* ═══════════════════════════════════════════════════════════════════════════════
-   7. KPI CARDS (overrides app.css §7)
+   §7. KPI CARDS — цветной border-left вместо gradient-bg
    ═══════════════════════════════════════════════════════════════════════════════ */
+
+html[data-theme="light"] .kpi .k {
+  background: var(--bg2) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
 html[data-theme="light"] .kpi .k:nth-child(1) {
-  background: linear-gradient(145deg, rgba(200,41,59,0.06), #FFFFFF) !important;
-  border: 1px solid rgba(200,41,59,0.12) !important;
+  border: 1px solid var(--brd) !important;
+  border-left: 3px solid var(--red) !important;
 }
 html[data-theme="light"] .kpi .k:nth-child(2) {
-  background: linear-gradient(145deg, rgba(30,77,140,0.06), #FFFFFF) !important;
-  border: 1px solid rgba(30,77,140,0.15) !important;
+  border: 1px solid var(--brd) !important;
+  border-left: 3px solid var(--blue) !important;
 }
 html[data-theme="light"] .kpi .k:nth-child(3) {
-  background: linear-gradient(145deg, rgba(212,168,67,0.06), #FFFFFF) !important;
-  border: 1px solid rgba(212,168,67,0.12) !important;
+  border: 1px solid var(--brd) !important;
+  border-left: 3px solid var(--gold) !important;
 }
 html[data-theme="light"] .kpi .k:nth-child(4) {
-  background: linear-gradient(145deg, rgba(45,134,89,0.06), #FFFFFF) !important;
-  border: 1px solid rgba(45,134,89,0.12) !important;
+  border: 1px solid var(--brd) !important;
+  border-left: 3px solid var(--ok) !important;
 }
 html[data-theme="light"] .kpi .k:nth-child(5) {
-  background: linear-gradient(145deg, rgba(139,92,246,0.05), #FFFFFF) !important;
-  border: 1px solid rgba(139,92,246,0.1) !important;
+  border: 1px solid var(--brd) !important;
+  border-left: 3px solid #7C3AED !important;
 }
 html[data-theme="light"] .kpi .k:nth-child(6) {
-  background: linear-gradient(145deg, rgba(6,182,212,0.05), #FFFFFF) !important;
-  border: 1px solid rgba(6,182,212,0.1) !important;
+  border: 1px solid var(--brd) !important;
+  border-left: 3px solid #0E7490 !important;
 }
 
 html[data-theme="light"] .kpi .v,
 html[data-theme="light"] .kpi .k .v,
-html[data-theme="light"] .stat-value {
-  color: #1A1D24 !important;
-}
+html[data-theme="light"] .stat-value { color: var(--t1) !important; }
 html[data-theme="light"] .kpi .t,
-html[data-theme="light"] .kpi .k .t {
-  color: #5A6170 !important;
+html[data-theme="light"] .kpi .k .t { color: var(--t2) !important; }
+
+/* Stat/metric cards */
+html[data-theme="light"] .stat-card,
+html[data-theme="light"] .kpi-card,
+html[data-theme="light"] .metric-card {
+  background: var(--bg2) !important;
+  border-color: var(--brd) !important;
+  box-shadow: var(--shadow-sm) !important;
 }
+html[data-theme="light"] .stat-card__value,
+html[data-theme="light"] .kpi-card__value,
+html[data-theme="light"] .metric-card__value { color: var(--t1) !important; }
+html[data-theme="light"] .stat-card__label,
+html[data-theme="light"] .kpi-card__label,
+html[data-theme="light"] .metric-card__label { color: var(--t2) !important; }
+
 
 /* ═══════════════════════════════════════════════════════════════════════════════
-   8. DASHBOARD WIDGETS (overrides app.css §8)
+   §8. DASHBOARD WIDGETS
    ═══════════════════════════════════════════════════════════════════════════════ */
+
 html[data-theme="light"] .dash-widget {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border: 1px solid var(--brd) !important;
+  box-shadow: var(--shadow-sm) !important;
 }
 html[data-theme="light"] .dash-widget:hover {
-  border-color: rgba(30,77,140,0.15) !important;
+  border-color: rgba(184,132,26,0.30) !important;
+  box-shadow: var(--shadow-md) !important;
 }
-html[data-theme="light"] .dash-widget-header {
-  color: var(--gold, #B8922E) !important;
-}
+html[data-theme="light"] .dash-widget-header { color: var(--gold) !important; }
+
 
 /* ═══════════════════════════════════════════════════════════════════════════════
-   9. TABLES (overrides app.css §9)
+   §9. TABLES — тёплая полосатость
    ═══════════════════════════════════════════════════════════════════════════════ */
+
 html[data-theme="light"] table th,
 html[data-theme="light"] .tbl th,
 html[data-theme="light"] table.asg th {
-  background: #F0F2F5 !important;
-  color: #5A6170 !important;
+  background: var(--bg4) !important;
+  color: var(--t2) !important;
   border-bottom: 1px solid var(--brd) !important;
 }
-
 html[data-theme="light"] table td,
 html[data-theme="light"] .tbl td,
 html[data-theme="light"] table.asg td {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border-bottom: 1px solid var(--brd-m) !important;
-  color: #1A1D24 !important;
+  color: var(--t1) !important;
 }
-
 html[data-theme="light"] table tbody tr:nth-child(odd) td,
 html[data-theme="light"] .tbl tbody tr:nth-child(odd) td,
 html[data-theme="light"] table.asg tbody tr:nth-child(odd) td {
-  background: #FAFBFC !important;
+  background: #F8F4EC !important;
 }
-
 html[data-theme="light"] table tbody tr:hover td,
 html[data-theme="light"] .tbl tbody tr:hover td,
 html[data-theme="light"] table.asg tbody tr:hover td {
-  background: #F0F2F5 !important;
+  background: var(--bg3) !important;
 }
-
 html[data-theme="light"] .tbl-wrap,
 html[data-theme="light"] .table-wrap,
 html[data-theme="light"] .tablewrap {
   border: 1px solid var(--brd) !important;
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
+  box-shadow: var(--shadow-sm) !important;
 }
 
+
 /* ═══════════════════════════════════════════════════════════════════════════════
-   10. MODALS (overrides app.css §10)
+   §10. MODALS — тёплые тона, физическая тень
    ═══════════════════════════════════════════════════════════════════════════════ */
+
 html[data-theme="light"] .modal-content {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border: 1px solid var(--brd) !important;
+  box-shadow: var(--shadow-xl) !important;
 }
 html[data-theme="light"] .modal-header {
-  background: #F8FAFC !important;
+  background: var(--bg3) !important;
   border-bottom: 1px solid var(--brd) !important;
 }
 html[data-theme="light"] .modal-header h2,
-html[data-theme="light"] .modal-header .title {
-  color: #1A1D24 !important;
-}
+html[data-theme="light"] .modal-header .title { color: var(--t1) !important; }
 html[data-theme="light"] .modal-footer {
-  background: #F8FAFC !important;
+  background: var(--bg3) !important;
   border-top: 1px solid var(--brd) !important;
 }
-html[data-theme="light"] .modal-title {
-  color: #1A1D24 !important;
+html[data-theme="light"] .modal-title { color: var(--t1) !important; }
+
+/* Overlay — тёплый чёрный */
+html[data-theme="light"] .overlay,
+html[data-theme="light"] .modal-overlay,
+html[data-theme="light"] .cr-m-overlay,
+html[data-theme="light"] .cr-cf-overlay,
+html[data-theme="light"] .cr-d-overlay {
+  background: rgba(28,25,20,0.52) !important;
 }
 
-/* CR-Modal system */
-html[data-theme="light"] .cr-m-overlay {
-  background: rgba(0,0,0,0.3) !important;
-}
+/* CR-Modal */
 html[data-theme="light"] .cr-m {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border: 1px solid var(--brd) !important;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.1), 0 0 0 1px var(--brd) inset !important;
+  box-shadow: var(--shadow-xl) !important;
 }
 html[data-theme="light"] .cr-m__header {
-  border-bottom-color: var(--brd) !important;
-  background: #F8FAFC !important;
+  background: var(--bg3) !important;
+  border-bottom: 1px solid var(--brd) !important;
+  border-top: none !important;
+}
+html[data-theme="light"] .cr-m__title { color: var(--t1) !important; }
+html[data-theme="light"] .cr-m__subtitle { color: var(--t2) !important; }
+html[data-theme="light"] .cr-m__body { color: var(--t1) !important; background: var(--bg2) !important; }
+html[data-theme="light"] .cr-m__footer {
+  background: var(--bg3) !important;
   border-top: 1px solid var(--brd) !important;
 }
-html[data-theme="light"] .cr-m__title {
-  color: #1A1D24 !important;
-}
-html[data-theme="light"] .cr-m__subtitle {
-  color: #5A6170 !important;
-}
-html[data-theme="light"] .cr-m__body {
-  color: #1A1D24 !important;
-}
-html[data-theme="light"] .cr-m__footer {
-  border-top-color: var(--brd) !important;
-  background: #F8FAFC !important;
-}
 html[data-theme="light"] .cr-m__close {
-  color: #8890A0 !important;
-  border-color: var(--brd) !important;
+  color: var(--t3) !important;
+  border: none !important;
   background: transparent !important;
 }
 html[data-theme="light"] .cr-m__close:hover {
-  color: #1A1D24 !important;
+  color: var(--t1) !important;
   background: var(--bg3) !important;
 }
+html[data-theme="light"] .cr-m__body-title { border-left-color: var(--gold) !important; }
+
+/* CR-Confirm */
+html[data-theme="light"] .cr-cf {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  box-shadow: var(--shadow-xl) !important;
+}
+html[data-theme="light"] .cr-cf__title { color: var(--t1) !important; }
+html[data-theme="light"] .cr-cf__message { color: var(--t2) !important; }
+
+/* CR-Drawer */
+html[data-theme="light"] .cr-d {
+  background: var(--bg2) !important;
+  border-color: var(--brd) !important;
+  box-shadow: -4px 0 var(--shadow-lg) !important;
+}
+html[data-theme="light"] .cr-d__header {
+  border-bottom: 1px solid var(--brd) !important;
+  background: var(--bg3) !important;
+}
+html[data-theme="light"] .cr-d__title { color: var(--t1) !important; }
+html[data-theme="light"] .cr-d__close { color: var(--t3) !important; }
+
+html[data-theme="light"] [class*="cr-m"] { border-color: var(--brd) !important; }
 
 /* CR-Modal form inputs */
 html[data-theme="light"] .cr-m input,
 html[data-theme="light"] .cr-m select,
 html[data-theme="light"] .cr-m textarea {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border-color: var(--brd) !important;
-  color: #1A1D24 !important;
+  color: var(--t1) !important;
 }
 html[data-theme="light"] .cr-m input:focus,
 html[data-theme="light"] .cr-m select:focus,
 html[data-theme="light"] .cr-m textarea:focus {
-  border-color: var(--blue) !important;
-  box-shadow: 0 0 0 3px rgba(30,77,140,0.1) !important;
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 0 3px rgba(184,132,26,0.12) !important;
 }
 
-/* CR-Modal internal borders */
-html[data-theme="light"] .cr-m__body-title {
-  border-left-color: var(--brd) !important;
-}
-
-/* CR-Confirm */
-html[data-theme="light"] .cr-cf-overlay {
-  background: rgba(0,0,0,0.3) !important;
-}
-html[data-theme="light"] .cr-cf {
-  background: #FFFFFF !important;
-  border: 1px solid var(--brd) !important;
-  box-shadow: 0 12px 40px rgba(0,0,0,0.1) !important;
-}
-html[data-theme="light"] .cr-cf__title {
-  color: #1A1D24 !important;
-}
-html[data-theme="light"] .cr-cf__message {
-  color: #5A6170 !important;
-}
-
-/* CR-Drawer */
-html[data-theme="light"] .cr-d-overlay {
-  background: rgba(0,0,0,0.2) !important;
-}
-html[data-theme="light"] .cr-d {
-  background: #FFFFFF !important;
-  border-color: var(--brd) !important;
-  box-shadow: -8px 0 30px rgba(0,0,0,0.06) !important;
-}
-html[data-theme="light"] .cr-d__header {
-  border-bottom-color: var(--brd) !important;
-}
-html[data-theme="light"] .cr-d__title {
-  color: #1A1D24 !important;
-}
-html[data-theme="light"] .cr-d__close {
-  color: #8890A0 !important;
-}
-
-/* Overlay */
-html[data-theme="light"] .overlay,
-html[data-theme="light"] .modal-overlay {
-  background: rgba(0,0,0,0.25) !important;
-}
 
 /* ═══════════════════════════════════════════════════════════════════════════════
-   11. FORM INPUTS (overrides app.css §11)
+   §11. FORM INPUTS — янтарный focus
    ═══════════════════════════════════════════════════════════════════════════════ */
+
 html[data-theme="light"] input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]):not(.chat-search-input),
 html[data-theme="light"] select,
 html[data-theme="light"] textarea,
 html[data-theme="light"] .inp {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border: 1px solid var(--brd) !important;
-  color: #1A1D24 !important;
+  color: var(--t1) !important;
 }
 html[data-theme="light"] input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]):hover,
 html[data-theme="light"] select:hover,
 html[data-theme="light"] textarea:hover,
 html[data-theme="light"] .inp:hover {
-  border-color: #A0A8B8 !important;
+  border-color: rgba(139,120,90,0.40) !important;
 }
 html[data-theme="light"] input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="hidden"]):focus,
 html[data-theme="light"] select:focus,
 html[data-theme="light"] textarea:focus,
 html[data-theme="light"] .inp:focus {
-  border-color: var(--blue) !important;
-  box-shadow: 0 0 0 3px rgba(30,77,140,0.1) !important;
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 0 3px rgba(184,132,26,0.12) !important;
+  outline: none !important;
 }
 html[data-theme="light"] input::placeholder,
-html[data-theme="light"] textarea::placeholder {
-  color: #8890A0 !important;
-}
+html[data-theme="light"] textarea::placeholder { color: var(--t3) !important; }
 html[data-theme="light"] input:disabled,
 html[data-theme="light"] select:disabled,
 html[data-theme="light"] textarea:disabled {
   background: var(--bg3) !important;
-  color: #8890A0 !important;
+  color: var(--t3) !important;
 }
 html[data-theme="light"] input[type="checkbox"],
-html[data-theme="light"] input[type="radio"] {
-  accent-color: var(--blue) !important;
-}
-/* Date inputs — light scheme */
+html[data-theme="light"] input[type="radio"] { accent-color: var(--gold) !important; }
 html[data-theme="light"] input[type="date"],
 html[data-theme="light"] input[type="datetime-local"],
-html[data-theme="light"] input[type="time"] {
-  color-scheme: light !important;
-}
+html[data-theme="light"] input[type="time"] { color-scheme: light !important; }
 
-html[data-theme="light"] label {
-  color: #5A6170 !important;
-}
+html[data-theme="light"] label { color: var(--t2) !important; }
 
-/* Float labels */
-html[data-theme="light"] .field-float label {
-  color: #8890A0 !important;
-}
+html[data-theme="light"] .field-float label { color: var(--t3) !important; }
 html[data-theme="light"] .field-float input:focus ~ label,
 html[data-theme="light"] .field-float input:not(:placeholder-shown) ~ label {
-  color: var(--blue) !important;
+  color: var(--gold) !important;
 }
 
-/* CR-Form fields */
+/* CR-Form */
 html[data-theme="light"] .cr-f-input,
 html[data-theme="light"] .cr-f-select,
 html[data-theme="light"] .cr-f-textarea,
 html[data-theme="light"] .cr-f-mono {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border-color: var(--brd) !important;
-  color: #1A1D24 !important;
+  color: var(--t1) !important;
 }
-html[data-theme="light"] .cr-f-label {
-  color: #5A6170 !important;
-}
-html[data-theme="light"] .cr-f-group {
-  border-color: var(--brd) !important;
-}
+html[data-theme="light"] .cr-f-label { color: var(--t2) !important; }
+html[data-theme="light"] .cr-f-group { border-color: var(--brd) !important; }
 
-/* Toggle switch */
-html[data-theme="light"] .toggle-switch {
-  background: #D0D5DE !important;
-}
+/* Toggle */
+html[data-theme="light"] .toggle-switch { background: var(--bg4) !important; }
 html[data-theme="light"] .toggle-switch::after {
-  background: #FFFFFF !important;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.12) !important;
+  background: var(--bg2) !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.14) !important;
 }
 html[data-theme="light"] .toggle-switch.active,
-html[data-theme="light"] .toggle-switch:checked {
-  background: var(--blue) !important;
-}
+html[data-theme="light"] .toggle-switch:checked { background: var(--gold) !important; }
 
-/* CR-Select Dropdown */
+/* CR-Select */
 html[data-theme="light"] .cr-select__trigger {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border-color: var(--brd) !important;
-  color: #1A1D24 !important;
+  color: var(--t1) !important;
 }
-html[data-theme="light"] .cr-select__trigger:hover {
-  border-color: #A0A8B8 !important;
-}
+html[data-theme="light"] .cr-select__trigger:hover { border-color: rgba(139,120,90,0.40) !important; }
 html[data-theme="light"] .cr-select--open .cr-select__trigger {
-  border-color: var(--blue) !important;
-  box-shadow: 0 0 0 3px rgba(30,77,140,0.1) !important;
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 0 3px rgba(184,132,26,0.12) !important;
 }
 html[data-theme="light"] .cr-select__dropdown {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border-color: var(--brd) !important;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.08) !important;
+  box-shadow: var(--shadow-lg) !important;
 }
-html[data-theme="light"] .cr-select__option {
-  color: #1A1D24 !important;
-}
-html[data-theme="light"] .cr-select__option:hover {
-  background: var(--bg3) !important;
-}
+html[data-theme="light"] .cr-select__option { color: var(--t1) !important; }
+html[data-theme="light"] .cr-select__option:hover { background: var(--bg3) !important; }
 html[data-theme="light"] .cr-select__option--selected {
-  background: rgba(30,77,140,0.06) !important;
+  background: rgba(184,132,26,0.08) !important;
+  color: var(--gold) !important;
 }
 html[data-theme="light"] .cr-select__search {
   background: var(--bg3) !important;
   border-color: var(--brd) !important;
-  color: #1A1D24 !important;
+  color: var(--t1) !important;
 }
-html[data-theme="light"] .cr-select__placeholder {
-  color: #8890A0 !important;
-}
+html[data-theme="light"] .cr-select__placeholder { color: var(--t3) !important; }
 
 /* CR-Datepicker */
 html[data-theme="light"] .cr-dp__popup {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border-color: var(--brd) !important;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.08) !important;
+  box-shadow: var(--shadow-lg) !important;
 }
-html[data-theme="light"] .cr-dp__day {
-  color: #1A1D24 !important;
-}
-html[data-theme="light"] .cr-dp__day:hover {
-  background: var(--bg3) !important;
-}
+html[data-theme="light"] .cr-dp__day { color: var(--t1) !important; }
+html[data-theme="light"] .cr-dp__day:hover { background: var(--bg3) !important; }
 html[data-theme="light"] .cr-dp__day--selected {
-  background: var(--blue) !important;
-  color: #FFFFFF !important;
+  background: var(--gold) !important;
+  color: #fff !important;
 }
-html[data-theme="light"] .cr-dp__day--today {
-  border-color: var(--blue) !important;
-}
-html[data-theme="light"] .cr-dp__header {
-  color: #1A1D24 !important;
-}
-html[data-theme="light"] .cr-dp__weekday {
-  color: #8890A0 !important;
-}
+html[data-theme="light"] .cr-dp__day--today { border-color: var(--gold) !important; }
+html[data-theme="light"] .cr-dp__header { color: var(--t1) !important; }
+html[data-theme="light"] .cr-dp__weekday { color: var(--t3) !important; }
 
 /* CR-Autocomplete */
 html[data-theme="light"] .cr-ac__dropdown {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border-color: var(--brd) !important;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.08) !important;
+  box-shadow: var(--shadow-lg) !important;
 }
-html[data-theme="light"] .cr-ac__item {
-  color: #1A1D24 !important;
-}
+html[data-theme="light"] .cr-ac__item { color: var(--t1) !important; }
 html[data-theme="light"] .cr-ac__item:hover,
-html[data-theme="light"] .cr-ac__item--active {
-  background: var(--bg3) !important;
-}
+html[data-theme="light"] .cr-ac__item--active { background: var(--bg3) !important; }
 
 /* CR-Employee-Picker */
 html[data-theme="light"] .cr-ep__dropdown {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border-color: var(--brd) !important;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.08) !important;
+  box-shadow: var(--shadow-lg) !important;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════════
-   12. TOASTS (overrides app.css §12)
-   ═══════════════════════════════════════════════════════════════════════════════ */
-html[data-theme="light"] .toast {
-  background: #FFFFFF !important;
-  border: 1px solid var(--brd) !important;
-  border-left: 4px solid var(--blue) !important;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.06) !important;
-  color: #1A1D24 !important;
-}
 
 /* ═══════════════════════════════════════════════════════════════════════════════
-   13. BUTTONS (overrides app.css §13)
+   §12. BUTTONS — полная иерархия
    ═══════════════════════════════════════════════════════════════════════════════ */
+
 html[data-theme="light"] .btn {
-  border-color: var(--brd) !important;
-  background: #FFFFFF !important;
-  color: #1A1D24 !important;
+  background: var(--bg3) !important;
+  border: 1px solid var(--brd) !important;
+  color: var(--t1) !important;
+  box-shadow: var(--shadow-sm) !important;
 }
 html[data-theme="light"] .btn:hover {
-  border-color: var(--blue) !important;
-  background: var(--bg3) !important;
+  background: var(--bg4) !important;
+  border-color: rgba(139,120,90,0.40) !important;
+  box-shadow: var(--shadow-md) !important;
 }
+
 html[data-theme="light"] .btn.primary {
-  background: linear-gradient(135deg, #1E4D8C, #2563A8) !important;
-  border-color: rgba(30,77,140,0.5) !important;
-  color: #FFFFFF !important;
+  background: var(--blue) !important;
+  border: none !important;
+  color: #fff !important;
+  box-shadow: var(--shadow-sm) !important;
 }
 html[data-theme="light"] .btn.primary:hover {
-  background: linear-gradient(135deg, #2563A8, #3B82F6) !important;
-  box-shadow: 0 4px 16px rgba(30,77,140,0.2) !important;
+  background: var(--blue-h) !important;
+  box-shadow: var(--shadow-md) !important;
+  transform: translateY(-1px);
 }
-html[data-theme="light"] .btn.ghost {
-  background: transparent !important;
-  border-color: var(--brd) !important;
-  color: #5A6170 !important;
-}
-html[data-theme="light"] .btn.ghost:hover {
-  background: var(--bg3) !important;
-  border-color: #A0A8B8 !important;
-  color: #1A1D24 !important;
-}
+
 html[data-theme="light"] .btn.gold {
   background: var(--gold) !important;
-  border-color: var(--gold) !important;
-  color: #FFFFFF !important;
+  border: none !important;
+  color: #fff !important;
 }
+html[data-theme="light"] .btn.gold:hover {
+  background: var(--gold-h) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
 html[data-theme="light"] .btn.red:not(#btnLogout),
 html[data-theme="light"] .btn.danger {
   background: var(--red) !important;
-  border-color: var(--red) !important;
-  color: #FFFFFF !important;
+  border: none !important;
+  color: #fff !important;
+}
+html[data-theme="light"] .btn.red:not(#btnLogout):hover,
+html[data-theme="light"] .btn.danger:hover {
+  background: var(--red-h) !important;
+  box-shadow: var(--shadow-md) !important;
 }
 
+html[data-theme="light"] .btn.ghost {
+  background: transparent !important;
+  border: 1px solid var(--brd) !important;
+  color: var(--t2) !important;
+  box-shadow: none !important;
+}
+html[data-theme="light"] .btn.ghost:hover {
+  background: var(--bg3) !important;
+  border-color: rgba(139,120,90,0.40) !important;
+  color: var(--t1) !important;
+}
+
+
 /* ═══════════════════════════════════════════════════════════════════════════════
-   14. CHAT — Huginn Messenger (overrides app.css §14)
+   §13. TOASTS
    ═══════════════════════════════════════════════════════════════════════════════ */
+
+html[data-theme="light"] .toast {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  border-left: 4px solid var(--gold) !important;
+  box-shadow: var(--shadow-md) !important;
+  color: var(--t1) !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §14. BADGES & TAGS — solid bg без рамок
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+html[data-theme="light"] .badge,
+html[data-theme="light"] .tag {
+  background: var(--bg3) !important;
+  border-color: transparent !important;
+  color: var(--t2) !important;
+}
+
+html[data-theme="light"] .badge.draft {
+  background: var(--bg4) !important;
+  border: 1px dashed var(--brd) !important;
+  color: var(--t3) !important;
+}
+
+html[data-theme="light"] .status-badge { border-color: transparent !important; }
+
+/* Typed status badges */
+html[data-theme="light"] .badge.blue,
+html[data-theme="light"] .tag.blue {
+  background: rgba(26,63,116,0.10) !important;
+  color: var(--blue) !important;
+}
+html[data-theme="light"] .badge.red,
+html[data-theme="light"] .tag.red {
+  background: rgba(168,32,48,0.10) !important;
+  color: var(--red) !important;
+}
+html[data-theme="light"] .badge.gold,
+html[data-theme="light"] .badge.amber,
+html[data-theme="light"] .tag.gold {
+  background: rgba(184,132,26,0.11) !important;
+  color: var(--gold) !important;
+}
+html[data-theme="light"] .badge.green,
+html[data-theme="light"] .tag.green {
+  background: rgba(45,106,79,0.10) !important;
+  color: var(--ok) !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §15. TABS — золотое подчёркивание на активном
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+html[data-theme="light"] .tabs {
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 1px solid var(--brd) !important;
+}
+html[data-theme="light"] .tab,
+html[data-theme="light"] .tab-btn {
+  color: var(--t2) !important;
+  border: none !important;
+  background: transparent !important;
+}
+html[data-theme="light"] .tab:hover,
+html[data-theme="light"] .tab-btn:hover {
+  color: var(--t1) !important;
+  background: var(--bg3) !important;
+}
+html[data-theme="light"] .tab.active,
+html[data-theme="light"] .tab-btn.active {
+  color: var(--gold) !important;
+  border: none !important;
+  border-bottom: 2px solid var(--gold) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+html[data-theme="light"] .tab-bar { border-bottom-color: var(--brd) !important; }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §16. SCROLLBARS — янтарные
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+html[data-theme="light"] ::-webkit-scrollbar-track { background: transparent !important; }
+html[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: rgba(139,120,90,0.28) !important;
+  border-radius: 3px;
+}
+html[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(139,120,90,0.50) !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §17. DIVIDERS & RUNE ELEMENTS
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+html[data-theme="light"] .runesep,
+html[data-theme="light"] .rune-divider { opacity: 0.12 !important; }
+html[data-theme="light"] .hr {
+  background: linear-gradient(90deg, transparent, rgba(184,132,26,0.20), transparent) !important;
+}
+html[data-theme="light"] hr { border-color: var(--brd-m) !important; }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §18. NOTIFICATIONS / BELL POPOVER
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+html[data-theme="light"] .bellpop {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  box-shadow: var(--shadow-lg) !important;
+}
+html[data-theme="light"] .bellpop-head {
+  background: var(--bg3) !important;
+  border-bottom: 1px solid var(--brd) !important;
+  color: var(--t1) !important;
+}
+html[data-theme="light"] .bellitem {
+  border-bottom-color: var(--brd-m) !important;
+  color: var(--t1) !important;
+}
+html[data-theme="light"] .bellitem:hover { background: var(--bg3) !important; }
+html[data-theme="light"] .bellitem.unread { background: rgba(184,132,26,0.05) !important; }
+html[data-theme="light"] .belltt { color: var(--t1) !important; }
+html[data-theme="light"] .bellmsg { color: var(--t2) !important; }
+html[data-theme="light"] .bellwhen { color: var(--t3) !important; }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §19. EMPTY STATES
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+html[data-theme="light"] .empty-state .icon { color: rgba(184,132,26,0.22) !important; }
+html[data-theme="light"] .empty-state .title { color: var(--t2) !important; }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §20. DROPDOWNS & FLYOUTS
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+html[data-theme="light"] .dropdown-menu,
+html[data-theme="light"] .nav-group-items {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  box-shadow: var(--shadow-lg) !important;
+}
+html[data-theme="light"] .dropdown-menu a,
+html[data-theme="light"] .dropdown-menu button { color: var(--t1) !important; }
+html[data-theme="light"] .dropdown-menu a:hover,
+html[data-theme="light"] .dropdown-menu button:hover { background: var(--bg3) !important; }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §21. PILL / USER INFO
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+html[data-theme="light"] .pill {
+  background: var(--bg3) !important;
+  border: 1px solid var(--brd) !important;
+}
+html[data-theme="light"] .pill .who { color: var(--t1) !important; }
+html[data-theme="light"] .pill .role { color: var(--gold) !important; background: rgba(184,132,26,0.10) !important; }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §22. KANBAN / FUNNEL
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+html[data-theme="light"] .kanban-column,
+html[data-theme="light"] .funnel-column {
+  background: var(--bg3) !important;
+  border: 1px solid var(--brd) !important;
+}
+html[data-theme="light"] .kanban-card {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+html[data-theme="light"] .kanban-card:hover {
+  border-color: rgba(184,132,26,0.30) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §23. CHAT — Huginn Messenger
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
 html[data-theme="light"] .chat-container {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border: 1px solid var(--brd) !important;
 }
 html[data-theme="light"] .chat-sidebar {
-  background: #F8FAFC !important;
+  background: var(--bg2) !important;
   border-right: 1px solid var(--brd) !important;
 }
 html[data-theme="light"] .chat-sidebar-header {
-  background: #F0F2F5 !important;
+  background: var(--bg3) !important;
   border-bottom: 1px solid var(--brd) !important;
 }
 html[data-theme="light"] .chat-search-input {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border: 1px solid var(--brd) !important;
-  color: #1A1D24 !important;
+  color: var(--t1) !important;
 }
-html[data-theme="light"] .chat-item:hover {
-  background: #F0F2F5 !important;
-}
-html[data-theme="light"] .chat-item.active {
-  background: rgba(30,77,140,0.08) !important;
-}
-html[data-theme="light"] .chat-main {
-  background: #FFFFFF !important;
-}
-@media (min-width: 769px) {
-  html[data-theme="light"] .chat-main {
-    background: #FFFFFF !important;
-  }
-}
-@media (max-width: 768px) {
-  html[data-theme="light"] .chat-main {
-    background: #FFFFFF !important;
-  }
-}
+html[data-theme="light"] .chat-item:hover { background: var(--bg3) !important; }
+html[data-theme="light"] .chat-item.active { background: rgba(184,132,26,0.08) !important; }
+html[data-theme="light"] .chat-main { background: var(--bg1) !important; }
 html[data-theme="light"] .chat-header {
-  background: #F8FAFC !important;
+  background: var(--bg2) !important;
   border-bottom: 1px solid var(--brd) !important;
 }
 html[data-theme="light"] .chat-messages,
-html[data-theme="light"] #chat-messages-container {
-  background: #FFFFFF !important;
-}
+html[data-theme="light"] #chat-messages-container { background: var(--bg1) !important; }
 html[data-theme="light"] .chat-input-area {
-  background: #F8FAFC !important;
+  background: var(--bg2) !important;
   border-top: 1px solid var(--brd) !important;
 }
 html[data-theme="light"] .chat-input,
 html[data-theme="light"] #chat-message-input {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border: 1px solid var(--brd) !important;
-  color: #1A1D24 !important;
+  color: var(--t1) !important;
 }
 html[data-theme="light"] .chat-input:focus,
 html[data-theme="light"] #chat-message-input:focus {
-  border-color: var(--blue) !important;
-  box-shadow: 0 0 0 2px rgba(30,77,140,0.1) !important;
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 0 2px rgba(184,132,26,0.12) !important;
 }
 
-/* Chat bubbles */
 html[data-theme="light"] .chat-bubble,
 html[data-theme="light"] .msg-bubble {
-  background: #F0F2F5 !important;
-  color: #1A1D24 !important;
+  background: var(--bg3) !important;
+  color: var(--t1) !important;
 }
 html[data-theme="light"] .chat-bubble.mine,
 html[data-theme="light"] .msg-bubble.mine,
 html[data-theme="light"] .chat-bubble--own {
   background: var(--blue) !important;
-  color: #FFFFFF !important;
+  color: #fff !important;
 }
 html[data-theme="light"] .msg-time,
-html[data-theme="light"] .chat-time {
-  color: #8890A0 !important;
-}
+html[data-theme="light"] .chat-time { color: var(--t3) !important; }
 html[data-theme="light"] .msg-sender,
-html[data-theme="light"] .chat-sender {
-  color: var(--blue) !important;
-}
+html[data-theme="light"] .chat-sender { color: var(--gold) !important; }
 html[data-theme="light"] .msg-system,
-html[data-theme="light"] .chat-system-msg {
-  color: #8890A0 !important;
-}
+html[data-theme="light"] .chat-system-msg { color: var(--t3) !important; }
 html[data-theme="light"] .chat-date-divider span {
-  background: #F0F2F5 !important;
-  color: #8890A0 !important;
+  background: var(--bg3) !important;
+  color: var(--t3) !important;
 }
-html[data-theme="light"] .chat-reply-bar {
-  background: #F8FAFC !important;
-}
-html[data-theme="light"] .chat-username {
-  color: #1A1D24 !important;
-}
-html[data-theme="light"] .chat-welcome {
-  color: #5A6170 !important;
-}
-
-/* Estimate card in chat */
+html[data-theme="light"] .chat-reply-bar { background: var(--bg3) !important; }
+html[data-theme="light"] .chat-username { color: var(--t1) !important; }
+html[data-theme="light"] .chat-welcome { color: var(--t2) !important; }
 html[data-theme="light"] .ec-card {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border-color: var(--brd) !important;
 }
 
+
 /* ═══════════════════════════════════════════════════════════════════════════════
-   15. BADGES & TAGS (overrides app.css §15)
+   §24. TOOLTIPS, POPOVERS, CONTEXT MENUS
    ═══════════════════════════════════════════════════════════════════════════════ */
-html[data-theme="light"] .badge,
-html[data-theme="light"] .tag {
+
+html[data-theme="light"] .tooltip,
+html[data-theme="light"] [role="tooltip"] {
+  background: var(--t1) !important;
+  color: #fff !important;
+  box-shadow: var(--shadow-md) !important;
+}
+html[data-theme="light"] .popover {
+  background: var(--bg2) !important;
+  border-color: var(--brd) !important;
+  box-shadow: var(--shadow-lg) !important;
+  color: var(--t1) !important;
+}
+html[data-theme="light"] .context-menu {
+  background: var(--bg2) !important;
+  border-color: var(--brd) !important;
+  box-shadow: var(--shadow-lg) !important;
+}
+html[data-theme="light"] .context-menu-item:hover { background: var(--bg3) !important; }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §25. SEARCH / COMMAND PALETTE
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+html[data-theme="light"] .cmd-palette,
+html[data-theme="light"] .command-palette,
+html[data-theme="light"] .search-overlay,
+html[data-theme="light"] .quick-search {
+  background: var(--bg2) !important;
+  border-color: var(--brd) !important;
+  box-shadow: var(--shadow-xl) !important;
+}
+html[data-theme="light"] .cmd-palette input,
+html[data-theme="light"] .search-overlay input,
+html[data-theme="light"] .quick-search input {
   background: var(--bg3) !important;
-  border-color: transparent !important;
-  color: #5A6170 !important;
+  border-color: var(--brd) !important;
+  color: var(--t1) !important;
 }
-html[data-theme="light"] .status-badge {
-  border-color: transparent !important;
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════════
-   16. TABS (overrides app.css §16)
-   ═══════════════════════════════════════════════════════════════════════════════ */
-html[data-theme="light"] .tabs {
-  background: #FFFFFF !important;
-  border-bottom: 1px solid var(--brd) !important;
-  border-top: none !important;
-  border-left: none !important;
-  border-right: none !important;
-}
-html[data-theme="light"] .tab,
-html[data-theme="light"] .tab-btn {
-  color: #5A6170 !important;
-  border: none !important;
-}
-html[data-theme="light"] .tab.active,
-html[data-theme="light"] .tab-btn.active {
-  background: rgba(30,77,140,0.08) !important;
-  color: var(--blue) !important;
-  box-shadow: 0 2px 8px rgba(30,77,140,0.06) !important;
-}
-html[data-theme="light"] .tab-bar {
-  border-bottom-color: var(--brd) !important;
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════════
-   17. SCROLLBARS (overrides app.css §17)
-   ═══════════════════════════════════════════════════════════════════════════════ */
-html[data-theme="light"] ::-webkit-scrollbar-track {
-  background: transparent !important;
-}
-html[data-theme="light"] ::-webkit-scrollbar-thumb {
-  background: #C0C6D0 !important;
-}
-html[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
-  background: #A0A8B8 !important;
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════════
-   18. RUNIC ELEMENTS (overrides app.css §18)
-   ═══════════════════════════════════════════════════════════════════════════════ */
-html[data-theme="light"] .runesep,
-html[data-theme="light"] .rune-divider {
-  opacity: 0.15 !important;
-}
-html[data-theme="light"] .hr {
-  background: linear-gradient(90deg, transparent, rgba(30,77,140,0.15), transparent) !important;
-}
-html[data-theme="light"] hr {
-  border-color: var(--brd-m) !important;
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════════
-   20. NOTIFICATIONS / BELL POPOVER (overrides app.css §20)
-   ═══════════════════════════════════════════════════════════════════════════════ */
-html[data-theme="light"] .bellpop {
-  background: #FFFFFF !important;
-  border: 1px solid var(--brd) !important;
-  box-shadow: 0 12px 40px rgba(0,0,0,0.08) !important;
-}
-html[data-theme="light"] .bellpop-head {
-  background: #F8FAFC !important;
-  border-bottom: 1px solid var(--brd) !important;
-  color: #1A1D24 !important;
-}
-html[data-theme="light"] .bellitem {
+html[data-theme="light"] .cmd-item:hover,
+html[data-theme="light"] .cmd-item.active,
+html[data-theme="light"] .search-result:hover,
+html[data-theme="light"] .search-item:hover { background: var(--bg3) !important; }
+html[data-theme="light"] .search-result,
+html[data-theme="light"] .search-item {
+  color: var(--t1) !important;
   border-bottom-color: var(--brd-m) !important;
-  color: #1A1D24 !important;
-}
-html[data-theme="light"] .bellitem:hover {
-  background: #F0F2F5 !important;
-}
-html[data-theme="light"] .bellitem.unread {
-  background: rgba(30,77,140,0.04) !important;
-}
-html[data-theme="light"] .belltt {
-  color: #1A1D24 !important;
-}
-html[data-theme="light"] .bellmsg {
-  color: #5A6170 !important;
-}
-html[data-theme="light"] .bellwhen {
-  color: #8890A0 !important;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════════
-   21. EMPTY STATES (overrides app.css §21)
-   ═══════════════════════════════════════════════════════════════════════════════ */
-html[data-theme="light"] .empty-state .icon {
-  color: rgba(30,77,140,0.25) !important;
-}
-html[data-theme="light"] .empty-state .title {
-  color: #5A6170 !important;
-}
 
 /* ═══════════════════════════════════════════════════════════════════════════════
-   22. WELCOME / AUTH PAGE (overrides app.css §22)
+   §26. PAGINATION, ACCORDION, ALERTS, PROGRESS
    ═══════════════════════════════════════════════════════════════════════════════ */
-html[data-theme="light"] .welcome-page {
-  background: #F2F5F8 !important;
-}
-html[data-theme="light"] .welcome-form {
-  background: rgba(255,255,255,0.95) !important;
-  border: 1px solid var(--brd) !important;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.08) !important;
-}
-html[data-theme="light"] .welcome-container {
-  background: #F2F5F8 !important;
-}
 
-/* ═══════════════════════════════════════════════════════════════════════════════
-   23. KANBAN / FUNNEL (overrides app.css §23)
-   ═══════════════════════════════════════════════════════════════════════════════ */
-html[data-theme="light"] .kanban-column,
-html[data-theme="light"] .funnel-column {
-  background: #F0F2F5 !important;
-  border: 1px solid var(--brd) !important;
+html[data-theme="light"] .pagination a,
+html[data-theme="light"] .pagination button {
+  background: var(--bg2) !important;
+  border-color: var(--brd) !important;
+  color: var(--t1) !important;
+  box-shadow: var(--shadow-sm) !important;
 }
-html[data-theme="light"] .kanban-card {
-  background: #FFFFFF !important;
-  border: 1px solid var(--brd) !important;
+html[data-theme="light"] .pagination .active {
+  background: var(--gold) !important;
+  border-color: var(--gold) !important;
+  color: #fff !important;
 }
-
-/* ═══════════════════════════════════════════════════════════════════════════════
-   25. DROPDOWNS & FLYOUT MENUS (overrides app.css §25)
-   ═══════════════════════════════════════════════════════════════════════════════ */
-html[data-theme="light"] .dropdown-menu,
-html[data-theme="light"] .nav-group-items {
-  background: #FFFFFF !important;
-  border: 1px solid var(--brd) !important;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.08) !important;
-}
-html[data-theme="light"] .dropdown-menu a,
-html[data-theme="light"] .dropdown-menu button {
-  color: #1A1D24 !important;
-}
-html[data-theme="light"] .dropdown-menu a:hover,
-html[data-theme="light"] .dropdown-menu button:hover {
+html[data-theme="light"] .accordion-header {
   background: var(--bg3) !important;
+  border-color: var(--brd) !important;
+  color: var(--t1) !important;
 }
-
-/* ═══════════════════════════════════════════════════════════════════════════════
-   26. PILL / USER INFO (overrides app.css §26)
-   ═══════════════════════════════════════════════════════════════════════════════ */
-html[data-theme="light"] .pill {
+html[data-theme="light"] .accordion-body {
+  background: var(--bg2) !important;
+  border-color: var(--brd) !important;
+}
+html[data-theme="light"] .alert {
+  border-color: var(--brd) !important;
   background: var(--bg3) !important;
-  border: 1px solid var(--brd) !important;
+  color: var(--t1) !important;
 }
-html[data-theme="light"] .pill .who {
-  color: #1A1D24 !important;
+html[data-theme="light"] .skeleton {
+  background: linear-gradient(90deg, var(--bg3) 25%, var(--bg4) 50%, var(--bg3) 75%) !important;
+  background-size: 200% 100% !important;
 }
-html[data-theme="light"] .pill .role {
-  color: #5A6170 !important;
+html[data-theme="light"] .progress-bar { background: var(--bg4) !important; }
+html[data-theme="light"] code,
+html[data-theme="light"] pre {
+  background: var(--bg3) !important;
+  color: var(--t1) !important;
+  border-color: var(--brd) !important;
 }
+
 
 /* ═══════════════════════════════════════════════════════════════════════════════
-   30. CREDIT / FOOTER (overrides app.css §30)
+   §27. AVATARS, APPROVAL, MISC
    ═══════════════════════════════════════════════════════════════════════════════ */
-html[data-theme="light"] .credit {
-  color: #A0A8B8 !important;
+
+html[data-theme="light"] .avatar { border-color: transparent !important; }
+html[data-theme="light"] .status-dot { box-shadow: 0 0 0 2px var(--bg2) !important; }
+
+html[data-theme="light"] .approval-card {
+  background: var(--bg2) !important;
+  border-color: var(--brd) !important;
 }
-html[data-theme="light"] .help {
-  color: #8890A0 !important;
+html[data-theme="light"] .approval-timeline { border-left-color: var(--brd) !important; }
+
+html[data-theme="light"] .filter-bar,
+html[data-theme="light"] .toolbar {
+  background: var(--bg2) !important;
+  border-color: var(--brd) !important;
+  box-shadow: var(--shadow-sm) !important;
 }
+
+html[data-theme="light"] .profile-card {
+  background: var(--bg2) !important;
+  border-color: var(--brd) !important;
+  color: var(--t1) !important;
+}
+
+html[data-theme="light"] .settings-section {
+  background: var(--bg2) !important;
+  border-color: var(--brd) !important;
+}
+
+html[data-theme="light"] .credit { color: var(--t3) !important; }
+html[data-theme="light"] .help { color: var(--t3) !important; }
+
 
 /* ═══════════════════════════════════════════════════════════════════════════════
-   ADDITIONAL CSS FILE OVERRIDES
+   §28. MODULE-SPECIFIC OVERRIDES
    ═══════════════════════════════════════════════════════════════════════════════ */
 
-/* ── components.css: Mimir bubble, worker profile ────────────────────────── */
+/* ── Mimir ── */
 html[data-theme="light"] .ec-mimir-bubble {
-  background: #F0F2F5 !important;
-  color: #1A1D24 !important;
+  background: var(--bg3) !important;
+  color: var(--t1) !important;
 }
+html[data-theme="light"] .mimir-hint {
+  background: var(--bg2) !important;
+  border-color: var(--brd) !important;
+  color: var(--t1) !important;
+}
+
+/* ── Worker profile ── */
 html[data-theme="light"] .wp-desktop-hero {
-  background: linear-gradient(135deg, rgba(30,77,140,0.08), rgba(200,41,59,0.04)) !important;
+  background: linear-gradient(135deg, rgba(26,63,116,0.07), rgba(168,32,48,0.04)) !important;
 }
 html[data-theme="light"] .wp-desktop-icon-btn {
-  background: rgba(0,0,0,0.04) !important;
+  background: rgba(0,0,0,0.03) !important;
   border-color: var(--brd) !important;
-  color: #1A1D24 !important;
+  color: var(--t1) !important;
 }
 html[data-theme="light"] .sr-card {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border-color: var(--brd) !important;
 }
-html[data-theme="light"] .sr-active {
-  border-bottom-color: var(--blue) !important;
+html[data-theme="light"] .sr-active { border-bottom-color: var(--gold) !important; }
+html[data-theme="light"] .widget-form-section { background: var(--bg3) !important; }
+
+/* ── Workers / HR ── */
+html[data-theme="light"] .worker-card {
+  background: var(--bg2) !important;
+  border-color: var(--brd) !important;
+  box-shadow: var(--shadow-sm) !important;
 }
-html[data-theme="light"] .widget-form-section {
-  background: var(--bg3) !important;
+html[data-theme="light"] .worker-card:hover {
+  border-color: rgba(184,132,26,0.30) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+html[data-theme="light"] .hr-card {
+  background: var(--bg2) !important;
+  border-color: var(--brd) !important;
+}
+html[data-theme="light"] .trip-card {
+  background: var(--bg2) !important;
+  border-color: var(--brd) !important;
 }
 
-/* ── my-mail.css ─────────────────────────────────────────────────────────── */
-html[data-theme="light"] .mymail-container {
-  background: #FFFFFF !important;
-}
+/* ── My-Mail ── */
+html[data-theme="light"] .mymail-container { background: var(--bg2) !important; }
 html[data-theme="light"] .mymail-sidebar {
-  background: #F8FAFC !important;
+  background: var(--bg2) !important;
   border-right-color: var(--brd) !important;
 }
-html[data-theme="light"] .mymail-sidebar-toggle {
-  background: var(--bg3) !important;
-}
+html[data-theme="light"] .mymail-sidebar-toggle { background: var(--bg3) !important; }
 html[data-theme="light"] .mail-list-item {
   border-bottom-color: var(--brd-m) !important;
-  color: #1A1D24 !important;
+  color: var(--t1) !important;
 }
-html[data-theme="light"] .mail-list-item:hover {
-  background: var(--bg3) !important;
-}
+html[data-theme="light"] .mail-list-item:hover { background: var(--bg3) !important; }
 html[data-theme="light"] .mail-viewer {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border-color: var(--brd) !important;
 }
 html[data-theme="light"] .mail-compose {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border-color: var(--brd) !important;
 }
 
-/* ── cr-modal.css: rgba borders ──────────────────────────────────────────── */
-html[data-theme="light"] [class*="cr-m"] {
-  border-color: var(--brd) !important;
-}
-
-/* ── estimate-report.css ─────────────────────────────────────────────────── */
-html[data-theme="light"] .er-page {
-  color: #1A1D24 !important;
-}
-html[data-theme="light"] .er-header {
-  border-bottom-color: var(--brd) !important;
-}
+/* ── Estimate Report ── */
+html[data-theme="light"] .er-page { color: var(--t1) !important; }
+html[data-theme="light"] .er-header { border-bottom-color: var(--brd) !important; }
 html[data-theme="light"] .er-btn--secondary {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border-color: var(--brd) !important;
-  color: #1A1D24 !important;
+  color: var(--t1) !important;
 }
 html[data-theme="light"] .er-btn--secondary:hover {
   background: var(--bg3) !important;
-  border-color: var(--blue) !important;
+  border-color: var(--gold) !important;
 }
 html[data-theme="light"] .er-summary-card {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border-color: var(--brd) !important;
+  box-shadow: var(--shadow-sm) !important;
 }
-html[data-theme="light"] .er-summary-card__label {
-  color: #5A6170 !important;
-}
-html[data-theme="light"] .er-summary-card__value {
-  color: #1A1D24 !important;
-}
+html[data-theme="light"] .er-summary-card__label { color: var(--t2) !important; }
+html[data-theme="light"] .er-summary-card__value { color: var(--t1) !important; }
 html[data-theme="light"] .er-tbl th {
-  background: #F0F2F5 !important;
-  color: #5A6170 !important;
+  background: var(--bg4) !important;
+  color: var(--t2) !important;
   border-color: var(--brd) !important;
 }
 html[data-theme="light"] .er-tbl td {
-  background: #FFFFFF !important;
-  color: #1A1D24 !important;
+  background: var(--bg2) !important;
+  color: var(--t1) !important;
   border-color: var(--brd-m) !important;
 }
 html[data-theme="light"] .er-tbl input {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border-color: var(--brd) !important;
-  color: #1A1D24 !important;
+  color: var(--t1) !important;
 }
 html[data-theme="light"] .er-rework-banner {
-  background: rgba(212,168,67,0.06) !important;
+  background: rgba(184,132,26,0.06) !important;
   border-color: var(--gold) !important;
 }
-html[data-theme="light"] .er-rework-banner__title {
-  color: #B8922E !important;
-}
-html[data-theme="light"] .er-rework-banner__text {
-  color: #1A1D24 !important;
-}
+html[data-theme="light"] .er-rework-banner__title { color: var(--gold) !important; }
+html[data-theme="light"] .er-rework-banner__text { color: var(--t1) !important; }
 html[data-theme="light"] .er-pill {
   border-color: var(--brd) !important;
   background: var(--bg3) !important;
-  color: #5A6170 !important;
+  color: var(--t2) !important;
 }
 html[data-theme="light"] .er-mimir {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border-color: var(--brd) !important;
 }
 html[data-theme="light"] .er-mimir__header {
+  background: var(--bg3) !important;
   border-bottom-color: var(--brd) !important;
-  background: #F8FAFC !important;
 }
-html[data-theme="light"] .er-mimir__name {
-  color: #1A1D24 !important;
-}
-html[data-theme="light"] .er-mimir__body {
-  background: #FFFFFF !important;
-}
+html[data-theme="light"] .er-mimir__name { color: var(--t1) !important; }
+html[data-theme="light"] .er-mimir__body { background: var(--bg2) !important; }
 html[data-theme="light"] .er-mimir__input {
+  background: var(--bg3) !important;
   border-top-color: var(--brd) !important;
-  background: #F8FAFC !important;
 }
 html[data-theme="light"] .er-mimir__input input {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border-color: var(--brd) !important;
-  color: #1A1D24 !important;
+  color: var(--t1) !important;
 }
 html[data-theme="light"] .er-mimir__msg--user {
   background: var(--blue) !important;
-  color: #FFFFFF !important;
+  color: #fff !important;
 }
 html[data-theme="light"] .er-mimir__msg--bot {
-  background: #F0F2F5 !important;
-  color: #1A1D24 !important;
+  background: var(--bg3) !important;
+  color: var(--t1) !important;
 }
 html[data-theme="light"] .er-comment__bubble {
-  background: #F0F2F5 !important;
-  color: #1A1D24 !important;
-}
-html[data-theme="light"] .er-comment__name {
-  color: #1A1D24 !important;
-}
-html[data-theme="light"] .er-comment__time {
-  color: #8890A0 !important;
-}
-html[data-theme="light"] .er-cost-bar {
   background: var(--bg3) !important;
+  color: var(--t1) !important;
 }
+html[data-theme="light"] .er-comment__name { color: var(--t1) !important; }
+html[data-theme="light"] .er-comment__time { color: var(--t3) !important; }
+html[data-theme="light"] .er-cost-bar { background: var(--bg3) !important; }
 html[data-theme="light"] .er-obj-toggle {
   background: var(--bg3) !important;
   border-color: var(--brd) !important;
-  color: #1A1D24 !important;
+  color: var(--t1) !important;
 }
 html[data-theme="light"] .er-obj-body {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border-color: var(--brd) !important;
 }
 html[data-theme="light"] .er-mimir-block {
@@ -1147,451 +1497,407 @@ html[data-theme="light"] .er-mimir-block {
   border-color: var(--brd) !important;
 }
 
-/* ── call-reports.css ────────────────────────────────────────────────────── */
-html[data-theme="light"] .cr-period-btn--active {
-  color: #FFFFFF !important;
-}
+/* ── Call Reports ── */
+html[data-theme="light"] .cr-period-btn--active { color: #fff !important; }
 html[data-theme="light"] .call-card {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border-color: var(--brd) !important;
+  box-shadow: var(--shadow-sm) !important;
 }
 
-/* ── responsive.css: mobile chat ─────────────────────────────────────────── */
-@media (max-width: 768px) {
-  html[data-theme="light"] .mimir-widget.mimir-mobile-open {
-    background: #FFFFFF !important;
-  }
+/* ── Tenders ── */
+html[data-theme="light"] .tender-status-badge { border-color: transparent !important; }
+html[data-theme="light"] .m-tc {
+  background: var(--bg2) !important;
+  border-color: var(--brd) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+html[data-theme="light"] .m-tc:hover {
+  border-color: rgba(184,132,26,0.30) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+html[data-theme="light"] .m-tc-label { color: var(--t3) !important; }
+html[data-theme="light"] .m-tc-title { color: var(--t1) !important; }
+html[data-theme="light"] .m-tc-meta { color: var(--t2) !important; }
+html[data-theme="light"] .tender-card,
+html[data-theme="light"] .pre-tender-card {
+  background: var(--bg2) !important;
+  border-color: var(--brd) !important;
+  box-shadow: var(--shadow-sm) !important;
 }
 
-/* ═══════════════════════════════════════════════════════════════════════════════
-   JS INLINE-STYLE OVERRIDES — components injecting dark colors via JS
-   ═══════════════════════════════════════════════════════════════════════════════ */
+/* ── Estimates ── */
+html[data-theme="light"] .est-card {
+  background: var(--bg2) !important;
+  border-color: var(--brd) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
 
-/* ── Contracts Modal (contracts.js) ──────────────────────────────────────── */
+/* ── Procurement ── */
+html[data-theme="light"] .proc-card {
+  background: var(--bg2) !important;
+  border-color: var(--brd) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+html[data-theme="light"] .proc-card:hover {
+  border-color: rgba(184,132,26,0.30) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+/* ── File attachments ── */
+html[data-theme="light"] .file-card,
+html[data-theme="light"] .attachment-card {
+  background: var(--bg3) !important;
+  border-color: var(--brd) !important;
+  color: var(--t1) !important;
+}
+
+/* ── Contracts Modal ── */
 html[data-theme="light"] #contractModal .cm-card,
 html[data-theme="light"] #contractSelectorModal .cm-card,
 html[data-theme="light"] #newCustomerModal .cm-card {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border-color: var(--brd) !important;
-  box-shadow: 0 24px 80px rgba(0,0,0,0.1), 0 0 0 1px var(--brd) inset !important;
-  color: #1A1D24 !important;
+  box-shadow: var(--shadow-xl) !important;
+  color: var(--t1) !important;
 }
 html[data-theme="light"] #contractModal .cm-inp,
 html[data-theme="light"] #contractSelectorModal .cm-inp,
 html[data-theme="light"] #newCustomerModal .cm-inp {
-  background: #F8FAFC !important;
+  background: var(--bg3) !important;
   border-color: var(--brd) !important;
-  color: #1A1D24 !important;
-}
-html[data-theme="light"] #contractModal .cm-inp:hover,
-html[data-theme="light"] #newCustomerModal .cm-inp:hover {
-  border-color: #A0A8B8 !important;
+  color: var(--t1) !important;
 }
 html[data-theme="light"] #contractModal .cm-inp:focus,
 html[data-theme="light"] #newCustomerModal .cm-inp:focus {
-  border-color: #3b82f6 !important;
-  box-shadow: 0 0 0 3px rgba(59,130,246,0.12) !important;
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 0 3px rgba(184,132,26,0.12) !important;
 }
 html[data-theme="light"] #contractModal .cm-inp::placeholder,
-html[data-theme="light"] #newCustomerModal .cm-inp::placeholder {
-  color: #8890A0 !important;
-}
-html[data-theme="light"] #contractModal select.cm-inp option {
-  background: #FFFFFF !important;
-  color: #1A1D24 !important;
-}
-html[data-theme="light"] #contractModal input[type=date].cm-inp {
-  color-scheme: light !important;
-}
+html[data-theme="light"] #newCustomerModal .cm-inp::placeholder { color: var(--t3) !important; }
+html[data-theme="light"] #contractModal select.cm-inp option { background: var(--bg2) !important; }
+html[data-theme="light"] #contractModal input[type=date].cm-inp { color-scheme: light !important; }
 html[data-theme="light"] .cm-section {
   background: rgba(0,0,0,0.02) !important;
   border-color: var(--brd) !important;
 }
-html[data-theme="light"] .cm-section-title {
-  color: #5A6170 !important;
-}
-html[data-theme="light"] .cm-label {
-  color: #5A6170 !important;
-}
-html[data-theme="light"] .cm-footer {
-  border-top-color: var(--brd) !important;
-}
+html[data-theme="light"] .cm-section-title,
+html[data-theme="light"] .cm-label { color: var(--t2) !important; }
+html[data-theme="light"] .cm-footer { border-top-color: var(--brd) !important; }
 html[data-theme="light"] .cm-btn-ghost {
-  color: #5A6170 !important;
+  color: var(--t2) !important;
   border-color: var(--brd) !important;
 }
 html[data-theme="light"] .cm-btn-ghost:hover {
   background: var(--bg3) !important;
-  color: #1A1D24 !important;
+  color: var(--t1) !important;
 }
-html[data-theme="light"] .cm-toggle {
-  border-color: var(--brd) !important;
-}
-html[data-theme="light"] .cm-toggle:hover {
-  border-color: #A0A8B8 !important;
-}
-html[data-theme="light"] .cm-toggle-track {
-  background: #D0D5DE !important;
-}
-html[data-theme="light"] .cm-toggle-text {
-  color: #5A6170 !important;
-}
-html[data-theme="light"] .cm-btn-add-customer {
-  border-color: var(--brd) !important;
-}
+html[data-theme="light"] .cm-toggle { border-color: var(--brd) !important; }
+html[data-theme="light"] .cm-toggle-track { background: var(--bg4) !important; }
+html[data-theme="light"] .cm-toggle-text { color: var(--t2) !important; }
+html[data-theme="light"] .cm-btn-add-customer { border-color: var(--brd) !important; }
 
-/* DaData suggest dropdown */
+/* DaData suggest */
 html[data-theme="light"] .ncm-suggest-dropdown {
-  background: #FFFFFF !important;
+  background: var(--bg2) !important;
   border-color: var(--brd) !important;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.08) !important;
+  box-shadow: var(--shadow-lg) !important;
 }
-html[data-theme="light"] .ncm-suggest-item {
-  border-bottom-color: var(--brd-m) !important;
-}
-html[data-theme="light"] .ncm-suggest-item:hover {
-  background: rgba(30,77,140,0.05) !important;
-}
-html[data-theme="light"] .ncm-suggest-item .ncm-s-name {
-  color: #1A1D24 !important;
-}
-html[data-theme="light"] .ncm-suggest-item .ncm-s-meta {
-  color: #5A6170 !important;
-}
-html[data-theme="light"] .cm-amount-wrap .cm-suffix {
-  color: #8890A0 !important;
-}
+html[data-theme="light"] .ncm-suggest-item { border-bottom-color: var(--brd-m) !important; }
+html[data-theme="light"] .ncm-suggest-item:hover { background: rgba(184,132,26,0.05) !important; }
+html[data-theme="light"] .ncm-suggest-item .ncm-s-name { color: var(--t1) !important; }
+html[data-theme="light"] .ncm-suggest-item .ncm-s-meta { color: var(--t2) !important; }
+html[data-theme="light"] .cm-amount-wrap .cm-suffix { color: var(--t3) !important; }
 
-/* ── Stat cards / KPI / Dashboard ────────────────────────────────────────── */
-html[data-theme="light"] .stat-card,
-html[data-theme="light"] .kpi-card,
-html[data-theme="light"] .metric-card {
-  background: #FFFFFF !important;
-  border-color: var(--brd) !important;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.04) !important;
-}
-html[data-theme="light"] .stat-card__value,
-html[data-theme="light"] .kpi-card__value,
-html[data-theme="light"] .metric-card__value {
-  color: #1A1D24 !important;
-}
-html[data-theme="light"] .stat-card__label,
-html[data-theme="light"] .kpi-card__label,
-html[data-theme="light"] .metric-card__label {
-  color: #5A6170 !important;
-}
-
-/* ── Search / Command Palette ────────────────────────────────────────────── */
-html[data-theme="light"] .cmd-palette,
-html[data-theme="light"] .command-palette,
-html[data-theme="light"] .search-overlay,
-html[data-theme="light"] .quick-search {
-  background: #FFFFFF !important;
-  border-color: var(--brd) !important;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.1) !important;
-}
-html[data-theme="light"] .cmd-palette input,
-html[data-theme="light"] .search-overlay input,
-html[data-theme="light"] .quick-search input {
-  background: #F8FAFC !important;
-  border-color: var(--brd) !important;
-  color: #1A1D24 !important;
-}
-html[data-theme="light"] .cmd-item:hover,
-html[data-theme="light"] .cmd-item.active,
-html[data-theme="light"] .search-result:hover,
-html[data-theme="light"] .search-item:hover {
-  background: var(--bg3) !important;
-}
-html[data-theme="light"] .search-result,
-html[data-theme="light"] .search-item {
-  color: #1A1D24 !important;
-  border-bottom-color: var(--brd-m) !important;
-}
-
-/* ── Alerts ──────────────────────────────────────────────────────────────── */
-html[data-theme="light"] .alert {
-  border-color: var(--brd) !important;
-  background: var(--bg3) !important;
-  color: #1A1D24 !important;
-}
-
-/* ── Tooltips ────────────────────────────────────────────────────────────── */
-html[data-theme="light"] .tooltip,
-html[data-theme="light"] [role="tooltip"] {
-  background: #1A1D24 !important;
-  color: #FFFFFF !important;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.12) !important;
-}
-
-/* ── Accordion ───────────────────────────────────────────────────────────── */
-html[data-theme="light"] .accordion-header {
-  background: var(--bg3) !important;
-  border-color: var(--brd) !important;
-  color: #1A1D24 !important;
-}
-html[data-theme="light"] .accordion-body {
-  background: #FFFFFF !important;
-  border-color: var(--brd) !important;
-}
-
-/* ── Pagination ──────────────────────────────────────────────────────────── */
-html[data-theme="light"] .pagination a,
-html[data-theme="light"] .pagination button {
-  background: #FFFFFF !important;
-  border-color: var(--brd) !important;
-  color: #1A1D24 !important;
-}
-html[data-theme="light"] .pagination .active {
-  background: var(--blue) !important;
-  border-color: var(--blue) !important;
-  color: #FFFFFF !important;
-}
-
-/* ── Popover ─────────────────────────────────────────────────────────────── */
-html[data-theme="light"] .popover {
-  background: #FFFFFF !important;
-  border-color: var(--brd) !important;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.08) !important;
-  color: #1A1D24 !important;
-}
-
-/* ── Context Menu ────────────────────────────────────────────────────────── */
-html[data-theme="light"] .context-menu {
-  background: #FFFFFF !important;
-  border-color: var(--brd) !important;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.08) !important;
-}
-html[data-theme="light"] .context-menu-item:hover {
-  background: var(--bg3) !important;
-}
-
-/* ── Approval cards / timeline ───────────────────────────────────────────── */
-html[data-theme="light"] .approval-card {
-  background: #FFFFFF !important;
-  border-color: var(--brd) !important;
-}
-html[data-theme="light"] .approval-timeline {
-  border-left-color: var(--brd) !important;
-}
-
-/* ── Loading / Skeleton ──────────────────────────────────────────────────── */
-html[data-theme="light"] .skeleton {
-  background: linear-gradient(90deg, var(--bg3) 25%, var(--bg4) 50%, var(--bg3) 75%) !important;
-}
-
-/* ── Progress bars ───────────────────────────────────────────────────────── */
-html[data-theme="light"] .progress-bar {
-  background: var(--bg4) !important;
-}
-
-/* ── Code / Pre ──────────────────────────────────────────────────────────── */
-html[data-theme="light"] code,
-html[data-theme="light"] pre {
-  background: #F0F2F5 !important;
-  color: #1A1D24 !important;
-  border-color: var(--brd) !important;
-}
-
-/* ── Settings page ───────────────────────────────────────────────────────── */
-html[data-theme="light"] .settings-section {
-  background: #FFFFFF !important;
-  border-color: var(--brd) !important;
-}
-
-/* ── Avatar ──────────────────────────────────────────────────────────────── */
-html[data-theme="light"] .avatar {
-  border-color: transparent !important;
-}
-html[data-theme="light"] .status-dot {
-  box-shadow: 0 0 0 2px #FFFFFF !important;
-}
-
-/* ── Mimir hints ─────────────────────────────────────────────────────────── */
-html[data-theme="light"] .mimir-hint {
-  background: #FFFFFF !important;
-  border-color: var(--brd) !important;
-  color: #1A1D24 !important;
-}
-
-/* ── Workers / HR / Trips ────────────────────────────────────────────────── */
-html[data-theme="light"] .worker-card {
-  background: #FFFFFF !important;
-  border-color: var(--brd) !important;
-}
-html[data-theme="light"] .worker-card:hover {
-  border-color: var(--blue) !important;
-}
-html[data-theme="light"] .hr-card {
-  background: #FFFFFF !important;
-  border-color: var(--brd) !important;
-}
-html[data-theme="light"] .trip-card {
-  background: #FFFFFF !important;
-  border-color: var(--brd) !important;
-}
-
-/* ── File upload / attachment ─────────────────────────────────────────────── */
-html[data-theme="light"] .file-card,
-html[data-theme="light"] .attachment-card {
-  background: #F8FAFC !important;
-  border-color: var(--brd) !important;
-  color: #1A1D24 !important;
-}
-
-/* ── Tenders ─────────────────────────────────────────────────────────────── */
-html[data-theme="light"] .tender-status-badge {
-  border-color: var(--brd) !important;
-}
-html[data-theme="light"] .m-tc {
-  background: #FFFFFF !important;
-  border-color: var(--brd) !important;
-}
-html[data-theme="light"] .m-tc:hover {
-  border-color: var(--blue) !important;
-}
-html[data-theme="light"] .m-tc-label {
-  color: #8890A0 !important;
-}
-html[data-theme="light"] .m-tc-title {
-  color: #1A1D24 !important;
-}
-html[data-theme="light"] .m-tc-meta {
-  color: #5A6170 !important;
-}
-
-/* ── Estimates page ──────────────────────────────────────────────────────── */
-html[data-theme="light"] .est-card {
-  background: #FFFFFF !important;
-  border-color: var(--brd) !important;
-}
-
-/* ── Procurement ─────────────────────────────────────────────────────────── */
-html[data-theme="light"] .proc-card {
-  background: #FFFFFF !important;
-  border-color: var(--brd) !important;
-}
-html[data-theme="light"] .proc-card:hover {
-  border-color: var(--blue) !important;
-}
-
-/* ── Filter bar / Toolbar ────────────────────────────────────────────────── */
-html[data-theme="light"] .filter-bar,
-html[data-theme="light"] .toolbar {
-  background: #FFFFFF !important;
-  border-color: var(--brd) !important;
-}
-
-/* ── Profile card ────────────────────────────────────────────────────────── */
-html[data-theme="light"] .profile-card {
-  background: #FFFFFF !important;
-  border-color: var(--brd) !important;
-  color: #1A1D24 !important;
-}
-
-/* ── Splash screen ───────────────────────────────────────────────────────── */
-html[data-theme="light"] #asgard-splash {
-  background: #F2F5F8 !important;
-}
-html[data-theme="light"] #asgard-splash div[style*="color:#8E8E93"],
-html[data-theme="light"] #asgard-splash div[style*="color:#636366"] {
-  color: #5A6170 !important;
-}
-
-/* ── Work Report Hero (wr-hero uses decorative dark gradient) ─────────── */
+/* ── Work Report ── */
 html[data-theme="light"] .wr-hero-bg {
-  background: linear-gradient(135deg, rgba(30,77,140,0.12), rgba(200,41,59,0.06)) !important;
+  background: linear-gradient(135deg, rgba(26,63,116,0.10), rgba(168,32,48,0.06)) !important;
 }
-html[data-theme="light"] .wr-hero-title {
-  color: #1A1D24 !important;
-}
-html[data-theme="light"] .wr-hero-status {
-  /* Status badge — keep colored bg, but ensure visibility */
-}
+html[data-theme="light"] .wr-hero-title { color: var(--t1) !important; }
 
-/* ── Tenders card fallback ───────────────────────────────────────────────── */
-html[data-theme="light"] .tender-card,
-html[data-theme="light"] .pre-tender-card {
-  background: #FFFFFF !important;
-  border-color: var(--brd) !important;
-}
-
-/* ── Action menu (action_menu.js) ────────────────────────────────────────── */
+/* ── Action menu ── */
 html[data-theme="light"] .asg-action-menu {
   background: var(--bg2) !important;
   border-color: var(--brd) !important;
   box-shadow: var(--shadow-lg) !important;
 }
-html[data-theme="light"] .asg-action-menu .action-item:hover {
-  background: var(--bg3) !important;
-}
+html[data-theme="light"] .asg-action-menu .action-item:hover { background: var(--bg3) !important; }
+
 
 /* ═══════════════════════════════════════════════════════════════════════════════
-   BORDER CLEANUP — убираем рамки с элементов где их не должно быть
-   В тёмной теме --brd почти прозрачный, в светлой он жёсткий.
-   Элементы с собственным фоном или цветом не нуждаются в рамке.
+   §29. WELCOME / AUTH PAGE — Split-screen Soldag
    ═══════════════════════════════════════════════════════════════════════════════ */
 
-/* Иконки в навигации — не нужна рамка, иконка сама по себе */
+/* Левая панель — тёмная, декоративная. Правая — пергамент с формой */
+html[data-theme="light"] .welcome-page {
+  background: var(--bg1) !important;
+  min-height: 100vh;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Скрываем тёмные элементы аврора и частицы */
+html[data-theme="light"] .welcome-bg,
+html[data-theme="light"] .welcome-stars,
+html[data-theme="light"] .rune-particles {
+  display: none !important;
+}
+
+/* Левая панель через псевдоэлемент */
+html[data-theme="light"] .welcome-page::before {
+  content: '';
+  position: fixed;
+  left: 0; top: 0; bottom: 0;
+  width: 42%;
+  background: #16325A;
+  /* Геометрический Nordic-паттерн */
+  background-image:
+    linear-gradient(rgba(184,132,26,0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(184,132,26,0.06) 1px, transparent 1px);
+  background-size: 32px 32px;
+  z-index: 0;
+}
+
+/* Декоративный орнамент на левой панели */
+html[data-theme="light"] .welcome-page::after {
+  content: '';
+  position: fixed;
+  left: 0; top: 0; bottom: 0;
+  width: 42%;
+  background:
+    radial-gradient(ellipse 60% 50% at 50% 50%, rgba(184,132,26,0.12), transparent 70%),
+    radial-gradient(ellipse 40% 60% at 20% 80%, rgba(168,32,48,0.08), transparent 60%);
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* Основной контент — сдвигаем вправо */
+html[data-theme="light"] .welcome-content {
+  position: relative;
+  z-index: 2;
+  margin-left: 42%;
+  min-height: 100vh;
+  background: var(--bg1) !important;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 80px;
+  text-align: left !important;
+}
+
+/* Логотип — меньше, деловой */
+html[data-theme="light"] .welcome-header {
+  justify-content: flex-start !important;
+  margin-bottom: 40px !important;
+}
+html[data-theme="light"] .welcome-logo {
+  width: 64px !important;
+  height: 64px !important;
+  border: 2px solid rgba(184,132,26,0.25) !important;
+  background: var(--bg2) !important;
+  box-shadow: var(--shadow-sm) !important;
+  padding: 8px !important;
+}
+html[data-theme="light"] .welcome-logo-ring {
+  border-color: rgba(184,132,26,0.15) !important;
+  animation: none !important;
+}
+html[data-theme="light"] .welcome-brand { text-align: left !important; }
+html[data-theme="light"] .welcome-title {
+  font-size: 28px !important;
+  font-weight: 800 !important;
+  letter-spacing: 2px !important;
+  background: none !important;
+  -webkit-background-clip: unset !important;
+  -webkit-text-fill-color: var(--t1) !important;
+  background-clip: unset !important;
+  color: var(--t1) !important;
+}
+html[data-theme="light"] .welcome-subtitle {
+  color: var(--t3) !important;
+  font-size: 11px !important;
+  letter-spacing: 2px !important;
+}
+html[data-theme="light"] .welcome-runes {
+  color: rgba(184,132,26,0.40) !important;
+  opacity: 1 !important;
+}
+
+/* Скрываем декоративный эмблем (он на левой панели) */
+html[data-theme="light"] .welcome-emblem { display: none !important; }
+
+html[data-theme="light"] .welcome-motto {
+  font-size: 14px !important;
+  color: var(--t3) !important;
+  font-style: italic !important;
+  text-shadow: none !important;
+  text-align: left !important;
+  margin-bottom: 8px !important;
+}
+html[data-theme="light"] .welcome-desc {
+  justify-content: flex-start !important;
+  margin-bottom: 32px !important;
+}
+html[data-theme="light"] .welcome-desc-item { color: var(--t2) !important; }
+html[data-theme="light"] .welcome-desc-sep { color: var(--brd) !important; }
+
+/* Кнопка "Войти" — синяя, деловая */
+html[data-theme="light"] .welcome-actions { justify-content: flex-start !important; }
+html[data-theme="light"] .welcome-btn {
+  background: var(--blue) !important;
+  border: none !important;
+  color: #fff !important;
+  box-shadow: var(--shadow-md) !important;
+  font-weight: 700 !important;
+}
+html[data-theme="light"] .welcome-btn:hover {
+  background: var(--blue-h) !important;
+  box-shadow: var(--shadow-lg) !important;
+  transform: translateY(-1px);
+}
+html[data-theme="light"] .welcome-btn-glow { display: none !important; }
+
+/* Форма входа — карточка на пергаменте */
+html[data-theme="light"] .welcome-form {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  box-shadow: var(--shadow-md) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  text-align: left !important;
+  width: 100% !important;
+  max-width: 380px !important;
+}
+html[data-theme="light"] .welcome-form-title {
+  color: var(--t1) !important;
+  background: none !important;
+  -webkit-text-fill-color: var(--t1) !important;
+  font-size: 20px !important;
+  font-weight: 700 !important;
+  text-align: left !important;
+}
+html[data-theme="light"] .welcome-form-subtitle {
+  color: var(--t3) !important;
+  text-align: left !important;
+}
+html[data-theme="light"] .welcome-form h3 {
+  color: var(--t1) !important;
+  text-align: left !important;
+}
+html[data-theme="light"] .welcome-form .field label { color: var(--t2) !important; }
+html[data-theme="light"] .welcome-form .btn { width: 100%; }
+html[data-theme="light"] .welcome-form .btn#btnDoLogin {
+  background: var(--blue) !important;
+  border: none !important;
+  color: #fff !important;
+}
+
+html[data-theme="light"] .welcome-footer {
+  width: 100%;
+  max-width: 380px;
+  margin-top: 24px;
+}
+html[data-theme="light"] .welcome-runes-bottom {
+  color: rgba(184,132,26,0.30) !important;
+  font-size: 11px !important;
+}
+
+/* ── Левая панель — надпись ASGARD через content (декоративно) ── */
+html[data-theme="light"] .welcome-page .welcome-bg {
+  /* Используем вместо before для текста через position absolute */
+}
+
+/* ── Auth страница ── */
+html[data-theme="light"] .welcome-page,
+html[data-theme="light"] .welcome-container { background: var(--bg1) !important; }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  html[data-theme="light"] .welcome-page::before,
+  html[data-theme="light"] .welcome-page::after { width: 35%; }
+  html[data-theme="light"] .welcome-content {
+    margin-left: 35%;
+    padding: 40px 40px;
+  }
+}
+@media (max-width: 640px) {
+  html[data-theme="light"] .welcome-page::before,
+  html[data-theme="light"] .welcome-page::after { display: none; }
+  html[data-theme="light"] .welcome-content {
+    margin-left: 0;
+    padding: 32px 24px;
+    align-items: center;
+    text-align: center !important;
+  }
+  html[data-theme="light"] .welcome-header { justify-content: center !important; }
+  html[data-theme="light"] .welcome-actions,
+  html[data-theme="light"] .welcome-desc { justify-content: center !important; }
+  html[data-theme="light"] .welcome-form { max-width: 100% !important; }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §30. SPLASH SCREEN
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+html[data-theme="light"] #asgard-splash {
+  background: var(--bg1) !important;
+}
+html[data-theme="light"] #asgard-splash div[style*="color:#8E8E93"],
+html[data-theme="light"] #asgard-splash div[style*="color:#636366"] {
+  color: var(--t3) !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §31. GLOW KILLER — убиваем все остатки glow из тёмной темы
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+html[data-theme="light"] * {
+  text-shadow: none !important;
+}
+html[data-theme="light"] [class*="-glow"],
+html[data-theme="light"] [class*="glow-"],
+html[data-theme="light"] .neon {
+  box-shadow: none !important;
+  filter: none !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §32. ICON-ONLY BUTTONS — без рамок и фонов
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+html[data-theme="light"] .icon-btn,
+html[data-theme="light"] .btn-icon {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+html[data-theme="light"] .icon-btn:hover,
+html[data-theme="light"] .btn-icon:hover { background: var(--bg3) !important; }
+
+/* Индивидуальные иконки в навигации */
 html[data-theme="light"] .nav-group .navitem .ico {
   border: none !important;
   background: transparent !important;
 }
 
-/* Статусные бейджи с цветным фоном — граница лишняя */
-html[data-theme="light"] .status-badge,
-html[data-theme="light"] [class*="status-"],
-html[data-theme="light"] [class*="-status"] {
-  border-color: transparent !important;
-}
+/* Аватары */
+html[data-theme="light"] .avatar { border-color: transparent !important; }
+html[data-theme="light"] .avatar img { outline: none !important; }
 
-/* Pill кнопки в тулбарах — border виден только при hover/active */
-html[data-theme="light"] .pill-btn,
-html[data-theme="light"] .filter-pill {
-  border-color: transparent !important;
-}
-html[data-theme="light"] .pill-btn:hover,
-html[data-theme="light"] .filter-pill:hover,
-html[data-theme="light"] .pill-btn.active,
-html[data-theme="light"] .filter-pill.active {
-  border-color: var(--brd) !important;
-}
-
-/* Иконки-кнопки (icon-only buttons) — без рамки */
-html[data-theme="light"] .icon-btn,
-html[data-theme="light"] .iconbtn,
-html[data-theme="light"] .btn-icon {
-  border: none !important;
-  background: transparent !important;
-}
-html[data-theme="light"] .icon-btn:hover,
-html[data-theme="light"] .iconbtn:hover,
-html[data-theme="light"] .btn-icon:hover {
-  background: var(--bg3) !important;
-}
-
-/* Аватары с фото — рамка не нужна если есть изображение */
-html[data-theme="light"] .avatar img,
-html[data-theme="light"] .ava img {
-  outline: none !important;
-}
-
-/* Активные табы — только нижний акцент, не полная рамка */
-html[data-theme="light"] .tab.active,
-html[data-theme="light"] .tab-btn.active {
-  border: none !important;
-  border-bottom: 2px solid var(--blue) !important;
-  background: transparent !important;
-}
 
 /* ═══════════════════════════════════════════════════════════════════════════════
-   PRINT STYLES
+   §33. PRINT
    ═══════════════════════════════════════════════════════════════════════════════ */
+
 @media print {
   * {
     background: white !important;
     color: black !important;
     box-shadow: none !important;
-    border-color: #ddd !important;
+    border-color: #ccc !important;
   }
 }
