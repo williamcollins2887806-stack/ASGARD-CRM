@@ -1,8 +1,13 @@
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { useRef, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { ChevronLeft } from 'lucide-react';
 
 /**
- * PageShell — обёртка страницы
- * Glass-blur header при скролле, large→compact title (iOS-стиль)
+ * PageShell — обёртка страницы.
+ * Glass-blur header при скролле, iOS large→compact title.
+ * Props:
+ *   showBack  — показать кнопку «Назад»
+ *   onBack    — кастомный обработчик; по умолчанию navigate(-1)
  */
 export function PageShell({
   title,
@@ -11,29 +16,30 @@ export function PageShell({
   scrollable = true,
   headerRight,
   largeTitle = true,
+  showBack = false,
+  onBack,
 }) {
   const mainRef = useRef(null);
   const [scrollY, setScrollY] = useState(0);
+  const navigate = useNavigate();
 
   const handleScroll = useCallback((e) => {
     setScrollY(e.target.scrollTop);
   }, []);
 
-  // Header opacity & compact state
+  const handleBack = onBack || (() => navigate(-1));
+
   const headerBlur = Math.min(scrollY / 60, 1);
-  const isCompact = scrollY > 40;
+  const isCompact  = scrollY > 40;
 
   return (
     <div className="flex flex-col h-full bg-primary">
       {title && (
         <header
           className="shrink-0 relative"
-          style={{
-            paddingTop: 'calc(var(--safe-top) + 8px)',
-            zIndex: 10,
-          }}
+          style={{ paddingTop: 'calc(var(--safe-top) + 8px)', zIndex: 10 }}
         >
-          {/* Glass background on scroll */}
+          {/* Glass на скролле */}
           <div
             className="absolute inset-0"
             style={{
@@ -47,19 +53,44 @@ export function PageShell({
             }}
           />
 
-          <div className="relative flex items-center justify-between px-5 pb-2">
+          <div className="relative flex items-center justify-between pb-2">
+            {/* Левая сторона: кнопка назад или пустое место */}
+            {showBack ? (
+              <button
+                onClick={handleBack}
+                className="spring-tap flex items-center justify-center shrink-0"
+                style={{
+                  width: 44,
+                  height: 44,
+                  marginLeft: 4,
+                  color: 'var(--gold)',
+                }}
+                aria-label="Назад"
+              >
+                <ChevronLeft size={24} strokeWidth={2.5} />
+              </button>
+            ) : (
+              <div style={{ width: 20, marginLeft: 20 }} />
+            )}
+
+            {/* Заголовок */}
             <h1
-              className="font-bold tracking-tight c-primary"
+              className="font-bold tracking-tight c-primary flex-1"
               style={{
                 fontSize: isCompact && largeTitle ? '17px' : '22px',
                 transition: 'all var(--motion-normal) var(--ease-smooth-out)',
-                paddingTop: isCompact && largeTitle ? '4px' : '8px',
-                paddingBottom: isCompact && largeTitle ? '4px' : '4px',
+                paddingTop:    isCompact && largeTitle ? '4px'  : '8px',
+                paddingBottom: isCompact && largeTitle ? '4px'  : '4px',
+                paddingLeft:   showBack ? 4 : 0,
               }}
             >
               {title}
             </h1>
-            {headerRight && <div className="flex items-center gap-2">{headerRight}</div>}
+
+            {/* Правая сторона */}
+            <div className="flex items-center gap-1 pr-2">
+              {headerRight}
+            </div>
           </div>
         </header>
       )}
