@@ -37,6 +37,7 @@ import FieldAcademy from '@/pages/field/FieldAcademy';
 import FieldLesson from '@/pages/field/FieldLesson';
 import FieldAcademyQuiz from '@/pages/field/FieldAcademyQuiz';
 import FieldAcademyLibrary from '@/pages/field/FieldAcademyLibrary';
+import FieldEarningsMonthly from '@/pages/field/FieldEarningsMonthly';
 import Welcome from '@/pages/Welcome';
 import Login from '@/pages/Login';
 import PinEntry from '@/pages/PinEntry';
@@ -217,6 +218,7 @@ function AppLayout() {
                 <Route path="academy/library" element={<FieldAcademyLibrary />} />
                 <Route path="academy/lesson/:lessonId" element={<FieldLesson />} />
                 <Route path="academy/quiz/:lessonId" element={<FieldAcademyQuiz />} />
+                <Route path="earnings/monthly" element={<FieldEarningsMonthly />} />
                 <Route index element={<Navigate to="home" replace />} />
               </Route>
             </>

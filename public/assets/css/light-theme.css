@@ -1901,3 +1901,1391 @@ html[data-theme="light"] .avatar img { outline: none !important; }
     border-color: #ccc !important;
   }
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §34. ТЕНДЕРЫ — детальная проработка
+   Страница тендеров — одна из главных. Каждый элемент.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Вкладки Активные / Архив */
+html[data-theme="light"] .tender-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--brd) !important;
+  margin-bottom: 16px;
+}
+html[data-theme="light"] .tender-tab {
+  padding: 8px 18px;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t3) !important;
+  background: transparent !important;
+  border: none !important;
+  border-bottom: 2px solid transparent !important;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+html[data-theme="light"] .tender-tab:hover {
+  color: var(--t1) !important;
+  background: var(--bg3) !important;
+}
+html[data-theme="light"] .tender-tab.active {
+  color: var(--gold) !important;
+  border-bottom: 2px solid var(--gold) !important;
+  background: transparent !important;
+}
+html[data-theme="light"] .tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: rgba(168,32,48,0.12) !important;
+  color: var(--red) !important;
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+/* Статусный бейдж в таблице */
+html[data-theme="light"] .cr-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  border: none !important;
+}
+
+/* Мобильная карточка тендера */
+html[data-theme="light"] .m-tender-card {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  box-shadow: var(--shadow-sm) !important;
+  border-radius: 12px;
+  overflow: hidden;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+}
+html[data-theme="light"] .m-tender-card:hover {
+  border-color: rgba(184,132,26,0.35) !important;
+  box-shadow: var(--shadow-md) !important;
+  transform: translateY(-1px);
+}
+
+/* Шапка карточки тендера */
+html[data-theme="light"] .m-tc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid var(--brd-m) !important;
+  background: var(--bg3) !important;
+}
+html[data-theme="light"] .m-tc-customer {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--t2) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+html[data-theme="light"] .m-tc-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--t1) !important;
+  padding: 8px 14px 4px;
+  line-height: 1.4;
+}
+html[data-theme="light"] .m-tc-meta {
+  padding: 4px 14px 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+html[data-theme="light"] .m-tc-field {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 12px;
+}
+html[data-theme="light"] .m-tc-label {
+  color: var(--t3) !important;
+  font-size: 11px;
+  font-weight: 500;
+}
+html[data-theme="light"] .m-tc-price {
+  font-weight: 700;
+  color: var(--t1) !important;
+}
+html[data-theme="light"] .m-tc-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px 12px;
+  border-top: 1px solid var(--brd-m) !important;
+  margin-top: 4px;
+}
+html[data-theme="light"] .m-tc-period {
+  font-size: 11px;
+  color: var(--t3) !important;
+  font-style: italic;
+}
+
+/* Статусные бейджи карточки — тёплые, без рамок */
+html[data-theme="light"] .m-tc-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border: none !important;
+}
+html[data-theme="light"] .m-tc-new {
+  background: rgba(26,63,116,0.12) !important;
+  color: var(--blue) !important;
+}
+html[data-theme="light"] .m-tc-process,
+html[data-theme="light"] .m-tc-estimation {
+  background: rgba(184,132,26,0.12) !important;
+  color: var(--gold) !important;
+}
+html[data-theme="light"] .m-tc-won {
+  background: rgba(45,106,79,0.12) !important;
+  color: var(--ok) !important;
+}
+html[data-theme="light"] .m-tc-lost,
+html[data-theme="light"] .m-tc-archive {
+  background: rgba(139,120,90,0.10) !important;
+  color: var(--t3) !important;
+}
+html[data-theme="light"] .m-tc-urgent {
+  background: rgba(168,32,48,0.10) !important;
+  color: var(--red) !important;
+}
+
+/* Инструменты тендерной страницы */
+html[data-theme="light"] .m-tender-tools {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: var(--shadow-sm) !important;
+  margin-bottom: 12px;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §35. РАБОТЫ / ОБЪЕКТЫ — карточки и таблица
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Мобильная карточка работы */
+html[data-theme="light"] .m-work-card {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  box-shadow: var(--shadow-sm) !important;
+  border-radius: 12px;
+  overflow: hidden;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+}
+html[data-theme="light"] .m-work-card:hover {
+  border-color: rgba(184,132,26,0.35) !important;
+  box-shadow: var(--shadow-md) !important;
+  transform: translateY(-1px);
+}
+html[data-theme="light"] .m-wc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid var(--brd-m) !important;
+  background: var(--bg3) !important;
+}
+html[data-theme="light"] .m-wc-customer {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--t2) !important;
+  letter-spacing: 0.3px;
+}
+html[data-theme="light"] .m-wc-status {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 10px;
+  border: 1px solid;
+}
+html[data-theme="light"] .m-wc-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--t1) !important;
+  padding: 8px 14px 6px;
+  line-height: 1.4;
+}
+html[data-theme="light"] .m-wc-money {
+  padding: 6px 14px 10px;
+}
+html[data-theme="light"] .m-wc-contract {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+html[data-theme="light"] .m-wc-label {
+  font-size: 11px;
+  color: var(--t3) !important;
+}
+html[data-theme="light"] .m-wc-val {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--t1) !important;
+}
+/* Прогресс-бар оплаты — warm gold */
+html[data-theme="light"] .m-wc-progress-bar {
+  height: 5px;
+  background: var(--bg4) !important;
+  border-radius: 3px;
+  overflow: hidden;
+}
+html[data-theme="light"] .m-wc-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 14px 12px;
+  border-top: 1px solid var(--brd-m) !important;
+}
+
+/* Статус-пилюля в таблице работ */
+html[data-theme="light"] .pill {
+  background: var(--bg3) !important;
+  border: 1px solid var(--brd) !important;
+  color: var(--t2) !important;
+}
+
+/* Grafik / Chart area */
+html[data-theme="light"] .chart {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  border-radius: 10px;
+  box-shadow: var(--shadow-sm) !important;
+}
+html[data-theme="light"] .asgcanvas {
+  border-radius: 6px;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §36. МИМИР — AI ассистент
+   iPhone-оболочка в светлой теме: кремовый экран, золотые акценты.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Плавающая кнопка — без изменений (она тёмная, это правильно) */
+html[data-theme="light"] .mimir-fab {
+  box-shadow: var(--shadow-xl) !important;
+}
+html[data-theme="light"] .mimir-fab-tooltip {
+  background: var(--t1) !important;
+  color: #fff !important;
+}
+
+/* iPhone корпус */
+html[data-theme="light"] .mimir-iphone {
+  box-shadow: var(--shadow-xl) !important;
+}
+html[data-theme="light"] .mimir-iphone-body {
+  background: #1C1914 !important;
+  border: 1px solid rgba(139,120,90,0.15) !important;
+}
+
+/* Экран — кремовый */
+html[data-theme="light"] .mimir-iphone-screen {
+  background: #FDFAF5 !important;
+  border: 1.5px solid rgba(139,120,90,0.20) !important;
+}
+html[data-theme="light"] .mimir-dynamic-island {
+  background: #1C1914 !important;
+}
+html[data-theme="light"] .mimir-status-bar {
+  background: #FDFAF5 !important;
+  color: var(--t2) !important;
+  border-bottom: 1px solid var(--brd-m) !important;
+}
+html[data-theme="light"] .mimir-status-bar-time {
+  color: var(--t1) !important;
+  font-weight: 600;
+}
+html[data-theme="light"] .mimir-status-bar-icons { color: var(--t2) !important; }
+
+/* Сайдбар Мимира */
+html[data-theme="light"] .mimir-sidebar {
+  background: var(--bg3) !important;
+  border-right: 1px solid var(--brd) !important;
+}
+html[data-theme="light"] .mimir-sidebar-header {
+  background: var(--bg3) !important;
+  border-bottom: 1px solid var(--brd) !important;
+}
+html[data-theme="light"] .mimir-sidebar-new {
+  background: var(--gold) !important;
+  color: #fff !important;
+  border: none !important;
+  border-radius: 8px;
+  font-weight: 600;
+}
+html[data-theme="light"] .mimir-sidebar-item {
+  color: var(--t1) !important;
+  border-bottom: 1px solid var(--brd-m) !important;
+  transition: background 0.15s;
+}
+html[data-theme="light"] .mimir-sidebar-item:hover {
+  background: var(--bg4) !important;
+}
+html[data-theme="light"] .mimir-sidebar-item.active {
+  background: rgba(184,132,26,0.10) !important;
+  border-left: 3px solid var(--gold) !important;
+  color: var(--gold) !important;
+}
+
+/* Шапка чата */
+html[data-theme="light"] .mimir-chat-header {
+  background: var(--bg2) !important;
+  border-bottom: 1px solid var(--brd) !important;
+}
+html[data-theme="light"] .mimir-back-btn {
+  color: var(--blue) !important;
+  background: transparent !important;
+  border: none !important;
+}
+html[data-theme="light"] .mimir-chat-name {
+  color: var(--t1) !important;
+  font-weight: 700;
+}
+html[data-theme="light"] .mimir-chat-subtitle {
+  color: var(--t3) !important;
+  font-size: 11px;
+}
+
+/* Область сообщений */
+html[data-theme="light"] .mimir-messages {
+  background: #F4EFE6 !important;
+}
+html[data-theme="light"] .mimir-drop-overlay {
+  background: rgba(244,239,230,0.94) !important;
+  border: 2px dashed var(--gold) !important;
+  color: var(--gold) !important;
+}
+
+/* Сообщение пользователя — синее */
+html[data-theme="light"] .mimir-msg.user .mimir-msg-content {
+  background: var(--blue) !important;
+  color: #fff !important;
+  border-radius: 16px 16px 4px 16px;
+  box-shadow: var(--shadow-sm) !important;
+}
+/* Сообщение бота — кремовое */
+html[data-theme="light"] .mimir-msg.assistant .mimir-msg-content {
+  background: var(--bg2) !important;
+  color: var(--t1) !important;
+  border: 1px solid var(--brd) !important;
+  border-radius: 16px 16px 16px 4px;
+  box-shadow: var(--shadow-sm) !important;
+}
+html[data-theme="light"] .mimir-msg-meta {
+  color: var(--t3) !important;
+  font-size: 10px;
+}
+html[data-theme="light"] .mimir-msg-bot-avatar {
+  background: rgba(184,132,26,0.12) !important;
+  border: 1px solid rgba(184,132,26,0.20) !important;
+  border-radius: 50%;
+}
+html[data-theme="light"] .mimir-msg-copy {
+  color: var(--t3) !important;
+  background: transparent !important;
+  border: none !important;
+  opacity: 0.6;
+}
+html[data-theme="light"] .mimir-msg-copy:hover {
+  color: var(--gold) !important;
+  opacity: 1;
+}
+
+/* Стриминг-курсор — золотой */
+html[data-theme="light"] .mimir-streaming-cursor {
+  background: var(--gold) !important;
+  opacity: 0.7;
+}
+
+/* Индикатор печатания */
+html[data-theme="light"] .mimir-typing-dots {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  border-radius: 16px;
+}
+html[data-theme="light"] .mimir-typing-dot {
+  background: var(--gold) !important;
+}
+
+/* Инпут сообщения */
+html[data-theme="light"] .mimir-input-area {
+  background: var(--bg2) !important;
+  border-top: 1px solid var(--brd) !important;
+}
+html[data-theme="light"] .mimir-input {
+  background: var(--bg3) !important;
+  border: 1px solid var(--brd) !important;
+  color: var(--t1) !important;
+  border-radius: 12px;
+}
+html[data-theme="light"] .mimir-input:focus {
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 0 2px rgba(184,132,26,0.12) !important;
+}
+html[data-theme="light"] .mimir-plus-btn {
+  background: var(--bg3) !important;
+  color: var(--t2) !important;
+  border: 1px solid var(--brd) !important;
+  border-radius: 50%;
+}
+html[data-theme="light"] .mimir-plus-btn:hover {
+  background: var(--bg4) !important;
+  border-color: var(--gold) !important;
+  color: var(--gold) !important;
+}
+html[data-theme="light"] .mimir-send-btn {
+  background: var(--blue) !important;
+  color: #fff !important;
+  border: none !important;
+  border-radius: 50%;
+  box-shadow: var(--shadow-sm) !important;
+}
+html[data-theme="light"] .mimir-send-btn:hover {
+  background: var(--blue-h) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+/* Вложения */
+html[data-theme="light"] .mimir-attachments { background: transparent !important; }
+html[data-theme="light"] .mimir-attachment {
+  background: var(--bg3) !important;
+  border: 1px solid var(--brd) !important;
+  color: var(--t1) !important;
+  border-radius: 8px;
+}
+html[data-theme="light"] .mimir-attachment-remove {
+  color: var(--red) !important;
+  background: transparent !important;
+  border: none !important;
+}
+
+/* Welcome-экран с чипами */
+html[data-theme="light"] .mimir-welcome { background: transparent !important; }
+html[data-theme="light"] .mimir-welcome-icon { filter: none; }
+html[data-theme="light"] .mimir-welcome-chip {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  color: var(--t1) !important;
+  border-radius: 20px;
+  box-shadow: var(--shadow-sm) !important;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+}
+html[data-theme="light"] .mimir-welcome-chip:hover {
+  border-color: var(--gold) !important;
+  background: rgba(184,132,26,0.06) !important;
+  box-shadow: var(--shadow-md) !important;
+  transform: translateY(-1px);
+}
+
+/* Результат-таблица */
+html[data-theme="light"] .mimir-result-card {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm) !important;
+}
+html[data-theme="light"] .mimir-result-card table th {
+  background: var(--bg4) !important;
+  color: var(--t2) !important;
+  border-color: var(--brd) !important;
+}
+html[data-theme="light"] .mimir-result-card table td {
+  background: var(--bg2) !important;
+  color: var(--t1) !important;
+  border-color: var(--brd-m) !important;
+}
+
+/* Блок мудрости */
+html[data-theme="light"] .mimir-wisdom {
+  background: rgba(184,132,26,0.06) !important;
+  border-top: 1px solid rgba(184,132,26,0.15) !important;
+  color: var(--t3) !important;
+  font-style: italic;
+  font-size: 11px;
+}
+
+/* Code-блок */
+html[data-theme="light"] .mimir-code {
+  background: var(--bg4) !important;
+  border: 1px solid var(--brd) !important;
+  color: var(--t1) !important;
+  border-radius: 8px;
+}
+
+/* Home indicator */
+html[data-theme="light"] .mimir-home-indicator {
+  background: var(--t3) !important;
+  opacity: 0.4;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §37. ГЕЙМИФИКАЦИЯ — Лидерборд, Турнир, CRUD
+   Каждый элемент геймификации адаптирован под Soldag.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Обёртка */
+html[data-theme="light"] .gl-wrap { /* max-width уже в JS */ }
+
+/* Карточка-контейнер */
+html[data-theme="light"] .gl-card {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  border-radius: 14px;
+  box-shadow: var(--shadow-md) !important;
+}
+
+/* Вкладки Рейтинг / Турнир */
+html[data-theme="light"] .gl-tab {
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  border: none !important;
+  border-radius: 10px;
+  transition: all 0.2s;
+}
+html[data-theme="light"] .gl-tab.active {
+  background: var(--gold) !important;
+  color: #fff !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+html[data-theme="light"] .gl-tab:not(.active) {
+  background: var(--bg3) !important;
+  color: var(--t2) !important;
+}
+html[data-theme="light"] .gl-tab:not(.active):hover {
+  background: var(--bg4) !important;
+  color: var(--t1) !important;
+}
+
+/* Кнопки сортировки */
+html[data-theme="light"] .gl-sort {
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+/* Строка рейтинга */
+html[data-theme="light"] .gl-row {
+  border-radius: 12px;
+  transition: background 0.15s;
+}
+html[data-theme="light"] .gl-row:hover {
+  background: var(--bg3) !important;
+}
+html[data-theme="light"] .gl-row.self {
+  background: rgba(184,132,26,0.08) !important;
+  border: 1.5px solid rgba(184,132,26,0.25) !important;
+}
+/* Топ-1 — золотое мерцание (animation остаётся из JS CSS) */
+html[data-theme="light"] .gl-row.top1 {
+  background: rgba(184,132,26,0.06) !important;
+}
+
+/* Аватар в рейтинге */
+html[data-theme="light"] .gl-avatar {
+  border-radius: 50%;
+}
+
+/* Прогресс-бар в рейтинге */
+html[data-theme="light"] .gl-bar {
+  background: var(--bg4) !important;
+  border-radius: 4px;
+}
+html[data-theme="light"] .gl-bar-fill {
+  background: linear-gradient(90deg, var(--gold), #f59e0b) !important;
+}
+
+/* Матч турнира */
+html[data-theme="light"] .gl-match {
+  background: var(--bg3) !important;
+  border: 1px solid var(--brd) !important;
+  border-radius: 8px;
+}
+html[data-theme="light"] .gl-match-row {
+  color: var(--t1) !important;
+  border-bottom: 1px solid var(--brd-m) !important;
+}
+html[data-theme="light"] .gl-match-row.winner {
+  background: rgba(184,132,26,0.10) !important;
+  border-left: 2px solid var(--gold) !important;
+  color: var(--gold) !important;
+  font-weight: 700;
+}
+
+/* Пьедестал */
+html[data-theme="light"] .gl-podium {
+  background: transparent !important;
+}
+
+/* CRUD геймификации */
+html[data-theme="light"] .gd-card-body {
+  background: var(--bg2) !important;
+  border-top: 1px solid var(--brd-m) !important;
+  color: var(--t1) !important;
+}
+
+/* Shop и Quest кнопки в CRUD */
+html[data-theme="light"] .gc-edit-shop,
+html[data-theme="light"] .gc-edit-quest {
+  background: transparent !important;
+  border: 1px solid var(--brd) !important;
+  color: var(--t2) !important;
+  border-radius: 8px;
+  transition: border-color 0.2s, color 0.2s;
+}
+html[data-theme="light"] .gc-edit-shop:hover,
+html[data-theme="light"] .gc-edit-quest:hover {
+  border-color: var(--gold) !important;
+  color: var(--gold) !important;
+}
+html[data-theme="light"] .gc-del-shop,
+html[data-theme="light"] .gc-del-quest {
+  background: transparent !important;
+  border: 1px solid rgba(168,32,48,0.25) !important;
+  color: var(--red) !important;
+  border-radius: 8px;
+  transition: background 0.2s, border-color 0.2s;
+}
+html[data-theme="light"] .gc-del-shop:hover,
+html[data-theme="light"] .gc-del-quest:hover {
+  background: rgba(168,32,48,0.06) !important;
+  border-color: var(--red) !important;
+}
+html[data-theme="light"] .gc-row {
+  border-bottom: 1px solid var(--brd-m) !important;
+}
+html[data-theme="light"] .gc-row:hover { background: var(--bg3) !important; }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §38. ТЕЛЕФОНИЯ — mango.js
+   Виджет приёма звонков, попап входящего звонка.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Виджет переключения */
+html[data-theme="light"] .call-toggle-widget {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm) !important;
+}
+html[data-theme="light"] .call-toggle-header {
+  color: var(--t1) !important;
+}
+html[data-theme="light"] .call-toggle-icon { font-size: 18px; }
+html[data-theme="light"] .call-toggle-label {
+  color: var(--t1) !important;
+  font-weight: 600;
+}
+html[data-theme="light"] .call-toggle-hint {
+  color: var(--t3) !important;
+  font-size: 11px;
+}
+html[data-theme="light"] .call-toggle-status {
+  color: var(--t3) !important;
+  font-size: 12px;
+}
+html[data-theme="light"] .call-toggle-status.active {
+  color: var(--ok) !important;
+  font-weight: 600;
+}
+
+/* Тумблер */
+html[data-theme="light"] .call-toggle-switch {
+  position: relative;
+  display: inline-block;
+}
+html[data-theme="light"] .call-toggle-slider {
+  background: var(--bg4) !important;
+  border-radius: 20px;
+  transition: background 0.3s;
+}
+html[data-theme="light"] input:checked + .call-toggle-slider {
+  background: var(--ok) !important;
+}
+
+/* Попап входящего звонка — важный элемент, должен быть заметен */
+html[data-theme="light"] .incoming-call-popup {
+  background: var(--bg2) !important;
+  border: 2px solid var(--gold) !important;
+  border-radius: 18px;
+  box-shadow: var(--shadow-xl) !important;
+}
+html[data-theme="light"] .call-popup-content { color: var(--t1) !important; }
+html[data-theme="light"] .call-popup-header {
+  border-bottom: 1px solid var(--brd) !important;
+  background: var(--bg3) !important;
+  border-radius: 16px 16px 0 0;
+}
+html[data-theme="light"] .call-avatar {
+  background: rgba(26,63,116,0.10) !important;
+  border: 2px solid rgba(26,63,116,0.20) !important;
+  border-radius: 50%;
+  font-size: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+html[data-theme="light"] .call-title {
+  font-size: 13px;
+  color: var(--t3) !important;
+}
+html[data-theme="light"] .call-number {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--t1) !important;
+}
+html[data-theme="light"] .call-name {
+  font-size: 14px;
+  color: var(--t2) !important;
+}
+html[data-theme="light"] .call-customer {
+  background: rgba(26,63,116,0.06) !important;
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin: 8px 0;
+}
+html[data-theme="light"] .call-customer-label {
+  font-size: 11px;
+  color: var(--t3) !important;
+}
+html[data-theme="light"] .call-customer-name {
+  font-weight: 700;
+  color: var(--t1) !important;
+}
+
+/* Кнопки звонка */
+html[data-theme="light"] .call-accept {
+  background: var(--ok) !important;
+  color: #fff !important;
+  border: none !important;
+  border-radius: 50px;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(45,106,79,0.25) !important;
+}
+html[data-theme="light"] .call-accept:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+html[data-theme="light"] .call-reject {
+  background: var(--red) !important;
+  color: #fff !important;
+  border: none !important;
+  border-radius: 50px;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(168,32,48,0.25) !important;
+}
+html[data-theme="light"] .call-reject:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+html[data-theme="light"] .call-timer {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--gold) !important;
+  font-variant-numeric: tabular-nums;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §39. ОТЧЁТЫ ПО ЗВОНКАМ (call_reports.js)
+   cr-* классы: метрики, график, таблица сотрудников.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+html[data-theme="light"] .cr-page { color: var(--t1) !important; }
+html[data-theme="light"] .cr-header {
+  background: var(--bg2) !important;
+  border-bottom: 1px solid var(--brd) !important;
+}
+
+/* Кнопки периода */
+html[data-theme="light"] .cr-period {
+  background: var(--bg3) !important;
+  border: 1px solid var(--brd) !important;
+  border-radius: 10px;
+  overflow: hidden;
+}
+html[data-theme="light"] .cr-period-btn {
+  background: transparent !important;
+  color: var(--t2) !important;
+  border: none !important;
+  font-weight: 500;
+  transition: background 0.15s, color 0.15s;
+}
+html[data-theme="light"] .cr-period-btn:hover {
+  background: var(--bg4) !important;
+  color: var(--t1) !important;
+}
+html[data-theme="light"] .cr-period-btn--active {
+  background: var(--gold) !important;
+  color: #fff !important;
+  font-weight: 700;
+}
+
+/* fk-кнопки (используются в call_reports и field) */
+html[data-theme="light"] .fk-btn {
+  background: var(--bg3) !important;
+  border: 1px solid var(--brd) !important;
+  color: var(--t1) !important;
+  border-radius: 8px;
+  font-weight: 500;
+  transition: all 0.15s;
+}
+html[data-theme="light"] .fk-btn:hover {
+  background: var(--bg4) !important;
+  border-color: rgba(139,120,90,0.40) !important;
+}
+html[data-theme="light"] .fk-btn--ghost {
+  background: transparent !important;
+  border: 1px solid var(--brd) !important;
+  color: var(--t2) !important;
+}
+html[data-theme="light"] .fk-btn--ghost:hover {
+  background: var(--bg3) !important;
+  color: var(--t1) !important;
+}
+html[data-theme="light"] .fk-btn--primary {
+  background: var(--blue) !important;
+  border: none !important;
+  color: #fff !important;
+}
+html[data-theme="light"] .fk-btn--primary:hover {
+  background: var(--blue-h) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+/* Скелетон */
+html[data-theme="light"] .cr-skeleton,
+html[data-theme="light"] .cr-skeleton--card,
+html[data-theme="light"] .cr-skeleton--chart,
+html[data-theme="light"] .cr-skeleton--row {
+  background: linear-gradient(90deg, var(--bg3) 25%, var(--bg4) 50%, var(--bg3) 75%) !important;
+  background-size: 200% 100% !important;
+  border-radius: 8px;
+}
+
+/* Метрика-карточка — WOW card */
+html[data-theme="light"] .cr-metric,
+html[data-theme="light"] .cr-wow-card {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm) !important;
+  color: var(--t1) !important;
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+html[data-theme="light"] .cr-metric:hover,
+html[data-theme="light"] tr.cr-wow-card:hover {
+  border-color: rgba(184,132,26,0.30) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+/* Иконка метрики */
+html[data-theme="light"] .cr-metric__icon { color: var(--gold) !important; }
+html[data-theme="light"] .cr-metric__icon--missed { color: var(--red) !important; }
+html[data-theme="light"] .cr-metric__icon--answered,
+html[data-theme="light"] .cr-metric__icon--success { color: var(--ok) !important; }
+html[data-theme="light"] .cr-metric__icon--pending { color: var(--blue) !important; }
+
+html[data-theme="light"] .cr-metric__value {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--t1) !important;
+  font-variant-numeric: tabular-nums;
+}
+html[data-theme="light"] .cr-metric__label {
+  color: var(--t2) !important;
+  font-size: 12px;
+}
+
+/* Инсайт Мимира в отчёте */
+html[data-theme="light"] .cr-insight {
+  background: rgba(184,132,26,0.06) !important;
+  border: 1px solid rgba(184,132,26,0.18) !important;
+  border-radius: 14px;
+}
+html[data-theme="light"] .cr-insight__title {
+  color: var(--gold) !important;
+  font-weight: 700;
+}
+html[data-theme="light"] .cr-insight__text { color: var(--t1) !important; }
+
+/* График */
+html[data-theme="light"] .cr-chart {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm) !important;
+}
+html[data-theme="light"] .cr-chart__title {
+  color: var(--t1) !important;
+  font-weight: 700;
+}
+html[data-theme="light"] .cr-chart__axis-label { fill: var(--t3) !important; }
+html[data-theme="light"] .cr-chart__grid-line { stroke: rgba(139,120,90,0.12) !important; }
+html[data-theme="light"] .cr-chart__legend { color: var(--t2) !important; }
+html[data-theme="light"] .cr-chart__legend-dot--total { background: var(--blue) !important; }
+html[data-theme="light"] .cr-chart__legend-dot--target { background: var(--ok) !important; }
+html[data-theme="light"] .cr-chart__legend-dot--missed { background: var(--red) !important; }
+
+/* Таблица сотрудников */
+html[data-theme="light"] .cr-employees {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm) !important;
+}
+html[data-theme="light"] .cr-employees__title {
+  color: var(--t1) !important;
+  font-weight: 700;
+  border-bottom: 1px solid var(--brd) !important;
+}
+html[data-theme="light"] .cr-employees__table th {
+  color: var(--t2) !important;
+  background: var(--bg3) !important;
+}
+html[data-theme="light"] .cr-employees__rank {
+  background: var(--bg4) !important;
+  color: var(--t2) !important;
+  border-radius: 50%;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+/* Топ-3 ранги */
+html[data-theme="light"] .cr-employees__rank--1 {
+  background: #D4A843 !important;
+  color: #fff !important;
+}
+html[data-theme="light"] .cr-employees__rank--2 {
+  background: #9BA1A8 !important;
+  color: #fff !important;
+}
+html[data-theme="light"] .cr-employees__rank--3 {
+  background: #CD7F32 !important;
+  color: #fff !important;
+}
+html[data-theme="light"] .cr-employees__bar {
+  background: var(--bg4) !important;
+  border-radius: 4px;
+  overflow: hidden;
+}
+html[data-theme="light"] .cr-employees__bar-fill--total { background: var(--blue) !important; }
+html[data-theme="light"] .cr-employees__bar-fill--target { background: var(--ok) !important; }
+html[data-theme="light"] .cr-employees__bar-fill--missed { background: var(--red) !important; }
+
+html[data-theme="light"] .cr-list__empty { color: var(--t3) !important; }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §40. ПОЛЕВОЙ МОДУЛЬ (field-tab.js)
+   fk-table, подотчёты, листы сборки, маршруты, выплаты.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Таблицы полевого модуля */
+html[data-theme="light"] .fk-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+html[data-theme="light"] .fk-table th {
+  background: var(--bg4) !important;
+  color: var(--t2) !important;
+  border-bottom: 1px solid var(--brd) !important;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding: 8px 10px;
+}
+html[data-theme="light"] .fk-table td {
+  background: var(--bg2) !important;
+  color: var(--t1) !important;
+  border-bottom: 1px solid var(--brd-m) !important;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+html[data-theme="light"] .fk-table tbody tr:nth-child(odd) td {
+  background: #F8F4EC !important;
+}
+html[data-theme="light"] .fk-table tbody tr:hover td {
+  background: var(--bg3) !important;
+}
+html[data-theme="light"] .fk-table-small th,
+html[data-theme="light"] .fk-table-small td { font-size: 11px; }
+
+/* CR-Form chips в полевом модуле */
+html[data-theme="light"] .cr-f-field { color: var(--t1) !important; }
+html[data-theme="light"] .cr-f-label { color: var(--t2) !important; font-weight: 500; }
+html[data-theme="light"] .cr-f-chip {
+  background: var(--bg3) !important;
+  border: 1px solid var(--brd) !important;
+  color: var(--t2) !important;
+  border-radius: 8px;
+  transition: all 0.15s;
+}
+html[data-theme="light"] .cr-f-chip:hover {
+  border-color: var(--gold) !important;
+  color: var(--t1) !important;
+}
+html[data-theme="light"] .cr-f-chip--active {
+  background: rgba(184,132,26,0.10) !important;
+  border-color: var(--gold) !important;
+  color: var(--gold) !important;
+  font-weight: 600;
+}
+
+/* Gantt модальный блок */
+html[data-theme="light"] .cr-gantt-modal-body {
+  background: var(--bg2) !important;
+  color: var(--t1) !important;
+}
+
+/* Iframe предпросмотра файла */
+html[data-theme="light"] .cr-file-preview-frame {
+  border: 1px solid var(--brd) !important;
+  border-radius: 8px;
+  background: var(--bg2) !important;
+}
+html[data-theme="light"] .cr-file-preview-img-wrap {
+  background: var(--bg3) !important;
+  border-radius: 8px;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §41. HR — Запросы на персонал, рейтинг
+   sr-* классы: таблица выбора сотрудников, роли, статусы.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Статусная пилюля */
+html[data-theme="light"] .sr-status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  border: none !important;
+}
+html[data-theme="light"] .sr-badge--sent {
+  background: rgba(26,63,116,0.10) !important;
+  color: var(--blue) !important;
+}
+html[data-theme="light"] .sr-badge--answered {
+  background: rgba(184,132,26,0.10) !important;
+  color: var(--gold) !important;
+}
+html[data-theme="light"] .sr-badge--approved {
+  background: rgba(45,106,79,0.10) !important;
+  color: var(--ok) !important;
+}
+html[data-theme="light"] .sr-badge--rework {
+  background: rgba(168,32,48,0.10) !important;
+  color: var(--red) !important;
+}
+
+/* Аватар сотрудника — цветные по хэшу */
+html[data-theme="light"] .sr-avatar {
+  border-radius: 50%;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+}
+/* Уменьшить яркость цветных аватаров в светлой теме */
+html[data-theme="light"] [class^="sr-avatar--c"] {
+  filter: saturate(0.75) brightness(0.88) !important;
+}
+
+/* Таблица выбора сотрудников */
+html[data-theme="light"] .sr-emp-table-wrap {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm) !important;
+}
+html[data-theme="light"] .sr-emp-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+html[data-theme="light"] .sr-emp-table th {
+  background: var(--bg4) !important;
+  color: var(--t2) !important;
+  border-bottom: 1px solid var(--brd) !important;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 8px 10px;
+}
+html[data-theme="light"] .sr-emp-row {
+  border-bottom: 1px solid var(--brd-m) !important;
+  transition: background 0.15s;
+}
+html[data-theme="light"] .sr-emp-row:hover { background: var(--bg3) !important; }
+html[data-theme="light"] .sr-emp-row.selected {
+  background: rgba(184,132,26,0.08) !important;
+  border-left: 3px solid var(--gold) !important;
+}
+html[data-theme="light"] .sr-td-name { color: var(--t1) !important; font-weight: 600; }
+html[data-theme="light"] .sr-td-pos { color: var(--t2) !important; font-size: 12px; }
+html[data-theme="light"] .sr-td-city { color: var(--t3) !important; font-size: 12px; }
+html[data-theme="light"] .sr-td-rat { font-weight: 700; }
+html[data-theme="light"] .sr-td-ph { color: var(--t2) !important; font-size: 12px; }
+
+/* Группа ролей */
+html[data-theme="light"] .sr-role-group {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  border-radius: 10px;
+  box-shadow: var(--shadow-sm) !important;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+html[data-theme="light"] .sr-role-header {
+  background: var(--bg3) !important;
+  border-bottom: 1px solid var(--brd) !important;
+  border-left: 3px solid var(--gold) !important;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+html[data-theme="light"] .sr-role-name {
+  color: var(--t1) !important;
+  font-weight: 700;
+}
+html[data-theme="light"] .sr-role-need {
+  color: var(--t3) !important;
+  font-size: 12px;
+}
+html[data-theme="light"] .sr-role-picked {
+  color: var(--gold) !important;
+  font-size: 12px;
+  font-weight: 600;
+}
+html[data-theme="light"] .sr-empty-hint {
+  color: var(--t3) !important;
+  font-style: italic;
+  text-align: center;
+  padding: 24px;
+}
+
+/* Ячейки вахта */
+html[data-theme="light"] .sr-td-vachta { color: var(--t2) !important; }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §42. ХУГИНН — детальная доработка чата
+   Дополняет §23. Реакции, вложения, статусы доставки.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Список чатов — более детально */
+html[data-theme="light"] .chat-item {
+  border-bottom: 1px solid var(--brd-m) !important;
+  color: var(--t1) !important;
+  transition: background 0.15s;
+}
+html[data-theme="light"] .chat-item.active {
+  background: rgba(184,132,26,0.09) !important;
+  border-left: 3px solid var(--gold) !important;
+}
+html[data-theme="light"] .chat-item-name {
+  color: var(--t1) !important;
+  font-weight: 600;
+}
+html[data-theme="light"] .chat-item-preview {
+  color: var(--t3) !important;
+  font-size: 12px;
+}
+html[data-theme="light"] .chat-item-time { color: var(--t3) !important; font-size: 11px; }
+html[data-theme="light"] .chat-unread-badge {
+  background: var(--red) !important;
+  color: #fff !important;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* Аватары в чате */
+html[data-theme="light"] .chat-avatar,
+html[data-theme="light"] .msg-avatar {
+  border: 2px solid var(--bg1) !important;
+}
+
+/* Реакции на сообщения */
+html[data-theme="light"] .msg-reaction,
+html[data-theme="light"] .chat-reaction {
+  background: var(--bg3) !important;
+  border: 1px solid var(--brd) !important;
+  border-radius: 12px;
+  color: var(--t1) !important;
+  font-size: 12px;
+  transition: border-color 0.15s, background 0.15s;
+}
+html[data-theme="light"] .msg-reaction:hover,
+html[data-theme="light"] .chat-reaction:hover {
+  border-color: var(--gold) !important;
+  background: rgba(184,132,26,0.08) !important;
+}
+html[data-theme="light"] .msg-reaction.active,
+html[data-theme="light"] .chat-reaction.active {
+  background: rgba(184,132,26,0.12) !important;
+  border-color: var(--gold) !important;
+  color: var(--gold) !important;
+}
+
+/* Вложения в сообщениях */
+html[data-theme="light"] .msg-attachment,
+html[data-theme="light"] .chat-attachment {
+  background: var(--bg3) !important;
+  border: 1px solid var(--brd) !important;
+  border-radius: 10px;
+  color: var(--t1) !important;
+  transition: border-color 0.15s;
+}
+html[data-theme="light"] .msg-attachment:hover,
+html[data-theme="light"] .chat-attachment:hover {
+  border-color: var(--gold) !important;
+}
+
+/* Статус доставки */
+html[data-theme="light"] .msg-status,
+html[data-theme="light"] .chat-status { color: var(--t3) !important; }
+html[data-theme="light"] .msg-status--read,
+html[data-theme="light"] .chat-status--read { color: var(--blue) !important; }
+
+/* Форма ввода — расширенная */
+html[data-theme="light"] .chat-input-toolbar {
+  background: var(--bg3) !important;
+  border-top: 1px solid var(--brd-m) !important;
+}
+html[data-theme="light"] .chat-input-toolbar-btn {
+  color: var(--t3) !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 8px;
+  transition: color 0.15s, background 0.15s;
+}
+html[data-theme="light"] .chat-input-toolbar-btn:hover {
+  color: var(--gold) !important;
+  background: rgba(184,132,26,0.08) !important;
+}
+
+/* Системное сообщение */
+html[data-theme="light"] .msg-system,
+html[data-theme="light"] .chat-system-msg {
+  color: var(--t3) !important;
+  background: transparent !important;
+  text-align: center;
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* Reply bar */
+html[data-theme="light"] .chat-reply-bar {
+  background: rgba(184,132,26,0.06) !important;
+  border-left: 3px solid var(--gold) !important;
+  color: var(--t2) !important;
+}
+html[data-theme="light"] .chat-reply-bar-name { color: var(--gold) !important; font-weight: 600; }
+html[data-theme="light"] .chat-reply-bar-text { color: var(--t3) !important; font-size: 12px; }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §43. ПРОСЧЁТЫ / СМЕТЫ — детально
+   Estimate-report уже в §28, здесь — страница списка смет.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+html[data-theme="light"] .est-card {
+  background: var(--bg2) !important;
+  border: 1px solid var(--brd) !important;
+  box-shadow: var(--shadow-sm) !important;
+  border-radius: 12px;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+}
+html[data-theme="light"] .est-card:hover {
+  border-color: rgba(184,132,26,0.35) !important;
+  box-shadow: var(--shadow-md) !important;
+  transform: translateY(-1px);
+}
+html[data-theme="light"] .est-card-header {
+  border-bottom: 1px solid var(--brd-m) !important;
+  background: var(--bg3) !important;
+  border-radius: 12px 12px 0 0;
+}
+html[data-theme="light"] .est-card-title {
+  color: var(--t1) !important;
+  font-weight: 700;
+}
+html[data-theme="light"] .est-card-meta { color: var(--t2) !important; font-size: 12px; }
+html[data-theme="light"] .est-status-badge {
+  border: none !important;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* Estimate report — дополнительные элементы */
+html[data-theme="light"] .er-section-title {
+  color: var(--gold) !important;
+  border-bottom: 1px solid rgba(184,132,26,0.20) !important;
+  padding-bottom: 6px;
+  font-weight: 700;
+}
+html[data-theme="light"] .er-total-row td {
+  font-weight: 700;
+  background: rgba(184,132,26,0.06) !important;
+  border-top: 2px solid rgba(184,132,26,0.20) !important;
+}
+html[data-theme="light"] .er-category-header {
+  background: var(--bg4) !important;
+  color: var(--t1) !important;
+  font-weight: 600;
+}
+html[data-theme="light"] .er-status--draft {
+  background: var(--bg4) !important;
+  color: var(--t3) !important;
+}
+html[data-theme="light"] .er-status--review {
+  background: rgba(26,63,116,0.10) !important;
+  color: var(--blue) !important;
+}
+html[data-theme="light"] .er-status--approved {
+  background: rgba(45,106,79,0.10) !important;
+  color: var(--ok) !important;
+}
+html[data-theme="light"] .er-status--rework {
+  background: rgba(168,32,48,0.10) !important;
+  color: var(--red) !important;
+}

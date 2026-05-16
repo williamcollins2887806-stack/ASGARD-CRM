@@ -108,6 +108,7 @@ export default function FieldHome() {
   const [quote] = useState(randomQuote);
   const [myRank, setMyRank] = useState(null);
   const [mimirTip, setMimirTip] = useState(null);
+  const [academyAlert, setAcademyAlert] = useState(null); // {type:'blocked'|'reminder', title, lesson_id, daysLeft}
   const timerRef = useRef(null);
   const touchStartY = useRef(0);
   const [pulling, setPulling] = useState(false);
@@ -150,6 +151,25 @@ export default function FieldHome() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Academy: check if worker needs to pass a test (non-blocking fetch)
+  useEffect(() => {
+    Promise.all([
+      fieldApi.get('/academy/shift-allowed'),
+      fieldApi.get('/academy/current-lesson'),
+    ]).then(([allowed, cur]) => {
+      if (!allowed.allowed) {
+        setAcademyAlert({ type: 'blocked', title: allowed.lesson_title, lesson_id: allowed.lesson_id });
+      } else if (cur.lesson && !cur.lesson.passed) {
+        const daysLeft = cur.lesson.deadline
+          ? Math.ceil((new Date(cur.lesson.deadline) - Date.now()) / 86400000)
+          : null;
+        setAcademyAlert({ type: 'reminder', title: cur.lesson.title, lesson_id: cur.lesson.id, daysLeft });
+      } else {
+        setAcademyAlert(null);
+      }
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetchGamification();
@@ -445,6 +465,43 @@ export default function FieldHome() {
           {project.departure_reason && (
             <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>{project.departure_reason}</p>
           )}
+        </div>
+      )}
+
+      {/* Academy alert — показываем только если смена не идёт */}
+      {academyAlert && !isActive && (
+        <div
+          onClick={() => navigate('/field/academy')}
+          className="rounded-xl px-4 py-3 mb-3 flex items-start gap-3"
+          style={{
+            background: academyAlert.type === 'blocked'
+              ? 'rgba(239,68,68,0.10)'
+              : academyAlert.daysLeft <= 1 ? 'rgba(245,158,11,0.12)' : 'rgba(123,97,255,0.10)',
+            border: academyAlert.type === 'blocked'
+              ? '1px solid rgba(239,68,68,0.35)'
+              : academyAlert.daysLeft <= 1 ? '1px solid rgba(245,158,11,0.4)' : '1px solid rgba(123,97,255,0.3)',
+            cursor: 'pointer',
+          }}
+        >
+          <span style={{ fontSize: 20, flexShrink: 0 }}>
+            {academyAlert.type === 'blocked' ? '🚫' : academyAlert.daysLeft <= 1 ? '⚠️' : '🏛️'}
+          </span>
+          <div style={{ flex: 1 }}>
+            <div className="text-sm font-semibold" style={{
+              color: academyAlert.type === 'blocked' ? '#ef4444' : academyAlert.daysLeft <= 1 ? '#f59e0b' : '#a78bfa',
+            }}>
+              {academyAlert.type === 'blocked'
+                ? 'Чекин заблокирован — пройди Испытание'
+                : academyAlert.daysLeft <= 1
+                  ? 'Последний день! Пройди тест до полуночи'
+                  : `Пройди Испытание до воскресенья`}
+            </div>
+            <div className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+              «{academyAlert.title}» · иначе не сможешь начать смену
+              {academyAlert.type === 'reminder' && academyAlert.daysLeft > 1 && ` · осталось ${academyAlert.daysLeft}д`}
+            </div>
+          </div>
+          <span style={{ fontSize: 14, color: 'var(--text-tertiary)', alignSelf: 'center' }}>→</span>
         </div>
       )}
 

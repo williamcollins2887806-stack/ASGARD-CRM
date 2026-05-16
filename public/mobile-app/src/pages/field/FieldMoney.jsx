@@ -442,6 +442,13 @@ export default function FieldMoney() {
           <ArrowLeft size={20} style={{ color: 'var(--text-primary)' }} />
         </button>
         <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Мои деньги</h1>
+        <button
+          onClick={() => { haptic.light(); navigate('/field/earnings/monthly'); }}
+          className="ml-auto text-xs font-semibold px-3 py-1.5 rounded-lg"
+          style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--gold)', border: '1px solid rgba(200,168,75,0.3)' }}
+        >
+          💰 По месяцам
+        </button>
       </div>
 
       {error && (
