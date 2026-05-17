@@ -372,15 +372,22 @@ function getNextWeekNumber() {
 }
 
 // Найти следующий незаполненный слот в учебной программе
-// Цикл 48 недель: (highestWeek % 48) → выбирает следующую тему из CURRICULUM_48
+// Цикл 48 недель: перебираем с (maxWeek+1) пока не найдём слот без урока
 async function getNextCurriculumEntry() {
   const { rows } = await db.query(
-    `SELECT MAX(week_number) as max_week FROM academy_lessons`
+    `SELECT week_number FROM academy_lessons WHERE status != 'rejected' ORDER BY week_number`
   );
-  const maxWeek = rows[0]?.max_week || 0;
-  // Позиция в массиве 0-47
-  const idx = maxWeek % 48;
-  return { entry: CURRICULUM_48[idx], nextWeek: maxWeek + 1 };
+  const usedWeeks = new Set(rows.map(r => r.week_number));
+
+  // Начинаем с max+1 и ищем первый незанятый week_number
+  const maxWeek = rows.length ? Math.max(...rows.map(r => r.week_number)) : 0;
+  let nextWeek = maxWeek + 1;
+
+  // Убедимся что этот week_number не занят (на случай пробелов)
+  while (usedWeeks.has(nextWeek)) nextWeek++;
+
+  const idx = (nextWeek - 1) % 48;
+  return { entry: CURRICULUM_48[idx], nextWeek };
 }
 
 const LESSON_BLOCKS_FORMAT = `
@@ -462,11 +469,25 @@ async function generateWeeklyLesson() {
   const curriculumEntry = entry || CURRICULUM_48[(nextWeek - 1) % 48];
 
   // Проверить — урок уже есть?
+  // Проверка по week_number — главный guard против дублирования
   const { rows: existing } = await db.query(
     `SELECT id FROM academy_lessons WHERE week_number = $1`, [nextWeek]
   );
   if (existing.length > 0) {
     console.log(`[AcademyCron] Lesson for week ${nextWeek} already exists, skipping`);
+    return;
+  }
+
+  // Проверка по саге внутри текущего цикла 48 недель — доп. защита от повторов
+  const cycleStart = Math.floor((nextWeek - 1) / 48) * 48 + 1;
+  const cycleEnd = cycleStart + 47;
+  const { rows: sameSaga } = await db.query(
+    `SELECT id FROM academy_lessons
+     WHERE saga = $1 AND week_number >= $2 AND week_number <= $3 AND status != 'rejected'`,
+    [curriculumEntry.saga, cycleStart, cycleEnd]
+  );
+  if (sameSaga.length > 0) {
+    console.log(`[AcademyCron] Topic "${curriculumEntry.saga}" already covered in this cycle (weeks ${cycleStart}-${cycleEnd}), skipping`);
     return;
   }
 
