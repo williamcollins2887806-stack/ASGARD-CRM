@@ -480,17 +480,22 @@ async function routes(fastify) {
     mon.setDate(now.getDate() - (dayOfWeek - 1));
     mon.setHours(0, 0, 0, 0);
 
-    // Самый свежий урок, опубликованный ДО этого понедельника (дедлайн прошёл)
+    // Урок, опубликованный НА ПРОШЛОЙ неделе (окно: пн-7дней .. пн)
+    // Так рабочий не может "забежать вперёд" и сдать все уроки разом
+    const prevMon = new Date(mon);
+    prevMon.setDate(mon.getDate() - 7);
+
     const { rows: [lesson] } = await db.query(`
       SELECT al.id, al.title, awp.passed
       FROM academy_lessons al
       LEFT JOIN academy_worker_progress awp
         ON awp.lesson_id = al.id AND awp.employee_id = $1
       WHERE al.status = 'published'
-        AND al.published_at < $2
+        AND al.published_at >= $2
+        AND al.published_at < $3
       ORDER BY al.week_number DESC
       LIMIT 1
-    `, [eid, mon.toISOString()]);
+    `, [eid, prevMon.toISOString(), mon.toISOString()]);
 
     if (!lesson) return { allowed: true, reason: null };
 
