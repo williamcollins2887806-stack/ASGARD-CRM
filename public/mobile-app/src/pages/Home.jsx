@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { WIDGET_REGISTRY, getLayout, roleMatch } from '@/widgets';
-import { Shield, ChevronRight } from 'lucide-react';
+import { Shield, ChevronRight, HardHat } from 'lucide-react';
 import { CrmUpdateBanner } from '@/components/shared/CrmUpdateBanner';
 
 /**
@@ -46,36 +46,64 @@ export default function Home() {
             paddingBottom: 'calc(var(--tabbar-total) + 16px)',
           }}
         >
-          {/* Кнопка входа в Панель РП для PM/HEAD_PM/ADMIN */}
+          {/* Панель РП + вход в Зал Рабочих для PM/HEAD_PM/ADMIN */}
           {isPm && (
-            <button
-              onClick={() => navigate('/pm')}
-              className="w-full text-left spring-tap mb-2"
-              style={{
-                background: 'linear-gradient(135deg, color-mix(in srgb, var(--blue) 12%, var(--bg-surface)), color-mix(in srgb, var(--blue) 4%, var(--bg-surface)))',
-                border: '0.5px solid color-mix(in srgb, var(--blue) 30%, var(--border-norse))',
-                borderRadius: 14,
-                padding: '12px 16px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-              }}
-            >
-              <div
-                className="flex items-center justify-center shrink-0"
+            <div className="flex gap-2 mb-2">
+              {/* Панель РП */}
+              <button
+                onClick={() => navigate('/pm')}
+                className="text-left spring-tap"
                 style={{
-                  width: 36, height: 36, borderRadius: 10,
-                  background: 'color-mix(in srgb, var(--blue) 20%, transparent)',
+                  flex: 1,
+                  background: 'linear-gradient(135deg, color-mix(in srgb, var(--blue) 12%, var(--bg-surface)), color-mix(in srgb, var(--blue) 4%, var(--bg-surface)))',
+                  border: '0.5px solid color-mix(in srgb, var(--blue) 30%, var(--border-norse))',
+                  borderRadius: 14,
+                  padding: '12px 16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
                 }}
               >
-                <Shield size={18} style={{ color: 'var(--blue)' }} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>Панель РП</div>
-                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 1 }}>Рабочие · Табель · Выплаты · Мимир</div>
-              </div>
-              <ChevronRight size={16} style={{ color: 'var(--blue)', opacity: 0.7 }} />
-            </button>
+                <div
+                  className="flex items-center justify-center shrink-0"
+                  style={{
+                    width: 36, height: 36, borderRadius: 10,
+                    background: 'color-mix(in srgb, var(--blue) 20%, transparent)',
+                  }}
+                >
+                  <Shield size={18} style={{ color: 'var(--blue)' }} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>Панель РП</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 1 }}>Рабочие · Табель · Выплаты</div>
+                </div>
+                <ChevronRight size={16} style={{ color: 'var(--blue)', opacity: 0.7, flexShrink: 0 }} />
+              </button>
+
+              {/* Вход в Зал Рабочих */}
+              <button
+                onClick={() => navigate('/field-login')}
+                className="spring-tap"
+                style={{
+                  flexShrink: 0,
+                  background: 'color-mix(in srgb, var(--gold) 8%, var(--bg-surface))',
+                  border: '0.5px solid color-mix(in srgb, var(--gold) 25%, var(--border-norse))',
+                  borderRadius: 14,
+                  padding: '12px 14px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 4,
+                  minWidth: 68,
+                }}
+              >
+                <HardHat size={20} style={{ color: 'var(--gold)' }} />
+                <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--gold)', textAlign: 'center', lineHeight: 1.2 }}>
+                  Зал<br />рабочих
+                </div>
+              </button>
+            </div>
           )}
           <div className="flex flex-col gap-2">
             {widgets.map((w, i) => {
