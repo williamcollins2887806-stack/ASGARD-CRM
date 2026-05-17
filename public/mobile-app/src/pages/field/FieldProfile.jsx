@@ -864,19 +864,7 @@ function EquipmentSlots({ cosmetics, navigate, haptic }) {
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════════
-   ACHIEVEMENTS
-═══════════════════════════════════════════════════════════════════ */
-const ACHIEVEMENTS = [
-  { id: 'first_shift',  icon: '🔥', name: 'Первая смена',    earned: p => (p?.total_shifts || 0) >= 1 },
-  { id: 'iron_warrior', icon: '⚡', name: 'Железный воин',   earned: p => (p?.achievements?.find?.(a=>a.id==='iron_warrior')?.earned) },
-  { id: 'veteran',      icon: '🏆', name: 'Ветеран',         earned: p => (p?.total_shifts || 0) >= 50 },
-  { id: 'chronicler',   icon: '📷', name: 'Летописец',       earned: p => (p?.achievements?.find?.(a=>a.id==='chronicler')?.earned) },
-  { id: 'punctual',     icon: '⏰', name: 'Пунктуальный',    earned: p => (p?.achievements?.find?.(a=>a.id==='punctual')?.earned) },
-  { id: 'berserker',    icon: '🛡️', name: 'Берсерк',        earned: p => (p?.achievements?.find?.(a=>a.id==='berserker')?.earned) },
-  { id: 'traveler',     icon: '🗺️', name: 'Странник',       earned: p => (p?.achievements?.find?.(a=>a.id==='traveler')?.earned) },
-  { id: 'mentor',       icon: '🎓', name: 'Наставник',       earned: p => (p?.achievements?.find?.(a=>a.id==='mentor')?.earned) },
-];
+/* удалено: ACHIEVEMENTS (заменено динамической загрузкой из API) */
 
 /* ═══════════════════════════════════════════════════════════════════
    SKELETON
@@ -906,6 +894,7 @@ export default function FieldProfile() {
   const [permits, setPermits] = useState([]);
   const [personal, setPersonal] = useState(null);
   const [workData, setWorkData] = useState(null);
+  const [achievementsData, setAchievementsData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [personalOpen, setPersonalOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -930,14 +919,16 @@ export default function FieldProfile() {
     setLoading(false);
     if (!me) return;
 
-    const [perms, pers, proj] = await Promise.all([
+    const [perms, pers, proj, achs] = await Promise.all([
       fieldApi.get('/worker/permits').catch(() => []),
       fieldApi.get('/worker/personal').catch(() => null),
       fieldApi.get('/worker/active-project').catch(() => null),
+      fieldApi.get('/achievements/').catch(() => null),
     ]);
     setPermits(Array.isArray(perms) ? perms : perms?.permits || []);
     setPersonal(pers?.employee || pers);
     setWorkData(proj?.project || proj);
+    if (achs) setAchievementsData(achs);
   }, []);
 
   useEffect(() => {
@@ -1061,22 +1052,100 @@ export default function FieldProfile() {
 
           {/* ═══ ACHIEVEMENTS ═════════════════════════════════════════ */}
           <div className="rounded-xl p-4" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
-            <div className="flex items-center gap-2 mb-3">
-              <Award size={15} style={{ color: 'var(--gold)' }} />
-              <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-tertiary)' }}>Достижения</span>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Award size={15} style={{ color: 'var(--gold)' }} />
+                <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-tertiary)' }}>Подвиги</span>
+                {achievementsData && (
+                  <span className="text-xs px-1.5 py-0.5 rounded-full font-bold"
+                    style={{ background: 'color-mix(in srgb, var(--gold) 20%, transparent)', color: 'var(--gold)' }}>
+                    {achievementsData.earned_count}/{achievementsData.total_count}
+                  </span>
+                )}
+              </div>
+              <button onClick={() => navigate('/field/achievements')}
+                className="text-xs font-medium"
+                style={{ color: 'var(--gold)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                Все →
+              </button>
             </div>
-            <div className="grid grid-cols-4 gap-2">
-              {ACHIEVEMENTS.map(a => {
-                const unlocked = a.earned(profile);
-                return (
-                  <div key={a.id} className="flex flex-col items-center gap-1 p-2 rounded-lg"
-                    style={{ backgroundColor: 'var(--bg-primary)', opacity: unlocked ? 1 : 0.3 }}>
-                    <span className="text-2xl">{a.icon}</span>
-                    <span className="text-center leading-tight" style={{ color: 'var(--text-secondary)', fontSize: '0.55rem' }}>{a.name}</span>
+
+            {!achievementsData ? (
+              <div className="grid grid-cols-4 gap-2">
+                {[...Array(8)].map((_, i) => (
+                  <div key={i} className="aspect-square rounded-lg animate-pulse"
+                    style={{ backgroundColor: 'var(--bg-primary)' }} />
+                ))}
+              </div>
+            ) : (
+              <>
+                {/* Прогресс-бар */}
+                <div className="mb-3">
+                  <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
+                    <div className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${achievementsData.total_count > 0 ? (achievementsData.earned_count / achievementsData.total_count * 100) : 0}%`,
+                        background: 'linear-gradient(90deg, var(--gold), #f59e0b)',
+                      }} />
                   </div>
-                );
-              })}
-            </div>
+                  <div className="flex justify-between mt-1">
+                    <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>
+                      {achievementsData.earned_count} получено
+                    </span>
+                    <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>
+                      {achievementsData.points || 0} очков
+                    </span>
+                  </div>
+                </div>
+
+                {/* Последние полученные (до 8) */}
+                {(() => {
+                  const earned = (achievementsData.achievements || []).filter(a => a.earned)
+                    .sort((a, b) => new Date(b.earned_at) - new Date(a.earned_at))
+                    .slice(0, 8);
+                  const inProgress = (achievementsData.achievements || [])
+                    .filter(a => !a.earned && a.current > 0)
+                    .sort((a, b) => (b.current / b.threshold) - (a.current / a.threshold))
+                    .slice(0, Math.max(0, 8 - earned.length));
+                  const display = [...earned, ...inProgress].slice(0, 8);
+
+                  return (
+                    <div className="grid grid-cols-4 gap-2">
+                      {display.map(a => {
+                        const tierColor = { cup: '#cd7f32', medal: '#c0c0c0', order: '#ffd700', legend: '#8b5cf6' }[a.tier] || '#6b7280';
+                        return (
+                          <button key={a.id}
+                            onClick={() => { haptic.light(); navigate('/field/achievements'); }}
+                            className="flex flex-col items-center gap-1 p-2 rounded-lg"
+                            style={{
+                              backgroundColor: 'var(--bg-primary)',
+                              border: `1px solid ${a.earned ? tierColor + '50' : 'transparent'}`,
+                              opacity: a.earned ? 1 : 0.5,
+                              filter: a.earned ? 'none' : 'grayscale(0.6)',
+                            }}>
+                            <span style={{ fontSize: 22 }}>{a.icon}</span>
+                            <span className="text-center leading-tight line-clamp-2"
+                              style={{ color: 'var(--text-secondary)', fontSize: '0.55rem' }}>{a.name}</span>
+                            {!a.earned && a.current > 0 && (
+                              <div className="w-full h-0.5 rounded-full overflow-hidden" style={{ background: 'var(--border-norse)' }}>
+                                <div className="h-full rounded-full"
+                                  style={{ width: `${(a.current / a.threshold) * 100}%`, background: tierColor }} />
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                      {display.length === 0 && (
+                        <div className="col-span-4 text-center py-3"
+                          style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>
+                          Начни работать — первый подвиг уже ждёт
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </>
+            )}
           </div>
 
           {/* ═══ PERMITS ══════════════════════════════════════════════ */}
