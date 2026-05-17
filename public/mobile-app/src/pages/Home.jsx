@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { WIDGET_REGISTRY, getLayout, roleMatch } from '@/widgets';
+import { Shield, ChevronRight } from 'lucide-react';
+import { CrmUpdateBanner } from '@/components/shared/CrmUpdateBanner';
 
 /**
  * Home — оркестратор дашборда «Зал Ярла»
@@ -35,6 +37,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-col h-full bg-primary">
+      <CrmUpdateBanner />
       <PullToRefresh onRefresh={handleRefresh}>
         <div
           className="px-3 pb-4"
@@ -47,21 +50,31 @@ export default function Home() {
           {isPm && (
             <button
               onClick={() => navigate('/pm')}
+              className="w-full text-left spring-tap mb-2"
               style={{
-                width: '100%', marginBottom: 10,
-                background: 'linear-gradient(135deg, #0d1a2e, #162030)',
-                border: '1px solid rgba(59,130,246,0.4)',
-                borderRadius: 14, padding: '12px 16px',
-                display: 'flex', alignItems: 'center', gap: 12,
-                cursor: 'pointer', textAlign: 'left',
+                background: 'linear-gradient(135deg, color-mix(in srgb, var(--blue) 12%, var(--bg-surface)), color-mix(in srgb, var(--blue) 4%, var(--bg-surface)))',
+                border: '0.5px solid color-mix(in srgb, var(--blue) 30%, var(--border-norse))',
+                borderRadius: 14,
+                padding: '12px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
               }}
             >
-              <span style={{ fontSize: 24 }}>🛡️</span>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 800, color: '#e8e8f0' }}>Панель РП</div>
-                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 1 }}>Рабочие · Табель · Выплаты · Мимир</div>
+              <div
+                className="flex items-center justify-center shrink-0"
+                style={{
+                  width: 36, height: 36, borderRadius: 10,
+                  background: 'color-mix(in srgb, var(--blue) 20%, transparent)',
+                }}
+              >
+                <Shield size={18} style={{ color: 'var(--blue)' }} />
               </div>
-              <span style={{ fontSize: 14, color: '#3b82f6' }}>→</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>Панель РП</div>
+                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 1 }}>Рабочие · Табель · Выплаты · Мимир</div>
+              </div>
+              <ChevronRight size={16} style={{ color: 'var(--blue)', opacity: 0.7 }} />
             </button>
           )}
           <div className="flex flex-col gap-2">

@@ -194,6 +194,27 @@ export default function FieldLogin() {
           </div>
         )}
 
+        {/* Ссылка для офисных сотрудников */}
+        {step === 'phone' && (
+          <div style={{ marginTop: 32, textAlign: 'center' }}>
+            <button
+              type="button"
+              onClick={() => navigate('/login')}
+              style={{
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: 12, padding: '10px 20px',
+                color: 'rgba(255,255,255,0.35)', fontSize: 12,
+                cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8,
+              }}
+            >
+              <span>🏛️</span>
+              <span>Вы из офиса? Войти в CRM</span>
+              <span style={{ opacity: 0.5 }}>→</span>
+            </button>
+          </div>
+        )}
+
         {/* ═══ CODE STEP ═══ */}
         {step === 'code' && (
           <div className="fa-slide-in" style={{ width: '100%', maxWidth: 320 }}>

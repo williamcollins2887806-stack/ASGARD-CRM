@@ -323,9 +323,28 @@ export default function Login() {
         </div>
       </form>
 
+      {/* Кнопка перехода в приложение рабочих */}
+      <div className="mt-8 relative z-10" style={{ textAlign: 'center' }}>
+        <button
+          type="button"
+          onClick={() => navigate('/field-login')}
+          style={{
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 12, padding: '10px 20px',
+            color: 'rgba(255,255,255,0.4)', fontSize: 12,
+            cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8,
+          }}
+        >
+          <span>⛏️</span>
+          <span>Вы рабочий? Войти в Зал Рабочих</span>
+          <span style={{ opacity: 0.5 }}>→</span>
+        </button>
+      </div>
+
       {/* Footer */}
       <p
-        className="mt-12 text-[10px] font-medium relative z-10 tracking-wider uppercase"
+        className="mt-6 text-[10px] font-medium relative z-10 tracking-wider uppercase"
         style={{ color: 'rgba(255,255,255,0.15)' }}
       >
         Асгард Сервис © 2026
