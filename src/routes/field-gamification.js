@@ -261,6 +261,38 @@ async function routes(fastify) {
   // ── POST /spin — spin the Wheel of Norns (TRANSACTIONAL) ──
   fastify.post('/spin', { preHandler: [fastify.fieldAuthenticate] }, async (req, reply) => {
     const eid = req.fieldEmployee.id;
+
+    // Блокировка рулетки если не сдан обязательный тест прошлой недели
+    {
+      const now = new Date();
+      const dayOfWeek = now.getDay() || 7;
+      const mon = new Date(now);
+      mon.setDate(now.getDate() - (dayOfWeek - 1));
+      mon.setHours(0, 0, 0, 0);
+      const prevMon = new Date(mon);
+      prevMon.setDate(mon.getDate() - 7);
+
+      const { rows: [blocked] } = await db.query(`
+        SELECT al.id, al.title
+        FROM academy_lessons al
+        LEFT JOIN academy_worker_progress awp
+          ON awp.lesson_id = al.id AND awp.employee_id = $1
+        WHERE al.status = 'published'
+          AND al.is_mandatory = true
+          AND al.release_monday >= $2
+          AND al.release_monday < $3
+          AND (awp.passed IS NULL OR awp.passed = false)
+        LIMIT 1
+      `, [eid, prevMon.toISOString().split('T')[0], mon.toISOString().split('T')[0]]);
+
+      if (blocked) {
+        return reply.code(403).send({
+          error: `Колесо Норн закрыто. Сначала пройди испытание «${blocked.title}»`,
+          blocked_by_lesson: { id: blocked.id, title: blocked.title },
+        });
+      }
+    }
+
     const client = await db.pool.connect();
 
     try {

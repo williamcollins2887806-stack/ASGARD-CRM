@@ -290,6 +290,7 @@ export default function WheelOfNorns() {
   const [hint, setHint] = useState('Нажми чтобы испытать судьбу!');
   const [shaking, setShaking] = useState(false);
   const [spinsLeft, setSpinsLeft] = useState(null); // { free, checkin, purchased, total }
+  const [blockedByLesson, setBlockedByLesson] = useState(null); // { id, title } если заблокировано уроком
 
   // Spring physics state
   const springState = useRef({ vY: 0, vVel: 0, vRot: 0, vRVel: 0, vScale: 1, vSVel: 0, target: { y: 0, rot: 0, scale: 1 }, state: 'idle', phase: 0 });
@@ -313,6 +314,16 @@ export default function WheelOfNorns() {
       setSpinsLeft(s);
       setCanSpin(s.total > 0);
       if (s.total <= 0) setHint('Спины закончились');
+    }).catch(() => {});
+    // Проверяем блокировку обязательным уроком
+    fieldApi.get('/academy/shift-allowed').then(r => {
+      if (!r.allowed && r.lesson_id) {
+        setBlockedByLesson({ id: r.lesson_id, title: r.lesson_title });
+        setCanSpin(false);
+        setHint('Колесо закрыто — пройди обязательный урок');
+      } else {
+        setBlockedByLesson(null);
+      }
     }).catch(() => {});
   }, []);
 
@@ -490,8 +501,18 @@ export default function WheelOfNorns() {
       prize = data.prize;
     } catch (err) {
       setSpinning(false); setVikingState('idle');
-      loadSpinStatus(); // refresh counter
-      if (err.message.includes('использован') || err.message.includes('закончились')) {
+      loadSpinStatus();
+      if (err.status === 403 || err.message.includes('закрыто') || err.blocked_by_lesson) {
+        setCanSpin(false);
+        setVikingState('block');
+        setHint(err.message || 'Сначала пройди обязательный урок');
+        say('Колесо закрыто. Докажи знания!', 5000);
+        // Через 2 сек предлагаем перейти в академию
+        setTimeout(() => {
+          setHint('👆 Нажми чтобы пройти урок');
+          setBlockedByLesson(err.blocked_by_lesson || null);
+        }, 2000);
+      } else if (err.message.includes('использован') || err.message.includes('закончились')) {
         setCanSpin(false);
         handleNoSpins();
       } else {
@@ -879,6 +900,36 @@ export default function WheelOfNorns() {
             </div>
           </div>
         </div>
+
+        {/* БЛОКИРОВКА ОБЯЗАТЕЛЬНЫМ УРОКОМ */}
+        {blockedByLesson && (
+          <div
+            onClick={() => navigate('/field/academy')}
+            style={{
+              margin: '0 16px 12px',
+              background: 'linear-gradient(135deg, rgba(239,68,68,0.15), rgba(239,68,68,0.08))',
+              border: '1px solid rgba(239,68,68,0.4)',
+              borderRadius: 14, padding: '12px 16px',
+              cursor: 'pointer', textAlign: 'center',
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#ef4444', marginBottom: 4 }}>
+              ⚠️ Колесо Норн закрыто
+            </div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', marginBottom: 8 }}>
+              Пройди обязательный урок чтобы разблокировать
+            </div>
+            <div style={{
+              fontSize: 13, fontWeight: 700,
+              color: '#c8a84b',
+              background: 'rgba(200,168,75,0.15)',
+              border: '1px solid rgba(200,168,75,0.3)',
+              borderRadius: 10, padding: '8px 14px',
+            }}>
+              📖 {blockedByLesson.title} →
+            </div>
+          </div>
+        )}
 
         {/* SPIN BUTTON */}
         <div className="wn-spin-area">
