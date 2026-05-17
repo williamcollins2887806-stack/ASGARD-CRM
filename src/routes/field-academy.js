@@ -93,7 +93,7 @@ async function routes(fastify) {
   // ─────────────────────────────────────────────────────────────────────────
   fastify.get('/current-lesson', auth, async (req) => {
     const eid = req.fieldEmployee.id;
-    const { sun } = currentWeekRange();
+    const { mon, sun } = currentWeekRange();
 
     const monDate = mon.toISOString().split('T')[0];
 
@@ -494,12 +494,15 @@ async function routes(fastify) {
     const prevMonDate = prevMon.toISOString().split('T')[0];
     const monDate = mon.toISOString().split('T')[0];
 
+    // Только обязательные уроки (is_mandatory=true) блокируют смены
+    // Необязательные дают XP/руны но не препятствуют выходу на работу
     const { rows: [lesson] } = await db.query(`
       SELECT al.id, al.title, awp.passed
       FROM academy_lessons al
       LEFT JOIN academy_worker_progress awp
         ON awp.lesson_id = al.id AND awp.employee_id = $1
       WHERE al.status = 'published'
+        AND al.is_mandatory = true
         AND al.release_monday >= $2
         AND al.release_monday < $3
       ORDER BY al.week_number DESC

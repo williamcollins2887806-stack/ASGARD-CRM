@@ -664,7 +664,7 @@ async function routes(fastify) {
 
     // Последние 10 опубликованных уроков
     const { rows: published } = await db.query(`
-      SELECT id, title, cover_icon, week_number, published_at, release_monday,
+      SELECT id, title, cover_icon, week_number, published_at, release_monday, is_mandatory,
         (SELECT COUNT(*) FROM academy_worker_progress WHERE lesson_id=academy_lessons.id AND passed) AS passed_count
       FROM academy_lessons WHERE status='published' ORDER BY week_number DESC LIMIT 10
     `);
@@ -693,7 +693,7 @@ async function routes(fastify) {
   // ═══════════════════════════════════════════════════════════════════
   fastify.post('/academy/:id/approve', auth, async (req, reply) => {
     const lessonId = parseInt(req.params.id);
-    const { release_monday } = req.body || {};
+    const { release_monday, is_mandatory } = req.body || {};
 
     const { rows: [lesson] } = await db.query(
       `SELECT * FROM academy_lessons WHERE id = $1`, [lessonId]
@@ -701,13 +701,11 @@ async function routes(fastify) {
     if (!lesson) return reply.code(404).send({ error: 'Урок не найден' });
     if (lesson.status !== 'draft') return reply.code(400).send({ error: 'Урок не является черновиком' });
 
-    // Проверка что есть хотя бы 1 вопрос
     const { rows: [qCount] } = await db.query(
       `SELECT COUNT(*) AS cnt FROM academy_quiz_questions WHERE lesson_id = $1`, [lessonId]
     );
     if (parseInt(qCount.cnt) === 0) return reply.code(400).send({ error: 'Нельзя опубликовать урок без вопросов' });
 
-    // Валидация release_monday — должен быть понедельником если задан
     let relDate = null;
     if (release_monday) {
       relDate = new Date(release_monday);
@@ -716,12 +714,15 @@ async function routes(fastify) {
       }
     }
 
+    // is_mandatory: из запроса если передан, иначе сохраняем то что Мимир поставил
+    const mandatoryVal = is_mandatory !== undefined ? Boolean(is_mandatory) : lesson.is_mandatory;
+
     const { rows: [updated] } = await db.query(`
       UPDATE academy_lessons
-        SET status='published', published_at=NOW(), release_monday=$2
+        SET status='published', published_at=NOW(), release_monday=$2, is_mandatory=$3
       WHERE id=$1
-      RETURNING id, title, status, published_at, release_monday
-    `, [lessonId, relDate ? relDate.toISOString().split('T')[0] : null]);
+      RETURNING id, title, status, published_at, release_monday, is_mandatory
+    `, [lessonId, relDate ? relDate.toISOString().split('T')[0] : null, mandatoryVal]);
 
     return { lesson: updated };
   });
