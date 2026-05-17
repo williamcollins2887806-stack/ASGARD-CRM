@@ -8,6 +8,7 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { UserPlus, Plus, ChevronRight, Check, X as XIcon } from 'lucide-react';
+import { StatCard, StatRow } from '@/components/shared/StatCard';
 import { relativeTime, formatDate } from '@/lib/utils';
 import AsgardSelect from '@/components/ui/AsgardSelect';
 
@@ -44,6 +45,12 @@ export default function HrRequests() {
   }, []);
   useEffect(() => { fetchRequests(); }, [fetchRequests]);
 
+  const stats = useMemo(() => ({
+    total: requests.length,
+    pending: requests.filter((r) => r.status === 'pending').length,
+    approved: requests.filter((r) => r.status === 'approved' || r.status === 'completed').length,
+  }), [requests]);
+
   const filtered = useMemo(() => {
     if (filter === 'all') return requests;
     return requests.filter((r) => r.status === filter);
@@ -57,6 +64,13 @@ export default function HrRequests() {
   return (
     <PageShell title="Заявки HR" headerRight={<button onClick={() => { haptic.light(); setShowCreate(true); }} className="btn-icon spring-tap c-blue"><Plus size={22} /></button>}>
       <PullToRefresh onRefresh={fetchRequests}>
+        {!loading && requests.length > 0 && (
+          <StatRow cols={3}>
+            <StatCard icon={UserPlus} label="Всего"      value={stats.total}   color="var(--text-primary)" delay={0} />
+            <StatCard icon={UserPlus} label="На рассм."  value={stats.pending}  color="var(--blue)"         delay={60} />
+            <StatCard icon={UserPlus} label="Одобрено"   value={stats.approved} color="var(--green)"        delay={120} />
+          </StatRow>
+        )}
         <div className="flex gap-1.5 px-1 pb-3 overflow-x-auto no-scrollbar">
           {FILTERS.map((f) => <button key={f.id} onClick={() => { haptic.light(); setFilter(f.id); }} className="filter-pill spring-tap" data-active={filter === f.id}>{f.label}</button>)}
         </div>

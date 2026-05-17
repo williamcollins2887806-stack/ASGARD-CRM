@@ -65,7 +65,7 @@ export default function EquipmentAlertsWidget() {
                   style={{
                     fontSize: 16,
                     lineHeight: 1,
-                    color: 'orange',
+                    color: 'var(--gold)',
                     flexShrink: 0,
                     marginTop: 1,
                   }}
@@ -91,7 +91,7 @@ export default function EquipmentAlertsWidget() {
                     className="mt-0.5"
                     style={{
                       fontSize: 11,
-                      color: 'orange',
+                      color: 'var(--gold)',
                       fontWeight: 500,
                       lineHeight: 1.3,
                     }}

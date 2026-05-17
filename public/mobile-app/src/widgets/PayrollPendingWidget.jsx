@@ -45,7 +45,7 @@ export default function PayrollPendingWidget() {
             fontSize: 36,
             fontWeight: 900,
             lineHeight: 1.1,
-            color: count > 0 ? 'orange' : 'var(--green)',
+            color: count > 0 ? 'var(--gold)' : 'var(--green)',
           }}
         >
           {count}

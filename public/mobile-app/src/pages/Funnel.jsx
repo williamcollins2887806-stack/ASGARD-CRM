@@ -47,14 +47,14 @@ export default function Funnel() {
     tenders.forEach((t) => {
       const stage = getStage(t);
       map[stage.id].items.push(t);
-      map[stage.id].sum += Number(t.amount || t.price || 0);
+      map[stage.id].sum += Number(t.tender_price || 0);
     });
     return map;
   }, [tenders]);
 
   const stats = useMemo(() => ({
     total: tenders.length,
-    sum: tenders.reduce((s, t) => s + (Number(t.amount || t.price || 0)), 0),
+    sum: tenders.reduce((s, t) => s + (Number(t.tender_price) || 0), 0),
     won: (grouped.prep?.items.length || 0) + (grouped.work?.items.length || 0),
     newCount: grouped.new?.items.length || 0,
   }), [tenders, grouped]);

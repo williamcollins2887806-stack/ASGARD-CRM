@@ -9,6 +9,7 @@ import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import {
   Users, Search, X, ChevronRight, Phone, Star, MapPin, Copy, Check,
 } from 'lucide-react';
+import { StatCard, StatRow } from '@/components/shared/StatCard';
 
 const ROLE_MAP = {
   worker: 'Рабочий', foreman: 'Бригадир', welder: 'Сварщик',
@@ -56,6 +57,14 @@ export default function Personnel() {
     return Array.from(tags).sort();
   }, [employees]);
 
+  const stats = useMemo(() => {
+    const active = employees.filter((e) => e.is_active !== false && e.is_active !== 0).length;
+    const avgRating = employees.length > 0
+      ? employees.reduce((s, e) => s + (Number(e.rating_avg) || 0), 0) / employees.length
+      : 0;
+    return { total: employees.length, active, avgRating };
+  }, [employees]);
+
   const filtered = useMemo(() => {
     let list = employees;
     if (filter !== 'all') {
@@ -85,6 +94,13 @@ export default function Personnel() {
       }
     >
       <PullToRefresh onRefresh={fetchEmployees}>
+        {!loading && employees.length > 0 && (
+          <StatRow cols={3}>
+            <StatCard icon={Users} label="Всего"   value={stats.total}                color="var(--text-primary)" delay={0} />
+            <StatCard icon={Users} label="Активных" value={stats.active}              color="var(--green)"        delay={60} />
+            <StatCard icon={Star}  label="Рейтинг" value={stats.avgRating.toFixed(1)} color="var(--gold)"        delay={120} />
+          </StatRow>
+        )}
         {showSearch && (
           <div className="px-1 pb-2" style={{ animation: 'fadeInUp 150ms var(--ease-spring) forwards' }}>
             <div className="search-bar">

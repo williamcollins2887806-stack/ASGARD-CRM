@@ -10,6 +10,7 @@ import {
   FileText, Search, Plus, ChevronRight, X,
   DollarSign, Calendar, ExternalLink,
 } from 'lucide-react';
+import { StatCard, StatRow } from '@/components/shared/StatCard';
 import { formatDate, formatMoney } from '@/lib/utils';
 import AsgardSelect from '@/components/ui/AsgardSelect';
 
@@ -71,6 +72,13 @@ export default function Contracts() {
 
   useEffect(() => { fetchContracts(); }, [fetchContracts]);
 
+  const stats = useMemo(() => {
+    const active   = contracts.filter((c) => { const s = computeStatus(c); return s === 'active' || s === 'expiring'; }).length;
+    const expiring = contracts.filter((c) => computeStatus(c) === 'expiring').length;
+    const totalSum = contracts.reduce((s, c) => s + (Number(c.amount || c.contract_value) || 0), 0);
+    return { total: contracts.length, active, expiring, totalSum };
+  }, [contracts]);
+
   const filtered = useMemo(() => {
     let list = contracts;
     if (filter === 'active') {
@@ -118,6 +126,13 @@ export default function Contracts() {
       }
     >
       <PullToRefresh onRefresh={fetchContracts}>
+        {!loading && contracts.length > 0 && (
+          <StatRow cols={3}>
+            <StatCard icon={FileText} label="Всего"    value={stats.total}                              color="var(--text-primary)" delay={0} />
+            <StatCard icon={FileText} label="Активных" value={stats.active}                             color="var(--green)"        delay={60} />
+            <StatCard icon={FileText} label="Сумма"    value={formatMoney(stats.totalSum, { short: true })} color="var(--gold)"    delay={120} />
+          </StatRow>
+        )}
         {showSearch && (
           <div className="px-1 pb-2" style={{ animation: 'fadeInUp 150ms var(--ease-spring) forwards' }}>
             <div className="search-bar">

@@ -75,7 +75,7 @@ export default function PlatformAlertsWidget() {
                         fontWeight: 700,
                         color: '#fff',
                         backgroundColor:
-                          daysLeft <= 3 ? 'var(--red)' : 'orange',
+                          daysLeft <= 3 ? 'var(--red)' : 'var(--gold)',
                       }}
                     >
                       {daysLeft} дн

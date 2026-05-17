@@ -158,7 +158,15 @@ export default function FieldLogin() {
           if (step === 'code') { setStep('phone'); setOtp(['','','','']); clearError(); }
           else navigate('/field/welcome');
         }}>←</button>
-        <span className="fa-mini-logo">ASGARD</span>
+        <img
+          src="/asgard-logo.png"
+          alt="ASGARD"
+          draggable={false}
+          style={{
+            height: 36, width: 'auto', userSelect: 'none',
+            filter: 'drop-shadow(0 0 8px rgba(200,41,59,0.3))',
+          }}
+        />
       </div>
 
       <div className="fa-login-body">

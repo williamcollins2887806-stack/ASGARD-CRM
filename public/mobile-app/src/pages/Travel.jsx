@@ -8,6 +8,7 @@ import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { Plane, Plus, ChevronRight, MapPin, Calendar } from 'lucide-react';
 import { formatDate, formatMoney } from '@/lib/utils';
+import { StatCard, StatRow } from '@/components/shared/StatCard';
 
 function getTripStatus(trip) {
   if (trip.status === 'cancelled') return { label: 'Отменена', color: 'var(--red-soft)' };
@@ -39,6 +40,13 @@ export default function Travel() {
   }, []);
   useEffect(() => { fetchTrips(); }, [fetchTrips]);
 
+  const stats = useMemo(() => {
+    const now = new Date();
+    const active   = trips.filter((t) => new Date(t.start_date) <= now && new Date(t.end_date) >= now).length;
+    const upcoming = trips.filter((t) => new Date(t.start_date) > now).length;
+    return { total: trips.length, active, upcoming };
+  }, [trips]);
+
   const filtered = useMemo(() => {
     const now = new Date();
     if (filter === 'active') return trips.filter((t) => new Date(t.start_date) <= now && new Date(t.end_date) >= now);
@@ -50,6 +58,13 @@ export default function Travel() {
   return (
     <PageShell title="Командировки" headerRight={<button onClick={() => { haptic.light(); setShowCreate(true); }} className="btn-icon spring-tap c-blue"><Plus size={22} /></button>}>
       <PullToRefresh onRefresh={fetchTrips}>
+        {!loading && trips.length > 0 && (
+          <StatRow cols={3}>
+            <StatCard icon={Plane} label="Всего"       value={stats.total}    color="var(--text-primary)" delay={0} />
+            <StatCard icon={Plane} label="В дороге"    value={stats.active}   color="var(--blue)"         delay={60} />
+            <StatCard icon={Plane} label="Предстоит"   value={stats.upcoming} color="var(--gold)"         delay={120} />
+          </StatRow>
+        )}
         <div className="flex gap-1.5 px-1 pb-3 overflow-x-auto no-scrollbar">
           {FILTERS.map((f) => <button key={f.id} onClick={() => { haptic.light(); setFilter(f.id); }} className="filter-pill spring-tap" data-active={filter === f.id}>{f.label}</button>)}
         </div>

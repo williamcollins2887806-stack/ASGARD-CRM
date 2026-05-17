@@ -56,7 +56,7 @@ export default function PermitsExpiryWidget() {
 
   const dotColor = (days) => {
     if (days <= 0) return 'var(--red)';
-    if (days <= 14) return 'orange';
+    if (days <= 14) return 'var(--gold)';
     return 'var(--gold)';
   };
 

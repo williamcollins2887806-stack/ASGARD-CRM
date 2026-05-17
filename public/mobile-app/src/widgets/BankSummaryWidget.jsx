@@ -54,7 +54,7 @@ export default function BankSummaryWidget() {
               </span>
               {/* Unclassified */}
               {(data.unclassified_count || 0) > 0 && (
-                <span style={{ fontSize: 12, fontWeight: 600, color: 'orange' }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--gold)' }}>
                   {data.unclassified_count} не разнесено
                 </span>
               )}

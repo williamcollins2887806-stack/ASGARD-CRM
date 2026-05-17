@@ -37,7 +37,7 @@ export default function PreTendersWidget() {
     if (n >= 70)
       return { label: 'Высокий шанс', bg: 'var(--green)', color: '#fff' };
     if (n >= 40)
-      return { label: 'Средний шанс', bg: 'orange', color: '#fff' };
+      return { label: 'Средний шанс', bg: 'var(--gold)', color: '#0a0a0c' };
     return { label: 'Низкий шанс', bg: 'var(--red)', color: '#fff' };
   };
 

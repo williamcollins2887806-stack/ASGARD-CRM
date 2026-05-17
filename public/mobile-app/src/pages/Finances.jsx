@@ -67,8 +67,9 @@ export default function Finances() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const stats = useMemo(() => {
-    // revenue — только contract_value, без угадывания поля
-    const revenue  = works.reduce((s, w) => s + (Number(w.contract_value) || 0), 0);
+    // revenue — только contract_value, фильтр по тому же периоду
+    const filteredWorks = filterByPeriod(works, period, 'created_at');
+    const revenue  = filteredWorks.reduce((s, w) => s + (Number(w.contract_value) || 0), 0);
     const wExp     = filterByPeriod(workExpenses, period, 'date').reduce((s, e) => s + (Number(e.amount) || 0), 0);
     const oExp     = filterByPeriod(officeExpenses, period, 'date').reduce((s, e) => s + (Number(e.amount) || 0), 0);
     const totalExp = wExp + oExp;

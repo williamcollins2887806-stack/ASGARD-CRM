@@ -5180,3 +5180,404 @@ html[data-theme="light"] .btn.red.loading::after {
 }
 
 /* ─── §47 END ─── */
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §48. WOW-ЭФФЕКТ — Премиум-полировка + оставшиеся баги
+   KPI redesign, топбар-лента, поиск, sidebar, типографика, micro-animations.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ─── §48-A: KPI карточки — ПОЛНЫЙ редизайн под светлую тему ─── */
+/* Убиваем тёмный #131929 градиент из app.css v4.0 (высокий приоритет) */
+html[data-theme="light"] .kpi .k {
+  background: var(--bg2) !important;
+  border-radius: 10px !important;
+  box-shadow: 2px 3px 0 rgba(0,0,0,0.04), 0 1px 8px rgba(0,0,0,0.06) !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+  overflow: hidden !important;
+  position: relative !important;
+}
+html[data-theme="light"] .kpi .k:hover {
+  transform: translateY(-3px) !important;
+  box-shadow: 3px 5px 0 rgba(0,0,0,0.06), 0 4px 20px rgba(0,0,0,0.09) !important;
+}
+/* Цветная верхняя полоса (::before) — оставляем, убираем neon */
+html[data-theme="light"] .kpi .k::before {
+  height: 3px !important;
+  opacity: 1 !important;
+}
+/* Цветные фоны — тёплые, не тёмные */
+html[data-theme="light"] .kpi .k:nth-child(1) {
+  background: linear-gradient(160deg, rgba(168,32,48,0.05) 0%, var(--bg2) 50%) !important;
+  border: 1px solid rgba(168,32,48,0.14) !important;
+}
+html[data-theme="light"] .kpi .k:nth-child(2) {
+  background: linear-gradient(160deg, rgba(26,63,116,0.05) 0%, var(--bg2) 50%) !important;
+  border: 1px solid rgba(26,63,116,0.14) !important;
+}
+html[data-theme="light"] .kpi .k:nth-child(3) {
+  background: linear-gradient(160deg, rgba(184,132,26,0.06) 0%, var(--bg2) 50%) !important;
+  border: 1px solid rgba(184,132,26,0.16) !important;
+}
+html[data-theme="light"] .kpi .k:nth-child(4) {
+  background: linear-gradient(160deg, rgba(45,106,79,0.05) 0%, var(--bg2) 50%) !important;
+  border: 1px solid rgba(45,106,79,0.14) !important;
+}
+html[data-theme="light"] .kpi .k:nth-child(5) {
+  background: linear-gradient(160deg, rgba(124,58,237,0.04) 0%, var(--bg2) 50%) !important;
+  border: 1px solid rgba(124,58,237,0.12) !important;
+}
+html[data-theme="light"] .kpi .k:nth-child(6) {
+  background: linear-gradient(160deg, rgba(14,116,144,0.04) 0%, var(--bg2) 50%) !important;
+  border: 1px solid rgba(14,116,144,0.12) !important;
+}
+/* KPI значения — тёмные чернильные, премиальный шрифт */
+html[data-theme="light"] .kpi .v,
+html[data-theme="light"] .kpi .k .v,
+html[data-theme="light"] .stat-value {
+  color: var(--t1) !important;
+  font-variant-numeric: oldstyle-nums !important;
+}
+html[data-theme="light"] .kpi .t,
+html[data-theme="light"] .kpi .k .t {
+  color: var(--t3) !important;
+  letter-spacing: 0.05em !important;
+}
+/* KPI hover — убираем тёмный glow */
+html[data-theme="light"] .kpi .k:hover {
+  box-shadow: 3px 4px 0 rgba(0,0,0,0.06), 0 6px 24px rgba(0,0,0,0.08) !important;
+}
+
+/* ─── §48-B: Топбар — трёхцветная лента снизу (как в NYT) ─── */
+/* Заменяем body::before из app.css, который применяется глобально */
+html[data-theme="light"] .topbar::after,
+html[data-theme="light"] .cr-topbar::after,
+html[data-theme="light"] header.main-header::after {
+  content: '' !important;
+  position: absolute !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: 2px !important;
+  background: linear-gradient(90deg, var(--red) 0%, var(--gold) 50%, var(--blue) 100%) !important;
+  opacity: 0.45 !important;
+  pointer-events: none !important;
+}
+html[data-theme="light"] .topbar,
+html[data-theme="light"] .cr-topbar,
+html[data-theme="light"] header.main-header {
+  position: relative !important;
+}
+/* Убираем body::before (тёмная полоса сверху) в светлой теме */
+html[data-theme="light"] body::before {
+  display: none !important;
+}
+
+/* ─── §48-C: Sidebar — премиум active state (золотой маркер + фон) ─── */
+html[data-theme="light"] .navitem.active,
+html[data-theme="light"] .nav-item.active,
+html[data-theme="light"] .sidenav .active {
+  background: rgba(184,132,26,0.10) !important;
+  color: var(--gold) !important;
+  position: relative !important;
+}
+/* Золотая левая полоса — только через ::before чтобы не сдвигать контент */
+html[data-theme="light"] .navitem.active::before,
+html[data-theme="light"] .nav-item.active::before {
+  content: '' !important;
+  position: absolute !important;
+  left: 0 !important;
+  top: 15% !important;
+  bottom: 15% !important;
+  width: 3px !important;
+  background: var(--gold) !important;
+  border-radius: 0 2px 2px 0 !important;
+}
+/* Иконки в активном элементе — золото */
+html[data-theme="light"] .navitem.active svg,
+html[data-theme="light"] .navitem.active .nav-icon {
+  color: var(--gold) !important;
+}
+/* Hover — тёплый */
+html[data-theme="light"] .navitem:hover,
+html[data-theme="light"] .nav-item:hover {
+  background: rgba(139,120,90,0.08) !important;
+  color: var(--t1) !important;
+}
+
+/* ─── §48-D: Search modal — рамка + премиум вид ─── */
+html[data-theme="light"] .search-modal {
+  background: var(--bg1) !important;
+  border: 1px solid var(--brd) !important;
+  box-shadow: var(--shadow-xl), 0 0 0 1px rgba(184,132,26,0.08) !important;
+}
+/* Золотая верхняя полоса уже есть через ::before в app.css — оставляем */
+html[data-theme="light"] .search-modal-input,
+html[data-theme="light"] .search-input-main {
+  background: transparent !important;
+  color: var(--t1) !important;
+  border-bottom: 1px solid var(--brd) !important;
+}
+html[data-theme="light"] .search-result-item:hover,
+html[data-theme="light"] .search-result-item--focused {
+  background: rgba(184,132,26,0.07) !important;
+}
+html[data-theme="light"] .search-result-item--active {
+  background: rgba(184,132,26,0.12) !important;
+  border-left: 3px solid var(--gold) !important;
+}
+html[data-theme="light"] .search-kbd,
+html[data-theme="light"] .kbd {
+  background: var(--bg4) !important;
+  border: 1px solid var(--brd) !important;
+  color: var(--t2) !important;
+  box-shadow: 0 1px 0 var(--brd) !important;
+}
+
+/* ─── §48-E: My-mail оставшиеся невидимые элементы ─── */
+html[data-theme="light"] .mymail-sidebar-divider {
+  background: var(--brd) !important;
+}
+html[data-theme="light"] .mymail-account-info {
+  border-top-color: var(--brd) !important;
+}
+html[data-theme="light"] .mymail-list::-webkit-scrollbar-thumb,
+html[data-theme="light"] .mymail-folders::-webkit-scrollbar-thumb {
+  background: rgba(184,132,26,0.20) !important;
+}
+html[data-theme="light"] .mymail-btn-icon:hover {
+  border-color: var(--brd) !important;
+}
+/* badge-pulse: убираем синий neon */
+html[data-theme="light"] .mymail-folder-badge.pulse {
+  animation-name: none !important;
+  box-shadow: none !important;
+}
+
+/* ─── §48-F: Типографика — премиальные настройки ─── */
+html[data-theme="light"] body,
+html[data-theme="light"] .main-content,
+html[data-theme="light"] #layout {
+  font-feature-settings: "kern" 1, "liga" 1 !important;
+  text-rendering: optimizeLegibility !important;
+  -webkit-font-smoothing: antialiased !important;
+}
+/* Числа в таблицах — oldstyle для кассового вида */
+html[data-theme="light"] td,
+html[data-theme="light"] .cr-table td,
+html[data-theme="light"] .kpi .v,
+html[data-theme="light"] .stat-value,
+html[data-theme="light"] .cr-metric__value {
+  font-variant-numeric: oldstyle-nums !important;
+}
+/* Заголовки страниц — чуть более контрастные, Cinzel если доступен */
+html[data-theme="light"] h1,
+html[data-theme="light"] .page-title,
+html[data-theme="light"] .cr-page-title {
+  letter-spacing: -0.01em !important;
+  color: var(--t1) !important;
+}
+
+/* ─── §48-G: Анимация появления контента — fade + slide ─── */
+@keyframes lt-page-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+html[data-theme="light"] .main-content > *,
+html[data-theme="light"] #layout > * {
+  animation-name: lt-page-in !important;
+  animation-duration: 0.30s !important;
+  animation-timing-function: ease-out !important;
+  animation-fill-mode: both !important;
+}
+/* Каскадная задержка для дочерних блоков */
+html[data-theme="light"] .main-content > *:nth-child(1),
+html[data-theme="light"] #layout > *:nth-child(1) { animation-delay: 0.02s !important; }
+html[data-theme="light"] .main-content > *:nth-child(2),
+html[data-theme="light"] #layout > *:nth-child(2) { animation-delay: 0.06s !important; }
+html[data-theme="light"] .main-content > *:nth-child(3),
+html[data-theme="light"] #layout > *:nth-child(3) { animation-delay: 0.10s !important; }
+html[data-theme="light"] .main-content > *:nth-child(4),
+html[data-theme="light"] #layout > *:nth-child(4) { animation-delay: 0.14s !important; }
+html[data-theme="light"] .main-content > *:nth-child(n+5),
+html[data-theme="light"] #layout > *:nth-child(n+5) { animation-delay: 0.18s !important; }
+
+/* ─── §48-H: Card hover — золотой shimmer (без neon) ─── */
+@keyframes lt-gold-shine {
+  0%   { left: -60%; }
+  100% { left: 130%; }
+}
+html[data-theme="light"] .cr-card,
+html[data-theme="light"] .card,
+html[data-theme="light"] .panel {
+  overflow: hidden !important;
+}
+html[data-theme="light"] .cr-card::after,
+html[data-theme="light"] .card::after,
+html[data-theme="light"] .panel::after {
+  content: '' !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: -60% !important;
+  width: 40% !important;
+  height: 100% !important;
+  background: linear-gradient(
+    105deg,
+    transparent 30%,
+    rgba(212,168,67,0.06) 50%,
+    transparent 70%
+  ) !important;
+  opacity: 0 !important;
+  transition: opacity 0.2s !important;
+  pointer-events: none !important;
+  animation-name: none !important;
+}
+html[data-theme="light"] .cr-card:hover::after,
+html[data-theme="light"] .card:hover::after,
+html[data-theme="light"] .panel:hover::after {
+  opacity: 1 !important;
+  animation: lt-gold-shine 0.7s ease !important;
+}
+
+/* ─── §48-I: Таблицы — редакционный стиль ─── */
+html[data-theme="light"] table thead tr {
+  background: var(--bg4) !important;
+  border-bottom: 2px solid rgba(184,132,26,0.20) !important;
+}
+html[data-theme="light"] table tbody tr:last-child td {
+  border-bottom: none !important;
+}
+/* Выбранная строка — тёплый золотой акцент */
+html[data-theme="light"] table tbody tr.selected td,
+html[data-theme="light"] table tbody tr.active td,
+html[data-theme="light"] .cr-table tbody tr.active td {
+  background: rgba(184,132,26,0.07) !important;
+  border-left: 3px solid var(--gold) !important;
+}
+/* Hover строки */
+html[data-theme="light"] table tbody tr:hover td,
+html[data-theme="light"] .cr-table tbody tr:hover td {
+  background: rgba(184,132,26,0.04) !important;
+}
+
+/* ─── §48-J: Статусные бейджи — финальная консистентность ─── */
+/* Убеждаемся что все варианты имён (badge/chip/pill/status) одинаково выглядят */
+html[data-theme="light"] .badge.primary,
+html[data-theme="light"] .chip.primary {
+  background: rgba(26,63,116,0.10) !important;
+  color: var(--blue) !important;
+  border: 1px solid rgba(26,63,116,0.20) !important;
+}
+html[data-theme="light"] .badge.gold,
+html[data-theme="light"] .chip.gold,
+html[data-theme="light"] .badge.vip {
+  background: rgba(184,132,26,0.10) !important;
+  color: var(--gold) !important;
+  border: 1px solid rgba(184,132,26,0.20) !important;
+}
+html[data-theme="light"] .badge.neutral,
+html[data-theme="light"] .chip.neutral,
+html[data-theme="light"] .badge.secondary {
+  background: var(--bg4) !important;
+  color: var(--t2) !important;
+  border: 1px solid var(--brd) !important;
+}
+
+/* ─── §48-K: Декоративный золотой орнамент для раздела Dashboard ─── */
+/* Виджет приветствия — золотой акцент */
+html[data-theme="light"] .viking-welcome {
+  position: relative !important;
+}
+html[data-theme="light"] .viking-welcome::before {
+  content: 'ᚠ ᚢ ᚦ ᚨ ᚱ ᚲ' !important;
+  position: absolute !important;
+  bottom: 8px !important;
+  right: 16px !important;
+  font-size: 11px !important;
+  letter-spacing: 0.3em !important;
+  color: rgba(184,132,26,0.25) !important;
+  pointer-events: none !important;
+  animation-name: none !important;
+}
+
+/* ─── §48-L: Оверлей модальных окон — тёплый, не чёрный ─── */
+html[data-theme="light"] .modal-overlay,
+html[data-theme="light"] .overlay,
+html[data-theme="light"] .cr-overlay {
+  background: rgba(28,25,20,0.45) !important;
+  backdrop-filter: blur(2px) !important;
+}
+
+/* ─── §48-M: Toast уведомления — пергаментный стиль ─── */
+html[data-theme="light"] .toast,
+html[data-theme="light"] .notification,
+html[data-theme="light"] .cr-toast {
+  background: var(--bg1) !important;
+  border: 1px solid var(--brd) !important;
+  box-shadow: var(--shadow-lg) !important;
+  color: var(--t1) !important;
+}
+html[data-theme="light"] .toast.success,
+html[data-theme="light"] .cr-toast--success {
+  border-left: 4px solid var(--ok) !important;
+}
+html[data-theme="light"] .toast.error,
+html[data-theme="light"] .toast.danger,
+html[data-theme="light"] .cr-toast--error {
+  border-left: 4px solid var(--red) !important;
+}
+html[data-theme="light"] .toast.warning,
+html[data-theme="light"] .cr-toast--warning {
+  border-left: 4px solid var(--gold) !important;
+}
+html[data-theme="light"] .toast.info,
+html[data-theme="light"] .cr-toast--info {
+  border-left: 4px solid var(--blue) !important;
+}
+
+/* ─── §48 END — Light Theme v2.2.0 FINAL ─── */
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §49. CR-MODAL FORMS — Невидимые рамки и синие focus-ring
+   cr-f-field, cr-f-search, cr-f-person, hr-разделитель внутри модалок.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* cr-f-field: hover и focus — тёплые рамки вместо rgba(255,255,255,...) и синего */
+html[data-theme="light"] .cr-f-field input:hover,
+html[data-theme="light"] .cr-f-field textarea:hover,
+html[data-theme="light"] .cr-f-field select:hover {
+  border-color: rgba(184,132,26,0.30) !important;
+}
+html[data-theme="light"] .cr-f-field input:focus,
+html[data-theme="light"] .cr-f-field textarea:focus,
+html[data-theme="light"] .cr-f-field select:focus {
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 0 3px rgba(184,132,26,0.18) !important;
+  outline: none !important;
+}
+
+/* cr-f-search: focus-within — золотой ring вместо синего */
+html[data-theme="light"] .cr-f-search:focus-within {
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 0 3px rgba(184,132,26,0.15) !important;
+}
+
+/* cr-f-person: hover — видимая тёплая рамка */
+html[data-theme="light"] .cr-f-person:hover {
+  border-color: rgba(184,132,26,0.25) !important;
+  background: rgba(184,132,26,0.04) !important;
+}
+
+/* cr-m__body hr: невидимый разделитель → тёплый */
+html[data-theme="light"] .cr-m__body hr,
+html[data-theme="light"] .cr-m__body .hr {
+  border-top-color: var(--brd) !important;
+}
+
+/* cr-m__body .btn.ghost hover: невидимый фон → тёплый */
+html[data-theme="light"] .cr-m__body .btn.ghost:hover {
+  background: rgba(184,132,26,0.05) !important;
+  color: var(--gold) !important;
+  border-color: rgba(184,132,26,0.25) !important;
+}
+
+/* ─── §49 END ─── */

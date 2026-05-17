@@ -31,37 +31,22 @@ function playHammerStrike() {
   } catch (_) {}
 }
 
-// Valknut SVG — 3 interlocked triangles of Odin
-function ValknutLogo({ size = 120 }) {
+function AsgardLogo({ size = 140 }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 100 100" className="fa-logo">
-      <defs>
-        <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#F5D070" />
-          <stop offset="50%" stopColor="#D4A843" />
-          <stop offset="100%" stopColor="#8B7030" />
-        </linearGradient>
-        <filter id="goldGlow">
-          <feGaussianBlur stdDeviation="2" result="glow" />
-          <feMerge><feMergeNode in="glow" /><feMergeNode in="SourceGraphic" /></feMerge>
-        </filter>
-      </defs>
-      <g fill="none" stroke="url(#goldGrad)" strokeWidth="2.5" strokeLinejoin="round" filter="url(#goldGlow)">
-        {/* Triangle 1 — top */}
-        <path d="M50 10 L30 45 L50 35 L70 45 Z" />
-        {/* Triangle 2 — bottom-left */}
-        <path d="M25 80 L20 45 L40 55 L45 80 Z" />
-        {/* Triangle 3 — bottom-right */}
-        <path d="M75 80 L55 80 L60 55 L80 45 Z" />
-        {/* Interlocking lines */}
-        <path d="M50 35 L40 55" strokeWidth="2" />
-        <path d="M50 35 L60 55" strokeWidth="2" />
-        <path d="M40 55 L45 80" strokeWidth="2" />
-        <path d="M60 55 L55 80" strokeWidth="2" />
-        {/* Inner ring */}
-        <circle cx="50" cy="50" r="8" strokeWidth="1.5" opacity="0.5" />
-      </g>
-    </svg>
+    <div
+      className="fa-logo"
+      style={{
+        width: size,
+        filter: 'drop-shadow(0 0 24px rgba(200,41,59,0.35)) drop-shadow(0 0 48px rgba(30,77,140,0.25))',
+      }}
+    >
+      <img
+        src="/asgard-logo.png"
+        alt="ASGARD CRM"
+        draggable={false}
+        style={{ width: '100%', height: 'auto', userSelect: 'none' }}
+      />
+    </div>
   );
 }
 
@@ -143,10 +128,9 @@ export default function FieldWelcome() {
       <span className="fa-rune fa-rune-br">ᛟ</span>
 
       <div className={`fa-welcome-content ${showContent ? 'fa-visible' : ''}`}>
-        <ValknutLogo size={120} />
+        <AsgardLogo size={140} />
 
-        <h1 className="fa-title">ASGARD</h1>
-        <p className="fa-subtitle">Полевая служба</p>
+        <p className="fa-subtitle" style={{ marginTop: 8 }}>Полевая служба</p>
 
         <p className="fa-quote">
           &laquo;{typedQuote}<span className="fa-cursor">|</span>&raquo;
