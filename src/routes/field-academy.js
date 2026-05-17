@@ -95,6 +95,10 @@ async function routes(fastify) {
     const eid = req.fieldEmployee.id;
     const { sun } = currentWeekRange();
 
+    const monDate = mon.toISOString().split('T')[0];
+
+    // Приоритет: урок текущей недели (release_monday = сегодняшний пн)
+    // Запасной: самый свежий урок с release_monday <= сегодня
     const { rows: [lesson] } = await db.query(`
       SELECT al.*,
              awp.read_started_at, awp.read_completed_at, awp.read_time_seconds,
@@ -104,9 +108,12 @@ async function routes(fastify) {
       LEFT JOIN academy_worker_progress awp
         ON awp.lesson_id = al.id AND awp.employee_id = $1
       WHERE al.status = 'published'
-      ORDER BY al.week_number DESC
+        AND (al.release_monday IS NULL OR al.release_monday <= $2)
+      ORDER BY
+        CASE WHEN al.release_monday = $2 THEN 0 ELSE 1 END,
+        al.week_number DESC
       LIMIT 1
-    `, [eid]);
+    `, [eid, monDate]);
 
     if (!lesson) return { lesson: null };
 
@@ -480,10 +487,12 @@ async function routes(fastify) {
     mon.setDate(now.getDate() - (dayOfWeek - 1));
     mon.setHours(0, 0, 0, 0);
 
-    // Урок, опубликованный НА ПРОШЛОЙ неделе (окно: пн-7дней .. пн)
-    // Так рабочий не может "забежать вперёд" и сдать все уроки разом
+    // Урок чья release_monday была НА ПРОШЛОЙ неделе (уже обязателен, дедлайн прошёл)
+    // Рабочий не может "забежать вперёд" — каждая неделя независима
     const prevMon = new Date(mon);
     prevMon.setDate(mon.getDate() - 7);
+    const prevMonDate = prevMon.toISOString().split('T')[0];
+    const monDate = mon.toISOString().split('T')[0];
 
     const { rows: [lesson] } = await db.query(`
       SELECT al.id, al.title, awp.passed
@@ -491,11 +500,11 @@ async function routes(fastify) {
       LEFT JOIN academy_worker_progress awp
         ON awp.lesson_id = al.id AND awp.employee_id = $1
       WHERE al.status = 'published'
-        AND al.published_at >= $2
-        AND al.published_at < $3
+        AND al.release_monday >= $2
+        AND al.release_monday < $3
       ORDER BY al.week_number DESC
       LIMIT 1
-    `, [eid, prevMon.toISOString(), mon.toISOString()]);
+    `, [eid, prevMonDate, monDate]);
 
     if (!lesson) return { allowed: true, reason: null };
 

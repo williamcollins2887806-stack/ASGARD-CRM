@@ -621,7 +621,7 @@ async function routes(fastify) {
 
     // Текущий опубликованный урок + статистика прохождения
     const { rows: [currentLesson] } = await db.query(`
-      SELECT id, title, cover_icon, week_number, published_at FROM academy_lessons
+      SELECT id, title, cover_icon, week_number, published_at, release_monday FROM academy_lessons
       WHERE status = 'published' ORDER BY week_number DESC LIMIT 1
     `);
 
@@ -662,11 +662,11 @@ async function routes(fastify) {
       }
     }
 
-    // Последние 5 опубликованных уроков
+    // Последние 10 опубликованных уроков
     const { rows: published } = await db.query(`
-      SELECT id, title, cover_icon, week_number, published_at,
+      SELECT id, title, cover_icon, week_number, published_at, release_monday,
         (SELECT COUNT(*) FROM academy_worker_progress WHERE lesson_id=academy_lessons.id AND passed) AS passed_count
-      FROM academy_lessons WHERE status='published' ORDER BY week_number DESC LIMIT 5
+      FROM academy_lessons WHERE status='published' ORDER BY week_number DESC LIMIT 10
     `);
 
     return { drafts, current_lesson: currentLesson, progress: progressStats, published };
@@ -693,6 +693,7 @@ async function routes(fastify) {
   // ═══════════════════════════════════════════════════════════════════
   fastify.post('/academy/:id/approve', auth, async (req, reply) => {
     const lessonId = parseInt(req.params.id);
+    const { release_monday } = req.body || {};
 
     const { rows: [lesson] } = await db.query(
       `SELECT * FROM academy_lessons WHERE id = $1`, [lessonId]
@@ -706,11 +707,49 @@ async function routes(fastify) {
     );
     if (parseInt(qCount.cnt) === 0) return reply.code(400).send({ error: 'Нельзя опубликовать урок без вопросов' });
 
+    // Валидация release_monday — должен быть понедельником если задан
+    let relDate = null;
+    if (release_monday) {
+      relDate = new Date(release_monday);
+      if (relDate.getDay() !== 1) {
+        return reply.code(400).send({ error: 'release_monday должен быть понедельником' });
+      }
+    }
+
     const { rows: [updated] } = await db.query(`
-      UPDATE academy_lessons SET status='published', published_at=NOW() WHERE id=$1 RETURNING id, title, status, published_at
-    `, [lessonId]);
+      UPDATE academy_lessons
+        SET status='published', published_at=NOW(), release_monday=$2
+      WHERE id=$1
+      RETURNING id, title, status, published_at, release_monday
+    `, [lessonId, relDate ? relDate.toISOString().split('T')[0] : null]);
 
     return { lesson: updated };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // PUT /academy/:id/release-date — установить/изменить дату блокировки
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.put('/academy/:id/release-date', auth, async (req, reply) => {
+    const lessonId = parseInt(req.params.id);
+    const { release_monday } = req.body || {};
+
+    if (!release_monday) return reply.code(400).send({ error: 'release_monday обязателен' });
+
+    const relDate = new Date(release_monday);
+    if (relDate.getDay() !== 1) {
+      return reply.code(400).send({ error: 'release_monday должен быть понедельником' });
+    }
+
+    const { rows: [lesson] } = await db.query(
+      `SELECT id FROM academy_lessons WHERE id=$1 AND status='published'`, [lessonId]
+    );
+    if (!lesson) return reply.code(404).send({ error: 'Урок не найден' });
+
+    await db.query(`
+      UPDATE academy_lessons SET release_monday=$2 WHERE id=$1
+    `, [lessonId, relDate.toISOString().split('T')[0]]);
+
+    return { ok: true };
   });
 
   // ═══════════════════════════════════════════════════════════════════
