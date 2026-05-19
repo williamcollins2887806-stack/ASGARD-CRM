@@ -5,6 +5,7 @@ import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { WIDGET_REGISTRY, getLayout, roleMatch } from '@/widgets';
 import { Shield, ChevronRight, HardHat } from 'lucide-react';
 import { CrmUpdateBanner } from '@/components/shared/CrmUpdateBanner';
+import { MobileAppBanner } from '@/components/shared/MobileAppBanner';
 
 /**
  * Home — оркестратор дашборда «Зал Ярла»
@@ -38,6 +39,7 @@ export default function Home() {
   return (
     <div className="flex flex-col h-full bg-primary">
       <CrmUpdateBanner />
+      <MobileAppBanner />
       <PullToRefresh onRefresh={handleRefresh}>
         <div
           className="px-3 pb-4"

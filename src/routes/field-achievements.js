@@ -9,6 +9,7 @@
  */
 
 const achievementChecker = require('../services/achievementChecker');
+const { getWorkerTitle } = require('../services/titleService');
 
 async function routes(fastify) {
   const db = fastify.db;
@@ -25,12 +26,15 @@ async function routes(fastify) {
     );
     const balance = balRows[0] || { points_balance: 0, points_earned_total: 0 };
 
+    const title = await getWorkerTitle(db, employeeId).catch(() => null);
+
     return {
       achievements: progress,
       points: balance.points_balance,
       points_total: balance.points_earned_total,
       earned_count: progress.filter((a) => a.earned).length,
       total_count: progress.length,
+      title,
     };
   });
 
@@ -45,14 +49,22 @@ async function routes(fastify) {
   fastify.get('/leaderboard', { preHandler: [fastify.fieldAuthenticate] }, async () => {
     const { rows } = await db.query(`
       SELECT apb.employee_id, e.fio, apb.points_earned_total,
-             (SELECT COUNT(*) FROM employee_achievements ea WHERE ea.employee_id = apb.employee_id) as achievements_count
+             (SELECT COUNT(*)::int FROM employee_achievements ea WHERE ea.employee_id = apb.employee_id) as achievements_count
       FROM achievement_points_balance apb
       JOIN employees e ON e.id = apb.employee_id
       WHERE apb.points_earned_total > 0
       ORDER BY apb.points_earned_total DESC
       LIMIT 20
     `);
-    return { leaderboard: rows };
+
+    const { TITLES } = require('../services/titleService');
+    const leaderboard = rows.map((r) => {
+      let title = TITLES[0];
+      for (const t of TITLES) { if (r.achievements_count >= t.min) title = t; }
+      return { ...r, title_id: title.id, title_name: title.name, title_icon: title.icon, title_color: title.color };
+    });
+
+    return { leaderboard };
   });
 
   // POST /check — force-check achievements for current employee

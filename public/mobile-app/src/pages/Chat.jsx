@@ -10,6 +10,7 @@ import { useChat } from '@/hooks/useChat';
 import { useSSE } from '@/hooks/useSSE';
 import { useHaptic } from '@/hooks/useHaptic';
 import { useAuthStore } from '@/stores/authStore';
+import { useChatStore } from '@/stores/chatStore';
 import { relativeTime } from '@/lib/utils';
 
 const STATUS_COLORS = {
@@ -205,6 +206,7 @@ export default function Chat() {
   const [newChatOpen, setNewChatOpen] = useState(false);
   const haptic = useHaptic();
   const userId = useAuthStore((s) => s.user?.id);
+  const incrementChat = useChatStore((s) => s.incrementChat);
 
   // Tab state (persisted to localStorage)
   const [activeTab, setActiveTab] = useState(() =>
@@ -238,6 +240,8 @@ export default function Chat() {
     });
     return { all: estUnread + persUnread, estimates: estUnread, personal: persUnread };
   }, [chats]);
+
+  // initFromChats в useChat уже синхронизирует store при загрузке списка чатов
 
   // Default tab = tab with max unread (first load only)
   const initializedRef = useRef(false);
@@ -335,9 +339,11 @@ export default function Chat() {
               (chats.find((c) => String(c.id) === String(data.chat_id))?.unread_count || 0) + 1,
           }),
         });
+        // Обновляем глобальный стор (AppLayout SSE тоже слушает, но пропускает /chat страницу)
+        if (!isMine) incrementChat(data.chat_id);
       }
     },
-    [updateChat, chats, userId]
+    [updateChat, chats, userId, incrementChat]
   );
 
   useSSE(handleSSE);

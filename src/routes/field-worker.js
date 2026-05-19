@@ -93,6 +93,13 @@ async function routes(fastify, options) {
       const runes = parseInt(wallets.find(w => w.currency === 'runes')?.balance || 0);
       const xp    = parseInt(wallets.find(w => w.currency === 'xp')?.balance    || 0);
 
+      // Worker title (computed from earned achievements count)
+      let title = null;
+      try {
+        const { getWorkerTitle } = require('../services/titleService');
+        title = await getWorkerTitle(db, emp.id);
+      } catch { /* non-critical */ }
+
       return {
         id: emp.id,
         fio: emp.fio,
@@ -111,6 +118,7 @@ async function routes(fastify, options) {
         phone_verified: emp.phone_verified,
         day_rate: emp.day_rate,
         achievements,
+        title,
         // Gamification
         runes,
         xp,

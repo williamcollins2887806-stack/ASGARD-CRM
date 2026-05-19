@@ -363,6 +363,18 @@ async function routes(fastify, options) {
         achievementChecker.checkAndGrant(db, req.fieldEmployee.id).catch(() => {});
       } catch { /* achievementChecker not available yet */ }
 
+      // Brigade achievement check (fire-and-forget)
+      try {
+        const { checkBrigadeAchievements } = require('../services/brigadeAchievementChecker');
+        checkBrigadeAchievements(db, checkin.work_id).catch(() => {});
+      } catch { /* non-critical */ }
+
+      // Seasonal challenge progress (fire-and-forget)
+      try {
+        const { checkSeasonalProgress } = require('../services/seasonalChecker');
+        checkSeasonalProgress(db, req.fieldEmployee.id).catch(() => {});
+      } catch { /* non-critical */ }
+
       // Quest progress hooks (fire-and-forget)
       try {
         const { updateQuestProgress, setQuestProgress, updateBrigadeQuestProgress } = require('../services/questProgress');
@@ -715,6 +727,59 @@ async function routes(fastify, options) {
       fastify.log.error('[field-checkin] /worker/my-work error:', err);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // PATCH /diary/:checkinId — save diary entry for a shift
+  // ─────────────────────────────────────────────────────────────────────
+  fastify.patch('/diary/:checkinId', auth, async (req, reply) => {
+    const empId = req.fieldEmployee.id;
+    const checkinId = parseInt(req.params.checkinId, 10);
+    const { text, mood, rating } = req.body || {};
+
+    const VALID_MOODS = ['great', 'good', 'neutral', 'tired', 'hard'];
+    const moodVal = VALID_MOODS.includes(mood) ? mood : null;
+    const ratingVal = (rating >= 1 && rating <= 5) ? Math.round(rating) : null;
+
+    const { rows } = await db.query(
+      `UPDATE field_checkins
+       SET diary_text = $1, diary_mood = $2, diary_rating = $3, diary_updated_at = NOW()
+       WHERE id = $4 AND employee_id = $5
+       RETURNING id`,
+      [text || null, moodVal, ratingVal, checkinId, empId]
+    );
+
+    if (rows.length === 0) return reply.code(404).send({ error: 'Смена не найдена' });
+    return { ok: true };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // GET /diary — worker's shift diary list
+  // ─────────────────────────────────────────────────────────────────────
+  fastify.get('/diary', auth, async (req) => {
+    const empId = req.fieldEmployee.id;
+    const limit = Math.min(parseInt(req.query.limit || 50), 100);
+    const offset = parseInt(req.query.offset || 0);
+
+    const { rows } = await db.query(`
+      SELECT fc.id, fc.date, fc.checkin_at, fc.checkout_at, fc.shift,
+             fc.hours_worked, fc.amount_earned, fc.status,
+             fc.note, fc.diary_text, fc.diary_mood, fc.diary_rating, fc.diary_updated_at,
+             w.work_title, w.city, w.object_name
+      FROM field_checkins fc
+      LEFT JOIN works w ON w.id = fc.work_id
+      WHERE fc.employee_id = $1
+        AND fc.status = 'completed'
+      ORDER BY fc.date DESC
+      LIMIT $2 OFFSET $3
+    `, [empId, limit, offset]);
+
+    const { rows: [{ total }] } = await db.query(
+      `SELECT COUNT(*)::int as total FROM field_checkins WHERE employee_id=$1 AND status='completed'`,
+      [empId]
+    );
+
+    return { shifts: rows, total, limit, offset };
   });
 }
 

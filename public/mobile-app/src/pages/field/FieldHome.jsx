@@ -8,6 +8,21 @@ import {
 import { fieldApi } from '@/api/fieldClient';
 import { useFieldAuthStore } from '@/stores/fieldAuthStore';
 import { useHaptic } from '@/hooks/useHaptic';
+import { usePushSubscription } from '@/hooks/usePushSubscription';
+
+const PUSH_DISMISSED_KEY = 'asgard_field_push_dismissed_v1';
+const IOS_HINT_DISMISSED_KEY = 'asgard_ios_hint_dismissed_v1';
+
+// Detect iOS Safari (not standalone)
+function detectIOSSafari() {
+  if (typeof window === 'undefined') return false;
+  const ua = navigator.userAgent;
+  const isIOS = /iPhone|iPad|iPod/.test(ua) && !/CriOS|FxiOS|OPiOS|mercury/.test(ua);
+  const isSafari = /Safari/.test(ua) && !/Chrome/.test(ua);
+  const isStandalone = window.navigator.standalone === true ||
+    window.matchMedia('(display-mode: standalone)').matches;
+  return isIOS && isSafari && !isStandalone;
+}
 
 const fmtMoney = (n) => n != null ? Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' ₽' : null;
 
@@ -109,6 +124,9 @@ export default function FieldHome() {
   const [myRank, setMyRank] = useState(null);
   const [mimirTip, setMimirTip] = useState(null);
   const [academyAlert, setAcademyAlert] = useState(null); // {type:'blocked'|'reminder', title, lesson_id, daysLeft}
+  const [showPushPrompt, setShowPushPrompt] = useState(false);
+  const [showIOSHint, setShowIOSHint] = useState(false);
+  const push = usePushSubscription();
   const timerRef = useRef(null);
   const touchStartY = useRef(0);
   const [pulling, setPulling] = useState(false);
@@ -151,6 +169,22 @@ export default function FieldHome() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Show push prompt after data loaded (not dismissed, not subscribed, supported)
+  useEffect(() => {
+    if (!push.supported || push.subscribed || push.permission === 'denied') return;
+    if (localStorage.getItem(PUSH_DISMISSED_KEY)) return;
+    const t = setTimeout(() => setShowPushPrompt(true), 3000);
+    return () => clearTimeout(t);
+  }, [push.supported, push.subscribed, push.permission]);
+
+  // Show iOS "Add to Home Screen" hint for iOS Safari users
+  useEffect(() => {
+    if (!detectIOSSafari()) return;
+    if (localStorage.getItem(IOS_HINT_DISMISSED_KEY)) return;
+    const t = setTimeout(() => setShowIOSHint(true), 2000);
+    return () => clearTimeout(t);
+  }, []);
 
   // Academy: check if worker needs to pass a test (non-blocking fetch)
   useEffect(() => {
@@ -381,6 +415,130 @@ export default function FieldHome() {
         <p className="text-sm capitalize mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{fmtDate()}</p>
         <p className="text-xs italic mt-2" style={{ color: 'var(--text-tertiary)' }}>«{quote}»</p>
       </div>
+
+      {/* Download app banner — only in browser, not native APK */}
+      {!window?.Capacitor?.isNativePlatform?.() && (
+        <a
+          href="https://92.242.61.184/download"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 14,
+            background: 'linear-gradient(135deg, rgba(200,168,78,0.18) 0%, rgba(200,168,78,0.08) 100%)',
+            border: '1px solid rgba(200,168,78,0.4)',
+            borderRadius: 16, padding: '14px 16px', marginBottom: 20,
+            textDecoration: 'none',
+            animation: 'fadeInUp var(--motion-normal) var(--ease-spring) both',
+          }}
+        >
+          <div style={{
+            width: 46, height: 46, borderRadius: 12, flexShrink: 0,
+            background: 'linear-gradient(135deg, rgba(200,168,78,0.3), rgba(200,168,78,0.1))',
+            border: '1px solid rgba(200,168,78,0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 24,
+          }}>🛡️</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--gold)', marginBottom: 2 }}>
+              Скачать приложение ASGARD
+            </p>
+            <p style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+              Установи APK — работай без браузера. Быстрее, удобнее, надёжнее.
+            </p>
+          </div>
+          <div style={{
+            fontSize: 11, fontWeight: 700, color: '#0a0a0c',
+            background: 'var(--gold)', borderRadius: 8,
+            padding: '6px 12px', whiteSpace: 'nowrap', flexShrink: 0,
+          }}>
+            Скачать
+          </div>
+        </a>
+      )}
+
+      {/* iOS "Add to Home Screen" hint */}
+      {showIOSHint && (
+        <div style={{
+          position: 'fixed', bottom: 80, left: 16, right: 16, zIndex: 500,
+          background: 'linear-gradient(135deg, #1a1a24, #141420)',
+          border: '1px solid rgba(200,168,78,0.4)',
+          borderRadius: 18, padding: '16px',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+          animation: 'fadeInUp var(--motion-normal) var(--ease-spring) both',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+            <p style={{ fontSize: 14, fontWeight: 700, color: '#c8a84e' }}>📲 Добавь приложение на экран</p>
+            <button onClick={() => { setShowIOSHint(false); localStorage.setItem(IOS_HINT_DISMISSED_KEY, '1'); }}
+              style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 18, cursor: 'pointer', padding: '0 4px' }}>×</button>
+          </div>
+          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5, marginBottom: 12 }}>
+            Работай как в приложении — без браузерных панелей.
+          </p>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {[
+              { icon: '⎙', label: 'Нажми «Поделиться»' },
+              { icon: '→', label: '' },
+              { icon: '＋', label: '«На экран "Домой"»' },
+            ].map((s, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                {i > 0 && <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12 }}>→</span>}
+                <div style={{
+                  background: 'rgba(200,168,78,0.15)', border: '1px solid rgba(200,168,78,0.3)',
+                  borderRadius: 10, padding: '6px 10px', textAlign: 'center',
+                }}>
+                  <div style={{ fontSize: 16, marginBottom: 2 }}>{s.icon}</div>
+                  {s.label && <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.6)', lineHeight: 1.2 }}>{s.label}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Push notification prompt */}
+      {showPushPrompt && !push.subscribed && push.permission !== 'denied' && (
+        <div style={{
+          position: 'fixed', bottom: 80, left: 16, right: 16, zIndex: 500,
+          background: 'linear-gradient(135deg, #1a1a24, #141420)',
+          border: '1px solid rgba(74,144,217,0.4)',
+          borderRadius: 18, padding: '16px',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+          animation: 'fadeInUp var(--motion-normal) var(--ease-spring) both',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+            <p style={{ fontSize: 14, fontWeight: 700, color: '#4A90D9' }}>🔔 Включи уведомления</p>
+            <button onClick={() => { setShowPushPrompt(false); localStorage.setItem(PUSH_DISMISSED_KEY, '1'); }}
+              style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 18, cursor: 'pointer', padding: '0 4px' }}>×</button>
+          </div>
+          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5, marginBottom: 14 }}>
+            Получай уведомления о выплатах, заданиях и изменениях в расписании прямо на экран.
+          </p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={async () => {
+                const res = await push.subscribe();
+                if (res.ok) setShowPushPrompt(false);
+              }}
+              disabled={push.loading}
+              style={{
+                flex: 1, padding: '11px', borderRadius: 12, border: 'none',
+                background: 'linear-gradient(135deg, #4A90D9, #3a7bc8)',
+                color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+              }}
+            >
+              {push.loading ? '...' : '🔔 Включить'}
+            </button>
+            <button
+              onClick={() => { setShowPushPrompt(false); localStorage.setItem(PUSH_DISMISSED_KEY, '1'); }}
+              style={{
+                flex: 1, padding: '11px', borderRadius: 12,
+                background: 'transparent', border: '1px solid rgba(255,255,255,0.12)',
+                color: 'rgba(255,255,255,0.4)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              Не сейчас
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Error toast */}
       {error && (

@@ -7,38 +7,40 @@ import { PageShell } from '@/components/layout/PageShell';
 import { BottomSheet } from '@/components/shared/BottomSheet';
 import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
+import { EditEstimateMetadataSheet } from '@/components/estimates/EditEstimateMetadataSheet';
 import { formatMoney, relativeTime, formatDate } from '@/lib/utils';
 import {
   ArrowLeft, ChevronRight, ChevronDown, ChevronUp,
   Check, RotateCcw, HelpCircle, X, Send, MessageCircle,
-  Sparkles, AlertTriangle,
+  Sparkles, AlertTriangle, MessageSquare, Pencil,
+  Paperclip, FileText, Upload, Trash2,
 } from 'lucide-react';
 
 /* ── Constants ──────────────────────────────────────────── */
 
 const BLOCKS = [
-  { key: 'personnel_json', title: 'Персонал и ФОТ', color: '#AFA9EC' },
-  { key: 'current_costs_json', title: 'Текущие расходы', color: '#5DCAA5' },
-  { key: 'travel_json', title: 'Командировочные', color: '#85B7EB' },
-  { key: 'transport_json', title: 'Транспорт', color: '#F0997B' },
-  { key: 'chemistry_json', title: 'Химия и утилизация', color: '#FAC775' },
-  { key: 'contingency', title: 'Непредвиденные', color: '#B4B2A9' },
+  { key: 'personnel_json',    title: 'Персонал и ФОТ',        color: '#AFA9EC' },
+  { key: 'current_costs_json',title: 'Текущие расходы',        color: '#5DCAA5' },
+  { key: 'travel_json',       title: 'Командировочные',        color: '#85B7EB' },
+  { key: 'transport_json',    title: 'Транспорт',              color: '#F0997B' },
+  { key: 'chemistry_json',    title: 'Химия и утилизация',     color: '#FAC775' },
+  { key: 'contingency',       title: 'Непредвиденные',         color: '#B4B2A9' },
 ];
 
 const STATUS_MAP = {
-  draft: { label: 'Черновик', color: 'var(--text-tertiary)' },
-  sent: { label: 'На согласовании', color: 'var(--blue)' },
-  approved: { label: 'Согласован', color: 'var(--green)' },
-  rework: { label: 'На доработке', color: 'var(--gold)' },
-  question: { label: 'Вопрос', color: 'var(--gold)' },
-  rejected: { label: 'Отклонён', color: 'var(--red-soft)' },
+  draft:    { label: 'Черновик',        color: 'var(--text-tertiary)' },
+  sent:     { label: 'На согласовании', color: 'var(--blue)' },
+  approved: { label: 'Согласован',      color: 'var(--green)' },
+  rework:   { label: 'На доработке',    color: 'var(--gold)' },
+  question: { label: 'Вопрос',          color: 'var(--gold)' },
+  rejected: { label: 'Отклонён',        color: 'var(--red-soft)' },
 };
 
 const DIRECTOR_ACTIONS = [
-  { id: 'approve', label: 'Согласовать', icon: Check, color: 'var(--green)', needComment: false },
-  { id: 'rework', label: 'На доработку', icon: RotateCcw, color: 'var(--gold)', needComment: true },
-  { id: 'question', label: 'Задать вопрос', icon: HelpCircle, color: 'var(--blue)', needComment: true },
-  { id: 'reject', label: 'Отклонить', icon: X, color: 'var(--red-soft)', needComment: true },
+  { id: 'approve',  label: 'Согласовать',   icon: Check,       color: 'var(--green)',    needComment: false },
+  { id: 'rework',   label: 'На доработку',  icon: RotateCcw,   color: 'var(--gold)',     needComment: true },
+  { id: 'question', label: 'Задать вопрос', icon: HelpCircle,  color: 'var(--blue)',     needComment: true },
+  { id: 'reject',   label: 'Отклонить',     icon: X,           color: 'var(--red-soft)', needComment: true },
 ];
 
 const ACTION_LABELS = {
@@ -65,7 +67,11 @@ function blockSubtotal(calc, block) {
 }
 
 function isDirectorRole(role) {
-  return role && role.startsWith('DIRECTOR');
+  return role && (role.startsWith('DIRECTOR') || role === 'ADMIN');
+}
+
+function isAdminRole(role) {
+  return role === 'ADMIN';
 }
 
 function initials(name) {
@@ -89,6 +95,20 @@ function recalcRow(row, blockKey) {
   return row;
 }
 
+function fileIcon(mimeType) {
+  if (!mimeType) return FileText;
+  if (mimeType.includes('pdf')) return FileText;
+  if (mimeType.includes('image')) return FileText;
+  return FileText;
+}
+
+function formatFileSize(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024) return `${bytes} Б`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} КБ`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
+}
+
 /* ── Main Component ──────────────────────────────────────── */
 
 export default function EstimateReport() {
@@ -97,18 +117,22 @@ export default function EstimateReport() {
   const haptic = useHaptic();
   const user = useAuthStore((s) => s.user);
 
-  const [estimate, setEstimate] = useState(null);
+  const [estimate, setEstimate]     = useState(null);
   const [calculation, setCalculation] = useState(null);
-  const [comments, setComments] = useState([]);
-  const [analogs, setAnalogs] = useState([]);
-  const [diff, setDiff] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [comments, setComments]     = useState([]);
+  const [analogs, setAnalogs]       = useState([]);
+  const [diff, setDiff]             = useState(null);
+  const [documents, setDocuments]   = useState([]);
+  const [loading, setLoading]       = useState(true);
   const [selectedBlock, setSelectedBlock] = useState(null);
   const [actionSheet, setActionSheet] = useState(false);
   const [commentText, setCommentText] = useState('');
-  const [sending, setSending] = useState(false);
+  const [sending, setSending]       = useState(false);
   const [objectExpanded, setObjectExpanded] = useState(false);
+  const [editMetaOpen, setEditMetaOpen] = useState(false);
+  const [uploading, setUploading]   = useState(false);
   const [autoCalcing, setAutoCalcing] = useState(false);
+  const fileInputRef = useRef(null);
   const saveTimer = useRef(null);
 
   /* ── Role logic ── */
@@ -116,7 +140,7 @@ export default function EstimateReport() {
   const userId = user?.id;
   const isDirector = isDirectorRole(userRole);
   const isPM = userRole === 'PM' || userRole === 'HEAD_PM';
-  const isAdmin = userRole === 'ADMIN';
+  const isAdmin = isAdminRole(userRole);
   const isOwner = estimate?.pm_id === userId || estimate?.created_by === userId;
   const canEdit = (isPM || isAdmin) && isOwner && ['draft', 'rework', 'question'].includes(estimate?.approval_status);
   const canResubmit = (isPM || isAdmin) && isOwner && ['rework', 'question'].includes(estimate?.approval_status);
@@ -138,8 +162,8 @@ export default function EstimateReport() {
       setCalculation(cRes.calculation || est.calculation || null);
       setComments(cmRes.comments || []);
       setAnalogs(aRes.analogs || []);
+      setDocuments(est.documents || []);
 
-      // Fetch diff if rework/question and has versions
       if (['rework', 'question'].includes(est.approval_status) && (est.current_version_no || 0) >= 2) {
         api.get(`/estimates/${id}/diff`).then(d => setDiff(d)).catch(() => {});
       }
@@ -151,13 +175,13 @@ export default function EstimateReport() {
 
   const status = STATUS_MAP[estimate?.approval_status] || STATUS_MAP.draft;
 
-  const totalCost = Number(calculation?.total_cost) || Number(estimate?.cost) || 0;
-  const totalPrice = Number(calculation?.total_with_margin) || Number(estimate?.amount) || Number(estimate?.total_price) || 0;
+  const totalCost  = Number(calculation?.total_cost)         || Number(estimate?.cost)         || 0;
+  const totalPrice = Number(calculation?.total_with_margin)  || Number(estimate?.amount)        || Number(estimate?.total_price) || 0;
   const profit = totalPrice - totalCost;
   const margin = totalPrice > 0 ? Math.round((profit / totalPrice) * 100) : 0;
 
   const blockTotals = useMemo(() => BLOCKS.map(b => blockSubtotal(calculation, b)), [calculation]);
-  const barTotal = useMemo(() => blockTotals.reduce((s, v) => s + v, 0), [blockTotals]);
+  const barTotal    = useMemo(() => blockTotals.reduce((s, v) => s + v, 0), [blockTotals]);
 
   /* ── Send comment ── */
   const sendComment = async () => {
@@ -174,7 +198,7 @@ export default function EstimateReport() {
     finally { setSending(false); }
   };
 
-  /* ── Director action handler ── */
+  /* ── Director action ── */
   const handleDirectorAction = async (action) => {
     if (sending) return;
     setSending(true);
@@ -226,14 +250,14 @@ export default function EstimateReport() {
     saveTimer.current = setTimeout(async () => {
       try {
         await api.put(`/estimates/${id}/calculation`, {
-          personnel_json: newCalc.personnel_json,
+          personnel_json:     newCalc.personnel_json,
           current_costs_json: newCalc.current_costs_json,
-          travel_json: newCalc.travel_json,
-          transport_json: newCalc.transport_json,
-          chemistry_json: newCalc.chemistry_json,
-          contingency_pct: newCalc.contingency_pct,
-          margin_pct: newCalc.margin_pct,
-          notes: newCalc.notes,
+          travel_json:        newCalc.travel_json,
+          transport_json:     newCalc.transport_json,
+          chemistry_json:     newCalc.chemistry_json,
+          contingency_pct:    newCalc.contingency_pct,
+          margin_pct:         newCalc.margin_pct,
+          notes:              newCalc.notes,
         });
       } catch { /* silent */ }
     }, 2000);
@@ -247,7 +271,6 @@ export default function EstimateReport() {
       arr[rowIndex] = recalcRow({ ...arr[rowIndex], [field]: value }, blockKey);
       const updated = { ...prev, [blockKey]: arr };
 
-      // Recalc subtotal + contingency + total
       let subtotal = 0;
       for (const b of BLOCKS) {
         if (b.key === 'contingency') continue;
@@ -266,6 +289,37 @@ export default function EstimateReport() {
     });
   }, [saveCalculation]);
 
+  /* ── Upload document ── */
+  const handleUploadDoc = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    haptic.light();
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('estimate_id', String(id));
+      form.append('type', 'Документ просчёта');
+      const token = api.getToken();
+      const res = await fetch('/api/files/upload', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+      if (!res.ok) throw new Error('Ошибка загрузки');
+      const data = await res.json();
+      if (data.file) {
+        setDocuments(prev => [...prev, data.file]);
+        haptic.success();
+      }
+    } catch {
+      haptic.error();
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   /* ── Block detail view ── */
   if (selectedBlock !== null) {
     return (
@@ -279,13 +333,10 @@ export default function EstimateReport() {
     );
   }
 
-  /* ── Loading ── */
   if (loading) {
     return (
       <PageShell title="" noPadding>
-        <div className="px-4 pt-2">
-          <SkeletonList count={5} />
-        </div>
+        <div className="px-4 pt-2"><SkeletonList count={5} /></div>
       </PageShell>
     );
   }
@@ -301,17 +352,18 @@ export default function EstimateReport() {
     );
   }
 
-  /* ── Director's last comment (for PM rework/question) ── */
-  const directorComment = (canEdit || canResubmit) ? (estimate.last_director_comment || estimate.approval_comment) : null;
+  const directorComment = (canEdit || canResubmit)
+    ? (estimate.last_director_comment || estimate.approval_comment)
+    : null;
 
   return (
     <PageShell title="" noPadding scrollable>
       <PullToRefresh onRefresh={fetchData}>
         <div className="px-4 flex flex-col gap-3 pb-4" style={{ paddingBottom: showFooter ? 80 : 16 }}>
 
-          {/* 1. HEADER */}
+          {/* ── 1. HEADER ── */}
           <div className="flex flex-col gap-1.5 pt-1">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <button onClick={() => { haptic.light(); navigate(-1); }} className="spring-tap" style={{ padding: 4 }}>
                 <ArrowLeft size={22} className="c-primary" />
               </button>
@@ -321,35 +373,72 @@ export default function EstimateReport() {
               >
                 {status.label}
               </span>
-              {/* Mimir auto-calc button for PM */}
-              {canEdit && (
-                <button
-                  onClick={handleAutoCalc}
-                  disabled={autoCalcing}
-                  className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[12px] font-semibold spring-tap"
-                  style={{
-                    background: 'linear-gradient(135deg, rgba(212,168,67,0.15), rgba(212,168,67,0.05))',
-                    border: '1px solid rgba(212,168,67,0.3)',
-                    color: 'var(--gold)',
-                    opacity: autoCalcing ? 0.5 : 1,
-                  }}
-                >
-                  <Sparkles size={14} />
-                  {autoCalcing ? 'Расчёт...' : 'Авторасчёт'}
-                </button>
-              )}
+
+              <div className="flex items-center gap-1 ml-auto">
+                {/* Хугинн-чат */}
+                {estimate.huginn_chat_id && (
+                  <button
+                    onClick={() => { haptic.light(); navigate(`/huginn-chat/${estimate.huginn_chat_id}`); }}
+                    className="spring-tap flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[12px] font-semibold"
+                    style={{
+                      background: 'rgba(74,144,217,0.12)',
+                      border: '0.5px solid rgba(74,144,217,0.25)',
+                      color: 'var(--blue)',
+                    }}
+                    title="Открыть чат Хугинн"
+                  >
+                    <MessageSquare size={14} />
+                    Хугинн
+                  </button>
+                )}
+
+                {/* Редактировать объект (PM + draft/rework) */}
+                {canEdit && (
+                  <button
+                    onClick={() => { haptic.light(); setEditMetaOpen(true); }}
+                    className="spring-tap flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[12px] font-semibold"
+                    style={{
+                      background: 'rgba(212,168,67,0.1)',
+                      border: '0.5px solid rgba(212,168,67,0.25)',
+                      color: 'var(--gold)',
+                    }}
+                  >
+                    <Pencil size={14} />
+                    Объект
+                  </button>
+                )}
+
+                {/* Мимир авторасчёт (PM + draft/rework) */}
+                {canEdit && (
+                  <button
+                    onClick={handleAutoCalc}
+                    disabled={autoCalcing}
+                    className="spring-tap flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[12px] font-semibold"
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(212,168,67,0.15), rgba(212,168,67,0.05))',
+                      border: '1px solid rgba(212,168,67,0.3)',
+                      color: 'var(--gold)',
+                      opacity: autoCalcing ? 0.5 : 1,
+                    }}
+                  >
+                    <Sparkles size={14} />
+                    {autoCalcing ? '...' : 'Мимир'}
+                  </button>
+                )}
+              </div>
             </div>
+
             <h2 className="text-[15px] font-semibold leading-snug c-primary line-clamp-2 px-0.5">
               {estimate.title || estimate.name || estimate.object_name || `Просчёт #${estimate.id}`}
             </h2>
             <p className="text-[12px] c-secondary px-0.5">
               {estimate.pm_name || estimate.author_name || estimate.created_by_name || 'Автор'}
-              {estimate.sent_for_approval_at && ` \u00B7 ${relativeTime(estimate.sent_for_approval_at)}`}
-              {!estimate.sent_for_approval_at && estimate.created_at && ` \u00B7 ${relativeTime(estimate.created_at)}`}
+              {estimate.sent_for_approval_at && ` · ${relativeTime(estimate.sent_for_approval_at)}`}
+              {!estimate.sent_for_approval_at && estimate.created_at && ` · ${relativeTime(estimate.created_at)}`}
             </p>
           </div>
 
-          {/* DIRECTOR REMARK BANNER (for PM on rework/question) */}
+          {/* ── DIRECTOR REMARK BANNER ── */}
           {directorComment && (
             <div
               className="rounded-xl px-4 py-3"
@@ -369,26 +458,26 @@ export default function EstimateReport() {
               {estimate.director_name && (
                 <p className="text-[11px] c-tertiary mt-1">
                   {estimate.director_name}
-                  {estimate.approved_at && ` \u00B7 ${relativeTime(estimate.approved_at)}`}
+                  {estimate.approved_at && ` · ${relativeTime(estimate.approved_at)}`}
                 </p>
               )}
             </div>
           )}
 
-          {/* CHANGES DIFF (for PM on rework/question with 2+ versions) */}
+          {/* ── CHANGES DIFF ── */}
           {canResubmit && diff?.diff?.v1 && diff?.diff?.v2 && (
             <DiffBlock diff={diff} />
           )}
 
-          {/* 2. METRICS 2×2 */}
+          {/* ── 2. METRICS 2×2 ── */}
           <div className="grid grid-cols-2 gap-2.5">
             <MetricCard label="Себестоимость" value={formatMoney(totalCost, { short: true })} />
-            <MetricCard label="Клиенту" value={formatMoney(totalPrice, { short: true })} accent />
-            <MetricCard label="Прибыль" value={formatMoney(profit, { short: true })} />
-            <MetricCard label="Маржа" value={`${margin}%`} />
+            <MetricCard label="Клиенту"       value={formatMoney(totalPrice, { short: true })} accent />
+            <MetricCard label="Прибыль"       value={formatMoney(profit, { short: true })} />
+            <MetricCard label="Маржа"         value={`${margin}%`} />
           </div>
 
-          {/* 3. OBJECT (collapsible) */}
+          {/* ── 3. OBJECT (collapsible) ── */}
           {(estimate.object_name || estimate.customer) && (
             <div className="card-glass px-4 py-3">
               <button
@@ -396,17 +485,20 @@ export default function EstimateReport() {
                 onClick={() => { haptic.light(); setObjectExpanded(v => !v); }}
               >
                 <span className="text-[13px] font-semibold c-primary">Объект</span>
-                {objectExpanded ? <ChevronUp size={16} className="c-tertiary" /> : <ChevronDown size={16} className="c-tertiary" />}
+                {objectExpanded
+                  ? <ChevronUp size={16} className="c-tertiary" />
+                  : <ChevronDown size={16} className="c-tertiary" />}
               </button>
               {objectExpanded && (
                 <div className="flex flex-col gap-1.5 mt-2.5" style={{ animation: 'fadeInUp 200ms var(--ease-spring) both' }}>
-                  {estimate.customer && <ObjectRow label="Заказчик" value={estimate.customer} />}
-                  {estimate.object_name && <ObjectRow label="Объект" value={estimate.object_name} />}
-                  {estimate.work_type && <ObjectRow label="Тип работ" value={estimate.work_type} />}
+                  {estimate.customer     && <ObjectRow label="Заказчик"     value={estimate.customer} />}
+                  {estimate.object_name  && <ObjectRow label="Объект"       value={estimate.object_name} />}
+                  {(estimate.object_city || estimate.city) && <ObjectRow label="Город" value={estimate.object_city || estimate.city} />}
+                  {estimate.work_type    && <ObjectRow label="Тип работ"    value={estimate.work_type} />}
                   {estimate.object_distance_km > 0 && <ObjectRow label="Расстояние" value={`${estimate.object_distance_km} км`} />}
-                  {estimate.crew_count > 0 && <ObjectRow label="Бригада" value={`${estimate.crew_count} чел`} />}
-                  {estimate.work_days > 0 && <ObjectRow label="Рабочие дни" value={estimate.work_days} />}
-                  {estimate.road_days > 0 && <ObjectRow label="Дни в дороге" value={estimate.road_days} />}
+                  {estimate.crew_count > 0 && <ObjectRow label="Бригада"    value={`${estimate.crew_count} чел`} />}
+                  {estimate.work_days > 0  && <ObjectRow label="Рабочие дни" value={estimate.work_days} />}
+                  {estimate.road_days > 0  && <ObjectRow label="Дни в дороге" value={estimate.road_days} />}
                   {(estimate.work_start_date || estimate.work_end_date) && (
                     <ObjectRow
                       label="Период"
@@ -418,7 +510,7 @@ export default function EstimateReport() {
             </div>
           )}
 
-          {/* 4. COST BAR */}
+          {/* ── 4. COST BAR ── */}
           {barTotal > 0 && (
             <div className="flex rounded-full overflow-hidden" style={{ height: 8 }}>
               {BLOCKS.map((b, i) => {
@@ -429,7 +521,7 @@ export default function EstimateReport() {
             </div>
           )}
 
-          {/* 5. COST BLOCKS */}
+          {/* ── 5. COST BLOCKS ── */}
           {calculation && (
             <div className="card-glass overflow-hidden">
               {BLOCKS.map((b, i) => {
@@ -440,9 +532,7 @@ export default function EstimateReport() {
                     key={b.key}
                     onClick={() => { haptic.light(); setSelectedBlock(i); }}
                     className="w-full flex items-center gap-3 px-4 py-3 spring-tap"
-                    style={{
-                      borderBottom: i < BLOCKS.length - 1 ? '0.5px solid var(--border-norse)' : 'none',
-                    }}
+                    style={{ borderBottom: i < BLOCKS.length - 1 ? '0.5px solid var(--border-norse)' : 'none' }}
                   >
                     <div style={{ width: 10, height: 10, borderRadius: '50%', backgroundColor: b.color, flexShrink: 0 }} />
                     <span className="text-[14px] font-semibold c-primary flex-1 text-left">{b.title}</span>
@@ -454,7 +544,7 @@ export default function EstimateReport() {
             </div>
           )}
 
-          {/* 6. TOTAL */}
+          {/* ── 6. TOTAL ── */}
           {totalCost > 0 && (
             <div className="card-glass px-4 py-3 flex items-center justify-between">
               <span className="text-[14px] font-semibold c-primary">Итого себестоимость</span>
@@ -462,22 +552,83 @@ export default function EstimateReport() {
             </div>
           )}
 
-          {/* 7. ANALOGS */}
+          {/* ── 7. ANALOGS ── */}
           {analogs.length > 0 && (
             <div>
               <p className="text-[12px] font-semibold uppercase c-tertiary mb-2 px-0.5">Аналоги</p>
               <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
                 {analogs.map((a) => (
-                  <div key={a.id} className="card-glass p-3" style={{ minWidth: 140, flexShrink: 0 }}>
+                  <button
+                    key={a.id}
+                    onClick={() => navigate(`/estimate-report/${a.id}`)}
+                    className="card-glass p-3 spring-tap text-left"
+                    style={{ minWidth: 140, flexShrink: 0 }}
+                  >
                     <p className="text-[12px] c-primary truncate">{a.title || a.object_name || `#${a.id}`}</p>
                     <p className="text-[14px] font-bold c-primary mt-1">{formatMoney(Number(a.total_cost || a.cost) || 0, { short: true })}</p>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
           )}
 
-          {/* 8. COMMENTS */}
+          {/* ── 8. DOCUMENTS ── */}
+          <div>
+            <div className="flex items-center justify-between mb-2 px-0.5">
+              <p className="text-[12px] font-semibold uppercase c-tertiary flex items-center gap-1.5">
+                <Paperclip size={13} />
+                Документы{documents.length > 0 && ` (${documents.length})`}
+              </p>
+              {(canEdit || isAdmin || isDirector) && (
+                <>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    onChange={handleUploadDoc}
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.zip,.rar"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploading}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[12px] font-semibold spring-tap"
+                    style={{
+                      background: 'rgba(74,144,217,0.1)',
+                      color: 'var(--blue)',
+                      opacity: uploading ? 0.5 : 1,
+                    }}
+                  >
+                    <Upload size={13} />
+                    {uploading ? 'Загрузка...' : 'Добавить'}
+                  </button>
+                </>
+              )}
+            </div>
+            {documents.length === 0 ? (
+              <p className="text-[13px] c-tertiary px-0.5">Нет документов</p>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                {documents.map((doc) => (
+                  <a
+                    key={doc.id}
+                    href={`/api/files/download/${doc.filename}?token=${api.getToken()}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="card-glass px-3 py-2.5 flex items-center gap-3 spring-tap"
+                    onClick={() => haptic.light()}
+                  >
+                    <FileText size={18} style={{ color: 'var(--blue)', flexShrink: 0 }} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[13px] font-medium c-primary truncate">{doc.original_name || doc.filename}</p>
+                      <p className="text-[11px] c-tertiary">{formatFileSize(doc.size)}</p>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ── 9. COMMENTS ── */}
           <div>
             <p className="text-[12px] font-semibold uppercase c-tertiary mb-2 px-0.5 flex items-center gap-1.5">
               <MessageCircle size={13} />
@@ -520,7 +671,7 @@ export default function EstimateReport() {
                         )}
                         {c.comment && <p className="text-[14px] c-primary">{c.comment}</p>}
                         <p className="text-[11px] c-tertiary mt-1">
-                          {c.user_name}{c.created_at && ` \u00B7 ${relativeTime(c.created_at)}`}
+                          {c.user_name}{c.created_at && ` · ${relativeTime(c.created_at)}`}
                         </p>
                       </div>
                     </div>
@@ -530,7 +681,7 @@ export default function EstimateReport() {
             )}
           </div>
 
-          {/* 9. COMMENT INPUT */}
+          {/* ── 10. COMMENT INPUT ── */}
           <div className="flex gap-2 items-end">
             <input
               type="text"
@@ -555,7 +706,7 @@ export default function EstimateReport() {
           </div>
         </div>
 
-        {/* 10. STICKY FOOTER */}
+        {/* ── STICKY FOOTER ── */}
         {showFooter && (
           <div
             style={{
@@ -575,7 +726,7 @@ export default function EstimateReport() {
                   className="w-full py-3 rounded-xl font-semibold text-[15px] spring-tap"
                   style={{ background: 'var(--hero-gradient)', color: '#fff' }}
                 >
-                  Решение
+                  Принять решение
                 </button>
               ) : (
                 <button
@@ -598,8 +749,8 @@ export default function EstimateReport() {
         )}
       </PullToRefresh>
 
-      {/* DIRECTOR ACTION SHEET */}
-      <BottomSheet open={actionSheet} onClose={() => setActionSheet(false)} title="Решение">
+      {/* ── DIRECTOR ACTION SHEET ── */}
+      <BottomSheet open={actionSheet} onClose={() => setActionSheet(false)} title="Решение по просчёту">
         <div className="flex flex-col gap-2.5 pb-4">
           <textarea
             className="input-field resize-none"
@@ -628,6 +779,14 @@ export default function EstimateReport() {
           })}
         </div>
       </BottomSheet>
+
+      {/* ── EDIT METADATA SHEET ── */}
+      <EditEstimateMetadataSheet
+        estimate={estimate}
+        open={editMetaOpen}
+        onClose={() => setEditMetaOpen(false)}
+        onSaved={(updated) => setEstimate(prev => ({ ...prev, ...updated }))}
+      />
     </PageShell>
   );
 }
@@ -657,7 +816,7 @@ function ObjectRow({ label, value }) {
   );
 }
 
-/* ── DiffBlock — shows changes between versions ───────────── */
+/* ── DiffBlock ────────────────────────────────────────────── */
 
 function DiffBlock({ diff }) {
   const v1 = diff.diff.v1;
@@ -727,8 +886,8 @@ function CostBlockDetail({ block, calculation, canEdit, onBack, onUpdateRow }) {
   const haptic = useHaptic();
 
   if (block.key === 'contingency') {
-    const pct = calculation?.contingency_pct || 5;
-    const base = Number(calculation?.subtotal) || 0;
+    const pct    = calculation?.contingency_pct || 5;
+    const base   = Number(calculation?.subtotal) || 0;
     const amount = Number(calculation?.contingency_amount) || 0;
     return (
       <PageShell title="" noPadding>
@@ -815,7 +974,6 @@ function CostBlockDetail({ block, calculation, canEdit, onBack, onUpdateRow }) {
                         )}
                       </>
                     )}
-
                     <p className="text-[14px] font-bold c-primary mt-1 text-right">{formatMoney(Number(row.total) || 0)}</p>
                   </div>
                 );
@@ -833,7 +991,7 @@ function CostBlockDetail({ block, calculation, canEdit, onBack, onUpdateRow }) {
   );
 }
 
-/* ── EditableFields — editable row inputs ─────────────────── */
+/* ── EditableFields ───────────────────────────────────────── */
 
 function EditableFields({ row, editableFields, blockKey, rowIndex, onUpdate }) {
   const FIELD_LABELS = { qty: 'Кол-во', rate: 'Ставка', days: 'Дни', quantity: 'Кол-во', price: 'Цена' };
@@ -857,8 +1015,6 @@ function EditableFields({ row, editableFields, blockKey, rowIndex, onUpdate }) {
           </div>
         );
       })}
-
-      {/* Non-editable fields shown as labels */}
       {['qty', 'quantity', 'rate', 'price', 'days'].map((field) => {
         if (editableFields.includes(field) || row[field] == null) return null;
         return (
@@ -877,21 +1033,21 @@ function EditableFields({ row, editableFields, blockKey, rowIndex, onUpdate }) {
 /* ── Build formula string ─────────────────────────────────── */
 
 function buildFormula(row, blockKey) {
-  const qty = row.qty || row.quantity;
+  const qty  = row.qty || row.quantity;
   const rate = row.rate || row.price;
   const days = row.days;
 
   if (blockKey === 'transport_json' && row.distance_km) {
-    return `${row.distance_km} км \u00D7 2 \u00D7 ${formatMoney(rate || 0)}/км`;
+    return `${row.distance_km} км × 2 × ${formatMoney(rate || 0)}/км`;
   }
   if (row.percent && row.base) {
-    return `${row.percent}% \u00D7 ${formatMoney(Number(row.base) || 0)}`;
+    return `${row.percent}% × ${formatMoney(Number(row.base) || 0)}`;
   }
   if (qty && rate && days) {
-    return `${qty} \u00D7 ${formatMoney(Number(rate) || 0)} \u00D7 ${days} дн`;
+    return `${qty} × ${formatMoney(Number(rate) || 0)} × ${days} дн`;
   }
   if (qty && rate) {
-    return `${qty} \u00D7 ${formatMoney(Number(rate) || 0)}`;
+    return `${qty} × ${formatMoney(Number(rate) || 0)}`;
   }
   return null;
 }

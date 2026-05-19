@@ -631,7 +631,7 @@ function StatPill({ icon, value, label, delay = 0 }) {
 /* ═══════════════════════════════════════════════════════════════════
    VIKING HERO CARD — the WOW section
 ═══════════════════════════════════════════════════════════════════ */
-function VikingHeroCard({ profile, runes, xp, level, totalShifts, cosmetics }) {
+function VikingHeroCard({ profile, runes, xp, level, totalShifts, cosmetics, title }) {
   const navigate = useNavigate();
   const haptic = useHaptic();
   const rank = getRank(level);
@@ -751,6 +751,23 @@ function VikingHeroCard({ profile, runes, xp, level, totalShifts, cosmetics }) {
           <span style={{ fontSize: 14, fontWeight: 800, color: accent, letterSpacing: .5 }}>{rank.title}</span>
           <span style={{ fontSize: 11, color: `${accent}80` }}>· Ур.{level}</span>
         </div>
+
+        {/* Title badge — earned from achievements */}
+        {title && (
+          <div style={{
+            marginTop: 6, display: 'flex', alignItems: 'center', gap: 6,
+            background: `${title.color}15`, border: `1px solid ${title.color}50`,
+            borderRadius: 20, padding: '4px 12px',
+          }}>
+            <span style={{ fontSize: 13 }}>{title.icon}</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: title.color }}>{title.name}</span>
+            {title.next_title && (
+              <span style={{ fontSize: 10, color: `${title.color}70` }}>
+                · +{title.next_title.needed} до {title.next_title.name}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Stats */}
         <div style={{ display: 'flex', gap: 24, marginTop: 16, marginBottom: 10 }}>
@@ -895,6 +912,7 @@ export default function FieldProfile() {
   const [personal, setPersonal] = useState(null);
   const [workData, setWorkData] = useState(null);
   const [achievementsData, setAchievementsData] = useState(null);
+  const [seasonalData, setSeasonalData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [personalOpen, setPersonalOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -919,16 +937,18 @@ export default function FieldProfile() {
     setLoading(false);
     if (!me) return;
 
-    const [perms, pers, proj, achs] = await Promise.all([
+    const [perms, pers, proj, achs, seas] = await Promise.all([
       fieldApi.get('/worker/permits').catch(() => []),
       fieldApi.get('/worker/personal').catch(() => null),
       fieldApi.get('/worker/active-project').catch(() => null),
       fieldApi.get('/achievements/').catch(() => null),
+      fieldApi.get('/seasonal/').catch(() => null),
     ]);
     setPermits(Array.isArray(perms) ? perms : perms?.permits || []);
     setPersonal(pers?.employee || pers);
     setWorkData(proj?.project || proj);
     if (achs) setAchievementsData(achs);
+    if (seas) setSeasonalData(seas);
   }, []);
 
   useEffect(() => {
@@ -988,6 +1008,7 @@ export default function FieldProfile() {
         <VikingHeroCard
           profile={profile} runes={runes} xp={xp} level={level}
           totalShifts={totalShifts} cosmetics={cosmetics}
+          title={profile?.title || achievementsData?.title || null}
         />
 
         <div className="space-y-3 p-4 pt-3">
@@ -1040,10 +1061,16 @@ export default function FieldProfile() {
                     </div>
                   </div>
                 )}
-                <button onClick={() => navigate('/field/history')} className="w-full mt-2 py-2.5 rounded-lg text-sm font-medium text-center"
-                  style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }}>
-                  📋 Мой табель
-                </button>
+                <div className="flex gap-2 mt-2">
+                  <button onClick={() => navigate('/field/history')} className="flex-1 py-2.5 rounded-lg text-sm font-medium text-center"
+                    style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }}>
+                    📋 Табель
+                  </button>
+                  <button onClick={() => navigate('/field/diary')} className="flex-1 py-2.5 rounded-lg text-sm font-medium text-center"
+                    style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--gold)' }}>
+                    📖 Дневник
+                  </button>
+                </div>
               </div>
             ) : (
               <p className="text-sm text-center py-2" style={{ color: 'var(--text-tertiary)' }}>Нет активной работы</p>
@@ -1079,8 +1106,38 @@ export default function FieldProfile() {
               </div>
             ) : (
               <>
-                {/* Прогресс-бар */}
+                {/* Прогресс-бар + Титул */}
                 <div className="mb-3">
+                  {/* Title progress strip */}
+                  {achievementsData.title && (
+                    <div className="flex items-center gap-2 mb-2 p-2 rounded-lg"
+                      style={{ backgroundColor: achievementsData.title.color + '12', border: `1px solid ${achievementsData.title.color}30` }}>
+                      <span style={{ fontSize: 16 }}>{achievementsData.title.icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold" style={{ color: achievementsData.title.color }}>{achievementsData.title.name}</span>
+                          {achievementsData.title.next_title && (
+                            <span style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>
+                              → {achievementsData.title.next_title.name} за {achievementsData.title.next_title.needed} подв.
+                            </span>
+                          )}
+                        </div>
+                        {achievementsData.title.next_title && (
+                          <div className="h-1 rounded-full overflow-hidden mt-1" style={{ background: 'var(--bg-primary)' }}>
+                            <div className="h-full rounded-full"
+                              style={{
+                                width: `${Math.min(100, ((achievementsData.title.earned_count - achievementsData.title.min) / (achievementsData.title.next_title.min - achievementsData.title.min)) * 100)}%`,
+                                backgroundColor: achievementsData.title.color,
+                              }} />
+                          </div>
+                        )}
+                      </div>
+                      <span style={{ fontSize: 9, color: 'var(--text-tertiary)', flexShrink: 0 }}>
+                        🎡 -{achievementsData.title.pity_guarantee > 0 ? 50 - achievementsData.title.pity_guarantee : 0} к пити
+                      </span>
+                    </div>
+                  )}
+
                   <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
                     <div className="h-full rounded-full transition-all"
                       style={{
@@ -1147,6 +1204,49 @@ export default function FieldProfile() {
               </>
             )}
           </div>
+
+          {/* ═══ SEASONAL CHALLENGES TEASER ═══════════════════════════ */}
+          {seasonalData?.active?.length > 0 && (() => {
+            const ch = seasonalData.active[0];
+            const pct = ch.tasks_total > 0 ? Math.round((ch.tasks_done / ch.tasks_total) * 100) : 0;
+            return (
+              <button
+                onClick={() => { haptic.light(); navigate('/field/seasonal'); }}
+                className="w-full text-left rounded-xl p-4 space-y-2"
+                style={{ backgroundColor: 'var(--bg-elevated)', border: `1px solid ${ch.color}40`,
+                  background: `linear-gradient(135deg, ${ch.color}12 0%, var(--bg-elevated) 60%)` }}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">{ch.icon}</span>
+                    <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                      Сезон: {ch.season_name}
+                    </span>
+                    {ch.fully_completed && (
+                      <span className="text-xs px-1.5 py-0.5 rounded-full font-medium"
+                        style={{ backgroundColor: ch.color + '25', color: ch.color }}>✓</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1" style={{ color: ch.color }}>
+                    <span className="text-xs font-bold">{pct}%</span>
+                    <Sparkles size={12} />
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span style={{ color: 'var(--text-tertiary)' }}>{ch.tasks_done}/{ch.tasks_total} заданий</span>
+                    <span style={{ color: 'var(--text-tertiary)' }}>⏳ {ch.days_left}д</span>
+                  </div>
+                  <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--bg-primary)' }}>
+                    <div className="h-full rounded-full transition-all"
+                      style={{ width: `${pct}%`, backgroundColor: ch.color }} />
+                  </div>
+                </div>
+                <p className="text-xs" style={{ color: ch.color + 'cc' }}>
+                  Награда: {ch.reward_label} → {ch.reward_value} очков
+                </p>
+              </button>
+            );
+          })()}
 
           {/* ═══ PERMITS ══════════════════════════════════════════════ */}
           {permits.length > 0 && (

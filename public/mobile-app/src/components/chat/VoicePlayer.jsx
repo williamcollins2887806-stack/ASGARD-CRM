@@ -1,5 +1,6 @@
 import { useState, useRef, useMemo } from 'react';
 import { Play, Pause } from 'lucide-react';
+import { api } from '@/api/client';
 
 /**
  * VoicePlayer — голосовое сообщение с waveform bars
@@ -25,7 +26,12 @@ export function VoicePlayer({ fileUrl, duration, isMine }) {
 
   const toggle = () => {
     if (!audioRef.current) {
-      audioRef.current = new Audio(fileUrl);
+      // Append auth token as query param — сервер принимает ?token=... для файлов чата
+      const token = api.getToken();
+      const url = fileUrl && token && fileUrl.startsWith('/api/')
+        ? `${fileUrl}${fileUrl.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`
+        : fileUrl;
+      audioRef.current = new Audio(url);
       audioRef.current.addEventListener('timeupdate', () => {
         const a = audioRef.current;
         if (a.duration) setProgress(a.currentTime / a.duration);

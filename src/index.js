@@ -462,6 +462,7 @@ fastify.register(require('./routes/field-stages'), { prefix: '/api/field/stages'
 fastify.register(require('./routes/field-achievements'), { prefix: '/api/field/achievements' });
 fastify.register(require('./routes/field-gamification'), { prefix: '/api/field/gamification' });
 fastify.register(require('./routes/field-academy'),      { prefix: '/api/field/academy' });
+fastify.register(require('./routes/field-seasonal'),     { prefix: '/api/field/seasonal' });
 fastify.register(require('./routes/field-earnings'),     { prefix: '/api/field/earnings' });
 fastify.register(require('./routes/field-pm'),           { prefix: '/api/pm' });
 fastify.register(require('./routes/app-updates'),        { prefix: '/api/app' });
@@ -521,7 +522,8 @@ fastify.register(require("./routes/approval"), { prefix: "/api/approval" });
 fastify.register(require('./routes/stories'), { prefix: '/api/stories' });
 fastify.register(require('./routes/worker_profiles'), { prefix: '/api/worker-profiles' });
 fastify.register(require('./routes/worker-payments'), { prefix: '/api/worker-payments' });
-fastify.register(require('./routes/call-reports'), { prefix: '/api/call-reports' });
+fastify.register(require('./routes/call-reports'),     { prefix: '/api/call-reports' });
+fastify.register(require('./routes/office-academy'),   { prefix: '/api/office-academy' });
 
 // ── Telephony Job Queue & Escalation ──
 try {
@@ -641,6 +643,20 @@ try {
   });
 } catch (cronErr) {
   fastify.log.warn('[TournamentCron] Init skipped: ' + cronErr.message);
+}
+
+// ── Office Academy Cron: генерация уроков 1-го числа ──
+try {
+  const officeAcademyCron = require('./services/office-academy-cron');
+  fastify.addHook('onReady', async () => {
+    officeAcademyCron.start();
+    fastify.log.info('[OfficAcademyCron] Monthly lesson generation cron started');
+  });
+  fastify.addHook('onClose', async () => {
+    officeAcademyCron.stop();
+  });
+} catch (cronErr) {
+  fastify.log.warn('[OfficAcademyCron] Init skipped: ' + cronErr.message);
 }
 
 // ── Call Report Scheduler ──

@@ -3,6 +3,21 @@ import { ChevronLeft, Phone, MoreVertical, Search, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useHaptic } from '@/hooks/useHaptic';
 
+const AVATAR_COLORS = [
+  { bg: 'rgba(74,144,217,0.18)', color: '#4A90D9' },
+  { bg: 'rgba(200,168,78,0.18)', color: '#c8a84e' },
+  { bg: 'rgba(123,104,238,0.18)', color: '#7B68EE' },
+  { bg: 'rgba(48,209,88,0.18)', color: '#30d158' },
+  { bg: 'rgba(255,149,0,0.18)', color: '#ff9500' },
+  { bg: 'rgba(255,69,58,0.18)', color: '#ff453a' },
+];
+
+function getAvatarStyle(name) {
+  let h = 5381;
+  for (let i = 0; i < (name || '').length; i++) h = ((h << 5) + h) ^ name.charCodeAt(i);
+  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
+}
+
 function getOnlineLabel(lastLogin) {
   if (!lastLogin) return '';
   const diff = Date.now() - new Date(lastLogin).getTime();
@@ -87,12 +102,27 @@ export function ChatHeader({ chat, members, onSearch }) {
 
         {/* Avatar */}
         <div className="relative shrink-0">
-          <div
-            className="avatar-hero"
-            style={{ width: 36, height: 36, fontSize: 13 }}
-          >
-            {initials}
-          </div>
+          {(() => {
+            const { bg, color } = getAvatarStyle(chat?.name);
+            return (
+              <div
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: '50%',
+                  background: bg,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color,
+                }}
+              >
+                {initials}
+              </div>
+            );
+          })()}
           {isOnline && (
             <div
               className="absolute -bottom-0.5 -right-0.5 rounded-full online-pulse"

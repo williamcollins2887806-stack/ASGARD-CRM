@@ -59,98 +59,10 @@ window.AsgardUI = (function(){
     if (all.length > 5) all[0].remove();
   }
 
-  // ===== Modal (CR-MODAL v1.0) =====
-  let modalBack = null;
-  function ensureModal(){
-    if(modalBack) return;
-    modalBack = document.createElement("div");
-    modalBack.className = "cr-m-overlay";
-    // Also keep legacy class for any external selectors
-    modalBack.classList.add("modalback");
-
-    const modal = document.createElement("div");
-    modal.className = "cr-m modal";
-
-    // Top accent line
-    const topline = document.createElement("div");
-    topline.className = "cr-m__topline";
-    modal.appendChild(topline);
-
-    // Drag handle (mobile)
-    const dragHandle = document.createElement("div");
-    dragHandle.className = "cr-m__drag-handle";
-    modal.appendChild(dragHandle);
-
-    // Header
-    const header = document.createElement("div");
-    header.className = "cr-m__header mh";
-
-    const icon = document.createElement("div");
-    icon.className = "cr-m__icon";
-    icon.id = "modalIcon";
-    icon.textContent = "⚡";
-    header.appendChild(icon);
-
-    const titles = document.createElement("div");
-    titles.className = "cr-m__titles";
-    const titleEl = document.createElement("div");
-    titleEl.className = "cr-m__title";
-    titleEl.id = "modalTitle";
-    titleEl.textContent = "Окно";
-    titles.appendChild(titleEl);
-    const subtitleEl = document.createElement("div");
-    subtitleEl.className = "cr-m__subtitle";
-    subtitleEl.id = "modalSubtitle";
-    subtitleEl.style.display = "none";
-    titles.appendChild(subtitleEl);
-    header.appendChild(titles);
-
-    const actions = document.createElement("div");
-    actions.className = "cr-m__header-actions";
-
-    const fullBtn = document.createElement("button");
-    fullBtn.className = "cr-m__fullscreen-btn";
-    fullBtn.id = "modalFull";
-    fullBtn.title = "На весь экран";
-    fullBtn.type = "button";
-    fullBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
-    actions.appendChild(fullBtn);
-
-    const closeBtn = document.createElement("button");
-    closeBtn.className = "cr-m__close";
-    closeBtn.id = "modalClose";
-    closeBtn.title = "Закрыть";
-    closeBtn.type = "button";
-    closeBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-    actions.appendChild(closeBtn);
-
-    header.appendChild(actions);
-    modal.appendChild(header);
-
-    // Body
-    const body = document.createElement("div");
-    body.className = "cr-m__body mc";
-    body.id = "modalBody";
-    modal.appendChild(body);
-
-    modalBack.appendChild(modal);
-    document.body.appendChild(modalBack);
-
-    closeBtn.addEventListener("click", hideModal);
-    fullBtn.addEventListener("click", ()=>{
-      modal.classList.toggle("cr-m--fullscreen");
-      modal.classList.toggle("fullscreen");
-    });
-    modalBack.addEventListener("click", (e)=>{
-      if(e.target === modalBack) _showOopsBubble(e.clientX, e.clientY);
-    });
-    // ESC to close
-    document.addEventListener("keydown", (e)=>{
-      if(e.key === "Escape" && modalBack && modalBack.classList.contains("cr-m-overlay--visible")){
-        hideModal();
-      }
-    });
-  }
+  // ===== Modal (CR-MODAL v2.0) — proper multi-layer stack =====
+  // Each showModal creates a new overlay DOM element. hideModal removes only the top one.
+  // This preserves event listeners in underlying modals.
+  const _modalStack = []; // array of overlay DOM elements
 
   // Icon map based on common title keywords
   const _modalIconMap = [
@@ -191,126 +103,177 @@ window.AsgardUI = (function(){
     return '⚡';
   }
 
+  function _buildOverlay(){
+    const overlay = document.createElement("div");
+    overlay.className = "cr-m-overlay modalback";
+    // Each layer sits higher than the previous
+    overlay.style.zIndex = String(10000 + _modalStack.length * 100);
+
+    const modal = document.createElement("div");
+    modal.className = "cr-m modal";
+
+    const topline = document.createElement("div");
+    topline.className = "cr-m__topline";
+    modal.appendChild(topline);
+
+    const dragHandle = document.createElement("div");
+    dragHandle.className = "cr-m__drag-handle";
+    modal.appendChild(dragHandle);
+
+    const header = document.createElement("div");
+    header.className = "cr-m__header mh";
+
+    const iconEl = document.createElement("div");
+    iconEl.className = "cr-m__icon";
+    iconEl.id = "modalIcon";
+    iconEl.textContent = "⚡";
+    header.appendChild(iconEl);
+
+    const titles = document.createElement("div");
+    titles.className = "cr-m__titles";
+    const titleEl = document.createElement("div");
+    titleEl.className = "cr-m__title";
+    titleEl.id = "modalTitle";
+    titleEl.textContent = "Окно";
+    titles.appendChild(titleEl);
+    const subtitleEl = document.createElement("div");
+    subtitleEl.className = "cr-m__subtitle";
+    subtitleEl.id = "modalSubtitle";
+    subtitleEl.style.display = "none";
+    titles.appendChild(subtitleEl);
+    header.appendChild(titles);
+
+    const actions = document.createElement("div");
+    actions.className = "cr-m__header-actions";
+
+    const fullBtn = document.createElement("button");
+    fullBtn.className = "cr-m__fullscreen-btn";
+    fullBtn.id = "modalFull";
+    fullBtn.title = "На весь экран";
+    fullBtn.type = "button";
+    fullBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
+    fullBtn.addEventListener("click", ()=>{
+      modal.classList.toggle("cr-m--fullscreen");
+      modal.classList.toggle("fullscreen");
+    });
+    actions.appendChild(fullBtn);
+
+    const closeBtn = document.createElement("button");
+    closeBtn.className = "cr-m__close";
+    closeBtn.id = "modalClose";
+    closeBtn.title = "Закрыть";
+    closeBtn.type = "button";
+    closeBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    closeBtn.addEventListener("click", hideModal);
+    actions.appendChild(closeBtn);
+
+    header.appendChild(actions);
+    modal.appendChild(header);
+
+    const body = document.createElement("div");
+    body.className = "cr-m__body mc";
+    body.id = "modalBody";
+    modal.appendChild(body);
+
+    overlay.appendChild(modal);
+    overlay.addEventListener("click", (e)=>{
+      if(e.target === overlay) _showOopsBubble(e.clientX, e.clientY);
+    });
+
+    return overlay;
+  }
+
+  // Global ESC — closes only the top modal
+  document.addEventListener("keydown", (e)=>{
+    if(e.key === "Escape" && _modalStack.length > 0) hideModal();
+  });
+
   /**
    * showModal(title, html)
    * showModal({ title, html, fullscreen, onMount, wide, icon, subtitle })
+   * Always creates a new overlay on top. Underlying modals stay intact with all their listeners.
    */
-  const _modalStack = [];
-
   function showModal(a, b){
-    ensureModal();
-    const overlay = modalBack;
-    const modal = $(".cr-m", overlay);
-    // Stack: if modal is already visible, save current state
-    if(overlay.classList.contains("cr-m-overlay--visible")){
-      _modalStack.push({
-        title: $("#modalTitle", overlay).textContent,
-        html: $("#modalBody", overlay).innerHTML,
-        fullscreen: modal.classList.contains("cr-m--fullscreen"),
-        wide: modal.classList.contains("cr-m--wide"),
-        icon: $("#modalIcon", overlay).textContent,
-        subtitle: $("#modalSubtitle", overlay).textContent
-      });
-    }
-    let title = "Окно";
-    let html = "";
-    let fullscreen = false;
-    let wide = false;
-    let onMount = null;
-    let icon = null;
-    let subtitle = "";
-
+    let title = "Окно", html = "", fullscreen = false, wide = false, onMount = null, icon = null, subtitle = "";
     if(a && typeof a === "object"){
-      title = a.title || title;
-      html = a.html || "";
-      fullscreen = !!a.fullscreen;
-      wide = !!a.wide;
+      title = a.title || title; html = a.html || ""; fullscreen = !!a.fullscreen; wide = !!a.wide;
       onMount = (typeof a.onMount === "function") ? a.onMount : null;
-      icon = a.icon || null;
-      subtitle = a.subtitle || "";
+      icon = a.icon || null; subtitle = a.subtitle || "";
     } else {
-      title = a || title;
-      html = b || "";
+      title = a || title; html = b || "";
     }
 
-    $("#modalTitle", overlay).textContent = title || "Окно";
-    $("#modalIcon", overlay).textContent = icon || _pickModalIcon(title);
+    const overlay = _buildOverlay();
+    const modal = $(".cr-m", overlay);
+
+    $("#modalTitle", overlay).textContent = title;
+    $("#modalIcon",  overlay).textContent = icon || _pickModalIcon(title);
     const subEl = $("#modalSubtitle", overlay);
-    if(subtitle){
-      subEl.textContent = subtitle;
-      subEl.style.display = "";
-    } else {
-      subEl.textContent = "";
-      subEl.style.display = "none";
-    }
-    $("#modalBody", overlay).innerHTML = html || "";
+    if(subtitle){ subEl.textContent = subtitle; subEl.style.display = ""; }
+    else         { subEl.textContent = ""; subEl.style.display = "none"; }
+    $("#modalBody", overlay).innerHTML = html;
 
     modal.classList.toggle("cr-m--fullscreen", fullscreen);
-    modal.classList.toggle("fullscreen", fullscreen);
+    modal.classList.toggle("fullscreen",        fullscreen);
     modal.classList.toggle("cr-m--wide", wide);
-    modal.classList.toggle("wide", wide);
+    modal.classList.toggle("wide",        wide);
 
-    // Show with animation
+    _modalStack.push(overlay);
+    document.body.appendChild(overlay);
+    document.body.style.overflow = "hidden";
+
     overlay.style.display = "flex";
-    // Force reflow for animation
-    void overlay.offsetHeight;
+    void overlay.offsetHeight; // force reflow for animation
     overlay.classList.remove("cr-m-overlay--leaving");
     overlay.classList.add("cr-m-overlay--visible");
-    document.body.style.overflow = "hidden";
 
     if(onMount){
       setTimeout(()=>{
-        try{ onMount({back: overlay, modal: modal, body: $("#modalBody", overlay)}); }
+        try{ onMount({back: overlay, modal, body: $("#modalBody", overlay)}); }
         catch(e){ toast("Ошибка", e, "err"); }
       }, 0);
     }
   }
 
+  /**
+   * replaceModal(title, html) — replaces content of the current top modal without stacking a new one.
+   * Use this for loading→content transitions within a single feature.
+   */
+  function replaceModal(a, b){
+    if(!_modalStack.length){ showModal(a, b); return; }
+    const overlay = _modalStack[_modalStack.length - 1];
+    const title = (a && typeof a === "object") ? (a.title || "Окно") : (a || "Окно");
+    const html  = (a && typeof a === "object") ? (a.html  || "")     : (b || "");
+    const icon  = (a && typeof a === "object") ? (a.icon  || null)   : null;
+    const sub   = (a && typeof a === "object") ? (a.subtitle || "")  : "";
+    $("#modalTitle", overlay).textContent = title;
+    if(icon) $("#modalIcon", overlay).textContent = icon;
+    $("#modalBody", overlay).innerHTML = html;
+    const subEl = $("#modalSubtitle", overlay);
+    if(sub){ subEl.textContent = sub; subEl.style.display = ""; }
+    else   { subEl.textContent = ""; subEl.style.display = "none"; }
+  }
+
+  /**
+   * hideModal() — closes and removes only the top modal.
+   * The modal below (if any) remains visible and fully functional.
+   */
   function hideModal(){
-    if(!modalBack) return;
-    const overlay = modalBack;
+    if(!_modalStack.length) return;
+    const overlay = _modalStack.pop();
     const modal = $(".cr-m", overlay);
 
-    // Stack: if there's a previous modal, restore it instead of hiding
-    if(_modalStack.length > 0){
-      const prev = _modalStack.pop();
-      $("#modalTitle", overlay).textContent = prev.title;
-      $("#modalBody", overlay).innerHTML = prev.html;
-      $("#modalIcon", overlay).textContent = prev.icon || '⚡';
-      const subEl = $("#modalSubtitle", overlay);
-      if(prev.subtitle){
-        subEl.textContent = prev.subtitle;
-        subEl.style.display = "";
-      } else {
-        subEl.textContent = "";
-        subEl.style.display = "none";
-      }
-      if(modal){
-        modal.classList.toggle("cr-m--fullscreen", prev.fullscreen);
-        modal.classList.toggle("fullscreen", prev.fullscreen);
-        modal.classList.toggle("cr-m--wide", prev.wide);
-        modal.classList.toggle("wide", prev.wide);
-      }
-      return;
-    }
-
-    // Animate close
     overlay.classList.add("cr-m-overlay--leaving");
     overlay.classList.remove("cr-m-overlay--visible");
 
-    setTimeout(function() {
-      overlay.style.display = "none";
-      overlay.classList.remove("cr-m-overlay--leaving");
-      document.body.style.overflow = "";
-      $("#modalBody", overlay).innerHTML = "";
-      if(modal) {
-        modal.classList.remove("cr-m--fullscreen", "fullscreen", "cr-m--wide", "wide");
-      }
+    setTimeout(function(){
+      overlay.remove();
+      if(_modalStack.length === 0) document.body.style.overflow = "";
     }, 300);
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // MOBILE BOTTOM SHEET SWIPE-TO-DISMISS (cr-modal v1.0)
+  // MOBILE BOTTOM SHEET SWIPE-TO-DISMISS (cr-modal v2.0)
   // ═══════════════════════════════════════════════════════════════
   function initModalSwipeDismiss() {
     if (window.innerWidth > 768) return;
@@ -318,58 +281,49 @@ window.AsgardUI = (function(){
     var swipeStartY = 0;
     var swipeCurrentY = 0;
     var swiping = false;
-    var modal = null;
+    var swipeModal = null;
 
     document.addEventListener('touchstart', function(e) {
-      if (!modalBack || !modalBack.classList.contains('cr-m-overlay--visible')) return;
-      modal = modalBack.querySelector('.cr-m');
-      if (!modal) return;
+      if (!_modalStack.length) return;
+      const topOverlay = _modalStack[_modalStack.length - 1];
+      swipeModal = topOverlay.querySelector('.cr-m');
+      if (!swipeModal) return;
 
-      // Only start swipe from the top area of modal (drag handle zone)
-      var rect = modal.getBoundingClientRect();
+      var rect = swipeModal.getBoundingClientRect();
       var touchY = e.touches[0].clientY;
-      if (touchY < rect.top || touchY > rect.top + 60) return;
+      if (touchY < rect.top || touchY > rect.top + 60) { swipeModal = null; return; }
 
       swipeStartY = touchY;
       swiping = true;
     }, { passive: true });
 
     document.addEventListener('touchmove', function(e) {
-      if (!swiping || !modal) return;
+      if (!swiping || !swipeModal) return;
       swipeCurrentY = e.touches[0].clientY;
       var delta = swipeCurrentY - swipeStartY;
-
-      // Only allow downward swipe
-      if (delta < 0) { delta = 0; }
-
-      modal.style.transform = 'translateY(' + delta + 'px)';
-      modal.style.transition = 'none';
-      modal.style.opacity = String(Math.max(0.3, 1 - (delta / 400)));
+      if (delta < 0) delta = 0;
+      swipeModal.style.transform = 'translateY(' + delta + 'px)';
+      swipeModal.style.transition = 'none';
+      swipeModal.style.opacity = String(Math.max(0.3, 1 - (delta / 400)));
     }, { passive: true });
 
     document.addEventListener('touchend', function() {
-      if (!swiping || !modal) return;
+      if (!swiping || !swipeModal) return;
       swiping = false;
       var delta = swipeCurrentY - swipeStartY;
-
       if (delta > 100) {
-        // Dismiss
         hideModal();
       } else {
-        // Snap back
-        modal.style.transition = 'transform 0.25s cubic-bezier(0.16,1,0.3,1), opacity 0.25s ease';
-        modal.style.transform = '';
-        modal.style.opacity = '';
-        setTimeout(function() {
-          if (modal) {
-            modal.style.transition = '';
-          }
-        }, 250);
+        swipeModal.style.transition = 'transform 0.25s cubic-bezier(0.16,1,0.3,1), opacity 0.25s ease';
+        swipeModal.style.transform = '';
+        swipeModal.style.opacity = '';
+        var m = swipeModal;
+        setTimeout(function(){ if(m) m.style.transition = ''; }, 250);
       }
+      swipeModal = null;
     }, { passive: true });
   }
 
-  // Auto-init swipe dismiss
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initModalSwipeDismiss);
   } else {
@@ -772,7 +726,7 @@ window.AsgardUI = (function(){
     setTimeout(() => bubble.remove(), 1800);
   }
 
-  return { renderMarkdown, $, $$, esc, toast, showModal, hideModal, closeModal: hideModal, showDrawer, hideDrawer, statusClass, makeResponsiveTable, emptyState, enableTableSort, formField, confirm: async (t,m) => window.confirm(m), copyToClipboard, formatDate, formatDateTime, skeleton, money, oopsBubble: _showOopsBubble };
+  return { renderMarkdown, $, $$, esc, toast, showModal, replaceModal, hideModal, closeModal: hideModal, showDrawer, hideDrawer, statusClass, makeResponsiveTable, emptyState, enableTableSort, formField, confirm: async (t,m) => window.confirm(m), copyToClipboard, formatDate, formatDateTime, skeleton, money, oopsBubble: _showOopsBubble };
 
   /**
    * renderMarkdown(md) — Renders Markdown text as styled HTML

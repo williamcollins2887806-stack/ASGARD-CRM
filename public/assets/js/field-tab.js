@@ -180,7 +180,11 @@ window.AsgardFieldTab = (function () {
     // Endpoint /available возвращает employees с полями is_busy, busy_with[]
     const allEmployees = dataRows(empsData).sort((a, b) => (a.fio || '').localeCompare(b.fio || ''));
     // Защитный фильтр по work_id на клиенте (на случай если API проигнорирует where)
-    const assignments = dataRows(assignData).filter(a => a.is_active !== false && Number(a.work_id) === Number(work.id));
+    const allAssignments      = dataRows(assignData).filter(a => Number(a.work_id) === Number(work.id));
+    // Активные: is_active=true И departure_date не стоит
+    const assignments         = allAssignments.filter(a => a.is_active !== false && !a.departure_date);
+    // Убранные/уехавшие: is_active=false ИЛИ departure_date стоит
+    const inactiveAssignments = allAssignments.filter(a => a.is_active === false || !!a.departure_date);
     const category = settingsData?.site_category || 'ground';
 
     container.innerHTML = '';
@@ -412,6 +416,56 @@ window.AsgardFieldTab = (function () {
     actions.appendChild(smsBtn);
 
     container.appendChild(actions);
+
+    // ── Departed / inactive workers block ──
+    if (inactiveAssignments.length > 0) {
+      const depSection = document.createElement('div');
+      depSection.style.cssText = 'margin-top:20px;border:1px solid var(--brd);border-radius:10px;overflow:hidden';
+
+      const depHeader = document.createElement('div');
+      depHeader.style.cssText = 'padding:8px 14px;background:var(--bg2);font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px';
+      depHeader.textContent = '⚫ Уехали / убраны с объекта';
+      depSection.appendChild(depHeader);
+
+      for (const a of inactiveAssignments) {
+        const emp = allEmployees.find(e => e.id === a.employee_id);
+        if (!emp) continue;
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-top:1px solid var(--brd-m);font-size:13px;color:var(--t2)';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = emp.fio || '—';
+        row.appendChild(nameSpan);
+
+        const dateSpan = document.createElement('span');
+        dateSpan.style.cssText = 'font-size:11px;color:var(--t3);margin-left:auto;margin-right:12px';
+        if (a.departure_date) {
+          dateSpan.textContent = 'уехал ' + new Date(a.departure_date).toLocaleDateString('ru-RU');
+        } else {
+          dateSpan.textContent = 'убран РП';
+        }
+        row.appendChild(dateSpan);
+
+        const retBtn = document.createElement('button');
+        retBtn.textContent = '🔄 Вернуть';
+        retBtn.style.cssText = 'background:none;border:1px solid #22c55e;color:#22c55e;border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer';
+        retBtn.addEventListener('click', async () => {
+          if (!confirm('Вернуть ' + (emp.fio || 'сотрудника') + ' на объект?')) return;
+          try {
+            const res = await api('/projects/' + work.id + '/return/' + emp.id, { method: 'POST', body: '{}' });
+            if (res.error) throw new Error(res.error);
+            toast('Возврат', (emp.fio || 'Сотрудник') + ' вернулся на объект', 'ok');
+            renderCrewTab(container, work, user, settingsData, isActive);
+          } catch (e) {
+            toast('Ошибка', String(e), 'err');
+          }
+        });
+        row.appendChild(retBtn);
+        depSection.appendChild(row);
+      }
+
+      container.appendChild(depSection);
+    }
   }
 
   // ── Add a crew row ──
@@ -581,15 +635,47 @@ window.AsgardFieldTab = (function () {
     const tdActions = document.createElement('td');
     tdActions.style.cssText = cellStyle + ';text-align:center;white-space:nowrap';
 
-    // Departure button — only for saved assignments
+    // Departure / Return toggle button — only for saved assignments
     if (assignment && employee) {
       const depBtn = document.createElement('button');
-      depBtn.textContent = '🚪';
-      depBtn.title = 'Отъезд с объекта';
-      depBtn.style.cssText = 'background:none;border:none;color:#f59e0b;cursor:pointer;font-size:16px;padding:4px 6px;transition:transform .15s';
+      depBtn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:16px;padding:4px 6px;transition:transform .15s';
       depBtn.addEventListener('mouseenter', () => { depBtn.style.transform = 'scale(1.2)'; });
       depBtn.addEventListener('mouseleave', () => { depBtn.style.transform = ''; });
-      depBtn.addEventListener('click', () => showDepartureModal(employee, assignment));
+
+      function _applyDepState(isDep) {
+        if (isDep) {
+          depBtn.textContent = '🔄';
+          depBtn.title = 'Вернуть на объект';
+          depBtn.style.color = '#22c55e';
+        } else {
+          depBtn.textContent = '🚪';
+          depBtn.title = 'Отъезд с объекта';
+          depBtn.style.color = '#f59e0b';
+        }
+      }
+
+      depBtn.addEventListener('click', async () => {
+        if (assignment.departure_date) {
+          if (!confirm('Вернуть ' + (employee.fio || 'сотрудника') + ' на объект?')) return;
+          try {
+            const res = await api('/projects/' + assignment.work_id + '/return/' + employee.id, { method: 'POST', body: '{}' });
+            if (res.error) throw new Error(res.error);
+            assignment.departure_date = null;
+            assignment.departure_reason = null;
+            _applyDepState(false);
+            toast('Возврат', (employee.fio || 'Сотрудник') + ' вернулся на объект', 'ok');
+          } catch (e) {
+            toast('Ошибка', String(e), 'err');
+          }
+        } else {
+          showDepartureModal(employee, assignment, function(depDate) {
+            assignment.departure_date = depDate;
+            _applyDepState(true);
+          });
+        }
+      });
+
+      _applyDepState(!!assignment.departure_date);
       tdActions.appendChild(depBtn);
     }
 
@@ -2991,7 +3077,7 @@ window.AsgardFieldTab = (function () {
   // ═══════════════════════════════════════════════════════════════════
   // DEPARTURE MODAL — финансовая сводка при отъезде рабочего
   // ═══════════════════════════════════════════════════════════════════
-  async function showDepartureModal(employee, assignment) {
+  async function showDepartureModal(employee, assignment, onSuccess) {
     const workId = assignment.work_id;
     const empId = employee.id;
     const empName = employee.fio || employee.full_name || 'Сотрудник';
@@ -3112,7 +3198,7 @@ window.AsgardFieldTab = (function () {
         </div>
       `;
 
-      AsgardUI.showModal('🚪 Отъезд — ' + esc(empName), modalHtml);
+      AsgardUI.replaceModal('🚪 Отъезд — ' + esc(empName), modalHtml);
 
       // Bind buttons after render
       setTimeout(() => {
@@ -3138,6 +3224,7 @@ window.AsgardFieldTab = (function () {
             if (result.error) throw new Error(result.error);
 
             toast('Отъезд', esc(empName) + ' — отъезд оформлен', 'ok');
+            if (onSuccess) onSuccess(depDate);
             AsgardUI.hideModal();
           } catch (e) {
             toast('Ошибка', String(e), 'err');

@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useHaptic } from '@/hooks/useHaptic';
 import { api } from '@/api/client';
 import { PageShell } from '@/components/layout/PageShell';
-import { BottomSheet } from '@/components/shared/BottomSheet';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
-import { Calculator, ChevronRight, Send } from 'lucide-react';
+import { CreateEstimateSheet } from '@/components/estimates/CreateEstimateSheet';
+import { Calculator, ChevronRight, Plus, MessageSquare } from 'lucide-react';
 import { formatMoney, relativeTime } from '@/lib/utils';
 
 const STATUS_MAP = {
@@ -24,11 +25,12 @@ const FILTERS = [
 
 export default function PmCalcs() {
   const haptic = useHaptic();
+  const navigate = useNavigate();
   const [estimates, setEstimates] = useState([]);
   const [tenders, setTenders] = useState({});
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
-  const [detail, setDetail] = useState(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -55,37 +57,54 @@ export default function PmCalcs() {
     return list;
   }, [estimates, filter]);
 
-  const handleSubmit = async (id) => {
-    haptic.light();
-    try {
-      await api.put(`/data/estimates/${id}`, { approval_status: 'sent' });
-      setEstimates((p) => p.map((e) => e.id === id ? { ...e, approval_status: 'sent' } : e));
-      setDetail(null);
-      haptic.success();
-    } catch {}
-  };
+  const handleCreated = useCallback((est) => {
+    setEstimates((p) => [est, ...p]);
+    navigate(`/estimate-report/${est.id}`);
+  }, [navigate]);
 
   return (
     <PageShell title="Мои расчёты">
       <PullToRefresh onRefresh={fetchData}>
         <div className="flex gap-1.5 px-1 pb-3 overflow-x-auto no-scrollbar">
-          {FILTERS.map((f) => <button key={f.id} onClick={() => { haptic.light(); setFilter(f.id); }} className="filter-pill spring-tap" data-active={filter === f.id ? 'true' : undefined}>{f.label}</button>)}
+          {FILTERS.map((f) => (
+            <button key={f.id} onClick={() => { haptic.light(); setFilter(f.id); }} className="filter-pill spring-tap" data-active={filter === f.id ? 'true' : undefined}>
+              {f.label}
+            </button>
+          ))}
         </div>
         {loading ? <SkeletonList count={5} /> : filtered.length === 0 ? (
-          <EmptyState icon={Calculator} iconColor="var(--gold)" iconBg="color-mix(in srgb, var(--gold) 10%, transparent)" title="Нет расчётов" description="Ваши расчёты появятся здесь" />
+          <EmptyState icon={Calculator} iconColor="var(--gold)" iconBg="color-mix(in srgb, var(--gold) 10%, transparent)" title="Нет расчётов" description="Нажмите + чтобы создать расчёт" />
         ) : (
-          <div className="flex flex-col gap-2 pb-4">
+          <div className="flex flex-col gap-2 pb-24">
             {filtered.map((est, i) => {
               const st = STATUS_MAP[est.approval_status] || STATUS_MAP.draft;
               const price = Number(est.total_price || est.price || 0);
               const cost = Number(est.total_cost || est.cost || 0);
               const margin = price > 0 ? Math.round(((price - cost) / price) * 100) : 0;
+              const title = est.title || est.name || (est.tender_id && tenders[est.tender_id]) || `Расчёт #${est.id}`;
               return (
-                <button key={est.id} onClick={() => { haptic.light(); setDetail(est); }} className="w-full text-left card-glass px-4 py-3 spring-tap" style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}>
+                <button
+                  key={est.id}
+                  onClick={() => { haptic.light(); navigate(`/estimate-report/${est.id}`); }}
+                  className="w-full text-left card-glass px-4 py-3 spring-tap"
+                  style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}
+                >
                   <div className="flex items-start justify-between gap-2">
-                    <p className="text-[14px] font-semibold leading-tight c-primary">{est.name || (est.tender_id && tenders[est.tender_id]) || `Расчёт #${est.id}`}</p>
-                    <ChevronRight size={16} className="c-tertiary" style={{ flexShrink: 0, marginTop: 2 }} />
+                    <p className="text-[14px] font-semibold leading-tight c-primary flex-1">{title}</p>
+                    <div className="flex items-center gap-2 shrink-0" style={{ marginTop: 2 }}>
+                      {est.huginn_chat_id && (
+                        <span
+                          onClick={(ev) => { ev.stopPropagation(); haptic.light(); navigate(`/huginn-chat/${est.huginn_chat_id}`); }}
+                          className="spring-tap"
+                          style={{ color: 'var(--blue)', display: 'flex' }}
+                        >
+                          <MessageSquare size={15} />
+                        </span>
+                      )}
+                      <ChevronRight size={16} className="c-tertiary" />
+                    </div>
                   </div>
+                  {est.object_name && <p className="text-[12px] mt-0.5 truncate c-secondary">{est.object_name}{est.object_city ? ` · ${est.object_city}` : ''}</p>}
                   <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                     <span className="status-badge" style={{ background: `color-mix(in srgb, ${st.color} 15%, transparent)`, color: st.color }}>{st.label}</span>
                     {price > 0 && <span className="text-[10px] font-semibold c-blue">{formatMoney(price, { short: true })}</span>}
@@ -98,55 +117,37 @@ export default function PmCalcs() {
           </div>
         )}
       </PullToRefresh>
-      <PmCalcDetailSheet estimate={detail} onClose={() => setDetail(null)} tenders={tenders} onSubmit={handleSubmit} />
-    </PageShell>
-  );
-}
 
-function PmCalcDetailSheet({ estimate, onClose, tenders, onSubmit }) {
-  if (!estimate) return null;
-  const e = estimate;
-  const st = STATUS_MAP[e.approval_status] || STATUS_MAP.draft;
-  const price = Number(e.total_price || e.price || 0);
-  const cost = Number(e.total_cost || e.cost || 0);
-  const profit = price - cost;
-  const margin = price > 0 ? Math.round((profit / price) * 100) : 0;
-  const canSubmit = e.approval_status === 'draft' || e.approval_status === 'rework';
-  const fields = [
-    { label: 'Статус', value: st.label, color: st.color },
-    e.name && { label: 'Название', value: e.name },
-    e.tender_id && tenders[e.tender_id] && { label: 'Тендер', value: tenders[e.tender_id] },
-    (e.author_name || e.created_by_name) && { label: 'Автор', value: e.author_name || e.created_by_name },
-    e.created_at && { label: 'Создан', value: relativeTime(e.created_at) },
-    e.description && { label: 'Описание', value: e.description, full: true },
-    e.approval_comment && { label: 'Комментарий', value: e.approval_comment, full: true },
-  ].filter(Boolean);
-  return (
-    <BottomSheet open={!!estimate} onClose={onClose} title={e.name || `Расчёт #${e.id}`}>
-      <div className="flex flex-col gap-3 pb-4">
-        {price > 0 && (
-          <div className="card-glass rounded-xl p-3">
-            <div className="grid grid-cols-3 gap-2 mb-2">
-              <div className="text-center"><p className="text-[10px] uppercase font-semibold c-tertiary">Цена</p><p className="text-[14px] font-bold c-blue">{formatMoney(price, { short: true })}</p></div>
-              <div className="text-center"><p className="text-[10px] uppercase font-semibold c-tertiary">С/С</p><p className="text-[14px] font-bold c-gold">{formatMoney(cost, { short: true })}</p></div>
-              <div className="text-center"><p className="text-[10px] uppercase font-semibold c-tertiary">Прибыль</p><p className="text-[14px] font-bold" style={{ color: profit >= 0 ? 'var(--green)' : 'var(--red-soft)' }}>{formatMoney(profit, { short: true })}</p></div>
-            </div>
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-semibold c-tertiary">Маржа</span>
-              <span className="text-[12px] font-bold" style={{ color: margin >= 15 ? 'var(--green)' : 'var(--gold)' }}>{margin}%</span>
-            </div>
-            <div className="rounded-full overflow-hidden" style={{ height: 4, background: 'var(--bg-surface-alt)' }}>
-              <div className="h-full rounded-full" style={{ width: `${Math.min(100, Math.max(0, margin))}%`, background: margin >= 15 ? 'var(--green)' : 'var(--gold)' }} />
-            </div>
-          </div>
-        )}
-        {fields.map((f, i) => <div key={i}><p className="input-label">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className={`text-[14px] c-primary ${f.full ? 'whitespace-pre-wrap' : ''}`}>{f.value}</p>}</div>)}
-        {canSubmit && (
-          <button onClick={() => onSubmit(e.id)} className="btn-primary flex items-center justify-center gap-2 spring-tap mt-2">
-            <Send size={16} /> Отправить на согласование
-          </button>
-        )}
-      </div>
-    </BottomSheet>
+      {/* FAB — создать расчёт */}
+      <button
+        onClick={() => { haptic.medium(); setCreateOpen(true); }}
+        className="spring-tap"
+        style={{
+          position: 'fixed',
+          bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)',
+          right: '20px',
+          width: 52,
+          height: 52,
+          borderRadius: '50%',
+          background: 'var(--gold)',
+          color: '#000',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 4px 20px color-mix(in srgb, var(--gold) 40%, transparent)',
+          zIndex: 40,
+          border: 'none',
+          cursor: 'pointer',
+        }}
+      >
+        <Plus size={22} strokeWidth={2.5} />
+      </button>
+
+      <CreateEstimateSheet
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={handleCreated}
+      />
+    </PageShell>
   );
 }

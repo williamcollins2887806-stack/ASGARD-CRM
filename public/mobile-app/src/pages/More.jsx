@@ -107,6 +107,7 @@ const GROUPS = [
     items: [
       { path: '/alerts',       icon: Bell,         label: 'Уведомления',    section: 'dashboard' },
       { path: '/training',     icon: GraduationCap,label: 'Обучение',       section: 'dashboard' },
+      { path: '/office-academy', icon: GraduationCap, label: 'Академия Асгарда', section: 'dashboard' },
       { path: '/my-mail',      icon: Mail,         label: 'Почта',          section: 'profile' },
       { path: '/my-equipment', icon: Cpu,          label: 'Оборудование',   section: 'profile' },
       { path: '/integrations', icon: Plug,         label: 'Интеграции',     section: 'settings' },

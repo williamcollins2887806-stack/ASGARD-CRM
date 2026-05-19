@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useHaptic } from '@/hooks/useHaptic';
+import { useChatStore } from '@/stores/chatStore';
 
 /**
  * SVG иконки для TabBar — filled (active) vs outlined (inactive)
@@ -59,6 +60,7 @@ export function TabBar() {
   const haptic = useHaptic();
   const navRef = useRef(null);
   const [indicator, setIndicator] = useState({ left: 0, width: 0 });
+  const unreadTotal = useChatStore((s) => s.unreadTotal);
 
   const activeIndex = TABS.findIndex(({ path }) => {
     if (path === '/') return location.pathname === '/';
@@ -125,7 +127,7 @@ export function TabBar() {
                 minHeight: 'var(--tabbar-height)',
               }}
             >
-              <div
+              <div className="relative"
                 style={{
                   transform: active ? 'scale(1.08)' : 'scale(1)',
                   transition: 'transform var(--motion-fast) var(--ease-spring), filter var(--motion-fast) ease',
@@ -133,6 +135,30 @@ export function TabBar() {
                 }}
               >
                 <TabIcon name={icon} active={active} />
+                {icon === 'chat' && unreadTotal > 0 && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: -4,
+                      right: -6,
+                      minWidth: 16,
+                      height: 16,
+                      borderRadius: 8,
+                      background: 'var(--red-soft)',
+                      color: '#fff',
+                      fontSize: 10,
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      padding: '0 3px',
+                      border: '1.5px solid var(--bg-primary)',
+                      lineHeight: 1,
+                    }}
+                  >
+                    {unreadTotal > 99 ? '99+' : unreadTotal}
+                  </span>
+                )}
               </div>
               <span
                 className="mt-0.5 font-medium"

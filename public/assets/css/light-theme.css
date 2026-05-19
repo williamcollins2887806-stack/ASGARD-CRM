@@ -5581,3 +5581,417 @@ html[data-theme="light"] .cr-m__body .btn.ghost:hover {
 }
 
 /* ─── §49 END ─── */
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §50 — INK & STONE
+   Один акцент — глубокий синий. Тёплый пергамент + чернильная точность.
+   Убираем золото из UI-хрома, декоративные анимации, лишние рамки.
+   Единообразные скругления. Элементы не перекрываются.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── 50-A: Анимации — убираем декоративное ── */
+
+/* Page-entry (§48-G) — контент появляется сразу, без задержек */
+html[data-theme="light"] .main-content > *,
+html[data-theme="light"] #layout > * {
+  animation-name: none !important;
+  opacity: 1 !important;
+  transform: none !important;
+  animation-delay: 0s !important;
+}
+
+/* Gold shimmer (§48-H) — убираем ::after-псевдоэлемент */
+html[data-theme="light"] .cr-card::after,
+html[data-theme="light"] .card::after,
+html[data-theme="light"] .panel::after {
+  content: none !important;
+  display: none !important;
+}
+/* overflow:hidden был нужен только для shimmer-clip — убираем, чтобы dropdowns не обрезались */
+html[data-theme="light"] .cr-card,
+html[data-theme="light"] .card,
+html[data-theme="light"] .panel {
+  overflow: visible !important;
+}
+
+/* ── 50-B: Топбар — только тонкая нижняя рамка ── */
+html[data-theme="light"] .topbar::after,
+html[data-theme="light"] .cr-topbar::after,
+html[data-theme="light"] header.main-header::after {
+  content: none !important;
+  display: none !important;
+}
+html[data-theme="light"] .topbar,
+html[data-theme="light"] .cr-topbar,
+html[data-theme="light"] header.main-header {
+  border-bottom: 1px solid rgba(0,0,0,0.08) !important;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.04) !important;
+}
+
+/* ── 50-C: Sidebar — чернильный navy, без золота ── */
+html[data-theme="light"] .navitem.active,
+html[data-theme="light"] .nav-item.active,
+html[data-theme="light"] .sidenav .active {
+  background: rgba(26,63,116,0.09) !important;
+  color: #1A3F74 !important;
+}
+html[data-theme="light"] .navitem.active::before,
+html[data-theme="light"] .nav-item.active::before {
+  background: #1A3F74 !important;
+}
+html[data-theme="light"] .navitem.active svg,
+html[data-theme="light"] .navitem.active .nav-icon,
+html[data-theme="light"] .nav-item.active svg,
+html[data-theme="light"] .nav-item.active .nav-icon {
+  color: #1A3F74 !important;
+}
+html[data-theme="light"] .navitem:hover,
+html[data-theme="light"] .nav-item:hover {
+  background: rgba(26,63,116,0.05) !important;
+  color: var(--t1) !important;
+}
+
+/* ── 50-D: Кнопки — flat navy primary ── */
+/* Inline-gradient "Просчитать" и любые другие JS-кнопки с тёмным градиентом */
+html[data-theme="light"] button[data-act="auto_estimate"]:not([disabled]),
+html[data-theme="light"] [style*="C8293B"][style*="1E4D8C"],
+html[data-theme="light"] [style*="background:linear-gradient(135deg,#C8293B"],
+html[data-theme="light"] [style*="linear-gradient(135deg,#C8293B"] {
+  background: #1A3F74 !important;
+  color: #fff !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.14) !important;
+}
+/* Ghost hover — navy тинт вместо золотого */
+html[data-theme="light"] .btn.ghost:hover,
+html[data-theme="light"] .cr-m__body .btn.ghost:hover {
+  background: rgba(26,63,116,0.07) !important;
+  color: #1A3F74 !important;
+  border-color: rgba(26,63,116,0.22) !important;
+}
+
+/* ── 50-E: Focus rings — navy везде ── */
+html[data-theme="light"] input:focus,
+html[data-theme="light"] textarea:focus,
+html[data-theme="light"] select:focus,
+html[data-theme="light"] .input:focus {
+  border-color: #1A3F74 !important;
+  box-shadow: 0 0 0 3px rgba(26,63,116,0.14) !important;
+  outline: none !important;
+}
+html[data-theme="light"] .cr-f-field input:hover,
+html[data-theme="light"] .cr-f-field textarea:hover {
+  border-color: rgba(26,63,116,0.32) !important;
+}
+html[data-theme="light"] .cr-f-field input:focus,
+html[data-theme="light"] .cr-f-field textarea:focus,
+html[data-theme="light"] .cr-f-field select:focus {
+  border-color: #1A3F74 !important;
+  box-shadow: 0 0 0 3px rgba(26,63,116,0.14) !important;
+}
+html[data-theme="light"] .cr-f-search:focus-within {
+  border-color: #1A3F74 !important;
+  box-shadow: 0 0 0 3px rgba(26,63,116,0.12) !important;
+}
+html[data-theme="light"] .cr-f-person:hover {
+  border-color: rgba(26,63,116,0.20) !important;
+  background: rgba(26,63,116,0.03) !important;
+}
+html[data-theme="light"] .cr-m__body .btn.ghost:hover {
+  background: rgba(26,63,116,0.07) !important;
+  color: #1A3F74 !important;
+  border-color: rgba(26,63,116,0.22) !important;
+}
+
+/* ── 50-F: cr-select — navy состояния ── */
+html[data-theme="light"] .cr-select__trigger:hover {
+  border-color: rgba(26,63,116,0.30) !important;
+}
+html[data-theme="light"] .cr-select--open .cr-select__trigger {
+  border-color: #1A3F74 !important;
+  box-shadow: 0 0 0 3px rgba(26,63,116,0.12) !important;
+}
+html[data-theme="light"] .cr-select__search-input:focus {
+  border-color: #1A3F74 !important;
+  box-shadow: 0 0 0 2px rgba(26,63,116,0.12) !important;
+}
+html[data-theme="light"] .cr-select__option:hover,
+html[data-theme="light"] .cr-select__option--focused {
+  background: rgba(26,63,116,0.06) !important;
+}
+html[data-theme="light"] .cr-select__option--selected {
+  background: rgba(26,63,116,0.09) !important;
+  color: #1A3F74 !important;
+}
+/* Галочка выбранного: gold SVG → navy */
+html[data-theme="light"] .cr-select__option--selected::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%231A3F74'%3E%3Cpath d='M6.5 12.5l-4-4 1.4-1.4 2.6 2.6 5.6-5.6 1.4 1.4z'/%3E%3C/svg%3E") !important;
+}
+
+/* ── 50-G: cr-datepicker — navy ── */
+html[data-theme="light"] .cr-dp__day--sel,
+html[data-theme="light"] .cr-dp__day--sel:hover {
+  background: #1A3F74 !important;
+  color: #fff !important;
+}
+html[data-theme="light"] .cr-dp__today-btn {
+  color: #1A3F74 !important;
+  border-color: rgba(26,63,116,0.25) !important;
+}
+
+/* ── 50-H: KPI — чистые белые карточки, без цветных градиентов ── */
+html[data-theme="light"] .kpi .k,
+html[data-theme="light"] .kpi .k:nth-child(1),
+html[data-theme="light"] .kpi .k:nth-child(2),
+html[data-theme="light"] .kpi .k:nth-child(3),
+html[data-theme="light"] .kpi .k:nth-child(4),
+html[data-theme="light"] .kpi .k:nth-child(5),
+html[data-theme="light"] .kpi .k:nth-child(6) {
+  background: #ffffff !important;
+  border: 1px solid rgba(0,0,0,0.07) !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
+}
+html[data-theme="light"] .kpi .k:hover {
+  box-shadow: 0 4px 14px rgba(0,0,0,0.08) !important;
+  transform: translateY(-1px) !important;
+  border-color: rgba(0,0,0,0.10) !important;
+}
+/* Числа — обычные (без oldstyle, слишком декоративно) */
+html[data-theme="light"] .kpi .v,
+html[data-theme="light"] .kpi .k .v,
+html[data-theme="light"] td,
+html[data-theme="light"] .cr-table td,
+html[data-theme="light"] .stat-value,
+html[data-theme="light"] .cr-metric__value {
+  font-variant-numeric: normal !important;
+}
+
+/* ── 50-I: Таблицы — редакционный заголовок, navy акценты ── */
+html[data-theme="light"] table thead tr {
+  border-bottom: 1px solid rgba(26,63,116,0.14) !important;
+}
+html[data-theme="light"] table tbody tr:hover td,
+html[data-theme="light"] .cr-table tbody tr:hover td {
+  background: rgba(26,63,116,0.03) !important;
+}
+html[data-theme="light"] table tbody tr.selected td,
+html[data-theme="light"] table tbody tr.active td,
+html[data-theme="light"] .cr-table tbody tr.active td {
+  background: rgba(26,63,116,0.06) !important;
+  border-left-color: #1A3F74 !important;
+}
+
+/* ── 50-J: Hover-акценты — gold → navy ── */
+html[data-theme="light"] .stat-card:hover { border-color: rgba(26,63,116,0.18) !important; }
+html[data-theme="light"] .tag:hover,
+html[data-theme="light"] .pill:hover        { border-color: rgba(26,63,116,0.22) !important; color: #1A3F74 !important; }
+html[data-theme="light"] .chat-msg-reaction:hover { border-color: rgba(26,63,116,0.22) !important; }
+html[data-theme="light"] .chat-msg-reaction.active {
+  background: rgba(26,63,116,0.09) !important;
+  border-color: rgba(26,63,116,0.25) !important;
+  color: #1A3F74 !important;
+}
+html[data-theme="light"] .dash-widget:hover      { border-color: rgba(26,63,116,0.18) !important; }
+html[data-theme="light"] .wp-desktop-pill:hover  { border-color: rgba(26,63,116,0.22) !important; }
+html[data-theme="light"] .wp-desktop-pill.selected {
+  background: rgba(26,63,116,0.09) !important;
+  border-color: rgba(26,63,116,0.25) !important;
+  color: #1A3F74 !important;
+}
+html[data-theme="light"] .proc-deliver-card:hover { border-color: rgba(26,63,116,0.18) !important; }
+
+/* ── 50-K: Search modal — navy ── */
+html[data-theme="light"] .search-modal {
+  box-shadow: 0 16px 48px rgba(0,0,0,0.10), 0 0 0 1px rgba(0,0,0,0.06) !important;
+}
+html[data-theme="light"] .search-result-item:hover,
+html[data-theme="light"] .search-result-item--focused {
+  background: rgba(26,63,116,0.05) !important;
+}
+html[data-theme="light"] .search-result-item--active {
+  background: rgba(26,63,116,0.09) !important;
+  border-left-color: #1A3F74 !important;
+}
+
+/* ── 50-L: Scrollbar — navy, тонкий и ненавязчивый ── */
+html[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: rgba(26,63,116,0.18) !important;
+}
+html[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(26,63,116,0.32) !important;
+}
+html[data-theme="light"] .chat-messages::-webkit-scrollbar-thumb,
+html[data-theme="light"] .mymail-list::-webkit-scrollbar-thumb,
+html[data-theme="light"] .mymail-folders::-webkit-scrollbar-thumb {
+  background: rgba(26,63,116,0.15) !important;
+}
+
+/* ── 50-M: Checkbox, toggle — navy accent ── */
+html[data-theme="light"] input[type="checkbox"],
+html[data-theme="light"] input[type="radio"] {
+  accent-color: #1A3F74 !important;
+}
+html[data-theme="light"] .toggle-switch.active,
+html[data-theme="light"] .switch.active,
+html[data-theme="light"] .cr-toggle.active {
+  background: #1A3F74 !important;
+}
+
+/* ── 50-N: Procurement — navy вместо gold ── */
+html[data-theme="light"] .proc-deliver__btn--primary {
+  background: #1A3F74 !important; color: #fff !important;
+}
+html[data-theme="light"] .proc-deliver__btn--primary:hover { background: #142E58 !important; }
+html[data-theme="light"] .proc-deliver__link:hover,
+html[data-theme="light"] .proc-deliver-done__link:hover {
+  background: #1A3F74 !important; color: #fff !important;
+}
+html[data-theme="light"] .proc-deliver__progress-bar {
+  background: linear-gradient(90deg, #1A3F74, #2D6A4F) !important;
+}
+
+/* ── 50-O: Tab active — navy underline ── */
+html[data-theme="light"] .tab.active,
+html[data-theme="light"] .tab-btn.active,
+html[data-theme="light"] .tab--active {
+  color: #1A3F74 !important;
+}
+html[data-theme="light"] .tab.active::after,
+html[data-theme="light"] .tab--active::after {
+  background: #1A3F74 !important;
+}
+
+/* ── 50-P: Единообразные скругления ── */
+/* Крупные контейнеры */
+html[data-theme="light"] .card,
+html[data-theme="light"] .cr-card,
+html[data-theme="light"] .panel,
+html[data-theme="light"] .modal-content,
+html[data-theme="light"] .cr-select__dropdown,
+html[data-theme="light"] .dash-widget,
+html[data-theme="light"] .stat-card,
+html[data-theme="light"] .kpi .k,
+html[data-theme="light"] .wp-desktop-section,
+html[data-theme="light"] .search-modal,
+html[data-theme="light"] .dropdown-menu {
+  border-radius: 10px !important;
+}
+/* Поля ввода и кнопки */
+html[data-theme="light"] .btn,
+html[data-theme="light"] .cr-select__trigger,
+html[data-theme="light"] .cr-f-field input,
+html[data-theme="light"] .cr-f-field textarea,
+html[data-theme="light"] .cr-f-field select,
+html[data-theme="light"] .cr-ac__input,
+html[data-theme="light"] .cr-f-search {
+  border-radius: 8px !important;
+}
+/* Мелкие элементы */
+html[data-theme="light"] .tag,
+html[data-theme="light"] .pill,
+html[data-theme="light"] .badge,
+html[data-theme="light"] .kbd,
+html[data-theme="light"] .search-kbd,
+html[data-theme="light"] .wp-desktop-pill,
+html[data-theme="light"] .cr-select__option {
+  border-radius: 6px !important;
+}
+
+/* ── 50-Q: Аудит-фиксы — пропущенные gold и проблемы специфичности ── */
+
+/* 1. nav-group .navitem.active имеет бо́льшую специфичность (4 класса) — перебиваем явно */
+html[data-theme="light"] .nav-group .navitem.active {
+  background: rgba(26,63,116,0.09) !important;
+  border-left-color: #1A3F74 !important;
+}
+html[data-theme="light"] .nav-group .navitem.active .ico,
+html[data-theme="light"] .nav-group .navitem.active svg {
+  color: #1A3F74 !important;
+}
+/* Родительский заголовок группы с активным потомком */
+html[data-theme="light"] .nav-group.has-active > .nav-group-header {
+  background: rgba(26,63,116,0.06) !important;
+  border-color: rgba(26,63,116,0.18) !important;
+  color: var(--t1) !important;
+}
+
+/* 2. toggle-switch:checked — отсутствовал в §50-M (была только .active) */
+html[data-theme="light"] .toggle-switch:checked {
+  background: #1A3F74 !important;
+}
+
+/* 3. tab.active border-bottom — цвет менялся, но сама линия оставалась gold */
+html[data-theme="light"] .tab.active,
+html[data-theme="light"] .tab-btn.active {
+  border-bottom-color: #1A3F74 !important;
+}
+
+/* 4. dash-widget-header — заголовки виджетов оставались gold */
+html[data-theme="light"] .dash-widget-header {
+  color: var(--t2) !important;
+}
+
+/* 5. cr-emp-picker primary button и чекбокс — gold не перекрыт в §50 */
+html[data-theme="light"] .cr-emp-picker__btn--primary {
+  background: #1A3F74 !important;
+  border-color: #1A3F74 !important;
+  color: #fff !important;
+}
+html[data-theme="light"] .cr-emp-picker__btn--primary:hover {
+  background: #142E58 !important;
+  border-color: #142E58 !important;
+}
+html[data-theme="light"] .cr-emp-picker__row--sel .cr-emp-picker__checkbox {
+  background: #1A3F74 !important;
+  border-color: #1A3F74 !important;
+}
+
+/* 6. cr-datepicker: --selected (не --sel) и today-border */
+html[data-theme="light"] .cr-dp__day--selected,
+html[data-theme="light"] .cr-dp__day--selected:hover {
+  background: #1A3F74 !important;
+  color: #fff !important;
+}
+
+/* 7. brand:hover — логотип в сайдбаре при hover оставался gold */
+html[data-theme="light"] .brand:hover {
+  border-color: rgba(26,63,116,0.28) !important;
+  background: rgba(26,63,116,0.04) !important;
+}
+
+/* 8. chat-sender — имя отправителя в золоте смотрится как тёмная тема */
+html[data-theme="light"] .msg-sender,
+html[data-theme="light"] .chat-sender {
+  color: #1A3F74 !important;
+}
+
+/* ── 50-R: Session Guard — PIN экран в светлой теме ── */
+/* session-guard.js инжектит <style> с #060a14 — перекрываем через !important */
+html[data-theme="light"] .sg-overlay {
+  background: #F0ECE4 !important;
+}
+html[data-theme="light"] .sg-wave {
+  opacity: 0.05 !important;
+}
+html[data-theme="light"] .sg-logo {
+  filter: none !important;
+}
+html[data-theme="light"] .sg-dot.filled {
+  background: #1A3F74 !important;
+  border-color: #1A3F74 !important;
+  box-shadow: none !important;
+}
+html[data-theme="light"] .sg-dot.success {
+  box-shadow: none !important;
+}
+html[data-theme="light"] .sg-key:active {
+  border-color: rgba(26,63,116,0.30) !important;
+}
+html[data-theme="light"] .sg-key.biometric {
+  border-color: rgba(26,63,116,0.22) !important;
+  background: rgba(26,63,116,0.06) !important;
+}
+html[data-theme="light"] .sg-key.biometric svg {
+  fill: #1A3F74 !important;
+}
+
+/* ─── §50 END — Ink & Stone ─── */

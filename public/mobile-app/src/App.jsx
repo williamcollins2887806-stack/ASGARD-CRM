@@ -1,9 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { useThemeStore } from '@/stores/themeStore';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { TabBar } from '@/components/layout/TabBar';
+import { useSSE } from '@/hooks/useSSE';
+import { useChatStore } from '@/stores/chatStore';
 import { features } from '@/config/features';
 import FieldLayout from '@/layouts/FieldLayout';
 import FieldWelcome from '@/pages/field/FieldWelcome';
@@ -38,6 +40,8 @@ import FieldLesson from '@/pages/field/FieldLesson';
 import FieldAcademyQuiz from '@/pages/field/FieldAcademyQuiz';
 import FieldAcademyLibrary from '@/pages/field/FieldAcademyLibrary';
 import FieldEarningsMonthly from '@/pages/field/FieldEarningsMonthly';
+import FieldSeasonal from '@/pages/field/FieldSeasonal';
+import FieldDiary from '@/pages/field/FieldDiary';
 import PmDashboard from '@/pages/pm/PmDashboard';
 import PmWorkers from '@/pages/pm/PmWorkers';
 import PmWorkerProfile from '@/pages/pm/PmWorkerProfile';
@@ -90,6 +94,10 @@ import MyMail from '@/pages/MyMail';
 import Seals from '@/pages/Seals';
 import Diag from '@/pages/Diag';
 import Training from '@/pages/Training';
+import OfficeAcademy from '@/pages/OfficeAcademy';
+import OfficeLesson from '@/pages/OfficeLesson';
+import OfficeAcademyQuiz from '@/pages/OfficeAcademyQuiz';
+import OfficeAcademyAdmin from '@/pages/OfficeAcademyAdmin';
 import Integrations from '@/pages/Integrations';
 import More from '@/pages/More';
 import CallAnalytics from '@/pages/CallAnalytics';
@@ -116,6 +124,25 @@ function PinGuard({ children }) {
 
 function AppLayout() {
   const location = useLocation();
+  const incrementChat = useChatStore((s) => s.incrementChat);
+  const userId = useAuthStore((s) => s.user?.id);
+
+  // Глобальный SSE: обновляет бейдж непрочитанных с любой страницы.
+  // Chat.jsx и ChatView.jsx имеют свои useSSE для отображения сообщений —
+  // здесь мы только считаем непрочитанные для TabBar-бейджа.
+  useSSE(useCallback((event, data) => {
+    if (event !== 'new_message') return;
+    // Игнорируем собственные сообщения
+    if (data.message?.user_id === userId) return;
+    const chatId = data.chat_id;
+    if (!chatId) return;
+    // Chat.jsx сам пересчитывает total через initFromChats при загрузке
+    if (location.pathname === '/chat') return;
+    // Если пользователь сейчас в этом чате — он читает, не инкрементируем
+    if (location.pathname === `/chat/${chatId}`) return;
+    incrementChat(chatId);
+  }, [incrementChat, userId, location.pathname]));
+
   const hideTabBar =
     ['/login', '/pin', '/welcome'].includes(location.pathname) ||
     location.pathname.startsWith('/chat/') ||
@@ -182,6 +209,10 @@ function AppLayout() {
           <Route path="/seals" element={<ProtectedRoute section="works"><PinGuard><Seals /></PinGuard></ProtectedRoute>} />
           <Route path="/diag" element={<ProtectedRoute section="settings"><PinGuard><Diag /></PinGuard></ProtectedRoute>} />
           <Route path="/training" element={<ProtectedRoute section="dashboard"><PinGuard><Training /></PinGuard></ProtectedRoute>} />
+          <Route path="/office-academy" element={<ProtectedRoute section="dashboard"><PinGuard><OfficeAcademy /></PinGuard></ProtectedRoute>} />
+          <Route path="/office-academy/admin" element={<ProtectedRoute section="settings"><PinGuard><OfficeAcademyAdmin /></PinGuard></ProtectedRoute>} />
+          <Route path="/office-academy/:id/quiz" element={<ProtectedRoute section="dashboard"><PinGuard><OfficeAcademyQuiz /></PinGuard></ProtectedRoute>} />
+          <Route path="/office-academy/:id" element={<ProtectedRoute section="dashboard"><PinGuard><OfficeLesson /></PinGuard></ProtectedRoute>} />
           <Route path="/integrations" element={<ProtectedRoute section="settings"><PinGuard><Integrations /></PinGuard></ProtectedRoute>} />
           <Route path="/call-analytics" element={<ProtectedRoute section="dashboard"><PinGuard><CallAnalytics /></PinGuard></ProtectedRoute>} />
           <Route path="/estimate-report/:id" element={<ProtectedRoute section="tenders"><PinGuard><EstimateReport /></PinGuard></ProtectedRoute>} />
@@ -228,6 +259,8 @@ function AppLayout() {
                 <Route path="shop" element={<FieldShop />} />
                 <Route path="inventory" element={<FieldInventory />} />
                 <Route path="quests" element={<FieldQuests />} />
+                <Route path="seasonal" element={<FieldSeasonal />} />
+                <Route path="diary" element={<FieldDiary />} />
                 <Route path="journey" element={<FieldJourney />} />
                 <Route path="academy" element={<FieldAcademy />} />
                 <Route path="academy/library" element={<FieldAcademyLibrary />} />

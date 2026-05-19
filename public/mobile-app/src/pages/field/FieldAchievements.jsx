@@ -8,7 +8,8 @@ const TIER_COLORS = { cup: '#cd7f32', medal: '#c0c0c0', order: '#ffd700', legend
 const TIER_LABELS = { cup: 'Кубок', medal: 'Медаль', order: 'Орден', legend: 'Легенда' };
 const CAT_LABELS = {
   onboarding: 'Вступление', discipline: 'Дисциплина', endurance: 'Выносливость',
-  travel: 'Командировки', finance: 'Финансы', mastery: 'Мастерство', secret: 'Секретные',
+  travel: 'Командировки', finance: 'Финансы', mastery: 'Мастерство',
+  brigade: 'Бригадные', secret: 'Секретные',
 };
 
 export default function FieldAchievements() {

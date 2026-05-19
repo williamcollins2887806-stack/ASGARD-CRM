@@ -596,7 +596,10 @@ window.AsgardTkpPage = (function() {
   // Форма: открытие
   // ═══════════════════════════════════════════
 
-  async function openForm(editId) {
+  // prefill = { tender_id, tender_title, customer_name, customer_inn, subject, work_type,
+  //             object_name, object_city, total_price }
+  async function openForm(editId, prefill) {
+    var prefillData = prefill || {};
     let currentId = editId || null;
     let item = {};
 
@@ -611,6 +614,14 @@ window.AsgardTkpPage = (function() {
         toast('Ошибка', 'Не удалось загрузить ТКП: ' + e.message, 'err');
         return;
       }
+    } else if (prefillData.tender_id || prefillData.customer_name) {
+      // Prefill from tender/estimate
+      item = {
+        tender_id:     prefillData.tender_id    || null,
+        customer_name: prefillData.customer_name || '',
+        customer_inn:  prefillData.customer_inn  || '',
+        subject:       prefillData.subject       || '',
+      };
     }
 
     await loadVat();
@@ -620,8 +631,8 @@ window.AsgardTkpPage = (function() {
     let allTenders = [];
     try { allTenders = (await AsgardDB.all('tenders')) || []; } catch (e) {}
 
-    let tenderTitle = '';
-    if (item.tender_id && allTenders.length) {
+    let tenderTitle = prefillData.tender_title || '';
+    if (item.tender_id && allTenders.length && !tenderTitle) {
       const found = allTenders.find(function(x) { return x.id == item.tender_id; });
       if (found) tenderTitle = found.tender_title || '';
     }
@@ -645,6 +656,15 @@ window.AsgardTkpPage = (function() {
     itemRows = [];
     _tkpRowId = 0;
 
+    // Prefill initial line item from estimate price
+    var prefillItems = [];
+    if (!currentId && prefillData.total_price && Number(prefillData.total_price) > 0) {
+      var workLabel = 'Выполнение работ';
+      if (prefillData.work_type) workLabel += ' (' + prefillData.work_type + ')';
+      if (prefillData.object_name) workLabel += ' — ' + prefillData.object_name;
+      prefillItems.push({ name: workLabel, unit: 'усл.', qty: 1, price: Number(prefillData.total_price) });
+    }
+
     showModal({
       title: currentId ? 'Редактирование ТКП #' + currentId : 'Новое ТКП',
       icon: '💰',
@@ -664,8 +684,10 @@ window.AsgardTkpPage = (function() {
         }
 
         // Таблица работ
-        if (parsed.items && Array.isArray(parsed.items)) {
+        if (parsed.items && Array.isArray(parsed.items) && parsed.items.length > 0) {
           parsed.items.forEach(function(row) { addItemRow(row); });
+        } else if (prefillItems.length > 0) {
+          prefillItems.forEach(function(row) { addItemRow(row); });
         } else {
           addItemRow();
         }
@@ -1189,5 +1211,10 @@ window.AsgardTkpPage = (function() {
     });
   }
 
-  return { render: render, openSendTkpModal: openSendTkpModal };
+  return {
+    render: render,
+    openSendTkpModal: openSendTkpModal,
+    openNew: function(prefill) { openForm(null, prefill || {}); },
+    openEdit: function(id) { openForm(id); },
+  };
 })();

@@ -217,9 +217,16 @@ function PlayerRow({ player, isSelf, idx, visible }) {
       {/* Name + rank + xp bar */}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: isSelf ? '#D4A843' : '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: isSelf ? '#D4A843' : '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 90 }}>
             {(player.fio || '').split(' ').slice(0, 2).join(' ')}
           </span>
+          {player.title_icon && player.title_id !== 'recruit' && (
+            <span style={{ fontSize: 11, padding: '1px 6px', borderRadius: 8, fontWeight: 700,
+              backgroundColor: (player.title_color || '#6b7280') + '20',
+              color: player.title_color || '#6b7280' }}>
+              {player.title_icon} {player.title_name}
+            </span>
+          )}
           <RankBadge title={rt.title} icon={rt.icon} small />
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>

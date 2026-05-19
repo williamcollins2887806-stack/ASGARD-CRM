@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { Check, CheckCheck, Reply, Forward } from 'lucide-react';
+import { Check, CheckCheck, Reply, Forward, Copy, Pencil, Trash2 } from 'lucide-react';
 import { ReactionBadge } from './ReactionBadge';
 import { VoicePlayer } from './VoicePlayer';
 import { VideoCircle } from './VideoCircle';
@@ -21,6 +21,7 @@ export function MessageBubble({
   onReaction,
   onDelete,
   onEdit,
+  onForward,
   isNew,
 }) {
   const [showMenu, setShowMenu] = useState(false);
@@ -350,12 +351,13 @@ export function MessageBubble({
                     setShowMenu(false);
                   }}
                 >
+                  <Copy size={16} className="c-tertiary" />
                   Копировать
                 </button>
                 <button
                   className="w-full flex items-center gap-2.5 px-4 py-2.5 text-[14px] c-primary"
                   style={{ borderTop: '0.5px solid var(--border-norse)' }}
-                  onClick={() => setShowMenu(false)}
+                  onClick={() => { onForward?.(msg); setShowMenu(false); }}
                 >
                   <Forward size={16} className="c-tertiary" />
                   Переслать
@@ -367,6 +369,7 @@ export function MessageBubble({
                       style={{ borderTop: '0.5px solid var(--border-norse)' }}
                       onClick={() => { onEdit?.(msg); setShowMenu(false); }}
                     >
+                      <Pencil size={16} className="c-tertiary" />
                       Редактировать
                     </button>
                     <button
@@ -374,6 +377,7 @@ export function MessageBubble({
                       style={{ borderTop: '0.5px solid var(--border-norse)' }}
                       onClick={() => { onDelete?.(msg.id); setShowMenu(false); }}
                     >
+                      <Trash2 size={16} style={{ color: 'var(--red-soft)' }} />
                       Удалить
                     </button>
                   </>

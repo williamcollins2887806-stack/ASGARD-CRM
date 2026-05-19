@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/api/client';
+import { useChatStore } from '@/stores/chatStore';
 
 /**
  * useChat — загрузка списка чатов + поиск
@@ -8,18 +9,20 @@ export function useChat() {
   const [chats, setChats] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const initFromChats = useChatStore((s) => s.initFromChats);
 
   const fetchChats = useCallback(async () => {
     try {
       const res = await api.get('/chat-groups');
       const rows = api.extractRows(res);
       setChats(rows);
+      initFromChats(rows);
     } catch {
       setChats([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [initFromChats]);
 
   useEffect(() => {
     fetchChats();

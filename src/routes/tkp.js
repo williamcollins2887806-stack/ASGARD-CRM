@@ -401,6 +401,15 @@ async function routes(fastify, options) {
       ['sent', request.user.id, email, id]
     );
 
+    // Автоматически переводим тендер из "ТКП согласовано" → "КП отправлено"
+    if (tkp.tender_id) {
+      await db.query(
+        `UPDATE tenders SET tender_status = 'КП отправлено', updated_at = NOW()
+         WHERE id = $1 AND tender_status = 'ТКП согласовано'`,
+        [tkp.tender_id]
+      );
+    }
+
     if (tkp.author_id && tkp.author_id !== request.user.id) {
       createNotification(db, {
         user_id: tkp.author_id,

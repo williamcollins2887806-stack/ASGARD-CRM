@@ -188,13 +188,13 @@ async function routes(fastify) {
     const { isAdmin, userId } = pmFilter(req.user);
     const empId = parseInt(req.params.id);
 
-    // Проверка доступа: рабочий должен быть на проекте PM
+    // Проверка доступа: рабочий когда-либо был на проекте PM (включая уволенных)
     const { rows: accessCheck } = await db.query(
       isAdmin
-        ? `SELECT ea.id FROM employee_assignments ea WHERE ea.employee_id = $1 AND ea.is_active = true LIMIT 1`
+        ? `SELECT ea.id FROM employee_assignments ea WHERE ea.employee_id = $1 LIMIT 1`
         : `SELECT ea.id FROM employee_assignments ea
            JOIN works w ON w.id = ea.work_id
-           WHERE ea.employee_id = $1 AND w.pm_id = $2 AND ea.is_active = true LIMIT 1`,
+           WHERE ea.employee_id = $1 AND w.pm_id = $2 LIMIT 1`,
       isAdmin ? [empId] : [empId, userId]
     );
     if (!accessCheck.length) return reply.code(404).send({ error: 'Рабочий не найден' });

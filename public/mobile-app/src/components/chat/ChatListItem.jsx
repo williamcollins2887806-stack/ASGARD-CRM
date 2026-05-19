@@ -4,6 +4,25 @@ import { useHaptic } from '@/hooks/useHaptic';
 import { formatDate } from '@/lib/utils';
 import { Pin, BellOff, Archive } from 'lucide-react';
 
+const AVATAR_COLORS = [
+  { bg: 'rgba(74,144,217,0.18)', color: '#4A90D9' },    // blue
+  { bg: 'rgba(200,168,78,0.18)', color: '#c8a84e' },    // gold
+  { bg: 'rgba(123,104,238,0.18)', color: '#7B68EE' },   // purple
+  { bg: 'rgba(48,209,88,0.18)', color: '#30d158' },     // green
+  { bg: 'rgba(255,149,0,0.18)', color: '#ff9500' },     // orange
+  { bg: 'rgba(255,69,58,0.18)', color: '#ff453a' },     // red
+  { bg: 'rgba(100,210,255,0.18)', color: '#64d2ff' },   // cyan
+  { bg: 'rgba(191,90,242,0.18)', color: '#bf5af2' },    // violet
+];
+
+function getAvatarStyle(name) {
+  let h = 5381;
+  for (let i = 0; i < (name || '').length; i++) {
+    h = ((h << 5) + h) ^ name.charCodeAt(i);
+  }
+  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
+}
+
 function normalizePreview(text) {
   if (!text) return '';
   if (text.includes('[Фото')) return '📷 Фото';
@@ -116,12 +135,28 @@ export function ChatListItem({ chat, onPin, onMute, onArchive }) {
       >
         {/* Avatar */}
         <div className="relative shrink-0">
-          <div
-            className="avatar-hero"
-            style={{ width: 48, height: 48, fontSize: 15 }}
-          >
-            {initials}
-          </div>
+          {(() => {
+            const { bg, color } = getAvatarStyle(chat.name);
+            return (
+              <div
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: '50%',
+                  background: bg,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 15,
+                  fontWeight: 700,
+                  color,
+                  flexShrink: 0,
+                }}
+              >
+                {initials}
+              </div>
+            );
+          })()}
           {isOnline && (
             <div
               className="absolute -bottom-0.5 -right-0.5 rounded-full online-pulse"

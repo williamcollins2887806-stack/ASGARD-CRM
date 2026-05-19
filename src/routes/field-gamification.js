@@ -255,7 +255,19 @@ async function routes(fastify) {
     );
 
     const total = freeLeft + checkinLeft + purchasedLeft;
-    return { free: freeLeft, checkin: checkinLeft, purchased: purchasedLeft, total, checkin_expires_at: checkinExpiresAt };
+
+    // Title info for spin-status display
+    let titleInfo = null;
+    try {
+      const { getWorkerTitle } = require('../services/titleService');
+      titleInfo = await getWorkerTitle(db, eid);
+    } catch { /* non-critical */ }
+
+    return {
+      free: freeLeft, checkin: checkinLeft, purchased: purchasedLeft, total,
+      checkin_expires_at: checkinExpiresAt,
+      title: titleInfo,
+    };
   });
 
   // ── POST /spin — spin the Wheel of Norns (TRANSACTIONAL) ──
@@ -374,7 +386,13 @@ async function routes(fastify) {
       // Pity values (row already locked above via pity variable)
       const spinsSinceRare = pity?.spins_since_rare || 0;
       const pendingMultiplier = Math.max(1, pity?.pending_multiplier || 1);
-      const pityGuarantee = 50;
+      // Title-based pity: higher title = fewer spins to guarantee rare
+      let pityGuarantee = 50;
+      try {
+        const { getWorkerTitle } = require('../services/titleService');
+        const titleInfo = await getWorkerTitle(db, eid);
+        pityGuarantee = titleInfo.pity_guarantee;
+      } catch { /* fallback to 50 */ }
 
       // Select prize
       let selectedPrize;
@@ -484,6 +502,12 @@ async function routes(fastify) {
           }).catch(() => {}); // fire-and-forget
         }
       }
+
+      // Seasonal challenge: roulette_spins progress (fire-and-forget)
+      try {
+        const { checkSeasonalProgress } = require('../services/seasonalChecker');
+        checkSeasonalProgress(db, eid).catch(() => {});
+      } catch { /* non-critical */ }
 
       return {
         prize: { id: selectedPrize.id, tier: selectedPrize.tier, type: selectedPrize.prize_type,

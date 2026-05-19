@@ -91,7 +91,8 @@ async function routes(fastify) {
     if (NO_ACCESS.includes(role)) return { estimates: [] };
 
     let sql = `SELECT e.*, t.customer_name as customer, u.name as pm_name,
-               (SELECT COUNT(*) FROM approval_comments ac WHERE ac.entity_type = 'estimates' AND ac.entity_id = e.id) as comments_count
+               (SELECT COUNT(*) FROM approval_comments ac WHERE ac.entity_type = 'estimates' AND ac.entity_id = e.id) as comments_count,
+               (SELECT c.id FROM chats c WHERE c.entity_type = 'estimate' AND c.entity_id = e.id LIMIT 1) as huginn_chat_id
                FROM estimates e
                LEFT JOIN tenders t ON e.tender_id = t.id
                LEFT JOIN users u ON e.pm_id = u.id WHERE 1=1`;
@@ -158,6 +159,13 @@ async function routes(fastify) {
       docParams
     );
     estimate.documents = docsResult.rows;
+
+    // Huginn-чат для этого просчёта
+    const chatResult = await db.query(
+      "SELECT id FROM chats WHERE entity_type = 'estimate' AND entity_id = $1 LIMIT 1",
+      [estimate.id]
+    );
+    estimate.huginn_chat_id = chatResult.rows[0]?.id || null;
 
     return { estimate };
   });
@@ -391,11 +399,42 @@ async function routes(fastify) {
           `, [estimate.tender_id]);
         }
 
+        // Собираем читаемое резюме просчёта для Telegram-уведомления директорам
+        const _fmt = (n) => n ? new Intl.NumberFormat('ru-RU').format(Math.round(Number(n))) : null;
+        const _date = (d) => d ? new Date(d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) : null;
+
+        const summaryParts = [];
+        if (estimate.object_name) summaryParts.push(`🏗 *${estimate.object_name}*`);
+        if (estimate.object_city || estimate.city) summaryParts.push(`📍 ${estimate.object_city || estimate.city}`);
+        if (estimate.work_type) summaryParts.push(`🔧 ${estimate.work_type}`);
+
+        const totalRaw = estimate.total_sum || estimate.price_tkp || estimate.amount;
+        if (totalRaw) summaryParts.push(`💰 *${_fmt(totalRaw)} ₽*`);
+
+        const crewParts = [];
+        if (estimate.crew_count) crewParts.push(`${estimate.crew_count} чел`);
+        if (estimate.work_days) crewParts.push(`${estimate.work_days} дн`);
+        if (crewParts.length) summaryParts.push(`👷 ${crewParts.join(' · ')}`);
+
+        const dateStart = _date(estimate.work_start_date);
+        const dateEnd   = _date(estimate.work_end_date);
+        if (dateStart && dateEnd) summaryParts.push(`📅 ${dateStart} — ${dateEnd}`);
+        else if (dateStart) summaryParts.push(`📅 Старт: ${dateStart}`);
+
+        if (estimate.margin_percent || estimate.margin_pct) {
+          summaryParts.push(`📊 Маржа: ${Math.round(estimate.margin_percent || estimate.margin_pct)}%`);
+        }
+
+        const richMessage = [
+          `${request.user.name || 'РП'} отправил просчёт #${estimate.id} на согласование`,
+          summaryParts.length ? '\n' + summaryParts.join('\n') : ''
+        ].join('');
+
         await approvalService.notifyDirectorsForApproval(client, {
           entityType: 'estimates', entityId: estimate.id,
           actorName: request.user.name,
           title: '📋 Просчёт на согласование',
-          message: `${request.user.name || 'РП'} отправил просчёт #${estimate.id}`,
+          message: richMessage,
           requiresPayment: false
         });
 
@@ -1183,6 +1222,44 @@ async function routes(fastify) {
     }
 
     return { message: 'Удалено' };
+  });
+
+  // GET /ready-for-tkp — тендеры с одобренными просчётами, ожидающие создания ТКП
+  fastify.get('/ready-for-tkp', { preHandler: [fastify.authenticate] }, async (request) => {
+    const { role } = request.user;
+    const ALLOWED = ['TO', 'HEAD_TO', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+    if (!ALLOWED.includes(role)) return { items: [] };
+
+    const result = await db.query(`
+      SELECT DISTINCT ON (t.id)
+        e.id                                                      AS estimate_id,
+        e.title                                                   AS estimate_title,
+        COALESCE(ecd.total_with_margin, e.price_tkp, e.amount, 0)  AS total_price,
+        COALESCE(ecd.total_cost, e.cost, 0)                      AS total_cost,
+        e.work_type,
+        e.object_name,
+        e.object_city,
+        e.updated_at                                              AS estimate_updated_at,
+        t.id                                                      AS tender_id,
+        t.tender_title,
+        t.customer_name,
+        t.customer_inn,
+        t.tender_status,
+        t.docs_deadline,
+        (SELECT COUNT(*) FROM tkp
+         WHERE tkp.tender_id = t.id
+           AND tkp.status NOT IN ('draft', 'rejected'))          AS active_tkp_count
+      FROM estimates e
+      JOIN tenders t ON e.tender_id = t.id
+      LEFT JOIN estimate_calculation_data ecd
+        ON ecd.estimate_id = e.id
+        AND ecd.version_no = COALESCE(e.current_version_no, 1)
+      WHERE e.approval_status = 'approved'
+        AND t.tender_status NOT IN ('Выиграли','Проиграли','Не подходит','КП отправлено')
+      ORDER BY t.id, e.updated_at DESC
+    `);
+
+    return { items: result.rows };
   });
 }
 

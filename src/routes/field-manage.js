@@ -958,6 +958,34 @@ async function routes(fastify, options) {
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // POST /projects/:work_id/return/:employee_id
+  //   Cancel departure — worker returns to site
+  // ─────────────────────────────────────────────────────────────────────
+  fastify.post('/projects/:work_id/return/:employee_id', roleCheck, async (req, reply) => {
+    try {
+      const workId = parseInt(req.params.work_id);
+      const empId  = parseInt(req.params.employee_id);
+
+      const { rowCount } = await db.query(`
+        UPDATE employee_assignments
+        SET departure_date = NULL, departure_reason = NULL, is_active = true, updated_at = NOW()
+        WHERE work_id = $1 AND employee_id = $2
+          AND (departure_date IS NOT NULL OR is_active = false)
+      `, [workId, empId]);
+
+      if (!rowCount) return reply.code(404).send({ error: 'Назначение не найдено или работник уже активен' });
+
+      const { rows: empRows } = await db.query(`SELECT fio FROM employees WHERE id = $1`, [empId]);
+      fastify.log.info(`[return] ${empRows[0]?.fio || empId} returned to work #${workId}`);
+
+      return { ok: true };
+    } catch (err) {
+      fastify.log.error('[field-manage] return error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
 }
 
 module.exports = routes;

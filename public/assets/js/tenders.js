@@ -643,6 +643,7 @@ window.AsgardTendersPage = (function(){
         <hr class="hr"/>
         <div id="dist_panel"></div>
         <div id="win_panel"></div>
+        <div id="tkp_ready_panel"></div>
         <div style="overflow:auto">
           <table class="asg">
             <thead>
@@ -1007,6 +1008,220 @@ window.AsgardTendersPage = (function(){
           const pmId = Number(CRSelect.getValue('win_pm_' + reqId) || 0);
           if(!pmId){ toast("Согласие","Выберите РП в списке","err"); return; }
           await requestOverride({reqId, pmId, tender});
+        });
+      });
+    })();
+
+    // ===== Блок "Готовы к ТКП" =====
+    (async function renderTkpReadyPanel(){
+      const tkpReadyPanel = $("#tkp_ready_panel");
+      if (!tkpReadyPanel) return;
+
+      const canSee = ['TO','HEAD_TO','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV'].includes(user.role);
+      if (!canSee) { tkpReadyPanel.innerHTML = ''; return; }
+
+      let items = [];
+      try {
+        const token = localStorage.getItem('asgard_token');
+        const resp = await fetch('/api/estimates/ready-for-tkp', {
+          headers: { Authorization: 'Bearer ' + token }
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          items = data.items || [];
+        }
+      } catch(e) { /* сеть недоступна */ }
+
+      if (!items.length) { tkpReadyPanel.innerHTML = ''; return; }
+
+      const money = AsgardUI.money || (v => Number(v||0).toLocaleString('ru-RU') + ' ₽');
+      const fmtDate = AsgardUI.formatDate || (d => d ? new Date(d).toLocaleDateString('ru-RU') : '—');
+
+      const cards = items.map(function(it) {
+        const hasExistingTkp = Number(it.active_tkp_count || 0) > 0;
+        const price = Number(it.total_price || 0);
+        const deadline = it.docs_deadline ? fmtDate(it.docs_deadline) : '';
+        const location = [it.object_city, it.object_name].filter(Boolean).join(', ');
+
+        return '<div class="tkp-ready-card" data-tender-id="' + it.tender_id + '">' +
+          '<div class="tkp-rc-top">' +
+            '<div class="tkp-rc-main">' +
+              '<div class="tkp-rc-customer">' + esc(it.customer_name || '—') + '</div>' +
+              '<div class="tkp-rc-title">' + esc(it.tender_title || 'Без названия') + '</div>' +
+              (location ? '<div class="tkp-rc-loc">📍 ' + esc(location) + '</div>' : '') +
+            '</div>' +
+            '<div class="tkp-rc-meta">' +
+              (price > 0 ? '<span class="tkp-rc-badge green">' + money(price) + '</span>' : '') +
+              (it.work_type ? '<span class="tkp-rc-badge blue">' + esc(it.work_type) + '</span>' : '') +
+              (hasExistingTkp ? '<span class="tkp-rc-badge amber" title="Уже есть ТКП">ТКП ' + it.active_tkp_count + '</span>' : '') +
+              (deadline ? '<span class="tkp-rc-badge gray">📅 ' + deadline + '</span>' : '') +
+            '</div>' +
+          '</div>' +
+          '<div class="tkp-rc-actions">' +
+            '<button class="btn tkp-rc-btn-create" data-create-tkp="' + it.tender_id + '" ' +
+              'data-tender-title="' + esc(it.tender_title || '') + '" ' +
+              'data-customer="' + esc(it.customer_name || '') + '" ' +
+              'data-inn="' + esc(it.customer_inn || '') + '" ' +
+              'data-subject="' + esc((it.tender_title ? 'ТКП — ' + it.tender_title : '') + (it.work_type ? ' (' + it.work_type + ')' : '')) + '" ' +
+              'data-work-type="' + esc(it.work_type || '') + '" ' +
+              'data-object="' + esc(it.object_name || '') + '" ' +
+              'data-city="' + esc(it.object_city || '') + '" ' +
+              'data-price="' + (price || '') + '">' +
+              '⚡ Создать ТКП' +
+            '</button>' +
+            '<button class="btn ghost tkp-rc-btn-mark" data-mark-sent="' + it.tender_id + '" ' +
+              'title="КП уже отправлено клиенту напрямую — отметить без создания ТКП в системе">' +
+              '📨 Отправлено' +
+            '</button>' +
+            '<button class="btn ghost tkp-rc-btn-tender" data-goto-tender="' + it.tender_id + '" title="Открыть тендер">Тендер</button>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+
+      tkpReadyPanel.innerHTML =
+        '<style>' +
+          '.tkp-ready-wrap{background:linear-gradient(135deg,rgba(200,168,78,0.06),rgba(200,168,78,0.03));' +
+            'border:1.5px solid rgba(200,168,78,0.3);border-radius:12px;padding:16px 20px;margin-bottom:16px}' +
+          '.tkp-ready-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}' +
+          '.tkp-ready-title{font-size:14px;font-weight:700;color:var(--gold,#c8a84e);display:flex;align-items:center;gap:8px}' +
+          '.tkp-ready-count{background:rgba(200,168,78,0.2);color:var(--gold,#c8a84e);' +
+            'font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px;border:1px solid rgba(200,168,78,0.4)}' +
+          '.tkp-ready-cards{display:flex;flex-direction:column;gap:8px}' +
+          '.tkp-ready-card{background:var(--bg2,#1a1a20);border:1px solid var(--brd,rgba(255,255,255,0.08));' +
+            'border-radius:10px;padding:12px 16px;display:flex;align-items:center;' +
+            'gap:16px;justify-content:space-between;transition:border-color .2s}' +
+          '.tkp-ready-card:hover{border-color:rgba(200,168,78,0.35)}' +
+          '.tkp-rc-top{display:flex;align-items:center;gap:16px;flex:1;min-width:0;flex-wrap:wrap}' +
+          '.tkp-rc-main{min-width:0;flex:1}' +
+          '.tkp-rc-customer{font-weight:700;font-size:14px;color:var(--t1,#fff);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+          '.tkp-rc-title{font-size:12px;color:var(--t2,rgba(255,255,255,0.65));margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+          '.tkp-rc-loc{font-size:11px;color:var(--t3,rgba(255,255,255,0.4));margin-top:2px}' +
+          '.tkp-rc-meta{display:flex;flex-wrap:wrap;gap:5px;align-items:center;flex-shrink:0}' +
+          '.tkp-rc-badge{font-size:11px;font-weight:600;padding:3px 8px;border-radius:6px;white-space:nowrap}' +
+          '.tkp-rc-badge.green{background:rgba(48,209,88,0.12);color:#30d158;border:1px solid rgba(48,209,88,0.25)}' +
+          '.tkp-rc-badge.blue{background:rgba(74,144,217,0.12);color:#4A90D9;border:1px solid rgba(74,144,217,0.25)}' +
+          '.tkp-rc-badge.amber{background:rgba(200,168,78,0.12);color:#c8a84e;border:1px solid rgba(200,168,78,0.25)}' +
+          '.tkp-rc-badge.gray{background:rgba(255,255,255,0.06);color:var(--t3,rgba(255,255,255,0.45));border:1px solid rgba(255,255,255,0.1)}' +
+          '.tkp-rc-actions{display:flex;gap:8px;flex-shrink:0;align-items:center}' +
+          '.tkp-rc-btn-create{background:rgba(200,168,78,0.15)!important;color:var(--gold,#c8a84e)!important;' +
+            'border:1px solid rgba(200,168,78,0.4)!important;font-weight:600!important;' +
+            'white-space:nowrap;transition:all .2s!important;padding:7px 14px!important}' +
+          '.tkp-rc-btn-create:hover{background:rgba(200,168,78,0.28)!important;border-color:rgba(200,168,78,0.7)!important;' +
+            'box-shadow:0 0 14px rgba(200,168,78,0.2)!important;transform:translateY(-1px)}' +
+          '.tkp-rc-btn-tender{padding:7px 12px!important;font-size:12px!important}' +
+          '@media(max-width:600px){' +
+            '.tkp-ready-card{flex-direction:column;align-items:flex-start}' +
+            '.tkp-rc-actions{width:100%}' +
+            '.tkp-rc-btn-create{flex:1;text-align:center}' +
+          '}' +
+        '</style>' +
+        '<div class="tkp-ready-wrap">' +
+          '<div class="tkp-ready-header">' +
+            '<div class="tkp-ready-title">⚡ Готовы к ТКП <span class="tkp-ready-count">' + items.length + '</span></div>' +
+            '<span class="help" style="font-size:11px">Просчёты одобрены директором — создайте ТКП</span>' +
+          '</div>' +
+          '<div class="tkp-ready-cards">' + cards + '</div>' +
+        '</div>' +
+        '<hr class="hr"/>';
+
+      // Кнопки "Создать ТКП"
+      tkpReadyPanel.querySelectorAll('[data-create-tkp]').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          if (!window.AsgardTkpPage || !AsgardTkpPage.openNew) {
+            toast('ТКП', 'Модуль ТКП не загружен. Перейдите в раздел ТКП.', 'err');
+            return;
+          }
+          var tenderId = Number(btn.getAttribute('data-create-tkp')) || null;
+          var prefill = {
+            tender_id:     tenderId,
+            tender_title:  btn.getAttribute('data-tender-title') || '',
+            customer_name: btn.getAttribute('data-customer') || '',
+            customer_inn:  btn.getAttribute('data-inn') || '',
+            subject:       btn.getAttribute('data-subject') || '',
+            work_type:     btn.getAttribute('data-work-type') || '',
+            object_name:   btn.getAttribute('data-object') || '',
+            object_city:   btn.getAttribute('data-city') || '',
+            total_price:   Number(btn.getAttribute('data-price')) || 0,
+          };
+          AsgardTkpPage.openNew(prefill);
+        });
+      });
+
+      // Кнопки "Отправлено" — отметить КП отправлено без создания ТКП
+      tkpReadyPanel.querySelectorAll('[data-mark-sent]').forEach(function(btn) {
+        btn.addEventListener('click', async function(e) {
+          e.stopPropagation();
+          var tid = Number(btn.getAttribute('data-mark-sent'));
+          if (!tid) return;
+
+          // Подтверждение
+          if (!confirm('Отметить тендер как «КП отправлено»?\n\nТКП в системе создано не будет — только статус тендера изменится.')) return;
+
+          btn.disabled = true;
+          btn.textContent = '...';
+          try {
+            var tender = await AsgardDB.get('tenders', tid);
+            if (!tender) { toast('Ошибка', 'Тендер не найден', 'err'); return; }
+
+            var cur = tender.tender_status;
+            // Если статус уже финальный — не трогаем
+            if (cur === 'КП отправлено' || cur === 'Выиграли' || cur === 'Проиграли') {
+              toast('Статус', 'Тендер уже в статусе «' + cur + '»', 'warn');
+              return;
+            }
+
+            tender.tender_status = 'КП отправлено';
+            await AsgardDB.put('tenders', tender);
+            await audit(user.id, 'tender', tid, 'mark_kp_sent_no_tkp', { prev_status: cur });
+
+            toast('Тендер', 'Статус изменён на «КП отправлено»');
+
+            // Убираем карточку из панели плавно
+            var card = btn.closest('.tkp-ready-card');
+            if (card) {
+              card.style.transition = 'opacity .3s, max-height .4s';
+              card.style.opacity = '0';
+              card.style.overflow = 'hidden';
+              setTimeout(function() {
+                card.style.maxHeight = '0';
+                card.style.padding = '0';
+                card.style.margin = '0';
+                setTimeout(function() {
+                  card.remove();
+                  // Если карточек больше нет — скрываем всю панель
+                  var remaining = tkpReadyPanel.querySelectorAll('.tkp-ready-card');
+                  if (!remaining.length) {
+                    tkpReadyPanel.innerHTML = '';
+                  } else {
+                    // Обновляем счётчик
+                    var countEl = tkpReadyPanel.querySelector('.tkp-ready-count');
+                    if (countEl) countEl.textContent = remaining.length;
+                  }
+                }, 400);
+              }, 300);
+            }
+
+            if (window.AsgardTkpFollowup) {
+              try { await AsgardTkpFollowup.activateFollowup(tender); } catch(ex) {}
+            }
+          } catch (ex) {
+            toast('Ошибка', ex.message || 'Не удалось обновить статус', 'err');
+          } finally {
+            if (!btn.closest('.tkp-ready-card') || btn.closest('.tkp-ready-card').style.opacity !== '0') {
+              btn.disabled = false;
+              btn.textContent = '📨 Отправлено';
+            }
+          }
+        });
+      });
+
+      // Кнопки "Тендер" — открыть карточку
+      tkpReadyPanel.querySelectorAll('[data-goto-tender]').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          var tid = Number(btn.getAttribute('data-goto-tender'));
+          if (tid) openTenderEditor(tid);
         });
       });
     })();

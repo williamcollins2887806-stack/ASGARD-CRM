@@ -737,6 +737,28 @@ export default function WheelOfNorns() {
           {streak >= 5 && <div className="wn-mult">×2</div>}
         </div>
 
+        {/* TITLE BONUS */}
+        {spinsLeft?.title && spinsLeft.title.id !== 'recruit' && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            margin: '6px 16px 0', padding: '8px 12px',
+            background: `${spinsLeft.title.color}12`,
+            border: `1px solid ${spinsLeft.title.color}40`,
+            borderRadius: 12,
+          }}>
+            <span style={{ fontSize: 18 }}>{spinsLeft.title.icon}</span>
+            <div style={{ flex: 1 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: spinsLeft.title.color }}>{spinsLeft.title.name}</span>
+              <span style={{ fontSize: 10, color: 'rgba(255,255,255,.4)', marginLeft: 6 }}>
+                редкий приз за {spinsLeft.title.pity_guarantee} спинов
+              </span>
+            </div>
+            <div style={{ fontSize: 10, padding: '2px 8px', borderRadius: 8, background: `${spinsLeft.title.color}25`, color: spinsLeft.title.color, fontWeight: 700 }}>
+              -{50 - spinsLeft.title.pity_guarantee} пити
+            </div>
+          </div>
+        )}
+
         {/* VIKING */}
         <div className="wn-viking-area">
           <div className="wn-viking">
