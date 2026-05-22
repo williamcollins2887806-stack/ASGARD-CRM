@@ -1,10 +1,50 @@
 #!/bin/sh
+# ============================================================================
+# pre-commit hook — две задачи:
+#  1) Блокирует Unicode «умные кавычки» в коде (JS/HTML парсеры их не любят)
+#  2) Автоматически бампает SHELL_VERSION при изменении JS/CSS, чтобы
+#     у пользователей сразу обновился кэш — без Ctrl+Shift+R
+# ============================================================================
+
+# ── 1. Smart quotes guard ─────────────────────────────────────────────────────
 FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(js|jsx|ts|tsx|css|html|json)$')
-if [ -z "$FILES" ]; then exit 0; fi
-BAD=$(echo "$FILES" | xargs -r grep -lP '[\x{201c}\x{201d}\x{2018}\x{2019}]' 2>/dev/null)
-if [ -n "$BAD" ]; then
-  echo "ERROR: Unicode smart quotes detected in:"
-  echo "$BAD"
-  echo "Fix with: perl -CSD -i -pe 's/[\\x{201c}\\x{201d}]/\"/g' <file>"
-  exit 1
+if [ -n "$FILES" ]; then
+  BAD=$(echo "$FILES" | xargs -r grep -lP '[\x{201c}\x{201d}\x{2018}\x{2019}]' 2>/dev/null)
+  if [ -n "$BAD" ]; then
+    echo "ERROR: Unicode smart quotes detected in:"
+    echo "$BAD"
+    echo "Fix with: perl -CSD -i -pe 's/[\\x{201c}\\x{201d}]/\"/g' <file>"
+    exit 1
+  fi
 fi
+
+# ── 2. Auto-bump SHELL_VERSION при изменении frontend assets ─────────────────
+# Это гарантирует что у пользователей сразу обновится JS/CSS после деплоя.
+# Браузер кэширует JS/CSS по URL с ?v=X.Y.Z — если ?v= не сменился, HTTP-кэш
+# возвращает старый файл. Скрипт бампает SHELL_VERSION и синхронизирует ВСЕ ?v=.
+CHANGED_ASSETS=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^public/assets/(js|css)/.*\.(js|css)$' || true)
+
+if [ -n "$CHANGED_ASSETS" ]; then
+  # Если index.html/sw.js уже в коммите — значит разработчик бампит вручную, не трогаем
+  INDEX_STAGED=$(git diff --cached --name-only | grep -E '^public/(index\.html|sw\.js)$' || true)
+  if [ -n "$INDEX_STAGED" ]; then
+    echo "[pre-commit] public/index.html|sw.js уже в коммите — пропускаю auto-bump"
+  else
+    PYTHON_BIN=$(command -v python3 || command -v python || command -v py)
+    if [ -z "$PYTHON_BIN" ]; then
+      echo "[pre-commit] WARN: Python не найден, SHELL_VERSION не обновлён. JS-кэш у пользователей не сбросится автоматически."
+    else
+      echo "[pre-commit] изменён frontend asset — бампаю SHELL_VERSION для сброса кэша:"
+      echo "$CHANGED_ASSETS" | sed 's/^/  /'
+      if "$PYTHON_BIN" tools/sync_cache_version.py; then
+        git add public/sw.js public/index.html
+        echo "[pre-commit] public/sw.js + public/index.html добавлены в коммит"
+      else
+        echo "[pre-commit] ERROR: sync_cache_version.py упал. Бамп вручную: python tools/sync_cache_version.py" >&2
+        exit 1
+      fi
+    fi
+  fi
+fi
+
+exit 0
