@@ -1352,6 +1352,262 @@ async function routes(fastify, options) {
     }
     return { transitions: {}, can_move: false };
   });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // АРХИВЫ: upload → preview → confirm/cancel
+  // ═══════════════════════════════════════════════════════════════════════════
+  const archiveExtractor = require('../services/archiveExtractor');
+  const fsLib = require('fs');
+  const pathLib = require('path');
+  const crypto = require('crypto');
+  const { pipeline } = require('stream/promises');
+
+  const TMP_BASE = pathLib.join(process.env.UPLOAD_DIR || './uploads', 'archive-tmp');
+  fsLib.mkdirSync(TMP_BASE, { recursive: true });
+
+  // Чистка старых tmp-сессий старше 2 часов — каждые 30 минут
+  setInterval(() => {
+    try {
+      const now = Date.now();
+      const dirs = fsLib.readdirSync(TMP_BASE);
+      for (const d of dirs) {
+        const full = pathLib.join(TMP_BASE, d);
+        try {
+          const stat = fsLib.statSync(full);
+          if (now - stat.mtimeMs > 2 * 3600 * 1000) {
+            fsLib.rmSync(full, { recursive: true, force: true });
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+  }, 30 * 60 * 1000).unref();
+
+  // POST /:id/upload-archive — приём + распаковка во временную папку
+  // Multipart: одно поле "archive"
+  // Ответ: { session_id, files: [{relPath, size, type, isJunk}], totalSize, archiveType, archiveName, archiveSize }
+  fastify.post('/:id/upload-archive', {
+    preHandler: [fastify.requireRoles(['ADMIN', 'TO', 'HEAD_TO', 'PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])]
+  }, async (request, reply) => {
+    const tenderId = parseInt(request.params.id);
+    if (!Number.isFinite(tenderId)) return reply.code(400).send({ error: 'Некорректный ID тендера' });
+
+    // Проверим что тендер существует и пользователь имеет к нему доступ
+    const { rows: [tender] } = await db.query('SELECT id, tender_status, responsible_pm_id, work_assigned_at FROM tenders WHERE id = $1', [tenderId]);
+    if (!tender) return reply.code(404).send({ error: 'Тендер не найден' });
+    // После назначения работы ТО не может прикреплять документы
+    if (tender.work_assigned_at && ['TO', 'HEAD_TO'].includes(request.user.role)) {
+      return reply.code(403).send({ error: 'Работа уже назначена — управление перешло к РП' });
+    }
+
+    let mpData;
+    try {
+      mpData = await request.file();
+    } catch (e) {
+      return reply.code(400).send({ error: { code: 'NO_FILE', message: 'Файл не передан или превышен лимит размера', hint: 'Лимит — 200 МБ. Большие архивы разделите на части' } });
+    }
+    if (!mpData) return reply.code(400).send({ error: { code: 'NO_FILE', message: 'Файл не передан', hint: 'Перетащите архив в зону загрузки' } });
+
+    const originalName = mpData.filename || 'archive';
+
+    // Создаём сессию
+    const sessionId = crypto.randomBytes(8).toString('hex');
+    const sessionDir = pathLib.join(TMP_BASE, `${tenderId}_${sessionId}`);
+    const archivePath = pathLib.join(sessionDir, 'src_' + originalName.replace(/[^\w\.\-]/g, '_'));
+    const extractDir = pathLib.join(sessionDir, 'extracted');
+    fsLib.mkdirSync(sessionDir, { recursive: true });
+
+    // Сохраняем архив на диск (stream)
+    try {
+      await pipeline(mpData.file, fsLib.createWriteStream(archivePath));
+    } catch (e) {
+      try { fsLib.rmSync(sessionDir, { recursive: true, force: true }); } catch (_) {}
+      return reply.code(400).send({ error: { code: 'UPLOAD_FAILED', message: 'Не удалось сохранить файл', hint: e.message.slice(0, 200) } });
+    }
+
+    if (mpData.file.truncated) {
+      try { fsLib.rmSync(sessionDir, { recursive: true, force: true }); } catch (_) {}
+      return reply.code(413).send({ error: { code: 'FILE_TOO_LARGE', message: 'Файл больше 200 МБ', hint: 'Разделите архив на несколько частей' } });
+    }
+
+    const archiveSize = fsLib.statSync(archivePath).size;
+
+    // Проверка — это вообще архив?
+    if (!archiveExtractor.isArchive(originalName, mpData.mimetype)) {
+      try { fsLib.rmSync(sessionDir, { recursive: true, force: true }); } catch (_) {}
+      return reply.code(400).send({ error: { code: 'NOT_ARCHIVE', message: 'Это не архив', hint: 'Поддерживаются ZIP, RAR, 7Z, TAR. Обычные файлы загружайте через «📎 Файл»' } });
+    }
+
+    // Распаковка
+    const result = await archiveExtractor.extractArchive(archivePath, originalName, extractDir);
+    if (!result.ok) {
+      try { fsLib.rmSync(sessionDir, { recursive: true, force: true }); } catch (_) {}
+      return reply.code(400).send({ error: result.error });
+    }
+
+    // Сохраняем оригинальное имя архива для confirm-фазы
+    fsLib.writeFileSync(pathLib.join(sessionDir, 'meta.json'), JSON.stringify({
+      tender_id: tenderId,
+      user_id: request.user.id,
+      archive_name: originalName,
+      archive_size: archiveSize,
+      archive_type: result.archiveType,
+      created_at: new Date().toISOString()
+    }), 'utf-8');
+
+    // Список файлов с относительными путями (без absPath — небезопасно отдавать клиенту)
+    const files = result.files.map((f, idx) => ({
+      idx,
+      relPath: f.relPath,
+      size: f.size,
+      type: f.type,
+      isJunk: f.isJunk
+    }));
+
+    return {
+      session_id: sessionId,
+      archive_name: originalName,
+      archive_size: archiveSize,
+      archive_type: result.archiveType,
+      files,
+      total_size: result.totalSize
+    };
+  });
+
+  // POST /:id/archive/:sessionId/confirm — подтверждение, переносим выбранные файлы в documents
+  // body: { selected_indices: [0, 1, 5] | null (=все), include_archive_too: boolean }
+  fastify.post('/:id/archive/:sessionId/confirm', {
+    preHandler: [fastify.requireRoles(['ADMIN', 'TO', 'HEAD_TO', 'PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])]
+  }, async (request, reply) => {
+    const tenderId = parseInt(request.params.id);
+    const sessionId = String(request.params.sessionId || '').replace(/[^a-f0-9]/g, '');
+    if (!sessionId) return reply.code(400).send({ error: 'Bad session id' });
+
+    const sessionDir = pathLib.join(TMP_BASE, `${tenderId}_${sessionId}`);
+    if (!fsLib.existsSync(sessionDir)) {
+      return reply.code(404).send({ error: 'Сессия истекла или не найдена. Загрузите архив заново' });
+    }
+
+    let meta;
+    try { meta = JSON.parse(fsLib.readFileSync(pathLib.join(sessionDir, 'meta.json'), 'utf-8')); }
+    catch { return reply.code(500).send({ error: 'Сессия повреждена' }); }
+
+    if (meta.tender_id !== tenderId) return reply.code(403).send({ error: 'Сессия не подходит к этому тендеру' });
+    // Только автор сессии или ADMIN могут подтвердить
+    if (Number(meta.user_id) !== Number(request.user.id) && request.user.role !== 'ADMIN') {
+      return reply.code(403).send({ error: 'Эту загрузку начал другой пользователь' });
+    }
+
+    const { selected_indices, include_archive_too } = request.body || {};
+    const extractDir = pathLib.join(sessionDir, 'extracted');
+    const allFiles = archiveExtractor.extractArchive
+      ? require('fs').readdirSync(extractDir, { withFileTypes: true }).filter(()=>true) && null  /* noop, нам нужен полный список */
+      : null;
+
+    // Перечитываем список файлов из extracted/ (тот же порядок что в upload-ответе)
+    const listFiles = (dir, base = dir) => {
+      const out = [];
+      for (const e of fsLib.readdirSync(dir, { withFileTypes: true })) {
+        const abs = pathLib.join(dir, e.name);
+        if (e.isDirectory()) out.push(...listFiles(abs, base));
+        else if (e.isFile()) out.push(abs);
+      }
+      return out;
+    };
+    const absFiles = listFiles(extractDir);
+    const selected = Array.isArray(selected_indices) && selected_indices.length > 0
+      ? absFiles.filter((_, i) => selected_indices.includes(i))
+      : absFiles;
+
+    const uploadDir = process.env.UPLOAD_DIR || './uploads';
+    const tenderDir = pathLib.join(uploadDir, 'tender_archives', String(tenderId));
+    fsLib.mkdirSync(tenderDir, { recursive: true });
+
+    const inserted = [];
+    for (const absFile of selected) {
+      const relPath = pathLib.relative(extractDir, absFile).replace(/\\/g, '/');
+      const originalName = pathLib.basename(absFile);
+      const safeName = `${Date.now()}_${crypto.randomBytes(4).toString('hex')}_${originalName.replace(/[^\w\.\-]/g, '_')}`;
+      const targetPath = pathLib.join(tenderDir, safeName);
+      try {
+        fsLib.renameSync(absFile, targetPath);
+      } catch (e) {
+        // Если rename через partition не работает — copy+unlink
+        try {
+          fsLib.copyFileSync(absFile, targetPath);
+          fsLib.unlinkSync(absFile);
+        } catch (e2) {
+          console.error('[archive confirm] move failed:', e2.message);
+          continue;
+        }
+      }
+      const size = fsLib.statSync(targetPath).size;
+      const mimeType = guessMimeType(originalName);
+      const downloadUrl = `/uploads/tender_archives/${tenderId}/${safeName}`;
+      const { rows: [doc] } = await db.query(`
+        INSERT INTO documents (filename, original_name, mime_type, size, type, tender_id, uploaded_by, download_url, created_at)
+        VALUES ($1, $2, $3, $4, 'archive-extracted', $5, $6, $7, NOW())
+        RETURNING id, original_name, download_url
+      `, [safeName, originalName, mimeType, size, tenderId, request.user.id, downloadUrl]);
+      inserted.push(doc);
+    }
+
+    // Опционально — сам исходный архив прикрепить тоже
+    if (include_archive_too) {
+      const srcArchive = fsLib.readdirSync(sessionDir).find(n => n.startsWith('src_'));
+      if (srcArchive) {
+        const safeName = `${Date.now()}_${crypto.randomBytes(4).toString('hex')}_${meta.archive_name.replace(/[^\w\.\-]/g, '_')}`;
+        const targetPath = pathLib.join(tenderDir, safeName);
+        try {
+          fsLib.renameSync(pathLib.join(sessionDir, srcArchive), targetPath);
+          const size = fsLib.statSync(targetPath).size;
+          const mime = guessMimeType(meta.archive_name);
+          const downloadUrl = `/uploads/tender_archives/${tenderId}/${safeName}`;
+          const { rows: [doc] } = await db.query(`
+            INSERT INTO documents (filename, original_name, mime_type, size, type, tender_id, uploaded_by, download_url, created_at)
+            VALUES ($1, $2, $3, $4, 'archive', $5, $6, $7, NOW())
+            RETURNING id, original_name, download_url
+          `, [safeName, meta.archive_name, mime, size, tenderId, request.user.id, downloadUrl]);
+          inserted.push(doc);
+        } catch (_) {}
+      }
+    }
+
+    // Чистим сессию
+    try { fsLib.rmSync(sessionDir, { recursive: true, force: true }); } catch (_) {}
+
+    return { success: true, attached: inserted.length, documents: inserted };
+  });
+
+  // POST /:id/archive/:sessionId/cancel — отмена, удаляет tmp
+  fastify.post('/:id/archive/:sessionId/cancel', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const tenderId = parseInt(request.params.id);
+    const sessionId = String(request.params.sessionId || '').replace(/[^a-f0-9]/g, '');
+    const sessionDir = pathLib.join(TMP_BASE, `${tenderId}_${sessionId}`);
+    if (fsLib.existsSync(sessionDir)) {
+      try { fsLib.rmSync(sessionDir, { recursive: true, force: true }); } catch (_) {}
+    }
+    return { success: true };
+  });
+
+  function guessMimeType(filename) {
+    const lower = (filename || '').toLowerCase();
+    if (lower.endsWith('.pdf')) return 'application/pdf';
+    if (lower.endsWith('.docx')) return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    if (lower.endsWith('.doc')) return 'application/msword';
+    if (lower.endsWith('.xlsx')) return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    if (lower.endsWith('.xls')) return 'application/vnd.ms-excel';
+    if (lower.endsWith('.pptx')) return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+    if (lower.endsWith('.gif')) return 'image/gif';
+    if (lower.endsWith('.txt')) return 'text/plain';
+    if (lower.endsWith('.zip')) return 'application/zip';
+    if (lower.endsWith('.rar')) return 'application/vnd.rar';
+    if (lower.endsWith('.7z')) return 'application/x-7z-compressed';
+    return 'application/octet-stream';
+  }
 }
 
 module.exports = routes;

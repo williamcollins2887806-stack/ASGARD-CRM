@@ -106,10 +106,14 @@ fastify.register(require('@fastify/jwt'), {
 // Cookies
 fastify.register(require('@fastify/cookie'));
 
-// Multipart (file uploads)
+// WebSocket v7 (для Fastify v4) — PTY-терминал в панели сервера
+fastify.register(require('@fastify/websocket'));
+
+// Multipart (file uploads). Default 200MB — синхронизировано с nginx client_max_body_size.
+// Override через env: MAX_FILE_SIZE=104857600 для 100MB.
 fastify.register(require('@fastify/multipart'), {
   limits: {
-    fileSize: parseInt(process.env.MAX_FILE_SIZE || '52428800', 10)
+    fileSize: parseInt(process.env.MAX_FILE_SIZE || '209715200', 10) // 200 MB
   }
 });
 
@@ -466,6 +470,7 @@ fastify.register(require('./routes/field-seasonal'),     { prefix: '/api/field/s
 fastify.register(require('./routes/field-earnings'),     { prefix: '/api/field/earnings' });
 fastify.register(require('./routes/field-pm'),           { prefix: '/api/pm' });
 fastify.register(require('./routes/app-updates'),        { prefix: '/api/app' });
+fastify.register(require('./routes/admin-system'),       { prefix: '/api/admin/system' });
 fastify.register(require('./routes/gamification-admin'), { prefix: '/api/gamification/admin' });
 fastify.register(require('./routes/gamification-crud'), { prefix: '/api/gamification/crud' });
 fastify.register(require('./routes/auth'), { prefix: '/api/auth' });
@@ -643,6 +648,19 @@ try {
   });
 } catch (cronErr) {
   fastify.log.warn('[TournamentCron] Init skipped: ' + cronErr.message);
+}
+
+// ── Log Monitor Cron: каждые 3 часа проверяем ошибки и уведомляем ADMIN ──
+try {
+  const logMonitorCron = require('./services/log-monitor-cron');
+  fastify.addHook('onReady', async () => {
+    logMonitorCron.start(db, fastify.log);
+  });
+  fastify.addHook('onClose', async () => {
+    logMonitorCron.stop();
+  });
+} catch (cronErr) {
+  fastify.log.warn('[LogMonitor] Init skipped: ' + cronErr.message);
 }
 
 // ── Office Academy Cron: генерация уроков 1-го числа ──

@@ -1916,14 +1916,14 @@ window.AsgardTendersPage = (function(){
       if (_btnNext) _btnNext.addEventListener('click', () => { if (_currentStep < 2) _showStep(_currentStep + 1); });
       if (_btnPrev) _btnPrev.addEventListener('click', () => { if (_currentStep > 0) _showStep(_currentStep - 1); });
 
-      // BUG1 FIX: DropZone uploads files immediately via the same API as btnAddDoc
+      // DropZone: обычные файлы → /api/files/upload, архивы → upload-archive flow с preview
       const dzW = document.getElementById('e_dropzone_w');
       if (dzW && typeof CrField !== 'undefined') {
+        const ARCHIVE_RX = /\.(zip|rar|7z|tar|tar\.gz|tgz|tar\.bz2|gz|bz2|jar)$/i;
         const dz = CrField.dropZone({
-          accept: '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.zip,.rar',
-          text: 'Перетащите файл или нажмите для выбора',
+          accept: '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.zip,.rar,.7z,.tar,.gz,.bz2',
+          text: 'Перетащите файл или архив (ZIP / RAR / 7Z). Архивы распакуются автоматически. Лимит 200 МБ.',
           onUpload: async (files) => {
-            // Upload the last added file immediately
             const file = files[files.length - 1];
             if (!file) return;
             let uploadId = tenderId;
@@ -1931,7 +1931,18 @@ window.AsgardTendersPage = (function(){
               uploadId = await saveTender(true);
               if (!uploadId) return;
             }
-            if (file.size > 50 * 1024 * 1024) { toast("Ошибка", file.name + " > 50 МБ", "err"); return; }
+            if (file.size > 200 * 1024 * 1024) {
+              toast('Ошибка', file.name + ' > 200 МБ. Разделите на части.', 'err');
+              return;
+            }
+
+            // Архив → отдельный flow с прогрессом + preview
+            if (ARCHIVE_RX.test(file.name)) {
+              await uploadArchiveFlow(file, uploadId);
+              return;
+            }
+
+            // Обычный файл — старый путь
             try {
               const formData = new FormData();
               formData.append('file', file);
@@ -1942,20 +1953,275 @@ window.AsgardTendersPage = (function(){
                 const xhr = new XMLHttpRequest();
                 xhr.open('POST', '/api/files/upload');
                 xhr.setRequestHeader('Authorization', 'Bearer ' + _auth.token);
-                xhr.timeout = 60000;
+                xhr.timeout = 120000;
                 xhr.onload = () => xhr.status < 300 ? resolve() : reject(new Error('Ошибка ' + xhr.status));
                 xhr.onerror = () => reject(new Error('Сеть'));
                 xhr.ontimeout = () => reject(new Error('Таймаут'));
                 xhr.send(formData);
               });
-              toast("Документ", file.name + " загружен", "ok");
+              toast('Документ', file.name + ' загружен', 'ok');
             } catch (err) {
-              toast("Ошибка", file.name + ": " + err.message, "err");
+              toast('Ошибка', file.name + ': ' + err.message, 'err');
             }
           }
         });
         dzW.appendChild(dz);
         if (dz._crList && !dz._crList.parentElement) dzW.appendChild(dz._crList);
+      }
+
+      // ═══════════════════════════════════════════════════════════════
+      // Архив-флоу: upload с прогрессом → preview-модалка → confirm
+      // ═══════════════════════════════════════════════════════════════
+      async function uploadArchiveFlow(file, tId) {
+        // 1. Модалка прогресса загрузки
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:11500;display:flex;align-items:center;justify-content:center;padding:20px';
+        overlay.innerHTML = `
+          <div style="background:var(--bg2);border:1px solid var(--brd);border-radius:14px;padding:24px;max-width:520px;width:100%;box-shadow:0 12px 48px rgba(0,0,0,.5)">
+            <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+              <div style="font-size:32px">📦</div>
+              <div>
+                <div style="font-weight:700;font-size:15px">${esc(file.name)}</div>
+                <div class="help" style="font-size:12px">${(file.size/1024/1024).toFixed(1)} МБ · загрузка...</div>
+              </div>
+            </div>
+            <div style="height:10px;background:var(--bg3);border-radius:5px;overflow:hidden;margin-bottom:8px">
+              <div id="archProgBar" style="height:100%;background:linear-gradient(90deg,#5b8def,#c8a84e);width:0%;transition:width .2s"></div>
+            </div>
+            <div id="archProgText" class="help" style="font-size:12px">0% · подготовка...</div>
+            <div id="archStage" class="help" style="font-size:11px;margin-top:8px;color:var(--t3)">⏳ Передача на сервер</div>
+            <div style="margin-top:14px;text-align:right">
+              <button class="btn ghost mini" id="archCancelBtn">Отмена</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(overlay);
+        const closeOverlay = () => { try { document.body.removeChild(overlay); } catch(_){} };
+        const setProgress = (pct, text, stage) => {
+          const bar = overlay.querySelector('#archProgBar');
+          const tx = overlay.querySelector('#archProgText');
+          const st = overlay.querySelector('#archStage');
+          if (bar) bar.style.width = Math.max(0, Math.min(100, pct)) + '%';
+          if (tx && text) tx.textContent = text;
+          if (st && stage) st.innerHTML = stage;
+        };
+
+        // Запрос
+        const formData = new FormData();
+        formData.append('archive', file);
+        const _auth = await AsgardAuth.getAuth();
+        let xhr;
+        let cancelled = false;
+        overlay.querySelector('#archCancelBtn').onclick = () => {
+          cancelled = true;
+          try { xhr && xhr.abort(); } catch(_){}
+          closeOverlay();
+          toast('Загрузка', 'Отменена', 'warn');
+        };
+
+        let resp;
+        try {
+          resp = await new Promise((resolve, reject) => {
+            xhr = new XMLHttpRequest();
+            xhr.open('POST', `/api/tenders/${tId}/upload-archive`);
+            xhr.setRequestHeader('Authorization', 'Bearer ' + _auth.token);
+            xhr.timeout = 300000; // 5 минут
+            xhr.upload.onprogress = (e) => {
+              if (e.lengthComputable) {
+                const pct = (e.loaded / e.total) * 100;
+                setProgress(pct, pct.toFixed(0) + '% · ' + (e.loaded/1024/1024).toFixed(1) + ' / ' + (e.total/1024/1024).toFixed(1) + ' МБ', '⏳ Передача на сервер');
+              }
+            };
+            xhr.upload.onload = () => setProgress(100, '100% · принято сервером', '⚙️ Распаковка архива...');
+            xhr.onload = () => {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                try { resolve(JSON.parse(xhr.responseText)); }
+                catch (e) { reject({ unparseable: true, status: xhr.status, body: xhr.responseText }); }
+              } else {
+                try { reject({ status: xhr.status, body: JSON.parse(xhr.responseText) }); }
+                catch (e) { reject({ status: xhr.status, body: { error: { message: 'HTTP ' + xhr.status, hint: xhr.responseText.slice(0,200) } } }); }
+              }
+            };
+            xhr.onerror = () => reject({ network: true });
+            xhr.ontimeout = () => reject({ timeout: true });
+            xhr.send(formData);
+          });
+        } catch (errResp) {
+          if (cancelled) return;
+          closeOverlay();
+          let errObj = errResp.body && errResp.body.error;
+          if (!errObj) {
+            errObj = { code: 'NETWORK', message: errResp.network ? 'Не удалось связаться с сервером' : (errResp.timeout ? 'Таймаут — архив слишком большой или интернет медленный' : 'Неизвестная ошибка'), hint: '' };
+          }
+          // Иногда error приходит строкой (старые роуты)
+          if (typeof errObj === 'string') errObj = { code: 'ERR', message: errObj, hint: '' };
+          showArchiveError(errObj);
+          return;
+        }
+
+        if (cancelled) return;
+        closeOverlay();
+
+        // 2. Preview модалка
+        showArchivePreview(tId, resp);
+      }
+
+      function showArchiveError(errObj) {
+        const code = errObj.code || 'ERR';
+        const icons = { PASSWORD_PROTECTED:'🔒', CORRUPTED:'⚠️', UNSUPPORTED_FORMAT:'❓', EMPTY:'📭', EMPTY_FILE:'📭', TOO_MANY:'📚', BOMB:'💣', NO_TOOL:'🛠', TIMEOUT:'⏱', NOT_ARCHIVE:'📄', FILE_TOO_LARGE:'⚖️', UPLOAD_FAILED:'⬆️', IO_ERROR:'💾', NETWORK:'🌐' };
+        const icon = icons[code] || '❌';
+        const html = `
+          <div style="background:rgba(231,76,60,.08);border-left:4px solid #e74c3c;padding:14px 18px;border-radius:8px;margin-bottom:14px">
+            <div style="font-size:32px;margin-bottom:8px">${icon}</div>
+            <div style="font-weight:700;font-size:15px;color:var(--err-t,#e74c3c);margin-bottom:6px">${esc(errObj.message || 'Ошибка')}</div>
+            ${errObj.hint ? '<div class="help" style="font-size:13px;color:var(--t2);line-height:1.5">💡 ' + esc(errObj.hint) + '</div>' : ''}
+            ${errObj.code ? '<div class="help" style="font-size:10px;margin-top:8px;color:var(--t3);font-family:monospace">CODE: ' + esc(errObj.code) + '</div>' : ''}
+          </div>
+          <div style="text-align:right;margin-top:14px">
+            <button class="btn" id="archErrOk">Понятно</button>
+          </div>
+        `;
+        AsgardUI.showModal({
+          title: 'Не удалось обработать архив',
+          icon: '📦',
+          html,
+          wide: false,
+          onMount: () => {
+            document.getElementById('archErrOk').onclick = () => AsgardUI.closeModal();
+          }
+        });
+      }
+
+      function showArchivePreview(tId, data) {
+        const FT_ICON = { pdf:'📕', doc:'📘', xls:'📗', ppt:'📙', image:'🖼', drawing:'📐', text:'📄', archive:'📦', other:'📄' };
+        const files = data.files || [];
+        const totalSize = (data.total_size || 0);
+
+        // Если все файлы — junk, заранее ничего не отмечаем
+        const filesSorted = [...files].sort((a, b) => {
+          if (a.isJunk !== b.isJunk) return a.isJunk ? 1 : -1;
+          return a.relPath.localeCompare(b.relPath, 'ru');
+        });
+
+        const rowsHtml = filesSorted.map(f => {
+          const ic = FT_ICON[f.type] || FT_ICON.other;
+          const sizeKb = (f.size / 1024).toFixed(f.size > 1024*1024 ? 1 : 0);
+          const sizeStr = f.size > 1024*1024 ? ((f.size/1024/1024).toFixed(1) + ' МБ') : (sizeKb + ' КБ');
+          return `
+            <label class="arch-row" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--brd);cursor:pointer;${f.isJunk?'opacity:.55;background:rgba(255,255,255,.02)':''}">
+              <input type="checkbox" class="arch-cb" data-idx="${f.idx}" ${f.isJunk?'':'checked'} style="width:auto;flex-shrink:0"/>
+              <span style="font-size:18px;flex-shrink:0">${ic}</span>
+              <span style="flex:1;min-width:0;font-size:13px;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(f.relPath)}">${esc(f.relPath)}</span>
+              <span style="font-size:11px;color:var(--t3);flex-shrink:0">${sizeStr}</span>
+              ${f.isJunk ? '<span style="font-size:10px;color:var(--t3);background:var(--bg3);padding:1px 6px;border-radius:4px" title="Системный файл / мусор">junk</span>' : ''}
+            </label>
+          `;
+        }).join('');
+
+        const html = `
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+            <div style="font-size:28px">📦</div>
+            <div style="flex:1">
+              <div style="font-weight:700;font-size:15px">${esc(data.archive_name)}</div>
+              <div class="help" style="font-size:12px">${(data.archive_size/1024/1024).toFixed(1)} МБ · ${(data.archive_type||'').toUpperCase()} · распаковано <b>${files.length}</b> файлов (${(totalSize/1024/1024).toFixed(1)} МБ)</div>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+            <button class="btn ghost mini" id="archSelAll">Выбрать все</button>
+            <button class="btn ghost mini" id="archSelNone">Снять все</button>
+            <button class="btn ghost mini" id="archSelNoJunk">Без junk</button>
+            <div style="flex:1"></div>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--t2);cursor:pointer">
+              <input type="checkbox" id="archInclArchive" style="width:auto"/>
+              Прикрепить и сам архив
+            </label>
+          </div>
+
+          <div style="border:1px solid var(--brd);border-radius:8px;max-height:50vh;overflow-y:auto">
+            ${rowsHtml || '<div class="help" style="padding:20px;text-align:center">Архив пустой</div>'}
+          </div>
+
+          <div id="archCounter" class="help" style="font-size:12px;margin-top:10px"></div>
+
+          <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px">
+            <button class="btn ghost" id="archPrevCancel">Отмена</button>
+            <button class="btn" id="archPrevOk" style="background:var(--ok-t,#27ae60);color:#fff;font-weight:700">✅ Прикрепить выбранные</button>
+          </div>
+        `;
+
+        AsgardUI.showModal({
+          title: 'Содержимое архива — выберите файлы',
+          icon: '📋',
+          html, wide: true,
+          onMount: () => {
+            const updCounter = () => {
+              const checked = document.querySelectorAll('.arch-cb:checked').length;
+              const total = files.length;
+              const el = document.getElementById('archCounter');
+              if (el) el.textContent = `Выбрано: ${checked} из ${total}`;
+            };
+            updCounter();
+            document.querySelectorAll('.arch-cb').forEach(cb => cb.addEventListener('change', updCounter));
+            document.getElementById('archSelAll').onclick = () => {
+              document.querySelectorAll('.arch-cb').forEach(cb => cb.checked = true);
+              updCounter();
+            };
+            document.getElementById('archSelNone').onclick = () => {
+              document.querySelectorAll('.arch-cb').forEach(cb => cb.checked = false);
+              updCounter();
+            };
+            document.getElementById('archSelNoJunk').onclick = () => {
+              filesSorted.forEach(f => {
+                const cb = document.querySelector(`.arch-cb[data-idx="${f.idx}"]`);
+                if (cb) cb.checked = !f.isJunk;
+              });
+              updCounter();
+            };
+
+            document.getElementById('archPrevCancel').onclick = async () => {
+              try {
+                const _auth = await AsgardAuth.getAuth();
+                await fetch(`/api/tenders/${tId}/archive/${data.session_id}/cancel`, {
+                  method: 'POST',
+                  headers: { 'Authorization': 'Bearer ' + _auth.token }
+                });
+              } catch (_) {}
+              AsgardUI.closeModal();
+              toast('Архив', 'Загрузка отменена', 'warn');
+            };
+
+            document.getElementById('archPrevOk').onclick = async () => {
+              const selected = Array.from(document.querySelectorAll('.arch-cb:checked')).map(cb => Number(cb.dataset.idx));
+              if (selected.length === 0) { toast('Архив', 'Не выбрано ни одного файла', 'warn'); return; }
+              const includeArchive = document.getElementById('archInclArchive').checked;
+              const btn = document.getElementById('archPrevOk');
+              btn.disabled = true;
+              btn.textContent = '⏳ Прикрепляю...';
+              try {
+                const _auth = await AsgardAuth.getAuth();
+                const r = await fetch(`/api/tenders/${tId}/archive/${data.session_id}/confirm`, {
+                  method: 'POST',
+                  headers: { 'Authorization': 'Bearer ' + _auth.token, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ selected_indices: selected, include_archive_too: includeArchive })
+                });
+                const result = await r.json();
+                if (!r.ok) {
+                  toast('Архив', (result.error && result.error.message) || result.error || 'Ошибка', 'err');
+                  btn.disabled = false; btn.textContent = '✅ Прикрепить выбранные';
+                  return;
+                }
+                AsgardUI.closeModal();
+                toast('Архив', `Прикреплено ${result.attached} файлов из архива`, 'ok');
+                // Перерисовать карточку тендера чтобы документы появились
+                if (typeof openTenderEditor === 'function') openTenderEditor(tId);
+              } catch (e) {
+                toast('Архив', 'Ошибка сети: ' + e.message, 'err');
+                btn.disabled = false; btn.textContent = '✅ Прикрепить выбранные';
+              }
+            };
+          }
+        });
       }
 
       /* Mount CRSelect for editor fields */
