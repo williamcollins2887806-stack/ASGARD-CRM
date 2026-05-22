@@ -22,6 +22,13 @@ import re
 import sys
 import os
 
+# Fix Windows console encoding (cp1251 не умеет ASCII-arrow и т.п.)
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
+except Exception:
+    pass
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SW = os.path.join(ROOT, 'public', 'sw.js')
 INDEX = os.path.join(ROOT, 'public', 'index.html')

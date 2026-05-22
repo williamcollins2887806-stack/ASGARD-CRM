@@ -420,6 +420,9 @@ window.AsgardTendersPage = (function(){
     if(user.role==="ADMIN") return {full:true, limited:false};
     if(isDirRole(user.role)) return {full:false, limited:true};
     if(user.role==="TO" || user.role==="HEAD_TO"){
+      // После назначения РП на работы ТО не имеет прав даже на limited-правки —
+      // дальше тендер полностью в зоне ответственности РП на работах.
+      if (tender.work_assigned_at) return {full:false, limited:false};
       if(!tender.handoff_at && tender.tender_status !== 'На анализе') return {full:true, limited:false};
       return {full:false, limited:true};
     }
@@ -733,6 +736,7 @@ window.AsgardTendersPage = (function(){
 
       const rows = pending.map(t=>{
         const createdBy = (byId.get(t.created_by_user_id)||{}).name || "";
+        const suggestedPm = (byId.get(t.responsible_pm_id)||{}).name || "";
         const ddl = t.docs_deadline ? new Date(t.docs_deadline).toLocaleDateString("ru-RU") : "";
         return `
           <tr>
@@ -741,6 +745,7 @@ window.AsgardTendersPage = (function(){
             <td>${esc(String(t.tender_type||""))}</td>
             <td>${esc(ddl)}</td>
             <td>${esc(createdBy)}</td>
+            <td>${suggestedPm ? '<span style="color:var(--gold,#c8a84e);font-weight:600">💡 ' + esc(suggestedPm) + '</span>' : '<span class="help">не указан</span>'}</td>
             <td style="white-space:nowrap">
               <div id="dist_pm_${t.id}_w" style="display:inline-block;min-width:220px;vertical-align:middle"></div>
               <button class="btn red" style="padding:6px 10px; margin-left:8px" data-assign="${t.id}">Отправить на просчёт</button>
@@ -756,11 +761,11 @@ window.AsgardTendersPage = (function(){
             <h3 style="margin:0">Тендеры на анализе</h3>
             <span class="badge">${pending.length}</span>
           </div>
-          <div class="help">Рук. ТО анализирует тендер и назначает РП. Лимит активных просчётов: ${lim||"без лимита"}. Активным считается всё, кроме: ${esc(Array.from(done).join(", "))}.</div>
+          <div class="help">Рук. ТО анализирует тендер и назначает РП. Колонка «💡 ТО предложил» — кого ТО изначально указал. Можно оставить или выбрать другого. Лимит активных просчётов: ${lim||"без лимита"}.</div>
           <div style="overflow:auto; margin-top:10px">
-            <table class="t" style="min-width:900px">
+            <table class="t" style="min-width:1000px">
               <thead>
-                <tr><th>Заказчик</th><th>Тендер</th><th>Тип</th><th>Дедлайн</th><th>Внёс</th><th></th></tr>
+                <tr><th>Заказчик</th><th>Тендер</th><th>Тип</th><th>Дедлайн</th><th>Внёс</th><th>💡 ТО предложил</th><th></th></tr>
               </thead>
               <tbody>${rows}</tbody>
             </table>
@@ -769,7 +774,7 @@ window.AsgardTendersPage = (function(){
         <hr class="hr"/>
       `;
 
-      /* Mount CRSelect для каждой строки */
+      /* Mount CRSelect для каждой строки — предустановить значение = preferred РП от ТО */
       pending.forEach(t => {
         const w = distPanel.querySelector(`#dist_pm_${t.id}_w`);
         if (!w) return;
@@ -778,7 +783,14 @@ window.AsgardTendersPage = (function(){
           const dis = (lim>0 && a>=lim);
           return { value: String(p.id), label: `${p.name} (${a}/${lim||'∞'})`, disabled: dis };
         });
-        w.appendChild(CRSelect.create({ id: 'dist_pm_' + t.id, options: distOpts, placeholder: 'Выберите РП', searchable: true }));
+        const preselect = t.responsible_pm_id ? String(t.responsible_pm_id) : '';
+        w.appendChild(CRSelect.create({
+          id: 'dist_pm_' + t.id,
+          options: distOpts,
+          value: preselect,
+          placeholder: 'Выберите РП',
+          searchable: true
+        }));
       });
 
       /* Кнопка "Отправить на просчёт" */
@@ -818,15 +830,140 @@ window.AsgardTendersPage = (function(){
       });
     })();
 
-    // ===== Stage 7: Назначение РП на работу после статуса «Выиграли» =====
+    // ═══════════════════════════════════════════════════════════════
+    // Win-assign panel — НОВЫЙ (бэкенд GET /api/tenders/win-pending).
+    // После «Выиграли» тендер ждёт назначения РП для ВЫПОЛНЕНИЯ работ.
+    // HEAD_TO видит кто считал тендер (calc_pm_name) и может выбрать
+    // того же или другого РП для работ. После выбора создаётся work.
+    // ═══════════════════════════════════════════════════════════════
     await (async function renderWinAssignPanel(){
       if(!winPanel) return;
-      const canWin = (isDirRole(user.role) || user.role==="ADMIN");
+      const canWin = (user.role==="HEAD_TO" || isDirRole(user.role) || user.role==="ADMIN");
       if(!canWin){ winPanel.innerHTML=""; return; }
 
+      // Берём с сервера выигранные тендеры БЕЗ работ
+      let items = [];
+      try {
+        const token = localStorage.getItem('asgard_token');
+        const resp = await fetch('/api/tenders/win-pending', { headers: { Authorization: 'Bearer ' + token } });
+        if (resp.ok) {
+          const d = await resp.json();
+          items = d.items || [];
+        }
+      } catch(e) { /* сеть */ }
+
+      if (!items.length) { winPanel.innerHTML = ''; return; }
+
+      const worksAll = await AsgardDB.all("works").catch(()=>[]);
+
+      function parseISO(d){ if(!d) return null; const x=new Date(d); return isNaN(x.getTime())?null:x; }
+      function daysBetween(a,b){ return Math.floor((b.getTime()-a.getTime())/86400000)+1; }
+      function overlapDays(s1,e1,s2,e2){
+        const a1=parseISO(s1), b1=parseISO(e1), a2=parseISO(s2), b2=parseISO(e2);
+        if(!a1||!b1||!a2||!b2) return 0;
+        const s = new Date(Math.max(a1.getTime(), a2.getTime()));
+        const e = new Date(Math.min(b1.getTime(), b2.getTime()));
+        if(e.getTime() < s.getTime()) return 0;
+        return daysBetween(s,e);
+      }
+
+      const _winOptsMap = new Map();
+      const rows = items.map(t => {
+        const ds = t.work_start_plan || "—";
+        const de = t.work_end_plan || "—";
+        const srcPm = t.calc_pm_name || (byId.get(t.responsible_pm_id)||{}).name || "—";
+        const price = t.submission_price || t.tender_price || 0;
+
+        const crOpts = pms.map(p => {
+          const pmWorks = worksAll.filter(w => Number(w.pm_id||0) === Number(p.id));
+          let maxOv = 0;
+          for (const w of pmWorks) {
+            const ov = overlapDays(t.work_start_plan, t.work_end_plan, w.start_in_work_date, w.end_plan);
+            if (ov > maxOv) maxOv = ov;
+          }
+          const warn = (maxOv > 0 && maxOv <= 7) ? ` ⚠${maxOv}д` : (maxOv > 7 ? ` ⛔${maxOv}д` : '');
+          return { value: String(p.id), label: p.name + warn };
+        });
+        _winOptsMap.set(t.id, crOpts);
+
+        return `
+          <tr>
+            <td><b>${esc(t.customer_name||"")}</b><div class="help">${esc(t.tender_title||"")}</div></td>
+            <td>${esc(ds)} → ${esc(de)}</td>
+            <td>${price ? money(price) : "—"}</td>
+            <td><span style="color:var(--gold,#c8a84e);font-weight:600">💡 ${esc(srcPm)}</span></td>
+            <td style="white-space:nowrap">
+              <div id="win_pm_${t.id}_w" style="display:inline-block;min-width:240px;vertical-align:middle"></div>
+              <button class="btn red" style="padding:6px 10px; margin-left:8px" data-win-assign="${t.id}">Назначить на работы</button>
+            </td>
+          </tr>
+        `;
+      }).join("");
+
+      winPanel.innerHTML = `
+        <div class="card" style="background:linear-gradient(135deg,rgba(46,204,113,.06),rgba(46,204,113,.02));border:1.5px solid rgba(46,204,113,.3);border-radius:12px;padding:16px 20px;margin-bottom:16px">
+          <div class="row" style="justify-content:space-between; align-items:center">
+            <h3 style="margin:0;color:var(--ok-t,#2ecc71)">🏆 Выигранные тендеры — назначьте РП на работы</h3>
+            <span class="badge">${items.length}</span>
+          </div>
+          <div class="help" style="margin-top:6px">Можно выбрать того же РП что считал тендер (подсвечен 💡) или другого. После назначения работа появится у РП в разделе «Работы».</div>
+          <div style="overflow:auto; margin-top:12px">
+            <table class="t" style="min-width:900px">
+              <thead>
+                <tr><th>Тендер</th><th>Период (план)</th><th>Сумма</th><th>💡 Считал тендер</th><th>РП на работы</th></tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        </div>
+        <hr class="hr"/>
+      `;
+
+      _winOptsMap.forEach((crOpts, tenderId) => {
+        const w = winPanel.querySelector(`#win_pm_${tenderId}_w`);
+        if (!w) return;
+        const item = items.find(it => it.id === tenderId);
+        const preselect = item && item.responsible_pm_id ? String(item.responsible_pm_id) : '';
+        w.appendChild(CRSelect.create({
+          id: 'win_pm_' + tenderId,
+          options: crOpts,
+          value: preselect,
+          placeholder: 'Выберите РП',
+          searchable: true
+        }));
+      });
+
+      winPanel.querySelectorAll('button[data-win-assign]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const tid = Number(btn.getAttribute('data-win-assign'));
+          const pmId = Number(CRSelect.getValue('win_pm_' + tid) || 0);
+          if (!pmId) { toast('Назначение', 'Выберите РП для работ', 'err'); return; }
+          btn.disabled = true;
+          try {
+            const token = localStorage.getItem('asgard_token');
+            const resp = await fetch(`/api/tenders/${tid}/assign-work-pm`, {
+              method: 'POST',
+              headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ pm_id: pmId })
+            });
+            const data = await resp.json();
+            if (!resp.ok) { toast('Назначение', data.error || 'Ошибка', 'err'); btn.disabled = false; return; }
+            toast('Назначение', 'Работа создана и назначена РП', 'ok');
+            await render({ layout, title });
+          } catch(e) {
+            toast('Назначение', 'Ошибка сети: ' + e.message, 'err');
+            btn.disabled = false;
+          }
+        });
+      });
+    })();
+
+    // === LEGACY-блок ниже полностью удалён.
+    // Раньше: AsgardDB-based work_assign_requests + pm_consents IndexedDB store.
+    // Теперь: всё через REST /api/tenders/{win-pending, assign-work-pm}.
+    // Историю → git blame этого файла на коммит 7febfa8 и ранее.
+    if (false) {
       let reqs = [];
-      try{ reqs = await AsgardDB.all("work_assign_requests"); }catch(e){}
-      reqs = (reqs||[]).filter(r=>r.status==="pending");
 
       if(!reqs.length){ winPanel.innerHTML=""; return; }
 
@@ -1018,7 +1155,7 @@ window.AsgardTendersPage = (function(){
           await requestOverride({reqId, pmId, tender});
         });
       });
-    })();
+    } // конец if(false) — старый legacy блок
 
     // ═══════════════════════════════════════════════════════════════
     // Блок «Готово к отправке КП» — для ТО/HEAD_TO/ADMIN/директоров.
@@ -1721,6 +1858,11 @@ window.AsgardTendersPage = (function(){
           ${(t && t.tender_status==='Новый' && (user.role==="TO"||user.role==="HEAD_TO")) ? `<button class="btn red" id="btnDist">На анализ</button>` : ``}
           ${(t && t.tender_status==='ТКП согласовано' && ((user.role==='PM' && Number(t.responsible_pm_id)===Number(user.id)) || user.role==='HEAD_PM' || user.role==='ADMIN')) ? `<button class="btn" id="btnCreateTkp" style="background:#c8a84e;color:#1a1000;font-weight:700">⚡ Создать ТКП</button>` : ``}
           ${(t && t.tender_status==='Готово к отправке КП' && ['TO','HEAD_TO','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV'].includes(user.role)) ? `<button class="btn" id="btnSentToClient" style="background:#17a2b8;color:#fff">📨 КП отправлено клиенту</button>` : ``}
+          ${(t && t.tender_status==='КП отправлено' && ['TO','HEAD_TO','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV'].includes(user.role)) ? `
+            <button class="btn" id="btnTenderWon" style="background:#2ecc71;color:#fff;font-weight:700">🏆 Выиграли</button>
+            <button class="btn" id="btnTenderLost" style="background:#e74c3c;color:#fff;font-weight:700">❌ Проиграли</button>
+            <button class="btn ghost" id="btnTenderCancel" style="color:var(--t3)">⊘ Тендер отменён</button>
+          ` : ``}
           ${(t && t.tender_status !== 'Не подходит' && canArchive) ? `<button class="btn ghost mini" id="btnArchiveTender" style="color:var(--err-t)">🗑 Отсеять</button>` : ``}
           ${(t && t.tender_status === 'Не подходит' && canArchive) ? `<button class="btn ghost mini" id="btnUnarchiveTender" style="color:var(--ok-t)">♻️ Вернуть</button>` : ``}
         </div>
@@ -3072,6 +3214,19 @@ window.AsgardTendersPage = (function(){
         });
       }
 
+      // ═══════════════════════════════════════════════════════════════
+      // 3 кнопки финала: Выиграли / Проиграли / Отменён (для «КП отправлено»)
+      // ═══════════════════════════════════════════════════════════════
+      if (document.getElementById("btnTenderWon")) {
+        document.getElementById("btnTenderWon").addEventListener("click", () => openWonModal(tenderId, t));
+      }
+      if (document.getElementById("btnTenderLost")) {
+        document.getElementById("btnTenderLost").addEventListener("click", () => openLostModal(tenderId, t));
+      }
+      if (document.getElementById("btnTenderCancel")) {
+        document.getElementById("btnTenderCancel").addEventListener("click", () => openCancelModal(tenderId, t));
+      }
+
       // Кнопка "Отсеять" в карточке
       if(document.getElementById("btnArchiveTender")){
         document.getElementById("btnArchiveTender").addEventListener("click", () => openArchiveModal(tenderId));
@@ -3081,6 +3236,167 @@ window.AsgardTendersPage = (function(){
       if(document.getElementById("btnUnarchiveTender")){
         document.getElementById("btnUnarchiveTender").addEventListener("click", () => openUnarchiveModal(tenderId));
       }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Модалка «🏆 Выиграли тендер» — фиксируем финальную цену контракта.
+    // После: HEAD_TO в win-panel сверху страницы назначит РП на работы.
+    // ═══════════════════════════════════════════════════════════════
+    async function openWonModal(tid, tender) {
+      const initPrice = tender?.submission_price || tender?.tender_price || 0;
+      const html = `
+        <div class="help" style="margin-bottom:14px;background:rgba(46,204,113,.08);padding:10px 14px;border-radius:8px;border-left:3px solid #2ecc71">
+          🏆 <b>Поздравляем с победой!</b><br/>
+          После сохранения тендер появится у <b>Рук. ТО</b> в блоке «Выигранные» —
+          там назначается РП на выполнение работ (можно того же, кто считал, или другого).
+        </div>
+        <div class="cr-f-field">
+          <div class="cr-f-label">Финальная цена контракта без НДС, ₽ <span class="cr-f-label__req">*</span></div>
+          <input id="won_price" class="inp cr-f-mono" type="number" min="0" step="0.01" value="${initPrice||''}" placeholder="0"/>
+          <div class="cr-f-help">Из «Цена подачи». Поправьте если победили по другой сумме (торги/переторжка).</div>
+        </div>
+        <div class="cr-f-field" style="margin-top:12px">
+          <div class="cr-f-label">Комментарий (необязательно)</div>
+          <textarea id="won_comment" class="inp" rows="2" placeholder="Кратко: торги/переторжка/особые условия..."></textarea>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+          <button class="btn ghost" id="wonCancel">Отмена</button>
+          <button class="btn" id="wonOk" style="background:#2ecc71;color:#fff;font-weight:700">🏆 Подтвердить победу</button>
+        </div>
+      `;
+      AsgardUI.showModal({ title: 'Выиграли тендер', icon: '🏆', html, wide: false, onMount: () => {
+        document.getElementById('wonCancel').onclick = () => AsgardUI.closeModal();
+        document.getElementById('wonOk').onclick = async () => {
+          const price = Number(document.getElementById('won_price').value || 0);
+          if (!price || price <= 0) { toast('Проверка', 'Укажите финальную цену контракта', 'err'); return; }
+          const comment = document.getElementById('won_comment').value.trim();
+          const btn = document.getElementById('wonOk'); btn.disabled = true;
+          try {
+            const token = localStorage.getItem('asgard_token');
+            const resp = await fetch(`/api/tenders/${tid}/win`, {
+              method: 'POST',
+              headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contract_value: price, win_comment: comment })
+            });
+            const data = await resp.json();
+            if (!resp.ok) { toast('Победа', data.error || 'Ошибка', 'err'); btn.disabled = false; return; }
+            toast('🏆 Победа', 'Тендер выигран. Рук. ТО назначит РП на работы.', 'ok', 6000);
+            AsgardUI.closeModal();
+            await render({ layout, title });
+          } catch(e) {
+            toast('Победа', 'Ошибка сети: ' + e.message, 'err');
+            btn.disabled = false;
+          }
+        };
+      }});
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Модалка «❌ Проиграли» — причина + сопроводительное письмо
+    // ═══════════════════════════════════════════════════════════════
+    async function openLostModal(tid, tender) {
+      const reasons = ['Цена выше конкурента', 'Сроки не подошли заказчику', 'Выбрали другого подрядчика',
+                       'Не прошли квалификацию', 'Отказались от выполнения', 'Технические требования',
+                       'Конкурент с админ. ресурсом', 'Другое'];
+      const html = `
+        <div class="help" style="margin-bottom:14px;background:rgba(231,76,60,.08);padding:10px 14px;border-radius:8px;border-left:3px solid #e74c3c">
+          Зафиксируем причину для аналитики и сопроводительное письмо — это поможет команде сделать выводы.
+        </div>
+        <div class="cr-f-field">
+          <div class="cr-f-label">Причина проигрыша <span class="cr-f-label__req">*</span></div>
+          <div id="lost_reason_w"></div>
+        </div>
+        <div class="cr-f-field" style="margin-top:12px">
+          <div class="cr-f-label">Кто выиграл (если известно)</div>
+          <input id="lost_winner" class="inp" placeholder="Название организации-победителя"/>
+        </div>
+        <div class="cr-f-field" style="margin-top:12px">
+          <div class="cr-f-label">Сопроводительное письмо — анализ для команды <span class="cr-f-label__req">*</span></div>
+          <textarea id="lost_letter" class="inp" rows="5" placeholder="Что узнали, какие выводы, что учесть в следующий раз..."></textarea>
+          <div class="cr-f-help">Это видят все — РП, директора, Рук. ТО. Помогает развивать компанию.</div>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+          <button class="btn ghost" id="lostCancel">Отмена</button>
+          <button class="btn" id="lostOk" style="background:#e74c3c;color:#fff;font-weight:700">❌ Зафиксировать поражение</button>
+        </div>
+      `;
+      AsgardUI.showModal({ title: 'Проиграли тендер', icon: '❌', html, wide: false, onMount: () => {
+        const w = document.getElementById('lost_reason_w');
+        w.appendChild(CRSelect.create({
+          id: 'lost_reason',
+          options: reasons.map(r => ({ value: r, label: r })),
+          placeholder: '— выберите —',
+          searchable: false
+        }));
+        document.getElementById('lostCancel').onclick = () => AsgardUI.closeModal();
+        document.getElementById('lostOk').onclick = async () => {
+          const reason = CRSelect.getValue('lost_reason') || '';
+          const winner = document.getElementById('lost_winner').value.trim();
+          const letter = document.getElementById('lost_letter').value.trim();
+          if (!reason) { toast('Проверка', 'Выберите причину', 'err'); return; }
+          if (!letter || letter.length < 20) { toast('Проверка', 'Сопроводительное письмо: минимум 20 символов', 'err'); return; }
+          const btn = document.getElementById('lostOk'); btn.disabled = true;
+          try {
+            const token = localStorage.getItem('asgard_token');
+            const resp = await fetch(`/api/tenders/${tid}/lose`, {
+              method: 'POST',
+              headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ reject_reason: reason, cover_letter: letter, winner_name: winner })
+            });
+            const data = await resp.json();
+            if (!resp.ok) { toast('Проигрыш', data.error || 'Ошибка', 'err'); btn.disabled = false; return; }
+            toast('Зафиксировано', 'Поражение и анализ сохранены.', 'ok');
+            AsgardUI.closeModal();
+            await render({ layout, title });
+          } catch(e) {
+            toast('Проигрыш', 'Ошибка сети: ' + e.message, 'err');
+            btn.disabled = false;
+          }
+        };
+      }});
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Модалка «⊘ Тендер отменён» — только причина (заказчик отказался)
+    // ═══════════════════════════════════════════════════════════════
+    async function openCancelModal(tid, tender) {
+      const html = `
+        <div class="help" style="margin-bottom:14px">
+          Заказчик отменил тендер. Опишите кратко обстоятельства.
+        </div>
+        <div class="cr-f-field">
+          <div class="cr-f-label">Причина отмены <span class="cr-f-label__req">*</span></div>
+          <textarea id="cancel_reason" class="inp" rows="4" placeholder="Заказчик переиграл закупку / нет финансирования / отложили на год..."></textarea>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+          <button class="btn ghost" id="cancelCancel">Назад</button>
+          <button class="btn ghost" id="cancelOk" style="color:var(--err-t);border-color:var(--err-t)">⊘ Подтвердить отмену</button>
+        </div>
+      `;
+      AsgardUI.showModal({ title: 'Тендер отменён', icon: '⊘', html, wide: false, onMount: () => {
+        document.getElementById('cancelCancel').onclick = () => AsgardUI.closeModal();
+        document.getElementById('cancelOk').onclick = async () => {
+          const reason = document.getElementById('cancel_reason').value.trim();
+          if (!reason || reason.length < 5) { toast('Проверка', 'Укажите причину (минимум 5 символов)', 'err'); return; }
+          const btn = document.getElementById('cancelOk'); btn.disabled = true;
+          try {
+            const token = localStorage.getItem('asgard_token');
+            const resp = await fetch(`/api/tenders/${tid}/cancel`, {
+              method: 'POST',
+              headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ cancel_reason: reason })
+            });
+            const data = await resp.json();
+            if (!resp.ok) { toast('Отмена', data.error || 'Ошибка', 'err'); btn.disabled = false; return; }
+            toast('Сохранено', 'Тендер отменён и перенесён в архив.', 'ok');
+            AsgardUI.closeModal();
+            await render({ layout, title });
+          } catch(e) {
+            toast('Отмена', 'Ошибка сети: ' + e.message, 'err');
+            btn.disabled = false;
+          }
+        };
+      }});
     }
 
     // ═══════════════════════════════════════════════════════════════

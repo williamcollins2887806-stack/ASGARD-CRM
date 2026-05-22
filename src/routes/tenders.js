@@ -1091,6 +1091,251 @@ async function routes(fastify, options) {
     return { success: true, tender: updated };
   });
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // POST /:id/win — ТО/HEAD_TO/ADMIN отмечают «Выиграли» после «КП отправлено»
+  // Работа НЕ создаётся сразу. Тендер появляется в win-assign panel у HEAD_TO
+  // для назначения РП на выполнение работ (может быть другой РП).
+  // ═══════════════════════════════════════════════════════════════════════════
+  fastify.post('/:id/win', {
+    preHandler: [fastify.requireRoles(['ADMIN', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    const user = request.user;
+    const { contract_value, win_comment } = request.body || {};
+
+    const { rows: [tender] } = await db.query('SELECT * FROM tenders WHERE id = $1', [id]);
+    if (!tender) return reply.code(404).send({ error: 'Тендер не найден' });
+    if (tender.tender_status !== 'КП отправлено') {
+      return reply.code(409).send({ error: `Перевод в «Выиграли» возможен только из статуса «КП отправлено», текущий: «${tender.tender_status}»` });
+    }
+
+    const finalPrice = (contract_value != null && contract_value !== '') ? Number(contract_value) : null;
+
+    await db.query(`
+      UPDATE tenders SET
+        tender_status = 'Выиграли',
+        won_at = NOW(),
+        won_by_user_id = $2,
+        tender_price = COALESCE($3, tender_price),
+        updated_at = NOW()
+      WHERE id = $1
+    `, [id, user.id, finalPrice]);
+
+    await db.query(
+      `INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+       VALUES ($1, 'tender', $2, 'win', $3, NOW())`,
+      [user.id, id, JSON.stringify({ from_status: 'КП отправлено', contract_value: finalPrice, comment: win_comment || null })]
+    );
+
+    // Уведомить HEAD_TO/директоров — назначить РП на работы
+    const { rows: heads } = await db.query(
+      "SELECT id FROM users WHERE role IN ('HEAD_TO','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV') AND is_active = true"
+    );
+    for (const h of heads) {
+      createNotification(db, {
+        user_id: h.id,
+        title: '🏆 Выиграли тендер — назначьте РП на работы',
+        message: `${tender.customer_name || ''} — ${tender.tender_title || ''}${finalPrice ? ' · ' + finalPrice.toLocaleString('ru-RU') + ' ₽' : ''}`,
+        type: 'tender',
+        link: `#/tenders?id=${id}`
+      });
+    }
+
+    broadcast('tender:updated', { id, tender_status: 'Выиграли', old_status: 'КП отправлено' });
+
+    const { rows: [updated] } = await db.query('SELECT * FROM tenders WHERE id = $1', [id]);
+    return { success: true, tender: updated };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // POST /:id/lose — Проиграли. Требует reason (категория) + cover_letter
+  // ═══════════════════════════════════════════════════════════════════════════
+  fastify.post('/:id/lose', {
+    preHandler: [fastify.requireRoles(['ADMIN', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    const user = request.user;
+    const { reject_reason, cover_letter, winner_name } = request.body || {};
+
+    if (!reject_reason || !String(reject_reason).trim()) {
+      return reply.code(400).send({ error: 'Укажите причину проигрыша' });
+    }
+    if (!cover_letter || !String(cover_letter).trim()) {
+      return reply.code(400).send({ error: 'Заполните сопроводительное письмо (анализ для команды)' });
+    }
+
+    const { rows: [tender] } = await db.query('SELECT * FROM tenders WHERE id = $1', [id]);
+    if (!tender) return reply.code(404).send({ error: 'Тендер не найден' });
+    if (tender.tender_status === 'Выиграли' || tender.tender_status === 'Проиграли' || tender.tender_status === 'Не подходит') {
+      return reply.code(409).send({ error: `Тендер уже в финальном статусе: «${tender.tender_status}»` });
+    }
+    if (tender.work_assigned_at) {
+      return reply.code(409).send({ error: 'Работа по тендеру уже назначена — финальный статус изменять нельзя' });
+    }
+
+    await db.query(`
+      UPDATE tenders SET
+        tender_status = 'Проиграли',
+        reject_reason = $2,
+        lose_cover_letter = $3,
+        winner_name = $4,
+        lost_at = NOW(),
+        lost_by_user_id = $5,
+        updated_at = NOW()
+      WHERE id = $1
+    `, [id, String(reject_reason).trim(), String(cover_letter).trim(), winner_name || null, user.id]);
+
+    await db.query(
+      `INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+       VALUES ($1, 'tender', $2, 'lose', $3, NOW())`,
+      [user.id, id, JSON.stringify({ from_status: tender.tender_status, reason: reject_reason, winner: winner_name || null })]
+    );
+
+    broadcast('tender:updated', { id, tender_status: 'Проиграли', old_status: tender.tender_status });
+    const { rows: [updated] } = await db.query('SELECT * FROM tenders WHERE id = $1', [id]);
+    return { success: true, tender: updated };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // POST /:id/cancel — «Тендер отменён» (заказчиком). Только причина.
+  // На бэке это статус «Не подходит» с пометкой cancel.
+  // ═══════════════════════════════════════════════════════════════════════════
+  fastify.post('/:id/cancel', {
+    preHandler: [fastify.requireRoles(['ADMIN', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    const user = request.user;
+    const { cancel_reason } = request.body || {};
+
+    if (!cancel_reason || !String(cancel_reason).trim()) {
+      return reply.code(400).send({ error: 'Укажите причину отмены' });
+    }
+
+    const { rows: [tender] } = await db.query('SELECT * FROM tenders WHERE id = $1', [id]);
+    if (!tender) return reply.code(404).send({ error: 'Тендер не найден' });
+    if (tender.work_assigned_at) {
+      return reply.code(409).send({ error: 'Работа по тендеру уже назначена — отменить нельзя' });
+    }
+
+    await db.query(`
+      UPDATE tenders SET
+        tender_status = 'Не подходит',
+        archive_reason = 'Заказчик отменил',
+        archive_comment = $2,
+        archived_at = NOW(),
+        archived_by_user_id = $3,
+        updated_at = NOW()
+      WHERE id = $1
+    `, [id, String(cancel_reason).trim(), user.id]);
+
+    await db.query(
+      `INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+       VALUES ($1, 'tender', $2, 'cancel', $3, NOW())`,
+      [user.id, id, JSON.stringify({ from_status: tender.tender_status, reason: cancel_reason })]
+    );
+
+    broadcast('tender:updated', { id, tender_status: 'Не подходит', old_status: tender.tender_status });
+    const { rows: [updated] } = await db.query('SELECT * FROM tenders WHERE id = $1', [id]);
+    return { success: true, tender: updated };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // POST /:id/assign-work-pm — HEAD_TO назначает РП для ВЫПОЛНЕНИЯ работ
+  // (после статуса «Выиграли»). РП может быть тот же или другой.
+  // Создаёт запись в works, тендер уходит из win-panel.
+  // ═══════════════════════════════════════════════════════════════════════════
+  fastify.post('/:id/assign-work-pm', {
+    preHandler: [fastify.requireRoles(['ADMIN', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    const user = request.user;
+    const { pm_id, work_comment } = request.body || {};
+
+    if (!pm_id) return reply.code(400).send({ error: 'Укажите РП для выполнения работ' });
+
+    const { rows: [tender] } = await db.query('SELECT * FROM tenders WHERE id = $1', [id]);
+    if (!tender) return reply.code(404).send({ error: 'Тендер не найден' });
+    if (tender.tender_status !== 'Выиграли') {
+      return reply.code(409).send({ error: 'Назначение РП на работы доступно только для выигранных тендеров' });
+    }
+
+    const { rows: [pm] } = await db.query('SELECT id, name FROM users WHERE id = $1 AND is_active = true', [pm_id]);
+    if (!pm) return reply.code(400).send({ error: 'РП не найден или неактивен' });
+
+    // Идемпотентность: если работа по этому тендеру уже создана — не дублировать
+    const { rows: existing } = await db.query('SELECT id FROM works WHERE tender_id = $1', [id]);
+    if (existing.length > 0) {
+      return reply.code(409).send({ error: `Работа по этому тендеру уже создана (id=${existing[0].id})` });
+    }
+
+    // Подтянуть согласованный просчёт для cost_plan
+    const { rows: [estimate] } = await db.query(
+      `SELECT cost_plan, price_tkp FROM estimates
+       WHERE tender_id = $1 AND approval_status = 'approved'
+       ORDER BY current_version_no DESC NULLS LAST, id DESC LIMIT 1`,
+      [id]
+    );
+
+    const contractValue = tender.submission_price || tender.tender_price || estimate?.price_tkp || null;
+    const costPlan = estimate?.cost_plan || null;
+
+    const { rows: [work] } = await db.query(`
+      INSERT INTO works (
+        tender_id, pm_id, customer_name, work_title, work_status,
+        start_in_work_date, end_plan, contract_value, cost_plan, comment,
+        created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, 'Подготовка', $5, $6, $7, $8, $9, NOW(), NOW())
+      RETURNING id
+    `, [id, pm_id, tender.customer_name, tender.tender_title,
+        tender.work_start_plan || null, tender.work_end_plan || null,
+        contractValue, costPlan, work_comment || null]);
+
+    // Фиксируем что работа назначена — для блокировки повторного назначения
+    await db.query(`
+      UPDATE tenders SET
+        work_assigned_pm_id = $2,
+        work_assigned_at = NOW(),
+        work_assigned_by_user_id = $3,
+        updated_at = NOW()
+      WHERE id = $1
+    `, [id, pm_id, user.id]);
+
+    await db.query(
+      `INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+       VALUES ($1, 'tender', $2, 'assign_work_pm', $3, NOW())`,
+      [user.id, id, JSON.stringify({ work_id: work.id, work_pm_id: pm_id, calc_pm_id: tender.responsible_pm_id })]
+    );
+
+    createNotification(db, {
+      user_id: pm_id,
+      title: '🔨 Работа назначена',
+      message: `Тендер выигран: ${tender.customer_name || ''} — ${tender.tender_title || ''}`,
+      type: 'work',
+      link: `#/pm-works`
+    });
+
+    broadcast('tender:updated', { id, work_assigned_pm_id: pm_id });
+    return { success: true, work_id: work.id };
+  });
+
+  // GET /win-pending — тендеры со статусом «Выиграли» БЕЗ назначенной работы
+  // Для нового winPanel у HEAD_TO
+  fastify.get('/win-pending', { preHandler: [fastify.authenticate] }, async (request) => {
+    const role = request.user.role;
+    if (!['HEAD_TO','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV'].includes(role)) {
+      return { items: [] };
+    }
+    const { rows } = await db.query(`
+      SELECT t.*, u.name AS calc_pm_name
+      FROM tenders t
+      LEFT JOIN users u ON u.id = t.responsible_pm_id
+      WHERE t.tender_status = 'Выиграли'
+        AND NOT EXISTS (SELECT 1 FROM works w WHERE w.tender_id = t.id)
+      ORDER BY t.won_at DESC NULLS LAST, t.id DESC
+    `);
+    return { items: rows };
+  });
+
   // GET /archive-reasons — список категорий для фронтенда
   fastify.get('/archive-reasons', { preHandler: [fastify.authenticate] }, async () => {
     return { reasons: ARCHIVE_REASONS };

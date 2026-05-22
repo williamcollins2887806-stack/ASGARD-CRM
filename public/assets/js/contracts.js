@@ -882,6 +882,19 @@ window.AsgardContractsPage = (function(){
 
     const ncModal = document.getElementById('newCustomerModal');
     const ncOverlay = ncModal.querySelector('.cm-overlay');
+
+    // FIX z-index: AsgardUI.showModal даёт inline z-index = 10000+stack*100,
+    // а CSS у .cm-overlay = 1200 → новая модалка остаётся под тендером.
+    // Динамически берём z-index выше топ-overlay.
+    (function liftAboveAllModals() {
+      let maxZ = 0;
+      document.querySelectorAll('.cr-m-overlay, [style*="z-index"]').forEach(el => {
+        if (el === ncOverlay || el.contains(ncOverlay)) return;
+        const z = parseInt(window.getComputedStyle(el).zIndex, 10);
+        if (Number.isFinite(z) && z > maxZ) maxZ = z;
+      });
+      ncOverlay.style.zIndex = String(Math.max(maxZ + 50, 12000));
+    })();
     const ncForm = document.getElementById('newCustomerForm');
     const ncStatus = document.getElementById('ncmStatus');
     const innInput = ncForm.querySelector('[name="inn"]');
