@@ -506,6 +506,58 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     reply.send({ status: 'ok' });
   });
 
+  // --- events/sms — финальный статус доставки SMS ---
+  // Mango Office шлёт это событие после реальной попытки доставки SMS оператору.
+  // Поля в json: command_id, sms_status / status / delivery_status (delivered|not_delivered|expired|rejected|sent)
+  fastify.post('/webhook/events/sms', {
+    config: { rawBody: true }
+  }, async (request, reply) => {
+    if (!checkWebhookRate(request.ip)) {
+      return reply.code(429).send({ error: 'Too many requests' });
+    }
+    if (!verifyMangoSignature(request, reply)) return;
+
+    const event = typeof request.body.json === "string" ? JSON.parse(request.body.json) : request.body.json;
+    await logEvent('sms', event);
+
+    try {
+      const commandId = event.command_id || event.message_id || null;
+      // Mango может прислать статус в разных полях — берём первый непустой
+      const rawStatus = event.sms_status ?? event.status ?? event.delivery_status ?? event.state ?? null;
+      const statusStr = rawStatus != null ? String(rawStatus).toLowerCase() : null;
+
+      // Нормализуем статус: delivered / not_delivered / expired / rejected / sent / unknown
+      // Mango использует строки + иногда числовые коды (1=delivered, 2=not_delivered, ...)
+      let normalized = 'unknown';
+      if (statusStr) {
+        if (['1', 'delivered', 'success', 'ok'].includes(statusStr)) normalized = 'delivered';
+        else if (['2', 'not_delivered', 'failed', 'fail', 'undelivered'].includes(statusStr)) normalized = 'not_delivered';
+        else if (['3', 'expired', 'timeout'].includes(statusStr)) normalized = 'expired';
+        else if (['4', 'rejected', 'blocked', 'denied'].includes(statusStr)) normalized = 'rejected';
+        else if (['0', 'sent', 'accepted', 'queued'].includes(statusStr)) normalized = 'sent';
+        else normalized = statusStr.slice(0, 32);
+      }
+
+      if (commandId) {
+        const { rowCount } = await db.query(
+          `UPDATE field_sms_log
+             SET delivery_status = $1,
+                 delivered_at = CASE WHEN $1 = 'delivered' THEN NOW() ELSE delivered_at END,
+                 delivery_payload = $2
+           WHERE command_id = $3`,
+          [normalized, JSON.stringify(event), commandId]
+        );
+        fastify.log.info(`[telephony] SMS delivery status: command_id=${commandId} status=${normalized} matched=${rowCount}`);
+      } else {
+        fastify.log.warn(`[telephony] SMS webhook без command_id: ${JSON.stringify(event)}`);
+      }
+    } catch (e) {
+      fastify.log.error(`[telephony] SMS webhook error: ${e.message}`);
+    }
+
+    reply.send({ status: 'ok' });
+  });
+
   // --- events/dtmf ---
   fastify.post('/webhook/events/dtmf', {
     config: { rawBody: true }

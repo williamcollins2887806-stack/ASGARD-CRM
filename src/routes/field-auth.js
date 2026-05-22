@@ -98,8 +98,10 @@ async function routes(fastify, options) {
       const smsText = `ASGARD: ваш код ${code}. Действует ${SMS_CODE_TTL_MIN} мин.`;
       let smsStatus = 'sent';
       let smsResponse = null;
+      let commandId = null;
       try {
         smsResponse = await mango.sendSms(MANGO_SMS_FROM, normalized, smsText);
+        commandId = smsResponse?.command_id || null;
         fastify.log.info(`[field-auth] SMS sent to ${normalized}, response: ${JSON.stringify(smsResponse)}`);
       } catch (smsErr) {
         smsStatus = 'failed';
@@ -110,9 +112,9 @@ async function routes(fastify, options) {
       // Log SMS (always — success or failure)
       try {
         await db.query(
-          `INSERT INTO field_sms_log (employee_id, phone, message_type, message_text, status, mango_response)
-           VALUES ($1, $2, 'auth_code', $3, $4, $5)`,
-          [employee.id, normalized, smsText, smsStatus, JSON.stringify(smsResponse)]
+          `INSERT INTO field_sms_log (employee_id, phone, message_type, message_text, status, mango_response, command_id)
+           VALUES ($1, $2, 'auth_code', $3, $4, $5, $6)`,
+          [employee.id, normalized, smsText, smsStatus, JSON.stringify(smsResponse), commandId]
         );
       } catch (logErr) {
         fastify.log.error('[field-auth] SMS log error:', logErr.message);
@@ -657,9 +659,9 @@ async function routes(fastify, options) {
 
       // Логируем
       await db.query(`
-        INSERT INTO field_sms_log (employee_id, phone, message_type, message_text, status, mango_response, sent_by, created_at)
-        VALUES ($1, $2, 'invite', $3, 'sent', $4, $5, NOW())
-      `, [emp.id, normalized, smsText, JSON.stringify(smsResponse), req.user.id]).catch(() => {});
+        INSERT INTO field_sms_log (employee_id, phone, message_type, message_text, status, mango_response, sent_by, command_id, created_at)
+        VALUES ($1, $2, 'invite', $3, 'sent', $4, $5, $6, NOW())
+      `, [emp.id, normalized, smsText, JSON.stringify(smsResponse), req.user.id, smsResponse?.command_id || null]).catch(() => {});
 
       return { ok: true, employee: emp.fio, phone: normalized, response: smsResponse };
     } catch (err) {
@@ -695,9 +697,9 @@ async function routes(fastify, options) {
         const resp = await mango.sendSms(MANGO_SMS_FROM, normalized, smsText);
         results.push({ id: emp.id, fio: emp.fio, status: 'sent', response: resp });
         await db.query(`
-          INSERT INTO field_sms_log (employee_id, phone, message_type, message_text, status, mango_response, sent_by, created_at)
-          VALUES ($1, $2, 'invite', $3, 'sent', $4, $5, NOW())
-        `, [emp.id, normalized, smsText, JSON.stringify(resp), req.user.id]).catch(() => {});
+          INSERT INTO field_sms_log (employee_id, phone, message_type, message_text, status, mango_response, sent_by, command_id, created_at)
+          VALUES ($1, $2, 'invite', $3, 'sent', $4, $5, $6, NOW())
+        `, [emp.id, normalized, smsText, JSON.stringify(resp), req.user.id, resp?.command_id || null]).catch(() => {});
       } catch (e) {
         results.push({ id: emp.id, fio: emp.fio, status: 'failed', error: e.message });
       }
