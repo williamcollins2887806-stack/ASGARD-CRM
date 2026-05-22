@@ -53,11 +53,12 @@ function formatPhone(raw) {
 
 export default function FieldLogin() {
   const navigate = useNavigate();
-  const { requestCode, verifyCode, loading, error, clearError } = useFieldAuthStore();
+  const { requestCode, verifyCode, loginByBirth, loading, error, clearError } = useFieldAuthStore();
 
-  const [step, setStep] = useState('phone'); // phone | code | success
+  const [step, setStep] = useState('phone'); // phone | code | birth | success
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState(['', '', '', '']);
+  const [birthYear, setBirthYear] = useState('');
   const [cooldown, setCooldown] = useState(0);
   const [employeeName, setEmployeeName] = useState('');
   const otpRefs = [useRef(), useRef(), useRef(), useRef()];
@@ -135,6 +136,19 @@ export default function FieldLogin() {
     } catch (_) {}
   };
 
+  const handleBirthLogin = async () => {
+    if (rawPhone.length < 10 || birthYear.length !== 4) return;
+    clearError();
+    try {
+      const result = await loginByBirth(fullPhone, parseInt(birthYear, 10));
+      setEmployeeName(result?.employee?.fio || '');
+      playGateOpen();
+      if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+      setStep('success');
+      setTimeout(() => navigate('/field/home', { replace: true }), 1800);
+    } catch (_) {}
+  };
+
   // ═══ SUCCESS SCREEN ═══
   if (step === 'success') {
     return (
@@ -156,6 +170,7 @@ export default function FieldLogin() {
       <div className="fa-login-header">
         <button className="fa-back-btn" onClick={() => {
           if (step === 'code') { setStep('phone'); setOtp(['','','','']); clearError(); }
+          else if (step === 'birth') { setStep('phone'); setBirthYear(''); clearError(); }
           else navigate('/field/welcome');
         }}>←</button>
         <img
@@ -255,6 +270,63 @@ export default function FieldLogin() {
                 <button className="fa-countdown-link" onClick={handleResend}>Повторить знак</button>
               )}
             </div>
+
+            <div style={{ marginTop: 24, textAlign: 'center' }}>
+              <button
+                type="button"
+                onClick={() => { setStep('birth'); setOtp(['','','','']); clearError(); }}
+                style={{
+                  background: 'transparent',
+                  border: '1px dashed rgba(255,255,255,0.18)',
+                  borderRadius: 12, padding: '10px 16px',
+                  color: 'rgba(255,255,255,0.55)', fontSize: 13,
+                  cursor: 'pointer',
+                }}
+              >
+                Знак не пришёл? Войти по году рождения
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ═══ BIRTH STEP — резервный вход (фоллбэк когда SMS не доходят) ═══ */}
+        {step === 'birth' && (
+          <div className="fa-slide-in" style={{ width: '100%', maxWidth: 320 }}>
+            <h2 className="fa-heading">Назови год<br />своего рождения</h2>
+            <p className="fa-desc">Резервный вход — если знак не пришёл</p>
+
+            <div className="fa-phone-wrap" style={{ marginTop: 12 }}>
+              <input
+                className="fa-phone-input"
+                type="tel"
+                inputMode="numeric"
+                placeholder="например, 1985"
+                maxLength={4}
+                value={birthYear}
+                onChange={(e) => setBirthYear(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                autoFocus
+                style={{ textAlign: 'center', letterSpacing: 4, fontSize: 22 }}
+              />
+            </div>
+
+            <p style={{
+              marginTop: 12, textAlign: 'center',
+              color: 'rgba(255,255,255,0.45)', fontSize: 12, lineHeight: 1.5
+            }}>
+              💡 Подсказка: твой пароль — это год твоего рождения (4 цифры).<br />
+              Используется, если SMS не доходит.
+            </p>
+
+            {error && <div className="fa-error">{error}</div>}
+
+            <button
+              className="fa-btn-gold"
+              style={{ marginTop: 20 }}
+              disabled={birthYear.length !== 4 || loading}
+              onClick={handleBirthLogin}
+            >
+              {loading ? '⏳ Проверка...' : '⚔ Войти'}
+            </button>
           </div>
         )}
       </div>

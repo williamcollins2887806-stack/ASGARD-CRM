@@ -535,6 +535,133 @@ async function routes(fastify, options) {
   });
 
   // ─────────────────────────────────────────────────────────────────────
+  // POST /login-by-birth — резервный вход по телефону + году рождения.
+  // Используется, когда SMS не доходят (фильтры операторов и т.п.).
+  // Безопасность: жёсткий rate-limit 3 попытки / час на телефон,
+  // одинаковая ошибка на «не найден» и «неверный год» (чтобы не палить,
+  // зарегистрирован ли номер).
+  // ─────────────────────────────────────────────────────────────────────
+  const birthAttempts = new Map(); // phone → { count, resetAt }
+  setInterval(() => { const now = Date.now(); for (const [k, v] of birthAttempts) { if (v.resetAt < now) birthAttempts.delete(k); } }, 60000);
+
+  fastify.post('/login-by-birth', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['phone', 'birth_year'],
+        properties: {
+          phone: { type: 'string' },
+          birth_year: { type: ['integer', 'string'] }
+        }
+      }
+    }
+  }, async (req, reply) => {
+    try {
+      const { phone, birth_year } = req.body;
+      const normalized = normalizePhone(phone);
+      if (normalized.length < 12) {
+        return reply.code(400).send({ error: 'Некорректный номер телефона' });
+      }
+
+      // Rate limit
+      const attempt = birthAttempts.get(normalized) || { count: 0, resetAt: Date.now() + 60 * 60 * 1000 };
+      if (attempt.count >= 3) {
+        const waitMin = Math.ceil((attempt.resetAt - Date.now()) / 60000);
+        return reply.code(429).send({ error: `Слишком много попыток. Подождите ${waitMin} мин или попробуйте SMS` });
+      }
+
+      const yearNum = parseInt(String(birth_year).trim(), 10);
+      if (!yearNum || yearNum < 1930 || yearNum > new Date().getFullYear()) {
+        // Считаем как неудачную попытку
+        attempt.count++;
+        if (!birthAttempts.has(normalized)) attempt.resetAt = Date.now() + 60 * 60 * 1000;
+        birthAttempts.set(normalized, attempt);
+        return reply.code(401).send({ error: 'Неверный телефон или год рождения' });
+      }
+
+      // Ищем сотрудника
+      const { rows: employees } = await db.query(
+        `SELECT id, fio, phone, city, position, role_tag, is_active, user_id,
+                EXTRACT(YEAR FROM birth_date)::int AS birth_year
+         FROM employees
+         WHERE REPLACE(REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '(', ''), ')', '') LIKE $1
+           AND is_active = true
+         LIMIT 1`,
+        ['%' + normalized.replace('+', '').slice(-10)]
+      );
+
+      const employee = employees[0];
+      // Единая ошибка для всех случаев неуспеха
+      const invalid = !employee || !employee.birth_year || employee.birth_year !== yearNum;
+      if (invalid) {
+        attempt.count++;
+        if (!birthAttempts.has(normalized)) attempt.resetAt = Date.now() + 60 * 60 * 1000;
+        birthAttempts.set(normalized, attempt);
+        fastify.log.warn(`[field-auth] login-by-birth fail: phone=${normalized} year=${yearNum} match=${!!employee}`);
+        return reply.code(401).send({ error: 'Неверный телефон или год рождения' });
+      }
+
+      // Успех — сбрасываем счётчик
+      birthAttempts.delete(normalized);
+
+      // Auto-create user record (как в verify-code)
+      let userId = employee.user_id;
+      if (!userId) {
+        const login = normalized.replace('+', '');
+        const randomPwd = crypto.randomBytes(32).toString('hex');
+        const pwdHash = await bcrypt.hash(randomPwd, 10);
+        const { rows: newUser } = await db.query(
+          `INSERT INTO users (login, password_hash, role, is_active, name, created_at, updated_at)
+           VALUES ($1, $2, 'FIELD_WORKER', true, $3, NOW(), NOW())
+           ON CONFLICT (login) DO UPDATE SET updated_at = NOW()
+           RETURNING id`,
+          [login, pwdHash, employee.fio || 'Рабочий']
+        );
+        userId = newUser[0].id;
+        await db.query(`UPDATE employees SET user_id = $1 WHERE id = $2`, [userId, employee.id]);
+      }
+
+      // JWT
+      const token = jwt.sign(
+        { employee_id: employee.id, user_id: userId, type: 'field' },
+        FIELD_JWT_SECRET,
+        { expiresIn: FIELD_JWT_EXPIRES }
+      );
+      const tokenHash = hashToken(token);
+      const expiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+
+      await db.query(
+        `INSERT INTO field_sessions (employee_id, token_hash, device_info, expires_at)
+         VALUES ($1, $2, $3, $4)`,
+        [employee.id, tokenHash, req.headers['user-agent'] || '', expiresAt]
+      );
+
+      await db.query(
+        `UPDATE employees SET field_last_login = NOW(), phone_verified = true WHERE id = $1`,
+        [employee.id]
+      );
+
+      fastify.log.info(`[field-auth] login-by-birth OK: employee=${employee.id} (${employee.fio})`);
+
+      return {
+        token,
+        status: 'authenticated',
+        employee: {
+          id: employee.id,
+          fio: employee.fio,
+          phone: employee.phone,
+          city: employee.city,
+          position: employee.position,
+          user_id: userId
+        }
+      };
+    } catch (err) {
+      fastify.log.error('[field-auth] login-by-birth error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
   // POST /reset-pin — reset PIN (requires valid session from SMS re-verify)
   // ─────────────────────────────────────────────────────────────────────
   fastify.post('/reset-pin', {

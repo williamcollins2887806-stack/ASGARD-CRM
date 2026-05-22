@@ -58,6 +58,34 @@ export const useFieldAuthStore = create((set, get) => ({
     }
   },
 
+  // Fallback: login by phone + birth year (when SMS doesn't arrive)
+  loginByBirth: async (phone, birthYear) => {
+    set({ loading: true, error: null });
+    try {
+      const res = await fetch('/api/field/auth/login-by-birth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, birth_year: birthYear }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Неверный телефон или год рождения');
+
+      localStorage.setItem(FIELD_TOKEN_KEY, data.token);
+      localStorage.setItem(FIELD_EMPLOYEE_KEY, JSON.stringify(data.employee));
+
+      set({
+        token: data.token,
+        employee: data.employee,
+        status: 'authenticated',
+        loading: false,
+      });
+      return data;
+    } catch (err) {
+      set({ error: err.message, loading: false });
+      throw err;
+    }
+  },
+
   // Step 3a: Setup PIN (first time)
   setupPin: async (pin) => {
     set({ loading: true, error: null });
