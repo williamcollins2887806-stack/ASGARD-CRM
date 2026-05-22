@@ -870,16 +870,20 @@ async function routes(fastify) {
       }
     }
 
-    // 3. Сгенерировать красивый HTML-отчёт и сохранить как документ тендера
+    // 3. Генерируем отчёты фоново (HTML + PDF + Excel)
     if (estimate.tender_id) {
-      try {
+      const _eid = estimate.id, _tid = estimate.tender_id, _uid = request.user.id;
+      const _uname = request.user.name || request.user.login || 'Директор';
+      const _vno = estimate.current_version_no || 1, _fp = finalPrice, _fc = finalCost;
+      const _eTitle = estimate.estimate_title || estimate.title || ('Просчёт №' + estimate.id);
+      setImmediate(async () => { try {
         const fsP = require('fs').promises;
         const pathLib = require('path');
 
         // Получаем данные расчёта
         const calcRes = await db.query(
           `SELECT * FROM estimate_calculation_data WHERE estimate_id = $1 ORDER BY created_at DESC LIMIT 1`,
-          [estimate.id]
+          [_eid]
         );
         const calc = calcRes.rows[0] || {};
         const blocks = calc.has_override && calc.calc_override_json
@@ -897,22 +901,36 @@ async function routes(fastify) {
             WHERE cg.entity_type = 'estimate' AND cg.entity_id = $1
             ORDER BY cm.created_at ASC
             LIMIT 50
-          `, [estimate.id]);
+          `, [_eid]);
           chatMessages = chatRes.rows;
+        } catch (_) {}
+
+        // История согласования (события PM → Директор)
+        let approvalEvents = [];
+        try {
+          const evRes = await db.query(`
+            SELECT ae.action, ae.from_stage, ae.to_stage, ae.comment, ae.created_at,
+                   u.name as actor_name, ae.actor_role
+            FROM estimate_approval_events ae
+            LEFT JOIN users u ON u.id = ae.actor_id
+            WHERE ae.estimate_id = $1
+            ORDER BY ae.created_at ASC
+          `, [_eid]);
+          approvalEvents = evRes.rows;
         } catch (_) {}
 
         // Детали тендера
         let tenderName = '';
         try {
-          const tRes = await db.query('SELECT tender_title, customer_name FROM tenders WHERE id = $1', [estimate.tender_id]);
+          const tRes = await db.query('SELECT tender_title, customer_name FROM tenders WHERE id = $1', [_tid]);
           if (tRes.rows[0]) {
             tenderName = `${tRes.rows[0].tender_title || ''} — ${tRes.rows[0].customer_name || ''}`;
           }
         } catch (_) {}
 
-        const approver = request.user.name || request.user.login || 'Директор';
+        const approver = _uname;
         const approvedAt = new Date().toLocaleString('ru-RU');
-        const versionNo = estimate.current_version_no || 1;
+        const versionNo = _vno;
 
         const fmt = (n) => {
           const v = parseFloat(n) || 0;
@@ -1052,9 +1070,33 @@ async function routes(fastify) {
             </table>` : ''}
         </section>` : '';
 
+        const ACTION_LABELS = {
+          submitted: '📤 РП отправил на согласование',
+          approved: '✅ Директор согласовал',
+          rejected: '❌ Директор отклонил',
+          rework: '🔄 Отправлено на доработку',
+          cancelled: '🚫 Отменено',
+          comment: '💬 Комментарий',
+        };
+        const approvalHistoryHtml = approvalEvents.length > 0 ? `
+        <section class="section">
+          <h2>📋 История согласования</h2>
+          <table>
+            <thead><tr><th>Дата</th><th>Участник</th><th>Действие</th><th>Комментарий</th></tr></thead>
+            <tbody>
+              ${approvalEvents.map(ev => `<tr>
+                <td style="white-space:nowrap;font-size:12px">${new Date(ev.created_at).toLocaleString('ru-RU')}</td>
+                <td style="font-size:12px">${ev.actor_name || ev.actor_role || '—'}</td>
+                <td style="font-size:12px;font-weight:600">${ACTION_LABELS[ev.action] || ev.action || '—'}</td>
+                <td style="font-size:12px;color:#5a6280">${ev.comment ? String(ev.comment).replace(/</g,'&lt;') : '—'}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </section>` : '';
+
         const chatHtml = chatMessages.length > 0
           ? `<section class="section">
-              <h2>Комментарии Мимира</h2>
+              <h2>🧠 Обсуждение и комментарии Мимира</h2>
               <div class="chat">
                 ${chatMessages.map(m => `
                   <div class="msg ${m.role === 'assistant' ? 'mimir' : 'user'}">
@@ -1071,7 +1113,7 @@ async function routes(fastify) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Просчёт №${estimate.id} — Асгард Сервис</title>
+<title>Просчёт №${_eid} — Асгард Сервис</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Segoe UI', Arial, sans-serif; background: #f5f6fa; color: #1a1d2e; font-size: 14px; }
@@ -1124,7 +1166,7 @@ async function routes(fastify) {
 <div class="page">
   <div class="header">
     <div class="sub">ООО «Асгард Сервис» · Просчёт TКП</div>
-    <h1>${estimate.estimate_title || estimate.title || ('Просчёт №' + estimate.id)}</h1>
+    <h1>${_eTitle}</h1>
     <div class="sub">${tenderName}</div>
     <div class="badge-approved">✓ Согласован</div>
     <div class="sub" style="margin-top:8px">Версия ${versionNo} · Согласовал: ${approver} · ${approvedAt}</div>
@@ -1137,19 +1179,19 @@ async function routes(fastify) {
     <div class="kpi-row">
       <div class="kpi-card">
         <div class="label">Цена для клиента</div>
-        <div class="value">${fmt(finalPrice)}</div>
+        <div class="value">${fmt(_fp)}</div>
       </div>
       <div class="kpi-card">
         <div class="label">Себестоимость</div>
-        <div class="value">${fmt(finalCost)}</div>
+        <div class="value">${fmt(_fc)}</div>
       </div>
       <div class="kpi-card">
         <div class="label">Маржа</div>
-        <div class="value green">${fmt(finalPrice - finalCost)}</div>
+        <div class="value green">${fmt(_fp - _fc)}</div>
       </div>
       <div class="kpi-card">
         <div class="label">Маржа %</div>
-        <div class="value green">${finalPrice > 0 ? ((finalPrice - finalCost) / finalPrice * 100).toFixed(1) : '0'}%</div>
+        <div class="value green">${_fp > 0 ? ((_fp - _fc) / _fp * 100).toFixed(1) : '0'}%</div>
       </div>
     </div>
   </section>
@@ -1160,7 +1202,7 @@ async function routes(fastify) {
       <thead><tr><th>Статья затрат</th><th style="text-align:right;width:200px">Сумма</th></tr></thead>
       <tbody>
         ${blockRows}
-        <tr class="total-row"><td>ИТОГО себестоимость</td><td class="num">${fmt(finalCost)}</td></tr>
+        <tr class="total-row"><td>ИТОГО себестоимость</td><td class="num">${fmt(_fc)}</td></tr>
       </tbody>
     </table>
   </section>
@@ -1170,6 +1212,7 @@ async function routes(fastify) {
   ${purchasesHtml}
   ${permitsHtml}
   ${routeHtml}
+  ${approvalHistoryHtml}
   ${chatHtml}
 
   <div class="footer">Документ сформирован автоматически CRM АСГАРД · ${approvedAt}</div>
@@ -1179,18 +1222,215 @@ async function routes(fastify) {
 
         const uploadDir = pathLib.join(process.env.UPLOAD_DIR || './uploads', 'estimates');
         await fsP.mkdir(uploadDir, { recursive: true });
-        const safeName = `estimate_${estimate.id}_${Date.now()}.html`;
-        const displayName = `Просчёт_${estimate.id}_v${versionNo}.html`;
-        const filePath = pathLib.join(uploadDir, safeName);
-        await fsP.writeFile(filePath, html, 'utf8');
+        // HTML save
+        try {
+          const safeName = `estimate_${_eid}_${Date.now()}.html`;
+          const displayName = `Просчёт_${_eid}_v${versionNo}.html`;
+          await fsP.writeFile(pathLib.join(uploadDir, safeName), html, 'utf8');
+          await db.query(`
+            INSERT INTO documents (filename, original_name, mime_type, size, type, tender_id, uploaded_by, download_url, created_at)
+            VALUES ($1, $2, 'text/html', $3, 'estimate', $4, $5, $6, NOW())
+          `, [safeName, displayName, Buffer.byteLength(html, 'utf8'), _tid, _uid, `/uploads/estimates/${safeName}`]);
+        } catch (htmlErr) { fastify.log.warn('[estimates] html report save error:', htmlErr.message); }
 
+        // PDF из того же HTML (Puppeteer)
+        try {
+          const puppeteer = require('puppeteer');
+          let _browser;
+          try {
+            _browser = await puppeteer.launch({ headless: 'new', args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] });
+            const _page = await _browser.newPage();
+            await _page.setContent(html, { waitUntil: 'domcontentloaded' });
+            const pdfBuf = await _page.pdf({ format: 'A4', printBackground: true, margin: { top: '18mm', bottom: '18mm', left: '14mm', right: '14mm' } });
+            await _browser.close(); _browser = null;
+            const pdfName = `estimate_${_eid}_${Date.now()}.pdf`;
+            const pdfDisplay = `Просчёт_${_eid}_v${versionNo}.pdf`;
+            await fsP.writeFile(pathLib.join(uploadDir, pdfName), pdfBuf);
+            await db.query(`
+              INSERT INTO documents (filename, original_name, mime_type, size, type, tender_id, uploaded_by, download_url, created_at)
+              VALUES ($1, $2, 'application/pdf', $3, 'estimate', $4, $5, $6, NOW())
+            `, [pdfName, pdfDisplay, pdfBuf.length, _tid, _uid, `/uploads/estimates/${pdfName}`]);
+          } finally {
+            if (_browser) try { await _browser.close(); } catch (_) {}
+          }
+        } catch (pdfErr) {
+          fastify.log.warn('[estimates] pdf report error:', pdfErr.message);
+        }
+
+        // Excel-отчёт просчёта (с формулами и форматированием)
+        try {
+        const ExcelJS = require('exceljs');
+        const fsP2 = require('fs').promises;
+        const pathLib2 = require('path');
+        const wb2 = new ExcelJS.Workbook();
+        wb2.creator = 'АСГАРД CRM'; wb2.created = new Date();
+        const ws2 = wb2.addWorksheet('Просчёт');
+
+        ws2.columns = [
+          { key: 'a', width: 42 },
+          { key: 'b', width: 20 },
+        ];
+
+        const NAVY2 = 'FF1E3A5F', WHITE2 = 'FFFFFFFF', LGRAY2 = 'FFF5F7FA';
+        const thin2 = { style: 'thin', color: { argb: 'FFD0D6E0' } };
+        const brd2 = { top: thin2, bottom: thin2, left: thin2, right: thin2 };
+
+        function mrgRow2(rowNum, text, bg, fontOpts) {
+          ws2.mergeCells(`A${rowNum}:B${rowNum}`);
+          const c = ws2.getCell(`A${rowNum}`);
+          c.value = text;
+          c.font = Object.assign({ size: 11 }, fontOpts);
+          if (bg) c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } };
+          c.alignment = { horizontal: 'center', vertical: 'middle' };
+          ws2.getRow(rowNum).height = 22;
+          return c;
+        }
+
+        // ── Шапка ──
+        mrgRow2(1, `ОТЧЁТ ПО ПРОСЧЁТУ №${estimate.id}`, NAVY2, { bold: true, size: 14, color: { argb: WHITE2 } });
+        ws2.getRow(1).height = 28;
+        mrgRow2(2, tenderName, 'FF252A42', { size: 11, color: { argb: 'FFCCD0E0' } });
+        mrgRow2(3, `Согласовал: ${approver} · ${approvedAt}`, 'FF2D3352', { italic: true, size: 10, color: { argb: 'FFAAB0CC' } });
+        ws2.getRow(4).height = 8; // gap
+
+        // ── KPI ──
+        mrgRow2(5, 'ИТОГОВЫЕ ПОКАЗАТЕЛИ', 'FFE8ECF5', { bold: true, size: 10, color: { argb: NAVY2 } });
+
+        function kpiRow(rowNum, label, formula, bg, fontColor) {
+          const r = ws2.getRow(rowNum); r.height = 18;
+          const cA = r.getCell(1), cB = r.getCell(2);
+          cA.value = label;
+          cA.font = { size: 10, color: { argb: fontColor || NAVY2 } };
+          cA.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg || LGRAY2 } };
+          cA.border = brd2; cA.alignment = { vertical: 'middle' };
+          cB.value = typeof formula === 'string' ? { formula } : formula;
+          cB.numFmt = typeof formula === 'number' ? '#,##0.00 "₽"' : (formula.formula ? '#,##0.00 "₽"' : '#,##0.00');
+          cB.font = { bold: true, size: 10, color: { argb: fontColor || NAVY2 } };
+          cB.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg || LGRAY2 } };
+          cB.border = brd2; cB.alignment = { horizontal: 'right', vertical: 'middle' };
+        }
+        kpiRow(6,  'Цена для клиента (без НДС)', _fp,  'FFE8F5E9', 'FF1B5E20');
+        kpiRow(7,  'Себестоимость',               _fc,   LGRAY2,     NAVY2);
+        kpiRow(8,  'Маржа, ₽',                    'B6-B7',     'FFFFF8E1', 'FF7B5800');
+        kpiRow(9,  'Маржа, %',                     `IF(B6=0,0,(B6-B7)/B6*100)`, 'FFFFF8E1', 'FF7B5800');
+        ws2.getCell('B9').numFmt = '0.0"%"';
+        ws2.getRow(10).height = 8; // gap
+
+        // ── Блоки ──
+        mrgRow2(11, 'РАЗБИВКА ПО БЛОКАМ', 'FFE8ECF5', { bold: true, size: 10, color: { argb: NAVY2 } });
+
+        // Заголовок таблицы
+        const thR = ws2.getRow(12); thR.height = 18;
+        ['Статья затрат', 'Сумма, ₽'].forEach((v, i) => {
+          const c = thR.getCell(i + 1);
+          c.value = v;
+          c.font = { bold: true, size: 10, color: { argb: WHITE2 } };
+          c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: NAVY2 } };
+          c.border = brd2;
+          c.alignment = { horizontal: i === 0 ? 'left' : 'right', vertical: 'middle' };
+        });
+
+        // Данные блоков
+        const blockDef = [
+          ['personnel',   'Персонал (ФОТ + налоги)'],
+          ['current',     'Текущие расходы'],
+          ['travel',      'Командировочные'],
+          ['transport',   'Транспорт и логистика'],
+          ['chemistry',   'Химия и материалы'],
+          ['contingency', 'Непредвиденные расходы'],
+        ];
+        const dataStart2 = 13;
+        blockDef.forEach(([key, label], idx) => {
+          const val = parseFloat(blocks[key] || 0);
+          const r = ws2.getRow(dataStart2 + idx); r.height = 17;
+          const bg = idx % 2 === 0 ? WHITE2 : LGRAY2;
+          const cA = r.getCell(1), cB = r.getCell(2);
+          cA.value = label; cA.font = { size: 10 };
+          cA.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } };
+          cA.border = brd2; cA.alignment = { vertical: 'middle' };
+          cB.value = val; cB.numFmt = '#,##0.00 "₽"';
+          cB.font = { size: 10 }; cB.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } };
+          cB.border = brd2; cB.alignment = { horizontal: 'right', vertical: 'middle' };
+        });
+
+        const dataEnd2 = dataStart2 + blockDef.length - 1;  // row 18
+        const totRow = ws2.getRow(dataEnd2 + 1); totRow.height = 20;  // row 19
+        const tA = totRow.getCell(1), tB = totRow.getCell(2);
+        tA.value = 'ИТОГО СЕБЕСТОИМОСТЬ';
+        tA.font = { bold: true, size: 11, color: { argb: NAVY2 } };
+        tA.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD7E4F5' } };
+        tA.border = brd2; tA.alignment = { vertical: 'middle' };
+        tB.value = { formula: `SUM(B${dataStart2}:B${dataEnd2})` };
+        tB.numFmt = '#,##0.00 "₽"';
+        tB.font = { bold: true, size: 11, color: { argb: NAVY2 } };
+        tB.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD7E4F5' } };
+        tB.border = brd2; tB.alignment = { horizontal: 'right', vertical: 'middle' };
+
+        // Подпись
+        ws2.getRow(dataEnd2 + 2).height = 10;
+        const sigR = ws2.getRow(dataEnd2 + 3); sigR.height = 16;
+        ws2.mergeCells(`A${sigR.number}:B${sigR.number}`);
+        sigR.getCell(1).value = `Документ сформирован автоматически CRM Асгард · ${approvedAt}`;
+        sigR.getCell(1).font = { italic: true, size: 9, color: { argb: 'FF8890B0' } };
+        sigR.getCell(1).alignment = { horizontal: 'center' };
+
+        // История согласования (второй лист)
+        if (approvalEvents.length > 0) {
+          const ws2a = wb2.addWorksheet('История согласования');
+          ws2a.columns = [
+            { key: 'date',   width: 20 },
+            { key: 'actor',  width: 22 },
+            { key: 'action', width: 30 },
+            { key: 'comment', width: 50 },
+          ];
+          ws2a.mergeCells('A1:D1');
+          ws2a.getCell('A1').value = 'ИСТОРИЯ СОГЛАСОВАНИЯ';
+          ws2a.getCell('A1').font = { bold: true, size: 12, color: { argb: WHITE2 } };
+          ws2a.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: NAVY2 } };
+          ws2a.getCell('A1').alignment = { horizontal: 'center' };
+          ws2a.getRow(1).height = 22;
+          const evHeaders = ['Дата', 'Участник', 'Действие', 'Комментарий'];
+          evHeaders.forEach((v, i) => {
+            const c = ws2a.getRow(2).getCell(i + 1);
+            c.value = v; c.font = { bold: true, size: 10, color: { argb: WHITE2 } };
+            c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3A5070' } };
+            c.border = brd2;
+          });
+          ws2a.getRow(2).height = 18;
+          const evActionLabels = { submitted:'Отправлено на согласование', approved:'Согласовано', rejected:'Отклонено', rework:'На доработку', cancelled:'Отменено', comment:'Комментарий' };
+          approvalEvents.forEach((ev, i) => {
+            const r = ws2a.getRow(3 + i); r.height = 16;
+            const bg = i % 2 === 0 ? WHITE2 : LGRAY2;
+            const vals = [
+              new Date(ev.created_at).toLocaleString('ru-RU'),
+              ev.actor_name || ev.actor_role || '—',
+              evActionLabels[ev.action] || ev.action || '—',
+              ev.comment || '—',
+            ];
+            vals.forEach((v, ci) => {
+              const c = r.getCell(ci + 1);
+              c.value = v; c.font = { size: 10 };
+              c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } };
+              c.border = brd2; c.alignment = { wrapText: ci === 3, vertical: 'middle' };
+            });
+          });
+        }
+
+        const xlsDir2 = pathLib2.join(process.env.UPLOAD_DIR || './uploads', 'estimates');
+        await fsP2.mkdir(xlsDir2, { recursive: true });
+        const xlsSafeName = `estimate_${_eid}_${Date.now()}.xlsx`;
+        const xlsDisplay = `Просчёт_${_eid}_v${versionNo}.xlsx`;
+        const xlsBuf = await wb2.xlsx.writeBuffer();
+        await fsP2.writeFile(pathLib2.join(xlsDir2, xlsSafeName), xlsBuf);
         await db.query(`
           INSERT INTO documents (filename, original_name, mime_type, size, type, tender_id, uploaded_by, download_url, created_at)
-          VALUES ($1, $2, 'text/html', $3, 'estimate', $4, $5, $6, NOW())
-        `, [safeName, displayName, Buffer.byteLength(html, 'utf8'), estimate.tender_id, request.user.id, `/uploads/estimates/${safeName}`]);
-      } catch (htmlErr) {
-        fastify.log.warn('[estimates] html report save error:', htmlErr.message);
+          VALUES ($1, $2, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', $3, 'estimate', $4, $5, $6, NOW())
+        `, [xlsSafeName, xlsDisplay, xlsBuf.length, _tid, _uid, `/uploads/estimates/${xlsSafeName}`]);
+      } catch (xlsErr) {
+        fastify.log.warn('[estimates] excel report save error:', xlsErr.message);
       }
+      } catch (e) { fastify.log.warn('[estimates] report generation error:', e.message); }
+      });
     }
 
     return { success: true, final_price: finalPrice, final_cost: finalCost };
@@ -1216,7 +1456,7 @@ async function routes(fastify) {
       if (parseInt(remaining.rows[0].cnt) === 0) {
         await db.query(`
           UPDATE tenders SET tender_status = 'Отправлено на просчёт', updated_at = NOW()
-          WHERE id = $1 AND tender_status IN ('Согласование ТКП', 'ТКП согласовано')
+          WHERE id = $1 AND tender_status IN ('Согласование ТКП', 'ТКП согласовано', 'Готово к отправке КП')
         `, [tender_id]);
       }
     }
@@ -1224,40 +1464,52 @@ async function routes(fastify) {
     return { message: 'Удалено' };
   });
 
-  // GET /ready-for-tkp — тендеры с одобренными просчётами, ожидающие создания ТКП
+  // GET /ready-for-tkp — тендеры с согласованными просчётами, ожидающие создания ТКП.
+  // PM/HEAD_PM видит ТОЛЬКО свои тендеры (responsible_pm_id = user.id).
+  // ADMIN/директора видят все. TO/HEAD_TO исключены — на этом этапе тендер у РП.
   fastify.get('/ready-for-tkp', { preHandler: [fastify.authenticate] }, async (request) => {
-    const { role } = request.user;
-    const ALLOWED = ['TO', 'HEAD_TO', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+    const { role, id: userId } = request.user;
+    const ALLOWED = ['PM', 'HEAD_PM', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
     if (!ALLOWED.includes(role)) return { items: [] };
+
+    const params = [];
+    let pmFilter = '';
+    // PM видит только свои тендеры; HEAD_PM — все (для надзора)
+    if (role === 'PM') {
+      params.push(userId);
+      pmFilter = ` AND t.responsible_pm_id = $${params.length}`;
+    }
 
     const result = await db.query(`
       SELECT DISTINCT ON (t.id)
-        e.id                                                      AS estimate_id,
-        e.title                                                   AS estimate_title,
+        e.id                                                       AS estimate_id,
+        e.title                                                    AS estimate_title,
         COALESCE(ecd.total_with_margin, e.price_tkp, e.amount, 0)  AS total_price,
-        COALESCE(ecd.total_cost, e.cost, 0)                      AS total_cost,
+        COALESCE(ecd.total_cost, e.cost, 0)                        AS total_cost,
         e.work_type,
         e.object_name,
         e.object_city,
-        e.updated_at                                              AS estimate_updated_at,
-        t.id                                                      AS tender_id,
+        e.updated_at                                               AS estimate_updated_at,
+        t.id                                                       AS tender_id,
         t.tender_title,
         t.customer_name,
         t.customer_inn,
         t.tender_status,
         t.docs_deadline,
+        t.responsible_pm_id,
         (SELECT COUNT(*) FROM tkp
          WHERE tkp.tender_id = t.id
-           AND tkp.status NOT IN ('draft', 'rejected'))          AS active_tkp_count
+           AND tkp.status NOT IN ('draft', 'rejected'))            AS active_tkp_count
       FROM estimates e
       JOIN tenders t ON e.tender_id = t.id
       LEFT JOIN estimate_calculation_data ecd
         ON ecd.estimate_id = e.id
         AND ecd.version_no = COALESCE(e.current_version_no, 1)
       WHERE e.approval_status = 'approved'
-        AND t.tender_status NOT IN ('Выиграли','Проиграли','Не подходит','КП отправлено')
+        AND t.tender_status = 'ТКП согласовано'
+        ${pmFilter}
       ORDER BY t.id, e.updated_at DESC
-    `);
+    `, params);
 
     return { items: result.rows };
   });

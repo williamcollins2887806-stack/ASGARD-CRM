@@ -391,7 +391,7 @@ async function routes(fastify, options) {
           COUNT(*) as total,
           COUNT(*) FILTER (WHERE t.tender_status = 'Выиграли') as won,
           COUNT(*) FILTER (WHERE t.tender_status = 'Проиграли') as lost,
-          COUNT(*) FILTER (WHERE t.tender_status IN ('В работе', 'Новый', 'Согласование ТКП', 'ТКП согласовано')) as active,
+          COUNT(*) FILTER (WHERE t.tender_status IN ('В работе', 'Новый', 'Согласование ТКП', 'ТКП согласовано', 'Готово к отправке КП')) as active,
           COALESCE(SUM(CASE WHEN t.tender_status = 'Выиграли' THEN t.tender_price ELSE 0 END), 0) as sum_won,
           CASE WHEN COUNT(*) FILTER (WHERE t.tender_status IN ('Выиграли', 'Проиграли')) > 0
             THEN ROUND(COUNT(*) FILTER (WHERE t.tender_status = 'Выиграли')::numeric / COUNT(*) FILTER (WHERE t.tender_status IN ('Выиграли', 'Проиграли')) * 100, 1)

@@ -154,9 +154,12 @@ window.AsgardTendersPage = (function(){
   function getDraftFormData() {
     const _pm = (typeof CRSelect !== 'undefined' && CRSelect.getValue('e_period_month')) || '';
     const _py = (typeof CRSelect !== 'undefined' && CRSelect.getValue('e_period_year')) || '';
+    const _inn = (typeof window.__tenderSelectedInnGetter === 'function')
+      ? (window.__tenderSelectedInnGetter() || '')
+      : '';
     return {
       period: (_py && _pm) ? `${_py}-${_pm}` : '',
-      customer_inn: CRAutocomplete.getValue("e_inn") || '',
+      customer_inn: _inn,
       customer_name: CRAutocomplete.getValue("e_customer") || '',
       tender_title: document.getElementById("e_title")?.value || '',
       tender_type: (typeof _typeChipsEl !== 'undefined' && _typeChipsEl && _typeChipsEl._crGetValue) ? (_typeChipsEl._crGetValue() || '') : (CRSelect.getValue('e_type') || ''),
@@ -191,8 +194,16 @@ window.AsgardTendersPage = (function(){
     if (draft.work_start_plan && typeof CRDatePicker !== 'undefined') CRDatePicker.setValue('e_ws', draft.work_start_plan);
     if (draft.work_end_plan && typeof CRDatePicker !== 'undefined') CRDatePicker.setValue('e_we', draft.work_end_plan);
     if (draft.docs_deadline && typeof CRDatePicker !== 'undefined') CRDatePicker.setValue('e_docs_deadline', draft.docs_deadline);
-    if (draft.customer_inn) CRAutocomplete.setValue('e_inn', draft.customer_inn);
+    // ИНН восстанавливается в _selectedInn после монтирования autocomplete (см. ниже)
     if (draft.customer_name) CRAutocomplete.setValue('e_customer', draft.customer_name);
+    if (draft.customer_inn && typeof window !== 'undefined') {
+      // Отложенная установка — _selectedInnGetter ставится только после mount
+      setTimeout(() => {
+        if (typeof window.__tenderSelectedInnSetter === 'function') {
+          window.__tenderSelectedInnSetter(draft.customer_inn);
+        }
+      }, 100);
+    }
     if (draft.tender_type) {
       if (_typeChipsEl && _typeChipsEl._crSetValue) _typeChipsEl._crSetValue(draft.tender_type);
       else CRSelect.setValue('e_type', draft.tender_type);
@@ -360,21 +371,25 @@ window.AsgardTendersPage = (function(){
     return obj;
   }
 
-// State machine тендеров — допустимые переходы (зеркало бэкенда)
+// State machine тендеров — допустимые переходы (зеркало src/routes/tenders.js)
   const TENDER_TRANSITIONS = {
     'Черновик':              ['Новый'],
     'Новый':                 ['Отправлено на просчёт', 'Проиграли'],
     'Отправлено на просчёт': ['Согласование ТКП', 'Проиграли'],
     'Согласование ТКП':      ['ТКП согласовано', 'Отправлено на просчёт', 'Проиграли'],
-    'ТКП согласовано':       ['КП отправлено', 'Согласование ТКП', 'Проиграли'],
+    'ТКП согласовано':       ['Готово к отправке КП', 'Согласование ТКП', 'Проиграли'],
+    'Готово к отправке КП':  ['КП отправлено', 'ТКП согласовано', 'Проиграли'],
     'КП отправлено':         ['Выиграли', 'Проиграли'],
     'Выиграли':              [],
     'Проиграли':             ['Новый']
   };
 
   const TENDER_STATUS_COLORS = {
-    'Черновик': '#6c757d', 'Новый': '#5b8def', 'Отправлено на просчёт': '#f39c12',
-    'Согласование ТКП': '#e67e22', 'ТКП согласовано': '#27ae60', 'КП отправлено': '#17a2b8',
+    'Черновик': '#6c757d', 'Новый': '#5b8def', 'На анализе': '#9b59b6',
+    'Отправлено на просчёт': '#f39c12',
+    'Согласование ТКП': '#e67e22', 'ТКП согласовано': '#27ae60',
+    'Готово к отправке КП': '#c8a84e',
+    'КП отправлено': '#17a2b8',
     'Выиграли': '#2ecc71', 'Проиграли': '#e74c3c', 'Не подходит': '#95a5a6'
   };
 
@@ -385,7 +400,7 @@ window.AsgardTendersPage = (function(){
 
   async function getRefs(){
     const refs = await AsgardDB.get("settings","refs");
-    const defaultStatuses = ['Черновик','Новый','Отправлено на просчёт','Согласование ТКП','ТКП согласовано','КП отправлено','Выиграли','Проиграли'];
+    const defaultStatuses = ['Черновик','Новый','На анализе','Отправлено на просчёт','Согласование ТКП','ТКП согласовано','Готово к отправке КП','КП отправлено','Выиграли','Проиграли','Не подходит'];
     if(refs && refs.tender_statuses && refs.tender_statuses.length) return refs;
     return { tender_statuses: defaultStatuses, reject_reasons: (refs && refs.reject_reasons) || [] };
   }
@@ -405,7 +420,7 @@ window.AsgardTendersPage = (function(){
     if(user.role==="ADMIN") return {full:true, limited:false};
     if(isDirRole(user.role)) return {full:false, limited:true};
     if(user.role==="TO" || user.role==="HEAD_TO"){
-      if(!tender.handoff_at && !tender.distribution_requested_at) return {full:true, limited:false};
+      if(!tender.handoff_at && tender.tender_status !== 'На анализе') return {full:true, limited:false};
       return {full:false, limited:true};
     }
     return {full:false, limited:false};
@@ -465,17 +480,17 @@ window.AsgardTendersPage = (function(){
       </td>
       <td>${esc(pmName||"—")}</td>
       <td>${esc(t.tender_type||"—")}</td>
-      <td>${tenderStatusBadge(t.tender_status)}${(t.distribution_requested_at && !t.handoff_at)?" <span class=\"badge\">На распределении</span>":""}</td>
+      <td>${tenderStatusBadge(t.tender_status)}</td>
       <td>${ddl}</td>
       <td>${esc(createdByName||"—")}</td>
-      <td>${['ТКП согласовано','КП отправлено','Выиграли','Проиграли'].includes(t.tender_status) && t.tender_price?money(t.tender_price)+(t.tender_price_with_vat?'<div style="font-size:11px;color:var(--t3)">с НДС '+money(t.tender_price_with_vat)+'</div>':''):"—"}</td>
+      <td>${(function(){var n=t.tender_price?'<div style="font-size:11px"><span style="font-size:10px;color:var(--t3)">НМЦ</span> '+money(t.tender_price)+'</div>':'';var s=t.submission_price?'<div style="font-size:11px;margin-top:3px"><span style="font-size:10px;color:#4cd964">Подача</span> '+money(t.submission_price)+'</div>':'';return (n+s)||'—';}())}</td>
       <td>${ds} → ${de}</td>
       <td>${link}</td>
       <td style="white-space:nowrap">
         ${_showAutoEstBtn ? (function(){
           const st = t.tender_status||'';
           if(st === 'Новый') return '<button class="btn" style="padding:6px 10px;background:linear-gradient(135deg,#C8293B,#1E4D8C);color:#fff;border:none;margin-right:6px" data-act="auto_estimate" title="Авто-просчёт Мимиром">⚡ Просчитать</button>';
-          if(st === 'Отправлено на просчёт' || st === 'Согласование ТКП') return '<button class="btn ghost" style="padding:6px 10px;opacity:0.5;margin-right:6px" disabled title="Тендер на просчёте">⚡ На просчёте</button>';
+          if(st === 'Отправлено на просчёт' || st === 'Согласование ТКП' || st === 'ТКП согласовано') return '<button class="btn ghost" style="padding:6px 10px;opacity:0.5;margin-right:6px" disabled title="Тендер у РП">⚡ У РП</button>';
           if(st === 'Выиграли' || st === 'Проиграли' || st === 'Не подходит') return '';
           return '<button class="btn ghost" style="padding:6px 10px;opacity:0.5;margin-right:6px" disabled title="Тендер просчитан">⚡ Просчитан</button>';
         })() : ''}
@@ -490,8 +505,7 @@ window.AsgardTendersPage = (function(){
   function tenderCard(t, pmName, createdByName) {
     const fmtDate = AsgardUI.formatDate || (d => d ? new Date(d).toLocaleDateString('ru-RU') : '—');
     const ddl = fmtDate(t.docs_deadline);
-    const _priceVisible = ['ТКП согласовано','КП отправлено','Выиграли','Проиграли'].includes(t.tender_status);
-    const price = _priceVisible && t.tender_price ? money(t.tender_price) : '—';
+    const price = t.tender_price ? money(t.tender_price) : '—';
 
     // Status badge color
     let statusCls = '';
@@ -516,7 +530,8 @@ window.AsgardTendersPage = (function(){
         '<div class="m-tc-field"><span class="m-tc-label">РП</span><span>' + esc(pmName || '—') + '</span></div>' +
         '<div class="m-tc-field"><span class="m-tc-label">Тип</span><span>' + esc(t.tender_type || '—') + '</span></div>' +
         '<div class="m-tc-field"><span class="m-tc-label">Дедлайн</span><span>' + ddl + '</span></div>' +
-        '<div class="m-tc-field"><span class="m-tc-label">Сумма</span><span class="m-tc-price">' + price + (_priceVisible && t.tender_price_with_vat ? '<span style="font-size:11px;color:var(--t3);margin-left:4px">(с НДС ' + money(t.tender_price_with_vat) + ')</span>' : '') + '</span></div>' +
+        '<div class="m-tc-field"><span class="m-tc-label">НМЦ</span><span class="m-tc-price">' + price + (t.tender_price_with_vat ? '<span style="font-size:11px;color:var(--t3);margin-left:4px">(с НДС ' + money(t.tender_price_with_vat) + ')</span>' : '') + '</span></div>' +
+        '<div class="m-tc-field"><span class="m-tc-label" style="color:var(--ok-t,#4cd964)">Подача</span><span class="m-tc-price" style="color:var(--ok-t,#4cd964)">' + (t.submission_price ? money(t.submission_price) : '—') + (t.submission_price_with_vat ? '<span style="font-size:11px;color:var(--t3);margin-left:4px">(с НДС ' + money(t.submission_price_with_vat) + ')</span>' : '') + '</span></div>' +
       '</div>' +
       '<div class="m-tc-footer">' +
         '<span class="m-tc-period">' + fmtPeriod(t.period) + '</span>' +
@@ -524,7 +539,7 @@ window.AsgardTendersPage = (function(){
         (_showAutoEstBtn ? (function(){
           var st2 = t.tender_status||'';
           if(st2 === 'Новый') return '<button class="btn mini" data-act="auto_estimate" style="border-radius:8px;background:linear-gradient(135deg,#C8293B,#1E4D8C);color:#fff;border:none">⚡ Просчитать</button>';
-          if(st2 === 'Отправлено на просчёт' || st2 === 'Согласование ТКП') return '<button class="btn mini" disabled style="border-radius:8px;opacity:0.5" title="На просчёте">⚡</button>';
+          if(st2 === 'Отправлено на просчёт' || st2 === 'Согласование ТКП' || st2 === 'ТКП согласовано') return '<button class="btn mini" disabled style="border-radius:8px;opacity:0.5" title="У РП">⚡</button>';
           return '';
         })() : '') +
         '<button class="btn mini" data-act="open">Открыть</button>' +
@@ -656,7 +671,7 @@ window.AsgardTendersPage = (function(){
                 <th><button class="btn ghost" style="padding:6px 10px" data-sort="tender_status">Статус</button></th>
                 <th><button class="btn ghost" style="padding:6px 10px" data-sort="docs_deadline">Дедлайн</button></th>
                 <th><button class="btn ghost" style="padding:6px 10px" data-sort="created_by_user_id">Внёс</button></th>
-                <th><button class="btn ghost" style="padding:6px 10px" data-sort="tender_price">Сумма</button></th>
+                <th><button class="btn ghost" style="padding:6px 10px" data-sort="tender_price">НМЦ / Подача</button></th>
                 <th><button class="btn ghost" style="padding:6px 10px" data-sort="work_start_plan">Сроки (план)</button></th>
                 <th>Документы</th>
                 <th></th>
@@ -694,10 +709,10 @@ window.AsgardTendersPage = (function(){
 
     await (async function renderDistributionPanel(){
       if(!distPanel) return;
-      const canDist = (isDirRole(user.role) || user.role==="ADMIN");
+      const canDist = (user.role==="HEAD_TO" || user.role==="ADMIN");
       if(!canDist){ distPanel.innerHTML=""; return; }
 
-      const pending = tenders.filter(t=>t.distribution_requested_at && !t.handoff_at);
+      const pending = tenders.filter(t=>t.tender_status==='На анализе');
       if(!pending.length){ distPanel.innerHTML=""; return; }
 
       const appS = await getAppSettings();
@@ -705,7 +720,7 @@ window.AsgardTendersPage = (function(){
       const doneRaw = String(appS?.limits?.pm_active_calcs_done_statuses||"");
       const done = new Set(doneRaw.split(",").map(s=>s.trim()).filter(Boolean));
       if(done.size===0){
-        ["Согласование ТКП","ТКП согласовано","Выиграли","Проиграли"].forEach(x=>done.add(x));
+        ["Согласование ТКП","ТКП согласовано","Готово к отправке КП","КП отправлено","Выиграли","Проиграли"].forEach(x=>done.add(x));
       }
       const activeByPm = new Map();
       for(const t of tenders){
@@ -719,11 +734,6 @@ window.AsgardTendersPage = (function(){
       const rows = pending.map(t=>{
         const createdBy = (byId.get(t.created_by_user_id)||{}).name || "";
         const ddl = t.docs_deadline ? new Date(t.docs_deadline).toLocaleDateString("ru-RU") : "";
-        const opts = pms.map(p=>{
-          const a = activeByPm.get(p.id)||0;
-          const dis = (lim>0 && a>=lim) ? "disabled" : "";
-          return `<option value="${p.id}" ${dis}>${esc(p.name)} (${a}/${lim||"∞"})</option>`;
-        }).join("");
         return `
           <tr>
             <td>${esc(t.customer_name||"")}</td>
@@ -733,7 +743,8 @@ window.AsgardTendersPage = (function(){
             <td>${esc(createdBy)}</td>
             <td style="white-space:nowrap">
               <div id="dist_pm_${t.id}_w" style="display:inline-block;min-width:220px;vertical-align:middle"></div>
-              <button class="btn red" style="padding:6px 10px; margin-left:8px" data-assign="${t.id}">Назначить</button>
+              <button class="btn red" style="padding:6px 10px; margin-left:8px" data-assign="${t.id}">Отправить на просчёт</button>
+              <button class="btn ghost" style="padding:6px 10px; margin-left:4px; color:var(--err-t)" data-reject="${t.id}">Не подходит</button>
             </td>
           </tr>
         `;
@@ -742,10 +753,10 @@ window.AsgardTendersPage = (function(){
       distPanel.innerHTML = `
         <div class="card">
           <div class="row" style="justify-content:space-between; align-items:center">
-            <h3 style="margin:0">Распределение тендеров</h3>
+            <h3 style="margin:0">Тендеры на анализе</h3>
             <span class="badge">${pending.length}</span>
           </div>
-          <div class="help">Назначение РП выполняется директорами. Перегруженные РП недоступны. Лимит активных просчётов: ${lim||"без лимита"}. Активным считается всё, кроме статусов: ${esc(Array.from(done).join(", "))}.</div>
+          <div class="help">Рук. ТО анализирует тендер и назначает РП. Лимит активных просчётов: ${lim||"без лимита"}. Активным считается всё, кроме: ${esc(Array.from(done).join(", "))}.</div>
           <div style="overflow:auto; margin-top:10px">
             <table class="t" style="min-width:900px">
               <thead>
@@ -758,7 +769,7 @@ window.AsgardTendersPage = (function(){
         <hr class="hr"/>
       `;
 
-      /* Mount CRSelect for each distribution row */
+      /* Mount CRSelect для каждой строки */
       pending.forEach(t => {
         const w = distPanel.querySelector(`#dist_pm_${t.id}_w`);
         if (!w) return;
@@ -770,42 +781,39 @@ window.AsgardTendersPage = (function(){
         w.appendChild(CRSelect.create({ id: 'dist_pm_' + t.id, options: distOpts, placeholder: 'Выберите РП', searchable: true }));
       });
 
+      /* Кнопка "Отправить на просчёт" */
       distPanel.querySelectorAll("button[data-assign]").forEach(btn=>{
         btn.addEventListener("click", async ()=>{
           const tid = Number(btn.getAttribute("data-assign"));
           const pmId = Number(CRSelect.getValue('dist_pm_' + tid) || 0);
-          if(!pmId){ toast("Распределение","Выберите РП","err"); return; }
+          if(!pmId){ toast("Анализ","Выберите РП","err"); return; }
 
-          // актуализируем и проверяем, что уже не назначено
-          const cur = await AsgardDB.get("tenders", tid);
-          if(!cur){ toast("Распределение","Тендер не найден","err"); return; }
-          if(cur.handoff_at){ toast("Распределение","Уже передан в просчёт другим директором","warn"); await render({layout, title}); return; }
+          btn.disabled = true;
+          try {
+            const token = localStorage.getItem('asgard_token');
+            const resp = await fetch(`/api/tenders/${tid}/send-to-pm`, {
+              method: 'POST',
+              headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ pm_id: pmId })
+            });
+            const data = await resp.json();
+            if (!resp.ok) { toast("Анализ", data.error || "Ошибка", "err"); btn.disabled = false; return; }
 
-          const appS2 = await getAppSettings();
-          const lim2 = Number(appS2?.limits?.pm_active_calcs_limit ?? 0) || 0;
-          const doneRaw2 = String(appS2?.limits?.pm_active_calcs_done_statuses||"");
-          const done2 = new Set(doneRaw2.split(",").map(s=>s.trim()).filter(Boolean));
-          if(done2.size===0){
-            ["Согласование ТКП","ТКП согласовано","Выиграли","Проиграли"].forEach(x=>done2.add(x));
+            const pmName = (byId.get(pmId)||{}).name || "РП";
+            toast("Анализ","Тендер отправлен в просчёт РП " + pmName,"ok");
+            await render({layout, title});
+          } catch(e) {
+            toast("Анализ", "Ошибка сети", "err");
+            btn.disabled = false;
           }
-          const all = await AsgardDB.all("tenders");
-          const active = all.filter(t=>t.handoff_at && Number(t.responsible_pm_id||0)===pmId && !done2.has(String(t.tender_status||""))).length;
-          if(lim2>0 && active>=lim2){ toast("Распределение",`У РП уже ${active}/${lim2} активных просчётов. Выберите другого.`,`err`); return; }
+        });
+      });
 
-          const now = isoNow();
-          cur.responsible_pm_id = pmId;
-          cur.handoff_at = now;
-          cur.handoff_by_user_id = user.id;
-          cur.distribution_assigned_at = now;
-          cur.distribution_assigned_by_user_id = user.id;
-          cur.tender_status = "Отправлено на просчёт";
-          await AsgardDB.put("tenders", cur);
-          await audit(user.id,"tender",tid,"distribute_to_pm",{pm_id: pmId});
-
-          const pmName = (byId.get(pmId)||{}).name || "РП";
-          await notify(pmId,"Тендер на просчёт",`${cur.customer_name||""}: ${cur.tender_title||""} → ${pmName}.`,'#/pm-calcs');
-          toast("Распределение","Назначено. Тендер передан в просчёт.","ok");
-          await render({layout, title});
+      /* Кнопка "Не подходит" */
+      distPanel.querySelectorAll("button[data-reject]").forEach(btn=>{
+        btn.addEventListener("click", ()=>{
+          const tid = Number(btn.getAttribute("data-reject"));
+          openArchiveModal(tid);
         });
       });
     })();
@@ -1012,25 +1020,31 @@ window.AsgardTendersPage = (function(){
       });
     })();
 
-    // ===== Блок "Готовы к ТКП" =====
-    (async function renderTkpReadyPanel(){
+    // ═══════════════════════════════════════════════════════════════
+    // Блок «Готово к отправке КП» — для ТО/HEAD_TO/ADMIN/директоров.
+    // PM/HEAD_PM этот блок НЕ видят (у них своя панель «Готовы к ТКП» в pm-calcs).
+    // На этом этапе РП уже создал ТКП → тендер ждёт отправки КП клиенту.
+    // ═══════════════════════════════════════════════════════════════
+    (async function renderKpReadyPanel(){
       const tkpReadyPanel = $("#tkp_ready_panel");
       if (!tkpReadyPanel) return;
 
+      // PM/HEAD_PM не видят — у них своя инбокс-панель в pm-calcs
+      if (['PM','HEAD_PM'].includes(user.role)) { tkpReadyPanel.innerHTML = ''; return; }
       const canSee = ['TO','HEAD_TO','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV'].includes(user.role);
       if (!canSee) { tkpReadyPanel.innerHTML = ''; return; }
 
       let items = [];
       try {
         const token = localStorage.getItem('asgard_token');
-        const resp = await fetch('/api/estimates/ready-for-tkp', {
+        const resp = await fetch('/api/tenders?status=' + encodeURIComponent('Готово к отправке КП') + '&limit=200', {
           headers: { Authorization: 'Bearer ' + token }
         });
         if (resp.ok) {
           const data = await resp.json();
-          items = data.items || [];
+          items = data.tenders || data.items || [];
         }
-      } catch(e) { /* сеть недоступна */ }
+      } catch(e) { /* сеть */ }
 
       if (!items.length) { tkpReadyPanel.innerHTML = ''; return; }
 
@@ -1038,42 +1052,26 @@ window.AsgardTendersPage = (function(){
       const fmtDate = AsgardUI.formatDate || (d => d ? new Date(d).toLocaleDateString('ru-RU') : '—');
 
       const cards = items.map(function(it) {
-        const hasExistingTkp = Number(it.active_tkp_count || 0) > 0;
-        const price = Number(it.total_price || 0);
+        const price = Number(it.submission_price || it.tender_price || 0);
         const deadline = it.docs_deadline ? fmtDate(it.docs_deadline) : '';
-        const location = [it.object_city, it.object_name].filter(Boolean).join(', ');
+        const pmName = it.pm_name || '';
 
-        return '<div class="tkp-ready-card" data-tender-id="' + it.tender_id + '">' +
+        return '<div class="tkp-ready-card" data-tender-id="' + it.id + '">' +
           '<div class="tkp-rc-top">' +
             '<div class="tkp-rc-main">' +
               '<div class="tkp-rc-customer">' + esc(it.customer_name || '—') + '</div>' +
               '<div class="tkp-rc-title">' + esc(it.tender_title || 'Без названия') + '</div>' +
-              (location ? '<div class="tkp-rc-loc">📍 ' + esc(location) + '</div>' : '') +
+              (pmName ? '<div class="tkp-rc-loc">👤 РП: ' + esc(pmName) + '</div>' : '') +
             '</div>' +
             '<div class="tkp-rc-meta">' +
               (price > 0 ? '<span class="tkp-rc-badge green">' + money(price) + '</span>' : '') +
-              (it.work_type ? '<span class="tkp-rc-badge blue">' + esc(it.work_type) + '</span>' : '') +
-              (hasExistingTkp ? '<span class="tkp-rc-badge amber" title="Уже есть ТКП">ТКП ' + it.active_tkp_count + '</span>' : '') +
+              (it.tender_type ? '<span class="tkp-rc-badge blue">' + esc(it.tender_type) + '</span>' : '') +
               (deadline ? '<span class="tkp-rc-badge gray">📅 ' + deadline + '</span>' : '') +
             '</div>' +
           '</div>' +
           '<div class="tkp-rc-actions">' +
-            '<button class="btn tkp-rc-btn-create" data-create-tkp="' + it.tender_id + '" ' +
-              'data-tender-title="' + esc(it.tender_title || '') + '" ' +
-              'data-customer="' + esc(it.customer_name || '') + '" ' +
-              'data-inn="' + esc(it.customer_inn || '') + '" ' +
-              'data-subject="' + esc((it.tender_title ? 'ТКП — ' + it.tender_title : '') + (it.work_type ? ' (' + it.work_type + ')' : '')) + '" ' +
-              'data-work-type="' + esc(it.work_type || '') + '" ' +
-              'data-object="' + esc(it.object_name || '') + '" ' +
-              'data-city="' + esc(it.object_city || '') + '" ' +
-              'data-price="' + (price || '') + '">' +
-              '⚡ Создать ТКП' +
-            '</button>' +
-            '<button class="btn ghost tkp-rc-btn-mark" data-mark-sent="' + it.tender_id + '" ' +
-              'title="КП уже отправлено клиенту напрямую — отметить без создания ТКП в системе">' +
-              '📨 Отправлено' +
-            '</button>' +
-            '<button class="btn ghost tkp-rc-btn-tender" data-goto-tender="' + it.tender_id + '" title="Открыть тендер">Тендер</button>' +
+            '<button class="btn tkp-rc-btn-create" data-send-kp="' + it.id + '">📨 Отправить КП клиенту</button>' +
+            '<button class="btn ghost tkp-rc-btn-tender" data-goto-tender="' + it.id + '">Открыть тендер</button>' +
           '</div>' +
         '</div>';
       }).join('');
@@ -1117,106 +1115,54 @@ window.AsgardTendersPage = (function(){
         '</style>' +
         '<div class="tkp-ready-wrap">' +
           '<div class="tkp-ready-header">' +
-            '<div class="tkp-ready-title">⚡ Готовы к ТКП <span class="tkp-ready-count">' + items.length + '</span></div>' +
-            '<span class="help" style="font-size:11px">Просчёты одобрены директором — создайте ТКП</span>' +
+            '<div class="tkp-ready-title">📨 Готово к отправке КП <span class="tkp-ready-count">' + items.length + '</span></div>' +
+            '<span class="help" style="font-size:11px">ТКП создано — отправьте КП клиенту</span>' +
           '</div>' +
           '<div class="tkp-ready-cards">' + cards + '</div>' +
         '</div>' +
         '<hr class="hr"/>';
 
-      // Кнопки "Создать ТКП"
-      tkpReadyPanel.querySelectorAll('[data-create-tkp]').forEach(function(btn) {
-        btn.addEventListener('click', function(e) {
-          e.stopPropagation();
-          if (!window.AsgardTkpPage || !AsgardTkpPage.openNew) {
-            toast('ТКП', 'Модуль ТКП не загружен. Перейдите в раздел ТКП.', 'err');
-            return;
-          }
-          var tenderId = Number(btn.getAttribute('data-create-tkp')) || null;
-          var prefill = {
-            tender_id:     tenderId,
-            tender_title:  btn.getAttribute('data-tender-title') || '',
-            customer_name: btn.getAttribute('data-customer') || '',
-            customer_inn:  btn.getAttribute('data-inn') || '',
-            subject:       btn.getAttribute('data-subject') || '',
-            work_type:     btn.getAttribute('data-work-type') || '',
-            object_name:   btn.getAttribute('data-object') || '',
-            object_city:   btn.getAttribute('data-city') || '',
-            total_price:   Number(btn.getAttribute('data-price')) || 0,
-          };
-          AsgardTkpPage.openNew(prefill);
-        });
-      });
-
-      // Кнопки "Отправлено" — отметить КП отправлено без создания ТКП
-      tkpReadyPanel.querySelectorAll('[data-mark-sent]').forEach(function(btn) {
+      // Кнопка "Отправить КП клиенту" — берёт последнее активное ТКП по тендеру
+      // и открывает модалку отправки (если AsgardTkpPage умеет). Иначе — открывает карточку тендера.
+      tkpReadyPanel.querySelectorAll('[data-send-kp]').forEach(function(btn) {
         btn.addEventListener('click', async function(e) {
           e.stopPropagation();
-          var tid = Number(btn.getAttribute('data-mark-sent'));
+          var tid = Number(btn.getAttribute('data-send-kp'));
           if (!tid) return;
-
-          // Подтверждение
-          if (!confirm('Отметить тендер как «КП отправлено»?\n\nТКП в системе создано не будет — только статус тендера изменится.')) return;
-
           btn.disabled = true;
-          btn.textContent = '...';
           try {
-            var tender = await AsgardDB.get('tenders', tid);
-            if (!tender) { toast('Ошибка', 'Тендер не найден', 'err'); return; }
-
-            var cur = tender.tender_status;
-            // Если статус уже финальный — не трогаем
-            if (cur === 'КП отправлено' || cur === 'Выиграли' || cur === 'Проиграли') {
-              toast('Статус', 'Тендер уже в статусе «' + cur + '»', 'warn');
+            // Найти активное ТКП для тендера
+            var token = localStorage.getItem('asgard_token');
+            var resp = await fetch('/api/tkp/?tender_id=' + tid + '&limit=50', {
+              headers: { Authorization: 'Bearer ' + token }
+            });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            var data = await resp.json();
+            var activeList = (data.items||[]).filter(function(t){ return t.status !== 'rejected' && t.status !== 'draft'; });
+            if (!activeList.length) {
+              toast('Отправка КП', 'Активного ТКП не найдено — откройте тендер', 'warn');
+              openTenderEditor(tid);
               return;
             }
-
-            tender.tender_status = 'КП отправлено';
-            await AsgardDB.put('tenders', tender);
-            await audit(user.id, 'tender', tid, 'mark_kp_sent_no_tkp', { prev_status: cur });
-
-            toast('Тендер', 'Статус изменён на «КП отправлено»');
-
-            // Убираем карточку из панели плавно
-            var card = btn.closest('.tkp-ready-card');
-            if (card) {
-              card.style.transition = 'opacity .3s, max-height .4s';
-              card.style.opacity = '0';
-              card.style.overflow = 'hidden';
-              setTimeout(function() {
-                card.style.maxHeight = '0';
-                card.style.padding = '0';
-                card.style.margin = '0';
-                setTimeout(function() {
-                  card.remove();
-                  // Если карточек больше нет — скрываем всю панель
-                  var remaining = tkpReadyPanel.querySelectorAll('.tkp-ready-card');
-                  if (!remaining.length) {
-                    tkpReadyPanel.innerHTML = '';
-                  } else {
-                    // Обновляем счётчик
-                    var countEl = tkpReadyPanel.querySelector('.tkp-ready-count');
-                    if (countEl) countEl.textContent = remaining.length;
-                  }
-                }, 400);
-              }, 300);
-            }
-
-            if (window.AsgardTkpFollowup) {
-              try { await AsgardTkpFollowup.activateFollowup(tender); } catch(ex) {}
+            // Берём самое свежее ТКП
+            var tkp = activeList.sort(function(a,b){ return Number(b.id) - Number(a.id); })[0];
+            if (window.AsgardTkpPage && AsgardTkpPage.openSend) {
+              AsgardTkpPage.openSend(tkp.id);
+            } else if (window.AsgardTkpPage && AsgardTkpPage.openEdit) {
+              AsgardTkpPage.openEdit(tkp.id);
+            } else {
+              openTenderEditor(tid);
             }
           } catch (ex) {
-            toast('Ошибка', ex.message || 'Не удалось обновить статус', 'err');
+            toast('Отправка КП', ex.message || 'Ошибка', 'err');
+            openTenderEditor(tid);
           } finally {
-            if (!btn.closest('.tkp-ready-card') || btn.closest('.tkp-ready-card').style.opacity !== '0') {
-              btn.disabled = false;
-              btn.textContent = '📨 Отправлено';
-            }
+            btn.disabled = false;
           }
         });
       });
 
-      // Кнопки "Тендер" — открыть карточку
+      // Кнопки "Открыть тендер"
       tkpReadyPanel.querySelectorAll('[data-goto-tender]').forEach(function(btn) {
         btn.addEventListener('click', function(e) {
           e.stopPropagation();
@@ -1554,7 +1500,7 @@ window.AsgardTendersPage = (function(){
           window.openMimirAutoEstimate(null, id);
         }
       }
-      if(act==="handoff") { openTenderEditor(id); setTimeout(()=>{ const b=document.getElementById("btnHandoff"); if(b) b.scrollIntoView({block:"center"}); }, 50); }
+      if(act==="handoff") { openTenderEditor(id); setTimeout(()=>{ const b=document.getElementById("btnDist")||document.getElementById("btnCreateTkp"); if(b) b.scrollIntoView({block:"center"}); }, 50); }
     });
 
     async function openTenderEditor(tenderId){
@@ -1622,23 +1568,20 @@ window.AsgardTendersPage = (function(){
           <div class="cr-f-section"><span class="cr-f-section__icon" style="color:var(--gold)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2m-9-11h2m18 0h2"/></svg></span><span>Заказчик и предмет</span></div>
 
           <div class="cr-f-field">
-            <div class="cr-f-label">Заказчик <span class="cr-f-label__req">*</span></div>
+            <div class="cr-f-label">Заказчик / ИНН <span class="cr-f-label__req">*</span></div>
             <div id="cr-customer-wrap"></div>
-            <div class="cr-f-help">Начните вводить название или ИНН — выбирайте из списка.</div>
-            <div class="cr-f-help" id="innWarn" style="display:none; color:var(--err-t)">ИНН не найден в базе. Создайте карточку контрагента.</div>
-            <div id="innCreateRow" style="display:none; margin-top:6px"><a class="btn ghost mini" id="btnCreateCustomer" href="#/customers">Создать карточку</a></div>
+            <div class="cr-f-help">Начните вводить название или ИНН. Если организации нет в базе — будет предложен поиск через ДаДата (ЕГРЮЛ).</div>
+            <div class="cr-f-help" id="innWarn" style="display:none; color:var(--err-t)">Контрагент не найден в базе. Создайте карточку — она подставится автоматически.</div>
+            <div id="innCreateRow" style="display:none; margin-top:6px"><button type="button" class="btn ghost mini" id="btnCreateCustomer">➕ Создать контрагента</button></div>
             <div id="customerScoreBlock" style="margin-top:8px;display:none"></div>
           </div>
 
           <div class="cr-f-row--2">
             <div class="cr-f-field">
-              <div class="cr-f-label">ИНН <span class="cr-f-label__req">*</span></div>
-              <div id="cr-inn-wrap"></div>
-            </div>
-            <div class="cr-f-field">
-              <div class="cr-f-label">Период</div>
+              <div class="cr-f-label">Период <span class="cr-f-label__req">*</span></div>
               <div class="cr-period-row" id="e_period_w"></div>
             </div>
+            <div class="cr-f-field"></div>
           </div>
 
           <div class="cr-f-field">
@@ -1648,14 +1591,24 @@ window.AsgardTendersPage = (function(){
 
           <div class="cr-f-row--2">
             <div class="cr-f-field">
-              <div class="cr-f-label">Сумма без НДС, ₽</div>
+              <div class="cr-f-label">НМЦ без НДС, ₽</div>
               <input id="e_price" class="cr-f-mono" value="${esc((t&&t.tender_price)!=null?String(t.tender_price):"")}" ${full?"":"disabled"} placeholder="0"/>
             </div>
             <div class="cr-f-field">
-              <div class="cr-f-label">Сумма с НДС, ₽</div>
-              <input id="e_price_vat" class="cr-f-mono" value="${esc((t&&t.tender_price_with_vat)!=null?String(t.tender_price_with_vat):"")}" ${full?"":"disabled"} placeholder="0" style="color:var(--t3)"/>
+              <div class="cr-f-label">НМЦ с НДС, ₽</div>
+              <input id="e_price_vat" class="cr-f-mono" value="${esc((t&&t.tender_price_with_vat)!=null?String(t.tender_price_with_vat):"")}" ${full?"":"disabled"} placeholder="авто" style="color:var(--t3)"/>
             </div>
           </div>
+          ${(!isNew) ? `<div class="cr-f-row--2" style="margin-top:4px">
+            <div class="cr-f-field">
+              <div class="cr-f-label" style="color:var(--ok-t,#4cd964)">Цена подачи без НДС, ₽</div>
+              <input id="e_sub_price" class="cr-f-mono" value="${esc((t&&t.submission_price)!=null?String(t.submission_price):"")}" ${(user.role==='ADMIN'||isDirRole(user.role))?"":"disabled"} placeholder="заполняется после согласования" style="color:var(--ok-t,#4cd964)"/>
+            </div>
+            <div class="cr-f-field">
+              <div class="cr-f-label" style="color:var(--ok-t,#4cd964)">Цена подачи с НДС, ₽</div>
+              <input id="e_sub_price_vat" class="cr-f-mono" value="${esc((t&&t.submission_price_with_vat)!=null?String(t.submission_price_with_vat):"")}" disabled placeholder="авто" style="color:var(--ok-t,#4cd964)"/>
+            </div>
+          </div>` : ''}
           <div class="cr-f-row--2">
             <div class="cr-f-field">
               <div class="cr-f-label">Тип заявки</div>
@@ -1668,8 +1621,8 @@ window.AsgardTendersPage = (function(){
             <div class="cr-f-field">
               <div class="cr-f-label">Ответственный РП <span class="cr-f-label__req">*</span></div>
               <div id="e_pm_w"></div>
-              ${(user.role==="TO" && (!t || !t.handoff_at)) ? `<div class="cr-f-help">Назначение РП — директор после «На распределение».</div>` : ``}
-              ${(t && t.distribution_requested_at && !t.handoff_at) ? `<div class="cr-f-help" style="color:var(--gold)"><b>На распределении.</b> Ожидает назначения.</div>` : ``}
+              ${(user.role==="TO" && (!t || !t.handoff_at)) ? `<div class="cr-f-help">РП назначается Рук. ТО после отправки «На анализ».</div>` : ``}
+              ${(t && t.tender_status==='На анализе') ? `<div class="cr-f-help" style="color:var(--gold)"><b>На анализе.</b> Рук. ТО назначит РП.</div>` : ``}
               ${(t && t.handoff_at && canReassign) ? `<button class="btn ghost mini" style="margin-top:6px" id="btnReassign">Переназначить</button>` : ``}
             </div>
             <div class="cr-f-field">
@@ -1765,9 +1718,9 @@ window.AsgardTendersPage = (function(){
           <button class="${isNew?'btn ghost':'btn primary'}" id="btnSave">${isNew?"Создать тендер":"Сохранить"}</button>
           ${isNew ? `<button class="btn gold" id="btnStepNext">Далее →</button>` : ''}
           ${!isNew ? '<button class="btn ghost" id="btnTenderActions">⚡ Действия</button>' : ''}
-          ${(t && !t.handoff_at && !t.distribution_requested_at && (user.role==="TO"||user.role==="HEAD_TO")) ? `<button class="btn red" id="btnDist">На распределение</button>` : ``}
-          ${(t && !t.handoff_at && (user.role==="ADMIN"||isDirRole(user.role))) ? `<button class="btn red" id="btnHandoff">Передать в просчёт</button>` : ``}
-          ${(t && t.tender_status==='ТКП согласовано') ? `<button class="btn" id="btnSentToClient" style="background:#17a2b8;color:#fff">📨 КП отправлено</button>` : ``}
+          ${(t && t.tender_status==='Новый' && (user.role==="TO"||user.role==="HEAD_TO")) ? `<button class="btn red" id="btnDist">На анализ</button>` : ``}
+          ${(t && t.tender_status==='ТКП согласовано' && ((user.role==='PM' && Number(t.responsible_pm_id)===Number(user.id)) || user.role==='HEAD_PM' || user.role==='ADMIN')) ? `<button class="btn" id="btnCreateTkp" style="background:#c8a84e;color:#1a1000;font-weight:700">⚡ Создать ТКП</button>` : ``}
+          ${(t && t.tender_status==='Готово к отправке КП' && ['TO','HEAD_TO','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV'].includes(user.role)) ? `<button class="btn" id="btnSentToClient" style="background:#17a2b8;color:#fff">📨 КП отправлено клиенту</button>` : ``}
           ${(t && t.tender_status !== 'Не подходит' && canArchive) ? `<button class="btn ghost mini" id="btnArchiveTender" style="color:var(--err-t)">🗑 Отсеять</button>` : ``}
           ${(t && t.tender_status === 'Не подходит' && canArchive) ? `<button class="btn ghost mini" id="btnUnarchiveTender" style="color:var(--ok-t)">♻️ Вернуть</button>` : ``}
         </div>
@@ -1954,6 +1907,15 @@ window.AsgardTendersPage = (function(){
         ePriceVatEl.addEventListener('input', () => {
           const v = Number(ePriceVatEl.value.replace(/\s/g,'').replace(',','.'));
           ePriceEl.value = v > 0 ? Math.round(v / _vatMul * 100) / 100 : '';
+        });
+      }
+      // Авторасчёт цены подачи с НДС
+      const eSubPriceEl = document.getElementById('e_sub_price');
+      const eSubPriceVatEl = document.getElementById('e_sub_price_vat');
+      if (eSubPriceEl && eSubPriceVatEl) {
+        eSubPriceEl.addEventListener('input', () => {
+          const v = Number(eSubPriceEl.value.replace(/\s/g,'').replace(',','.'));
+          eSubPriceVatEl.value = v > 0 ? Math.round(v * _vatMul * 100) / 100 : '';
         });
       }
 
@@ -2149,23 +2111,107 @@ window.AsgardTendersPage = (function(){
         document.addEventListener('visibilitychange', _onVisChange);
       }
 
-      // Customers directory (INN -> name) via CRAutocomplete
+      // ═══════════════════════════════════════════════════════════════
+      // Единое поле «Заказчик / ИНН» — локальная база + ДаДата (ЕГРЮЛ)
+      // Selected INN хранится в замыкании _selectedInn, читается в saveTender()
+      // ═══════════════════════════════════════════════════════════════
       const normInn = (v)=>String(v||"").replace(/\D/g, "");
       const custList = await AsgardDB.all("customers");
-      const innWrap = document.getElementById("cr-inn-wrap");
       const custWrap = document.getElementById("cr-customer-wrap");
-      if(innWrap){
-        innWrap.appendChild(CRAutocomplete.create({ id: 'e_inn', value: (t&&t.customer_inn)||"", placeholder: '10/12 цифр', minChars: 1, fullWidth: true, inputClass: 'inp', disabled: !full, fetchOptions: async (q) => { const nq = q.replace(/\D/g, ""); if(!nq) return []; return (custList||[]).filter(c => String(c.inn||"").includes(nq)).slice(0,20).map(c => ({ value: c.inn||"", label: c.inn||"", sublabel: c.name||c.full_name||"", name: c.name||c.full_name||"" })); }, onSelect: (item) => { if(!item) return; const nameInp = CRAutocomplete.getInput('e_customer'); if(nameInp && (!nameInp.value || nameInp.value.trim().length<2)){ CRAutocomplete.setValue('e_customer', item.name||""); updateCustomerScore(item.name||""); } updateInnUi(); } }));
-      }
-      if(custWrap){
-        custWrap.appendChild(CRAutocomplete.create({ id: 'e_customer', value: (t&&t.customer_name)||"", placeholder: 'Название организации / ИНН', minChars: 2, fullWidth: true, inputClass: 'inp', disabled: !full, fetchOptions: async (q) => { const ql = q.toLowerCase().trim(); return (custList||[]).filter(c => { const n = String(c.name||c.full_name||"").toLowerCase(); const inn = String(c.inn||""); return n.includes(ql) || inn.includes(ql); }).slice(0,20).map(c => ({ value: c.name||c.full_name||"", label: c.name||c.full_name||"", sublabel: 'ИНН ' + (c.inn||"—"), inn: c.inn||"" })); }, onSelect: (item) => { if(!item) return; const innInp = CRAutocomplete.getInput('e_inn'); if(innInp && !innInp.value) CRAutocomplete.setValue('e_inn', item.inn||""); updateInnUi(); updateCustomerScore(item.label||""); } }));
-      }
-      const innInput = CRAutocomplete.getInput("e_inn");
-      const nameInput = CRAutocomplete.getInput("e_customer");
       const innWarn = document.getElementById("innWarn");
       const innCreateRow = document.getElementById("innCreateRow");
       const btnCreateCustomer = document.getElementById("btnCreateCustomer");
       const byInn = new Map((custList||[]).map(c=>[String(c.inn||""), c]));
+
+      // Замыкание для текущего выбранного ИНН (приоритет: локальный → ДаДата → ручной ввод цифр)
+      let _selectedInn = (t && t.customer_inn) ? String(t.customer_inn) : "";
+      let _selectedFromDadata = null; // {inn, name, kpp, address, full_name} если выбрали из ДаДата
+      // Экспонируем для saveTender и для восстановления из черновика
+      window.__tenderSelectedInnGetter = () => _selectedInn;
+      window.__tenderSelectedDadataGetter = () => _selectedFromDadata;
+      window.__tenderSelectedInnSetter = (v) => { _selectedInn = String(v||""); updateInnUi(); };
+
+      if(custWrap){
+        custWrap.appendChild(CRAutocomplete.create({
+          id: 'e_customer',
+          value: (t&&t.customer_name)||"",
+          placeholder: 'Название организации или ИНН (10/12 цифр)',
+          minChars: 2,
+          fullWidth: true,
+          inputClass: 'inp',
+          disabled: !full,
+          fetchOptions: async (q) => {
+            const ql = q.toLowerCase().trim();
+            const isDigits = /^\d+$/.test(q);
+            // 1) Локальная база
+            const local = (custList||[]).filter(c => {
+              const n = String(c.name||c.full_name||"").toLowerCase();
+              const inn = String(c.inn||"");
+              return isDigits ? inn.includes(q) : n.includes(ql);
+            }).slice(0,10).map(c => ({
+              value: c.name||c.full_name||"",
+              label: c.name||c.full_name||"",
+              sublabel: 'ИНН ' + (c.inn||"—") + ' · в базе',
+              inn: c.inn||"",
+              _source: 'local',
+              _raw: c
+            }));
+            // 2) Если локально мало — спрашиваем ДаДата (suggest или lookup)
+            let dadata = [];
+            try {
+              const token = localStorage.getItem('asgard_token');
+              if (isDigits && (q.length === 10 || q.length === 12)) {
+                // Точный поиск по ИНН
+                const r = await fetch('/api/customers/lookup/' + q, { headers: { Authorization: 'Bearer ' + token } });
+                if (r.ok) {
+                  const d = await r.json();
+                  if (d.suggestion && d.suggestion.name) {
+                    dadata.push({
+                      value: d.suggestion.name,
+                      label: '🌐 ' + d.suggestion.name,
+                      sublabel: 'ИНН ' + (d.suggestion.inn||q) + ' · ДаДата (ЕГРЮЛ)',
+                      inn: d.suggestion.inn||q,
+                      _source: 'dadata',
+                      _raw: d.suggestion
+                    });
+                  }
+                }
+              } else if (!isDigits && local.length < 5 && q.length >= 3) {
+                // Suggest по названию
+                const r = await fetch('/api/customers/suggest?q=' + encodeURIComponent(q) + '&type=party', {
+                  headers: { Authorization: 'Bearer ' + token }
+                });
+                if (r.ok) {
+                  const d = await r.json();
+                  dadata = (d.suggestions||[]).slice(0, 5).map(s => ({
+                    value: s.name||'',
+                    label: '🌐 ' + (s.name||''),
+                    sublabel: 'ИНН ' + (s.inn||'') + ' · ДаДата (ЕГРЮЛ)',
+                    inn: s.inn||'',
+                    _source: 'dadata',
+                    _raw: s
+                  }));
+                }
+              }
+            } catch(_) { /* Dadata недоступна → не блокируем */ }
+            return [...local, ...dadata];
+          },
+          onSelect: (item) => {
+            if (!item) return;
+            _selectedInn = item.inn || "";
+            if (item._source === 'dadata') {
+              _selectedFromDadata = item._raw || null;
+            } else {
+              _selectedFromDadata = null;
+            }
+            updateInnUi();
+            updateCustomerScore(item.value || item.label || "");
+          }
+        }));
+      }
+
+      const nameInput = CRAutocomplete.getInput("e_customer");
+
       function findByNameExact(name){
         const n = String(name||"").trim().toLowerCase();
         if(!n) return null;
@@ -2173,34 +2219,31 @@ window.AsgardTendersPage = (function(){
         return hits.length===1 ? hits[0] : null;
       }
       function updateInnUi(){
-        const inn = normInn(innInput?.value||"");
-        if(innInput && inn!==innInput.value) innInput.value = inn;
+        // Если выбран ДаДата-вариант или ИНН не в локальной базе → показать кнопку создания
+        const inn = normInn(_selectedInn);
         const looksValid = (inn.length===10 || inn.length===12);
-        const exists = looksValid ? byInn.has(inn) : true;
-        if(looksValid && !exists){
+        const existsLocally = looksValid ? byInn.has(inn) : false;
+        const needCreate = (_selectedFromDadata && _selectedFromDadata.inn) || (looksValid && !existsLocally);
+        if(needCreate){
           if(innWarn) innWarn.style.display="block";
           if(innCreateRow) innCreateRow.style.display="flex";
-          if(btnCreateCustomer) btnCreateCustomer.href = "#/customer?inn="+encodeURIComponent(inn)+"&new=1";
         }else{
           if(innWarn) innWarn.style.display="none";
           if(innCreateRow) innCreateRow.style.display="none";
         }
       }
-      
-      // Функция обновления светофора клиента
+
+      // Светофор клиента
       async function updateCustomerScore(customerName){
         const scoreBlock = document.getElementById("customerScoreBlock");
         if(!scoreBlock) return;
-        
         if(!customerName || customerName.trim().length < 2){
           scoreBlock.style.display = "none";
           return;
         }
-        
         if(window.AsgardGeoScore){
           scoreBlock.style.display = "block";
           scoreBlock.innerHTML = '<span class="muted">⏳ Анализ...</span>';
-          
           try {
             const scoreData = await AsgardGeoScore.getCustomerScore(customerName.trim());
             scoreBlock.innerHTML = AsgardGeoScore.getScoreCard(scoreData, customerName.trim());
@@ -2209,37 +2252,56 @@ window.AsgardTendersPage = (function(){
           }
         }
       }
-      
-      // Начальное отображение светофора если есть заказчик
-      if(t && t.customer_name){
-        updateCustomerScore(t.customer_name);
-      }
-      
-      if(innInput && nameInput){
-        innInput.addEventListener("input", ()=>{
-          const inn = normInn(innInput.value);
-          const c = (custList||[]).find(x=>String(x.inn||"")===inn);
-          if(c && (!nameInput.value || nameInput.value.trim().length<2)){
-            nameInput.value = c.name||c.full_name||"";
-            updateCustomerScore(c.name||c.full_name||"");
+      if(t && t.customer_name){ updateCustomerScore(t.customer_name); }
+
+      // Кнопка «Создать контрагента» — открывает openNewCustomerModal БЕЗ закрытия модалки тендера.
+      // После создания подставляет в поле и в _selectedInn.
+      if (btnCreateCustomer) {
+        btnCreateCustomer.addEventListener('click', () => {
+          if (!window.AsgardContractsPage || !AsgardContractsPage.openNewCustomerModal) {
+            toast('Контрагент', 'Модуль договоров не загружен. Перейдите в раздел «Заказчики».', 'err');
+            return;
           }
-          updateInnUi();
+          AsgardContractsPage.openNewCustomerModal(async (created) => {
+            if (!created || !created.inn) return;
+            _selectedInn = String(created.inn);
+            _selectedFromDadata = null;
+            // Перезагружаем custList чтобы byInn увидел нового клиента (фон)
+            try {
+              const fresh = await AsgardDB.all("customers");
+              const freshById = new Map(fresh.map(c=>[String(c.inn||""), c]));
+              freshById.forEach((v,k) => byInn.set(k,v));
+            } catch(_) {}
+            if (nameInput) {
+              nameInput.value = created.short_name || created.name || created.full_name || '';
+              CRAutocomplete.setValue('e_customer', nameInput.value);
+            }
+            updateInnUi();
+            updateCustomerScore(nameInput?.value || '');
+            toast('Контрагент', 'Создан и подставлен в тендер', 'ok');
+          });
         });
-        nameInput.addEventListener("change", ()=>{
-          // If user selected an existing name, set INN
+      }
+
+      if (nameInput) {
+        // Очистка поля сбрасывает выбранный ИНН (чтобы не сохранился старый)
+        nameInput.addEventListener('input', () => {
+          if (!nameInput.value || nameInput.value.trim().length < 2) {
+            _selectedInn = "";
+            _selectedFromDadata = null;
+            updateInnUi();
+          }
+        });
+        nameInput.addEventListener('change', () => {
           const hit = findByNameExact(nameInput.value);
-          if(hit && innInput && !innInput.value){ innInput.value = String(hit.inn||""); }
+          if (hit && !_selectedInn) { _selectedInn = String(hit.inn||""); }
           updateInnUi();
-          // Обновляем светофор
           updateCustomerScore(nameInput.value);
         });
-        // Также обновляем при вводе (с debounce)
         let scoreTimeout;
-        nameInput.addEventListener("input", ()=>{
+        nameInput.addEventListener('input', () => {
           clearTimeout(scoreTimeout);
-          scoreTimeout = setTimeout(()=>{
-            updateCustomerScore(nameInput.value);
-          }, 500);
+          scoreTimeout = setTimeout(() => updateCustomerScore(nameInput.value), 500);
         });
         updateInnUi();
       }
@@ -2707,8 +2769,13 @@ window.AsgardTendersPage = (function(){
         const _pm = CRSelect.getValue('e_period_month') || String(new Date().getMonth()+1).padStart(2,'0');
         const _py = CRSelect.getValue('e_period_year') || String(new Date().getFullYear());
         const period = `${_py}-${_pm}`;
-        const innRaw = CRAutocomplete.getValue("e_inn") || "";
-        const customer_inn = String(innRaw).replace(/\D/g, "");
+        // Берём ИНН из единого поля «Заказчик / ИНН» (выбранный через autocomplete/ДаДата),
+        // или, если в поле «Заказчик» юзер просто ввёл цифры — парсим их как ИНН.
+        let innRaw = (typeof window.__tenderSelectedInnGetter === 'function')
+          ? window.__tenderSelectedInnGetter() : "";
+        const customerRaw = (CRAutocomplete.getValue("e_customer") || "").trim();
+        if (!innRaw && /^\d{10,12}$/.test(customerRaw)) innRaw = customerRaw;
+        const customer_inn = String(innRaw||"").replace(/\D/g, "");
         let customer=(CRAutocomplete.getValue("e_customer") || "").trim();
         const title=document.getElementById("e_title").value.trim();
         const tenderType = ((_typeChipsEl && _typeChipsEl._crGetValue) ? (_typeChipsEl._crGetValue() || 'Тендер') : (CRSelect.getValue('e_type') || "Тендер")).trim();
@@ -2718,6 +2785,8 @@ window.AsgardTendersPage = (function(){
         const price = priceRaw ? Number(priceRaw.replace(/\s/g,"").replace(",", ".")) : null;
         const priceVatRaw=document.getElementById("e_price_vat")?.value?.trim()||"";
         const priceVat = priceVatRaw ? Number(priceVatRaw.replace(/\s/g,"").replace(",", ".")) : (price ? Math.round(price * _vatMul * 100) / 100 : null);
+        const subPriceRaw=document.getElementById("e_sub_price")?.value?.trim()||"";
+        const subPrice = (subPriceRaw && (user.role==='ADMIN'||isDirRole(user.role))) ? Number(subPriceRaw.replace(/\s/g,"").replace(",",".")) : undefined;
         const ws = CRDatePicker.getValue('e_ws') || null;
         const we = CRDatePicker.getValue('e_we') || null;
         const url=document.getElementById("e_url").value.trim()||null;
@@ -2824,6 +2893,7 @@ window.AsgardTendersPage = (function(){
             cur.responsible_pm_id=pmId;
             cur.tender_status=status;
             cur.tender_price=price; cur.tender_price_with_vat=priceVat;
+            if(subPrice !== undefined){ cur.submission_price = subPrice; cur.submission_price_with_vat = subPrice ? Math.round(subPrice*_vatMul*100)/100 : null; }
             cur.work_start_plan=ws; cur.work_end_plan=we;
             cur.reject_reason=reject;
             cur.purchase_url=url; cur.docs_deadline=docsDeadline; cur.group_tag=tag; cur.tag_id=tagId; cur.tender_comment_to=cto;
@@ -2937,98 +3007,52 @@ window.AsgardTendersPage = (function(){
         document.getElementById("btnDist").addEventListener("click", async ()=>{
           const id = isNew ? await saveTender() : tenderId;
           if(!id) return;
-          const cur = await AsgardDB.get("tenders", id);
-          if(!cur){ toast("Распределение","Тендер не найден","err"); return; }
-          if(cur.handoff_at){ toast("Распределение","Уже передано в просчёт","err"); return; }
-          if(cur.distribution_requested_at){ toast("Распределение","Уже отправлено директору","err"); return; }
-          cur.distribution_requested_at = isoNow();
-          cur.distribution_requested_by_user_id = user.id;
-          await AsgardDB.put("tenders", cur);
-          await audit(user.id, "tender", id, "request_distribution", {});
 
-          // notify all directors and admins
-          try{
-            const allU = await getUsers();
-            const dirs = (allU||[]).filter(u=> {
-              // Check singular role field
-              if (u.role && (isDirRole(u.role) || u.role === 'ADMIN')) return true;
-              // Check roles array if exists
-              if (Array.isArray(u.roles) && u.roles.some(r => isDirRole(r) || r === 'ADMIN')) return true;
-              return false;
+          const btnEl = document.getElementById("btnDist");
+          if(btnEl) btnEl.disabled = true;
+          try {
+            const token = localStorage.getItem('asgard_token');
+            const resp = await fetch(`/api/tenders/${id}`, {
+              method: 'PUT',
+              headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ tender_status: 'На анализе' })
             });
-            for(const d of dirs){
-              await notify(d.id, "На распределение", `${cur.customer_name} — ${cur.tender_title}\nДедлайн: ${cur.docs_deadline||"—"}\nТип: ${cur.tender_type||"—"}`, "#/tenders");
-            }
-          }catch(e){ console.error('Distribution notify error:', e); }
+            const data = await resp.json();
+            if(!resp.ok){ toast("Анализ", data.error || "Ошибка", "err"); if(btnEl) btnEl.disabled=false; return; }
 
-          toast("Распределение","Отправлено директору");
-          await render({layout, title});
-          openTenderEditor(id);
+            // Уведомляем HEAD_TO
+            try{
+              const allU = await getUsers();
+              const headTo = (allU||[]).filter(u=>u.role==='HEAD_TO');
+              for(const h of headTo){
+                await notify(h.id, "Тендер на анализ", `${data.tender?.customer_name||""} — ${data.tender?.tender_title||""}\nДедлайн: ${data.tender?.docs_deadline||"—"}`, "#/tenders");
+              }
+            }catch(e){}
+
+            toast("Анализ","Тендер отправлен на анализ Рук. ТО","ok");
+            await render({layout, title});
+            openTenderEditor(id);
+          } catch(e) {
+            toast("Анализ","Ошибка сети","err");
+            if(btnEl) btnEl.disabled = false;
+          }
         });
       }
 
-      if(document.getElementById("btnHandoff")){
-        document.getElementById("btnHandoff").addEventListener("click", async ()=>{
-            const appS = await getAppSettings();
-            // require docs/link before handoff if enabled
-            if(appS.require_docs_on_handoff){
-              const hasFolder = String(document.getElementById("e_url")?.value||"").trim();
-              // If folder/link is provided, treat it as the "комплект документов" for MVP
-              if(!hasFolder){
-                const docs = await AsgardDB.byIndex("documents","tender_id", tenderId);
-                // required types (only when using local uploads)
-                const reqTypes = (appS.doc_types||[]).filter(x=>x.required_on_handoff && (x.scope==="tender"||x.scope==="both")).map(x=>x.label);
-                const presentTypes = new Set((docs||[]).map(d=>String(d.type||"").trim()));
-                const missing = reqTypes.filter(x=>!presentTypes.has(x));
+      // btnHandoff removed — Director no longer sends to estimate directly (HEAD_TO does via distPanel)
 
-                if(!docs || docs.length===0){
-                  toast("Передача","Добавьте ссылку на папку (комплект) или загрузите документы","err"); 
-                  return;
-                }
-                if(missing.length){
-                  toast("Передача",`Нужен документ: ${missing.join(", ")}`,"err"); 
-                  return;
-                }
-              }
-            }
-
-          const id = isNew ? await saveTender() : tenderId;
-          if(!id) return;
-          const cur = await AsgardDB.get("tenders", id);
-          if(!cur.responsible_pm_id){
-            toast("Передача","Сначала выберите ответственного РП","err");
-            return;
+      // Кнопка "Создать ТКП" для PM (после согласования директором)
+      if(document.getElementById("btnCreateTkp")){
+        document.getElementById("btnCreateTkp").addEventListener("click", function(){
+          if(!window.AsgardTkpPage || !AsgardTkpPage.openNew){
+            toast('ТКП','Модуль ТКП не загружен. Перейдите в раздел ТКП.','err'); return;
           }
-          if(cur.handoff_at){ toast("Передача","Уже передано","err"); return; }
-
-          // limit active PM inbox to avoid overload
-          try{
-            const lim = Number(appS?.limits?.pm_active_calcs_limit ?? 0);
-            if(Number.isFinite(lim) && lim>0){
-              const allT = await AsgardDB.all("tenders");
-              const doneRaw = String(appS?.limits?.pm_active_calcs_done_statuses||"");
-              const done = new Set(doneRaw.split(",").map(x=>String(x).trim()).filter(Boolean));
-              if(done.size===0){ ["Согласование ТКП","ТКП согласовано","Выиграли","Проиграли"].forEach(x=>done.add(x)); }
-              const active = (allT||[]).filter(t=>
-                t && t.handoff_at && Number(t.responsible_pm_id)===Number(cur.responsible_pm_id) && Number(t.id)!==Number(cur.id) &&
-                !done.has(String(t.tender_status||""))
-              );
-              if(active.length >= lim){
-                toast("Лимит РП", `У выбранного РП активных просчётов: ${active.length}. Лимит: ${lim}.`, "err");
-                return;
-              }
-            }
-          }catch(e){}
-
-          cur.tender_status="Отправлено на просчёт";
-          cur.handoff_at=isoNow();
-          cur.handoff_by_user_id=user.id;
-          await AsgardDB.put("tenders", cur);
-          await audit(user.id,"tender",id,"handoff",{to_pm:cur.responsible_pm_id});
-          await AsgardDB.add("notifications",{user_id:cur.responsible_pm_id, is_read:false, created_at:isoNow(), title:"Новый тендер на просчёт", message:`${cur.customer_name} — ${cur.tender_title}`, link_hash:"#/pm-calcs"});
-          toast("Передача","Тендер передан в просчёт");
-          await render({layout, title});
-          openTenderEditor(id);
+          AsgardTkpPage.openNew({
+            tender_id: tenderId,
+            customer_name: (t&&t.customer_name) || '',
+            customer_inn: (t&&t.customer_inn) || '',
+            subject: t ? ('ТКП — ' + (t.tender_title || t.customer_name || '')) : ''
+          });
         });
       }
 
@@ -3037,7 +3061,7 @@ window.AsgardTendersPage = (function(){
         document.getElementById("btnSentToClient").addEventListener("click", async ()=>{
           const id = tenderId;
           const cur = await AsgardDB.get("tenders", id);
-          if(!cur || cur.tender_status !== 'ТКП согласовано'){ toast("Статус","Кнопка доступна только при статусе «ТКП согласовано»","err"); return; }
+          if(!cur || cur.tender_status !== 'Готово к отправке КП'){ toast("Статус","Кнопка доступна только при статусе «Готово к отправке КП»","err"); return; }
           cur.tender_status = "КП отправлено";
           await AsgardDB.put("tenders", cur);
           await audit(user.id,"tender",id,"sent_to_client",{});

@@ -336,14 +336,33 @@ async function directorApprove(db, { entityType, entityId, actor, comment }) {
           vatPct = vatRow.rows[0] ? parseFloat(vatRow.rows[0].value_json) || 20 : 20;
         }
         const priceWithVat = priceNoVat ? Math.round(priceNoVat * (1 + vatPct / 100) * 100) / 100 : null;
+        // Директор согласовал просчёт → тендер сразу переходит в 'ТКП согласовано'.
+        // На этом этапе тендер должен появиться у РП в pm-calcs (блок «Готовы к ТКП»)
+        // и НЕ должен висеть в общем списке тендеров с действиями для ТО/HEAD_TO.
         await client.query(`
-          UPDATE tenders SET tender_status = 'ТКП согласовано',
-            tender_price = COALESCE($2, tender_price),
-            tender_price_with_vat = COALESCE($3, tender_price_with_vat),
+          UPDATE tenders SET
+            tender_status = 'ТКП согласовано',
+            submission_price = COALESCE($2, submission_price),
+            submission_price_with_vat = COALESCE($3, submission_price_with_vat),
             vat_pct = $4,
             updated_at = NOW()
           WHERE id = $1 AND tender_status IN ('Согласование ТКП', 'Отправлено на просчёт')
         `, [record.tender_id, priceNoVat, priceWithVat, vatPct]);
+
+        // Уведомить РП — у него появилось действие «Создать ТКП»
+        if (record.pm_id) {
+          const tenderRow = (await client.query(
+            'SELECT customer_name, tender_title FROM tenders WHERE id = $1',
+            [record.tender_id]
+          )).rows[0] || {};
+          createNotification(client, {
+            user_id: record.pm_id,
+            title: '✅ Просчёт согласован — создайте ТКП',
+            message: `${tenderRow.customer_name || ''} — ${tenderRow.tender_title || ''}`,
+            type: 'tkp',
+            link: `#/pm-calcs`
+          });
+        }
       }
     }
 
@@ -635,7 +654,7 @@ async function directorReject(db, { entityType, entityId, actor, comment }) {
     if (record.tender_id) {
       await db.query(`
         UPDATE tenders SET tender_status = 'Отправлено на просчёт', updated_at = NOW()
-        WHERE id = $1 AND tender_status IN ('Согласование ТКП', 'ТКП согласовано')
+        WHERE id = $1 AND tender_status IN ('Согласование ТКП', 'ТКП согласовано', 'Готово к отправке КП')
       `, [record.tender_id]);
     }
   }

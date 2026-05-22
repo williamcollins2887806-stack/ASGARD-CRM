@@ -4,12 +4,16 @@
  */
 
 // State machine тендеров — допустимые переходы для обычных ролей
+// ВНИМАНИЕ: статус 'Готово к отправке КП' выставляется автоматически после создания ТКП
+// (см. src/routes/tkp.js POST /api/tkp). Вручную переходить в него нельзя.
 const TENDER_TRANSITIONS = {
   'Черновик':              ['Новый', 'Не подходит'],
-  'Новый':                 ['Отправлено на просчёт', 'Проиграли', 'Не подходит'],
+  'Новый':                 ['На анализе', 'Проиграли', 'Не подходит'],
+  'На анализе':            ['Новый', 'Не подходит'],
   'Отправлено на просчёт': ['Согласование ТКП', 'Проиграли', 'Не подходит', 'Новый'],
-  'Согласование ТКП':      ['ТКП согласовано', 'КП отправлено', 'Отправлено на просчёт', 'Проиграли', 'Не подходит'],
-  'ТКП согласовано':       ['КП отправлено', 'Согласование ТКП', 'Проиграли', 'Не подходит'],
+  'Согласование ТКП':      ['ТКП согласовано', 'Отправлено на просчёт', 'Проиграли', 'Не подходит'],
+  'ТКП согласовано':       ['Готово к отправке КП', 'Согласование ТКП', 'Проиграли', 'Не подходит'],
+  'Готово к отправке КП':  ['КП отправлено', 'ТКП согласовано', 'Проиграли', 'Не подходит'],
   'КП отправлено':         ['Выиграли', 'Проиграли', 'Не подходит'],
   'Выиграли':              [],
   'Проиграли':             ['Новый'],
@@ -17,13 +21,15 @@ const TENDER_TRANSITIONS = {
 };
 
 // Расширенные переходы для HEAD_TO (рук. тендерного отдела)
-// HEAD_TO может двигать в воронке, но НЕ может делать handoff (Новый→На просчёте = директор)
+// HEAD_TO анализирует тендер и либо отправляет в просчёт, либо отсеивает
 const HEAD_TO_TRANSITIONS = {
   'Черновик':              ['Новый', 'Не подходит', 'Проиграли'],
-  'Новый':                 ['Проиграли', 'Не подходит'],
+  'Новый':                 ['На анализе', 'Проиграли', 'Не подходит'],
+  'На анализе':            ['Отправлено на просчёт', 'Новый', 'Не подходит'],
   'Отправлено на просчёт': ['Новый', 'Проиграли', 'Не подходит'],
-  'Согласование ТКП':      ['КП отправлено', 'Отправлено на просчёт', 'Проиграли', 'Не подходит'],
-  'ТКП согласовано':       ['КП отправлено', 'Согласование ТКП', 'Проиграли', 'Не подходит'],
+  'Согласование ТКП':      ['Отправлено на просчёт', 'Проиграли', 'Не подходит'],
+  'ТКП согласовано':       ['Согласование ТКП', 'Проиграли', 'Не подходит'],
+  'Готово к отправке КП':  ['КП отправлено', 'ТКП согласовано', 'Проиграли', 'Не подходит'],
   'КП отправлено':         ['Выиграли', 'Проиграли', 'Не подходит'],
   'Выиграли':              [],
   'Проиграли':             ['Новый'],
@@ -297,6 +303,7 @@ async function routes(fastify, options) {
       const allowedCols = [
         'customer_name', 'customer_inn', 'tender_title', 'tender_type',
         'tender_status', 'period', 'docs_deadline', 'tender_price', 'tender_price_with_vat', 'vat_pct',
+        'submission_price', 'submission_price_with_vat',
         'responsible_pm_id', 'group_tag', 'tag_id', 'purchase_url', 'comment_to', 'comment_dir',
         'reject_reason', 'created_by', 'created_at'
       ];
@@ -415,7 +422,9 @@ async function routes(fastify, options) {
     const allowedFields = [
       'customer', 'customer_name', 'customer_inn', 'tender_number', 'tender_title',
       'tender_type', 'tender_status', 'period', 'deadline', 'docs_deadline',
-      'tender_price', 'tender_price_with_vat', 'vat_pct', 'responsible_pm_id', 'tag', 'group_tag', 'tag_id',
+      'tender_price', 'tender_price_with_vat', 'vat_pct',
+      'submission_price', 'submission_price_with_vat',
+      'responsible_pm_id', 'tag', 'group_tag', 'tag_id',
       'docs_link', 'purchase_url', 'comment_to', 'comment_dir', 'reject_reason'
     ];
 
@@ -1001,6 +1010,85 @@ async function routes(fastify, options) {
       WHERE h.tender_id = $1 ORDER BY h.created_at DESC
     `, [request.params.id]);
     return { history: rows };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // POST /:id/send-to-pm — HEAD_TO отправляет тендер на просчёт РП
+  // ═══════════════════════════════════════════════════════════════════════════
+  fastify.post('/:id/send-to-pm', {
+    preHandler: [fastify.requireRoles(['ADMIN', 'HEAD_TO'])]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    const { pm_id } = request.body || {};
+    const user = request.user;
+
+    if (!pm_id) return reply.code(400).send({ error: 'Укажите ответственного РП' });
+
+    const { rows: [tender] } = await db.query('SELECT * FROM tenders WHERE id = $1', [id]);
+    if (!tender) return reply.code(404).send({ error: 'Тендер не найден' });
+    if (tender.tender_status !== 'На анализе') {
+      return reply.code(400).send({ error: `Тендер должен быть в статусе «На анализе», текущий: «${tender.tender_status}»` });
+    }
+
+    const { rows: [pm] } = await db.query('SELECT id, name, role FROM users WHERE id = $1 AND is_active = true', [pm_id]);
+    if (!pm) return reply.code(400).send({ error: 'РП не найден или неактивен' });
+
+    // Проверка лимита активных просчётов
+    const appSettings = await db.query("SELECT value_json FROM settings WHERE key = 'app_settings'");
+    let pmLimit = 0;
+    try {
+      const appS = typeof appSettings.rows[0]?.value_json === 'string'
+        ? JSON.parse(appSettings.rows[0].value_json)
+        : (appSettings.rows[0]?.value_json || {});
+      pmLimit = Number(appS?.limits?.pm_active_calcs_limit ?? 0) || 0;
+    } catch (_) {}
+
+    if (pmLimit > 0) {
+      const doneStatuses = ['Согласование ТКП', 'ТКП согласовано', 'Готово к отправке КП', 'Выиграли', 'Проиграли'];
+      const { rows: [activeCount] } = await db.query(
+        `SELECT COUNT(*) as cnt FROM tenders
+         WHERE responsible_pm_id = $1 AND handoff_at IS NOT NULL
+           AND tender_status NOT IN (${doneStatuses.map((_, i) => `$${i + 2}`).join(',')})
+           AND id != $${doneStatuses.length + 2}`,
+        [pm_id, ...doneStatuses, id]
+      );
+      if (parseInt(activeCount.cnt) >= pmLimit) {
+        return reply.code(400).send({ error: `У РП «${pm.name}» уже ${activeCount.cnt}/${pmLimit} активных просчётов` });
+      }
+    }
+
+    await db.query(`
+      UPDATE tenders SET
+        tender_status = 'Отправлено на просчёт',
+        responsible_pm_id = $2,
+        handoff_at = NOW(),
+        handoff_by_user_id = $3,
+        updated_at = NOW()
+      WHERE id = $1
+    `, [id, pm_id, user.id]);
+
+    await db.query(`
+      INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+      VALUES ($1, 'tender', $2, 'send_to_pm', $3, NOW())
+    `, [user.id, id, JSON.stringify({ pm_id, pm_name: pm.name, from_status: 'На анализе' })]);
+
+    createNotification(db, {
+      user_id: pm_id,
+      title: '📋 Тендер на просчёт',
+      message: `${user.name || 'Рук. ТО'} назначил тендер: ${tender.customer_name || ''} — ${tender.tender_title || ''}`,
+      type: 'tender',
+      link: `#/pm-calcs`
+    });
+
+    broadcast('tender:updated', {
+      id, customer_name: tender.customer_name || '',
+      tender_status: 'Отправлено на просчёт',
+      old_status: 'На анализе',
+      responsible_pm_id: pm_id
+    });
+
+    const { rows: [updated] } = await db.query('SELECT * FROM tenders WHERE id = $1', [id]);
+    return { success: true, tender: updated };
   });
 
   // GET /archive-reasons — список категорий для фронтенда

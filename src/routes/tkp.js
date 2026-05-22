@@ -53,9 +53,31 @@ if (!numberToWordsRu) {
   };
 }
 
-const WRITE_ROLES = ['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
-const SEE_ALL_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'BUH', 'HEAD_TO'];
+// Создавать ТКП может: РП (responsible_pm_id тендера), HEAD_PM, директора и ADMIN.
+// ТО/HEAD_TO УБРАНЫ намеренно — ТКП создаёт только РП, согласовавший просчёт.
+const WRITE_ROLES = ['ADMIN', 'PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+// Видеть список ТКП могут все, кто работает с тендером
+const SEE_ALL_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'BUH', 'HEAD_TO', 'TO', 'HEAD_PM'];
 const APPROVE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+
+// Внутренний хелпер: PM может создавать ТКП только для своего тендера
+async function assertCanCreateTkpForTender(db, user, tenderId) {
+  if (!tenderId) return; // ТКП без тендера разрешён всем WRITE_ROLES
+  if (user.role !== 'PM') return; // HEAD_PM/директора/ADMIN — без проверки
+  const { rows } = await db.query(
+    'SELECT responsible_pm_id FROM tenders WHERE id = $1',
+    [tenderId]
+  );
+  if (!rows[0]) {
+    throw Object.assign(new Error('Тендер не найден'), { statusCode: 404 });
+  }
+  if (Number(rows[0].responsible_pm_id) !== Number(user.id)) {
+    throw Object.assign(
+      new Error('ТКП по этому тендеру создаёт только назначенный РП'),
+      { statusCode: 403 }
+    );
+  }
+}
 
 async function routes(fastify, options) {
   const db = fastify.db;
@@ -127,6 +149,13 @@ async function routes(fastify, options) {
       return reply.code(400).send({ error: 'Required field: subject' });
     }
 
+    // PM может создавать ТКП только по своему тендеру
+    try {
+      await assertCanCreateTkpForTender(db, request.user, tender_id);
+    } catch (err) {
+      return reply.code(err.statusCode || 500).send({ error: err.message });
+    }
+
     const itemsVal = items
       ? (typeof items === 'string' ? items : JSON.stringify(items))
       : (content_json ? JSON.stringify(content_json) : '{}');
@@ -150,7 +179,304 @@ async function routes(fastify, options) {
       source || null, estimate_id || null
     ]);
 
-    return { item: rows[0] };
+    const newTkp = rows[0];
+
+    // Авто-генерация PDF и прикрепление к тендерным документам (фоновая задача)
+    if (newTkp.tender_id) {
+      const tenderId = newTkp.tender_id;
+      const tkpId = newTkp.id;
+      const actorId = request.user.id;
+
+      setImmediate(async () => {
+        try {
+          // Генерируем PDF
+          let pdfBuf = null;
+          if (pdfGenerator) {
+            try { pdfBuf = await pdfGenerator.generateTkpPdf(tkpId, {}); } catch (_) {}
+          }
+          if (!pdfBuf) {
+            const tkpFull = (await db.query('SELECT t.*, te.tender_title as tender_number FROM tkp t LEFT JOIN tenders te ON t.tender_id = te.id WHERE t.id = $1', [tkpId])).rows[0];
+            if (tkpFull) pdfBuf = await generateTkpPdfKit(tkpFull, db, {});
+          }
+
+          if (pdfBuf) {
+            const uploadDir = process.env.UPLOAD_DIR || './uploads';
+            const pdfDir = path.join(uploadDir, 'tkp');
+            fs.mkdirSync(pdfDir, { recursive: true });
+            const filename = `tkp_${tkpId}_${Date.now()}.pdf`;
+            const displayName = `ТКП_${tkpId}.pdf`;
+            fs.writeFileSync(path.join(pdfDir, filename), pdfBuf);
+            await db.query('UPDATE tkp SET pdf_path = $1 WHERE id = $2', [`tkp/${filename}`, tkpId]);
+
+            await db.query(`
+              INSERT INTO documents (filename, original_name, mime_type, size, type, tender_id, uploaded_by, download_url, created_at)
+              VALUES ($1, $2, 'application/pdf', $3, 'tkp', $4, $5, $6, NOW())
+            `, [filename, displayName, pdfBuf.length, tenderId, actorId, `/uploads/tkp/${filename}`]);
+          }
+
+          // Excel-версия ТКП (красивая, с формулами, редактируемая)
+          try {
+            const ExcelJS = require('exceljs');
+            const fs3 = require('fs');
+            const path3 = require('path');
+            const tkpEx = (await db.query(
+              `SELECT t.*, u.name as author_name FROM tkp t LEFT JOIN users u ON t.author_id = u.id WHERE t.id = $1`,
+              [tkpId]
+            )).rows[0];
+            if (tkpEx) {
+              let iObj = {};
+              try { iObj = typeof tkpEx.items === 'string' ? JSON.parse(tkpEx.items) : (tkpEx.items || {}); } catch(_) {}
+              const iList = iObj.items || (Array.isArray(iObj) ? iObj : []);
+              const vatPct = parseFloat(iObj.vat_pct || 20);
+
+              const wb3 = new ExcelJS.Workbook();
+              wb3.creator = 'АСГАРД CRM'; wb3.created = new Date();
+              const ws3 = wb3.addWorksheet('ТКП');
+              ws3.columns = [
+                { key: 'n',     width: 5  },
+                { key: 'name',  width: 44 },
+                { key: 'unit',  width: 9  },
+                { key: 'qty',   width: 8  },
+                { key: 'price', width: 16 },
+                { key: 'total', width: 16 },
+              ];
+
+              const CNVY = 'FF1E3A5F', CWHT = 'FFFFFFFF', CLGR = 'FFF5F7FA';
+              const CBdr = { style: 'thin', color: { argb: 'FFD0D6E0' } };
+              const Bdr = { top: CBdr, bottom: CBdr, left: CBdr, right: CBdr };
+
+              // Логотип
+              const logoP = '/var/www/asgard-crm/public/assets/img/logo.png';
+              let curRow = 1;
+              if (fs3.existsSync(logoP)) {
+                try {
+                  const imgId = wb3.addImage({ filename: logoP, extension: 'png' });
+                  ws3.addImage(imgId, { tl: { col: 0, row: 0 }, ext: { width: 200, height: 58 } });
+                  ws3.getRow(1).height = 44;
+                  ws3.getRow(2).height = 12;
+                  curRow = 3;
+                } catch(_) {
+                  const hR = ws3.getRow(curRow++);
+                  ws3.mergeCells(`A${hR.number}:F${hR.number}`);
+                  hR.getCell(1).value = 'ООО «Асгард Сервис»';
+                  hR.getCell(1).font = { bold: true, size: 13, color: { argb: CNVY } };
+                  hR.height = 22;
+                }
+              } else {
+                const hR = ws3.getRow(curRow++);
+                ws3.mergeCells(`A${hR.number}:F${hR.number}`);
+                hR.getCell(1).value = 'ООО «Асгард Сервис»';
+                hR.getCell(1).font = { bold: true, size: 13, color: { argb: CNVY } };
+                hR.height = 22;
+              }
+
+              // Контакты компании
+              const cR = ws3.getRow(curRow++);
+              ws3.mergeCells(`A${cR.number}:F${cR.number}`);
+              cR.getCell(1).value = 'ИНН: 7736244785  ·  Тел.: 8(499)322-30-62  ·  info@asgard-service.com';
+              cR.getCell(1).font = { size: 9, color: { argb: 'FF8890B0' } };
+              cR.height = 13;
+
+              ws3.getRow(curRow++).height = 8;
+
+              // Заголовок ТКП
+              const tR = ws3.getRow(curRow++);
+              ws3.mergeCells(`A${tR.number}:F${tR.number}`);
+              tR.getCell(1).value = 'ТЕХНИКО-КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ';
+              tR.getCell(1).font = { bold: true, size: 15, color: { argb: CNVY } };
+              tR.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+              tR.height = 28;
+
+              const nR = ws3.getRow(curRow++);
+              ws3.mergeCells(`A${nR.number}:F${nR.number}`);
+              const tkpDateStr = tkpEx.created_at ? new Date(tkpEx.created_at).toLocaleDateString('ru-RU') : new Date().toLocaleDateString('ru-RU');
+              nR.getCell(1).value = `№ ТКП-${tkpId}  от  ${tkpDateStr}`;
+              nR.getCell(1).font = { size: 11, color: { argb: 'FF4A4A6A' } };
+              nR.getCell(1).alignment = { horizontal: 'center' };
+              nR.height = 18;
+
+              ws3.getRow(curRow++).height = 10;
+
+              // Реквизиты заказчика
+              const infoItems = [
+                ['Заказчик:',         tkpEx.customer_name || ''],
+                ['ИНН заказчика:',    tkpEx.customer_inn || '—'],
+                ['Контактное лицо:',  tkpEx.contact_person || '—'],
+                ['Телефон:',          tkpEx.contact_phone || '—'],
+                ['E-mail:',           tkpEx.contact_email || '—'],
+                ['Предмет предложения:', tkpEx.subject || ''],
+              ];
+              for (const [lbl, val] of infoItems) {
+                const iR = ws3.getRow(curRow++);
+                iR.getCell(1).value = lbl;
+                iR.getCell(1).font = { bold: true, size: 10, color: { argb: 'FF5A6280' } };
+                iR.getCell(1).alignment = { horizontal: 'right', vertical: 'middle' };
+                ws3.mergeCells(`B${iR.number}:F${iR.number}`);
+                iR.getCell(2).value = val;
+                iR.getCell(2).font = { size: 10 };
+                iR.getCell(2).alignment = { wrapText: true };
+                iR.height = 16;
+              }
+
+              ws3.getRow(curRow++).height = 10;
+
+              // Заголовок таблицы позиций
+              const thR3 = ws3.getRow(curRow++);
+              thR3.height = 20;
+              ['№', 'Наименование', 'Ед.', 'Кол-во', 'Цена, ₽', 'Сумма, ₽'].forEach((v, i) => {
+                const c = thR3.getCell(i + 1);
+                c.value = v;
+                c.font = { bold: true, size: 10, color: { argb: CWHT } };
+                c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: CNVY } };
+                c.border = Bdr;
+                c.alignment = { horizontal: i === 1 ? 'left' : 'center', vertical: 'middle', wrapText: i === 1 };
+              });
+
+              const dsRow = curRow;
+              for (let i = 0; i < iList.length; i++) {
+                const it = iList[i];
+                const itemR = ws3.getRow(curRow++);
+                const bg = i % 2 === 0 ? CWHT : CLGR;
+                const qty = parseFloat(it.qty || it.quantity || 1);
+                const price = parseFloat(it.price || it.unit_price || 0);
+                const nameLen = (it.name || '').length;
+                itemR.height = Math.max(16, Math.ceil(nameLen / 44) * 16);
+                [i + 1, it.name || '', it.unit || 'шт.', qty, price, null].forEach((v, ci) => {
+                  const c = itemR.getCell(ci + 1);
+                  if (ci === 5) { c.value = { formula: `D${itemR.number}*E${itemR.number}` }; c.numFmt = '#,##0.00'; }
+                  else { c.value = v; if (ci === 3) c.numFmt = '#,##0.##'; if (ci === 4) c.numFmt = '#,##0.00'; }
+                  c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } };
+                  c.border = Bdr;
+                  c.alignment = { horizontal: ci === 1 ? 'left' : 'center', vertical: 'middle', wrapText: ci === 1 };
+                });
+              }
+              const deRow = curRow - 1;
+
+              ws3.getRow(curRow++).height = 6;
+
+              // Итого без НДС
+              const totNvR = ws3.getRow(curRow++); totNvR.height = 20;
+              ws3.mergeCells(`A${totNvR.number}:E${totNvR.number}`);
+              totNvR.getCell(1).value = 'ИТОГО без НДС:';
+              totNvR.getCell(1).font = { bold: true, size: 11 };
+              totNvR.getCell(1).alignment = { horizontal: 'right', vertical: 'middle' };
+              totNvR.getCell(6).value = { formula: `SUM(F${dsRow}:F${deRow})` };
+              totNvR.getCell(6).numFmt = '#,##0.00 "₽"';
+              totNvR.getCell(6).font = { bold: true, size: 11 };
+              totNvR.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F5E9' } };
+              totNvR.getCell(6).border = Bdr;
+              totNvR.getCell(6).alignment = { horizontal: 'right' };
+
+              // НДС
+              const vatR3 = ws3.getRow(curRow++); vatR3.height = 18;
+              ws3.mergeCells(`A${vatR3.number}:E${vatR3.number}`);
+              vatR3.getCell(1).value = `НДС (${vatPct}%):`;
+              vatR3.getCell(1).font = { size: 10, color: { argb: 'FF5A6280' } };
+              vatR3.getCell(1).alignment = { horizontal: 'right', vertical: 'middle' };
+              vatR3.getCell(6).value = { formula: `F${totNvR.number}*${vatPct / 100}` };
+              vatR3.getCell(6).numFmt = '#,##0.00 "₽"';
+              vatR3.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: CLGR } };
+              vatR3.getCell(6).border = Bdr;
+              vatR3.getCell(6).alignment = { horizontal: 'right' };
+
+              // Итого с НДС
+              const totVR = ws3.getRow(curRow++); totVR.height = 24;
+              ws3.mergeCells(`A${totVR.number}:E${totVR.number}`);
+              totVR.getCell(1).value = 'ИТОГО с НДС:';
+              totVR.getCell(1).font = { bold: true, size: 13, color: { argb: 'FF1B5E20' } };
+              totVR.getCell(1).alignment = { horizontal: 'right', vertical: 'middle' };
+              totVR.getCell(6).value = { formula: `F${totNvR.number}+F${vatR3.number}` };
+              totVR.getCell(6).numFmt = '#,##0.00 "₽"';
+              totVR.getCell(6).font = { bold: true, size: 13, color: { argb: 'FF1B5E20' } };
+              totVR.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCCFFCC' } };
+              totVR.getCell(6).border = Bdr;
+              totVR.getCell(6).alignment = { horizontal: 'right', vertical: 'middle' };
+
+              // Сумма прописью
+              ws3.getRow(curRow++).height = 8;
+              const wpR = ws3.getRow(curRow++); wpR.height = 18;
+              ws3.mergeCells(`A${wpR.number}:F${wpR.number}`);
+              wpR.getCell(1).value = `Сумма прописью: ${numberToWordsRu(parseFloat(tkpEx.total_sum || 0))}`;
+              wpR.getCell(1).font = { italic: true, size: 10, color: { argb: 'FF4A4A6A' } };
+              wpR.getCell(1).alignment = { horizontal: 'left', wrapText: true };
+
+              // Срок действия
+              ws3.getRow(curRow++).height = 8;
+              const vdR = ws3.getRow(curRow++); vdR.height = 16;
+              vdR.getCell(1).value = 'Срок действия КП:';
+              vdR.getCell(1).font = { bold: true, size: 10 };
+              ws3.mergeCells(`B${vdR.number}:F${vdR.number}`);
+              vdR.getCell(2).value = `${tkpEx.validity_days || 30} дней`;
+
+              if (tkpEx.deadline) {
+                const dlR3 = ws3.getRow(curRow++); dlR3.height = 16;
+                dlR3.getCell(1).value = 'Срок исполнения:';
+                dlR3.getCell(1).font = { bold: true, size: 10 };
+                ws3.mergeCells(`B${dlR3.number}:F${dlR3.number}`);
+                dlR3.getCell(2).value = new Date(tkpEx.deadline).toLocaleDateString('ru-RU');
+              }
+
+              // Подпись
+              ws3.getRow(curRow++).height = 24;
+              const sg3 = ws3.getRow(curRow++); sg3.height = 18;
+              sg3.getCell(1).value = 'Менеджер:';
+              sg3.getCell(1).font = { size: 10, color: { argb: 'FF5A6280' } };
+              ws3.mergeCells(`B${sg3.number}:D${sg3.number}`);
+              sg3.getCell(2).value = tkpEx.author_name || '';
+              sg3.getCell(2).font = { size: 10 };
+              ws3.mergeCells(`E${sg3.number}:F${sg3.number}`);
+              sg3.getCell(5).value = '________________________  /  ____________';
+              sg3.getCell(5).font = { size: 10, color: { argb: 'FF8890B0' } };
+              sg3.getCell(5).alignment = { horizontal: 'center' };
+
+              // Сохраняем
+              const xlsDir3 = path3.join(process.env.UPLOAD_DIR || './uploads', 'tkp');
+              fs3.mkdirSync(xlsDir3, { recursive: true });
+              const xlsName3 = `tkp_${tkpId}_${Date.now()}.xlsx`;
+              const xlsBuf3 = await wb3.xlsx.writeBuffer();
+              fs3.writeFileSync(path3.join(xlsDir3, xlsName3), xlsBuf3);
+              await db.query(`
+                INSERT INTO documents (filename, original_name, mime_type, size, type, tender_id, uploaded_by, download_url, created_at)
+                VALUES ($1, $2, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', $3, 'tkp', $4, $5, $6, NOW())
+              `, [xlsName3, `ТКП_${tkpId}.xlsx`, xlsBuf3.length, tenderId, actorId, `/uploads/tkp/${xlsName3}`]);
+            }
+          } catch (xlsErr3) {
+            console.error('[TKP auto-excel] error:', xlsErr3.message);
+          }
+
+          // РП создал ТКП → тендер уходит в 'Готово к отправке КП'.
+          // На этом этапе тендер появляется у ТО/HEAD_TO как «требуется отправка КП клиенту».
+          await db.query(
+            `UPDATE tenders SET
+               tender_status = 'Готово к отправке КП',
+               tkp_sent_at = COALESCE(tkp_sent_at, NOW()),
+               updated_at = NOW()
+             WHERE id = $1 AND tender_status IN ('ТКП согласовано', 'Согласование ТКП', 'Отправлено на просчёт')`,
+            [tenderId]
+          );
+
+          // Уведомляем HEAD_TO и TO что ТКП готово к отправке
+          const { rows: notifyUsers } = await db.query(
+            "SELECT id FROM users WHERE role IN ('HEAD_TO', 'TO') AND is_active = true"
+          );
+          const { createNotification } = require('../services/notify');
+          const tenderInfo = (await db.query('SELECT customer_name, tender_title FROM tenders WHERE id = $1', [tenderId])).rows[0] || {};
+          for (const u of notifyUsers) {
+            createNotification(db, {
+              user_id: u.id,
+              title: '📨 ТКП готово — нужна отправка КП',
+              message: `${tenderInfo.customer_name || ''} — ${tenderInfo.tender_title || ''}`,
+              type: 'tkp',
+              link: `#/tenders?id=${tenderId}`
+            });
+          }
+        } catch (err) {
+          console.error('[TKP auto-pdf] error:', err.message);
+        }
+      });
+    }
+
+    return { item: newTkp };
   });
 
   // PUT /:id — Update
@@ -350,6 +676,54 @@ async function routes(fastify, options) {
     return reply.send(pdfBuffer);
   });
 
+  // ═══════════════════════════════════════════════════════════════
+  // POST /preview-pdf — генерация PDF без записи в БД (для предпросмотра)
+  // body: те же поля что и POST / (subject, items, customer_*, total_sum…)
+  // Возвращает PDF inline; нет аудита, нет уведомлений, ничего не сохраняется.
+  // ═══════════════════════════════════════════════════════════════
+  fastify.post('/preview-pdf', {
+    preHandler: [fastify.requireRoles(WRITE_ROLES)]
+  }, async (request, reply) => {
+    const b = request.body || {};
+    const subj = b.subject || b.title || 'Предпросмотр ТКП';
+
+    // Собираем виртуальный TKP-объект (как из БД), без INSERT
+    const itemsObj = b.items
+      ? (typeof b.items === 'string' ? JSON.parse(b.items) : b.items)
+      : (b.content_json || {});
+
+    const tkpVirtual = {
+      id: 'preview',
+      subject: subj,
+      tender_id: b.tender_id || null,
+      customer_name: b.customer_name || null,
+      customer_inn: b.customer_inn || null,
+      customer_address: b.customer_address || null,
+      contact_person: b.contact_person || null,
+      contact_phone: b.contact_phone || null,
+      contact_email: b.contact_email || b.customer_email || null,
+      work_description: b.work_description || null,
+      items: typeof itemsObj === 'string' ? itemsObj : JSON.stringify(itemsObj),
+      services: b.services || null,
+      total_sum: b.total_sum || 0,
+      deadline: b.deadline || null,
+      validity_days: b.validity_days || 30,
+      tkp_number: null,
+      created_at: new Date().toISOString()
+    };
+
+    const pdfOpts = {
+      signature: b.with_signature === true || b.with_signature === '1',
+      stamp: b.with_stamp === true || b.with_stamp === '1'
+    };
+
+    const pdfBuf = await generateTkpPdfKit(tkpVirtual, db, pdfOpts);
+
+    reply.header('Content-Type', 'application/pdf');
+    reply.header('Content-Disposition', 'inline; filename="preview.pdf"');
+    return reply.send(pdfBuf);
+  });
+
   // POST /:id/send — Send by email
   fastify.post('/:id/send', {
     preHandler: [fastify.requireRoles(WRITE_ROLES)]
@@ -401,11 +775,11 @@ async function routes(fastify, options) {
       ['sent', request.user.id, email, id]
     );
 
-    // Автоматически переводим тендер из "ТКП согласовано" → "КП отправлено"
+    // ТО/HEAD_TO отправили КП клиенту → тендер уходит в 'КП отправлено'.
     if (tkp.tender_id) {
       await db.query(
         `UPDATE tenders SET tender_status = 'КП отправлено', updated_at = NOW()
-         WHERE id = $1 AND tender_status = 'ТКП согласовано'`,
+         WHERE id = $1 AND tender_status IN ('Готово к отправке КП', 'ТКП согласовано')`,
         [tkp.tender_id]
       );
     }

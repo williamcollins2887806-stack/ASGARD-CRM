@@ -57,12 +57,28 @@ async function routes(fastify) {
   }, async (request, reply) => {
     return handleAction(reply, async () => {
       validateEntity(request.params.entityType);
-      return approvalService.directorApprove(db, {
+      const result = await approvalService.directorApprove(db, {
         entityType: request.params.entityType,
         entityId: parseInt(request.params.id),
         actor: request.user,
         comment: request.body?.comment || ''
       });
+
+      // Любой путь согласования просчёта триггерит /approve-finalize:
+      // он генерит HTML+PDF+Excel отчёт и кладёт в documents с tender_id.
+      // Идемпотентен: при повторном вызове просто перезапишет отчёты.
+      if (request.params.entityType === 'estimates' && result?.status === 'approved') {
+        setImmediate(() => {
+          fastify.inject({
+            method: 'POST',
+            url: `/api/estimates/${request.params.id}/approve-finalize`,
+            headers: { authorization: request.headers.authorization || '' },
+            payload: {}
+          }).catch(err => fastify.log.warn('[approval] auto approve-finalize failed:', err.message));
+        });
+      }
+
+      return result;
     });
   });
 

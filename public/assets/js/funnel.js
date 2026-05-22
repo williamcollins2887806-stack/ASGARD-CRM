@@ -1,18 +1,18 @@
 window.AsgardFunnelPage = (function(){
   const {$, $$, esc, toast, showModal, closeModal, formatDate} = AsgardUI;
 
-  // 9 стадий воронки — 1:1 со статусами тендеров
+  // 10 стадий воронки — 1:1 со статусами тендеров (зеркало TENDER_TRANSITIONS)
   const STAGES = [
     {id: 'draft',    label: 'Черновики',           color: '#6c757d', statuses: ['Черновик']},
-    {id: 'new',      label: 'Новые',               color: '#5b8def', statuses: ['Новый']},
+    {id: 'new',      label: 'Новые',               color: '#5b8def', statuses: ['Новый', 'На анализе']},
     {id: 'calc',     label: 'На просчёте',         color: '#f39c12', statuses: ['Отправлено на просчёт']},
     {id: 'approval', label: 'Согласование',        color: '#e67e22', statuses: ['Согласование ТКП']},
-    {id: 'approved', label: 'Согласовано',          color: '#27ae60', statuses: ['ТКП согласовано']},
+    {id: 'approved', label: 'Просчёт согласован',  color: '#27ae60', statuses: ['ТКП согласовано']},
+    {id: 'kp_ready', label: 'Готово к отправке КП',color: '#c8a84e', statuses: ['Готово к отправке КП']},
     {id: 'sent',     label: 'КП отправлено',       color: '#17a2b8', statuses: ['КП отправлено']},
     {id: 'won',      label: 'Выиграли',            color: '#2ecc71', statuses: ['Выиграли']},
-    {id: 'completed',label: 'Завершено',             color: '#1abc9c', statuses: ['Завершена']},
     {id: 'lost',     label: 'Проиграли',           color: '#e74c3c', statuses: ['Проиграли']},
-    {id: 'rejected', label: 'Не подходит',          color: '#95a5a6', statuses: ['Не подходит']}
+    {id: 'rejected', label: 'Не подходит',         color: '#95a5a6', statuses: ['Не подходит']}
   ];
 
   // Transition map — загружается с сервера при инициализации

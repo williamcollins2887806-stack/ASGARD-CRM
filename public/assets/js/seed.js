@@ -41,12 +41,15 @@ window.AsgardSeed = (function(){
       tender: {
         "Черновик": "#6c757d",
         "Новый": "#5b8def",
+        "На анализе": "#9b59b6",
         "Отправлено на просчёт": "#f39c12",
         "Согласование ТКП": "#e67e22",
         "ТКП согласовано": "#27ae60",
+        "Готово к отправке КП": "#c8a84e",
         "КП отправлено": "#17a2b8",
         "Выиграли": "#2ecc71",
-        "Проиграли": "#e74c3c"
+        "Проиграли": "#e74c3c",
+        "Не подходит": "#95a5a6"
       },
       work: {
         "Новая": "#5b8def",
@@ -79,7 +82,7 @@ window.AsgardSeed = (function(){
         "note": "var(--amber)"
       }
     },
-    // Use in “Документы” module (MVP: ссылки / base64)
+    // Use in "Документы" module (MVP: ссылки / base64)
     doc_types: [
       { key:"pack", label:"Комплект документов", scope:"tender", required_on_handoff:true },
       { key:"tz", label:"ТЗ / Техническое задание", scope:"tender", required_on_handoff:false },
@@ -122,7 +125,7 @@ window.AsgardSeed = (function(){
   };
 
   const DEFAULT_REFS = {
-    tender_statuses: ["Черновик","Новый","Отправлено на просчёт","Согласование ТКП","ТКП согласовано","КП отправлено","Выиграли","Проиграли"],
+    tender_statuses: ["Черновик","Новый","На анализе","Отправлено на просчёт","Согласование ТКП","ТКП согласовано","Готово к отправке КП","КП отправлено","Выиграли","Проиграли","Не подходит"],
     work_statuses: ["Подготовка","Закупка","Сбор на складе","Мобилизация","Начало работ","Приемка","Проблема","Подписание акта","Работы сдали"],
     reject_reasons: ["Не проходим по квалификации","Цена выше конкурентов","Нет ресурсов/сроков","Не наш профиль","Другое"],
     // Справочник допусков/разрешений (можно расширять в Настройках)
@@ -1099,7 +1102,7 @@ window.AsgardSeed = (function(){
 
     const byTitle = new Map(tenders.map(x=>[x.tender_title, x]));
 
-    // Create a few estimates so “Согласование” and “Свод Расчётов” are not empty
+    // Create a few estimates so "Согласование" and "Свод Расчётов" are not empty
     const make = async (title, approval_status, version_no=1)=>{
       const t = byTitle.get(title);
       if(!t) return;

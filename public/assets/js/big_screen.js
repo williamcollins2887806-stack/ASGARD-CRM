@@ -393,10 +393,11 @@ window.AsgardBigScreen = (function(){
   function slideFunnel(d) {
     const yT = d.tenders.filter(t => String(t.year) === String(d.y) || (t.period || '').startsWith(d.y));
     const stages = [
-      { name: 'Новый', statuses: ['Новый'], color: 'var(--t2)' },
+      { name: 'Новый', statuses: ['Новый', 'На анализе'], color: 'var(--t2)' },
       { name: 'На просчёте', statuses: ['Отправлено на просчёт'], color: 'var(--info)' },
       { name: 'Согласование', statuses: ['Согласование ТКП'], color: 'var(--amber)' },
       { name: 'Согласовано', statuses: ['ТКП согласовано'], color: 'var(--ok)' },
+      { name: 'ТКП готово', statuses: ['Готово к отправке КП'], color: 'var(--gold,#c8a84e)' },
       { name: 'КП отправлено', statuses: ['КП отправлено'], color: 'var(--purple)' },
       { name: 'Выиграли', statuses: ['Выиграли'], color: 'var(--ok-t)' },
       { name: 'Проиграли', statuses: ['Проиграли'], color: 'var(--err-t)' }

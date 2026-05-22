@@ -530,13 +530,17 @@ window.AsgardTkpPage = (function() {
 
       // --- Кнопки ---
       '<div class="tkp-actions">' +
+        '<button class="tkp-btn-pdf" id="btnPreviewTkp" style="background:rgba(74,144,217,0.12);color:#4A90D9;border:1px solid rgba(74,144,217,0.3)">' +
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/></svg>' +
+          'Предпросмотр' +
+        '</button>' +
         '<button class="tkp-btn-save" id="btnSaveTkp">' +
           '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17,21 17,13 7,13 7,21"/><polyline points="7,3 7,8 15,8"/></svg>' +
-          (o.id ? 'Сохранить' : 'Создать черновик') +
+          (o.id ? 'Сохранить' : 'Создать ТКП') +
         '</button>' +
         '<button class="tkp-btn-pdf" id="btnSavePdf">' +
           '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>' +
-          'Скачать PDF' +
+          'Сохранить и скачать PDF' +
         '</button>' +
         (o.id ? '<button class="tkp-btn-send" id="btnSendTkpEmail">' +
           '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9z"/></svg>' +
@@ -863,6 +867,56 @@ window.AsgardTkpPage = (function() {
           });
         }
 
+        // Предпросмотр — генерация PDF без записи в БД
+        const btnPrev = $('#btnPreviewTkp');
+        if (btnPrev) {
+          btnPrev.addEventListener('click', async function() {
+            const body = buildSaveBody();
+            const sigCb = $('#tkpAddSignature');
+            const stCb = $('#tkpAddStamp');
+            body.with_signature = sigCb && sigCb.checked;
+            body.with_stamp = stCb && stCb.checked;
+            const token = localStorage.getItem('asgard_token');
+            btnPrev.disabled = true;
+            const originalLabel = btnPrev.innerHTML;
+            btnPrev.innerHTML = '⏳ Генерирую PDF...';
+            try {
+              const resp = await fetch('/api/tkp/preview-pdf', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                body: JSON.stringify(body)
+              });
+              if (!resp.ok) {
+                const err = await resp.json().catch(()=>({}));
+                throw new Error(err.error || 'HTTP ' + resp.status);
+              }
+              const blob = await resp.blob();
+              const url = URL.createObjectURL(blob);
+              // Открываем модалку с iframe (поверх формы), не закрывая её
+              const ov = document.createElement('div');
+              ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:10001;display:flex;flex-direction:column;padding:20px';
+              ov.innerHTML =
+                '<div style="display:flex;justify-content:space-between;align-items:center;color:#fff;margin-bottom:10px">' +
+                  '<div style="font-weight:700;font-size:16px">👁 Предпросмотр ТКП</div>' +
+                  '<div style="display:flex;gap:8px">' +
+                    '<a href="' + url + '" download="preview.pdf" class="btn ghost mini" style="color:#fff;border-color:rgba(255,255,255,.3)">⬇ Скачать</a>' +
+                    '<button class="btn ghost mini" id="prevClose" style="color:#fff;border-color:rgba(255,255,255,.3)">✕ Закрыть</button>' +
+                  '</div>' +
+                '</div>' +
+                '<iframe src="' + url + '" style="flex:1;border:0;background:#fff;border-radius:8px"></iframe>';
+              document.body.appendChild(ov);
+              const close = () => { document.body.removeChild(ov); URL.revokeObjectURL(url); };
+              ov.querySelector('#prevClose').addEventListener('click', close);
+              ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
+            } catch (ex) {
+              toast('Предпросмотр', ex.message || 'Не удалось сгенерировать', 'err');
+            } finally {
+              btnPrev.disabled = false;
+              btnPrev.innerHTML = originalLabel;
+            }
+          });
+        }
+
         // Сохранить
         const btnSave = $('#btnSaveTkp');
         if (btnSave) {
@@ -877,10 +931,16 @@ window.AsgardTkpPage = (function() {
               });
               if (resp.ok) {
                 const result = await resp.json();
-                if (!currentId) currentId = result.id || (result.item && result.item.id);
+                const newId = currentId || (result.id || (result.item && result.item.id));
+                if (!currentId) currentId = newId;
                 toast('Готово', editId ? 'ТКП обновлено' : 'ТКП создано');
                 hideModal();
                 loadList();
+                // Триггерим перерендер панелей «Готовы к ТКП» / «Готово к отправке КП»
+                // на других страницах, если они открыты под модалкой
+                window.dispatchEvent(new CustomEvent('asgard:tkp:created', {
+                  detail: { tkp_id: newId, tender_id: body.tender_id || null }
+                }));
               } else {
                 const err = await resp.json().catch(function() { return {}; });
                 toast('Ошибка', err.error || 'Не удалось сохранить (HTTP ' + resp.status + ')', 'err');

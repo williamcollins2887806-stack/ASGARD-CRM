@@ -454,6 +454,8 @@ window.AsgardPmCalcsPage = (function(){
         .dot{width:10px;height:10px;border-radius:999px; box-shadow:0 0 0 2px var(--brd) inset}
       </style>
 
+      <div id="tkp_ready_panel"></div>
+
       <div class="panel">
         <div class="help">
           Inbox руководителя проекта: здесь живут тендеры после передачи на просчёт. Статус меняет только назначенный РП.
@@ -519,6 +521,142 @@ window.AsgardPmCalcsPage = (function(){
 
     await layout(body, {title: title||"Карта Похода • Просчёты", rightBadges:[`НДС: ${core.vat_pct||22}%`]});
 
+    // ═══════════════════════════════════════════════════════════════
+    // Блок «Готовы к ТКП» — согласованные просчёты, ждут создания ТКП.
+    // PM видит только свои тендеры (backend фильтрует по responsible_pm_id).
+    // ═══════════════════════════════════════════════════════════════
+    async function renderTkpReadyPanel(){
+      const panel = $("#tkp_ready_panel");
+      if (!panel) return;
+      // Видим только PM/HEAD_PM/ADMIN — backend всё равно фильтрует, но не дёргаем зря
+      if (!['PM','HEAD_PM','ADMIN'].includes(user.role)) { panel.innerHTML = ''; return; }
+
+      let items = [];
+      try {
+        const token = localStorage.getItem('asgard_token');
+        const resp = await fetch('/api/estimates/ready-for-tkp', {
+          headers: { Authorization: 'Bearer ' + token }
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          items = data.items || [];
+        }
+      } catch(e) { /* сеть */ }
+
+      if (!items.length) { panel.innerHTML = ''; return; }
+
+      const fmtDate = AsgardUI.formatDate || (d => d ? new Date(d).toLocaleDateString('ru-RU') : '—');
+
+      const cards = items.map(function(it) {
+        const price = Number(it.total_price || 0);
+        const deadline = it.docs_deadline ? fmtDate(it.docs_deadline) : '';
+        const location = [it.object_city, it.object_name].filter(Boolean).join(', ');
+        const hasExistingTkp = Number(it.active_tkp_count || 0) > 0;
+
+        return '<div class="tkp-ready-card" data-tender-id="' + it.tender_id + '">' +
+          '<div class="tkp-rc-top">' +
+            '<div class="tkp-rc-main">' +
+              '<div class="tkp-rc-customer">' + esc(it.customer_name || '—') + '</div>' +
+              '<div class="tkp-rc-title">' + esc(it.tender_title || 'Без названия') + '</div>' +
+              (location ? '<div class="tkp-rc-loc">📍 ' + esc(location) + '</div>' : '') +
+            '</div>' +
+            '<div class="tkp-rc-meta">' +
+              (price > 0 ? '<span class="tkp-rc-badge green">' + money(price) + '</span>' : '') +
+              (it.work_type ? '<span class="tkp-rc-badge blue">' + esc(it.work_type) + '</span>' : '') +
+              (hasExistingTkp ? '<span class="tkp-rc-badge amber">ТКП ' + it.active_tkp_count + '</span>' : '') +
+              (deadline ? '<span class="tkp-rc-badge gray">📅 ' + deadline + '</span>' : '') +
+            '</div>' +
+          '</div>' +
+          '<div class="tkp-rc-actions">' +
+            '<button class="btn tkp-rc-btn-create" data-create-tkp="' + it.tender_id + '" ' +
+              'data-tender-title="' + esc(it.tender_title || '') + '" ' +
+              'data-customer="' + esc(it.customer_name || '') + '" ' +
+              'data-inn="' + esc(it.customer_inn || '') + '" ' +
+              'data-subject="' + esc((it.tender_title ? 'ТКП — ' + it.tender_title : '') + (it.work_type ? ' (' + it.work_type + ')' : '')) + '" ' +
+              'data-work-type="' + esc(it.work_type || '') + '" ' +
+              'data-object="' + esc(it.object_name || '') + '" ' +
+              'data-city="' + esc(it.object_city || '') + '" ' +
+              'data-price="' + (price || '') + '">' +
+              '⚡ Создать ТКП' +
+            '</button>' +
+            '<button class="btn ghost tkp-rc-btn-tender" data-goto-tender="' + it.tender_id + '">Тендер</button>' +
+          '</div>' +
+        '</div>';
+      }).join('');
+
+      panel.innerHTML =
+        '<style>' +
+          '.tkp-ready-wrap{background:linear-gradient(135deg,rgba(200,168,78,0.06),rgba(200,168,78,0.03));' +
+            'border:1.5px solid rgba(200,168,78,0.3);border-radius:12px;padding:16px 20px;margin-bottom:16px}' +
+          '.tkp-ready-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}' +
+          '.tkp-ready-title{font-size:14px;font-weight:700;color:var(--gold,#c8a84e);display:flex;align-items:center;gap:8px}' +
+          '.tkp-ready-count{background:rgba(200,168,78,0.2);color:var(--gold,#c8a84e);' +
+            'font-size:11px;font-weight:700;padding:3px 9px;border-radius:99px;border:1px solid rgba(200,168,78,0.4)}' +
+          '.tkp-ready-cards{display:flex;flex-direction:column;gap:8px}' +
+          '.tkp-ready-card{background:var(--bg2,#1a1a20);border:1px solid var(--brd,rgba(255,255,255,0.08));' +
+            'border-radius:10px;padding:12px 16px;display:flex;align-items:center;' +
+            'gap:16px;justify-content:space-between;transition:border-color .2s}' +
+          '.tkp-ready-card:hover{border-color:rgba(200,168,78,0.35)}' +
+          '.tkp-rc-top{display:flex;align-items:center;gap:16px;flex:1;min-width:0;flex-wrap:wrap}' +
+          '.tkp-rc-main{min-width:0;flex:1}' +
+          '.tkp-rc-customer{font-weight:700;font-size:14px;color:var(--t1,#fff);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+          '.tkp-rc-title{font-size:12px;color:var(--t2,rgba(255,255,255,0.65));margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+          '.tkp-rc-loc{font-size:11px;color:var(--t3,rgba(255,255,255,0.4));margin-top:2px}' +
+          '.tkp-rc-meta{display:flex;flex-wrap:wrap;gap:5px;align-items:center;flex-shrink:0}' +
+          '.tkp-rc-badge{font-size:11px;font-weight:600;padding:3px 8px;border-radius:6px;white-space:nowrap}' +
+          '.tkp-rc-badge.green{background:rgba(48,209,88,0.12);color:#30d158;border:1px solid rgba(48,209,88,0.25)}' +
+          '.tkp-rc-badge.blue{background:rgba(74,144,217,0.12);color:#4A90D9;border:1px solid rgba(74,144,217,0.25)}' +
+          '.tkp-rc-badge.amber{background:rgba(200,168,78,0.12);color:#c8a84e;border:1px solid rgba(200,168,78,0.25)}' +
+          '.tkp-rc-badge.gray{background:rgba(255,255,255,0.06);color:var(--t3,rgba(255,255,255,0.45));border:1px solid rgba(255,255,255,0.1)}' +
+          '.tkp-rc-actions{display:flex;gap:8px;flex-shrink:0;align-items:center}' +
+          '.tkp-rc-btn-create{background:rgba(200,168,78,0.15)!important;color:var(--gold,#c8a84e)!important;' +
+            'border:1px solid rgba(200,168,78,0.4)!important;font-weight:600!important;' +
+            'white-space:nowrap;transition:all .2s!important;padding:7px 14px!important}' +
+          '.tkp-rc-btn-create:hover{background:rgba(200,168,78,0.28)!important;border-color:rgba(200,168,78,0.7)!important;' +
+            'box-shadow:0 0 14px rgba(200,168,78,0.2)!important;transform:translateY(-1px)}' +
+        '</style>' +
+        '<div class="tkp-ready-wrap">' +
+          '<div class="tkp-ready-header">' +
+            '<div class="tkp-ready-title">⚡ Готовы к ТКП <span class="tkp-ready-count">' + items.length + '</span></div>' +
+            '<span class="help" style="font-size:11px">Просчёты согласованы директором — создайте ТКП</span>' +
+          '</div>' +
+          '<div class="tkp-ready-cards">' + cards + '</div>' +
+        '</div>';
+
+      panel.querySelectorAll('[data-create-tkp]').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          if (!window.AsgardTkpPage || !AsgardTkpPage.openNew) {
+            toast('ТКП', 'Модуль ТКП не загружен. Перейдите в раздел ТКП.', 'err');
+            return;
+          }
+          AsgardTkpPage.openNew({
+            tender_id:     Number(btn.getAttribute('data-create-tkp')) || null,
+            tender_title:  btn.getAttribute('data-tender-title') || '',
+            customer_name: btn.getAttribute('data-customer') || '',
+            customer_inn:  btn.getAttribute('data-inn') || '',
+            subject:       btn.getAttribute('data-subject') || '',
+            work_type:     btn.getAttribute('data-work-type') || '',
+            object_name:   btn.getAttribute('data-object') || '',
+            object_city:   btn.getAttribute('data-city') || '',
+            total_price:   Number(btn.getAttribute('data-price')) || 0,
+          });
+        });
+      });
+
+      panel.querySelectorAll('[data-goto-tender]').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          const tid = btn.getAttribute('data-goto-tender');
+          if (tid) location.hash = '#/tenders?id=' + tid;
+        });
+      });
+    }
+
+    // Первичный рендер + подписка на событие создания ТКП (чтобы пропадал из списка)
+    renderTkpReadyPanel();
+    window.addEventListener('asgard:tkp:created', renderTkpReadyPanel);
+
     const tb=$("#tb"), cnt=$("#cnt");
 
     function statusCell(s){
@@ -537,7 +675,7 @@ window.AsgardPmCalcsPage = (function(){
         ${isDir ? `<td>${esc(pmName)}</td>` : ``}
         <td>${statusCell(t.tender_status)}</td>
         <td>${ds} → ${de}</td>
-        <td>${t.tender_price!=null?money(t.tender_price):"—"}</td>
+        <td>${(function(){var n=t.tender_price!=null?'<div style="font-size:11px"><span style="font-size:10px;color:var(--t3)">НМЦ</span> '+money(t.tender_price)+'</div>':'<div style="color:var(--t3)">—</div>';var s=t.submission_price!=null?'<div style="font-size:11px;margin-top:2px"><span style="font-size:10px;color:#4cd964">Подача</span> '+money(t.submission_price)+'</div>':'';return n+s;}())}</td>
         <td>
           <div class="row" style="gap:8px; flex-wrap:wrap">
             <a class="btn ghost" style="padding:8px 12px" href="#/gantt-calcs">Гантт (полный)</a>
@@ -597,7 +735,7 @@ window.AsgardPmCalcsPage = (function(){
     // CRSelect init — filters
     const _periodOpts = [{ value: '', label: 'Все' }];
     { const _now = new Date(); for(let i=0;i<24;i++){ const d=new Date(_now.getFullYear(),_now.getMonth()-i,1); const val=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; _periodOpts.push({ value: val, label: d.toLocaleDateString('ru-RU',{month:'long',year:'numeric'}) }); } }
-    $('#f_period_w')?.appendChild(CRSelect.create({ id: 'f_period', options: _periodOpts, value: ymNow(), onChange: apply }));
+    $('#f_period_w')?.appendChild(CRSelect.create({ id: 'f_period', options: _periodOpts, value: '', onChange: apply }));
     $('#f_status_w')?.appendChild(CRSelect.create({ id: 'f_status', options: [{ value: '', label: 'Все' }, ...refs.tender_statuses.filter(s=>s!=="Новый").map(s=>({ value: s, label: s }))], onChange: apply }));
     if(isDir) $('#f_pm_w')?.appendChild(CRSelect.create({ id: 'f_pm', options: [{ value: '', label: 'Все' }, ...pms.map(p=>({ value: String(p.id), label: p.name }))], searchable: true, onChange: apply }));
 
@@ -611,7 +749,7 @@ window.AsgardPmCalcsPage = (function(){
 
     $("#btnReset").addEventListener("click", ()=>{
       $("#f_q").value="";
-      CRSelect.setValue('f_period', ymNow());
+      CRSelect.setValue('f_period', '');
       CRSelect.setValue('f_status', '');
       $("#f_refused").checked=false;
       $("#f_allperiod").checked=false;
@@ -734,7 +872,8 @@ window.AsgardPmCalcsPage = (function(){
             <div><label>Период</label><input autocomplete="off" disabled value="${esc(tender.period||"")}"/></div>
             <div><label>Заказчик</label><input autocomplete="off" disabled value="${esc(tender.customer_name||"")}"/></div>
             <div style="grid-column:1/-1"><label>Тендер</label><input autocomplete="off" disabled value="${esc(tender.tender_title||"")}"/></div>
-            <div><label>Сумма</label><input autocomplete="off" disabled value="${tender.tender_price!=null?money(tender.tender_price):""}"/></div>
+            <div><label>НМЦ без НДС</label><input autocomplete="off" disabled value="${tender.tender_price!=null?money(tender.tender_price):'—'}"/></div>
+            <div><label style="color:#4cd964">Цена подачи без НДС</label><input autocomplete="off" disabled value="${tender.submission_price!=null?money(tender.submission_price):'—'}" style="color:#4cd964"/></div>
             <div><label>Сроки (план)</label><input autocomplete="off" disabled value="${esc(tender.work_start_plan||"")} → ${esc(tender.work_end_plan||"")}"/></div>
             <div><label>Документы</label><div style="padding-top:6px">${docs}</div></div>
             <div style="grid-column:1/-1"><label>Комментарий ТО</label><input autocomplete="off" disabled value="${esc(tender.tender_comment_to||"")}"/></div>
