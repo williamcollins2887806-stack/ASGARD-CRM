@@ -2086,18 +2086,65 @@ ${analogsSummary}
       const collectorArg = workId ? workId : { tenderId };
       const ctx = await collector.collectAll(db, collectorArg, (event) => sendEvent(event));
 
-      // ── Фаза 2: Claude анализирует и считает ──
-      sendEvent({ type: 'progress', step: 'ai_thinking', message: '🧮 Claude Sonnet анализирует данные...' });
+      // ── Фаза 2: Claude анализирует и считает (AP6: thinking + web search + file PDF) ──
+      sendEvent({ type: 'progress', step: 'ai_thinking', message: '🧠 Мимир глубоко анализирует данные (verbosity=max)...' });
 
       const dataText = serializeContext(ctx);
       const systemPrompt = getSystemPrompt();
+
+      // AP6: Собираем content blocks для user message — текст + PDF/DOCX как file блоки
+      const userContent = [];
+
+      // 1. Документы (PDF/DOCX/XLSX) — file блоки через routerai file-parser plugin
+      const fileBlocks = [];
+      const FILE_BASE_URL = process.env.PUBLIC_FILE_BASE_URL || 'https://asgard-crm.ru';
+      for (const doc of ctx.documents) {
+        if (doc.has_file_block && doc.filename) {
+          // routerai требует data URL или публичный URL.
+          // Используем base64 для приватных файлов на сервере.
+          try {
+            const docPath = path.resolve(process.env.UPLOAD_DIR || './uploads', doc.filename);
+            if (fs.existsSync(docPath)) {
+              const buf = fs.readFileSync(docPath);
+              // Лимит 30МБ на файл для безопасности (routerai/mistral-ocr ограничения)
+              if (buf.length < 30 * 1024 * 1024) {
+                const ext = String(doc.name || '').split('.').pop().toLowerCase();
+                const mimeTypes = {
+                  pdf: 'application/pdf',
+                  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                  xls: 'application/vnd.ms-excel'
+                };
+                const mime = mimeTypes[ext] || doc.mime || 'application/octet-stream';
+                userContent.push({
+                  type: 'file',
+                  file: {
+                    filename: doc.name,
+                    file_data: `data:${mime};base64,${buf.toString('base64')}`
+                  }
+                });
+                fileBlocks.push(doc.name);
+              }
+            }
+          } catch (e) { console.warn(`[AP6] Не удалось приложить файл ${doc.name}: ${e.message}`); }
+        }
+      }
+      if (fileBlocks.length > 0) {
+        console.log(`[AP6] Приложено ${fileBlocks.length} документов как file blocks: ${fileBlocks.join(', ')}`);
+      }
+
+      // 2. Текстовая часть с данными
+      userContent.push({
+        type: 'text',
+        text: `Составь просчёт для ${workId ? 'работы #' + workId : 'тендера #' + tenderId}.\n\n${dataText}`
+      });
 
       // Heartbeat каждые 5 сек пока Claude думает
       let thinkingSec = 0;
       const heartbeat = setInterval(() => {
         thinkingSec += 5;
         try {
-          sendEvent({ type: 'heartbeat', seconds: thinkingSec, message: `🧮 Мимир анализируе��... ${thinkingSec} сек` });
+          sendEvent({ type: 'heartbeat', seconds: thinkingSec, message: `🧠 Мимир думает и ищет в интернете... ${thinkingSec} сек` });
         } catch {}
       }, 5000);
 
@@ -2105,9 +2152,31 @@ ${analogsSummary}
       try {
         aiResult = await aiProvider.complete({
           system: systemPrompt,
-          messages: [{ role: 'user', content: `Составь просчёт для ${workId ? 'работы #' + workId : 'тендера #' + tenderId}.\n\n${dataText}` }],
-          maxTokens: 16000,
-          temperature: 0.2
+          messages: [{ role: 'user', content: userContent }],
+          maxTokens: 32000,           // AP6: расширенный output + thinking budget
+          temperature: 0.4,            // AP6: глубже анализ в risk/comment
+          verbosity: 'max',            // AP6: extended thinking (Anthropic output_config.effort=max)
+          plugins: [
+            // Веб-поиск только на российских сайтах
+            {
+              id: 'web',
+              engine: 'native',
+              max_results: 8,
+              search_prompt: 'Ищи актуальные цены 2026 года на российских сайтах поставщиков, тендерных площадках и РЖД/Aviasales',
+              include_domains: [
+                'rzd.ru', 'aviasales.ru', 'tutu.ru', 'yandex.ru',
+                'pulscen.ru', 'tiu.ru', 'tn.ru',
+                'b2b-center.ru', 'etp-ets.ru', 'zakupki.gov.ru',
+                'taifun-vakuum.ru', 'practick.ru', 'gidromashservice.ru',
+                'wildberries.ru', 'ozon.ru', 'avito.ru'
+              ]
+            },
+            // PDF/DOCX парсинг через mistral-ocr (работает и для сканов)
+            {
+              id: 'file-parser',
+              pdf: { engine: 'mistral-ocr' }
+            }
+          ]
         });
       } finally {
         clearInterval(heartbeat);

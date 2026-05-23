@@ -138,7 +138,8 @@ async function collectDocuments(db, workId, tenderId) {
   if (tenderId) { params.push(tenderId); conditions.push(`tender_id = $${params.length}`); }
   if (!conditions.length) return [];
 
-  params.push(10);
+  // AP6: лимит поднят до 50, документы парсятся через routerai file-parser plugin
+  params.push(50);
   const res = await db.query(
     `SELECT id, original_name, mime_type, size, filename, type
      FROM documents WHERE ${conditions.join(' OR ')}
@@ -146,14 +147,29 @@ async function collectDocuments(db, workId, tenderId) {
 
   const docs = [];
   for (const doc of res.rows) {
-    const content = await parseDocumentContent(doc);
+    const ext = String(doc.original_name || doc.filename || '').toLowerCase().split('.').pop();
+    const isPdfOrOffice = ['pdf', 'docx', 'xls', 'xlsx'].includes(ext);
+
+    // AP6: для PDF/DOCX/XLSX мы отправляем file блок в LLM (routerai сам распарсит через mistral-ocr).
+    // Для TXT/CSV/RTF — оставляем fallback на parseDocumentContent.
+    let content = null;
+    let has_file_block = false;
+
+    if (isPdfOrOffice) {
+      has_file_block = true; // обработается в routes/mimir.js → передадим как content block
+    } else {
+      content = await parseDocumentContent(doc);
+    }
+
     docs.push({
       id: doc.id,
       name: doc.original_name || doc.filename,
+      filename: doc.filename, // для построения file URL
       type: doc.type,
       mime: doc.mime_type,
       size_kb: Math.round((doc.size || 0) / 1024),
-      content: content || null
+      content: content || null,
+      has_file_block
     });
   }
   return docs;

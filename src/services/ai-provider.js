@@ -207,7 +207,7 @@ async function callAnthropic({ system, messages, maxTokens, temperature, stream 
 /**
  * Вызов OpenAI API
  */
-async function callOpenAI({ system, messages, maxTokens, temperature, stream = false, model = null, tools = null }) {
+async function callOpenAI({ system, messages, maxTokens, temperature, stream = false, model = null, tools = null, plugins = null, verbosity = null, responseFormat = null }) {
   if (!OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY not configured');
   }
@@ -236,6 +236,12 @@ async function callOpenAI({ system, messages, maxTokens, temperature, stream = f
   };
   // AP5: tool-calling support
   if (tools && tools.length > 0) body.tools = tools;
+  // AP6: routerai plugins (web search, file-parser)
+  if (plugins && plugins.length > 0) body.plugins = plugins;
+  // AP6: verbosity (для Anthropic моделей через routerai = output_config.effort, "max" = extended thinking)
+  if (verbosity) body.verbosity = verbosity;
+  // AP6: structured outputs / json_schema
+  if (responseFormat) body.response_format = responseFormat;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), stream ? AI_TIMEOUT_MS * 3 : AI_TIMEOUT_MS);
@@ -276,6 +282,7 @@ async function callOpenAI({ system, messages, maxTokens, temperature, stream = f
   return {
     text: choice.message?.content || '',
     tool_calls: choice.message?.tool_calls || null, // AP5: tool-calling
+    annotations: choice.message?.annotations || null, // AP6: url_citation от web search
     usage: {
       inputTokens: data.usage?.prompt_tokens || 0,
       outputTokens: data.usage?.completion_tokens || 0
@@ -296,7 +303,7 @@ async function callOpenAI({ system, messages, maxTokens, temperature, stream = f
  * @param {number} options.temperature - Температура (0-1)
  * @returns {Promise<{text: string, usage: {inputTokens: number, outputTokens: number}, model: string}>}
  */
-async function complete({ system, messages, maxTokens, temperature, tools }) {
+async function complete({ system, messages, maxTokens, temperature, tools, plugins, verbosity, responseFormat }) {
   await _loadKeysFromDB();
   let provider = AI_PROVIDER;
   const startTime = Date.now();
@@ -331,7 +338,7 @@ async function complete({ system, messages, maxTokens, temperature, tools }) {
       result.durationMs = Date.now() - startTime;
       return result;
     } else if (provider === 'openai') {
-      const result = await callOpenAI({ system, messages, maxTokens, temperature, tools });
+      const result = await callOpenAI({ system, messages, maxTokens, temperature, tools, plugins, verbosity, responseFormat });
       result.provider = 'openai';
       result.durationMs = Date.now() - startTime;
       return result;
@@ -356,7 +363,7 @@ async function complete({ system, messages, maxTokens, temperature, tools }) {
         if (fallbackProvider === 'anthropic') {
           result = await callAnthropic({ system, messages, maxTokens, temperature });
         } else {
-          result = await callOpenAI({ system, messages, maxTokens, temperature });
+          result = await callOpenAI({ system, messages, maxTokens, temperature, tools, plugins, verbosity, responseFormat });
         }
         result.provider = fallbackProvider;
         result.fallback = true;

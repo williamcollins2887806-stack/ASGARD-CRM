@@ -1497,8 +1497,47 @@ function validateAndRecomputeMath(ai, settings, ctx = null) {
   let totalWithMargin = r2(totalCost * markup);
   let marginPct = totalCost > 0 ? r2(((totalWithMargin - totalCost) / totalCost) * 100) : 0;
 
-  // AP5: Markup enforcement ОТКЛЮЧЁН — Claude Sonnet сам вписывается в estimated_sum.
+  // AP6: ЖЁСТКОЕ ТРЕБОВАНИЕ ДИРЕКТОРА — маржа ≥ 100% от себестоимости (markup ≥ 2.0).
+  // Если AI вернул меньше — поднимаем до 2.0 + critical warning.
+  const MIN_MARKUP = 2.0;
   let markupOverflowFix = null;
+  if (markup < MIN_MARKUP) {
+    const originalMarkup = markup;
+    markup = MIN_MARKUP;
+    totalWithMargin = r2(totalCost * markup);
+    marginPct = 100;
+    markupOverflowFix = {
+      type: 'min_margin_enforcement',
+      original_markup: originalMarkup,
+      adjusted_markup: MIN_MARKUP,
+      reason: 'Маржа была ниже 100% (требование директора). Автоматически поднято до минимума.'
+    };
+    console.warn(`[AP6] Markup enforcement: ${originalMarkup} → ${MIN_MARKUP} (директор требует ≥100% маржу)`);
+
+    // Добавим critical warning в analysis
+    if (!ai.analysis) ai.analysis = {};
+    if (!Array.isArray(ai.analysis.warnings)) ai.analysis.warnings = [];
+    ai.analysis.warnings.unshift({
+      level: 'critical',
+      title: 'Маржа была занижена — автоматически поднята',
+      text: `Мимир вернул markup=${originalMarkup} (маржа ${r2((originalMarkup - 1) * 100)}%). Это ниже минимума 100% по требованию директора. Сервер автоматически поднял до ×${MIN_MARKUP} (маржа 100%). Если бюджет тендера не позволяет — рассмотреть отказ.`
+    });
+  }
+
+  // AP6: Если бюджет тендера ниже минимальной маржи — предупреждение (но НЕ снижаем markup)
+  if (ctx?.tender?.estimated_sum) {
+    const estimatedSum = Number(ctx.tender.estimated_sum);
+    const withVat = totalWithMargin * (1 + Number(settings.vat_pct) / 100);
+    if (withVat > estimatedSum) {
+      if (!ai.analysis) ai.analysis = {};
+      if (!Array.isArray(ai.analysis.warnings)) ai.analysis.warnings = [];
+      ai.analysis.warnings.unshift({
+        level: 'critical',
+        title: 'Бюджет тендера ниже минимальной маржи',
+        text: `При маржe ≥100% цена с НДС = ${Math.round(withVat).toLocaleString('ru-RU')}₽, а бюджет тендера ${Math.round(estimatedSum).toLocaleString('ru-RU')}₽. По требованию директора маржу НЕ снижаем — рассмотреть отказ от тендера или согласовать повышение бюджета.`
+      });
+    }
+  }
 
   // НДС
   const totalWithVat = r2(totalWithMargin * (1 + Number(settings.vat_pct) / 100));
