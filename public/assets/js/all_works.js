@@ -89,7 +89,7 @@ window.AsgardAllWorksPage=(function(){
         const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
         periodOpts.push({ value: v, label: d.toLocaleString('ru-RU', { month: 'long', year: 'numeric' }) });
       }
-      $('#f_period_w').appendChild(CRSelect.create({ id: 'f_period', options: periodOpts, value: ymNow(), onChange: () => apply() }));
+      $('#f_period_w').appendChild(CRSelect.create({ id: 'f_period', options: periodOpts, value: '', onChange: () => apply() }));
     }
     { const pmIds = new Set(works.map(w => w.pm_id).filter(Boolean));
       const pmUsers = users.filter(u => pmIds.has(u.id));

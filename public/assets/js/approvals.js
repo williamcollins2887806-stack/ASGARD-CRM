@@ -298,7 +298,7 @@ window.AsgardApprovalsPage = (function(){
         const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
         periodOpts.push({ value: v, label: d.toLocaleString('ru-RU', { month: 'long', year: 'numeric' }) });
       }
-      $('#f_period_w').appendChild(CRSelect.create({ id: 'f_period', options: periodOpts, value: ymNow(), onChange: () => listEstimates() }));
+      $('#f_period_w').appendChild(CRSelect.create({ id: 'f_period', options: periodOpts, value: '', onChange: () => listEstimates() }));
     }
     $('#f_mode_w').appendChild(CRSelect.create({ id: 'f_mode', options: [
       { value: 'sent', label: 'Только на согласовании' },
@@ -383,7 +383,7 @@ window.AsgardApprovalsPage = (function(){
     $("#f_q").addEventListener("input", listEstimates);
 
     $("#btnReset").addEventListener("click", ()=>{
-      CRSelect.setValue('f_period', ymNow());
+      CRSelect.setValue('f_period', '');
       if($("#f_q")) $("#f_q").value="";
       CRSelect.setValue('f_mode', 'sent');
       listEstimates();

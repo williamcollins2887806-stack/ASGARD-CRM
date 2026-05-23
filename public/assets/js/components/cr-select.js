@@ -86,13 +86,20 @@ const CRSelect = (() => {
     inst.focusedIdx = -1;
     inst.root.classList.add('cr-select--open');
 
-    // Auto-detect dropup
+    // Auto-detect dropup and right-overflow
     const rect = inst.root.getBoundingClientRect();
     const spaceBelow = window.innerHeight - rect.bottom;
     if (spaceBelow < 260 && rect.top > spaceBelow) {
       inst.root.classList.add('cr-select--dropup');
     } else {
       inst.root.classList.remove('cr-select--dropup');
+    }
+    // Align right if dropdown would overflow viewport right edge
+    const dropWidth = Math.max(rect.width, 260);
+    if (rect.left + dropWidth > window.innerWidth - 8) {
+      inst.root.classList.add('cr-select--align-right');
+    } else {
+      inst.root.classList.remove('cr-select--align-right');
     }
 
     // Focus search if visible
@@ -112,7 +119,7 @@ const CRSelect = (() => {
   function _close(inst) {
     if (!inst.isOpen) return;
     inst.isOpen = false;
-    inst.root.classList.remove('cr-select--open', 'cr-select--dropup');
+    inst.root.classList.remove('cr-select--open', 'cr-select--dropup', 'cr-select--align-right');
     inst.focusedIdx = -1;
     _clearFocus(inst);
   }

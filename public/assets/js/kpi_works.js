@@ -537,7 +537,7 @@ window.AsgardKpiWorksPage=(function(){
       id:'f_year', fullWidth:true, options:yearOpts, value:String(yNow), onChange:apply
     }));
     $("#crw_f_month")?.appendChild(CRSelect.create({
-      id:'f_month', fullWidth:true, options:periodOpts, value:ymNow, onChange:apply
+      id:'f_month', fullWidth:true, options:periodOpts, value:'', onChange:apply
     }));
     $("#crw_f_pm")?.appendChild(CRSelect.create({
       id:'f_pm', fullWidth:true, clearable:true, placeholder:'Все', options:pmOpts, value:'', onChange:apply

@@ -82,7 +82,8 @@
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
-  right: 0;
+  right: auto;
+  min-width: max(100%, 260px);
   z-index: 1100;
   background: var(--bg2);
   border: 1px solid var(--bg4);
@@ -110,6 +111,12 @@
 
 .cr-select--dropup.cr-select--open .cr-select__dropdown {
   transform: translateY(0);
+}
+
+/* Align right when near right edge of viewport */
+.cr-select--align-right .cr-select__dropdown {
+  left: auto;
+  right: 0;
 }
 
 /* Search inside dropdown */
@@ -334,17 +341,19 @@
 .cr-emp-picker__overlay {
   position: fixed;
   inset: 0;
-  z-index: 1200;
+  z-index: 9000;
   background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.15s;
 }
 
 .cr-emp-picker__overlay--visible {
   opacity: 1;
+  pointer-events: auto;
 }
 
 /* Modal */

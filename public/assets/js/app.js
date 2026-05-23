@@ -296,6 +296,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/backup",l:"Резервные копии",d:"Экспорт/импорт базы",roles:["ADMIN"],i:"backup",p:"backup",g:"system"},
     {r:"/sync",l:"PostgreSQL Sync",d:"Синхронизация с сервером",roles:["ADMIN"],i:"backup",p:"sync",g:"system"},
     {r:"/diag",l:"Диагностика",d:"Версия, база, self-test",roles:["ADMIN"],i:"diag",p:"diag",g:"system"},
+    {r:"/system-panel",l:"Панель сервера",d:"Сервер, логи, Мимир",roles:["ADMIN"],i:"server",p:"system_panel",g:"system"},
 
     // M15: Аналитика для руководителей отделов
     {r:"/to-analytics",l:"Хроники Тендерного Отдела",d:"KPI тендерных специалистов",roles:["ADMIN","HEAD_TO",...DIRECTOR_ROLES],i:"kpiworks",p:"to_analytics",g:"analytics"},
@@ -407,6 +408,7 @@ console.log('[ASGARD] Global period functions loaded');
       'proxies':'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
       'requests':'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>',
       'kpiworks':'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
+      'server':'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>',
     };
     return icons[name] || '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>';
   }
@@ -563,7 +565,7 @@ try{
     // ═══════════════════════════════════════════════════════════════
     // MOBILE V2 (LEGACY) — полностью отдельный UI при ≤768px
     // ═══════════════════════════════════════════════════════════════
-    const mobileV2Routes = new Set(['/welcome','/login','/register','/home','/dashboard','/my-dashboard','/big-screen','/engineer-dashboard','/pre-tenders','/funnel','/tenders','/customers','/customer','/tkp','/calculator','/pm-calcs','/approvals','/bonus-approval','/pm-works','/all-works','/all-estimates','/gantt','/gantt-calcs','/gantt-works','/gantt-objects','/kanban','/tasks','/tasks-admin','/pm-consents','/finances','/invoices','/acts','/buh-registry','/office-expenses','/cash','/cash-admin','/payroll','/payroll-sheet','/payroll-grid','/self-employed','/one-time-pay','/pass-requests','/procurement','/assembly','/warehouse','/my-equipment','/correspondence','/contracts','/seals','/proxies','/personnel','/employee','/hr-requests','/collections','/permits','/permit-applications','/permit-application-form','/training','/office-schedule','/workers-schedule','/hr-rating','/travel','/birthdays','/messenger','/chat','/mail','/my-mail','/mailbox','/alerts','/meetings','/telegram','/telephony','/mail-settings','/integrations','/mango','/kpi-works','/kpi-money','/to-analytics','/pm-analytics','/object-map','/calendar','/settings','/backup','/sync','/diag','/more','/user-requests','/reminders','/inbox-applications','/mimir','/test','/test-table']);
+    const mobileV2Routes = new Set(['/welcome','/login','/register','/home','/dashboard','/my-dashboard','/big-screen','/engineer-dashboard','/pre-tenders','/funnel','/tenders','/customers','/customer','/tkp','/calculator','/pm-calcs','/approvals','/bonus-approval','/pm-works','/all-works','/all-estimates','/gantt','/gantt-calcs','/gantt-works','/gantt-objects','/kanban','/tasks','/tasks-admin','/pm-consents','/finances','/invoices','/acts','/buh-registry','/office-expenses','/cash','/cash-admin','/payroll','/payroll-sheet','/payroll-grid','/self-employed','/one-time-pay','/pass-requests','/procurement','/assembly','/warehouse','/my-equipment','/correspondence','/contracts','/seals','/proxies','/personnel','/employee','/hr-requests','/collections','/permits','/permit-applications','/permit-application-form','/training','/office-schedule','/workers-schedule','/hr-rating','/travel','/birthdays','/messenger','/chat','/mail','/my-mail','/mailbox','/alerts','/meetings','/telegram','/telephony','/mail-settings','/integrations','/mango','/kpi-works','/kpi-money','/to-analytics','/pm-analytics','/object-map','/calendar','/settings','/backup','/sync','/diag','/system-panel','/more','/user-requests','/reminders','/inbox-applications','/mimir','/test','/test-table']);
     if (MOBILE_V2_ENABLED && _isMobile && window.App && window.M && window.DS && mobileV2Routes.has(cur)) {
       try { if (window.AsgardSessionGuard) AsgardSessionGuard.destroy(); } catch(e) {}
       window.removeEventListener('hashchange', window.__ASG_MOBILE_HASH__);
@@ -2083,6 +2085,7 @@ var _setupPinKeypad = null;
     AsgardRouter.add("/big-screen", ()=>AsgardBigScreen.render({layout, title:"Big Screen"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES]});
     AsgardRouter.add("/backup", ()=>AsgardBackupPage.render({layout, title:"Камень Хроник • Резерв"}), {auth:true, roles:["ADMIN"]});
   AsgardRouter.add("/diag", ()=>AsgardDiagPage.render({layout, title:"Диагностика"}), {auth:true, roles:["ADMIN"]});
+  AsgardRouter.add("/system-panel", ()=>AsgardSystemPanel.render({layout, title:"Панель сервера"}), {auth:true, roles:["ADMIN"]});
     AsgardRouter.add("/alerts", ()=>AsgardAlertsPage.render({layout, title:"Уведомления"}), {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/personnel", () => {
       AsgardPersonnelPage.render({layout, title:"Дружина • Персонал"});

@@ -839,7 +839,7 @@ window.AsgardPmWorksPage=(function(){
     // CRSelect init — filters
     const _pOpts = [{ value: '', label: 'Все' }];
     { const _now = new Date(); for(let i=0;i<24;i++){ const d=new Date(_now.getFullYear(),_now.getMonth()-i,1); const val=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; _pOpts.push({ value: val, label: d.toLocaleDateString('ru-RU',{month:'long',year:'numeric'}) }); } }
-    $('#f_period_w')?.appendChild(CRSelect.create({ id: 'f_period', options: _pOpts, value: ymNow(), onChange: apply }));
+    $('#f_period_w')?.appendChild(CRSelect.create({ id: 'f_period', options: _pOpts, value: '', onChange: apply }));
     $('#f_status_w')?.appendChild(CRSelect.create({ id: 'f_status', options: [{ value: '', label: 'Все' }, ...(refs.work_statuses||[]).map(s=>({ value: s, label: s }))], onChange: apply }));
 
     apply();

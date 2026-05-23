@@ -123,7 +123,7 @@ window.AsgardHrRequestsPage=(function(){
     const body = `
       ${window.__ASG_SHARED_TABLE_CSS__||""}
       <div class="panel">
-        <div class="help">«Казарма Дружины • Персонал» — запросы на людей по работам. Девиз: “Дружина сильна, когда строем управляют руны.”</div>
+        <div class="help">«Казарма Дружины • Персонал» — запросы на людей по работам. Девиз: "Дружина сильна, когда строем управляют руны."</div>
         <hr class="hr"/>
         <div class="tools">
           <div class="field"><label>Период</label><div id="f_period_w"></div></div>
@@ -159,7 +159,7 @@ window.AsgardHrRequestsPage=(function(){
         const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
         periodOpts.push({ value: v, label: d.toLocaleString('ru-RU', { month: 'long', year: 'numeric' }) });
       }
-      $('#f_period_w').appendChild(CRSelect.create({ id: 'f_period', options: periodOpts, value: ymNow(), onChange: () => { currentPage=1; load(); } }));
+      $('#f_period_w').appendChild(CRSelect.create({ id: 'f_period', options: periodOpts, value: '', onChange: () => { currentPage=1; load(); } }));
     }
     $('#f_status_w').appendChild(CRSelect.create({ id: 'f_status', options: [{ value: '', label: 'Все' }, { value: 'sent', label: 'Отправлен' }, { value: 'answered', label: 'Ответ HR' }, { value: 'approved', label: 'Согласован' }, { value: 'rework', label: 'Доработка' }], onChange: () => { currentPage=1; load(); } }));
     $('#f_pm_w').appendChild(CRSelect.create({ id: 'f_pm', options: [{ value: '', label: 'Все' }, ...users.filter(u => u.role==='PM' || (Array.isArray(u.roles) && u.roles.includes('PM'))).map(p => ({ value: String(p.id), label: p.name }))], onChange: () => { currentPage=1; load(); } }));

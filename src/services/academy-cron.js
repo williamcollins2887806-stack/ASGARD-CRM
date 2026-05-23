@@ -335,16 +335,15 @@ async function generateDailyFact(targetDate) {
   const avoidPrompt = recentTitles ? `\n\nИзбегай этих недавних тем:\n${recentTitles}` : '';
 
   const response = await aiProvider.complete({
-    model: 'gpt-4o-mini',
+    system: FACT_PROMPT + avoidPrompt,
     messages: [
-      { role: 'system', content: FACT_PROMPT + avoidPrompt },
       { role: 'user', content: `Сгенерируй факт на ${today}` }
     ],
     temperature: 0.9,
-    max_tokens: 300,
+    maxTokens: 600,
   });
 
-  let text = response.choices?.[0]?.message?.content?.trim() || '';
+  let text = (response.text || '').trim();
   text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 
   const fact = JSON.parse(text);
@@ -390,59 +389,39 @@ async function getNextCurriculumEntry() {
   return { entry: CURRICULUM_48[idx], nextWeek };
 }
 
-const LESSON_BLOCKS_FORMAT = `
-Структура блоков (массив JSON) — используй 14-18 блоков для глубокого урока:
-
-1.  {"type":"cover","icon":"emoji","title":"...","subtitle":"..."}
-2.  {"type":"intro","text":"вводный абзац — зачем это важно и что будет в уроке"}
-3.  {"type":"text_block","title":"...","text":"подробный текст 3-5 предложений"}
-4.  {"type":"icon_grid","title":"...","items":[{"icon":"emoji","label":"...","desc":"подробное описание"},...]} — 4-6 элементов
-5.  {"type":"warning","level":"danger|warning","text":"конкретное предупреждение с последствиями"}
-6.  {"type":"steps","title":"...","items":["подробный шаг 1","подробный шаг 2",...]} — минимум 5 шагов
-7.  {"type":"text_block","title":"...","text":"следующий раздел темы"}
-8.  {"type":"fact_card","icon":"emoji","text":"интересный факт или реальный случай из практики"}
-9.  {"type":"icon_grid","title":"...","items":[...]} — следующий блок данных
-10. {"type":"text_block","title":"...","text":"ещё один раздел"}
-11. {"type":"warning","level":"warning","text":"важное напоминание или частая ошибка"}
-12. {"type":"steps","title":"Алгоритм действий","items":["шаг 1",...]}
-13. {"type":"text_block","title":"...","text":"нормативная база или дополнительная информация"}
-14. {"type":"fact_card","icon":"emoji","text":"практический совет или мнемоника для запоминания"}
-
-Чередуй типы для визуального разнообразия. Начинай с cover + intro, заканчивай fact_card.
-Каждый текстовый блок должен содержать реальную, практически полезную информацию.
-`;
-
 const LESSON_SYSTEM_PROMPT = `Ты — Мимир, хранитель мудрости для рабочих нефтегазовых и строительных компаний.
-Создай ГЛУБОКИЙ образовательный урок (Руну) для рабочих. Урок должен занимать 20-30 минут внимательного изучения.
+Создай образовательный урок (Руну) для рабочих. Урок должен занимать 20-25 минут изучения.
 
-ТЕМА УРОКА задана пользователем. Раскрой её максимально полно:
-- Все ключевые понятия с объяснениями
-- Реальные цифры, нормы, ГОСТы, СП, РД (российская нормативная база)
+ТЕМА УРОКА задана пользователем. Раскрой её полно и практично:
+- Ключевые понятия с объяснениями
+- Реальные цифры, нормы, ГОСТы, СП (российская нормативная база)
 - Практические алгоритмы действий
 - Типичные ошибки и их последствия
-- Реальные случаи из промышленной практики
-- Мнемоники и приёмы для запоминания
 
-Тон: уважительный, по-деловому. Рабочий — профессионал, не школьник.
+Тон: уважительный, по-деловому. Рабочий — профессионал.
 Язык: русский, понятный без профессионального образования, но с правильными терминами.
 
-${LESSON_BLOCKS_FORMAT}
+Структура блоков (10-13 блоков):
+{"type":"cover","icon":"emoji","title":"...","subtitle":"..."}
+{"type":"intro","text":"вводный абзац"}
+{"type":"text_block","title":"...","text":"3-4 предложения"}
+{"type":"icon_grid","title":"...","items":[{"icon":"emoji","label":"...","desc":"..."},...]} 4-5 элементов
+{"type":"warning","level":"danger|warning","text":"предупреждение с последствиями"}
+{"type":"steps","title":"...","items":["шаг 1","шаг 2",...]} 4-6 шагов
+{"type":"fact_card","icon":"emoji","text":"факт или реальный случай из практики"}
 
-Для испытания создай 15-20 вопросов:
-- 6-8 вопросов типа 'choice' (4 варианта ответа, только один правильный)
-- 3-4 вопроса типа 'truefalse'
-- 4-6 вопросов типа 'scenario' (разбор конкретной рабочей ситуации)
-- Проходной балл 80%
-- Каждый вопрос должен проверять реальное понимание, не зубрёжку
-- Каждый вопрос ОБЯЗАТЕЛЬНО должен иметь объяснение правильного ответа (2-3 предложения)
+Чередуй типы. Начинай с cover + intro, заканчивай fact_card.
+
+Для теста: 10 вопросов (5 choice, 2 truefalse, 3 scenario), проходной балл 80%.
+Каждый вопрос ОБЯЗАТЕЛЬНО имеет correct_explanation (2-3 предложения).
 
 Верни ТОЛЬКО JSON без markdown:
 {
   "saga": "название раздела (2-4 слова)",
   "title": "название Руны (4-7 слов)",
   "cover_icon": "emoji",
-  "cover_color": "#hex цвет фона обложки (тёмный, тематический)",
-  "estimated_minutes": число (20-30),
+  "cover_color": "#hex цвет фона обложки (тёмный)",
+  "estimated_minutes": 25,
   "is_mandatory": true или false,
   "tags": ["тег1","тег2","тег3"],
   "blocks": [...],
@@ -457,7 +436,7 @@ ${LESSON_BLOCKS_FORMAT}
         {"id":3,"text":"...","is_correct":false},
         {"id":4,"text":"...","is_correct":false}
       ],
-      "correct_explanation": "Подробное объяснение почему этот ответ правильный (2-3 предложения)"
+      "correct_explanation": "Объяснение правильного ответа (2-3 предложения)"
     }
   ]
 }`;
@@ -508,16 +487,15 @@ async function generateWeeklyLesson() {
   console.log(`[AcademyCron] Generating lesson for week ${nextWeek}: "${curriculumEntry.saga}"...`);
 
   const response = await aiProvider.complete({
-    model: 'gpt-4o',
+    system: LESSON_SYSTEM_PROMPT + avoidNote,
     messages: [
-      { role: 'system', content: LESSON_SYSTEM_PROMPT + avoidNote },
       { role: 'user', content: `Создай Руну для недели ${nextWeek}.\n\n${topicInfo}` }
     ],
     temperature: 0.75,
-    max_tokens: 8000,
+    maxTokens: 8000,
   });
 
-  let text = response.choices?.[0]?.message?.content?.trim() || '';
+  let text = (response.text || '').trim();
   text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 
   const lesson = JSON.parse(text);

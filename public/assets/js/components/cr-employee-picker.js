@@ -203,6 +203,13 @@ const CREmployeePicker = (() => {
 
     const overlay = document.createElement('div');
     overlay.className = 'cr-emp-picker__overlay';
+    // Sit above any open modals (AsgardUI._buildOverlay starts at 10000, +100 per layer)
+    let topZ = 9000;
+    Array.from(document.body.children).forEach(function(el) {
+      var z = parseInt(el.style.zIndex, 10);
+      if (!isNaN(z) && z > topZ) topZ = z;
+    });
+    overlay.style.zIndex = String(topZ + 100);
 
     const isSingle = inst.maxSelect === 1;
 
@@ -305,9 +312,11 @@ const CREmployeePicker = (() => {
     document.body.appendChild(overlay);
     inst._overlay = overlay;
 
-    // Animate in
+    // Animate in — double RAF ensures opacity:0 is painted first, then transition fires
     requestAnimationFrame(() => {
-      overlay.classList.add('cr-emp-picker__overlay--visible');
+      requestAnimationFrame(() => {
+        overlay.classList.add('cr-emp-picker__overlay--visible');
+      });
     });
 
     // Initial render

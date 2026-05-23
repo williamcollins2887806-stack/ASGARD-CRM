@@ -621,13 +621,41 @@ window.AsgardFieldTab = (function () {
     tdCombo.appendChild(selComboEl);
     tr.appendChild(tdCombo);
 
-    // SMS status
+    // SMS status + individual send button
     const tdSms = document.createElement('td');
     tdSms.style.cssText = cellStyle + ';text-align:center';
     if (assignment?.sms_sent) {
       tdSms.innerHTML = '<span style="color:#10b981" title="SMS отправлено">✅</span>';
-    } else if (assignment) {
-      tdSms.innerHTML = '<span style="color:#6b7280" title="Не отправлено">📨</span>';
+    } else if (assignment && employee) {
+      const smsOneBtn = document.createElement('button');
+      smsOneBtn.title = 'Отправить SMS-приглашение';
+      smsOneBtn.textContent = '📨';
+      smsOneBtn.style.cssText = 'background:none;border:1px solid var(--brd);border-radius:4px;cursor:pointer;font-size:15px;padding:2px 5px;transition:background .15s';
+      smsOneBtn.addEventListener('mouseenter', () => { smsOneBtn.style.background = 'var(--bg3)'; });
+      smsOneBtn.addEventListener('mouseleave', () => { smsOneBtn.style.background = 'none'; });
+      smsOneBtn.addEventListener('click', async () => {
+        smsOneBtn.disabled = true;
+        smsOneBtn.textContent = '⏳';
+        try {
+          const res = await api('/projects/' + work.id + '/send-invites', {
+            method: 'POST',
+            body: JSON.stringify({ employee_ids: [employee.id] })
+          });
+          if (res.sent > 0) {
+            tdSms.innerHTML = '<span style="color:#10b981" title="SMS отправлено">✅</span>';
+            toast('SMS', (employee.fio || 'Сотрудник') + ' — SMS отправлено', 'ok');
+          } else {
+            smsOneBtn.disabled = false;
+            smsOneBtn.textContent = '📨';
+            toast('SMS', 'Не удалось отправить — нет телефона?', 'warn');
+          }
+        } catch (e) {
+          smsOneBtn.disabled = false;
+          smsOneBtn.textContent = '📨';
+          toast('Ошибка SMS', String(e), 'err');
+        }
+      });
+      tdSms.appendChild(smsOneBtn);
     }
     tr.appendChild(tdSms);
 
@@ -662,6 +690,7 @@ window.AsgardFieldTab = (function () {
             if (res.error) throw new Error(res.error);
             assignment.departure_date = null;
             assignment.departure_reason = null;
+            assignment.is_active = true;
             _applyDepState(false);
             toast('Возврат', (employee.fio || 'Сотрудник') + ' вернулся на объект', 'ok');
           } catch (e) {
@@ -670,6 +699,7 @@ window.AsgardFieldTab = (function () {
         } else {
           showDepartureModal(employee, assignment, function(depDate) {
             assignment.departure_date = depDate;
+            assignment.is_active = false;
             _applyDepState(true);
           });
         }

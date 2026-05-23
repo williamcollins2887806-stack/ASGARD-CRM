@@ -104,7 +104,7 @@ window.AsgardAllEstimatesPage = (function() {
         periodOpts.push({ value: v, label: d.toLocaleString('ru-RU', { month: 'long', year: 'numeric' }) });
       }
     }
-    $('#f_period_w').appendChild(CRSelect.create({ id: 'f_period', options: periodOpts, value: ymNow(), onChange: () => apply() }));
+    $('#f_period_w').appendChild(CRSelect.create({ id: 'f_period', options: periodOpts, value: '', onChange: () => apply() }));
     $('#f_pm_w').appendChild(CRSelect.create({ id: 'f_pm', options: [{ value: '', label: 'Все' }, ...users.filter(u => u.is_active && (u.role === 'PM' || u.role === 'HEAD_PM')).map(p => ({ value: String(p.id), label: p.name }))], onChange: () => apply() }));
     $('#f_a_w').appendChild(CRSelect.create({ id: 'f_a', options: [{ value: '', label: 'Все' }, ...Object.entries(STATUS_MAP).map(([k, v]) => ({ value: k, label: v.label }))], onChange: () => apply() }));
 

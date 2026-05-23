@@ -277,11 +277,17 @@ async function routes(fastify, options) {
       for (const member of crew) {
         if (!member.phone) { failed++; continue; }
 
+        // Normalize phone: remove spaces/dashes/parens/+, replace leading 8 with 7
+        const normalizedPhone = String(member.phone)
+          .replace(/[\s\-\(\)\+]/g, '')
+          .replace(/^8/, '7');
+        if (!/^7\d{10}$/.test(normalizedPhone)) { failed++; continue; }
+
         const city = work[0].city ? `, ${work[0].city}` : '';
         const smsText = `ASGARD: Вы назначены на проект "${work[0].work_title}"${city}. Ваш ЛК: https://asgard-crm.ru/field`;
 
         try {
-          const resp = await mango.sendSms(MANGO_SMS_FROM, member.phone, smsText);
+          const resp = await mango.sendSms(MANGO_SMS_FROM, normalizedPhone, smsText);
           await logSms(member.employee_id, member.phone, smsText, 'sent', resp, workId, userId);
           await db.query(
             `UPDATE employee_assignments SET sms_sent = true, sms_sent_at = NOW() WHERE id = $1`,
@@ -939,7 +945,7 @@ async function routes(fastify, options) {
 
       const { rowCount } = await db.query(`
         UPDATE employee_assignments
-        SET departure_date = $1, departure_reason = $2, updated_at = NOW()
+        SET departure_date = $1, departure_reason = $2, is_active = false, updated_at = NOW()
         WHERE work_id = $3 AND employee_id = $4 AND is_active = true
           AND (departure_date IS NULL)
       `, [depDate, reason || null, workId, empId]);
