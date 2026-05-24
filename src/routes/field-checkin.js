@@ -111,33 +111,50 @@ async function routes(fastify, options) {
 
       const assignmentId = assignments[0].id;
 
-      // Academy check: если урок прошлой недели не сдан — блокировка
+      // Academy check: только ОБЯЗАТЕЛЬНЫЕ уроки (is_mandatory=true) с release_monday
+      // прошлой недели или раньше блокируют смену. Новички получают grace 7 дней.
       try {
         const now = new Date();
         const dayOfWeek = now.getDay() || 7; // 1=Mon...7=Sun
         const mon = new Date(now);
         mon.setDate(now.getDate() - (dayOfWeek - 1));
         mon.setHours(0, 0, 0, 0);
+        const monDate = mon.toISOString().split('T')[0];
 
-        // Самый свежий урок, опубликованный ДО этого понедельника (дедлайн прошёл)
-        const { rows: [lesson] } = await db.query(`
-          SELECT al.id, al.title, awp.passed
-          FROM academy_lessons al
-          LEFT JOIN academy_worker_progress awp
-            ON awp.lesson_id = al.id AND awp.employee_id = $1
-          WHERE al.status = 'published'
-            AND al.published_at < $2
-          ORDER BY al.week_number DESC
-          LIMIT 1
-        `, [empId, mon.toISOString()]);
+        // Grace-период для новичков: 7 дней с момента создания записи employees
+        const { rows: [emp] } = await db.query(
+          `SELECT created_at FROM employees WHERE id = $1`,
+          [empId]
+        );
+        const hireAgeDays = emp?.created_at
+          ? (Date.now() - new Date(emp.created_at).getTime()) / 86400000
+          : 999;
+        const isNewHire = hireAgeDays < 7;
 
-        if (lesson && !lesson.passed) {
-          return reply.code(403).send({
-            error: `Пройди Испытание «${lesson.title}» в Чертогах Мимира`,
-            code: 'ACADEMY_BLOCKED',
-            lesson_id: lesson.id,
-            lesson_title: lesson.title,
-          });
+        if (!isNewHire) {
+          // Самый свежий ОБЯЗАТЕЛЬНЫЙ урок с release_monday < этого понедельника
+          // (т.е. дедлайн прошёл) — должен быть сдан
+          const { rows: [lesson] } = await db.query(`
+            SELECT al.id, al.title, awp.passed
+            FROM academy_lessons al
+            LEFT JOIN academy_worker_progress awp
+              ON awp.lesson_id = al.id AND awp.employee_id = $1
+            WHERE al.status = 'published'
+              AND al.is_mandatory = true
+              AND al.release_monday IS NOT NULL
+              AND al.release_monday < $2
+            ORDER BY al.week_number DESC
+            LIMIT 1
+          `, [empId, monDate]);
+
+          if (lesson && !lesson.passed) {
+            return reply.code(403).send({
+              error: `Пройди Испытание «${lesson.title}» в Чертогах Мимира`,
+              code: 'ACADEMY_BLOCKED',
+              lesson_id: lesson.id,
+              lesson_title: lesson.title,
+            });
+          }
         }
       } catch (academyErr) {
         fastify.log.warn('[field-checkin] Academy check failed (non-fatal):', academyErr.message);

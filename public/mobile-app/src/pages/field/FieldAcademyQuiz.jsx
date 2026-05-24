@@ -35,6 +35,7 @@ function ProgressBar({ current, total }) {
 
 function ResultScreen({ result, lessonId, navigate }) {
   const isPassed = result.passed;
+  const needReread = !isPassed && (result.need_reread || result.attempts_left === 0);
   const color = isPassed ? C.green : C.red;
 
   return (
@@ -87,13 +88,15 @@ function ResultScreen({ result, lessonId, navigate }) {
 
       {!isPassed && (
         <div style={{
-          background: `${C.amber}11`, border: `1px solid ${C.amber}33`,
+          background: `${needReread ? C.red : C.amber}11`,
+          border: `1px solid ${needReread ? C.red : C.amber}33`,
           borderRadius: 12, padding: 14, marginBottom: 24, width: '100%',
-          fontSize: 13, color: C.amber, lineHeight: 1.5, textAlign: 'center',
+          fontSize: 13, color: needReread ? C.red : C.amber,
+          lineHeight: 1.5, textAlign: 'center',
         }}>
-          {result.attempts_left > 0
-            ? `У тебя ещё ${result.attempts_left} попытка. Перечитай Руну и возвращайся.`
-            : 'Попытки исчерпаны. Перечитай Руну — она откроется снова через час.'}
+          {needReread
+            ? 'Попытки исчерпаны. Перечитай Руну внимательно — получишь 2 новые попытки сразу.'
+            : `У тебя ещё ${result.attempts_left} попытка. Перечитай Руну и возвращайся.`}
         </div>
       )}
 
@@ -120,34 +123,62 @@ function ResultScreen({ result, lessonId, navigate }) {
         ))}
       </div>
 
-      <div style={{ display: 'flex', gap: 10, width: '100%' }}>
-        {!isPassed && result.attempts_left > 0 && (
+      {needReread ? (
+        // После 2 провалов — одна большая кнопка, ведёт сразу на лекцию
+        <div style={{ width: '100%' }}>
           <button
             onClick={() => navigate(`/field/academy/lesson/${lessonId}`)}
             style={{
-              flex: 1, padding: '13px 0',
-              background: `${C.amber}22`, border: `1px solid ${C.amber}44`,
-              borderRadius: 12, color: C.amber, fontSize: 14, fontWeight: 700, cursor: 'pointer',
+              width: '100%', padding: '16px 0',
+              background: `linear-gradient(90deg, ${C.gold}, #a87d20)`,
+              border: 'none', borderRadius: 12, color: '#000',
+              fontSize: 15, fontWeight: 800, cursor: 'pointer',
+              boxShadow: `0 4px 14px ${C.gold}33`,
             }}
           >
-            📖 Перечитать
+            📖 Перечитать Руну и попробовать снова
           </button>
-        )}
-        <button
-          onClick={() => navigate('/field/academy')}
-          style={{
-            flex: 1, padding: '13px 0',
-            background: isPassed
-              ? `linear-gradient(90deg, ${C.green}, #16a34a)`
-              : `${C.card}`,
-            border: isPassed ? 'none' : `1px solid #ffffff22`,
-            borderRadius: 12, color: isPassed ? '#000' : C.text,
-            fontSize: 14, fontWeight: 700, cursor: 'pointer',
-          }}
-        >
-          {isPassed ? '🏛️ В Чертоги' : '← Назад'}
-        </button>
-      </div>
+          <button
+            onClick={() => navigate('/field/academy')}
+            style={{
+              width: '100%', marginTop: 10, padding: '11px 0',
+              background: 'transparent', border: 'none',
+              color: C.muted, fontSize: 13, cursor: 'pointer',
+            }}
+          >
+            ← Вернуться в Чертоги
+          </button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 10, width: '100%' }}>
+          {!isPassed && result.attempts_left > 0 && (
+            <button
+              onClick={() => navigate(`/field/academy/lesson/${lessonId}`)}
+              style={{
+                flex: 1, padding: '13px 0',
+                background: `${C.amber}22`, border: `1px solid ${C.amber}44`,
+                borderRadius: 12, color: C.amber, fontSize: 14, fontWeight: 700, cursor: 'pointer',
+              }}
+            >
+              📖 Перечитать
+            </button>
+          )}
+          <button
+            onClick={() => navigate('/field/academy')}
+            style={{
+              flex: 1, padding: '13px 0',
+              background: isPassed
+                ? `linear-gradient(90deg, ${C.green}, #16a34a)`
+                : `${C.card}`,
+              border: isPassed ? 'none' : `1px solid #ffffff22`,
+              borderRadius: 12, color: isPassed ? '#000' : C.text,
+              fontSize: 14, fontWeight: 700, cursor: 'pointer',
+            }}
+          >
+            {isPassed ? '🏛️ В Чертоги' : '← Назад'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

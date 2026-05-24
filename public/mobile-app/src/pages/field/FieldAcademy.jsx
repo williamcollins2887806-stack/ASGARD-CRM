@@ -182,7 +182,7 @@ function CurrentLessonCard({ lesson, navigate }) {
         </button>
       )}
 
-      {!lesson.read_completed_at && (
+      {(!lesson.read_completed_at || isBlocked) && !isPassed && (
         <button
           onClick={(e) => { e.stopPropagation(); navigate(`/field/academy/lesson/${lesson.id}`); }}
           style={{
@@ -192,13 +192,115 @@ function CurrentLessonCard({ lesson, navigate }) {
             fontSize: 14, fontWeight: 700, cursor: 'pointer',
           }}
         >
-          📖 Читать Руну
+          {isBlocked ? '📖 Перечитать Руну' : '📖 Читать Руну'}
         </button>
       )}
 
       {isBlocked && (
-        <div style={{ marginTop: 12, fontSize: 12, color: COLORS.red, textAlign: 'center' }}>
-          Перечитай Руну — потом снова Испытание
+        <div style={{ marginTop: 8, fontSize: 12, color: COLORS.red, textAlign: 'center' }}>
+          Прочитай внимательно — получишь 2 новые попытки
+        </div>
+      )}
+
+      {!lesson.is_mandatory && !isPassed && (
+        <div style={{
+          marginTop: 10, fontSize: 11, color: COLORS.muted,
+          textAlign: 'center', background: '#ffffff08',
+          padding: '4px 8px', borderRadius: 8,
+        }}>
+          ⓘ Необязательная руна — за дополнительные XP/руны
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Компактная строка-карточка для секции «Догнать» и «Для опытных»
+function LessonRow({ lesson, navigate, primaryHint }) {
+  const isPassed = lesson.passed;
+  const needReread = lesson.need_reread;
+  const isRead = !!lesson.read_completed_at;
+
+  let badge = '📖 Читать';
+  let badgeColor = COLORS.gold;
+  if (isPassed) {
+    badge = `✓ ${lesson.score}%`;
+    badgeColor = COLORS.green;
+  } else if (needReread) {
+    badge = '📖 Перечитать';
+    badgeColor = COLORS.red;
+  } else if (isRead) {
+    badge = '⚔ Испытание';
+    badgeColor = COLORS.rune;
+  }
+
+  return (
+    <div
+      onClick={() => navigate(`/field/academy/lesson/${lesson.id}`)}
+      style={{
+        background: COLORS.card, borderRadius: 12, padding: '12px 14px',
+        border: primaryHint ? `1px solid ${COLORS.gold}77` : '1px solid #ffffff11',
+        marginBottom: 8, cursor: 'pointer',
+        display: 'flex', gap: 12, alignItems: 'center',
+        boxShadow: primaryHint ? `0 4px 14px ${COLORS.gold}22` : 'none',
+      }}
+    >
+      <div style={{
+        width: 44, height: 44, borderRadius: 12,
+        background: `${lesson.cover_color || '#1a1a2e'}cc`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 22, flexShrink: 0,
+      }}>
+        {lesson.cover_icon}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 10, color: COLORS.muted, marginBottom: 2 }}>
+          Неделя {lesson.week_number} · {lesson.saga}
+        </div>
+        <div style={{
+          fontSize: 14, fontWeight: 700, color: COLORS.text,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {lesson.title}
+        </div>
+        {primaryHint && (
+          <div style={{ fontSize: 11, color: COLORS.gold, marginTop: 2, fontWeight: 700 }}>
+            ⬇ Начни отсюда
+          </div>
+        )}
+      </div>
+      <div style={{
+        fontSize: 11, fontWeight: 700, color: badgeColor,
+        background: `${badgeColor}15`, border: `1px solid ${badgeColor}44`,
+        padding: '4px 10px', borderRadius: 10, flexShrink: 0, whiteSpace: 'nowrap',
+      }}>
+        {badge}
+      </div>
+    </div>
+  );
+}
+
+// Заголовок секции
+function SectionHeader({ icon, title, count, color, subtitle }) {
+  return (
+    <div style={{ margin: '20px 4px 10px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 16 }}>{icon}</span>
+        <span style={{ fontSize: 13, fontWeight: 800, color, textTransform: 'uppercase', letterSpacing: 1 }}>
+          {title}
+        </span>
+        {count > 0 && (
+          <span style={{
+            fontSize: 11, color, background: `${color}22`,
+            borderRadius: 10, padding: '1px 8px', fontWeight: 700,
+          }}>
+            {count}
+          </span>
+        )}
+      </div>
+      {subtitle && (
+        <div style={{ fontSize: 11, color: COLORS.muted, marginTop: 2, paddingLeft: 24 }}>
+          {subtitle}
         </div>
       )}
     </div>
@@ -252,7 +354,7 @@ function StatsRow({ stats }) {
 
 export default function FieldAcademy() {
   const navigate = useNavigate();
-  const [lesson, setLesson] = useState(null);
+  const [data, setData] = useState({ primary: null, pending_mandatory: [], current_week: null, optional: [] });
   const [fact, setFact] = useState(null);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -265,7 +367,12 @@ export default function FieldAcademy() {
         fieldApi.get('/academy/daily-fact'),
         fieldApi.get('/academy/stats'),
       ]);
-      setLesson(l.lesson);
+      setData({
+        primary: l.primary || l.lesson || null,
+        pending_mandatory: l.pending_mandatory || [],
+        current_week: l.current_week || null,
+        optional: l.optional || [],
+      });
       setFact(f.fact);
       setStats(s);
     } catch (e) {
@@ -289,6 +396,14 @@ export default function FieldAcademy() {
     );
   }
 
+  const { primary, pending_mandatory, current_week, optional } = data;
+
+  // Какие пропущенные обязательные показать (исключая primary, чтобы не дублировать)
+  const otherPending = pending_mandatory.filter(l => !primary || l.id !== primary.id);
+  // Текущая неделя в списке «обязательные пропущенные»? Тогда не показываем её отдельно
+  const showCurrentWeekSection = current_week && (!primary || current_week.id !== primary.id) &&
+                                  !pending_mandatory.some(l => l.id === current_week.id);
+
   return (
     <div style={{ minHeight: '100vh', background: COLORS.bg, paddingBottom: 100 }}>
       {/* Header */}
@@ -311,11 +426,68 @@ export default function FieldAcademy() {
         {/* Daily Fact */}
         {fact && <DailyFactCard fact={fact} onView={handleFactView} />}
 
-        {/* Current Lesson */}
-        <CurrentLessonCard lesson={lesson} navigate={navigate} />
+        {/* === ПРИОРИТЕТНАЯ РУНА (большая карточка) === */}
+        {primary && (
+          <>
+            {pending_mandatory.length > 0 && (
+              <SectionHeader
+                icon="🔴"
+                title="Догнать обязательное"
+                count={pending_mandatory.length}
+                color={COLORS.red}
+                subtitle="Без этих рун — не выйдешь на смену"
+              />
+            )}
+            <CurrentLessonCard lesson={primary} navigate={navigate} />
+          </>
+        )}
+
+        {/* === ДРУГИЕ ПРОПУЩЕННЫЕ ОБЯЗАТЕЛЬНЫЕ (список) === */}
+        {otherPending.length > 0 && (
+          <>
+            {otherPending.map((l, i) => (
+              <LessonRow
+                key={l.id}
+                lesson={l}
+                navigate={navigate}
+              />
+            ))}
+          </>
+        )}
+
+        {/* === РУНА ЭТОЙ НЕДЕЛИ (если не входит в пропущенные) === */}
+        {showCurrentWeekSection && (
+          <>
+            <SectionHeader
+              icon="🟡"
+              title="Руна этой недели"
+              count={0}
+              color={COLORS.gold}
+            />
+            <CurrentLessonCard lesson={current_week} navigate={navigate} />
+          </>
+        )}
+
+        {/* === ДЛЯ ОПЫТНЫХ (необязательные) === */}
+        {optional.length > 0 && (
+          <>
+            <SectionHeader
+              icon="🟢"
+              title="Для опытных"
+              count={optional.length}
+              color={COLORS.green}
+              subtitle="Необязательные руны — за XP и руны"
+            />
+            {optional.map(l => (
+              <LessonRow key={l.id} lesson={l} navigate={navigate} />
+            ))}
+          </>
+        )}
 
         {/* Stats */}
-        <StatsRow stats={stats} />
+        <div style={{ marginTop: 20 }}>
+          <StatsRow stats={stats} />
+        </div>
 
         {/* Library button */}
         <button
