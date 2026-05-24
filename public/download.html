@@ -233,8 +233,8 @@
   <div class="hero fi fi-1">
     <div class="hero-logo">🛡️</div>
     <div class="hero-badge">Мобильное приложение</div>
-    <h1 class="hero-title">ASGARD<br><span>Полевая служба</span></h1>
-    <p class="hero-sub">Отметки, заработок, бригада — всё в смартфоне. Доступно для Android и iOS.</p>
+    <h1 class="hero-title">ASGARD<br><span>Мобильное приложение</span></h1>
+    <p class="hero-sub">Два приложения: <b>Офис</b> — для сотрудников офиса · <b>Поле</b> — для бригад и рабочих. Выберите подходящее ниже.</p>
   </div>
 
   <!-- OS Tabs -->
@@ -247,46 +247,127 @@
   <div class="tab-panel active" id="panel-android">
 
     <!--
-      APK временно недоступен (release-сборка с подписью в подготовке).
-      Кнопка проверяет существование файла перед скачиванием: если 404 →
-      редирект на /m/ (мобильная веб-версия — работает в браузере).
+      Два APK: для офиса и для поля. Кнопка проверяет наличие файла HEAD-запросом
+      перед редиректом — на случай если файл удалили или не успел загрузиться.
     -->
-    <a href="/asgard-crm.apk" class="dl-btn fi fi-2" id="dlBtn"
-       onclick="return checkApkAvailable(this, event)">
-      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-        <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-      </svg>
-      Скачать APK — ASGARD Полевая
-    </a>
-    <p class="dl-meta fi fi-2">Версия 1.0.0 · ~4.7 МБ · Android 7.0+</p>
-    <div class="platform-note fi fi-2">
-      <span class="platform-tag pt-ok">✓ Android — доступно</span>
-      <span class="platform-tag pt-no">iOS — см. вкладку выше</span>
-    </div>
+    <style>
+      .apk-cards { display:grid; grid-template-columns:1fr; gap:14px; margin:6px 0 14px; }
+      @media (min-width: 600px) { .apk-cards { grid-template-columns:1fr 1fr; } }
+      .apk-card {
+        display:flex; flex-direction:column; gap:10px;
+        padding:18px 16px; border-radius:14px; text-decoration:none;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.1);
+        transition: all .18s;
+      }
+      .apk-card:hover { transform: translateY(-2px); border-color: rgba(255,255,255,0.2); }
+      .apk-card.office {
+        background: linear-gradient(135deg, rgba(200,168,78,0.12), rgba(200,168,78,0.04));
+        border-color: rgba(200,168,78,0.35);
+      }
+      .apk-card.office:hover { border-color: rgba(200,168,78,0.65); box-shadow: 0 8px 24px rgba(200,168,78,0.18); }
+      .apk-card.field {
+        background: linear-gradient(135deg, rgba(48,209,88,0.12), rgba(48,209,88,0.04));
+        border-color: rgba(48,209,88,0.35);
+      }
+      .apk-card.field:hover { border-color: rgba(48,209,88,0.65); box-shadow: 0 8px 24px rgba(48,209,88,0.18); }
+      .apk-card-head { display:flex; align-items:center; gap:12px; }
+      .apk-card-icon { font-size:34px; line-height:1; flex-shrink:0; }
+      .apk-card-title { font-size:15px; font-weight:700; color:#fff; margin:0; }
+      .apk-card-sub { font-size:11.5px; color:rgba(255,255,255,0.55); margin-top:3px; }
+      .apk-card-desc { font-size:12.5px; line-height:1.5; color:rgba(255,255,255,0.75); margin:4px 0 8px; }
+      .apk-card-roles { font-size:11px; color:rgba(255,255,255,0.5); }
+      .apk-card-cta {
+        display:flex; align-items:center; justify-content:center; gap:8px;
+        padding:11px 14px; border-radius:9px; font-weight:700; font-size:13px;
+        margin-top:auto;
+      }
+      .apk-card.office .apk-card-cta { background:rgba(200,168,78,0.18); color:#c8a84e; border:1px solid rgba(200,168,78,0.4); }
+      .apk-card.field  .apk-card-cta { background:rgba(48,209,88,0.18);  color:#30d158; border:1px solid rgba(48,209,88,0.4); }
+    </style>
 
-    <!-- Альтернатива: веб-версия мобилки (всегда доступна) -->
-    <div style="margin-top:14px;padding:12px 16px;background:rgba(91,141,239,0.1);border:1px solid rgba(91,141,239,0.3);border-radius:10px;text-align:center">
-      <div style="font-size:12px;color:rgba(255,255,255,0.7);margin-bottom:8px">Не получилось установить APK?</div>
-      <a href="/m/" style="color:#5b8def;font-weight:600;text-decoration:none;font-size:13px">
-        🌐 Открыть мобильную веб-версию (без установки)
+    <div class="apk-cards fi fi-2">
+      <a href="/asgard-crm-office.apk" class="apk-card office" id="dlBtnOffice"
+         onclick="return checkApkAvailable(this, event)">
+        <div class="apk-card-head">
+          <div class="apk-card-icon">🏛️</div>
+          <div>
+            <div class="apk-card-title">ASGARD Офис</div>
+            <div class="apk-card-sub">~4.8 МБ · Android 7.0+</div>
+          </div>
+        </div>
+        <div class="apk-card-desc">
+          Полная мобильная CRM: тендеры, просчёты, договоры, работы, финансы, академия.
+        </div>
+        <div class="apk-card-roles">Для: ТО, РП, Рук.ТО, бухгалтерия, HR, директора, ADMIN</div>
+        <div class="apk-card-cta">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Скачать APK
+        </div>
+      </a>
+
+      <a href="/asgard-field.apk" class="apk-card field" id="dlBtnField"
+         onclick="return checkApkAvailable(this, event)">
+        <div class="apk-card-head">
+          <div class="apk-card-icon">🛡️</div>
+          <div>
+            <div class="apk-card-title">ASGARD Поле</div>
+            <div class="apk-card-sub">~4.7 МБ · Android 7.0+</div>
+          </div>
+        </div>
+        <div class="apk-card-desc">
+          Для бригад на объекте: чек-ин, фото, расходы, заработок, путевой лист.
+        </div>
+        <div class="apk-card-roles">Для: рабочие и бригадиры в поле</div>
+        <div class="apk-card-cta">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Скачать APK
+        </div>
       </a>
     </div>
 
+    <div class="platform-note fi fi-2">
+      <span class="platform-tag pt-ok">✓ Android — оба APK подписаны</span>
+      <span class="platform-tag pt-no">iOS — см. вкладку выше</span>
+    </div>
+
+    <!-- Альтернатива: веб-версия (всегда доступна) -->
+    <div style="margin-top:14px;padding:12px 16px;background:rgba(91,141,239,0.1);border:1px solid rgba(91,141,239,0.3);border-radius:10px;text-align:center">
+      <div style="font-size:12px;color:rgba(255,255,255,0.7);margin-bottom:8px">Не получилось установить APK?</div>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+        <a href="/m/" style="color:#5b8def;font-weight:600;text-decoration:none;font-size:13px">
+          🌐 Веб-версия офиса (/m/)
+        </a>
+        <span style="color:rgba(255,255,255,0.3)">·</span>
+        <a href="/field/" style="color:#30d158;font-weight:600;text-decoration:none;font-size:13px">
+          🌐 Веб-версия поля (/field/)
+        </a>
+      </div>
+    </div>
+
     <script>
-      // Проверяет существование APK перед скачиванием — если файла нет,
-      // не уводит пользователя на 404, а показывает alert.
+      // Проверяет существование APK через HEAD перед скачиванием. Если 404 —
+      // показывает алерт с подсказкой использовать веб-версию.
       function checkApkAvailable(link, evt) {
         evt.preventDefault();
         var url = link.getAttribute('href');
-        fetch(url, { method: 'HEAD' }).then(function(r) {
+        var isField = url.indexOf('field') !== -1;
+        var webAlt = isField ? '/field/' : '/m/';
+        var nameLabel = isField ? 'ASGARD Поле' : 'ASGARD Офис';
+        fetch(url, { method: 'HEAD', cache: 'no-store' }).then(function(r) {
           if (r.ok) {
             window.location.href = url;
           } else {
-            alert('APK временно недоступен — release-сборка в подготовке.\n\nПока пользуйтесь веб-версией: /m/\n(работает в любом мобильном браузере)');
+            alert(nameLabel + ' APK временно недоступен (HTTP ' + r.status + ').\n\nПока используйте веб-версию: ' + webAlt + '\n(работает в любом мобильном браузере, не требует установки).');
           }
         }).catch(function() {
-          alert('Не удалось проверить наличие APK. Попробуйте позже или используйте веб-версию /m/');
+          alert('Не удалось связаться с сервером. Проверьте интернет или используйте веб-версию: ' + webAlt);
         });
         return false;
       }
@@ -334,7 +415,7 @@
               </div>
               <div class="progress-bar"><div class="progress-fill"></div></div>
               <div class="progress-meta" style="width:100%;">
-                <span class="progress-name">asgard-crm.apk</span><span class="progress-pct">55%</span>
+                <span class="progress-name">asgard.apk</span><span class="progress-pct">55%</span>
               </div>
             </div>
             <div class="chrome-bottom"></div>
@@ -353,7 +434,7 @@
           <div class="screen">
             <div style="flex:1;background:#111118;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;opacity:0.3;">
               <div style="font-size:26px;margin-bottom:6px;">📦</div>
-              <div style="font-size:10px;color:rgba(255,255,255,0.5);text-align:center;">asgard-crm.apk загружен</div>
+              <div style="font-size:10px;color:rgba(255,255,255,0.5);text-align:center;">asgard.apk загружен</div>
             </div>
             <div class="dialog-overlay">
               <div class="dialog-box">
