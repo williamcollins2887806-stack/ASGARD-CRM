@@ -2183,7 +2183,16 @@ ${analogsSummary}
       }
 
       if (!aiResult || !aiResult.text) {
-        throw new Error('AI не вернул ответ');
+        // Структурированная ошибка — caller-обработчик ниже превратит её в понятное сообщение
+        throw new aiProvider.AIProviderError({
+          code: 'empty_response',
+          providerMessage: 'AI вернул пустой content (нет текста и нет tool_calls)',
+          requestSummary: {
+            model: aiResult?.model,
+            finish_reason: aiResult?.stopReason,
+            usage: aiResult?.usage
+          }
+        });
       }
 
       console.log(`[AP5] Claude responded: ${aiResult.text.length} chars, model=${aiResult.model}, ${aiResult.durationMs}ms`);
@@ -2310,15 +2319,36 @@ ${analogsSummary}
       sendEvent({ type: 'done' });
 
     } catch (error) {
-      console.error('[Mimir auto-estimate ERROR]:', error.message);
-      console.error(error.stack);
+      // Структурированное логирование: понимаем тип ошибки и даём пользователю
+      // человеческое сообщение вместо абстрактного "AI не вернул ответ".
+      const isAIErr = error && error.name === 'AIProviderError';
+      const userMsg = isAIErr ? error.userMessage() : (error?.message || 'Неизвестная ошибка');
+      const errCode = isAIErr ? error.code : 'internal';
+
+      console.error('[Mimir auto-estimate ERROR]');
+      console.error('  code:', errCode);
+      console.error('  status:', isAIErr ? error.status : 'n/a');
+      console.error('  user_msg:', userMsg);
+      console.error('  provider_msg:', isAIErr ? error.providerMessage : 'n/a');
+      if (isAIErr && error.requestSummary) {
+        console.error('  request_summary:', JSON.stringify(error.requestSummary));
+      }
+      if (isAIErr && error.body) {
+        console.error('  provider_body (first 1000):', String(error.body).substring(0, 1000));
+      }
+      console.error('  stack:', error.stack);
+
       fastify._aeJobs.set(jobKey, {
         status: 'error', startedAt: Date.now(),
-        error: String(error.message || 'Неизвестная ошибка').substring(0, 500)
+        error: String(userMsg).substring(0, 500),
+        error_code: errCode,
+        error_status: isAIErr ? error.status : null,
+        provider_message: isAIErr ? (error.providerMessage || null) : null
       });
       sendEvent({
         type: 'error',
-        message: String(error.message || 'Неизвестная ошибка').substring(0, 500),
+        message: String(userMsg).substring(0, 500),
+        code: errCode,
         elapsed_ms: Date.now() - startTime
       });
     }
@@ -2397,7 +2427,17 @@ ${analogsSummary}
       // Удаляем сессию
       fastify._aeQuestionCache.delete(session_id);
 
-      if (!aiResult?.text) throw new Error('AI не вернул ответ');
+      if (!aiResult?.text) {
+        throw new aiProvider.AIProviderError({
+          code: 'empty_response',
+          providerMessage: 'AI вернул пустой content (нет текста и нет tool_calls)',
+          requestSummary: {
+            model: aiResult?.model,
+            finish_reason: aiResult?.stopReason,
+            usage: aiResult?.usage
+          }
+        });
+      }
 
       console.log(`[AP5-answer] Claude: ${aiResult.text.length} chars, ${aiResult.durationMs}ms`);
 
@@ -2453,8 +2493,29 @@ ${analogsSummary}
 
       sendEvent({ type: 'done' });
     } catch (err) {
-      console.error('[auto-estimate-answer ERROR]:', err.message, err.stack);
-      sendEvent({ type: 'error', message: err.message, elapsed_ms: Date.now() - startTime });
+      const isAIErr = err && err.name === 'AIProviderError';
+      const userMsg = isAIErr ? err.userMessage() : (err?.message || 'Неизвестная ошибка');
+      const errCode = isAIErr ? err.code : 'internal';
+
+      console.error('[auto-estimate-answer ERROR]');
+      console.error('  code:', errCode);
+      console.error('  status:', isAIErr ? err.status : 'n/a');
+      console.error('  user_msg:', userMsg);
+      console.error('  provider_msg:', isAIErr ? err.providerMessage : 'n/a');
+      if (isAIErr && err.requestSummary) {
+        console.error('  request_summary:', JSON.stringify(err.requestSummary));
+      }
+      if (isAIErr && err.body) {
+        console.error('  provider_body (first 1000):', String(err.body).substring(0, 1000));
+      }
+      console.error('  stack:', err.stack);
+
+      sendEvent({
+        type: 'error',
+        message: String(userMsg).substring(0, 500),
+        code: errCode,
+        elapsed_ms: Date.now() - startTime
+      });
     }
     reply.raw.end();
   });

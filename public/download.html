@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#07070b">
+<title>ASGARD — Скачать приложение</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --gold: #c8a84e; --blue: #4A90D9; --green: #30d158; --red: #ff453a;
+    --bg: #07070b; --bg-card: #111117; --text: #f0f0f5;
+    --text-dim: rgba(240,240,245,0.55); --border: rgba(255,255,255,0.08);
+  }
+  html { background: var(--bg); }
+  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+         background: var(--bg); color: var(--text); min-height: 100vh;
+         overflow-x: hidden; -webkit-font-smoothing: antialiased; }
+  .bg-mesh { position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background: radial-gradient(ellipse 80% 50% at 15% -10%, rgba(200,168,78,0.10) 0%, transparent 60%),
+                radial-gradient(ellipse 60% 40% at 85% 110%, rgba(74,144,217,0.08) 0%, transparent 60%); }
+  .wrap { position: relative; z-index: 1; max-width: 480px; margin: 0 auto; padding: 0 20px 60px; }
+
+  /* Hero */
+  .hero { text-align: center; padding: 48px 0 32px; }
+  .hero-logo { width: 84px; height: 84px; margin: 0 auto 18px; border-radius: 22px;
+    background: linear-gradient(135deg, rgba(200,168,78,0.25), rgba(74,144,217,0.15));
+    border: 1.5px solid rgba(200,168,78,0.5);
+    display: flex; align-items: center; justify-content: center; font-size: 42px;
+    box-shadow: 0 0 40px rgba(200,168,78,0.2); }
+  .hero-badge { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.1em;
+    color: var(--gold); text-transform: uppercase; background: rgba(200,168,78,0.1);
+    border: 1px solid rgba(200,168,78,0.3); border-radius: 20px; padding: 4px 14px; margin-bottom: 12px; }
+  .hero-title { font-size: 28px; font-weight: 900; line-height: 1.15; letter-spacing: -0.03em; margin-bottom: 10px; }
+  .hero-title span { color: var(--gold); }
+  .hero-sub { font-size: 14px; color: var(--text-dim); line-height: 1.6; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 8px; margin: 24px 0 28px; }
+  .tab { flex: 1; padding: 13px; border-radius: 14px; border: none; cursor: pointer;
+         font-size: 13px; font-weight: 700; transition: all 0.2s; }
+  .tab-android { background: rgba(48,209,88,0.12); border: 1px solid rgba(48,209,88,0.25); color: var(--green); }
+  .tab-ios { background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: rgba(255,255,255,0.5); }
+  .tab-android.active { background: rgba(48,209,88,0.2); border-color: rgba(48,209,88,0.5); color: var(--green); box-shadow: 0 4px 16px rgba(48,209,88,0.15); }
+  .tab-ios.active { background: rgba(200,168,78,0.15); border-color: rgba(200,168,78,0.4); color: var(--gold); box-shadow: 0 4px 16px rgba(200,168,78,0.15); }
+
+  /* Tab panels */
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* Download button */
+  .dl-btn { display: flex; align-items: center; justify-content: center; gap: 10px;
+    width: 100%; padding: 17px; background: linear-gradient(135deg, #c8a84e, #b8943e);
+    border: none; border-radius: 16px; color: #0a0a0c; font-size: 16px; font-weight: 800;
+    text-decoration: none; margin-bottom: 12px; box-shadow: 0 8px 32px rgba(200,168,78,0.35);
+    cursor: pointer; transition: transform 0.15s; }
+  .dl-btn:active { transform: scale(0.97); }
+  .dl-meta { text-align: center; font-size: 12px; color: var(--text-dim); margin-bottom: 10px; }
+  .platform-note { display: flex; justify-content: center; gap: 10px; margin-bottom: 36px; }
+  .platform-tag { display: inline-flex; align-items: center; gap: 5px;
+    font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 20px; }
+  .pt-ok { background: rgba(48,209,88,0.12); border: 1px solid rgba(48,209,88,0.3); color: var(--green); }
+  .pt-no { background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: rgba(255,255,255,0.3); }
+
+  /* iOS add to home */
+  .ios-cta { display: flex; align-items: center; gap: 14px;
+    background: linear-gradient(135deg, rgba(200,168,78,0.12), rgba(200,168,78,0.06));
+    border: 1px solid rgba(200,168,78,0.35); border-radius: 18px; padding: 18px; margin-bottom: 12px; }
+  .ios-cta-icon { font-size: 36px; flex-shrink: 0; }
+  .ios-cta-title { font-size: 15px; font-weight: 800; color: #fff; margin-bottom: 4px; }
+  .ios-cta-sub { font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+
+  /* Section label */
+  .section-label { font-size: 11px; font-weight: 700; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--text-dim); margin-bottom: 20px; text-align: center; }
+
+  /* Steps */
+  .steps { display: flex; flex-direction: column; gap: 44px; margin-bottom: 48px; }
+  .step { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+
+  /* Phone mockup */
+  .phone { width: 210px; height: 375px; background: #0d0d12; border-radius: 40px;
+    border: 2.5px solid #28283a; position: relative; overflow: hidden; flex-shrink: 0;
+    box-shadow: inset 0 0 0 0.5px rgba(255,255,255,0.04), 0 20px 50px rgba(0,0,0,0.7); }
+  .phone::before { content: ''; position: absolute; top: 11px; left: 50%; transform: translateX(-50%);
+    width: 76px; height: 25px; background: #0d0d12; border-radius: 0 0 16px 16px; z-index: 10; }
+  .phone::after { content: ''; position: absolute; top: 17px; left: 50%; transform: translateX(-50%);
+    width: 9px; height: 9px; background: #1a1a25; border-radius: 50%; z-index: 11;
+    border: 1px solid rgba(255,255,255,0.07); }
+  .screen { position: absolute; inset: 0; border-radius: 38px; overflow: hidden; display: flex; flex-direction: column; }
+
+  /* Chrome bar */
+  .chrome-bar { background: #1c1c26; padding: 45px 11px 9px; border-bottom: 0.5px solid rgba(255,255,255,0.06); }
+  .chrome-url { background: #25253a; border-radius: 7px; padding: 6px 11px;
+    font-size: 9px; color: rgba(255,255,255,0.4); font-family: monospace; }
+  .chrome-body { flex: 1; background: var(--bg); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; padding: 14px 12px; gap: 9px; }
+  .mini-logo { width: 50px; height: 50px; border-radius: 13px;
+    background: linear-gradient(135deg, rgba(200,168,78,0.25), rgba(74,144,217,0.15));
+    border: 1.5px solid rgba(200,168,78,0.5);
+    display: flex; align-items: center; justify-content: center; font-size: 25px; }
+  .mini-title { font-size: 12px; font-weight: 800; color: #fff; }
+  .mini-sub { font-size: 8px; color: rgba(255,255,255,0.4); }
+  .mini-btn { background: linear-gradient(135deg, #c8a84e, #b8943e); border-radius: 9px;
+    padding: 8px 16px; font-size: 10px; font-weight: 800; color: #0a0a0c;
+    display: flex; align-items: center; gap: 5px; position: relative; }
+  .chrome-bottom { height: 44px; background: #13131d; border-top: 0.5px solid rgba(255,255,255,0.05); }
+
+  /* Progress */
+  .progress-bar { height: 3px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden; width: 100%; }
+  .progress-fill { height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--gold), #e0c060);
+    animation: dlFill 2s ease-in-out infinite alternate; }
+  @keyframes dlFill { from { width: 20%; } to { width: 90%; } }
+  .progress-meta { display: flex; justify-content: space-between; padding: 4px 0 0; font-size: 7px; }
+  .progress-name { color: rgba(255,255,255,0.55); font-weight: 600; }
+  .progress-pct { color: var(--gold); font-weight: 700; }
+
+  /* Tap ring */
+  .tap-ring { position: absolute; inset: -7px; border-radius: 15px;
+    border: 2px solid var(--gold); box-shadow: 0 0 14px rgba(200,168,78,0.5);
+    animation: tap 1.6s ease-out infinite; }
+  @keyframes tap { 0% { transform: scale(1); opacity: 0.9; } 100% { transform: scale(1.35); opacity: 0; } }
+
+  /* Dialog */
+  .dialog-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.55);
+    display: flex; align-items: flex-end; padding-bottom: 16px; }
+  .dialog-box { width: calc(100% - 22px); margin: 0 auto; background: #1e1e2c;
+    border-radius: 16px; border: 0.5px solid rgba(255,255,255,0.1); overflow: hidden; }
+  .dialog-icon { text-align: center; font-size: 28px; padding: 14px 0 5px; }
+  .dialog-title { font-size: 11px; font-weight: 800; color: #fff; text-align: center; padding: 0 12px 4px; }
+  .dialog-body { font-size: 8px; color: rgba(255,255,255,0.45); text-align: center; padding: 0 12px 11px; line-height: 1.5; }
+  .dialog-actions { display: flex; border-top: 0.5px solid rgba(255,255,255,0.08); }
+  .dialog-cancel { flex: 1; padding: 10px; font-size: 10px; font-weight: 600;
+    color: rgba(255,255,255,0.35); text-align: center; border-right: 0.5px solid rgba(255,255,255,0.08); }
+  .dialog-ok { flex: 1; padding: 10px; font-size: 10px; font-weight: 700; color: var(--gold);
+    text-align: center; background: rgba(200,168,78,0.08); position: relative; overflow: hidden; }
+  .dialog-ok::after { content: ''; position: absolute; inset: 0; background: rgba(200,168,78,0.15);
+    animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
+
+  /* Splash */
+  .splash { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 20px; background: linear-gradient(180deg, #07070b, #0e0c18); }
+  .splash-logo { width: 64px; height: 64px; border-radius: 17px;
+    background: linear-gradient(135deg, rgba(200,168,78,0.3), rgba(74,144,217,0.2));
+    border: 2px solid rgba(200,168,78,0.6); display: flex; align-items: center; justify-content: center;
+    font-size: 32px; margin-bottom: 12px; box-shadow: 0 0 40px rgba(200,168,78,0.3); }
+  .splash-title { font-size: 17px; font-weight: 900; color: #fff; }
+  .splash-sub { font-size: 9px; color: rgba(255,255,255,0.35); margin-top: 2px; }
+  .dots { display: flex; gap: 5px; margin-top: 24px; }
+  .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--gold); animation: dotPulse 1.2s ease-in-out infinite; }
+  .dot:nth-child(2) { animation-delay: 0.2s; } .dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes dotPulse { 0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1); } }
+  .phone-bar { position: absolute; bottom: 0; left: 0; right: 0; height: 44px; background: rgba(0,0,0,0.3);
+    display: flex; align-items: center; justify-content: center; gap: 18px; }
+  .bar-dot { width: 26px; height: 3px; background: rgba(255,255,255,0.2); border-radius: 2px; }
+
+  /* iOS Share sheet */
+  .share-sheet { position: absolute; bottom: 0; left: 0; right: 0;
+    background: #1c1c26; border-radius: 16px 16px 0 0; padding: 14px 12px; }
+  .share-row { display: flex; justify-content: space-around; margin-bottom: 10px; }
+  .share-item { display: flex; flex-direction: column; align-items: center; gap: 4px;
+    font-size: 7px; color: rgba(255,255,255,0.5); }
+  .share-icon { width: 34px; height: 34px; border-radius: 9px; background: #2a2a38;
+    display: flex; align-items: center; justify-content: center; font-size: 16px; }
+  .share-icon.highlighted { background: rgba(200,168,78,0.25); border: 1.5px solid rgba(200,168,78,0.5); }
+  .share-label { color: var(--gold); font-weight: 600; }
+
+  /* iOS Add to Home sheet */
+  .add-home-sheet { position: absolute; bottom: 0; left: 0; right: 0;
+    background: #1c1c26; border-radius: 14px 14px 0 0; padding: 12px; }
+  .add-home-title { font-size: 9px; font-weight: 800; color: #fff; text-align: center; margin-bottom: 10px; }
+  .add-home-item { display: flex; align-items: center; gap: 9px; padding: 9px;
+    background: rgba(255,255,255,0.05); border-radius: 10px; margin-bottom: 6px; }
+  .add-home-item.highlighted { background: rgba(200,168,78,0.15); border: 1px solid rgba(200,168,78,0.4); }
+  .add-home-item-icon { width: 26px; height: 26px; border-radius: 6px; background: #2a2a38;
+    display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; }
+  .add-home-item-icon.gold { background: rgba(200,168,78,0.2); }
+  .add-home-item-label { font-size: 9px; color: rgba(255,255,255,0.7); font-weight: 600; }
+  .add-home-item-label.gold { color: var(--gold); }
+
+  /* Push sheet */
+  .notif-sheet { position: absolute; inset: 0; background: rgba(0,0,0,0.5);
+    display: flex; align-items: flex-start; padding-top: 40px; }
+  .notif-banner { margin: 0 10px; background: rgba(30,30,40,0.98); border-radius: 14px;
+    border: 0.5px solid rgba(255,255,255,0.12); padding: 12px; width: 100%; }
+  .notif-app { font-size: 8px; color: rgba(255,255,255,0.4); margin-bottom: 4px; }
+  .notif-title { font-size: 10px; font-weight: 700; color: #fff; margin-bottom: 2px; }
+  .notif-body { font-size: 9px; color: rgba(255,255,255,0.5); }
+
+  /* Step info */
+  .step-info { text-align: center; }
+  .step-num { display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 9px; background: rgba(200,168,78,0.15);
+    border: 1px solid rgba(200,168,78,0.35); font-size: 13px; font-weight: 800; color: var(--gold);
+    margin-bottom: 8px; }
+  .step-title { font-size: 16px; font-weight: 800; color: #fff; margin-bottom: 5px; }
+  .step-desc { font-size: 13px; color: var(--text-dim); line-height: 1.6; max-width: 300px; }
+
+  /* Push steps numbers */
+  .step-num.blue { background: rgba(74,144,217,0.15); border-color: rgba(74,144,217,0.35); color: var(--blue); }
+
+  /* Tips */
+  .tips { background: var(--bg-card); border: 0.5px solid var(--border); border-radius: 20px;
+    overflow: hidden; margin-bottom: 32px; }
+  .tip { display: flex; align-items: flex-start; gap: 12px; padding: 15px 16px;
+    border-bottom: 0.5px solid var(--border); }
+  .tip:last-child { border-bottom: none; }
+  .tip-icon { font-size: 19px; flex-shrink: 0; line-height: 1.3; }
+  .tip-text { font-size: 13px; color: var(--text-dim); line-height: 1.55; }
+  .tip-text strong { color: var(--text); }
+
+  /* Divider */
+  .divider { display: flex; align-items: center; gap: 12px; margin: 36px 0 28px; }
+  .divider-line { flex: 1; height: 0.5px; background: var(--border); }
+  .divider-text { font-size: 11px; font-weight: 600; color: var(--text-dim); white-space: nowrap; }
+
+  .footer { text-align: center; font-size: 12px; color: rgba(255,255,255,0.2); padding-top: 12px; }
+
+  @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+  .fi { animation: fadeInUp 0.5s ease both; }
+  .fi-1 { animation-delay: 0.05s; } .fi-2 { animation-delay: 0.12s; }
+  .fi-3 { animation-delay: 0.2s; }  .fi-4 { animation-delay: 0.28s; }
+  .fi-5 { animation-delay: 0.36s; } .fi-6 { animation-delay: 0.44s; }
+</style>
+</head>
+<body>
+<div class="bg-mesh"></div>
+<div class="wrap">
+
+  <!-- Hero -->
+  <div class="hero fi fi-1">
+    <div class="hero-logo">🛡️</div>
+    <div class="hero-badge">Мобильное приложение</div>
+    <h1 class="hero-title">ASGARD<br><span>Полевая служба</span></h1>
+    <p class="hero-sub">Отметки, заработок, бригада — всё в смартфоне. Доступно для Android и iOS.</p>
+  </div>
+
+  <!-- OS Tabs -->
+  <div class="tabs fi fi-2" id="tabs">
+    <button class="tab tab-android active" onclick="switchTab('android')">🤖 Android</button>
+    <button class="tab tab-ios" onclick="switchTab('ios')">🍎 iPhone / iOS</button>
+  </div>
+
+  <!-- ══════════════════════════════════ ANDROID TAB ══════════════════════════════════ -->
+  <div class="tab-panel active" id="panel-android">
+
+    <!--
+      APK временно недоступен (release-сборка с подписью в подготовке).
+      Кнопка проверяет существование файла перед скачиванием: если 404 →
+      редирект на /m/ (мобильная веб-версия — работает в браузере).
+    -->
+    <a href="/asgard-crm.apk" class="dl-btn fi fi-2" id="dlBtn"
+       onclick="return checkApkAvailable(this, event)">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      Скачать APK — ASGARD Полевая
+    </a>
+    <p class="dl-meta fi fi-2">Версия 1.0.0 · ~4.7 МБ · Android 7.0+</p>
+    <div class="platform-note fi fi-2">
+      <span class="platform-tag pt-ok">✓ Android — доступно</span>
+      <span class="platform-tag pt-no">iOS — см. вкладку выше</span>
+    </div>
+
+    <!-- Альтернатива: веб-версия мобилки (всегда доступна) -->
+    <div style="margin-top:14px;padding:12px 16px;background:rgba(91,141,239,0.1);border:1px solid rgba(91,141,239,0.3);border-radius:10px;text-align:center">
+      <div style="font-size:12px;color:rgba(255,255,255,0.7);margin-bottom:8px">Не получилось установить APK?</div>
+      <a href="/m/" style="color:#5b8def;font-weight:600;text-decoration:none;font-size:13px">
+        🌐 Открыть мобильную веб-версию (без установки)
+      </a>
+    </div>
+
+    <script>
+      // Проверяет существование APK перед скачиванием — если файла нет,
+      // не уводит пользователя на 404, а показывает alert.
+      function checkApkAvailable(link, evt) {
+        evt.preventDefault();
+        var url = link.getAttribute('href');
+        fetch(url, { method: 'HEAD' }).then(function(r) {
+          if (r.ok) {
+            window.location.href = url;
+          } else {
+            alert('APK временно недоступен — release-сборка в подготовке.\n\nПока пользуйтесь веб-версией: /m/\n(работает в любом мобильном браузере)');
+          }
+        }).catch(function() {
+          alert('Не удалось проверить наличие APK. Попробуйте позже или используйте веб-версию /m/');
+        });
+        return false;
+      }
+    </script>
+
+    <p class="section-label fi fi-3">Как установить — 4 шага</p>
+    <div class="steps">
+
+      <!-- Android Step 1 -->
+      <div class="step fi fi-3">
+        <div class="phone">
+          <div class="screen">
+            <div class="chrome-bar"><div class="chrome-url">92.242.61.184/download</div></div>
+            <div class="chrome-body">
+              <div class="mini-logo">🛡️</div>
+              <div class="mini-title">ASGARD Полевая</div>
+              <div class="mini-sub">Мобильное приложение для рабочих</div>
+              <div class="mini-btn">
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#0a0a0c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Скачать APK
+              </div>
+            </div>
+            <div class="chrome-bottom"></div>
+          </div>
+        </div>
+        <div class="step-info">
+          <div class="step-num">1</div>
+          <div class="step-title">Открой страницу в Chrome</div>
+          <p class="step-desc">На телефоне открой Chrome и перейди на эту страницу.</p>
+        </div>
+      </div>
+
+      <!-- Android Step 2 -->
+      <div class="step fi fi-4">
+        <div class="phone">
+          <div class="screen">
+            <div class="chrome-bar"><div class="chrome-url">92.242.61.184/download</div></div>
+            <div class="chrome-body">
+              <div class="mini-logo">🛡️</div>
+              <div class="mini-title">ASGARD Полевая</div>
+              <div class="mini-sub">Мобильное приложение для рабочих</div>
+              <div class="mini-btn" style="position:relative;">
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#0a0a0c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Скачать APK <span class="tap-ring"></span>
+              </div>
+              <div class="progress-bar"><div class="progress-fill"></div></div>
+              <div class="progress-meta" style="width:100%;">
+                <span class="progress-name">asgard-crm.apk</span><span class="progress-pct">55%</span>
+              </div>
+            </div>
+            <div class="chrome-bottom"></div>
+          </div>
+        </div>
+        <div class="step-info">
+          <div class="step-num">2</div>
+          <div class="step-title">Нажми «Скачать APK»</div>
+          <p class="step-desc">Большая кнопка. Файл ~5 МБ, скачается за несколько секунд.</p>
+        </div>
+      </div>
+
+      <!-- Android Step 3 -->
+      <div class="step fi fi-5">
+        <div class="phone">
+          <div class="screen">
+            <div style="flex:1;background:#111118;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;opacity:0.3;">
+              <div style="font-size:26px;margin-bottom:6px;">📦</div>
+              <div style="font-size:10px;color:rgba(255,255,255,0.5);text-align:center;">asgard-crm.apk загружен</div>
+            </div>
+            <div class="dialog-overlay">
+              <div class="dialog-box">
+                <div class="dialog-icon">🔒</div>
+                <div class="dialog-title">Разрешить установку?</div>
+                <div class="dialog-body">Chrome запрашивает разрешение на установку из неизвестных источников.</div>
+                <div class="dialog-actions">
+                  <div class="dialog-cancel">Отмена</div>
+                  <div class="dialog-ok">Разрешить</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="step-info">
+          <div class="step-num">3</div>
+          <div class="step-title">Нажми «Разрешить»</div>
+          <p class="step-desc">Android спросит разрешение — нажми «Разрешить». Делается один раз.</p>
+        </div>
+      </div>
+
+      <!-- Android Step 4 -->
+      <div class="step fi fi-6">
+        <div class="phone">
+          <div class="screen">
+            <div class="splash">
+              <div class="splash-logo">🛡️</div>
+              <div class="splash-title">ASGARD</div>
+              <div class="splash-sub">Полевая служба</div>
+              <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+            </div>
+            <div class="phone-bar">
+              <div class="bar-dot" style="width:16px;"></div>
+              <div class="bar-dot"></div>
+              <div class="bar-dot" style="width:16px;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="step-info">
+          <div class="step-num">4</div>
+          <div class="step-title">Готово! Открывай и работай</div>
+          <p class="step-desc">Найди иконку ASGARD на рабочем столе и войди с обычными логином и паролем.</p>
+        </div>
+      </div>
+    </div><!-- /android steps -->
+
+    <div class="tips fi">
+      <div class="tip"><span class="tip-icon">🔑</span><p class="tip-text"><strong>Те же логин и пароль</strong> — никакой новой регистрации.</p></div>
+      <div class="tip"><span class="tip-icon">🌐</span><p class="tip-text"><strong>Нужен интернет.</strong> Работает только с мобильным или Wi-Fi.</p></div>
+      <div class="tip"><span class="tip-icon">🔒</span><p class="tip-text"><strong>«Неизвестные источники»</strong> — это нормально. APK безопасен.</p></div>
+    </div>
+
+  </div><!-- /android panel -->
+
+  <!-- ══════════════════════════════════ iOS TAB ══════════════════════════════════ -->
+  <div class="tab-panel" id="panel-ios">
+
+    <div class="ios-cta fi fi-2">
+      <div class="ios-cta-icon">📲</div>
+      <div>
+        <div class="ios-cta-title">Добавь на экран «Домой»</div>
+        <p class="ios-cta-sub">На iPhone нет APK. Вместо этого добавь сайт на экран — работает как нативное приложение. Бесплатно, без App Store.</p>
+      </div>
+    </div>
+
+    <div class="platform-note fi fi-2">
+      <span class="platform-tag pt-ok">✓ iOS 14+ — поддерживается</span>
+      <span class="platform-tag" style="background:rgba(74,144,217,0.1);border:1px solid rgba(74,144,217,0.3);color:var(--blue);">🔔 Пуши — iOS 16.4+</span>
+    </div>
+
+    <!-- Part A: Add to Home Screen -->
+    <p class="section-label fi fi-3">Часть 1 — Добавить на экран «Домой»</p>
+    <div class="steps">
+
+      <!-- iOS Step 1: Open Safari -->
+      <div class="step fi fi-3">
+        <div class="phone">
+          <div class="screen">
+            <div class="chrome-bar" style="background:#1a1a28;">
+              <div class="chrome-url" style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:9px;color:rgba(200,168,78,0.7);">🔒</span>
+                92.242.61.184/field/
+              </div>
+            </div>
+            <div class="chrome-body">
+              <div class="mini-logo">🛡️</div>
+              <div class="mini-title">ASGARD Полевая</div>
+              <div class="mini-sub">Мобильное приложение для рабочих</div>
+              <div style="font-size:9px;color:var(--gold);background:rgba(200,168,78,0.1);border:1px solid rgba(200,168,78,0.3);border-radius:8px;padding:6px 10px;text-align:center;">
+                Открыт в Safari
+              </div>
+            </div>
+            <div class="chrome-bottom" style="display:flex;align-items:center;justify-content:space-between;padding:0 16px;">
+              <span style="font-size:18px;color:rgba(255,255,255,0.3);">←</span>
+              <span style="font-size:18px;color:rgba(255,255,255,0.3);">→</span>
+              <span style="font-size:20px;color:var(--gold);">⎙</span>
+              <span style="font-size:18px;color:rgba(255,255,255,0.3);">⊡</span>
+              <span style="font-size:18px;color:rgba(255,255,255,0.3);">☰</span>
+            </div>
+          </div>
+        </div>
+        <div class="step-info">
+          <div class="step-num">1</div>
+          <div class="step-title">Открой в Safari</div>
+          <p class="step-desc">Перейди на <strong>92.242.61.184/field/</strong> в браузере Safari. Chrome и другие браузеры на iOS не поддерживают добавление на экран.</p>
+        </div>
+      </div>
+
+      <!-- iOS Step 2: Tap Share -->
+      <div class="step fi fi-4">
+        <div class="phone">
+          <div class="screen">
+            <div class="chrome-bar" style="background:#1a1a28;">
+              <div class="chrome-url">92.242.61.184/field/</div>
+            </div>
+            <div class="chrome-body" style="opacity:0.3;">
+              <div class="mini-logo">🛡️</div>
+              <div class="mini-title">ASGARD Полевая</div>
+            </div>
+            <div class="chrome-bottom" style="display:flex;align-items:center;justify-content:space-between;padding:0 16px;position:relative;">
+              <span style="font-size:18px;color:rgba(255,255,255,0.2);">←</span>
+              <span style="font-size:18px;color:rgba(255,255,255,0.2);">→</span>
+              <span style="font-size:22px;color:var(--gold);position:relative;">⎙
+                <span style="position:absolute;inset:-8px;border-radius:50%;border:2px solid var(--gold);box-shadow:0 0 12px rgba(200,168,78,0.5);animation:tap 1.6s ease-out infinite;"></span>
+              </span>
+              <span style="font-size:18px;color:rgba(255,255,255,0.2);">⊡</span>
+              <span style="font-size:18px;color:rgba(255,255,255,0.2);">☰</span>
+            </div>
+            <!-- Share sheet -->
+            <div class="share-sheet">
+              <div class="share-row">
+                <div class="share-item"><div class="share-icon">💬</div><div>Сообщения</div></div>
+                <div class="share-item"><div class="share-icon">✉️</div><div>Почта</div></div>
+                <div class="share-item highlighted"><div class="share-icon highlighted">＋</div><div class="share-label">На экран</div></div>
+                <div class="share-item"><div class="share-icon">📋</div><div>Скопировать</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="step-info">
+          <div class="step-num">2</div>
+          <div class="step-title">Нажми «Поделиться» ⎙</div>
+          <p class="step-desc">Внизу Safari нажми значок «Поделиться» (квадрат со стрелкой вверх). Появится меню.</p>
+        </div>
+      </div>
+
+      <!-- iOS Step 3: Add to Home -->
+      <div class="step fi fi-5">
+        <div class="phone">
+          <div class="screen">
+            <div style="flex:1;background:#111118;opacity:0.25;"></div>
+            <div class="add-home-sheet">
+              <div class="add-home-title">Поделиться</div>
+              <div class="add-home-item"><div class="add-home-item-icon">🔗</div><div class="add-home-item-label">Скопировать ссылку</div></div>
+              <div class="add-home-item highlighted"><div class="add-home-item-icon gold">＋</div><div class="add-home-item-label gold">На экран «Домой»</div></div>
+              <div class="add-home-item"><div class="add-home-item-icon">⎙</div><div class="add-home-item-label">Поделиться…</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="step-info">
+          <div class="step-num">3</div>
+          <div class="step-title">«На экран "Домой"»</div>
+          <p class="step-desc">В меню найди и нажми «На экран "Домой"». Подтверди название и нажми «Добавить».</p>
+        </div>
+      </div>
+
+      <!-- iOS Step 4: Splash -->
+      <div class="step fi fi-6">
+        <div class="phone">
+          <div class="screen">
+            <div class="splash">
+              <div class="splash-logo">🛡️</div>
+              <div class="splash-title">ASGARD</div>
+              <div class="splash-sub">Полевая служба</div>
+              <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+            </div>
+            <div class="phone-bar">
+              <div class="bar-dot" style="width:16px;"></div>
+              <div class="bar-dot"></div>
+              <div class="bar-dot" style="width:16px;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="step-info">
+          <div class="step-num">4</div>
+          <div class="step-title">Готово! Открывай с экрана</div>
+          <p class="step-desc">Иконка ASGARD появилась на рабочем столе. Открывай её — приложение запускается без браузерных панелей.</p>
+        </div>
+      </div>
+    </div><!-- /ios add to home steps -->
+
+    <!-- Part B: Push Notifications -->
+    <div class="divider fi">
+      <div class="divider-line"></div>
+      <div class="divider-text">🔔 Включить уведомления</div>
+      <div class="divider-line"></div>
+    </div>
+
+    <p class="section-label fi">Часть 2 — Push-уведомления (iOS 16.4+)</p>
+    <div style="background:rgba(74,144,217,0.08);border:1px solid rgba(74,144,217,0.2);border-radius:14px;padding:14px 16px;margin-bottom:28px;" class="fi">
+      <p style="font-size:12px;color:rgba(255,255,255,0.6);line-height:1.6;">
+        ⚠️ <strong style="color:#fff;">Требуется iOS 16.4 или новее.</strong> Уведомления работают только когда приложение добавлено на экран «Домой» (не из браузера). Сначала выполни Часть 1.
+      </p>
+    </div>
+
+    <div class="steps">
+
+      <!-- Push Step 1: Open from home screen -->
+      <div class="step fi">
+        <div class="phone">
+          <div class="screen">
+            <div class="splash">
+              <div class="splash-logo">🛡️</div>
+              <div class="splash-title">ASGARD</div>
+              <div class="splash-sub">Открыто с экрана «Домой»</div>
+              <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+            </div>
+            <div class="phone-bar">
+              <div class="bar-dot" style="width:16px;"></div>
+              <div class="bar-dot"></div>
+              <div class="bar-dot" style="width:16px;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="step-info">
+          <div class="step-num blue">1</div>
+          <div class="step-title">Открой приложение с экрана</div>
+          <p class="step-desc">Открой ASGARD с иконки на рабочем столе (не через Safari). Войди в аккаунт как обычно.</p>
+        </div>
+      </div>
+
+      <!-- Push Step 2: Push prompt -->
+      <div class="step fi">
+        <div class="phone">
+          <div class="screen">
+            <div class="splash" style="opacity:0.25;flex:1;"></div>
+            <div class="notif-sheet">
+              <div class="dialog-box" style="margin:10px;">
+                <div class="dialog-icon">🔔</div>
+                <div class="dialog-title">ASGARD хочет отправлять уведомления</div>
+                <div class="dialog-body">Выплаты, задания, изменения в расписании — сразу на экран.</div>
+                <div class="dialog-actions">
+                  <div class="dialog-cancel">Не разрешать</div>
+                  <div class="dialog-ok">Разрешить</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="step-info">
+          <div class="step-num blue">2</div>
+          <div class="step-title">Нажми «Включить уведомления»</div>
+          <p class="step-desc">В приложении появится запрос разрешения. Нажми «Разрешить» чтобы получать уведомления о выплатах и заданиях.</p>
+        </div>
+      </div>
+
+      <!-- Push Step 3: Notification received -->
+      <div class="step fi">
+        <div class="phone">
+          <div class="screen">
+            <div style="flex:1;background:#0d0d12;padding:45px 10px 10px;">
+              <div style="font-size:8px;color:rgba(255,255,255,0.3);margin-bottom:16px;text-align:center;">Четверг, 17 мая</div>
+              <div class="notif-banner">
+                <div class="notif-app">🛡️ ASGARD Полевая · сейчас</div>
+                <div class="notif-title">💰 Выплата зачислена!</div>
+                <div class="notif-body">На вашу карту зачислено 18 500 ₽ за неделю.</div>
+              </div>
+              <div class="notif-banner" style="margin-top:6px;opacity:0.6;">
+                <div class="notif-app">🛡️ ASGARD Полевая · 2ч назад</div>
+                <div class="notif-title">📋 Новое задание</div>
+                <div class="notif-body">Завтра выход в 06:00, объект: ТЦ Мега Химки</div>
+              </div>
+            </div>
+            <div class="phone-bar">
+              <div class="bar-dot" style="width:16px;"></div>
+              <div class="bar-dot"></div>
+              <div class="bar-dot" style="width:16px;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="step-info">
+          <div class="step-num blue">3</div>
+          <div class="step-title">Уведомления работают!</div>
+          <p class="step-desc">Теперь ты будешь получать уведомления о выплатах, заданиях и изменениях расписания прямо на экран блокировки.</p>
+        </div>
+      </div>
+    </div><!-- /push steps -->
+
+    <div class="tips fi">
+      <div class="tip"><span class="tip-icon">🔑</span><p class="tip-text"><strong>Те же логин и пароль</strong> — никакой новой регистрации.</p></div>
+      <div class="tip"><span class="tip-icon">📱</span><p class="tip-text"><strong>Только Safari.</strong> Chrome на iPhone не поддерживает добавление на экран «Домой».</p></div>
+      <div class="tip"><span class="tip-icon">🔔</span><p class="tip-text"><strong>Пуши только из PWA.</strong> Если открывать через браузер — уведомления не придут.</p></div>
+      <div class="tip"><span class="tip-icon">📟</span><p class="tip-text"><strong>iOS 16.4+.</strong> На более старых версиях пуши не работают, но остальное — да.</p></div>
+    </div>
+  </div><!-- /ios panel -->
+
+  <div class="footer fi">
+    <p>ASGARD CRM · Полевая служба</p>
+    <p style="margin-top:4px;">По вопросам установки обратись к руководителю проекта</p>
+  </div>
+</div><!-- /wrap -->
+
+<script>
+  // Switch tabs
+  function switchTab(os) {
+    document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+    document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+    document.getElementById('panel-' + os).classList.add('active');
+    document.querySelector('.tab-' + os).classList.add('active');
+  }
+
+  // Auto-detect OS on load
+  var ua = navigator.userAgent;
+  var isIOS = /iPhone|iPad|iPod/.test(ua) && !/CriOS|FxiOS/.test(ua);
+  var isAndroid = /android/i.test(ua);
+
+  if (isIOS) {
+    switchTab('ios');
+  } else if (isAndroid) {
+    switchTab('android');
+    // Disable button if somehow not android (shouldn't happen)
+  } else {
+    // Desktop: disable APK button
+    var btn = document.getElementById('dlBtn');
+    if (btn) {
+      btn.style.background = 'rgba(80,80,100,0.4)';
+      btn.style.boxShadow = 'none';
+      btn.style.color = 'rgba(255,255,255,0.35)';
+      btn.style.pointerEvents = 'none';
+      btn.innerHTML = '<span>APK — только для Android</span>';
+    }
+  }
+</script>
+</body>
+</html>

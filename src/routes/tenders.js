@@ -765,7 +765,11 @@ async function routes(fastify, options) {
       });
 
       if (!response.text) {
-        return reply.code(500).send({ error: 'AI не вернул ответ' });
+        console.error('[tenders cost-est] AI вернул пустой content. model:', response.model, 'finish_reason:', response.stopReason, 'usage:', JSON.stringify(response.usage));
+        return reply.code(502).send({
+          error: 'AI вернул пустой ответ. Возможно, сработал контентный фильтр или превышен лимит токенов. См. логи сервера.',
+          code: 'empty_response'
+        });
       }
 
       // Parse JSON from AI response
@@ -795,6 +799,17 @@ async function routes(fastify, options) {
 
       return { success: true, ai_cost_estimate: totalCost, ai_cost_report: costData };
     } catch (err) {
+      if (err && err.name === 'AIProviderError') {
+        request.log.error({
+          err_code: err.code, status: err.status,
+          provider_msg: err.providerMessage,
+          request_summary: err.requestSummary,
+          body_sample: err.body ? String(err.body).substring(0, 500) : null
+        }, 'tender calc-cost AI error');
+        return reply.code(err.code === 'insufficient_funds' ? 402 : 502).send({
+          error: err.userMessage(), code: err.code, provider_status: err.status
+        });
+      }
       request.log.error(err, 'tender calc-cost error');
       return reply.code(500).send({ error: err.message });
     }

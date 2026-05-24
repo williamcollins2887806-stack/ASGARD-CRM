@@ -226,6 +226,19 @@ fastify.addHook('onRequest', (request, reply, done) => {
     sendIndexHtml(request, reply);
     return;
   }
+
+  // /download → /download.html (отдельный лендинг для скачивания APK).
+  // Без этого SPA-роутер ловил бы /download как unknown route и отдавал главный
+  // index.html (пользователь видит главную CRM вместо лендинга скачивания).
+  if (url === '/download') {
+    const dl = path.join(__dirname, '../public/download.html');
+    try {
+      const html = fs.readFileSync(dl, 'utf8');
+      reply.type('text/html').header('Cache-Control', 'no-cache').send(html);
+      return;
+    } catch (_) { /* файла нет → пропускаем дальше */ }
+  }
+
   done();
 });
 

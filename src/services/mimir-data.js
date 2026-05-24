@@ -265,7 +265,16 @@ async function getDbStats(db, user) {
     }
 
   } catch (e) {
-    console.error('DB stats error:', e.message);
+    // Структурированный лог: PG-ошибки приходят с code/table/column — выводим всё что есть
+    console.error('[mimir-data] DB stats error:', {
+      message: e.message,
+      code: e.code || null,
+      table: e.table || null,
+      column: e.column || null,
+      constraint: e.constraint || null,
+      detail: e.detail || null,
+      query_position: e.position || null
+    });
   }
 
   return stats;

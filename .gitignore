@@ -28,3 +28,10 @@ _*.py
 /*.html
 scripts/
 docs/
+
+# Android Capacitor — auto-generated проект, восстанавливается через `npx cap sync`
+public/mobile-app/android/
+public/mobile-app/android-field/
+
+# Локальные билд-скрипты (содержат жёсткие пути на конкретном Windows-разработчике)
+build_apk.ps1

@@ -274,6 +274,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/permits",l:"Разрешения и допуски",d:"Сроки действия, матрица",roles:["ADMIN","HR","HR_MANAGER","TO","HEAD_TO","PM","CHIEF_ENGINEER",...DIRECTOR_ROLES],i:"workers",p:"permits",g:"personnel"},
     {r:"/permit-applications",l:"Заявки на оформление",d:"Реестры разрешений подрядчикам",roles:["ADMIN","HR","HR_MANAGER","TO","HEAD_TO",...DIRECTOR_ROLES],i:"workers",p:"permit_applications",g:"personnel"},
     {r:"/training",l:"Обучение",d:"Заявки на обучение",roles:ALL_ROLES,i:"school",p:"training_applications",g:"personnel"},
+    {r:"/office-academy",l:"Академия Асгарда",d:"Корпоративное обучение — уроки и квизы",roles:ALL_ROLES,i:"school",p:"office_academy",g:"personnel"},
     {r:"/office-schedule",l:"График: Офис",d:"Статусы по дням",roles:ALL_ROLES,i:"schedule",p:"office_schedule",g:"personnel"},
     {r:"/workers-schedule",l:"График: Рабочие",d:"Бронь и доступность",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"workers",p:"workers_schedule",g:"personnel"},
     {r:"/hr-rating",l:"Рейтинг Дружины",d:"Оценки и средний балл",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"rating",p:"hr_rating",g:"personnel"},
@@ -2101,6 +2102,7 @@ var _setupPinKeypad = null;
     AsgardRouter.add("/procurement", ()=>AsgardProcurementPage.render({layout, title:"Закупки"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","PROC","BUH","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"]});
 AsgardRouter.add("/assembly", ()=>AsgardAssemblyPage.render({layout, title:"Сбор"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","WAREHOUSE","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"]});
     AsgardRouter.add("/training", () => { AsgardTrainingPage.render({layout, title:"Обучение"}); }, {auth:true});
+    AsgardRouter.add("/office-academy", () => { AsgardOfficeAcademyPage.render({layout, title:"Академия Асгарда"}); }, {auth:true, roles:ALL_ROLES});
   AsgardRouter.add("/workers-schedule", ()=>AsgardStaffSchedulePage.render({layout, title:"График рабочих"}), {auth:true, roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES]});
   AsgardRouter.add("/office-schedule", ()=>AsgardOfficeSchedulePage.render({layout, title:"График Дружины • Офис"}), {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/gantt-calcs", ()=>AsgardGanttFullPage.renderCalcs({layout}), {auth:true, roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES]});

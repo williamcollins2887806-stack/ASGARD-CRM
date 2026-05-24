@@ -1920,7 +1920,16 @@ async function callMimirForEstimate(aiProvider, ctx, extraUserMessage = null) {
   });
 
   if (!aiResult || !aiResult.text) {
-    throw new Error('AI не вернул ответ');
+    // Структурированная ошибка — caller-обработчик распознает и покажет понятное сообщение
+    throw new aiProvider.AIProviderError({
+      code: 'empty_response',
+      providerMessage: 'AI вернул пустой content (нет текста и нет tool_calls)',
+      requestSummary: {
+        model: aiResult?.model,
+        finish_reason: aiResult?.stopReason,
+        usage: aiResult?.usage
+      }
+    });
   }
 
   // Парсим JSON

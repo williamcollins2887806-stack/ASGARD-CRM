@@ -10,6 +10,86 @@
 
 const db = require('./db');
 
+/**
+ * Структурированная ошибка AI-провайдера.
+ * Позволяет вызывающему коду понять что именно произошло
+ * и показать пользователю человеческое сообщение.
+ *
+ * code: 'insufficient_funds' | 'rate_limit' | 'auth' | 'bad_request'
+ *     | 'provider_error' | 'upstream_error' | 'timeout' | 'network'
+ *     | 'empty_response' | 'unknown'
+ */
+class AIProviderError extends Error {
+  constructor({ code, status, providerMessage, body, cause, requestSummary }) {
+    const msg = providerMessage || `AI provider error (${code}${status ? ' ' + status : ''})`;
+    super(msg);
+    this.name = 'AIProviderError';
+    this.code = code;
+    this.status = status || null;
+    this.providerMessage = providerMessage || null;
+    this.body = body || null;
+    this.cause = cause || null;
+    this.requestSummary = requestSummary || null;
+  }
+
+  /** Человекочитаемое сообщение для UI (рус.) */
+  userMessage() {
+    switch (this.code) {
+      case 'insufficient_funds':
+        return 'Недостаточно средств на балансе AI-провайдера. Обратитесь к администратору для пополнения.';
+      case 'rate_limit':
+        return 'AI-провайдер временно ограничил запросы (rate limit). Подождите 30–60 секунд и попробуйте снова.';
+      case 'auth':
+        return 'Ошибка авторизации в AI-провайдере. Проверьте API-ключ в настройках.';
+      case 'bad_request':
+        return `AI-провайдер отклонил запрос${this.providerMessage ? ': ' + this.providerMessage : ' (некорректный формат)'}.`;
+      case 'provider_error':
+      case 'upstream_error':
+        return 'Сбой на стороне AI-провайдера. Попробуйте через минуту.';
+      case 'timeout':
+        return 'AI не ответил за отведённое время. Попробуйте ещё раз, при повторе — уменьшите объём документов.';
+      case 'network':
+        return 'Не удалось связаться с AI-провайдером (сетевая ошибка). Проверьте интернет/прокси.';
+      case 'empty_response':
+        return 'AI вернул пустой ответ. Возможные причины: сработал контентный фильтр, упёрлись в лимит токенов или провайдер вернул мусор. См. логи сервера.';
+      default:
+        return this.providerMessage || 'Неизвестная ошибка AI-провайдера. См. логи сервера.';
+    }
+  }
+}
+
+/**
+ * Классифицировать HTTP-ответ routerai/OpenAI-compatible в код ошибки.
+ * Анализирует и статус, и тело (там часто текстом написано "Недостаточно средств").
+ */
+function _classifyHttpError(status, bodyText) {
+  const t = (bodyText || '').toLowerCase();
+  if (status === 402 || /недостаточно средств|insufficient.*(funds|balance|credit)|пополните счет|пополните счёт/i.test(bodyText || '')) {
+    return 'insufficient_funds';
+  }
+  if (status === 401 || status === 403) return 'auth';
+  if (status === 429 || /rate.?limit|too many requests/i.test(t)) return 'rate_limit';
+  if (status === 400 || status === 422) return 'bad_request';
+  if (status >= 500 && status < 600) return 'upstream_error';
+  return 'provider_error';
+}
+
+/**
+ * Попытаться вытащить читаемое сообщение из тела ошибки routerai/OpenAI.
+ * Форматы: {"error":"..."} / {"error":{"message":"..."}} / plain text
+ */
+function _extractProviderMessage(bodyText) {
+  if (!bodyText) return null;
+  try {
+    const j = JSON.parse(bodyText);
+    if (typeof j.error === 'string') return j.error;
+    if (j.error?.message) return j.error.message;
+    if (j.message) return j.message;
+  } catch (_) { /* not json */ }
+  // обрезаем для UI
+  return bodyText.length > 300 ? bodyText.substring(0, 300) + '…' : bodyText;
+}
+
 // Конфигурация из переменных окружения (начальные значения)
 let AI_PROVIDER = process.env.AI_PROVIDER || 'openai';
 let ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
@@ -259,14 +339,49 @@ async function callOpenAI({ system, messages, maxTokens, temperature, stream = f
     });
   } catch (err) {
     clearTimeout(timeoutId);
-    if (err.name === 'AbortError') throw new Error(`OpenAI API timeout after ${AI_TIMEOUT_MS}ms`);
-    throw err;
+    const reqSummary = {
+      model: body.model, has_plugins: !!body.plugins, plugins_ids: body.plugins?.map(p=>p.id),
+      verbosity: body.verbosity, has_tools: !!body.tools, max_tokens: body.max_tokens,
+      messages_count: body.messages?.length
+    };
+    if (err.name === 'AbortError') {
+      console.error('[AI Provider] TIMEOUT after', AI_TIMEOUT_MS, 'ms. Request:', JSON.stringify(reqSummary));
+      throw new AIProviderError({
+        code: 'timeout', status: null,
+        providerMessage: `OpenAI API timeout after ${AI_TIMEOUT_MS}ms`,
+        requestSummary: reqSummary, cause: err
+      });
+    }
+    console.error('[AI Provider] NETWORK error:', err.message, '| Request:', JSON.stringify(reqSummary));
+    throw new AIProviderError({
+      code: 'network', status: null,
+      providerMessage: err.message || 'network error',
+      requestSummary: reqSummary, cause: err
+    });
   }
 
   if (!response.ok) {
     clearTimeout(timeoutId);
     const errorText = await response.text();
-    throw new Error(`OpenAI API error ${response.status}: ${errorText}`);
+    const reqSummary = {
+      model: body.model, has_plugins: !!body.plugins, plugins_ids: body.plugins?.map(p=>p.id),
+      verbosity: body.verbosity, has_tools: !!body.tools, max_tokens: body.max_tokens,
+      messages_count: body.messages?.length,
+      first_msg_content_type: typeof body.messages?.[0]?.content,
+      first_msg_blocks: Array.isArray(body.messages?.[0]?.content) ? body.messages[0].content.map(b=>b.type) : null
+    };
+    const code = _classifyHttpError(response.status, errorText);
+    const providerMessage = _extractProviderMessage(errorText);
+    // Структурированный лог
+    console.error(`[AI Provider] HTTP ${response.status} (${code}) from routerai`);
+    console.error('  provider_message:', providerMessage);
+    console.error('  request_summary:', JSON.stringify(reqSummary));
+    console.error('  raw_body (first 2000 chars):', errorText.substring(0, 2000));
+    throw new AIProviderError({
+      code, status: response.status,
+      providerMessage, body: errorText.substring(0, 2000),
+      requestSummary: reqSummary
+    });
   }
 
   if (stream) {
@@ -278,9 +393,25 @@ async function callOpenAI({ system, messages, maxTokens, temperature, stream = f
 
   const data = await response.json();
 
+  // AP6: детальное логирование если ответ подозрительный (пустой content)
   const choice = data.choices?.[0] || {};
+  const content = choice.message?.content;
+  const hasToolCalls = Array.isArray(choice.message?.tool_calls) && choice.message.tool_calls.length > 0;
+  const isEmpty = (!content || (typeof content === 'string' && content.trim().length === 0)) && !hasToolCalls;
+  if (isEmpty) {
+    console.error('[AI Provider] EMPTY response from routerai (no content & no tool_calls)');
+    console.error('  finish_reason:', choice.finish_reason);
+    console.error('  model:', data.model);
+    console.error('  usage:', JSON.stringify(data.usage));
+    console.error('  message keys:', Object.keys(choice.message || {}));
+    console.error('  raw choice (first 1500 chars):', JSON.stringify(choice).substring(0, 1500));
+    if (data.error) console.error('  data.error:', JSON.stringify(data.error));
+    // Не бросаем здесь — оставляем решение caller'у (некоторые сценарии умеют переотправить).
+    // Но для удобства caller-а возвращаем флаг _empty.
+  }
+
   return {
-    text: choice.message?.content || '',
+    text: content || '',
     tool_calls: choice.message?.tool_calls || null, // AP5: tool-calling
     annotations: choice.message?.annotations || null, // AP6: url_citation от web search
     usage: {
@@ -812,5 +943,6 @@ module.exports = {
   parseOpenAIStream,
   getConfig,
   getProvider,
-  _loadKeysFromDB // AP5: agent needs to ensure keys are loaded
+  _loadKeysFromDB, // AP5: agent needs to ensure keys are loaded
+  AIProviderError // экспорт класса для классификации ошибок в caller-ах
 };
