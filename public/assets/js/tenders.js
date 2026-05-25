@@ -700,7 +700,7 @@ window.AsgardTendersPage = (function(){
       for(let i = 0; i < 12; i++) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); const ym = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); o.push({ value: ym, label: d.toLocaleDateString('ru-RU', {month:'long', year:'numeric'}) }); }
       return o;
     })();
-    $('#f_period_w')?.appendChild(CRSelect.create({ id: 'f_period', options: _periodOpts, value: 'year:' + new Date().getFullYear(), onChange: () => applyAndRender() }));
+    $('#f_period_w')?.appendChild(CRSelect.create({ id: 'f_period', options: _periodOpts, value: '', onChange: () => applyAndRender() }));
     $('#f_type_w')?.appendChild(CRSelect.create({ id: 'f_type', options: [{ value: '', label: 'Все' }, ...TENDER_TYPES.map(tp => ({ value: tp, label: tp }))], onChange: () => applyAndRender() }));
     $('#f_status_w')?.appendChild(CRSelect.create({ id: 'f_status', options: [{ value: '', label: 'Все' }, ...refs.tender_statuses.map(s => ({ value: s, label: s }))], onChange: () => applyAndRender() }));
     $('#f_pm_w')?.appendChild(CRSelect.create({ id: 'f_pm', options: [{ value: '', label: 'Все' }, ...pms.map(p => ({ value: String(p.id), label: p.name }))], searchable: true, onChange: () => applyAndRender() }));
@@ -1439,7 +1439,7 @@ window.AsgardTendersPage = (function(){
     $("#f_q").addEventListener("input", applyAndRender);
 
     $("#btnReset").addEventListener("click", ()=>{
-      CRSelect.setValue('f_period', 'year:' + new Date().getFullYear());
+      CRSelect.setValue('f_period', '');
       $("#f_q").value="";
       CRSelect.setValue('f_type', '');
       CRSelect.setValue('f_status', '');

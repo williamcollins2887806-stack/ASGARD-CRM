@@ -21,6 +21,7 @@ const { Readable } = require('stream');
 const aiProvider = require('../services/ai-provider');
 const mimirData = require('../services/mimir-data');
 const mimirSchema = require('../services/mimir-schema');
+const mimirJobs = require('../services/mimir-jobs'); // persistent storage для просчётов
 
 async function mimirRoutes(fastify, options) {
   const db = fastify.db;
@@ -1985,10 +1986,13 @@ ${analogsSummary}
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // Серверный трекер активных авто-просчётов (персистентный между вкладками)
+  // Серверный трекер просчётов Мимира — теперь PERSISTENT (БД, не in-memory).
+  // mimirJobs.get/set/del работают с таблицей mimir_estimate_jobs (V119).
+  // Хранится: done навсегда, error 24ч, running до завершения или sweep таймаута.
   // ═══════════════════════════════════════════════════════════════════════════
-  if (!fastify._aeJobs) fastify._aeJobs = new Map();
-  const AE_JOB_TTL = 600000; // 10 мин макс время жизни
+
+  // Запускаем фоновую авточистку (старые error, зависшие running)
+  mimirJobs.startSweep();
 
   // GET /api/mimir/auto-estimate-status — проверить, есть ли активный/готовый просчёт
   fastify.get('/auto-estimate-status', {
@@ -1996,57 +2000,80 @@ ${analogsSummary}
   }, async (request, reply) => {
     const { work_id, tender_id } = request.query || {};
     const key = work_id ? 'w' + work_id : 't' + tender_id;
-    if (!key || key === 'wundefined') return { status: 'none' };
+    if (!key || key === 'wundefined' || key === 'tundefined') return { status: 'none' };
 
-    const job = fastify._aeJobs.get(key);
-    if (!job || (Date.now() - job.startedAt > AE_JOB_TTL)) {
-      fastify._aeJobs.delete(key);
-      return { status: 'none' };
-    }
+    const job = await mimirJobs.get(key);
+    if (!job) return { status: 'none' };
+
     return {
       status: job.status,  // 'running', 'questions', 'done', 'error'
       result: job.result || null,
       session_id: job.session_id || null,
       questions: job.questions || null,
       error: job.error || null,
+      error_code: job.error_code || null,
+      provider_message: job.provider_message || null,
       elapsed_ms: Date.now() - job.startedAt
     };
   });
 
-  // GET /api/mimir/auto-estimate-active — вернуть все ИДУЩИЕ просчёты этого юзера.
-  // Используется для авто-восстановления модалки после reload — клиент дёргает
-  // этот эндпоинт на любой странице и если что-то живо — открывает модалку.
+  // GET /api/mimir/auto-estimate-active — вернуть все идущие/недавние просчёты юзера
   fastify.get('/auto-estimate-active', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
-    // _aeJobs не хранит user_id (упрощение), но просчёт всё равно один глобально
-    // на work/tender, так что отдаём всё что running/questions/done.
-    const active = [];
-    for (const [key, job] of fastify._aeJobs.entries()) {
-      if (Date.now() - job.startedAt > AE_JOB_TTL) continue;
-      if (!['running','questions','done'].includes(job.status)) continue;
-      // key формата 'w<id>' или 't<id>'
+    const userId = request.user?.id || null;
+    const jobs = await mimirJobs.listActive({ user_id: userId });
+    const active = jobs.map(j => {
+      const key = j.job_key;
       const isWork = key.startsWith('w');
       const id = parseInt(key.slice(1));
-      if (!id) continue;
-      active.push({
-        key, status: job.status,
+      return {
+        key, status: j.status,
         work_id: isWork ? id : null,
         tender_id: isWork ? null : id,
-        elapsed_ms: Date.now() - job.startedAt,
-        estimate_id: job.result?.estimate_id || null
-      });
-    }
+        elapsed_ms: Date.now() - j.startedAt,
+        estimate_id: j.estimate_id || j.result?.estimate_id || null
+      };
+    });
     return { active };
   });
 
-  // DELETE /api/mimir/auto-estimate-status — сбросить джоб (пользователь закрыл модалку)
+  // GET /api/mimir/auto-estimate-history — история ВСЕХ просчётов work/tender (done навсегда)
+  fastify.get('/auto-estimate-history', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { work_id, tender_id, limit } = request.query || {};
+    const wid = work_id ? parseInt(work_id) : null;
+    const tid = tender_id ? parseInt(tender_id) : null;
+    if (!wid && !tid) return { history: [] };
+    const hist = await mimirJobs.historyFor({
+      work_id: wid, tender_id: tid,
+      limit: Math.min(parseInt(limit) || 10, 50)
+    });
+    return {
+      history: hist.map(j => ({
+        id: j._id,
+        status: j.status,
+        started_at: new Date(j.startedAt).toISOString(),
+        completed_at: j.completedAt ? new Date(j.completedAt).toISOString() : null,
+        estimate_id: j.estimate_id || j.result?.estimate_id || null,
+        error: j.error,
+        error_code: j.error_code,
+        card: j.result?.card || null
+      }))
+    };
+  });
+
+  // DELETE /api/mimir/auto-estimate-status — сбросить активный джоб (юзер закрыл модалку)
+  // Note: реально удаляет только running/questions. done остаётся навсегда.
   fastify.delete('/auto-estimate-status', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const { work_id, tender_id } = request.query || {};
     const key = work_id ? 'w' + work_id : 't' + tender_id;
-    fastify._aeJobs.delete(key);
+    if (key && key !== 'wundefined' && key !== 'tundefined') {
+      await mimirJobs.del(key);
+    }
     return { ok: true };
   });
 
@@ -2079,12 +2106,12 @@ ${analogsSummary}
 
     // Проверка: уже бежит просчёт?
     const jobKey = workId ? 'w' + workId : 't' + tenderId;
-    const existingJob = fastify._aeJobs.get(jobKey);
-    if (existingJob && (Date.now() - existingJob.startedAt < AE_JOB_TTL) && existingJob.status === 'running') {
+    const existingJob = await mimirJobs.get(jobKey);
+    if (existingJob && existingJob.status === 'running') {
       return reply.code(409).send({ success: false, message: 'Просчёт уже запущен', status: 'running' });
     }
-    // Регистрируем джоб
-    fastify._aeJobs.set(jobKey, { status: 'running', startedAt: Date.now(), result: null });
+    // Регистрируем джоб в БД
+    await mimirJobs.set(jobKey, { status: 'running', result: null }, { user_id: request.user?.id || null });
 
     // SSE headers
     reply.raw.writeHead(200, {
@@ -2293,10 +2320,10 @@ ${analogsSummary}
       if (parsed.phase === 'questions' && parsed.questions) {
         const sessionId = `ae_${workId || 't' + tenderId}_${Date.now()}`;
         // Обновить джоб-трекер: фаза вопросов
-        fastify._aeJobs.set(jobKey, {
-          status: 'questions', startedAt: Date.now(),
+        await mimirJobs.set(jobKey, {
+          status: 'questions',
           session_id: sessionId, questions: parsed.questions, result: null
-        });
+        }, { user_id: request.user?.id || null });
         // Кэшируем контекст (5 мин TTL)
         if (!fastify._aeQuestionCache) fastify._aeQuestionCache = new Map();
         fastify._aeQuestionCache.set(sessionId, {
@@ -2385,16 +2412,16 @@ ${analogsSummary}
         elapsed_ms: Date.now() - startTime
       });
 
-      // Сохранить результат в серверный кэш джобов
-      fastify._aeJobs.set(jobKey, {
-        status: 'done', startedAt: Date.now(),
+      // Сохранить результат в БД (done = навсегда)
+      await mimirJobs.set(jobKey, {
+        status: 'done',
         result: { estimate_id: created.estimate_id, version_no: created.version_no, card: {
           title: ai.estimate?.title || ctx.work.work_title,
           total_with_margin: totals.total_with_margin,
           total_with_vat: totals.total_with_vat,
           crew_count: ai.estimate?.crew_count, work_days: ai.estimate?.work_days
         }}
-      });
+      }, { user_id: request.user?.id || null });
 
       sendEvent({ type: 'done' });
 
@@ -2418,13 +2445,12 @@ ${analogsSummary}
       }
       console.error('  stack:', error.stack);
 
-      fastify._aeJobs.set(jobKey, {
-        status: 'error', startedAt: Date.now(),
+      await mimirJobs.set(jobKey, {
+        status: 'error',
         error: String(userMsg).substring(0, 500),
         error_code: errCode,
-        error_status: isAIErr ? error.status : null,
         provider_message: isAIErr ? (error.providerMessage || null) : null
-      });
+      }, { user_id: request.user?.id || null });
       sendEvent({
         type: 'error',
         message: String(userMsg).substring(0, 500),
@@ -2574,15 +2600,15 @@ ${analogsSummary}
         elapsed_ms: Date.now() - startTime
       });
 
-      // Обновить серверный кэш джобов
+      // Обновить серверный кэш джобов (БД — done навсегда)
       const ansJobKey = cache.workId ? 'w' + cache.workId : 't' + cache.tenderId;
-      fastify._aeJobs.set(ansJobKey, {
-        status: 'done', startedAt: Date.now(),
+      await mimirJobs.set(ansJobKey, {
+        status: 'done',
         result: { estimate_id: created.estimate_id, card: {
           title: ai.estimate?.title || ctx.work.work_title,
           total_with_margin: totals.total_with_margin
         }}
-      });
+      }, { user_id: request.user?.id || null });
 
       sendEvent({ type: 'done' });
     } catch (err) {
