@@ -869,6 +869,201 @@ async function _completeYandexOpenAI(options) {
 }
 
 /**
+ * Выполнить web search через routerai plugin 'web' (отдельный мини-запрос).
+ * Возвращает структурированный JSON массив с результатами.
+ *
+ * Используется в agent loop: когда основная модель просит WebSearch tool_call,
+ * мы делаем отдельный лёгкий запрос с plugin web, получаем результаты и
+ * возвращаем их обратно как tool result.
+ *
+ * @param {string} query — поисковый запрос
+ * @param {Object} opts — { includeDomains?: string[], maxResults?: number }
+ * @returns {Promise<string>} — текстовый результат для возврата Claude (краткая сводка + URL)
+ */
+async function executeWebSearch(query, opts = {}) {
+  await _loadKeysFromDB();
+  if (!OPENAI_API_KEY) {
+    return `[web search недоступен: ключ не настроен] Запрос: ${query}`;
+  }
+
+  const includeDomains = opts.includeDomains || [];
+  const maxResults = opts.maxResults || 5;
+
+  // Используем lite-промпт: просим вернуть только факты + ссылки, без рассуждений
+  const systemPrompt = 'Ты — поисковый ассистент. Выполни web search по запросу пользователя и верни ТОЛЬКО краткую сводку фактов с пометкой источников (URL). Без рассуждений, без воды. Если ничего не нашёл — так и напиши.';
+
+  const t0 = Date.now();
+  try {
+    const result = await callOpenAI({
+      system: systemPrompt,
+      messages: [{ role: 'user', content: query }],
+      maxTokens: 1500,
+      temperature: 0.1,
+      plugins: [{
+        id: 'web',
+        engine: 'native',
+        max_results: maxResults,
+        ...(includeDomains.length ? { include_domains: includeDomains } : {})
+      }]
+    });
+    const ms = Date.now() - t0;
+    console.log(`[WebSearch] "${query.substring(0, 80)}" → ${result.text?.length || 0} chars, ${ms}ms`);
+    if (result.annotations && result.annotations.length > 0) {
+      console.log(`[WebSearch] annotations: ${result.annotations.length} URL citations`);
+    }
+    return result.text || `[пустой ответ от поиска по "${query}"]`;
+  } catch (e) {
+    const ms = Date.now() - t0;
+    console.warn(`[WebSearch] FAILED "${query.substring(0, 80)}" after ${ms}ms:`, e.message);
+    return `[Ошибка поиска: ${e.message}]`;
+  }
+}
+
+/**
+ * Выполнить один tool_call от Claude и вернуть результат для следующей итерации.
+ * Сейчас поддерживается только WebSearch — остальные инструменты возвращают
+ * сообщение что они не реализованы (Claude обычно после этого даёт ответ без них).
+ */
+async function _executeToolCall(toolCall, opts = {}) {
+  const fnName = toolCall.function?.name || toolCall.name;
+  let args = {};
+  try {
+    args = typeof toolCall.function?.arguments === 'string'
+      ? JSON.parse(toolCall.function.arguments)
+      : (toolCall.function?.arguments || {});
+  } catch (e) {
+    return `[Не удалось распарсить аргументы tool_call: ${e.message}]`;
+  }
+
+  // WebSearch (Claude native naming) или web_search или web
+  if (/^(WebSearch|web_search|web)$/i.test(fnName)) {
+    const query = args.query || args.q || args.search_query || JSON.stringify(args);
+    return await executeWebSearch(query, {
+      includeDomains: opts.includeDomains,
+      maxResults: opts.maxResults
+    });
+  }
+
+  // Неизвестный инструмент
+  console.warn(`[AgentLoop] Неподдерживаемый tool_call: ${fnName}, args:`, JSON.stringify(args).substring(0, 200));
+  return `[Инструмент "${fnName}" не реализован на сервере. Отвечай тем что есть в исходных данных.]`;
+}
+
+/**
+ * Agent loop: вызывает complete() в цикле, пока модель не перестанет
+ * запрашивать tool_calls (finish_reason !== 'tool_calls').
+ *
+ * На каждой итерации с tool_calls:
+ *   1. Параллельно выполняет все tool_calls (Promise.all)
+ *   2. Дописывает в messages: assistant (с tool_calls) + N сообщений role='tool'
+ *   3. Повторяет complete()
+ *
+ * Ограничения: maxIterations (по умолчанию 5), общий бюджет токенов.
+ *
+ * @param {Object} options — те же что у complete(), плюс:
+ *   onProgress?: ({type, iteration, tool_calls?, query?, result_chars?}) => void
+ *   maxIterations?: number — по умолчанию 5
+ *   webSearchIncludeDomains?: string[] — домены для web search
+ * @returns {Promise<Object>} — финальный ответ от complete() (с уже не пустым text)
+ */
+async function runAgentLoop(options) {
+  const {
+    onProgress = () => {},
+    maxIterations = 5,
+    webSearchIncludeDomains = [],
+    ...completeOpts
+  } = options;
+
+  const messages = [...(completeOpts.messages || [])];
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+  let lastResult = null;
+
+  for (let iter = 0; iter < maxIterations; iter++) {
+    onProgress({ type: 'iteration_start', iteration: iter });
+
+    const result = await complete({ ...completeOpts, messages });
+    lastResult = result;
+    totalInputTokens += result.usage?.inputTokens || 0;
+    totalOutputTokens += result.usage?.outputTokens || 0;
+
+    const toolCalls = result.tool_calls || result._rawMessage?.tool_calls;
+    const hasTools = Array.isArray(toolCalls) && toolCalls.length > 0;
+    const isToolCallsStop = result.stopReason === 'tool_calls' || result.stopReason === 'tool_use';
+
+    // Финальный ответ — нет tool_calls или модель сама остановилась
+    if (!hasTools || !isToolCallsStop) {
+      console.log(`[AgentLoop] Завершено на итерации ${iter}: stopReason=${result.stopReason}, hasTools=${hasTools}`);
+      return {
+        ...result,
+        usage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens },
+        agentIterations: iter + 1
+      };
+    }
+
+    console.log(`[AgentLoop] Итерация ${iter}: модель просит ${toolCalls.length} tool_calls`);
+    onProgress({
+      type: 'tool_calls',
+      iteration: iter,
+      tool_calls: toolCalls.map(tc => ({
+        name: tc.function?.name,
+        query: (() => {
+          try {
+            return JSON.parse(tc.function?.arguments || '{}').query
+              || JSON.parse(tc.function?.arguments || '{}').q
+              || null;
+          } catch { return null; }
+        })()
+      }))
+    });
+
+    // Добавляем assistant сообщение с tool_calls (как Claude его прислал)
+    messages.push({
+      role: 'assistant',
+      content: result.text || null,
+      tool_calls: toolCalls
+    });
+
+    // Выполняем все tool_calls параллельно
+    const toolResults = await Promise.all(
+      toolCalls.map(async (tc) => {
+        const content = await _executeToolCall(tc, {
+          includeDomains: webSearchIncludeDomains,
+          maxResults: 5
+        });
+        return {
+          role: 'tool',
+          tool_call_id: tc.id,
+          content: typeof content === 'string' ? content : JSON.stringify(content)
+        };
+      })
+    );
+
+    onProgress({
+      type: 'tool_results',
+      iteration: iter,
+      results: toolResults.map(r => ({
+        tool_call_id: r.tool_call_id,
+        result_chars: r.content.length
+      }))
+    });
+
+    // Дописываем результаты в messages
+    messages.push(...toolResults);
+  }
+
+  // Превысили лимит итераций — возвращаем последний ответ как есть
+  console.warn(`[AgentLoop] Превышен лимит ${maxIterations} итераций, возвращаем последний результат`);
+  return {
+    ...lastResult,
+    text: lastResult?.text || '[Agent loop превысил лимит итераций без финального ответа]',
+    usage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens },
+    agentIterations: maxIterations,
+    agentExceeded: true
+  };
+}
+
+/**
  * Быстрый вызов через нативный YandexGPT Pro (yandexgpt-32k/latest).
  * Для задач где критична скорость отклика (голосовой секретарь).
  * Всегда использует Foundation Models API напрямую, минуя Qwen3.
@@ -965,5 +1160,7 @@ module.exports = {
   getConfig,
   getProvider,
   _loadKeysFromDB, // AP5: agent needs to ensure keys are loaded
-  AIProviderError // экспорт класса для классификации ошибок в caller-ах
+  AIProviderError, // экспорт класса для классификации ошибок в caller-ах
+  runAgentLoop, // agent-loop с автоматическим выполнением tool_calls (WebSearch)
+  executeWebSearch // прямой вызов web search (можно использовать без agent loop)
 };

@@ -2139,6 +2139,15 @@ ${analogsSummary}
         text: `Составь просчёт для ${workId ? 'работы #' + workId : 'тендера #' + tenderId}.\n\n${dataText}`
       });
 
+      // AP6: домены поиска для web search (выполняется в agent loop когда Claude просит)
+      const WEB_SEARCH_DOMAINS = [
+        'rzd.ru', 'aviasales.ru', 'tutu.ru', 'yandex.ru',
+        'pulscen.ru', 'tiu.ru', 'tn.ru',
+        'b2b-center.ru', 'etp-ets.ru', 'zakupki.gov.ru',
+        'taifun-vakuum.ru', 'practick.ru', 'gidromashservice.ru',
+        'wildberries.ru', 'ozon.ru', 'avito.ru'
+      ];
+
       // Heartbeat каждые 5 сек пока Claude думает
       let thinkingSec = 0;
       const heartbeat = setInterval(() => {
@@ -2150,33 +2159,53 @@ ${analogsSummary}
 
       let aiResult;
       try {
-        aiResult = await aiProvider.complete({
+        // Agent loop: если Claude вызывает WebSearch tool — мы сами выполняем его
+        // через routerai plugin 'web' и возвращаем результаты в следующий запрос.
+        // Так Claude может итеративно искать цены/командировки и затем строить просчёт.
+        aiResult = await aiProvider.runAgentLoop({
           system: systemPrompt,
           messages: [{ role: 'user', content: userContent }],
           maxTokens: 32000,           // AP6: расширенный output + thinking budget
           temperature: 0.4,            // AP6: глубже анализ в risk/comment
           verbosity: 'max',            // AP6: extended thinking (Anthropic output_config.effort=max)
+          maxIterations: 5,            // AgentLoop: максимум 5 итераций tool-calling
+          webSearchIncludeDomains: WEB_SEARCH_DOMAINS,
           plugins: [
-            // Веб-поиск только на российских сайтах
+            // Веб-поиск только на российских сайтах — также передаём как plugin,
+            // если модель поймёт что плагин = native server-tool, использует его сама;
+            // если попросит tool_call WebSearch — agent loop выполнит через тот же plugin.
             {
               id: 'web',
               engine: 'native',
               max_results: 8,
               search_prompt: 'Ищи актуальные цены 2026 года на российских сайтах поставщиков, тендерных площадках и РЖД/Aviasales',
-              include_domains: [
-                'rzd.ru', 'aviasales.ru', 'tutu.ru', 'yandex.ru',
-                'pulscen.ru', 'tiu.ru', 'tn.ru',
-                'b2b-center.ru', 'etp-ets.ru', 'zakupki.gov.ru',
-                'taifun-vakuum.ru', 'practick.ru', 'gidromashservice.ru',
-                'wildberries.ru', 'ozon.ru', 'avito.ru'
-              ]
+              include_domains: WEB_SEARCH_DOMAINS
             },
             // PDF/DOCX парсинг через mistral-ocr (работает и для сканов)
             {
               id: 'file-parser',
               pdf: { engine: 'mistral-ocr' }
             }
-          ]
+          ],
+          // SSE прогресс: сообщаем UI о каждой итерации/поиске
+          onProgress: (evt) => {
+            try {
+              if (evt.type === 'iteration_start' && evt.iteration > 0) {
+                sendEvent({ type: 'heartbeat', seconds: thinkingSec,
+                  message: `🔄 Мимир анализирует результаты поиска (итерация ${evt.iteration + 1})...` });
+              } else if (evt.type === 'tool_calls') {
+                const queries = evt.tool_calls.map(t => t.query).filter(Boolean);
+                const msg = queries.length > 0
+                  ? `🔍 Ищу: ${queries.slice(0,2).join('; ').substring(0, 120)}`
+                  : `🔧 Запрашиваю инструменты (${evt.tool_calls.length})`;
+                sendEvent({ type: 'heartbeat', seconds: thinkingSec, message: msg });
+              } else if (evt.type === 'tool_results') {
+                const totalChars = evt.results.reduce((s, r) => s + (r.result_chars || 0), 0);
+                sendEvent({ type: 'heartbeat', seconds: thinkingSec,
+                  message: `✅ Получено ${totalChars} символов результатов поиска, продолжаю анализ...` });
+              }
+            } catch {}
+          }
         });
       } finally {
         clearInterval(heartbeat);
@@ -2410,7 +2439,8 @@ ${analogsSummary}
 
       let aiResult;
       try {
-        aiResult = await aiProvider.complete({
+        // Agent loop тоже здесь — Claude может попросить WebSearch на этапе финального просчёта
+        aiResult = await aiProvider.runAgentLoop({
           system: cache.systemPrompt,
           messages: [
             { role: 'user', content: `Составь просчёт для работы #${cache.workId}.\n\n${cache.dataText}` },
@@ -2418,7 +2448,19 @@ ${analogsSummary}
             { role: 'user', content: `Вот ответы на твои вопросы:\n\n${answersText}\n\nТеперь составь полный просчёт. Верни ТОЛЬКО JSON.` }
           ],
           maxTokens: 16000,
-          temperature: 0.2
+          temperature: 0.2,
+          maxIterations: 4,
+          onProgress: (evt) => {
+            try {
+              if (evt.type === 'tool_calls') {
+                const queries = evt.tool_calls.map(t => t.query).filter(Boolean);
+                const msg = queries.length > 0
+                  ? `🔍 Ищу: ${queries.slice(0,2).join('; ').substring(0, 120)}`
+                  : `🔧 Запрашиваю инструменты (${evt.tool_calls.length})`;
+                sendEvent({ type: 'heartbeat', seconds: thinkingSec, message: msg });
+              }
+            } catch {}
+          }
         });
       } finally {
         clearInterval(heartbeat);
