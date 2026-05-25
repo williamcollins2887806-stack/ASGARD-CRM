@@ -880,6 +880,14 @@ async function _completeYandexOpenAI(options) {
  * @param {Object} opts — { includeDomains?: string[], maxResults?: number }
  * @returns {Promise<string>} — текстовый результат для возврата Claude (краткая сводка + URL)
  */
+// AP6: модель для выполнения web search в agent loop.
+// КРИТИЧНО: НЕ использовать anthropic/claude-* — они делегируют поиск обратно
+// через tool_call WebSearch, получаем бесконечный цикл с пустыми результатами.
+// Подтверждено тестом 25.05.2026: gemini-2.5-flash (1.8с, 601 chars), gpt-4.1-mini,
+// qwen3-235b реально выполняют plugin 'web' и возвращают текст.
+// Выбран gemini-2.5-flash — самая быстрая и дешёвая.
+const WEB_SEARCH_MODEL = process.env.WEB_SEARCH_MODEL || 'google/gemini-2.5-flash';
+
 async function executeWebSearch(query, opts = {}) {
   await _loadKeysFromDB();
   if (!OPENAI_API_KEY) {
@@ -897,6 +905,7 @@ async function executeWebSearch(query, opts = {}) {
     const result = await callOpenAI({
       system: systemPrompt,
       messages: [{ role: 'user', content: query }],
+      model: WEB_SEARCH_MODEL,         // ВАЖНО: gemini, НЕ Claude — Claude делегирует поиск назад
       maxTokens: 1500,
       temperature: 0.1,
       plugins: [{
@@ -907,7 +916,7 @@ async function executeWebSearch(query, opts = {}) {
       }]
     });
     const ms = Date.now() - t0;
-    console.log(`[WebSearch] "${query.substring(0, 80)}" → ${result.text?.length || 0} chars, ${ms}ms`);
+    console.log(`[WebSearch] "${query.substring(0, 80)}" → ${result.text?.length || 0} chars, ${ms}ms (model=${WEB_SEARCH_MODEL})`);
     if (result.annotations && result.annotations.length > 0) {
       console.log(`[WebSearch] annotations: ${result.annotations.length} URL citations`);
     }
