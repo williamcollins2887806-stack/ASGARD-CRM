@@ -2258,10 +2258,9 @@ ${analogsSummary}
           maxTokens: 32000,           // AP6: расширенный output + thinking budget
           temperature: 0.4,            // AP6: глубже анализ в risk/comment
           verbosity: 'max',            // AP6: extended thinking (Anthropic output_config.effort=max)
-          maxIterations: 8,            // AgentLoop: максимум 8 итераций tool-calling
-                                       // (Claude на больших тендерах хочет искать
-                                       // 6-10 вещей: билеты+проживание+транспорт
-                                       // +оборудование+обучение+характеристики)
+          maxIterations: 6,            // AgentLoop: 6 итераций — баланс между полнотой
+                                       // данных и скоростью финала. Раньше 8 давало
+                                       // 16+ поисков, финал на gpt-4.1-mini справится.
           webSearchIncludeDomains: WEB_SEARCH_DOMAINS,
           plugins: [
             // Веб-поиск только на российских сайтах — также передаём как plugin,

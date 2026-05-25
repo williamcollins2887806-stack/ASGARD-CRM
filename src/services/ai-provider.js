@@ -455,7 +455,7 @@ async function callOpenAI({ system, messages, maxTokens, temperature, stream = f
  * @param {number} options.temperature - Температура (0-1)
  * @returns {Promise<{text: string, usage: {inputTokens: number, outputTokens: number}, model: string}>}
  */
-async function complete({ system, messages, maxTokens, temperature, tools, plugins, verbosity, responseFormat }) {
+async function complete({ system, messages, maxTokens, temperature, tools, plugins, verbosity, responseFormat, model }) {
   await _loadKeysFromDB();
   let provider = AI_PROVIDER;
   const startTime = Date.now();
@@ -490,7 +490,7 @@ async function complete({ system, messages, maxTokens, temperature, tools, plugi
       result.durationMs = Date.now() - startTime;
       return result;
     } else if (provider === 'openai') {
-      const result = await callOpenAI({ system, messages, maxTokens, temperature, tools, plugins, verbosity, responseFormat });
+      const result = await callOpenAI({ system, messages, maxTokens, temperature, tools, plugins, verbosity, responseFormat, model });
       result.provider = 'openai';
       result.durationMs = Date.now() - startTime;
       return result;
@@ -1098,16 +1098,20 @@ async function runAgentLoop(options) {
 
   let finalResult;
   try {
-    // КРИТИЧНО: на финале выключаем verbosity=max (extended thinking).
-    // Иначе Claude думает 5+ минут → upstream-таймаут routerai.ru (300s) →
-    // fetch failed. На финале достаточно plain mode — данные уже собраны,
-    // нужно только сложить их в JSON.
+    // КРИТИЧНО: на финале переключаемся на БЫСТРУЮ модель (gpt-4.1-mini)
+    // вместо Claude Sonnet 4.6. Sonnet с extended thinking упирался в
+    // upstream-таймаут routerai.ru (5+ мин на 50K input). gpt-4.1-mini
+    // справляется со складыванием JSON по схеме в 5-10× быстрее.
+    // Sonnet остаётся для итераций (он лучше делает анализ и поиски).
+    const FINALIZATION_MODEL = process.env.MIMIR_FINAL_MODEL || 'openai/gpt-4.1-mini';
+    console.log(`[AgentLoop] Финал через ${FINALIZATION_MODEL} (вместо ${completeOpts.model || 'sonnet'})`);
     finalResult = await complete({
       ...completeOpts,
       messages: compactMessages,
-      plugins: undefined,   // отключаем plugins → нет искушения снова искать
+      model: FINALIZATION_MODEL,  // быстрая модель для финала
+      plugins: undefined,         // отключаем plugins → нет искушения снова искать
       tools: undefined,
-      verbosity: undefined  // выключаем extended thinking на финале
+      verbosity: undefined        // выключаем extended thinking на финале
     });
     totalInputTokens += finalResult.usage?.inputTokens || 0;
     totalOutputTokens += finalResult.usage?.outputTokens || 0;
