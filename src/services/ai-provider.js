@@ -984,6 +984,10 @@ async function runAgentLoop(options) {
   } = options;
 
   const messages = [...(completeOpts.messages || [])];
+  // Отдельный массив поисковой истории — все query+result.
+  // Используется для финального запроса (компактный saparated текст вместо
+  // огромного хвоста tool_calls/tool_result сообщений).
+  const searchHistory = [];
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
   let lastResult = null;
@@ -1040,10 +1044,18 @@ async function runAgentLoop(options) {
           includeDomains: webSearchIncludeDomains,
           maxResults: 5
         });
+        const contentStr = typeof content === 'string' ? content : JSON.stringify(content);
+        // Сохраняем для финального summary
+        let q = null;
+        try {
+          const a = JSON.parse(tc.function?.arguments || '{}');
+          q = a.query || a.q || null;
+        } catch {}
+        searchHistory.push({ query: q, result: contentStr, tool_name: tc.function?.name });
         return {
           role: 'tool',
           tool_call_id: tc.id,
-          content: typeof content === 'string' ? content : JSON.stringify(content)
+          content: contentStr
         };
       })
     );
@@ -1061,38 +1073,51 @@ async function runAgentLoop(options) {
     messages.push(...toolResults);
   }
 
-  // Превысили лимит итераций — Claude хотел ещё искать, но мы говорим "хватит".
-  // Делаем ФИНАЛЬНЫЙ запрос с явной инструкцией "не вызывай инструменты, дай ответ".
-  // Это критично: иначе вернётся пустой content и UI покажет ошибку.
-  console.warn(`[AgentLoop] Превышен лимит ${maxIterations} итераций — делаю финальный запрос без tool_calls`);
+  // Превысили лимит итераций — делаем ФИНАЛЬНЫЙ запрос с КОМПАКТНЫМ контекстом:
+  // вместо 307K токенов истории tool_calls — один user-message со сводкой
+  // всех поисков (query: result). Это режет вход в ~10x и даёт Claude
+  // шанс уложиться в timeout и контекстное окно.
+  console.warn(`[AgentLoop] Превышен лимит ${maxIterations} итераций → финальный запрос с компактным контекстом (${searchHistory.length} поисков)`);
   onProgress({ type: 'finalization', iteration: maxIterations });
 
-  // Дописываем пользовательское сообщение "достаточно, дай ответ"
-  // Перед этим нужно учесть: предыдущий ответ модели был tool_calls,
-  // на него ОБЯЗАТЕЛЬНО должен быть tool result. Если он уже добавлен в цикле —
-  // мы тут стоим после tool результатов, готовы к финальному user-сообщению.
-  messages.push({
-    role: 'user',
-    content: 'Достаточно поисков. Используя ВСЕ результаты которые ты уже получил выше, составь полный итоговый просчёт. Верни ТОЛЬКО валидный JSON по требуемой схеме, без новых поисков и без вызова инструментов.'
-  });
+  // Собираем сводку поисков
+  const searchSummary = searchHistory.map((s, i) =>
+    `[Поиск ${i+1}] Запрос: ${s.query || '(no query)'}\nРезультат:\n${s.result}`
+  ).join('\n\n---\n\n');
+
+  // КОМПАКТНЫЕ messages: только исходные сообщения (system + первый user)
+  // + один новый user с саммари поисков и инструкцией дать финальный JSON.
+  const originalMessages = (completeOpts.messages || []);
+  const compactMessages = [
+    ...originalMessages,
+    {
+      role: 'user',
+      content: `Ниже — РЕЗУЛЬТАТЫ ВСЕХ ${searchHistory.length} ПОИСКОВ которые ты сделал. Используй эти данные для составления полного итогового просчёта. БОЛЬШЕ НЕ ВЫЗЫВАЙ ИНСТРУМЕНТЫ. Верни ТОЛЬКО валидный JSON по требуемой схеме.\n\n═══ РЕЗУЛЬТАТЫ ПОИСКОВ ═══\n\n${searchSummary}`
+    }
+  ];
 
   let finalResult;
   try {
     finalResult = await complete({
       ...completeOpts,
-      messages,
+      messages: compactMessages,
       plugins: undefined,   // отключаем plugins → нет искушения снова искать
       tools: undefined
     });
     totalInputTokens += finalResult.usage?.inputTokens || 0;
     totalOutputTokens += finalResult.usage?.outputTokens || 0;
-    console.log(`[AgentLoop] Финальный ответ: ${finalResult.text?.length || 0} chars, stopReason=${finalResult.stopReason}`);
+    console.log(`[AgentLoop] Финальный ответ: ${finalResult.text?.length || 0} chars, stopReason=${finalResult.stopReason}, input=${finalResult.usage?.inputTokens}`);
   } catch (e) {
     console.error('[AgentLoop] Финальный запрос упал:', e.message);
+    // Fallback: возвращаем текстовую сводку из поисков (UI хотя бы покажет данные)
+    const fallbackText = `[Финальный запрос Claude не уложился в таймаут. Ниже — собранные данные из ${searchHistory.length} поисков:]\n\n${searchSummary.substring(0, 8000)}`;
     return {
-      ...lastResult,
-      text: lastResult?.text || '',
+      text: fallbackText,
+      tool_calls: null,
+      annotations: null,
       usage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens },
+      model: lastResult?.model || 'unknown',
+      stopReason: 'agent_loop_timeout',
       agentIterations: maxIterations,
       agentExceeded: true,
       finalizationError: e.message
