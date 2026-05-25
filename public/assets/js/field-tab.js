@@ -2885,74 +2885,171 @@ window.AsgardFieldTab = (function () {
   function renderPayWorkerModal(summary, fio, work, user, container) {
     var pd = summary.per_diem;
     var sal = summary.salary;
-    var pdLabel = pd.balance < 0 ? '\u0410\u0432\u0430\u043D\u0441' : pd.balance > 0 ? '\u0414\u043E\u043B\u0433' : '\u0412\u0441\u0451 \u0432\u044B\u043F\u043B\u0430\u0447\u0435\u043D\u043E';
+    var pdLabel = pd.balance < 0 ? 'Аванс' : pd.balance > 0 ? 'Должны' : 'Закрыто';
     var pdColor = pd.balance < 0 ? '#3b82f6' : pd.balance > 0 ? '#f59e0b' : '#10b981';
-    var salLabel = sal.balance > 0 ? '\u0414\u043E\u043B\u0433 \u043A\u043E\u043C\u043F\u0430\u043D\u0438\u0438' : sal.balance < 0 ? '\u041F\u0435\u0440\u0435\u043F\u043B\u0430\u0442\u0430' : '\u0412\u0441\u0451 \u0432\u044B\u043F\u043B\u0430\u0447\u0435\u043D\u043E';
+    var salLabel = sal.balance > 0 ? 'Должны' : sal.balance < 0 ? 'Переплата' : 'Закрыто';
     var salColor = sal.balance > 0 ? '#f59e0b' : sal.balance < 0 ? '#ef4444' : '#10b981';
-    var brd = 'var(--brd)';
 
-    var html = '<div style="max-height:70vh;overflow-y:auto">' +
-      '<div style="border:1px solid ' + brd + ';border-radius:8px;padding:12px;margin-bottom:12px">' +
-        '<div style="font-weight:700;color:var(--t2);font-size:11px;text-transform:uppercase;margin-bottom:10px">\u0422\u0435\u043A\u0443\u0449\u0435\u0435 \u0441\u043E\u0441\u0442\u043E\u044F\u043D\u0438\u0435</div>' +
-        '<div style="margin-bottom:12px"><div style="font-weight:600;margin-bottom:4px">\uD83C\uDF19 \u0421\u0443\u0442\u043E\u0447\u043D\u044B\u0435</div>' +
-          '<div style="display:flex;justify-content:space-between;font-size:13px"><span>\u041D\u0430\u0447\u0438\u0441\u043B\u0435\u043D\u043E (' + summary.checkins_days + ' \u0434\u043D):</span><span>' + money(pd.accrued) + ' \u20BD</span></div>' +
-          '<div style="display:flex;justify-content:space-between;font-size:13px"><span>\u0412\u044B\u0434\u0430\u043D\u043E:</span><span>' + money(pd.paid) + ' \u20BD</span></div>' +
-          '<div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700;padding-top:4px;border-top:1px dashed ' + brd + '"><span style="color:' + pdColor + '">' + pdLabel + ':</span><span style="color:' + pdColor + '">' + money(Math.abs(pd.balance)) + ' \u20BD</span></div></div>' +
-        '<div style="margin-bottom:12px"><div style="font-weight:600;margin-bottom:4px">\uD83D\uDCBC \u0417\u0430\u0440\u043F\u043B\u0430\u0442\u0430</div>' +
-          '<div style="display:flex;justify-content:space-between;font-size:13px"><span>\u0417\u0430\u0440\u0430\u0431\u043E\u0442\u0430\u043D\u043E (\u0424\u041E\u0422):</span><span>' + money(sal.fot_accrued) + ' \u20BD</span></div>' +
-          '<div style="display:flex;justify-content:space-between;font-size:13px"><span>\u0410\u0432\u0430\u043D\u0441\u044B \u0432\u044B\u0434\u0430\u043D\u044B:</span><span>' + money(sal.advance_paid) + ' \u20BD</span></div>' +
-          '<div style="display:flex;justify-content:space-between;font-size:13px"><span>\u0417\u041F \u0432\u044B\u043F\u043B\u0430\u0447\u0435\u043D\u043E:</span><span>' + money(sal.salary_paid) + ' \u20BD</span></div>' +
-          '<div style="display:flex;justify-content:space-between;font-size:13px;font-weight:700;padding-top:4px;border-top:1px dashed ' + brd + '"><span style="color:' + salColor + '">' + salLabel + ':</span><span style="color:' + salColor + '">' + money(Math.abs(sal.balance)) + ' \u20BD</span></div></div>' +
-        ((summary.bonus.paid || summary.penalty.paid) ? '<div><div style="font-weight:600;margin-bottom:4px">\u2B50 \u041F\u0440\u043E\u0447\u0435\u0435</div>' +
-          (summary.bonus.paid ? '<div style="display:flex;justify-content:space-between;font-size:13px"><span>\u041F\u0440\u0435\u043C\u0438\u0438:</span><span>' + money(summary.bonus.paid) + ' \u20BD</span></div>' : '') +
-          (summary.penalty.paid ? '<div style="display:flex;justify-content:space-between;font-size:13px"><span>\u0423\u0434\u0435\u0440\u0436\u0430\u043D\u0438\u044F:</span><span>' + money(summary.penalty.paid) + ' \u20BD</span></div>' : '') + '</div>' : '') +
-      '</div>' +
-      '<div style="border:1px solid ' + brd + ';border-radius:8px;padding:12px;margin-bottom:12px">' +
-        '<div style="font-weight:700;color:var(--t2);font-size:11px;text-transform:uppercase;margin-bottom:10px">\u0412\u044B\u043F\u043B\u0430\u0442\u0430</div>' +
-        '<div class="cr-f-field"><div class="cr-f-label">\u0422\u0438\u043F <span class="cr-f-label__req">*</span></div>' +
-          '<div style="display:flex;flex-direction:column;gap:6px">' +
-            '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid ' + brd + ';border-radius:6px;cursor:pointer"><input type="radio" name="payType" value="per_diem" checked><span>\uD83C\uDF19 \u0421\u0443\u0442\u043E\u0447\u043D\u044B\u0435</span></label>' +
-            '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid ' + brd + ';border-radius:6px;cursor:pointer"><input type="radio" name="payType" value="advance"><span>\uD83D\uDCB5 \u0410\u0432\u0430\u043D\u0441 \u0417\u041F</span></label>' +
-            '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid ' + brd + ';border-radius:6px;cursor:pointer"><input type="radio" name="payType" value="salary"><span>\uD83D\uDCBC \u0417\u0430\u0440\u043F\u043B\u0430\u0442\u0430</span></label>' +
-            '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid ' + brd + ';border-radius:6px;cursor:pointer"><input type="radio" name="payType" value="bonus"><span>\u2B50 \u041F\u0440\u0435\u043C\u0438\u044F</span></label>' +
-            '<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid ' + brd + ';border-radius:6px;cursor:pointer"><input type="radio" name="payType" value="penalty"><span>\u26A0 \u0423\u0434\u0435\u0440\u0436\u0430\u043D\u0438\u0435</span></label>' +
-          '</div></div>' +
-        '<div class="cr-f-field"><div class="cr-f-label">\u0421\u0443\u043C\u043C\u0430 <span class="cr-f-label__req">*</span></div>' +
-          '<input id="pwAmount" type="number" min="0" step="100" placeholder="0" style="font-size:18px;text-align:center"/></div>' +
-        '<div class="cr-f-field"><div class="cr-f-label" style="font-size:11px;color:var(--t3)">\u0411\u044B\u0441\u0442\u0440\u044B\u0435 \u0441\u0443\u043C\u043C\u044B</div><div id="pwQuick" style="display:flex;gap:6px;flex-wrap:wrap"></div></div>' +
-        '<div class="cr-f-field"><div class="cr-f-label">\u0421\u043F\u043E\u0441\u043E\u0431</div><div style="display:flex;gap:8px">' +
-          '<label class="cr-f-chip cr-f-chip--active" style="flex:1;text-align:center;cursor:pointer;padding:8px"><input type="radio" name="pwMethod" value="cash" checked style="position:absolute;opacity:0;pointer-events:none">\uD83D\uDCB5 \u041D\u0430\u043B</label>' +
-          '<label class="cr-f-chip" style="flex:1;text-align:center;cursor:pointer;padding:8px"><input type="radio" name="pwMethod" value="card" style="position:absolute;opacity:0;pointer-events:none">\uD83D\uDCB3 \u041A\u0430\u0440\u0442\u0430</label>' +
-          '<label class="cr-f-chip" style="flex:1;text-align:center;cursor:pointer;padding:8px"><input type="radio" name="pwMethod" value="transfer" style="position:absolute;opacity:0;pointer-events:none">\uD83C\uDFE6 \u041F\u0435\u0440\u0435\u0432\u043E\u0434</label>' +
-        '</div></div>' +
-        '<div class="cr-f-field"><div class="cr-f-label">\u041A\u043E\u043C\u043C\u0435\u043D\u0442\u0430\u0440\u0438\u0439</div><input id="pwNote" placeholder="\u041D\u0435\u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u043E"/></div>' +
-      '</div>' +
-      '<div id="pwPreview" style="border:1px solid var(--gold);border-radius:8px;padding:12px;margin-bottom:12px;background:rgba(245,158,11,0.05);display:none">' +
-        '<div style="font-weight:700;color:var(--gold);font-size:11px;text-transform:uppercase;margin-bottom:8px">\u041F\u043E\u0441\u043B\u0435 \u0432\u044B\u043F\u043B\u0430\u0442\u044B</div><div id="pwPreviewContent"></div></div>' +
-      '<div style="display:flex;gap:10px;justify-content:flex-end"><button class="btn ghost" id="pwCancel">\u041E\u0442\u043C\u0435\u043D\u0430</button><button class="btn primary" id="pwConfirm">\u0412\u044B\u043F\u043B\u0430\u0442\u0438\u0442\u044C</button></div></div>';
+    // Define inline styles via <style> tag inside modal so CSS is scoped
+    var css = '<style>' +
+      '.pw-grid{display:grid;grid-template-columns:1fr 1.1fr;gap:20px;min-height:480px}' +
+      '@media (max-width: 860px){.pw-grid{grid-template-columns:1fr}}' +
+      '.pw-card{background:var(--bg2,rgba(255,255,255,0.02));border:1px solid var(--brd);border-radius:14px;padding:18px}' +
+      '.pw-card-header{font-size:11px;font-weight:800;color:var(--t2);text-transform:uppercase;letter-spacing:1px;margin-bottom:14px;display:flex;align-items:center;gap:6px}' +
+      '.pw-bal-row{display:flex;align-items:baseline;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--brd)}' +
+      '.pw-bal-row:last-child{border-bottom:none}' +
+      '.pw-bal-row .lbl{display:flex;align-items:center;gap:8px;font-weight:600;color:var(--t1);font-size:14px}' +
+      '.pw-bal-row .val{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums}' +
+      '.pw-bal-sub{font-size:11px;color:var(--t3);margin-top:2px;padding-left:26px}' +
+      '.pw-type-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px}' +
+      '.pw-type-tile{display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 8px;border:2px solid var(--brd);border-radius:10px;cursor:pointer;transition:all 0.15s;background:var(--bg1,transparent);text-align:center}' +
+      '.pw-type-tile:hover{border-color:var(--gold);background:rgba(212,168,67,0.06)}' +
+      '.pw-type-tile.is-active{border-color:var(--gold);background:rgba(212,168,67,0.12);box-shadow:0 0 0 1px var(--gold) inset}' +
+      '.pw-type-tile .ic{font-size:24px;line-height:1}' +
+      '.pw-type-tile .nm{font-size:12px;font-weight:700;color:var(--t1)}' +
+      '.pw-amount{position:relative;margin:14px 0 8px}' +
+      '.pw-amount input{width:100%;font-size:30px;font-weight:800;text-align:center;padding:14px 50px 14px 16px;border:2px solid var(--brd);border-radius:12px;background:var(--bg1,transparent);color:var(--t1);font-variant-numeric:tabular-nums;-moz-appearance:textfield}' +
+      '.pw-amount input::-webkit-outer-spin-button,.pw-amount input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}' +
+      '.pw-amount input:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px rgba(212,168,67,0.15)}' +
+      '.pw-amount .cur{position:absolute;right:18px;top:50%;transform:translateY(-50%);font-size:22px;color:var(--t3);font-weight:700;pointer-events:none}' +
+      '.pw-quick{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}' +
+      '.pw-quick-btn{padding:6px 12px;background:var(--bg1,transparent);border:1px solid var(--brd);border-radius:8px;font-size:12px;color:var(--t2);cursor:pointer;font-weight:600}' +
+      '.pw-quick-btn:hover{border-color:var(--gold);color:var(--gold)}' +
+      '.pw-method-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px}' +
+      '.pw-method{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 4px;border:2px solid var(--brd);border-radius:10px;cursor:pointer;background:var(--bg1,transparent);transition:all 0.15s}' +
+      '.pw-method:hover{border-color:var(--gold)}' +
+      '.pw-method.is-active{border-color:var(--gold);background:rgba(212,168,67,0.12)}' +
+      '.pw-method .ic{font-size:18px;line-height:1}' +
+      '.pw-method .nm{font-size:11px;font-weight:700}' +
+      '.pw-method input{position:absolute;opacity:0;pointer-events:none}' +
+      '.pw-note{width:100%;padding:10px 12px;border:1px solid var(--brd);border-radius:8px;background:var(--bg1,transparent);color:var(--t1);font-size:13px;box-sizing:border-box}' +
+      '.pw-note:focus{outline:none;border-color:var(--gold)}' +
+      '.pw-preview{margin-top:14px;padding:12px 14px;border-radius:10px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.35)}' +
+      '.pw-preview .ttl{font-size:10px;font-weight:800;color:#10b981;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}' +
+      '.pw-preview .row{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;padding:2px 0}' +
+      '.pw-preview .was{color:var(--t3);font-size:11px}' +
+      '.pw-actions{display:flex;gap:10px;margin-top:18px;grid-column:1/-1}' +
+      '.pw-actions .btn{flex:1;padding:14px;font-size:14px;font-weight:700;border-radius:10px}' +
+      '.pw-actions .btn.primary{font-size:15px}' +
+      '.pw-err{background:rgba(239,68,68,0.12);border:1px solid #ef4444;color:#ef4444;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px;font-weight:600;display:none}' +
+      '</style>';
 
-    AsgardUI.showModal({ title: '\u0412\u044B\u043F\u043B\u0430\u0442\u0430 \u0440\u0430\u0431\u043E\u0447\u0435\u043C\u0443', subtitle: esc(fio), html: html, icon: '\uD83D\uDCB0' });
+    var balLeftHtml =
+      '<div class="pw-card">' +
+        '<div class="pw-card-header">💼 Текущее состояние</div>' +
+        // Суточные
+        '<div class="pw-bal-row">' +
+          '<div>' +
+            '<div class="lbl">🌙 Суточные</div>' +
+            '<div class="pw-bal-sub">Начислено ' + money(pd.accrued) + ' ₽ · выдано ' + money(pd.paid) + ' ₽ (' + summary.checkins_days + ' дн)</div>' +
+          '</div>' +
+          '<div class="val" style="color:' + pdColor + '">' + (pd.balance >= 0 ? '' : '−') + money(Math.abs(pd.balance)) + ' ₽</div>' +
+        '</div>' +
+        // ЗП
+        '<div class="pw-bal-row">' +
+          '<div>' +
+            '<div class="lbl">💼 Зарплата</div>' +
+            '<div class="pw-bal-sub">Заработано ' + money(sal.fot_accrued) + ' ₽ · аванс ' + money(sal.advance_paid) + ' ₽ · ЗП ' + money(sal.salary_paid) + ' ₽</div>' +
+          '</div>' +
+          '<div class="val" style="color:' + salColor + '">' + (sal.balance >= 0 ? '' : '−') + money(Math.abs(sal.balance)) + ' ₽</div>' +
+        '</div>' +
+        // Прочее (премии/удержания)
+        ((summary.bonus.paid || summary.penalty.paid) ?
+          '<div class="pw-bal-row">' +
+            '<div>' +
+              '<div class="lbl">⭐ Прочее</div>' +
+              '<div class="pw-bal-sub">' +
+                (summary.bonus.paid ? 'Премии ' + money(summary.bonus.paid) + ' ₽' : '') +
+                (summary.bonus.paid && summary.penalty.paid ? ' · ' : '') +
+                (summary.penalty.paid ? 'Удержания ' + money(summary.penalty.paid) + ' ₽' : '') +
+              '</div>' +
+            '</div>' +
+            '<div class="val" style="color:var(--t2)">—</div>' +
+          '</div>' : '') +
+        // Превью
+        '<div id="pwPreview" class="pw-preview" style="display:none">' +
+          '<div class="ttl">📋 После выплаты</div>' +
+          '<div id="pwPreviewContent"></div>' +
+        '</div>' +
+      '</div>';
+
+    var formRightHtml =
+      '<div class="pw-card">' +
+        '<div class="pw-card-header">💰 Новая выплата</div>' +
+        '<div id="pwErr" class="pw-err"></div>' +
+        // Тип — плитки 2×2 (5-я снизу)
+        '<div style="font-size:11px;color:var(--t2);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Тип <span style="color:#ef4444">*</span></div>' +
+        '<div class="pw-type-grid">' +
+          '<label class="pw-type-tile is-active" data-type="per_diem"><input type="radio" name="payType" value="per_diem" checked style="display:none"><span class="ic">🌙</span><span class="nm">Суточные</span></label>' +
+          '<label class="pw-type-tile" data-type="advance"><input type="radio" name="payType" value="advance" style="display:none"><span class="ic">💵</span><span class="nm">Аванс ЗП</span></label>' +
+          '<label class="pw-type-tile" data-type="salary"><input type="radio" name="payType" value="salary" style="display:none"><span class="ic">💼</span><span class="nm">Зарплата</span></label>' +
+          '<label class="pw-type-tile" data-type="bonus"><input type="radio" name="payType" value="bonus" style="display:none"><span class="ic">⭐</span><span class="nm">Премия</span></label>' +
+        '</div>' +
+        '<label class="pw-type-tile" data-type="penalty" style="margin-bottom:14px"><input type="radio" name="payType" value="penalty" style="display:none"><span class="ic">⚠</span><span class="nm">Удержание</span></label>' +
+        // Сумма — крупно
+        '<div style="font-size:11px;color:var(--t2);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-top:4px">Сумма <span style="color:#ef4444">*</span></div>' +
+        '<div class="pw-amount"><input id="pwAmount" type="number" min="0" step="100" placeholder="0"/><span class="cur">₽</span></div>' +
+        '<div id="pwQuick" class="pw-quick"></div>' +
+        // Способ
+        '<div style="font-size:11px;color:var(--t2);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Способ <span style="color:#ef4444">*</span></div>' +
+        '<div class="pw-method-grid">' +
+          '<label class="pw-method is-active" data-method="cash"><input type="radio" name="pwMethod" value="cash" checked><span class="ic">💵</span><span class="nm">Нал</span></label>' +
+          '<label class="pw-method" data-method="card"><input type="radio" name="pwMethod" value="card"><span class="ic">💳</span><span class="nm">Карта</span></label>' +
+          '<label class="pw-method" data-method="transfer"><input type="radio" name="pwMethod" value="transfer"><span class="ic">🏦</span><span class="nm">Перевод</span></label>' +
+        '</div>' +
+        // Коммент
+        '<div style="font-size:11px;color:var(--t2);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Комментарий</div>' +
+        '<input id="pwNote" class="pw-note" placeholder="Например: «За май, выдано на руки»"/>' +
+      '</div>';
+
+    var actionsHtml =
+      '<div class="pw-actions">' +
+        '<button class="btn ghost" id="pwCancel">Отмена</button>' +
+        '<button class="btn primary" id="pwConfirm">💰 Выплатить</button>' +
+      '</div>';
+
+    var html = css + '<div class="pw-grid">' + balLeftHtml + formRightHtml + actionsHtml + '</div>';
+
+    if (AsgardUI.replaceModal) {
+      AsgardUI.replaceModal({ title: 'Выплата рабочему', subtitle: esc(fio), icon: '💰', html: html, wide: true });
+    } else {
+      AsgardUI.showModal({ title: 'Выплата рабочему', subtitle: esc(fio), icon: '💰', html: html, wide: true });
+    }
+
     var body = document.getElementById('modalBody');
 
+    function showInlineErr(msg) {
+      var errBox = document.getElementById('pwErr');
+      if (errBox) {
+        errBox.textContent = '⚠ ' + msg;
+        errBox.style.display = 'block';
+        setTimeout(function(){ if (errBox) errBox.style.display = 'none'; }, 5000);
+      }
+    }
+
     function updateQuickButtons() {
-      var type = body && body.querySelector('input[name="payType"]:checked');
-      type = type ? type.value : 'per_diem';
+      var typeEl = body && body.querySelector('input[name="payType"]:checked');
+      var type = typeEl ? typeEl.value : 'per_diem';
       var quick = document.getElementById('pwQuick');
       if (!quick) return;
       var rate = summary.per_diem_rate || 1000;
       var buttons = [];
       if (type === 'per_diem') {
-        buttons = [{ lbl: '+1 \u0434\u0435\u043D\u044C', val: rate }, { lbl: '+5 \u0434\u043D\u0435\u0439', val: rate * 5 }, { lbl: '+10 \u0434\u043D\u0435\u0439', val: rate * 10 }];
-        if (pd.balance > 0) buttons.push({ lbl: '\u0412\u0435\u0441\u044C \u0434\u043E\u043B\u0433 (' + money(pd.balance) + ')', val: pd.balance });
+        buttons = [{ lbl: '+1 день', val: rate }, { lbl: '+5 дней', val: rate * 5 }, { lbl: '+10 дней', val: rate * 10 }];
+        if (pd.balance > 0) buttons.push({ lbl: 'Весь долг (' + money(pd.balance) + ' ₽)', val: pd.balance });
       } else if (type === 'advance' || type === 'salary') {
-        buttons = [{ lbl: '+5 000', val: 5000 }, { lbl: '+10 000', val: 10000 }, { lbl: '+20 000', val: 20000 }];
-        if (sal.balance > 0) buttons.push({ lbl: '\u0412\u0435\u0441\u044C \u0434\u043E\u043B\u0433 (' + money(sal.balance) + ')', val: sal.balance });
+        buttons = [{ lbl: '5 000', val: 5000 }, { lbl: '10 000', val: 10000 }, { lbl: '20 000', val: 20000 }];
+        if (sal.balance > 0) buttons.push({ lbl: 'Весь долг (' + money(sal.balance) + ' ₽)', val: sal.balance });
       } else {
-        buttons = [{ lbl: '+1 000', val: 1000 }, { lbl: '+3 000', val: 3000 }, { lbl: '+5 000', val: 5000 }];
+        buttons = [{ lbl: '1 000', val: 1000 }, { lbl: '3 000', val: 3000 }, { lbl: '5 000', val: 5000 }];
       }
-      quick.innerHTML = buttons.map(function(b) { return '<button class="btn ghost" data-val="' + b.val + '" style="font-size:11px;padding:4px 8px">' + b.lbl + '</button>'; }).join('');
+      quick.innerHTML = buttons.map(function(b) { return '<button type="button" class="pw-quick-btn" data-val="' + b.val + '">' + b.lbl + '</button>'; }).join('');
       quick.querySelectorAll('button').forEach(function(b) {
-        b.addEventListener('click', function() { document.getElementById('pwAmount').value = b.dataset.val; updatePreview(); });
+        b.addEventListener('click', function() {
+          var inp = document.getElementById('pwAmount');
+          if (inp) { inp.value = b.dataset.val; inp.focus(); }
+          updatePreview();
+        });
       });
     }
 
@@ -2966,39 +3063,50 @@ window.AsgardFieldTab = (function () {
       var h = '';
       if (type === 'per_diem') {
         var nb = pd.balance - amt;
-        h = '<div><strong>' + (nb < 0 ? '\u0410\u0432\u0430\u043D\u0441 \u043F\u043E \u0441\u0443\u0442\u043E\u0447\u043D\u044B\u043C' : nb > 0 ? '\u0414\u043E\u043B\u0433 \u043F\u043E \u0441\u0443\u0442\u043E\u0447\u043D\u044B\u043C' : '\u0421\u0443\u0442\u043E\u0447\u043D\u044B\u0435 \u0437\u0430\u043A\u0440\u044B\u0442\u044B') + ':</strong> ' + money(Math.abs(nb)) + ' \u20BD</div><div style="font-size:12px;color:var(--t3)">\u0411\u044B\u043B\u043E: ' + money(Math.abs(pd.balance)) + ' \u20BD</div>';
+        var lbl = nb < 0 ? 'Аванс по суточным' : nb > 0 ? 'Останется долг' : 'Суточные закрыты ✓';
+        h = '<div class="row"><span style="font-weight:700">' + lbl + '</span><span style="font-weight:800;font-variant-numeric:tabular-nums">' + money(Math.abs(nb)) + ' ₽</span></div>' +
+            '<div class="was">Было: ' + money(Math.abs(pd.balance)) + ' ₽</div>';
       } else if (type === 'advance' || type === 'salary') {
         var nb2 = sal.balance - amt;
-        h = '<div><strong>' + (nb2 > 0 ? '\u0414\u043E\u043B\u0433 \u043F\u043E \u0417\u041F' : nb2 < 0 ? '\u041F\u0435\u0440\u0435\u043F\u043B\u0430\u0442\u0430 \u043F\u043E \u0417\u041F' : '\u0417\u041F \u0437\u0430\u043A\u0440\u044B\u0442\u0430') + ':</strong> ' + money(Math.abs(nb2)) + ' \u20BD</div><div style="font-size:12px;color:var(--t3)">\u0411\u044B\u043B\u043E: ' + money(Math.abs(sal.balance)) + ' \u20BD</div>';
+        var lbl2 = nb2 > 0 ? 'Останется долг по ЗП' : nb2 < 0 ? 'Переплата по ЗП' : 'ЗП закрыта ✓';
+        h = '<div class="row"><span style="font-weight:700">' + lbl2 + '</span><span style="font-weight:800;font-variant-numeric:tabular-nums">' + money(Math.abs(nb2)) + ' ₽</span></div>' +
+            '<div class="was">Было: ' + money(Math.abs(sal.balance)) + ' ₽</div>';
       } else if (type === 'bonus') {
-        h = '<div><strong>\u041F\u0440\u0435\u043C\u0438\u0439 \u0432\u0441\u0435\u0433\u043E:</strong> ' + money(summary.bonus.paid + amt) + ' \u20BD</div>';
+        h = '<div class="row"><span style="font-weight:700">Премий всего</span><span style="font-weight:800">' + money(summary.bonus.paid + amt) + ' ₽</span></div>';
       } else if (type === 'penalty') {
-        h = '<div><strong>\u0423\u0434\u0435\u0440\u0436\u0430\u043D\u0438\u0439 \u0432\u0441\u0435\u0433\u043E:</strong> ' + money(summary.penalty.paid + amt) + ' \u20BD</div>';
+        h = '<div class="row"><span style="font-weight:700">Удержаний всего</span><span style="font-weight:800">' + money(summary.penalty.paid + amt) + ' ₽</span></div>';
       }
       content.innerHTML = h;
       preview.style.display = 'block';
     }
 
     if (body) {
-      body.querySelectorAll('input[name="payType"]').forEach(function(r) { r.addEventListener('change', function() { updateQuickButtons(); updatePreview(); }); });
-      body.querySelectorAll('label.cr-f-chip').forEach(function(label) {
-        label.addEventListener('click', function(e) {
-          var inp = label.querySelector('input[type="radio"]');
-          if (inp) {
-            inp.checked = true;
-            inp.dispatchEvent(new Event('change', { bubbles: true }));
-          }
-          var group = inp ? inp.name : null;
-          body.querySelectorAll('label.cr-f-chip').forEach(function(l) {
-            var li = l.querySelector('input[type="radio"]');
-            if (!group || (li && li.name === group)) l.classList.remove('cr-f-chip--active');
-          });
-          label.classList.add('cr-f-chip--active');
+      // Tile activation для типа выплаты
+      body.querySelectorAll('label.pw-type-tile').forEach(function(tile) {
+        tile.addEventListener('click', function() {
+          var inp = tile.querySelector('input[type="radio"]');
+          if (inp) { inp.checked = true; inp.dispatchEvent(new Event('change', { bubbles: true })); }
+          body.querySelectorAll('label.pw-type-tile').forEach(function(l) { l.classList.remove('is-active'); });
+          tile.classList.add('is-active');
+          updateQuickButtons();
+          updatePreview();
+        });
+      });
+      // Method tile activation
+      body.querySelectorAll('label.pw-method').forEach(function(tile) {
+        tile.addEventListener('click', function() {
+          var inp = tile.querySelector('input[type="radio"]');
+          if (inp) { inp.checked = true; inp.dispatchEvent(new Event('change', { bubbles: true })); }
+          body.querySelectorAll('label.pw-method').forEach(function(l) { l.classList.remove('is-active'); });
+          tile.classList.add('is-active');
         });
       });
     }
     var amtInput = document.getElementById('pwAmount');
-    if (amtInput) amtInput.addEventListener('input', updatePreview);
+    if (amtInput) {
+      amtInput.addEventListener('input', updatePreview);
+      setTimeout(function() { amtInput.focus(); }, 100);
+    }
     updateQuickButtons();
 
     var cancelBtn = document.getElementById('pwCancel');
@@ -3006,7 +3114,7 @@ window.AsgardFieldTab = (function () {
 
     var confirmBtn = document.getElementById('pwConfirm');
     if (confirmBtn) confirmBtn.addEventListener('click', async function() {
-      if (confirmBtn.disabled) return; // защита от двойного клика
+      if (confirmBtn.disabled) return;
 
       var typeEl = body && body.querySelector('input[name="payType"]:checked');
       var type = typeEl ? typeEl.value : '';
@@ -3015,27 +3123,13 @@ window.AsgardFieldTab = (function () {
       var method = methodEl ? methodEl.value : '';
       var note = ((document.getElementById('pwNote') || {}).value || '').trim();
 
-      function showInlineErr(msg) {
-        var errBox = document.getElementById('pwErr');
-        if (!errBox) {
-          errBox = document.createElement('div');
-          errBox.id = 'pwErr';
-          errBox.style.cssText = 'background:rgba(239,68,68,0.15);border:1px solid #ef4444;color:#ef4444;padding:8px 12px;border-radius:8px;margin:8px 0;font-size:13px;font-weight:600';
-          var preview = document.getElementById('pwPreview');
-          if (preview && preview.parentNode) preview.parentNode.insertBefore(errBox, preview);
-        }
-        errBox.textContent = '⚠ ' + msg;
-        errBox.style.display = 'block';
-        setTimeout(function(){ if (errBox) errBox.style.display = 'none'; }, 5000);
-      }
-
       if (!amount || amount <= 0) { showInlineErr('Введите сумму'); return; }
       if (!type) { showInlineErr('Выберите тип выплаты'); return; }
       if (!method) { showInlineErr('Выберите способ выплаты (Нал / Карта / Перевод)'); return; }
 
       confirmBtn.disabled = true;
-      var origText = confirmBtn.textContent;
-      confirmBtn.textContent = '⏳ Обработка...';
+      var origText = confirmBtn.innerHTML;
+      confirmBtn.innerHTML = '⏳ Обработка...';
       console.log('[pay-worker] sending', { employee_id: summary.employee.id, work_id: work.id, type: type, amount: amount, payment_method: method });
 
       try {
@@ -3050,17 +3144,17 @@ window.AsgardFieldTab = (function () {
         if (!resp.ok) {
           var emsg = data.details || data.error || ('HTTP ' + resp.status);
           showInlineErr(emsg);
-          confirmBtn.disabled = false; confirmBtn.textContent = origText;
+          confirmBtn.disabled = false; confirmBtn.innerHTML = origText;
           return;
         }
 
         AsgardUI.hideModal();
-        toast('Выплата записана', '', 'ok');
+        toast('✅ Выплата записана: ' + money(amount) + ' ₽', '', 'ok');
         renderPaymentsTab(container, work, user);
       } catch (err) {
         console.error('[pay-worker] network error', err);
         showInlineErr('Сеть: ' + (err.message || 'не удалось отправить запрос'));
-        confirmBtn.disabled = false; confirmBtn.textContent = origText;
+        confirmBtn.disabled = false; confirmBtn.innerHTML = origText;
       }
     });
   }
