@@ -2332,7 +2332,19 @@ ${analogsSummary}
       let parsed;
       try { parsed = mimirAutoEstimate.parseAIResponse(aiResult.text); }
       catch (e) {
-        // Не JSON — текстовый ответ
+        // Не JSON — текстовый ответ. Это бывает когда agent loop упёрся в
+        // upstream-таймаут и вернул fallback-сводку из поисков. БД оставлять
+        // в running нельзя — пометим как error со специальным кодом, чтобы
+        // юзер мог увидеть сводку и решить вручную.
+        const isFallbackText = aiResult.agentExceeded || aiResult.stopReason === 'agent_loop_timeout';
+        await mimirJobs.set(jobKey, {
+          status: 'error',
+          error: isFallbackText
+            ? 'Финальный запрос Claude упёрся в таймаут (5+ мин). Собранные данные есть в текстовом виде ниже.'
+            : 'AI вернул не-JSON ответ. См. текст ниже.',
+          error_code: isFallbackText ? 'upstream_timeout' : 'non_json_response',
+          provider_message: aiResult.text?.substring(0, 2000) || null
+        }, { user_id: request.user?.id || null });
         sendEvent({ type: 'text_response', text: aiResult.text, model: aiResult.model });
         sendEvent({ type: 'done' });
         reply.raw.end();

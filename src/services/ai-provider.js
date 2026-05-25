@@ -1098,11 +1098,16 @@ async function runAgentLoop(options) {
 
   let finalResult;
   try {
+    // КРИТИЧНО: на финале выключаем verbosity=max (extended thinking).
+    // Иначе Claude думает 5+ минут → upstream-таймаут routerai.ru (300s) →
+    // fetch failed. На финале достаточно plain mode — данные уже собраны,
+    // нужно только сложить их в JSON.
     finalResult = await complete({
       ...completeOpts,
       messages: compactMessages,
       plugins: undefined,   // отключаем plugins → нет искушения снова искать
-      tools: undefined
+      tools: undefined,
+      verbosity: undefined  // выключаем extended thinking на финале
     });
     totalInputTokens += finalResult.usage?.inputTokens || 0;
     totalOutputTokens += finalResult.usage?.outputTokens || 0;
