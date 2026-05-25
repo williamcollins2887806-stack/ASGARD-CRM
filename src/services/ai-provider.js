@@ -1061,13 +1061,48 @@ async function runAgentLoop(options) {
     messages.push(...toolResults);
   }
 
-  // Превысили лимит итераций — возвращаем последний ответ как есть
-  console.warn(`[AgentLoop] Превышен лимит ${maxIterations} итераций, возвращаем последний результат`);
+  // Превысили лимит итераций — Claude хотел ещё искать, но мы говорим "хватит".
+  // Делаем ФИНАЛЬНЫЙ запрос с явной инструкцией "не вызывай инструменты, дай ответ".
+  // Это критично: иначе вернётся пустой content и UI покажет ошибку.
+  console.warn(`[AgentLoop] Превышен лимит ${maxIterations} итераций — делаю финальный запрос без tool_calls`);
+  onProgress({ type: 'finalization', iteration: maxIterations });
+
+  // Дописываем пользовательское сообщение "достаточно, дай ответ"
+  // Перед этим нужно учесть: предыдущий ответ модели был tool_calls,
+  // на него ОБЯЗАТЕЛЬНО должен быть tool result. Если он уже добавлен в цикле —
+  // мы тут стоим после tool результатов, готовы к финальному user-сообщению.
+  messages.push({
+    role: 'user',
+    content: 'Достаточно поисков. Используя ВСЕ результаты которые ты уже получил выше, составь полный итоговый просчёт. Верни ТОЛЬКО валидный JSON по требуемой схеме, без новых поисков и без вызова инструментов.'
+  });
+
+  let finalResult;
+  try {
+    finalResult = await complete({
+      ...completeOpts,
+      messages,
+      plugins: undefined,   // отключаем plugins → нет искушения снова искать
+      tools: undefined
+    });
+    totalInputTokens += finalResult.usage?.inputTokens || 0;
+    totalOutputTokens += finalResult.usage?.outputTokens || 0;
+    console.log(`[AgentLoop] Финальный ответ: ${finalResult.text?.length || 0} chars, stopReason=${finalResult.stopReason}`);
+  } catch (e) {
+    console.error('[AgentLoop] Финальный запрос упал:', e.message);
+    return {
+      ...lastResult,
+      text: lastResult?.text || '',
+      usage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens },
+      agentIterations: maxIterations,
+      agentExceeded: true,
+      finalizationError: e.message
+    };
+  }
+
   return {
-    ...lastResult,
-    text: lastResult?.text || '[Agent loop превысил лимит итераций без финального ответа]',
+    ...finalResult,
     usage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens },
-    agentIterations: maxIterations,
+    agentIterations: maxIterations + 1,
     agentExceeded: true
   };
 }

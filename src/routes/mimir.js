@@ -2168,7 +2168,10 @@ ${analogsSummary}
           maxTokens: 32000,           // AP6: расширенный output + thinking budget
           temperature: 0.4,            // AP6: глубже анализ в risk/comment
           verbosity: 'max',            // AP6: extended thinking (Anthropic output_config.effort=max)
-          maxIterations: 5,            // AgentLoop: максимум 5 итераций tool-calling
+          maxIterations: 8,            // AgentLoop: максимум 8 итераций tool-calling
+                                       // (Claude на больших тендерах хочет искать
+                                       // 6-10 вещей: билеты+проживание+транспорт
+                                       // +оборудование+обучение+характеристики)
           webSearchIncludeDomains: WEB_SEARCH_DOMAINS,
           plugins: [
             // Веб-поиск только на российских сайтах — также передаём как plugin,
@@ -2203,6 +2206,9 @@ ${analogsSummary}
                 const totalChars = evt.results.reduce((s, r) => s + (r.result_chars || 0), 0);
                 sendEvent({ type: 'heartbeat', seconds: thinkingSec,
                   message: `✅ Получено ${totalChars} символов результатов поиска, продолжаю анализ...` });
+              } else if (evt.type === 'finalization') {
+                sendEvent({ type: 'heartbeat', seconds: thinkingSec,
+                  message: `🏁 Достаточно поисков, собираю финальный просчёт...` });
               }
             } catch {}
           }
@@ -2449,7 +2455,7 @@ ${analogsSummary}
           ],
           maxTokens: 16000,
           temperature: 0.2,
-          maxIterations: 4,
+          maxIterations: 6,
           onProgress: (evt) => {
             try {
               if (evt.type === 'tool_calls') {
