@@ -2389,6 +2389,27 @@ AsgardRouter.add("/assembly", ()=>AsgardAssemblyPage.render({layout, title:"Сб
     // SSE: подключение для real-time обновлений
     initGlobalSSE();
 
+    // Авто-восстановление Мимира: на любой странице после авторизации проверяем
+    // есть ли идущие просчёты — если да, открываем модалку без клика юзера.
+    try {
+      const _t = localStorage.getItem('asgard_token');
+      if (_t && window.mimirRecoverIfRunning) {
+        fetch('/api/mimir/auto-estimate-active', { headers: { 'Authorization': 'Bearer ' + _t }})
+          .then(r => r.ok ? r.json() : null)
+          .then(data => {
+            if (!data || !Array.isArray(data.active) || data.active.length === 0) return;
+            // Берём первый идущий (running/questions). Если только done — пропускаем,
+            // т.к. они потребуют клика по тендеру.
+            const live = data.active.find(j => j.status === 'running' || j.status === 'questions');
+            if (live) {
+              window.mimirRecoverIfRunning({ workId: live.work_id, tenderId: live.tender_id })
+                .catch(function(){});
+            }
+          })
+          .catch(function(){});
+      }
+    } catch(_) {}
+
     if(startRouter){
       // Mobile v3 — НЕ запускаем десктопный роутер на мобилке, чтобы не конфликтовал с mobile Router
       const _mob3 = window.ASGARD_FLAGS?.MOBILE_V3_ENABLED === true;

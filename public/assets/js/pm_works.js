@@ -890,6 +890,11 @@ window.AsgardPmWorksPage=(function(){
     }
 
     async function openWork(id){
+      // Авто-восстановление Мимира: если в этой работе идёт/готов просчёт —
+      // открыть модалку автоматически (например после перезагрузки страницы).
+      if (id && window.mimirRecoverIfRunning) {
+        try { window.mimirRecoverIfRunning({ workId: Number(id) }).catch(function(){}); } catch(_){}
+      }
       const [w, finData, tRaw] = await Promise.all([
         AsgardDB.get("works", id),
         fetch('/api/works/' + id + '/financial-summary', {headers: {'Authorization': 'Bearer ' + (localStorage.getItem('asgard_token') || localStorage.getItem('auth_token'))}}).then(r => r.ok ? r.json() : null).catch(() => null),

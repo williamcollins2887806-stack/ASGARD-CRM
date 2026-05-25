@@ -1027,6 +1027,137 @@
   function _aeUnlock(key) {
     try { localStorage.removeItem('ae_lock_' + key); } catch (e) {}
   }
+  /**
+   * Переподключение к идущему/готовому просчёту через polling.
+   * Вызывается когда GET /auto-estimate-status вернул status=running/questions —
+   * это значит просчёт жив на сервере, но SSE-поток оборвался (перезагрузка
+   * страницы, потеря интернета и т.п.). Открываем ту же модалку с прогрессом и
+   * каждые 3 сек дёргаем status, пока не получим done/error.
+   */
+  async function attachToRunningEstimate(workId, tenderId, initialStatus) {
+    if (_aeRunning) return;
+    _aeRunning = true;
+    var lockKey = workId ? 'w' + workId : 't' + tenderId;
+    _aeLock(lockKey);
+    injectStyles();
+
+    var state = {
+      workId: workId || null,
+      estimateId: null,
+      lastCard: null,
+      lastAnalysis: null,
+      composerVisible: false,
+      chatLoading: false,
+      chatHistory: [],
+      tenderId: tenderId || null,
+    };
+    var effectiveId = workId || ('t' + tenderId);
+    var modal = buildModal(effectiveId, state);
+    var stepsBox = modal.stepsBox, resultBox = modal.resultBox, composerWrap = modal.composerWrap;
+    document.body.appendChild(modal.overlay);
+
+    // Показываем placeholder что мы переподключились
+    var reconnectInfo = el('div', {
+      style: {
+        padding: '12px 16px', margin: '8px 0', borderRadius: '10px',
+        background: 'rgba(212, 168, 67, 0.1)', border: '1px solid rgba(212, 168, 67, 0.3)',
+        color: 'var(--t1)', fontSize: '13px'
+      }
+    }, [
+      el('div', { style: { fontWeight: 700, marginBottom: '4px' } }, '🔄 Переподключение к идущему просчёту'),
+      el('div', { style: { opacity: 0.7, fontSize: '12px' } },
+        'Просчёт работает на сервере. Я обновляю статус каждые 3 сек — как только Мимир закончит, увидите результат.')
+    ]);
+    stepsBox.appendChild(reconnectInfo);
+
+    var elapsedDiv = el('div', {
+      style: { padding: '8px 16px', fontSize: '13px', opacity: 0.7, color: 'var(--t2)' }
+    }, '⏱ На сервере: ' + Math.round((initialStatus.elapsed_ms || 0) / 1000) + ' сек');
+    stepsBox.appendChild(elapsedDiv);
+
+    // Polling
+    var token = getToken();
+    var qp = workId ? 'work_id=' + workId : 'tender_id=' + tenderId;
+    var stopped = false;
+    var pollCount = 0;
+    var MAX_POLLS = 200; // 200 × 3с = 10 мин (== TTL на сервере)
+
+    async function pollOnce() {
+      if (stopped || pollCount >= MAX_POLLS) {
+        if (pollCount >= MAX_POLLS) {
+          showError(stepsBox, 'Превышено время ожидания (10 мин). Закройте окно и попробуйте снова.');
+        }
+        return;
+      }
+      pollCount++;
+      try {
+        var resp = await fetch('/api/mimir/auto-estimate-status?' + qp, {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        var data = await resp.json();
+
+        elapsedDiv.textContent = '⏱ На сервере: ' + Math.round((data.elapsed_ms || 0) / 1000) + ' сек (опрос #' + pollCount + ')';
+
+        if (data.status === 'done' && data.result && data.result.estimate_id) {
+          stopped = true;
+          AsgardUI.toast('Мимир', 'Просчёт готов! Открываю...', 'ok');
+          // Очистить джоб
+          fetch('/api/mimir/auto-estimate-status?' + qp, {
+            method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token }
+          }).catch(function() {});
+          // Закрыть модалку и перейти на отчёт
+          var ov = document.querySelector('.mimir-ae-overlay');
+          if (ov) ov.remove();
+          _aeRunning = false;
+          if (window.openPage) window.openPage('estimate_report', { id: data.result.estimate_id });
+          return;
+        }
+        if (data.status === 'error') {
+          stopped = true;
+          showError(stepsBox, data.error || 'Просчёт упал с ошибкой на сервере');
+          return;
+        }
+        if (data.status === 'questions' && data.questions && data.session_id) {
+          stopped = true;
+          // Показываем форму вопросов — переиспользуем существующий рендер
+          showQuestionsForm(stepsBox, resultBox, state, composerWrap, data.session_id, data.questions);
+          return;
+        }
+        // running — продолжаем поллить
+        setTimeout(pollOnce, 3000);
+      } catch (e) {
+        // Сетевой сбой — пробуем ещё
+        setTimeout(pollOnce, 5000);
+      }
+    }
+    pollOnce();
+  }
+
+  /**
+   * Рендер формы вопросов — выделен чтобы можно было вызвать из attachToRunningEstimate.
+   * (Раньше эта логика была inline в SSE-handler'е runStream.)
+   */
+  function showQuestionsForm(stepsBox, resultBox, state, composerWrap, sessionId, questions) {
+    // Используем существующий рендер из ветки 'questions' SSE — если его нет
+    // выделенным, делаем минимальный fallback
+    if (typeof renderQuestionsForm === 'function') {
+      renderQuestionsForm(stepsBox, resultBox, state, composerWrap, sessionId, questions);
+      return;
+    }
+    // Фолбэк: текстовая подсказка с предложением закрыть и нажать заново
+    var info = el('div', {
+      style: {
+        padding: '14px', margin: '8px 0', borderRadius: '10px',
+        background: 'rgba(212, 168, 67, 0.1)', color: 'var(--t1)', fontSize: '13px'
+      }
+    }, [
+      el('div', { style: { fontWeight: 700, marginBottom: '6px' } }, '❓ Мимир задал вопросы'),
+      el('div', {}, 'Закройте это окно и нажмите «Просчёт» снова — откроется форма ответов.')
+    ]);
+    stepsBox.appendChild(info);
+  }
+
   window.openMimirAutoEstimate = async function (workId, tenderId) {
     if (!workId && !tenderId) return;
     var lockKey = workId ? 'w' + workId : 't' + tenderId;
@@ -1044,8 +1175,11 @@
       });
       if (statusResp.ok) {
         var statusData = await statusResp.json();
-        if (statusData.status === 'running') {
-          AsgardUI.toast('Мимир', 'Просчёт уже выполняется на сервере, подождите...', 'warn');
+        if (statusData.status === 'running' || statusData.status === 'questions') {
+          // Просчёт ИДЁТ на сервере — открываем модалку и переподцепляемся через polling
+          // вместо потерянного SSE-потока (страница перезагружалась → SSE оборвался)
+          AsgardUI.toast('Мимир', 'Подключаюсь к идущему просчёту...', 'ok');
+          attachToRunningEstimate(workId, tenderId, statusData);
           return;
         }
         if (statusData.status === 'done' && statusData.result && statusData.result.estimate_id) {
@@ -1079,5 +1213,47 @@
     const { overlay, stepsBox, resultBox, retryFt, composerWrap } = buildModal(effectiveId, state);
     document.body.appendChild(overlay);
     runStream(workId, state, stepsBox, resultBox, retryFt, composerWrap);
+  };
+
+  /**
+   * Авто-восстановление модалки после reload страницы.
+   * Вызывается из openPage обработчика страниц тендера/работы — на старте
+   * пингуем серверный статус, и если просчёт идёт/готов — открываем модалку
+   * без клика пользователя.
+   *
+   * Пример: window.mimirRecoverIfRunning({ tenderId: 738 })
+   */
+  window.mimirRecoverIfRunning = async function ({ workId, tenderId }) {
+    if (!workId && !tenderId) return false;
+    if (_aeRunning) return false;
+    try {
+      var qp = workId ? 'work_id=' + workId : 'tender_id=' + tenderId;
+      var token = localStorage.getItem('token');
+      if (!token) return false;
+      var resp = await fetch('/api/mimir/auto-estimate-status?' + qp, {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      if (!resp.ok) return false;
+      var data = await resp.json();
+      if (data.status === 'running' || data.status === 'questions') {
+        AsgardUI.toast('Мимир', 'Возобновляю просчёт после перезагрузки...', 'ok');
+        attachToRunningEstimate(workId || null, tenderId || null, data);
+        return true;
+      }
+      if (data.status === 'done' && data.result && data.result.estimate_id) {
+        // Готовый просчёт после reload — мягкое уведомление, открытие по клику
+        AsgardUI.toast('Мимир', 'Просчёт #' + data.result.estimate_id + ' готов. Откройте Мимира чтобы увидеть.', 'ok');
+        return true;
+      }
+      if (data.status === 'error') {
+        AsgardUI.toast('Мимир', 'Прошлый просчёт упал: ' + (data.error || 'неизвестная ошибка'), 'err');
+        // Очистить чтобы не висел
+        fetch('/api/mimir/auto-estimate-status?' + qp, {
+          method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token }
+        }).catch(function() {});
+        return true;
+      }
+    } catch (e) { /* no-op */ }
+    return false;
   };
 })();

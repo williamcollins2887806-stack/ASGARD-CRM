@@ -1645,6 +1645,19 @@ window.AsgardTendersPage = (function(){
       const rights = canEditTender(user, t||{handoff_at:null});
       const isNew = !t;
 
+      // Авто-восстановление Мимира: если в этом тендере идёт/готов просчёт —
+      // открыть модалку автоматически (например после перезагрузки страницы).
+      if (tenderId && window.mimirRecoverIfRunning) {
+        try {
+          const workRes = await AsgardDB.byIndex("works","tender_id", tenderId);
+          const work = workRes[0] || null;
+          window.mimirRecoverIfRunning({
+            workId: work && work.id ? work.id : null,
+            tenderId: !work ? tenderId : null
+          }).catch(function(){});
+        } catch(_) {}
+      }
+
       // Load tender tags from API
       let tenderTags = [];
       try {

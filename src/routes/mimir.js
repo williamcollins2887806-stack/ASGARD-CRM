@@ -2013,6 +2013,33 @@ ${analogsSummary}
     };
   });
 
+  // GET /api/mimir/auto-estimate-active — вернуть все ИДУЩИЕ просчёты этого юзера.
+  // Используется для авто-восстановления модалки после reload — клиент дёргает
+  // этот эндпоинт на любой странице и если что-то живо — открывает модалку.
+  fastify.get('/auto-estimate-active', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    // _aeJobs не хранит user_id (упрощение), но просчёт всё равно один глобально
+    // на work/tender, так что отдаём всё что running/questions/done.
+    const active = [];
+    for (const [key, job] of fastify._aeJobs.entries()) {
+      if (Date.now() - job.startedAt > AE_JOB_TTL) continue;
+      if (!['running','questions','done'].includes(job.status)) continue;
+      // key формата 'w<id>' или 't<id>'
+      const isWork = key.startsWith('w');
+      const id = parseInt(key.slice(1));
+      if (!id) continue;
+      active.push({
+        key, status: job.status,
+        work_id: isWork ? id : null,
+        tender_id: isWork ? null : id,
+        elapsed_ms: Date.now() - job.startedAt,
+        estimate_id: job.result?.estimate_id || null
+      });
+    }
+    return { active };
+  });
+
   // DELETE /api/mimir/auto-estimate-status — сбросить джоб (пользователь закрыл модалку)
   fastify.delete('/auto-estimate-status', {
     preHandler: [fastify.authenticate]
@@ -2148,14 +2175,27 @@ ${analogsSummary}
         'wildberries.ru', 'ozon.ru', 'avito.ru'
       ];
 
-      // Heartbeat каждые 5 сек пока Claude думает
+      // Heartbeat каждые 3 сек — UI должен видеть что процесс жив
       let thinkingSec = 0;
+      let currentPhase = 'thinking'; // 'thinking', 'searching', 'finalization', 'creating'
+      let currentDetail = '🧠 Мимир анализирует ТЗ и собирает требования...';
       const heartbeat = setInterval(() => {
-        thinkingSec += 5;
+        thinkingSec += 3;
         try {
-          sendEvent({ type: 'heartbeat', seconds: thinkingSec, message: `🧠 Мимир думает и ищет в интернете... ${thinkingSec} сек` });
+          // Меняем подпись каждые 15 сек в "thinking" чтобы было видно живой
+          if (currentPhase === 'thinking') {
+            const variants = [
+              '🧠 Мимир анализирует ТЗ и читает документы...',
+              '🔬 Изучаю требования и характеристики работ...',
+              '💭 Думаю над командой, маршрутом и оборудованием...',
+              '📊 Сопоставляю с аналогичными работами из истории...',
+              '🧮 Прикидываю объёмы и ресурсы...'
+            ];
+            currentDetail = variants[Math.floor(thinkingSec / 15) % variants.length];
+          }
+          sendEvent({ type: 'heartbeat', seconds: thinkingSec, message: `${currentDetail} (${thinkingSec} сек)` });
         } catch {}
-      }, 5000);
+      }, 3000);
 
       let aiResult;
       try {
@@ -2191,24 +2231,29 @@ ${analogsSummary}
             }
           ],
           // SSE прогресс: сообщаем UI о каждой итерации/поиске
+          // + обновляем currentPhase/currentDetail чтобы heartbeat жил
           onProgress: (evt) => {
             try {
               if (evt.type === 'iteration_start' && evt.iteration > 0) {
-                sendEvent({ type: 'heartbeat', seconds: thinkingSec,
-                  message: `🔄 Мимир анализирует результаты поиска (итерация ${evt.iteration + 1})...` });
+                currentPhase = 'thinking';
+                currentDetail = `🔄 Анализирую результаты поиска (итерация ${evt.iteration + 1} из 8)`;
+                sendEvent({ type: 'heartbeat', seconds: thinkingSec, message: currentDetail });
               } else if (evt.type === 'tool_calls') {
+                currentPhase = 'searching';
                 const queries = evt.tool_calls.map(t => t.query).filter(Boolean);
-                const msg = queries.length > 0
-                  ? `🔍 Ищу: ${queries.slice(0,2).join('; ').substring(0, 120)}`
-                  : `🔧 Запрашиваю инструменты (${evt.tool_calls.length})`;
-                sendEvent({ type: 'heartbeat', seconds: thinkingSec, message: msg });
+                currentDetail = queries.length > 0
+                  ? `🔍 Ищу в интернете: ${queries.slice(0,2).join(' • ').substring(0, 150)}`
+                  : `🔧 Запрашиваю ${evt.tool_calls.length} инструмент(ов)`;
+                sendEvent({ type: 'heartbeat', seconds: thinkingSec, message: currentDetail });
               } else if (evt.type === 'tool_results') {
                 const totalChars = evt.results.reduce((s, r) => s + (r.result_chars || 0), 0);
-                sendEvent({ type: 'heartbeat', seconds: thinkingSec,
-                  message: `✅ Получено ${totalChars} символов результатов поиска, продолжаю анализ...` });
+                currentPhase = 'thinking';
+                currentDetail = `✅ Получено ${(totalChars/1024).toFixed(1)} KB фактов, анализирую...`;
+                sendEvent({ type: 'heartbeat', seconds: thinkingSec, message: currentDetail });
               } else if (evt.type === 'finalization') {
-                sendEvent({ type: 'heartbeat', seconds: thinkingSec,
-                  message: `🏁 Достаточно поисков, собираю финальный просчёт...` });
+                currentPhase = 'finalization';
+                currentDetail = `🏁 Достаточно поисков. Собираю итоговый просчёт со всеми цифрами (это самый долгий этап — Claude думает 1-5 мин)...`;
+                sendEvent({ type: 'heartbeat', seconds: thinkingSec, message: currentDetail });
               }
             } catch {}
           }

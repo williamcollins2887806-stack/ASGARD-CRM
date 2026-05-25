@@ -98,7 +98,7 @@ let OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 let OPENAI_MODEL = process.env.OPENAI_MODEL || 'anthropic/claude-sonnet-4.6';
 const AI_MAX_TOKENS = parseInt(process.env.AI_MAX_TOKENS || '4096', 10);
 const AI_TEMPERATURE = parseFloat(process.env.AI_TEMPERATURE || '0.6');
-const AI_TIMEOUT_MS = parseInt(process.env.AI_TIMEOUT_MS || '300000', 10); // 300 sec for Claude Opus 4.6 (thinking takes longer)
+const AI_TIMEOUT_MS = parseInt(process.env.AI_TIMEOUT_MS || '600000', 10); // 600 sec = 10 мин. Sonnet 4.6 с 1M контекстом и большим thinking может думать долго на сложных просчётах.
 
 // API endpoints (default: routerai.ru — OpenAI-compatible proxy to Claude)
 const ANTHROPIC_URL = process.env.ANTHROPIC_URL || 'https://api.anthropic.com/v1/messages';
