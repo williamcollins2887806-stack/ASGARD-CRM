@@ -701,7 +701,8 @@ window.AsgardPmCalcsPage = (function(){
 
       let list = tenders.slice();
 
-      if(!allPeriod){
+      // Период: если дропдаун пустой ("Все") или чекбокс "Все периоды" — не фильтруем
+      if(!allPeriod && period){
         list = list.filter(t=>norm(t.period)===period);
       }
       if(!showRef){
