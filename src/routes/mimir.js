@@ -2157,58 +2157,50 @@ ${analogsSummary}
       const collectorArg = workId ? workId : { tenderId };
       const ctx = await collector.collectAll(db, collectorArg, (event) => sendEvent(event));
 
-      // ── Фаза 2: Claude анализирует и считает (AP6: thinking + web search + file PDF) ──
-      sendEvent({ type: 'progress', step: 'ai_thinking', message: '🧠 Мимир глубоко анализирует данные...' });
+      // ── Фаза 2: OCR документов → Claude анализирует и считает ──
+      sendEvent({ type: 'progress', step: 'ocr_documents', message: '📖 Распознаю текст из ТЗ-документов (OCR)...' });
 
       const dataText = serializeContext(ctx);
       const systemPrompt = getSystemPrompt();
 
-      // AP6: Собираем content blocks для user message — текст + PDF/DOCX как file блоки
-      const userContent = [];
-
-      // 1. Документы (PDF/DOCX/XLSX) — file блоки через routerai file-parser plugin
-      const fileBlocks = [];
-      const FILE_BASE_URL = process.env.PUBLIC_FILE_BASE_URL || 'https://asgard-crm.ru';
-      for (const doc of ctx.documents) {
-        if (doc.has_file_block && doc.filename) {
-          // routerai требует data URL или публичный URL.
-          // Используем base64 для приватных файлов на сервере.
-          try {
-            const docPath = path.resolve(process.env.UPLOAD_DIR || './uploads', doc.filename);
-            if (fs.existsSync(docPath)) {
-              const buf = fs.readFileSync(docPath);
-              // Лимит 30МБ на файл для безопасности (routerai/mistral-ocr ограничения)
-              if (buf.length < 30 * 1024 * 1024) {
-                const ext = String(doc.name || '').split('.').pop().toLowerCase();
-                const mimeTypes = {
-                  pdf: 'application/pdf',
-                  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                  xls: 'application/vnd.ms-excel'
-                };
-                const mime = mimeTypes[ext] || doc.mime || 'application/octet-stream';
-                userContent.push({
-                  type: 'file',
-                  file: {
-                    filename: doc.name,
-                    file_data: `data:${mime};base64,${buf.toString('base64')}`
-                  }
-                });
-                fileBlocks.push(doc.name);
-              }
-            }
-          } catch (e) { console.warn(`[AP6] Не удалось приложить файл ${doc.name}: ${e.message}`); }
+      // KRITICHNO: routerai не передаёт PDF в Claude (возвращает 503 на type:file).
+      // Из-за этого Claude угадывал контекст вместо чтения документов.
+      // Решение: OCR-ируем PDF на сервере через gemini-2.5-flash, кэшируем
+      // результат в documents.ocr_text, отдаём текст обычным user-сообщением.
+      const pdfOcr = require('../services/pdf-ocr');
+      const ocrTexts = [];
+      try {
+        const ocrResults = tenderId
+          ? await pdfOcr.ocrTenderDocuments(tenderId)
+          : await pdfOcr.ocrWorkDocuments(workId);
+        for (const r of ocrResults) {
+          if (r.text && r.text.length > 50) {
+            ocrTexts.push(`═══ ДОКУМЕНТ: ${r.original_name} ═══\n${r.text}`);
+            sendEvent({ type: 'progress', step: 'ocr_done',
+              message: `📄 Распознан "${r.original_name}" (${(r.text.length/1024).toFixed(1)} KB${r.cached ? ', из кэша' : ''})` });
+          } else if (r.error) {
+            console.warn(`[AP6 OCR] doc ${r.document_id} (${r.original_name}) failed: ${r.error}`);
+          }
         }
-      }
-      if (fileBlocks.length > 0) {
-        console.log(`[AP6] Приложено ${fileBlocks.length} документов как file blocks: ${fileBlocks.join(', ')}`);
+        console.log(`[AP6 OCR] Извлечено текста из ${ocrTexts.length} документов`);
+      } catch (e) {
+        console.error('[AP6 OCR] Pipeline failed:', e.message);
+        sendEvent({ type: 'progress', step: 'ocr_failed',
+          message: '⚠️ OCR не сработал, Claude получит только метаданные документов' });
       }
 
-      // 2. Текстовая часть с данными
+      // Текстовое user-сообщение: задача + контекст + ПОЛНЫЙ ТЕКСТ ИЗ ТЗ
+      const userContent = [];
+      const ocrBlock = ocrTexts.length > 0
+        ? `\n\n══════════════════════════════════════════\n📑 ТЕКСТ ИЗ ПРИЛОЖЕННЫХ ДОКУМЕНТОВ (OCR):\n══════════════════════════════════════════\n\n${ocrTexts.join('\n\n')}\n\n══════════════════════════════════════════\nКОНЕЦ ТЕКСТА ДОКУМЕНТОВ\n══════════════════════════════════════════`
+        : '';
       userContent.push({
         type: 'text',
-        text: `Составь просчёт для ${workId ? 'работы #' + workId : 'тендера #' + tenderId}.\n\n${dataText}`
+        text: `Составь просчёт для ${workId ? 'работы #' + workId : 'тендера #' + tenderId}.\n\n${dataText}${ocrBlock}`
       });
+
+      // Дальше идёт AI-анализ
+      sendEvent({ type: 'progress', step: 'ai_thinking', message: '🧠 Мимир глубоко анализирует данные...' });
 
       // AP6: домены поиска для web search (выполняется в agent loop когда Claude просит)
       const WEB_SEARCH_DOMAINS = [
@@ -2255,28 +2247,23 @@ ${analogsSummary}
         aiResult = await aiProvider.runAgentLoop({
           system: systemPrompt,
           messages: [{ role: 'user', content: userContent }],
-          maxTokens: 32000,           // AP6: расширенный output + thinking budget
+          maxTokens: 16000,           // AP6: достаточно для просчёта без thinking
           temperature: 0.4,            // AP6: глубже анализ в risk/comment
-          verbosity: 'max',            // AP6: extended thinking (Anthropic output_config.effort=max)
-          maxIterations: 6,            // AgentLoop: 6 итераций — баланс между полнотой
-                                       // данных и скоростью финала. Раньше 8 давало
-                                       // 16+ поисков, финал на gpt-4.1-mini справится.
+          // verbosity=max убран: Claude теперь имеет полный текст ТЗ от OCR,
+          // ему не нужно так много думать. Это в разы ускоряет финал.
+          maxIterations: 5,            // AgentLoop: 5 итераций достаточно когда ТЗ
+                                       // действительно есть в контексте.
           webSearchIncludeDomains: WEB_SEARCH_DOMAINS,
           plugins: [
-            // Веб-поиск только на российских сайтах — также передаём как plugin,
-            // если модель поймёт что плагин = native server-tool, использует его сама;
-            // если попросит tool_call WebSearch — agent loop выполнит через тот же plugin.
+            // Только web-search. file-parser убран — routerai его не передаёт в
+            // Anthropic API (возвращает 503). OCR теперь выполняем на сервере
+            // через src/services/pdf-ocr.js до отправки контекста.
             {
               id: 'web',
               engine: 'native',
               max_results: 8,
               search_prompt: 'Ищи актуальные цены 2026 года на российских сайтах поставщиков, тендерных площадках и РЖД/Aviasales',
               include_domains: WEB_SEARCH_DOMAINS
-            },
-            // PDF/DOCX парсинг через mistral-ocr (работает и для сканов)
-            {
-              id: 'file-parser',
-              pdf: { engine: 'mistral-ocr' }
             }
           ],
           // SSE прогресс: сообщаем UI о каждой итерации/поиске
