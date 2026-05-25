@@ -410,6 +410,27 @@ async function callOpenAI({ system, messages, maxTokens, temperature, stream = f
     // Но для удобства caller-а возвращаем флаг _empty.
   }
 
+  // Agent-loop: если Claude вернул tool_calls с пустым content — это значит он просит
+  // нас выполнить инструмент. Логируем что именно он хочет вызвать, чтобы понять
+  // нужен ли agent loop или достаточно отключить нативные tools (плагины routerai
+  // должны выполняться на стороне routerai, не должны приходить как tool_calls).
+  if (hasToolCalls && (!content || (typeof content === 'string' && content.trim().length === 0))) {
+    console.warn('[AI Provider] Claude вернул tool_calls без content (finish_reason=' + choice.finish_reason + ')');
+    console.warn('  tool_calls count:', choice.message.tool_calls.length);
+    choice.message.tool_calls.slice(0, 5).forEach((tc, i) => {
+      console.warn(`  tool_call[${i}]:`, JSON.stringify({
+        id: tc.id,
+        type: tc.type,
+        function_name: tc.function?.name,
+        function_args_sample: typeof tc.function?.arguments === 'string'
+          ? tc.function.arguments.substring(0, 300)
+          : JSON.stringify(tc.function?.arguments || {}).substring(0, 300)
+      }));
+    });
+    console.warn('  usage:', JSON.stringify(data.usage));
+    console.warn('  model:', data.model);
+  }
+
   return {
     text: content || '',
     tool_calls: choice.message?.tool_calls || null, // AP5: tool-calling
