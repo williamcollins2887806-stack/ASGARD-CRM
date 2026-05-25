@@ -2158,7 +2158,7 @@ ${analogsSummary}
       const ctx = await collector.collectAll(db, collectorArg, (event) => sendEvent(event));
 
       // ── Фаза 2: Claude анализирует и считает (AP6: thinking + web search + file PDF) ──
-      sendEvent({ type: 'progress', step: 'ai_thinking', message: '🧠 Мимир глубоко анализирует данные (verbosity=max)...' });
+      sendEvent({ type: 'progress', step: 'ai_thinking', message: '🧠 Мимир глубоко анализирует данные...' });
 
       const dataText = serializeContext(ctx);
       const systemPrompt = getSystemPrompt();

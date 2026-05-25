@@ -371,7 +371,10 @@
 
       // Right side: text + dots animation
       const rightSide = el('div', { style: { flex: '1' } });
+      // Заголовок — обновляется через SSE heartbeat (evt.message): сюда летят
+      // "🧠 Анализирую ТЗ...", "🔍 Ищу: ...", "✅ Получено N KB фактов..." и т.п.
       rightSide.appendChild(el('div', {
+        class: 'mimir-ae-think-label',
         style: { fontSize: '14px', fontWeight: '700', color: '#D4A843', marginBottom: '4px' },
       }, 'Мимир анализирует данные'));
 
@@ -391,17 +394,13 @@
       }
       rightSide.appendChild(dotsRow);
 
-      // Timer
-      var seconds = 0;
+      // Timer — НЕ запускаем локальный счётчик (он конфликтовал с серверным
+      // heartbeat и прыгал между значениями). Сервер шлёт seconds каждые 3 сек
+      // через SSE heartbeat → пишет в .mimir-ae-think-timer напрямую.
       var timerEl = el('div', {
         class: 'mimir-ae-think-timer',
         style: { fontSize: '11px', color: 'rgba(212,168,67,0.5)', marginTop: '4px' },
       }, '0 сек...');
-      var timerInterval = setInterval(function() {
-        seconds++;
-        timerEl.textContent = seconds + ' сек...';
-        if (seconds > 120) clearInterval(timerInterval);
-      }, 1000);
       rightSide.appendChild(timerEl);
 
       thinkBox.appendChild(avatar);
@@ -413,8 +412,7 @@
       wrapper.appendChild(thinkBox);
       stepsBox.appendChild(wrapper);
       _thinkingEl = wrapper;
-      // Сохраним interval чтобы очистить
-      wrapper._timerInterval = timerInterval;
+      // Локального интервала больше нет — таймер обновляется через серверный SSE heartbeat
     } else {
       stepsBox.appendChild(row);
     }
@@ -742,6 +740,9 @@
                   else if (evt.type === 'heartbeat') {
                     var t = document.querySelector('.mimir-ae-think-timer');
                     if (t) t.textContent = evt.seconds + ' сек...';
+                    // Показываем "мысли" Мимира в основной строке заголовка
+                    var label = document.querySelector('.mimir-ae-think-label');
+                    if (label && evt.message) label.textContent = evt.message;
                   }
                   else if (evt.type === 'result') showResult(resultBox, evt, state, composerWrap, document.querySelector('.mimir-ae-overlay'));
                   else if (evt.type === 'error') showError(stepsBox, evt.message);
@@ -986,9 +987,11 @@
           if (event.type === 'start' || event.type === 'progress') {
             enqueueStep(stepsBox, event);
           } else if (event.type === 'heartbeat') {
-            // Обновляем thinking animation таймер
+            // Обновляем thinking animation таймер + "мысли" Мимира
             var thinkTimer = document.querySelector('.mimir-ae-think-timer');
             if (thinkTimer) thinkTimer.textContent = event.seconds + ' сек...';
+            var thinkLabel = document.querySelector('.mimir-ae-think-label');
+            if (thinkLabel && event.message) thinkLabel.textContent = event.message;
           } else if (event.type === 'questions') {
             showQuestions(stepsBox, resultBox, event, state, workId, composerWrap);
           } else if (event.type === 'result') {
