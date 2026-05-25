@@ -730,6 +730,39 @@ fastify.get('/api/correspondence', { preHandler: [fastify.authenticate] }, async
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Version endpoint — клиент опрашивает каждые 60с и сравнивает с
+// window.ASGARD_SHELL_VERSION. Если не совпало — мягкий тост + auto-reload.
+// Источник правды — public/sw.js (бампается pre-commit-хуком).
+// ─────────────────────────────────────────────────────────────────────────────
+let _cachedShellVersion = null;
+let _cachedShellVersionTs = 0;
+function getShellVersion() {
+  // Кешируем на 30 сек, чтобы не читать диск на каждый запрос
+  const now = Date.now();
+  if (_cachedShellVersion && (now - _cachedShellVersionTs) < 30000) {
+    return _cachedShellVersion;
+  }
+  try {
+    const swPath = path.join(__dirname, '../public/sw.js');
+    const sw = fs.readFileSync(swPath, 'utf8');
+    const m = sw.match(/SHELL_VERSION\s*=\s*['"]([^'"]+)['"]/);
+    if (m) {
+      _cachedShellVersion = m[1];
+      _cachedShellVersionTs = now;
+      return m[1];
+    }
+  } catch (_) { /* fall through */ }
+  return require('../package.json').version || 'unknown';
+}
+
+fastify.get('/api/version', async (request, reply) => {
+  reply
+    .header('Cache-Control', 'no-cache, must-revalidate')
+    .header('Pragma', 'no-cache');
+  return { version: getShellVersion(), ts: Date.now() };
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Health Check
 // ─────────────────────────────────────────────────────────────────────────────
 fastify.get('/api/health', async (request, reply) => {

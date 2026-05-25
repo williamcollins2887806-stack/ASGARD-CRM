@@ -385,6 +385,69 @@
         }
       });
     })();
+
+    // ── Version watcher (без SW): опрашивает /api/version каждые 60 сек.
+    // Если версия на сервере отличается от загруженной — показывает баннер.
+    // Авто-reload через 30 сек если пользователь не отреагировал.
+    // Работает параллельно с SW-логикой выше, не конфликтует.
+    (function(){
+      var SHELL_VERSION = window.ASGARD_SHELL_VERSION || '';
+      if (!SHELL_VERSION) return;
+      var _checked = false;
+      var _autoReloadTimer = null;
+
+      function doReload() {
+        if (_autoReloadTimer) clearTimeout(_autoReloadTimer);
+        // Прибиваем все кеши и hard reload с уникальным query
+        try {
+          if ('caches' in window) {
+            caches.keys().then(function(n){ return Promise.all(n.map(function(c){ return caches.delete(c); })); })
+              .finally(function(){ location.href = location.pathname + '?_v=' + Date.now() + location.hash; });
+          } else {
+            location.href = location.pathname + '?_v=' + Date.now() + location.hash;
+          }
+        } catch (_) {
+          location.reload(true);
+        }
+      }
+
+      function showUpdateBanner(newVersion) {
+        var banner = document.getElementById('swUpdateBanner');
+        if (banner) {
+          banner.classList.add('visible');
+          // Подменяем текст чтобы показать конкретную версию
+          var span = banner.querySelector('span');
+          if (span) span.textContent = '⚡ Обновление до ' + newVersion + ' через 30 сек';
+        }
+        // Авто-reload через 30 сек если юзер не нажал «Обновить» сам
+        _autoReloadTimer = setTimeout(doReload, 30000);
+      }
+
+      function check() {
+        // Не дёргать когда вкладка скрыта (экономим запросы)
+        if (document.visibilityState !== 'visible') return;
+        fetch('/api/version', { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } })
+          .then(function(r) { return r.ok ? r.json() : null; })
+          .then(function(j) {
+            if (!j || !j.version) return;
+            if (j.version !== SHELL_VERSION && !_checked) {
+              _checked = true;
+              console.log('[Version] new version available:', j.version, '(current:', SHELL_VERSION + ')');
+              showUpdateBanner(j.version);
+            }
+          })
+          .catch(function(){ /* network err — silent */ });
+      }
+
+      // Первая проверка через 30 сек после загрузки (даёт время странице полностью отрисоваться)
+      setTimeout(check, 30000);
+      // Затем каждые 60 сек
+      setInterval(check, 60000);
+      // Проверка при возврате на вкладку
+      document.addEventListener('visibilitychange', function(){
+        if (document.visibilityState === 'visible') check();
+      });
+    })();
   </script>
 <script defer src="assets/js/procurement-page.js?v=20.13.14"></script>
 <script defer src="assets/js/assembly-page.js?v=20.13.14"></script>
