@@ -2854,14 +2854,32 @@ window.AsgardFieldTab = (function () {
 
   // ─── Модалка: выплата рабочему (SSoT сводка + свободная сумма) ────
   function openPayWorkerModal(employeeId, fio, work, user, container) {
-    AsgardUI.showModal({ title: 'Загрузка...', html: '<div style="text-align:center;padding:40px">\u23F3</div>', icon: '\uD83D\uDCB0' });
+    // Единая модалка с placeholder, потом replaceModal перерисовывает содержимое.
+    // (showModal стакает overlays — hideModal убирает только верхний.)
+    AsgardUI.showModal({
+      title: 'Выплата рабочему',
+      subtitle: esc(fio),
+      icon: '💰',
+      html: '<div style="text-align:center;padding:60px"><div style="font-size:40px;margin-bottom:12px">⏳</div><div style="color:var(--t2)">Загружаем баланс…</div></div>'
+    });
     fetch('/api/worker-payments/employee-summary?work_id=' + work.id + '&employee_id=' + employeeId, { headers: hdr() })
-      .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, data: j }; }); })
+      .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, status: r.status, data: j }; }); })
       .then(function(res) {
-        if (!res.ok) { AsgardUI.hideModal(); toast('\u041E\u0448\u0438\u0431\u043A\u0430: ' + (res.data.error || ''), '', 'err'); return; }
+        if (!res.ok) {
+          var msg = (res.data && (res.data.error || res.data.details)) || ('HTTP ' + res.status);
+          var errHtml = '<div style="padding:20px"><div style="background:rgba(239,68,68,0.15);border:1px solid #ef4444;color:#ef4444;padding:12px;border-radius:8px;font-size:14px">⚠ ' + esc(msg) + '</div><div style="margin-top:16px;text-align:right"><button class="btn ghost" onclick="window.AsgardUI.hideModal()">Закрыть</button></div></div>';
+          if (AsgardUI.replaceModal) AsgardUI.replaceModal({ title: 'Ошибка', subtitle: esc(fio), icon: '⚠', html: errHtml });
+          else { AsgardUI.hideModal(); toast('Ошибка: ' + msg, '', 'err'); }
+          return;
+        }
         renderPayWorkerModal(res.data, fio, work, user, container);
       })
-      .catch(function(err) { AsgardUI.hideModal(); toast('\u041E\u0448\u0438\u0431\u043A\u0430 \u0441\u0435\u0442\u0438: ' + err.message, '', 'err'); });
+      .catch(function(err) {
+        console.error('[pay-worker] summary error', err);
+        var errHtml = '<div style="padding:20px"><div style="background:rgba(239,68,68,0.15);border:1px solid #ef4444;color:#ef4444;padding:12px;border-radius:8px;font-size:14px">⚠ Сеть: ' + esc(err.message || 'no response') + '</div><div style="margin-top:16px;text-align:right"><button class="btn ghost" onclick="window.AsgardUI.hideModal()">Закрыть</button></div></div>';
+        if (AsgardUI.replaceModal) AsgardUI.replaceModal({ title: 'Ошибка сети', subtitle: esc(fio), icon: '⚠', html: errHtml });
+        else { AsgardUI.hideModal(); toast('Ошибка сети: ' + err.message, '', 'err'); }
+      });
   }
 
   function renderPayWorkerModal(summary, fio, work, user, container) {
@@ -2903,9 +2921,9 @@ window.AsgardFieldTab = (function () {
           '<input id="pwAmount" type="number" min="0" step="100" placeholder="0" style="font-size:18px;text-align:center"/></div>' +
         '<div class="cr-f-field"><div class="cr-f-label" style="font-size:11px;color:var(--t3)">\u0411\u044B\u0441\u0442\u0440\u044B\u0435 \u0441\u0443\u043C\u043C\u044B</div><div id="pwQuick" style="display:flex;gap:6px;flex-wrap:wrap"></div></div>' +
         '<div class="cr-f-field"><div class="cr-f-label">\u0421\u043F\u043E\u0441\u043E\u0431</div><div style="display:flex;gap:8px">' +
-          '<label class="cr-f-chip cr-f-chip--active" style="flex:1;text-align:center"><input type="radio" name="pwMethod" value="cash" checked style="display:none">\uD83D\uDCB5 \u041D\u0430\u043B</label>' +
-          '<label class="cr-f-chip" style="flex:1;text-align:center"><input type="radio" name="pwMethod" value="card" style="display:none">\uD83D\uDCB3 \u041A\u0430\u0440\u0442\u0430</label>' +
-          '<label class="cr-f-chip" style="flex:1;text-align:center"><input type="radio" name="pwMethod" value="transfer" style="display:none">\uD83C\uDFE6 \u041F\u0435\u0440\u0435\u0432\u043E\u0434</label>' +
+          '<label class="cr-f-chip cr-f-chip--active" style="flex:1;text-align:center;cursor:pointer;padding:8px"><input type="radio" name="pwMethod" value="cash" checked style="position:absolute;opacity:0;pointer-events:none">\uD83D\uDCB5 \u041D\u0430\u043B</label>' +
+          '<label class="cr-f-chip" style="flex:1;text-align:center;cursor:pointer;padding:8px"><input type="radio" name="pwMethod" value="card" style="position:absolute;opacity:0;pointer-events:none">\uD83D\uDCB3 \u041A\u0430\u0440\u0442\u0430</label>' +
+          '<label class="cr-f-chip" style="flex:1;text-align:center;cursor:pointer;padding:8px"><input type="radio" name="pwMethod" value="transfer" style="position:absolute;opacity:0;pointer-events:none">\uD83C\uDFE6 \u041F\u0435\u0440\u0435\u0432\u043E\u0434</label>' +
         '</div></div>' +
         '<div class="cr-f-field"><div class="cr-f-label">\u041A\u043E\u043C\u043C\u0435\u043D\u0442\u0430\u0440\u0438\u0439</div><input id="pwNote" placeholder="\u041D\u0435\u043E\u0431\u044F\u0437\u0430\u0442\u0435\u043B\u044C\u043D\u043E"/></div>' +
       '</div>' +
@@ -2964,8 +2982,17 @@ window.AsgardFieldTab = (function () {
     if (body) {
       body.querySelectorAll('input[name="payType"]').forEach(function(r) { r.addEventListener('change', function() { updateQuickButtons(); updatePreview(); }); });
       body.querySelectorAll('label.cr-f-chip').forEach(function(label) {
-        label.addEventListener('click', function() {
-          body.querySelectorAll('label.cr-f-chip').forEach(function(l) { l.classList.remove('cr-f-chip--active'); });
+        label.addEventListener('click', function(e) {
+          var inp = label.querySelector('input[type="radio"]');
+          if (inp) {
+            inp.checked = true;
+            inp.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+          var group = inp ? inp.name : null;
+          body.querySelectorAll('label.cr-f-chip').forEach(function(l) {
+            var li = l.querySelector('input[type="radio"]');
+            if (!group || (li && li.name === group)) l.classList.remove('cr-f-chip--active');
+          });
           label.classList.add('cr-f-chip--active');
         });
       });
@@ -2979,6 +3006,8 @@ window.AsgardFieldTab = (function () {
 
     var confirmBtn = document.getElementById('pwConfirm');
     if (confirmBtn) confirmBtn.addEventListener('click', async function() {
+      if (confirmBtn.disabled) return; // защита от двойного клика
+
       var typeEl = body && body.querySelector('input[name="payType"]:checked');
       var type = typeEl ? typeEl.value : '';
       var amount = Number((document.getElementById('pwAmount') || {}).value);
@@ -2986,24 +3015,52 @@ window.AsgardFieldTab = (function () {
       var method = methodEl ? methodEl.value : '';
       var note = ((document.getElementById('pwNote') || {}).value || '').trim();
 
-      if (!amount || amount <= 0) { toast('\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u0441\u0443\u043C\u043C\u0443', '', 'err'); return; }
-      if (!type) { toast('\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0442\u0438\u043F', '', 'err'); return; }
-      if (!method) { toast('\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0441\u043F\u043E\u0441\u043E\u0431', '', 'err'); return; }
+      function showInlineErr(msg) {
+        var errBox = document.getElementById('pwErr');
+        if (!errBox) {
+          errBox = document.createElement('div');
+          errBox.id = 'pwErr';
+          errBox.style.cssText = 'background:rgba(239,68,68,0.15);border:1px solid #ef4444;color:#ef4444;padding:8px 12px;border-radius:8px;margin:8px 0;font-size:13px;font-weight:600';
+          var preview = document.getElementById('pwPreview');
+          if (preview && preview.parentNode) preview.parentNode.insertBefore(errBox, preview);
+        }
+        errBox.textContent = '⚠ ' + msg;
+        errBox.style.display = 'block';
+        setTimeout(function(){ if (errBox) errBox.style.display = 'none'; }, 5000);
+      }
 
-      confirmBtn.disabled = true; confirmBtn.textContent = '\u23F3 \u041E\u0431\u0440\u0430\u0431\u043E\u0442\u043A\u0430...';
+      if (!amount || amount <= 0) { showInlineErr('Введите сумму'); return; }
+      if (!type) { showInlineErr('Выберите тип выплаты'); return; }
+      if (!method) { showInlineErr('Выберите способ выплаты (Нал / Карта / Перевод)'); return; }
+
+      confirmBtn.disabled = true;
+      var origText = confirmBtn.textContent;
+      confirmBtn.textContent = '⏳ Обработка...';
+      console.log('[pay-worker] sending', { employee_id: summary.employee.id, work_id: work.id, type: type, amount: amount, payment_method: method });
+
       try {
         var resp = await fetch('/api/worker-payments/pay-worker', {
           method: 'POST', headers: hdr(),
           body: JSON.stringify({ employee_id: parseInt(summary.employee.id), work_id: work.id, type: type, amount: amount, payment_method: method, note: note })
         });
-        var data = await resp.json();
-        if (!resp.ok) { toast(data.details || data.error || '\u041E\u0448\u0438\u0431\u043A\u0430', '', 'err'); confirmBtn.disabled = false; confirmBtn.textContent = '\u0412\u044B\u043F\u043B\u0430\u0442\u0438\u0442\u044C'; return; }
-        toast('\u2705 \u0412\u044B\u043F\u043B\u0430\u0442\u0430 \u0437\u0430\u043F\u0438\u0441\u0430\u043D\u0430');
+        var data;
+        try { data = await resp.json(); } catch (_) { data = {}; }
+        console.log('[pay-worker] response', resp.status, data);
+
+        if (!resp.ok) {
+          var emsg = data.details || data.error || ('HTTP ' + resp.status);
+          showInlineErr(emsg);
+          confirmBtn.disabled = false; confirmBtn.textContent = origText;
+          return;
+        }
+
         AsgardUI.hideModal();
+        toast('Выплата записана', '', 'ok');
         renderPaymentsTab(container, work, user);
       } catch (err) {
-        toast('\u041E\u0448\u0438\u0431\u043A\u0430: ' + err.message, '', 'err');
-        confirmBtn.disabled = false; confirmBtn.textContent = '\u0412\u044B\u043F\u043B\u0430\u0442\u0438\u0442\u044C';
+        console.error('[pay-worker] network error', err);
+        showInlineErr('Сеть: ' + (err.message || 'не удалось отправить запрос'));
+        confirmBtn.disabled = false; confirmBtn.textContent = origText;
       }
     });
   }
