@@ -25,11 +25,11 @@ fi
 CHANGED_ASSETS=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^public/assets/(js|css)/.*\.(js|css)$' || true)
 
 if [ -n "$CHANGED_ASSETS" ]; then
-  # Если index.html/sw.js уже в коммите — значит разработчик бампит вручную, не трогаем
-  INDEX_STAGED=$(git diff --cached --name-only | grep -E '^public/(index\.html|sw\.js)$' || true)
-  if [ -n "$INDEX_STAGED" ]; then
-    echo "[pre-commit] public/index.html|sw.js уже в коммите — пропускаю auto-bump"
-  else
+  # ВАЖНО: ВСЕГДА бампим, даже если index.html/sw.js уже в коммите.
+  # Раньше тут был пропуск — но из-за этого после ручных правок в index.html
+  # SHELL_VERSION рассинхронизировался (sw.js бампался отдельно, index.html нет).
+  # Лучше пере-перезаписать ?v= ещё раз — это идемпотентно.
+  if true; then
     # Windows: `python` часто Microsoft Store alias который падает. Сначала ищем `py`,
     # потом python3/python. Проверяем `--version` чтобы отсеять не-рабочие алиасы.
     PYTHON_BIN=""
