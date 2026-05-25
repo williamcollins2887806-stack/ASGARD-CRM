@@ -2108,7 +2108,24 @@ ${analogsSummary}
     const jobKey = workId ? 'w' + workId : 't' + tenderId;
     const existingJob = await mimirJobs.get(jobKey);
     if (existingJob && existingJob.status === 'running') {
-      return reply.code(409).send({ success: false, message: 'Просчёт уже запущен', status: 'running' });
+      // Если последнее обновление было давно (5+ мин назад) — этот running протух
+      // (процесс упал между updated_at и сейчас). Помечаем как error и пускаем новый.
+      const stale = (Date.now() - existingJob.updatedAt) > 5 * 60 * 1000;
+      if (stale) {
+        console.log(`[Mimir] Stale running обнаружен (${Math.round((Date.now()-existingJob.updatedAt)/1000)}s без обновлений) — помечаю как error и запускаю заново`);
+        await mimirJobs.set(jobKey, {
+          status: 'error',
+          error: 'Предыдущий процесс упал во время просчёта (timeout >5 мин)',
+          error_code: 'orphaned'
+        }, { user_id: request.user?.id || null });
+      } else {
+        return reply.code(409).send({
+          success: false,
+          message: 'Просчёт уже запущен',
+          status: 'running',
+          elapsed_ms: Date.now() - existingJob.startedAt
+        });
+      }
     }
     // Регистрируем джоб в БД
     await mimirJobs.set(jobKey, { status: 'running', result: null }, { user_id: request.user?.id || null });
@@ -2206,6 +2223,7 @@ ${analogsSummary}
       let thinkingSec = 0;
       let currentPhase = 'thinking'; // 'thinking', 'searching', 'finalization', 'creating'
       let currentDetail = '🧠 Мимир анализирует ТЗ и собирает требования...';
+      let _touchCounter = 0;
       const heartbeat = setInterval(() => {
         thinkingSec += 3;
         try {
@@ -2221,6 +2239,11 @@ ${analogsSummary}
             currentDetail = variants[Math.floor(thinkingSec / 15) % variants.length];
           }
           sendEvent({ type: 'heartbeat', seconds: thinkingSec, message: `${currentDetail} (${thinkingSec} сек)` });
+          // Каждые 30 сек дотрагиваемся до БД — чтобы stale-детектор не пометил как зомби
+          _touchCounter++;
+          if (_touchCounter % 10 === 0) {
+            mimirJobs.touch(jobKey).catch(()=>{});
+          }
         } catch {}
       }, 3000);
 

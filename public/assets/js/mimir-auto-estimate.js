@@ -257,7 +257,7 @@
       var wid = overlay.dataset.workId;
       var tid = overlay.dataset.tenderId;
       var qp = wid ? 'work_id=' + wid : 'tender_id=' + tid;
-      var token = localStorage.getItem('token');
+      var token = localStorage.getItem('asgard_token') || localStorage.getItem('token');
       if (qp && token) {
         fetch('/api/mimir/auto-estimate-status?' + qp, {
           method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token }
@@ -930,6 +930,37 @@
 
       if (!response.ok) {
         const errBody = await response.text().catch(() => '');
+        // 409 = просчёт уже идёт на сервере. Переподключаемся через polling
+        // вместо падения с ошибкой (типичный сценарий после перезагрузки страницы
+        // или клика в момент когда предыдущий запуск ещё в работе).
+        if (response.status === 409) {
+          const wid = workId;
+          const tid = state.tenderId;
+          // Закрываем текущую модалку и переподключаемся
+          const overlay = document.querySelector('.mimir-ae-overlay');
+          if (overlay) overlay.remove();
+          _aeRunning = false;
+          try {
+            const qp = wid ? 'work_id=' + wid : 'tender_id=' + tid;
+            const stResp = await fetch('/api/mimir/auto-estimate-status?' + qp, {
+              headers: { 'Authorization': 'Bearer ' + token }
+            });
+            if (stResp.ok) {
+              const stData = await stResp.json();
+              if (window.mimirRecoverIfRunning && (stData.status === 'running' || stData.status === 'questions')) {
+                window.mimirRecoverIfRunning({ workId: wid, tenderId: tid });
+                return;
+              }
+              if (stData.status === 'done' && stData.result?.estimate_id) {
+                AsgardUI.toast('Мимир', 'Просчёт готов! Открываю...', 'ok');
+                if (window.openPage) window.openPage('estimate_report', { id: stData.result.estimate_id });
+                return;
+              }
+            }
+          } catch (_) {}
+          AsgardUI.toast('Мимир', 'Просчёт уже идёт. Дождитесь завершения.', 'warn');
+          return;
+        }
         throw new Error(`HTTP ${response.status}: ${errBody.substring(0, 200)}`);
       }
 
@@ -1169,7 +1200,7 @@
     // Проверяем серверный статус — вдруг просчёт уже бежит/готов
     try {
       var qp = workId ? 'work_id=' + workId : 'tender_id=' + tenderId;
-      var token = localStorage.getItem('token');
+      var token = localStorage.getItem('asgard_token') || localStorage.getItem('token');
       var statusResp = await fetch('/api/mimir/auto-estimate-status?' + qp, {
         headers: { 'Authorization': 'Bearer ' + token }
       });
@@ -1228,7 +1259,7 @@
     if (_aeRunning) return false;
     try {
       var qp = workId ? 'work_id=' + workId : 'tender_id=' + tenderId;
-      var token = localStorage.getItem('token');
+      var token = localStorage.getItem('asgard_token') || localStorage.getItem('token');
       if (!token) return false;
       var resp = await fetch('/api/mimir/auto-estimate-status?' + qp, {
         headers: { 'Authorization': 'Bearer ' + token }

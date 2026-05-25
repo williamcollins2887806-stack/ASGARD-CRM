@@ -258,12 +258,56 @@ async function sweep() {
   }
 }
 
+/**
+ * При старте сервера: все running/questions, обновлённые более 5 минут назад,
+ * помечаем как error (timeout). Это критично потому что после рестарта
+ * процесса все идущие просчёты на самом деле УМЕРЛИ, но в БД они помечены
+ * как running. Без этой очистки следующий клик "Просчёт" даст 409.
+ */
+async function markOrphanedAsError() {
+  try {
+    const res = await db.query(`
+      UPDATE mimir_estimate_jobs SET
+        status = 'error',
+        error_text = 'Сервер был перезагружен во время просчёта',
+        error_code = 'server_restart',
+        completed_at = NOW(),
+        updated_at = NOW()
+      WHERE status IN ('running','questions')
+        AND updated_at < NOW() - INTERVAL '5 minutes'
+      RETURNING id, job_key
+    `);
+    if (res.rowCount > 0) {
+      console.log(`[mimir-jobs] startup: ${res.rowCount} осиротевших running помечены как error (server_restart)`);
+    }
+  } catch (e) {
+    console.warn('[mimir-jobs] markOrphanedAsError error:', e.message);
+  }
+}
+
 // Автозапуск sweep раз в час
 let _sweepInterval = null;
 function startSweep() {
   if (_sweepInterval) return;
+  // При запуске сервера: помечаем висящие running от ПРЕДЫДУЩЕГО процесса как error
+  markOrphanedAsError().catch(()=>{});
   _sweepInterval = setInterval(sweep, 60 * 60 * 1000); // 1 час
   sweep().catch(()=>{}); // первый запуск сразу
+}
+
+/**
+ * Просто отметить что job ещё жив (обновить updated_at).
+ * Используется heartbeat-функцией auto-estimate чтобы stale-детектор
+ * не путал работающий долгий просчёт с зомби.
+ */
+async function touch(key) {
+  if (!key) return;
+  try {
+    await db.query(`
+      UPDATE mimir_estimate_jobs SET updated_at = NOW()
+      WHERE job_key = $1 AND status IN ('running','questions')
+    `, [key]);
+  } catch (e) { /* not critical */ }
 }
 
 module.exports = {
@@ -271,9 +315,11 @@ module.exports = {
   set,
   delete: del,           // совместимое имя с Map
   del,
+  touch,
   listActive,
   historyFor,
   sweep,
+  markOrphanedAsError,
   startSweep,
   _parseKey               // для тестов
 };
