@@ -2247,10 +2247,12 @@ ${analogsSummary}
         aiResult = await aiProvider.runAgentLoop({
           system: systemPrompt,
           messages: [{ role: 'user', content: userContent }],
-          maxTokens: 16000,           // AP6: достаточно для просчёта без thinking
+          maxTokens: 32000,           // AP6: расширенный output для extended thinking
           temperature: 0.4,            // AP6: глубже анализ в risk/comment
-          // verbosity=max убран: Claude теперь имеет полный текст ТЗ от OCR,
-          // ему не нужно так много думать. Это в разы ускоряет финал.
+          verbosity: 'max',            // AP6: extended thinking — нужны ТОЧНЫЕ просчёты,
+                                       // не примерные. Финал даже с thinking ≤ 2-3 мин
+                                       // потому что входной контекст теперь компактный
+                                       // (нет PDF base64, есть распознанный текст).
           maxIterations: 5,            // AgentLoop: 5 итераций достаточно когда ТЗ
                                        // действительно есть в контексте.
           webSearchIncludeDomains: WEB_SEARCH_DOMAINS,
