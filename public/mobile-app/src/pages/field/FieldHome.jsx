@@ -4,6 +4,7 @@ import {
   Clock, Wallet, History, Users, Truck, UserCircle,
   MapPin, AlertCircle, RefreshCw, Play, Square,
   Phone, Briefcase, Camera, FileText, AlertTriangle, Package, DollarSign, Map,
+  Calendar,
 } from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
 import { useFieldAuthStore } from '@/stores/fieldAuthStore';
@@ -384,12 +385,12 @@ export default function FieldHome() {
   const actions = [
     { icon: Briefcase, label: 'Мои работы', path: '/field/my-works' },
     { icon: Users, label: 'Бригада', path: '/field/crew' },
-    { icon: Wallet, label: 'Деньги', path: '/field/money' },
+    { icon: Wallet, label: 'Сейчас', path: '/field/money' },
     { icon: Map, label: 'Маршрут', path: '/field/stages' },
     { icon: Truck, label: 'Билеты', path: '/field/logistics' },
     { icon: Camera, label: 'Фото', path: '/field/photos' },
     { icon: History, label: 'История', path: '/field/history' },
-    { icon: DollarSign, label: 'Выплаты', path: '/field/earnings' },
+    { icon: Calendar, label: 'Зарплата по месяцам', path: '/field/earnings/monthly' },
   ];
   if (isMaster) {
     actions.push(

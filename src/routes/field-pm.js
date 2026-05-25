@@ -839,6 +839,247 @@ async function routes(fastify) {
 
     return { ok: true };
   });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // TIMESHEET DISPUTES — разногласия рабочих, разрешение РП
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // GET /disputes?work_id=&status= — список разногласий по работам РП
+  fastify.get('/disputes', auth, async (req) => {
+    const { isAdmin, userId } = pmFilter(req.user);
+    const workId = req.query.work_id ? parseInt(req.query.work_id, 10) : null;
+    const status = req.query.status || null;
+
+    const params = [];
+    const conds = ['1=1'];
+    let idx = 1;
+
+    if (!isAdmin) {
+      conds.push(`w.pm_id = $${idx++}`);
+      params.push(userId);
+    }
+    if (workId) {
+      conds.push(`d.work_id = $${idx++}`);
+      params.push(workId);
+    }
+    if (status) {
+      // status может быть строкой 'open' или 'open,in_review'
+      const arr = String(status).split(',').map(s => s.trim()).filter(Boolean);
+      if (arr.length) {
+        conds.push(`d.status = ANY($${idx++}::text[])`);
+        params.push(arr);
+      }
+    }
+
+    const { rows } = await db.query(`
+      SELECT d.*,
+             e.fio AS employee_fio, e.phone AS employee_phone,
+             w.work_title, w.customer_name,
+             u.name AS pm_resolver_name
+      FROM timesheet_disputes d
+      JOIN employees e ON e.id = d.employee_id
+      JOIN works w     ON w.id = d.work_id
+      LEFT JOIN users u ON u.id = d.pm_user_id
+      WHERE ${conds.join(' AND ')}
+      ORDER BY (d.status IN ('open','in_review')) DESC, d.created_at DESC
+      LIMIT 500
+    `, params);
+
+    return { disputes: rows };
+  });
+
+  // GET /disputes/count?work_id=X — счётчик открытых для бейджа
+  fastify.get('/disputes/count', auth, async (req) => {
+    const { isAdmin, userId } = pmFilter(req.user);
+    const workId = req.query.work_id ? parseInt(req.query.work_id, 10) : null;
+
+    const params = [];
+    const conds = [`d.status IN ('open','in_review')`];
+    let idx = 1;
+    if (!isAdmin) {
+      conds.push(`w.pm_id = $${idx++}`);
+      params.push(userId);
+    }
+    if (workId) {
+      conds.push(`d.work_id = $${idx++}`);
+      params.push(workId);
+    }
+    const { rows: [{ cnt }] } = await db.query(`
+      SELECT COUNT(*)::int AS cnt
+      FROM timesheet_disputes d
+      JOIN works w ON w.id = d.work_id
+      WHERE ${conds.join(' AND ')}
+    `, params);
+    return { count: cnt };
+  });
+
+  // POST /disputes/:id/resolve — РП подтверждает или отклоняет спор
+  // body: {
+  //   resolution: 'add_shift' | 'reject',
+  //   pm_response: "...",
+  //   checkin_data?: { date, shift, hours_worked, day_rate, amount_earned, note }
+  // }
+  fastify.post('/disputes/:id/resolve', auth, async (req, reply) => {
+    const { isAdmin, userId } = pmFilter(req.user);
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return reply.code(400).send({ error: 'Bad id' });
+
+    const { resolution, pm_response, checkin_data } = req.body || {};
+    if (!['add_shift', 'reject'].includes(resolution)) {
+      return reply.code(400).send({ error: 'resolution: add_shift или reject' });
+    }
+    const responseText = String(pm_response || '').trim();
+    if (responseText.length < 5) {
+      return reply.code(400).send({ error: 'Напишите ответ рабочему (минимум 5 символов)' });
+    }
+
+    // Загрузить спор и проверить права
+    const { rows: [d] } = await db.query(`
+      SELECT d.*, w.pm_id AS work_pm_id
+      FROM timesheet_disputes d
+      JOIN works w ON w.id = d.work_id
+      WHERE d.id = $1
+    `, [id]);
+    if (!d) return reply.code(404).send({ error: 'Спор не найден' });
+    if (!isAdmin && d.work_pm_id !== userId) {
+      return reply.code(403).send({ error: 'Не ваш проект' });
+    }
+    if (d.status === 'resolved' || d.status === 'rejected') {
+      return reply.code(409).send({ error: 'Спор уже закрыт' });
+    }
+
+    let createdCheckinId = null;
+
+    // При resolution='add_shift' — создаём field_checkins запись
+    if (resolution === 'add_shift') {
+      const cd = checkin_data || {};
+      const date = cd.date || d.dispute_date;
+      if (!date) {
+        return reply.code(400).send({ error: 'Укажите дату смены' });
+      }
+      // Найдём активное назначение для FK
+      const { rows: [assignment] } = await db.query(
+        `SELECT id FROM employee_assignments
+         WHERE employee_id = $1 AND work_id = $2 AND is_active = true
+         ORDER BY id DESC LIMIT 1`,
+        [d.employee_id, d.work_id]
+      );
+      if (!assignment) {
+        return reply.code(422).send({
+          error: 'Нет активного назначения рабочего на этой работе — нельзя создать смену'
+        });
+      }
+
+      // Проверим что смены ещё нет на эту дату
+      const { rows: [existing] } = await db.query(
+        `SELECT id, status FROM field_checkins
+         WHERE employee_id = $1 AND work_id = $2 AND date = $3 LIMIT 1`,
+        [d.employee_id, d.work_id, date]
+      );
+
+      if (existing) {
+        // Уже есть запись — обновим если она cancelled, иначе ошибка
+        if (existing.status === 'cancelled') {
+          await db.query(`
+            UPDATE field_checkins SET
+              status = 'completed',
+              hours_worked = $2, hours_paid = $3, day_rate = $4,
+              amount_earned = $5, shift = COALESCE($6, shift),
+              edit_reason = $7, updated_at = NOW()
+            WHERE id = $1
+          `, [
+            existing.id,
+            Number(cd.hours_worked || 8),
+            Number(cd.hours_paid || cd.hours_worked || 8),
+            Number(cd.day_rate || 0),
+            Number(cd.amount_earned || 0),
+            cd.shift || 'day',
+            `Восстановлено по разногласию #${id}: ${responseText.slice(0, 200)}`
+          ]);
+          createdCheckinId = existing.id;
+        } else {
+          return reply.code(409).send({
+            error: `Смена на ${date} уже существует (status=${existing.status})`
+          });
+        }
+      } else {
+        const { rows: [newCheckin] } = await db.query(`
+          INSERT INTO field_checkins (
+            employee_id, work_id, assignment_id, date, shift,
+            hours_worked, hours_paid, day_rate, amount_earned,
+            status, checkin_source, checkin_by, edit_reason
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'completed', 'pm_dispute_resolution', $10, $11)
+          RETURNING id
+        `, [
+          d.employee_id, d.work_id, assignment.id, date, cd.shift || 'day',
+          Number(cd.hours_worked || 8),
+          Number(cd.hours_paid || cd.hours_worked || 8),
+          Number(cd.day_rate || 0),
+          Number(cd.amount_earned || 0),
+          userId,
+          `Создано по разногласию #${id}: ${responseText.slice(0, 200)}`
+        ]);
+        createdCheckinId = newCheckin.id;
+      }
+    }
+
+    // Обновляем сам спор
+    const newStatus = resolution === 'add_shift' ? 'resolved' : 'rejected';
+    await db.query(`
+      UPDATE timesheet_disputes SET
+        status = $2, pm_response = $3, pm_user_id = $4,
+        resolved_at = NOW(), created_checkin_id = $5
+      WHERE id = $1
+    `, [id, newStatus, responseText, userId, createdCheckinId]);
+
+    // Уведомление рабочему — через employees.user_id если он связан
+    try {
+      const { rows: [emp] } = await db.query(
+        `SELECT user_id, fio FROM employees WHERE id = $1`, [d.employee_id]
+      );
+      if (emp?.user_id) {
+        const { createNotification } = require('../services/notify');
+        createNotification(db, {
+          user_id: emp.user_id,
+          title: newStatus === 'resolved' ? '✅ Разногласие подтверждено' : '❌ Разногласие отклонено',
+          message: responseText.slice(0, 200),
+          type: 'dispute',
+          link: `/field/disputes`
+        });
+      }
+    } catch (e) {
+      fastify.log.warn('[disputes resolve] notify worker failed: ' + e.message);
+    }
+
+    return { ok: true, status: newStatus, created_checkin_id: createdCheckinId };
+  });
+
+  // POST /disputes/:id/take — взять в работу (open → in_review)
+  fastify.post('/disputes/:id/take', auth, async (req, reply) => {
+    const { isAdmin, userId } = pmFilter(req.user);
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return reply.code(400).send({ error: 'Bad id' });
+
+    const { rows: [d] } = await db.query(`
+      SELECT d.id, d.status, w.pm_id AS work_pm_id
+      FROM timesheet_disputes d
+      JOIN works w ON w.id = d.work_id
+      WHERE d.id = $1
+    `, [id]);
+    if (!d) return reply.code(404).send({ error: 'Спор не найден' });
+    if (!isAdmin && d.work_pm_id !== userId) {
+      return reply.code(403).send({ error: 'Не ваш проект' });
+    }
+    if (d.status !== 'open') {
+      return reply.code(409).send({ error: `Текущий статус: ${d.status}` });
+    }
+
+    await db.query(
+      `UPDATE timesheet_disputes SET status = 'in_review', pm_user_id = $2 WHERE id = $1`,
+      [id, userId]
+    );
+    return { ok: true };
+  });
 }
 
 module.exports = routes;

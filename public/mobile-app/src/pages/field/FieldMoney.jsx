@@ -515,9 +515,9 @@ export default function FieldMoney() {
         </div>
       )}
 
-      {/* ─── Per Diem Balance Widget ─────────────────────────── */}
-      <PerDiemBalanceCard cur={cur} finances={finances} proj={proj}
-        hasDeparted={!!proj.departure_date || !cur.is_active} />
+      {/* PerDiemBalanceCard — УДАЛЕНА 25.05.2026.
+         Суточные теперь показываются на странице «Зарплата по месяцам»
+         в отдельной секции «🌙 Суточные», без смешивания с ЗП. */}
 
       {/* ─── Stages: Маршрут до объекта ──────────────────────── */}
       {stagesList.length > 0 && (
@@ -541,48 +541,49 @@ export default function FieldMoney() {
         </div>
       )}
 
-      {/* ─── On-object breakdown ─────────────────────────────── */}
+      {/* ─── На объекте — только что заработано «сейчас» ────── */}
+      {/* 25.05.2026: убрали «К выплате», «Авансы», «Бонусы» — это всё в /earnings/monthly.
+         Здесь — простая картинка «сколько я уже заработал на этом проекте». */}
       <div className="rounded-xl p-4" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
         <div className="flex items-center gap-2 mb-3">
           <Clock size={16} style={{ color: 'var(--gold)' }} />
-          <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-tertiary)' }}>На объекте</span>
+          <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-tertiary)' }}>Заработок на объекте</span>
         </div>
-        <Row label={`ФОТ: ${daysWorked} смен`} value={`${fmt(cur.fot)} ₽`} />
+        <Row label={`Зарплата (${daysWorked} см.)`} value={`${fmt(cur.fot)} ₽`} bold color="var(--gold)" />
         {cur.per_diem_accrued > 0 && (
-          <Row label={`Суточные: ${daysWorked} дн. × ${fmt(cur.per_diem_rate)}₽`} value={`${fmt(cur.per_diem_accrued)} ₽`} />
+          <Row label={`Суточные (${daysWorked} дн. × ${fmt(cur.per_diem_rate)}₽)`} value={`${fmt(cur.per_diem_accrued)} ₽`} bold color="#f59e0b" />
         )}
-        {cur.bonus_paid > 0 && <Row label="Бонусы" value={`+${fmt(cur.bonus_paid)} ₽`} color="#22c55e" />}
-        {cur.penalty > 0 && <Row label="Удержания" value={`−${fmt(cur.penalty)} ₽`} color="#ef4444" />}
-        {cur.advance_paid > 0 && <Row label="Авансы" value={`−${fmt(cur.advance_paid)} ₽`} color="#ef4444" />}
-        <Row label="ИТОГО начислено (этот проект)" value={`${fmt(cur.total_earned)} ₽`} bold sep />
-        {cur.total_pending < 0 ? (
-          <Row label="ПЕРЕПЛАТА по проекту" value={`${fmt(Math.abs(cur.total_pending))} ₽`} bold color="#22c55e" />
-        ) : (
-          <Row label="К выплате по проекту" value={`${fmt(cur.total_pending)} ₽`} bold color="var(--gold)" />
-        )}
-        {/* Show "К выплате всего" if differs from this project */}
-        {finances?.total_pending != null && Math.abs((finances.total_pending || 0) - (cur.total_pending || 0)) > 1 && (
-          <Row label="К выплате всего (все проекты)" value={`${fmt(finances.total_pending)} ₽`} bold color="var(--gold)" />
-        )}
+        <p className="text-xs mt-3 italic" style={{ color: 'var(--text-tertiary)', borderTop: '1px solid var(--border-norse)', paddingTop: '8px' }}>
+          Полная разбивка по месяцам с авансами и фактом выплаты — в разделе «Зарплата по месяцам»
+        </p>
       </div>
 
-      {/* ─── All time summary ────────────────────────────────── */}
-      {finances?.total_earned > 0 && sortedWorks.length > 0 && (
-        <div className="rounded-xl p-4" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
-          <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: 'var(--text-tertiary)' }}>За всё время</p>
-          <Row label="Всего начислено" value={`${fmt(finances.total_earned)} ₽`} />
-          <Row label="Выплачено" value={`${fmt(finances.total_paid)} ₽`} color="#22c55e" />
-          <Row label="Ожидает выплаты" value={`${fmt(finances.total_pending)} ₽`} color="#f59e0b" />
+      {/* Главная CTA: → По месяцам */}
+      <button
+        onClick={() => { haptic.light(); navigate('/field/earnings/monthly'); }}
+        className="w-full rounded-xl p-4 text-left flex items-center gap-3"
+        style={{
+          background: 'linear-gradient(135deg, rgba(196,154,42,0.12), rgba(196,154,42,0.04))',
+          border: '1px solid rgba(196,154,42,0.35)',
+        }}
+      >
+        <span style={{ fontSize: '1.5rem' }}>💰</span>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold" style={{ color: 'var(--gold)' }}>Зарплата по месяцам</div>
+          <div className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+            Когда что выплатили, что ожидает, разногласия по табелю
+          </div>
         </div>
-      )}
+        <ChevronRight size={18} style={{ color: 'var(--gold)' }} />
+      </button>
 
       {/* History link */}
       <button
         onClick={() => { haptic.light(); navigate('/field/earnings'); }}
-        className="w-full py-3 text-center text-sm font-semibold"
-        style={{ color: 'var(--gold)' }}
+        className="w-full py-2 text-center text-xs"
+        style={{ color: 'var(--text-tertiary)' }}
       >
-        Вся история доходов →
+        История выплат →
       </button>
 
       {/* ─── Projects history ────────────────────────────────── */}

@@ -115,6 +115,7 @@ window.AsgardFieldTab = (function () {
       { id: 'logistics', label: '✈️ Логистика', render: () => renderLogisticsTab(content, work, user) },
       { id: 'dashboard', label: '📊 Дашборд', render: () => renderDashboardTab(content, work) },
       { id: 'timesheet', label: '📋 Табель', render: () => renderTimesheetTab(content, work) },
+      { id: 'disputes', label: '⚠️ Разногласия', render: () => renderDisputesTab(content, work, user) },
       { id: 'funds', label: '💰 Подотчёт', render: () => renderFundsTab(content, work, user) },
       { id: 'packing', label: '📦 Сборы', render: () => renderPackingTab(content, work, user) },
       { id: 'stages', label: '🗺 Маршруты', render: () => renderStagesTab(content, work, user) },
@@ -153,6 +154,24 @@ window.AsgardFieldTab = (function () {
 
     // Render first tab
     tabs[0].render();
+
+    // Загрузим счётчик открытых disputes для подсветки таба «⚠️ Разногласия»
+    (async () => {
+      try {
+        const token = localStorage.getItem('asgard_token');
+        const r = await fetch(`/api/pm/disputes/count?work_id=${work.id}`, {
+          headers: { Authorization: 'Bearer ' + token }
+        });
+        if (!r.ok) return;
+        const { count } = await r.json();
+        if (count > 0) {
+          const btn = tabBar.querySelector('[data-ftab="disputes"]');
+          if (btn) {
+            btn.innerHTML = `⚠️ Разногласия <span style="background:#ef4444;color:#fff;border-radius:99px;padding:1px 7px;font-size:11px;margin-left:4px">${count}</span>`;
+          }
+        }
+      } catch (_) { /* silent */ }
+    })();
   }
 
   // ═══════════════════════════════════════════════════════════════════
@@ -1576,6 +1595,265 @@ window.AsgardFieldTab = (function () {
   async function apiFunds(path, opts) {
     const r = await fetch('/api/field/funds' + path, { headers: hdr(), ...opts });
     return r.json();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // DISPUTES TAB — разногласия рабочих по табелю
+  // ═══════════════════════════════════════════════════════════════════
+  const DISPUTE_TYPE_LABELS = {
+    missing_shift:   { icon: '📅', label: 'Не отмечена смена' },
+    missing_travel:  { icon: '🚗', label: 'Не учтена дорога' },
+    missing_medical: { icon: '🏥', label: 'Не учтён медосмотр' },
+    missing_waiting: { icon: '⏳', label: 'Не учтено ожидание' },
+    wrong_hours:     { icon: '🕐', label: 'Неправильные часы' },
+    wrong_amount:    { icon: '💰', label: 'Неправильная сумма' },
+    wrong_per_diem:  { icon: '🌙', label: 'Неправильные суточные' },
+    other:           { icon: '❓', label: 'Другое' },
+  };
+  const DISPUTE_STATUS_BADGE = {
+    open:      { label: 'Новое',      bg: 'rgba(239,68,68,.15)', color: '#ef4444' },
+    in_review: { label: 'В работе',   bg: 'rgba(245,158,11,.15)', color: '#f59e0b' },
+    resolved:  { label: 'Подтверждено', bg: 'rgba(34,197,94,.15)', color: '#22c55e' },
+    rejected:  { label: 'Отклонено',  bg: 'rgba(156,163,175,.15)', color: '#9ca3af' },
+  };
+
+  async function disputesApi(method, path, body) {
+    const token = localStorage.getItem('asgard_token');
+    const opts = {
+      method,
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+    };
+    if (body) opts.body = JSON.stringify(body);
+    const r = await fetch('/api/pm' + path, opts);
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+    return data;
+  }
+
+  async function renderDisputesTab(container, work, user) {
+    container.innerHTML = '<div class="help">Загрузка разногласий…</div>';
+
+    let data;
+    try {
+      data = await disputesApi('GET', '/disputes?work_id=' + work.id);
+    } catch (e) {
+      container.innerHTML = `<div class="help" style="color:var(--err-t)">Ошибка: ${esc(e.message)}</div>`;
+      return;
+    }
+    const disputes = data.disputes || [];
+
+    container.innerHTML = `
+      <style>
+        .dsp-card { background:var(--bg2); border:1px solid var(--brd); border-radius:12px; padding:14px 16px; margin-bottom:10px; }
+        .dsp-card.open { border-color: rgba(239,68,68,.4); background: linear-gradient(135deg, rgba(239,68,68,.04), var(--bg2)); }
+        .dsp-card.in_review { border-color: rgba(245,158,11,.4); }
+        .dsp-head { display:flex; gap:12px; align-items:flex-start; margin-bottom:10px; flex-wrap:wrap; }
+        .dsp-emp { font-weight:700; color:var(--t1); font-size:14px; }
+        .dsp-meta { font-size:11px; color:var(--t3); margin-top:2px; }
+        .dsp-type { display:inline-flex; gap:6px; align-items:center; padding:4px 10px; border-radius:99px;
+                    background:rgba(91,141,239,.12); color:#5b8def; font-size:12px; font-weight:600; }
+        .dsp-status { padding:3px 10px; border-radius:99px; font-size:11px; font-weight:700; }
+        .dsp-comment { background:rgba(255,255,255,.03); border-left:3px solid var(--brd); padding:8px 12px;
+                       margin:8px 0; font-size:13px; color:var(--t1); border-radius:0 6px 6px 0; }
+        .dsp-pm-response { background:rgba(34,197,94,.06); border-left:3px solid #22c55e; padding:8px 12px;
+                           margin-top:8px; font-size:13px; color:var(--t1); border-radius:0 6px 6px 0; }
+        .dsp-pm-response.rejected { background:rgba(156,163,175,.06); border-left-color:#9ca3af; }
+        .dsp-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+        .dsp-btn { padding:8px 14px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; border:none; }
+        .dsp-btn.confirm { background:#22c55e; color:#fff; }
+        .dsp-btn.reject { background:rgba(239,68,68,.15); color:#ef4444; border:1px solid rgba(239,68,68,.3); }
+        .dsp-btn.take { background:rgba(245,158,11,.15); color:#f59e0b; border:1px solid rgba(245,158,11,.3); }
+      </style>
+      <div class="help" style="margin-bottom:14px">
+        ⚠️ Здесь видны обращения рабочих по табелю.
+        Можно <b>подтвердить</b> (автоматически создастся/восстановится смена) или <b>отклонить</b> с комментарием.
+      </div>
+      <div id="dsp_list">${disputes.length ? '' : '<div class="help">Разногласий нет</div>'}</div>
+    `;
+
+    const list = $('#dsp_list', container);
+
+    function fmt(d) {
+      if (!d) return '—';
+      try { return new Date(d).toLocaleDateString('ru-RU'); } catch (_) { return String(d); }
+    }
+    function fmtTime(d) {
+      if (!d) return '';
+      try { return new Date(d).toLocaleString('ru-RU'); } catch (_) { return ''; }
+    }
+
+    function renderCard(d) {
+      const t = DISPUTE_TYPE_LABELS[d.dispute_type] || { icon: '❓', label: d.dispute_type };
+      const sb = DISPUTE_STATUS_BADGE[d.status] || DISPUTE_STATUS_BADGE.open;
+      const isOpen = d.status === 'open' || d.status === 'in_review';
+      const dateLabel = d.dispute_date
+        ? `📅 ${fmt(d.dispute_date)}`
+        : (d.dispute_month && d.dispute_year ? `📅 ${d.dispute_month}/${d.dispute_year}` : '');
+
+      const card = document.createElement('div');
+      card.className = 'dsp-card ' + d.status;
+      card.innerHTML = `
+        <div class="dsp-head">
+          <div style="flex:1;min-width:0">
+            <div class="dsp-emp">${esc(d.employee_fio || '—')}</div>
+            <div class="dsp-meta">${dateLabel} · подано ${esc(fmtTime(d.created_at))}</div>
+          </div>
+          <span class="dsp-type">${t.icon} ${esc(t.label)}</span>
+          <span class="dsp-status" style="background:${sb.bg};color:${sb.color}">${sb.label}</span>
+        </div>
+        <div class="dsp-comment">${esc(d.worker_comment || '')}</div>
+        ${d.pm_response ? `
+          <div class="dsp-pm-response ${d.status === 'rejected' ? 'rejected' : ''}">
+            <div style="font-size:11px;font-weight:700;margin-bottom:3px;color:${d.status === 'rejected' ? '#9ca3af' : '#22c55e'}">
+              ${d.status === 'resolved' ? '✅' : '❌'} Ответ РП${d.pm_resolver_name ? ' · ' + esc(d.pm_resolver_name) : ''} · ${esc(fmtTime(d.resolved_at))}
+            </div>
+            ${esc(d.pm_response)}
+          </div>
+        ` : ''}
+        ${isOpen ? '<div class="dsp-actions"></div>' : ''}
+      `;
+
+      if (isOpen) {
+        const actions = card.querySelector('.dsp-actions');
+        if (d.status === 'open') {
+          const btnTake = document.createElement('button');
+          btnTake.className = 'dsp-btn take';
+          btnTake.textContent = '👀 Взять в работу';
+          btnTake.onclick = async () => {
+            btnTake.disabled = true;
+            try {
+              await disputesApi('POST', `/disputes/${d.id}/take`);
+              toast('Спор', 'Взят в работу', 'ok');
+              renderDisputesTab(container, work, user);
+            } catch (e) { toast('Ошибка', e.message, 'err'); btnTake.disabled = false; }
+          };
+          actions.appendChild(btnTake);
+        }
+
+        const btnConfirm = document.createElement('button');
+        btnConfirm.className = 'dsp-btn confirm';
+        btnConfirm.textContent = '✅ Подтвердить (добавить смену)';
+        btnConfirm.onclick = () => openResolveModal(d, 'add_shift', work, () => renderDisputesTab(container, work, user));
+        actions.appendChild(btnConfirm);
+
+        const btnReject = document.createElement('button');
+        btnReject.className = 'dsp-btn reject';
+        btnReject.textContent = '❌ Отклонить';
+        btnReject.onclick = () => openResolveModal(d, 'reject', work, () => renderDisputesTab(container, work, user));
+        actions.appendChild(btnReject);
+      }
+
+      return card;
+    }
+
+    disputes.forEach(d => list.appendChild(renderCard(d)));
+  }
+
+  // Модалка резолюции спора
+  function openResolveModal(dispute, mode, work, onDone) {
+    const isConfirm = mode === 'add_shift';
+    const t = DISPUTE_TYPE_LABELS[dispute.dispute_type] || { icon: '❓', label: dispute.dispute_type };
+    const defaultDate = dispute.dispute_date || new Date().toISOString().slice(0, 10);
+
+    const html = `
+      <div class="help" style="background:rgba(255,255,255,.04);padding:10px 14px;border-radius:8px;margin-bottom:14px">
+        <div style="font-weight:700;margin-bottom:4px">${dispute.employee_fio}</div>
+        <div style="font-size:12px;color:var(--t2)">${t.icon} ${t.label}</div>
+        <div style="font-size:13px;margin-top:8px;font-style:italic;color:var(--t1)">«${esc(dispute.worker_comment || '')}»</div>
+      </div>
+
+      ${isConfirm ? `
+        <div class="cr-f-section">📅 Параметры смены к добавлению</div>
+        <div class="cr-f-row--2">
+          <div class="cr-f-field">
+            <div class="cr-f-label">Дата</div>
+            <input id="rsv_date" type="date" class="inp" value="${esc(defaultDate)}"/>
+          </div>
+          <div class="cr-f-field">
+            <div class="cr-f-label">Тип смены</div>
+            <select id="rsv_shift" class="inp">
+              <option value="day">День</option>
+              <option value="night">Ночь</option>
+              <option value="travel">Дорога</option>
+              <option value="medical">Медосмотр</option>
+              <option value="waiting">Ожидание</option>
+            </select>
+          </div>
+        </div>
+        <div class="cr-f-row--2">
+          <div class="cr-f-field">
+            <div class="cr-f-label">Часы (отработано)</div>
+            <input id="rsv_hours" type="number" min="0" step="0.5" value="8" class="inp"/>
+          </div>
+          <div class="cr-f-field">
+            <div class="cr-f-label">Ставка ₽/смена</div>
+            <input id="rsv_rate" type="number" min="0" value="0" class="inp"/>
+          </div>
+        </div>
+        <div class="cr-f-field">
+          <div class="cr-f-label">Сумма к начислению, ₽</div>
+          <input id="rsv_amount" type="number" min="0" value="0" class="inp"/>
+          <div class="cr-f-help">Если оставить 0 — будет рассчитано как hours_paid × day_rate. Или укажите точно.</div>
+        </div>
+      ` : ''}
+
+      <div class="cr-f-field" style="margin-top:14px">
+        <div class="cr-f-label">${isConfirm ? 'Комментарий рабочему' : 'Причина отклонения'} <span style="color:var(--err-t)">*</span></div>
+        <textarea id="rsv_response" rows="3" class="inp" placeholder="${isConfirm ? 'Например: добавил смену 12 апреля, оплачено 4500₽' : 'Например: 12 апреля по графику был выходной, смены не было'}"></textarea>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px">
+        <button class="btn ghost" id="rsv_cancel">Отмена</button>
+        <button class="btn ${isConfirm ? '' : 'red'}" id="rsv_ok" style="${isConfirm ? 'background:#22c55e;color:#fff' : ''}">
+          ${isConfirm ? '✅ Подтвердить и создать смену' : '❌ Отклонить'}
+        </button>
+      </div>
+    `;
+
+    AsgardUI.showModal({
+      title: isConfirm ? 'Подтвердить разногласие' : 'Отклонить разногласие',
+      icon: isConfirm ? '✅' : '❌',
+      html, wide: false,
+      onMount: () => {
+        document.getElementById('rsv_cancel').onclick = () => AsgardUI.closeModal();
+        document.getElementById('rsv_ok').onclick = async () => {
+          const responseText = (document.getElementById('rsv_response').value || '').trim();
+          if (responseText.length < 5) {
+            toast('Проверка', 'Напишите ответ (минимум 5 символов)', 'err');
+            return;
+          }
+          const payload = { resolution: mode, pm_response: responseText };
+          if (isConfirm) {
+            const date = document.getElementById('rsv_date').value;
+            if (!date) { toast('Проверка', 'Укажите дату', 'err'); return; }
+            const hours = Number(document.getElementById('rsv_hours').value || 8);
+            const rate  = Number(document.getElementById('rsv_rate').value || 0);
+            const amount = Number(document.getElementById('rsv_amount').value || 0);
+            payload.checkin_data = {
+              date,
+              shift: document.getElementById('rsv_shift').value || 'day',
+              hours_worked: hours,
+              hours_paid: hours,
+              day_rate: rate,
+              amount_earned: amount > 0 ? amount : Math.round(hours * rate),
+            };
+          }
+          const btn = document.getElementById('rsv_ok');
+          btn.disabled = true;
+          try {
+            const r = await disputesApi('POST', `/disputes/${dispute.id}/resolve`, payload);
+            toast('Готово', isConfirm
+              ? (r.created_checkin_id ? `Смена создана (id=${r.created_checkin_id})` : 'Решено')
+              : 'Спор отклонён', 'ok');
+            AsgardUI.closeModal();
+            onDone && onDone();
+          } catch (e) {
+            toast('Ошибка', e.message, 'err');
+            btn.disabled = false;
+          }
+        };
+      }
+    });
   }
 
   const FUND_STATUS_LABELS = {

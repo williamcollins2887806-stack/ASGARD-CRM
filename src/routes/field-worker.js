@@ -875,6 +875,131 @@ async function routes(fastify, options) {
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TIMESHEET DISPUTES — разногласия рабочего по табелю
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const ALLOWED_DISPUTE_TYPES = [
+    'missing_shift', 'missing_travel', 'missing_medical', 'missing_waiting',
+    'wrong_hours', 'wrong_amount', 'wrong_per_diem', 'other'
+  ];
+
+  // POST /worker/disputes — рабочий создаёт спор
+  fastify.post('/disputes', auth, async (req, reply) => {
+    const empId = req.fieldEmployee.id;
+    const b = req.body || {};
+
+    if (!b.work_id || !Number.isFinite(Number(b.work_id))) {
+      return reply.code(400).send({ error: 'work_id обязателен' });
+    }
+    if (!ALLOWED_DISPUTE_TYPES.includes(b.dispute_type)) {
+      return reply.code(400).send({ error: 'Недопустимый тип спора' });
+    }
+    const comment = String(b.worker_comment || '').trim();
+    if (comment.length < 10) {
+      return reply.code(400).send({ error: 'Опишите проблему подробнее (минимум 10 символов)' });
+    }
+
+    // Хотя бы что-то одно: dispute_date ИЛИ dispute_month+dispute_year
+    const dDate = b.dispute_date ? String(b.dispute_date) : null;
+    const dMonth = b.dispute_month ? parseInt(b.dispute_month, 10) : null;
+    const dYear = b.dispute_year ? parseInt(b.dispute_year, 10) : null;
+    if (!dDate && !(dMonth && dYear)) {
+      return reply.code(400).send({ error: 'Укажите дату или месяц спора' });
+    }
+
+    // Защита от спама: не более 3 открытых споров по одной работе у одного рабочего
+    const { rows: [{ cnt }] } = await db.query(
+      `SELECT COUNT(*)::int AS cnt FROM timesheet_disputes
+       WHERE employee_id = $1 AND work_id = $2 AND status IN ('open','in_review')`,
+      [empId, b.work_id]
+    );
+    if (cnt >= 3) {
+      return reply.code(429).send({
+        error: 'У вас уже 3 открытых спора по этой работе. Дождитесь ответа РП.'
+      });
+    }
+
+    // Проверим что рабочий действительно назначен на эту работу
+    const { rows: [assigned] } = await db.query(
+      `SELECT 1 FROM employee_assignments WHERE employee_id = $1 AND work_id = $2 LIMIT 1`,
+      [empId, b.work_id]
+    );
+    if (!assigned) {
+      return reply.code(403).send({ error: 'Вы не назначены на эту работу' });
+    }
+
+    const { rows: [dispute] } = await db.query(`
+      INSERT INTO timesheet_disputes (
+        employee_id, work_id, dispute_date, dispute_month, dispute_year,
+        dispute_type, worker_comment
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING *
+    `, [empId, b.work_id, dDate, dMonth, dYear, b.dispute_type, comment]);
+
+    // Уведомление РП — найти responsible_pm_id через works → tender
+    try {
+      const { rows: [w] } = await db.query(
+        `SELECT w.work_title, w.pm_id, t.responsible_pm_id, t.tender_title
+         FROM works w
+         LEFT JOIN tenders t ON t.id = w.tender_id
+         WHERE w.id = $1`,
+        [b.work_id]
+      );
+      const pmId = w?.pm_id || w?.responsible_pm_id;
+      if (pmId) {
+        const { createNotification } = require('../services/notify');
+        createNotification(db, {
+          user_id: pmId,
+          title: '🚩 Новое разногласие по табелю',
+          message: `${req.fieldEmployee.fio || 'Рабочий'} не согласен с табелем (${w.work_title || 'работа'})`,
+          type: 'dispute',
+          link: `#/all-works?id=${b.work_id}&tab=disputes`
+        });
+      }
+    } catch (e) {
+      fastify.log.warn('[disputes] notify PM failed: ' + e.message);
+    }
+
+    return { ok: true, dispute };
+  });
+
+  // GET /worker/disputes — список моих споров
+  fastify.get('/disputes', auth, async (req) => {
+    const empId = req.fieldEmployee.id;
+    const { rows } = await db.query(`
+      SELECT d.*, w.work_title, w.customer_name,
+             u.name AS pm_name
+      FROM timesheet_disputes d
+      LEFT JOIN works w ON w.id = d.work_id
+      LEFT JOIN users u ON u.id = d.pm_user_id
+      WHERE d.employee_id = $1
+      ORDER BY d.created_at DESC
+      LIMIT 100
+    `, [empId]);
+    return { disputes: rows };
+  });
+
+  // DELETE /worker/disputes/:id — отозвать (только пока open)
+  fastify.delete('/disputes/:id', auth, async (req, reply) => {
+    const empId = req.fieldEmployee.id;
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return reply.code(400).send({ error: 'Bad id' });
+
+    const { rows: [d] } = await db.query(
+      `SELECT employee_id, status FROM timesheet_disputes WHERE id = $1`,
+      [id]
+    );
+    if (!d) return reply.code(404).send({ error: 'Спор не найден' });
+    if (d.employee_id !== empId) return reply.code(403).send({ error: 'Не ваш спор' });
+    if (d.status !== 'open') {
+      return reply.code(409).send({ error: 'Можно отозвать только пока РП не начал рассмотрение' });
+    }
+
+    await db.query(`DELETE FROM timesheet_disputes WHERE id = $1`, [id]);
+    return { ok: true };
+  });
 }
 
 module.exports = routes;
