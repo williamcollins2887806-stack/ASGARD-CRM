@@ -1561,9 +1561,11 @@ window.AsgardPayrollPage = (function(){
         }
       });
 
-      // Export Excel
+      // Export Excel — нужен ?token= потому что новое окно не отправляет Authorization header
       document.getElementById('btnExportGrid')?.addEventListener('click', () => {
-        window.open('/api/worker-payments/reports/payroll-grid/' + selYear + '/' + selMonth + '/export');
+        const token = localStorage.getItem('asgard_token') || '';
+        const url = '/api/worker-payments/reports/payroll-grid/' + selYear + '/' + selMonth + '/export?token=' + encodeURIComponent(token);
+        window.open(url);
       });
 
       // Inline cell edits (delegated)
