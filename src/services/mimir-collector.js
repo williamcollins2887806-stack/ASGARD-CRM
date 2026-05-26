@@ -272,7 +272,7 @@ async function collectWarehouse(db) {
        WHERE COALESCE(e.is_active, true) = true
          AND COALESCE(e.status, 'available') NOT IN ('written_off','disposed','lost')
        ORDER BY c.name, e.name
-       LIMIT 500`);
+       LIMIT 2000`);
     return res.rows;
   } catch { return []; }
 }
