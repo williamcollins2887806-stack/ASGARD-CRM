@@ -2208,7 +2208,7 @@ ${analogsSummary}
         'pulscen.ru', 'tiu.ru', 'tn.ru',
         'b2b-center.ru', 'etp-ets.ru', 'zakupki.gov.ru',
         'taifun-vakuum.ru', 'practick.ru', 'gidromashservice.ru',
-        'wildberries.ru', 'ozon.ru', 'avito.ru'
+        'wildberries.ru', 'ozon.ru'
       ];
 
       // Heartbeat каждые 3 сек — UI должен видеть что процесс жив
