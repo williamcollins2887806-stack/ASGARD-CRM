@@ -954,7 +954,7 @@
               }
               if (stData.status === 'done' && stData.result?.estimate_id) {
                 AsgardUI.toast('Мимир', 'Просчёт готов! Открываю...', 'ok');
-                if (window.openPage) window.openPage('estimate_report', { id: stData.result.estimate_id });
+                window.location.hash = '#/all-estimates?id=' + stData.result.estimate_id;
                 return;
               }
             }
@@ -1144,7 +1144,7 @@
           var ov = document.querySelector('.mimir-ae-overlay');
           if (ov) ov.remove();
           _aeRunning = false;
-          if (window.openPage) window.openPage('estimate_report', { id: data.result.estimate_id });
+          window.location.hash = '#/all-estimates?id=' + data.result.estimate_id;
           return;
         }
         if (data.status === 'error') {
@@ -1219,7 +1219,7 @@
         if (statusData.status === 'done' && statusData.result && statusData.result.estimate_id) {
           // Просчёт готов — перейти к нему
           AsgardUI.toast('Мимир', 'Просчёт готов! Открываю...', 'ok');
-          if (window.openPage) window.openPage('estimate_report', { id: statusData.result.estimate_id });
+          window.location.hash = '#/all-estimates?id=' + statusData.result.estimate_id;
           // Очистить джоб
           fetch('/api/mimir/auto-estimate-status?' + qp, {
             method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token }
