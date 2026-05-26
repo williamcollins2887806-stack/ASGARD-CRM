@@ -742,6 +742,18 @@ window.AsgardPmCalcsPage = (function(){
 
     apply();
 
+    // Авто-открытие тендера по URL-параметру: #/pm-calcs?tender_id=738
+    // Используется Мимиром после готового просчёта — переходит на эту страницу
+    // с параметром и сразу открывает карточку тендера (модалку просчёта).
+    (function() {
+      var hashQ = (location.hash.split('?')[1] || '');
+      var autoTid = new URLSearchParams(hashQ).get('tender_id');
+      if (autoTid) {
+        var tid = parseInt(autoTid, 10);
+        if (tid) setTimeout(function() { openTender(tid); }, 150);
+      }
+    })();
+
     let _fqTimer2 = null;
     $("#f_q").addEventListener("input", () => { clearTimeout(_fqTimer2); _fqTimer2 = setTimeout(apply, 250); });
     $("#f_refused").addEventListener("change", apply);

@@ -954,7 +954,8 @@
               }
               if (stData.status === 'done' && stData.result?.estimate_id) {
                 AsgardUI.toast('Мимир', 'Просчёт готов! Открываю...', 'ok');
-                window.location.hash = '#/all-estimates?id=' + stData.result.estimate_id;
+                if (tid) window.location.hash = '#/pm-calcs?tender_id=' + tid;
+                else window.location.hash = '#/pm-calcs';
                 return;
               }
             }
@@ -1144,7 +1145,9 @@
           var ov = document.querySelector('.mimir-ae-overlay');
           if (ov) ov.remove();
           _aeRunning = false;
-          window.location.hash = '#/all-estimates?id=' + data.result.estimate_id;
+          var _navTid2 = state.tenderId || null;
+          if (_navTid2) window.location.hash = '#/pm-calcs?tender_id=' + _navTid2;
+          else window.location.hash = '#/pm-calcs';
           return;
         }
         if (data.status === 'error') {
@@ -1217,13 +1220,14 @@
           return;
         }
         if (statusData.status === 'done' && statusData.result && statusData.result.estimate_id) {
-          // Просчёт готов — перейти к нему
+          // Просчёт готов — открыть карточку тендера на pm-calcs
           AsgardUI.toast('Мимир', 'Просчёт готов! Открываю...', 'ok');
-          window.location.hash = '#/all-estimates?id=' + statusData.result.estimate_id;
           // Очистить джоб
           fetch('/api/mimir/auto-estimate-status?' + qp, {
             method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token }
           }).catch(function() {});
+          if (tenderId) window.location.hash = '#/pm-calcs?tender_id=' + tenderId;
+          else window.location.hash = '#/pm-calcs';
           return;
         }
         // status === 'error' или 'none' — разрешаем запуск нового
