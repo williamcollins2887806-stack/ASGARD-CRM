@@ -3522,18 +3522,30 @@ window.AsgardTendersPage = (function(){
     // После: HEAD_TO в win-panel сверху страницы назначит РП на работы.
     // ═══════════════════════════════════════════════════════════════
     async function openWonModal(tid, tender) {
-      const initPrice = tender?.submission_price || tender?.tender_price || 0;
+      const vatSetting = await AsgardDB.get('settings', 'vat_default_pct');
+      const vatPct = vatSetting ? (parseFloat(vatSetting.value_json) || 22) : 22;
+      const vatMul = 1 + vatPct / 100;
+
+      const initNoVat = tender?.submission_price || 0;
+      const initWithVat = tender?.submission_price_with_vat || (initNoVat ? Math.round(initNoVat * vatMul * 100) / 100 : 0);
+
       const html = `
         <div class="help" style="margin-bottom:14px;background:rgba(46,204,113,.08);padding:10px 14px;border-radius:8px;border-left:3px solid #2ecc71">
           🏆 <b>Поздравляем с победой!</b><br/>
           После сохранения тендер появится у <b>Рук. ТО</b> в блоке «Выигранные» —
           там назначается РП на выполнение работ (можно того же, кто считал, или другого).
         </div>
-        <div class="cr-f-field">
-          <div class="cr-f-label">Финальная цена контракта без НДС, ₽ <span class="cr-f-label__req">*</span></div>
-          <input id="won_price" class="inp cr-f-mono" type="number" min="0" step="0.01" value="${initPrice||''}" placeholder="0"/>
-          <div class="cr-f-help">Из «Цена подачи». Поправьте если победили по другой сумме (торги/переторжка).</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="cr-f-field">
+            <div class="cr-f-label">Цена подачи без НДС, ₽ <span class="cr-f-label__req">*</span></div>
+            <input id="won_price_no_vat" class="inp cr-f-mono" type="number" min="0" step="0.01" value="${initNoVat||''}" placeholder="0"/>
+          </div>
+          <div class="cr-f-field">
+            <div class="cr-f-label">Цена подачи с НДС ${vatPct}%, ₽</div>
+            <input id="won_price_with_vat" class="inp cr-f-mono" type="number" min="0" step="0.01" value="${initWithVat||''}" placeholder="0"/>
+          </div>
         </div>
+        <div class="cr-f-help" style="margin-top:4px">Из «Цена подачи». Поправьте если победили по другой сумме (торги/переторжка). НМЦ не изменится.</div>
         <div class="cr-f-field" style="margin-top:12px">
           <div class="cr-f-label">Комментарий (необязательно)</div>
           <textarea id="won_comment" class="inp" rows="2" placeholder="Кратко: торги/переторжка/особые условия..."></textarea>
@@ -3544,10 +3556,23 @@ window.AsgardTendersPage = (function(){
         </div>
       `;
       AsgardUI.showModal({ title: 'Выиграли тендер', icon: '🏆', html, wide: false, onMount: () => {
+        const noVatEl = document.getElementById('won_price_no_vat');
+        const withVatEl = document.getElementById('won_price_with_vat');
+        noVatEl.addEventListener('input', () => {
+          const v = Number(noVatEl.value);
+          withVatEl.value = v > 0 ? Math.round(v * vatMul * 100) / 100 : '';
+        });
+        withVatEl.addEventListener('input', () => {
+          const v = Number(withVatEl.value);
+          noVatEl.value = v > 0 ? Math.round(v / vatMul * 100) / 100 : '';
+        });
         document.getElementById('wonCancel').onclick = () => AsgardUI.closeModal();
         document.getElementById('wonOk').onclick = async () => {
-          const price = Number(document.getElementById('won_price').value || 0);
-          if (!price || price <= 0) { toast('Проверка', 'Укажите финальную цену контракта', 'err'); return; }
+          const priceNoVat = Number(noVatEl.value || 0);
+          const priceWithVat = Number(withVatEl.value || 0);
+          if (!priceNoVat && !priceWithVat) { toast('Проверка', 'Укажите цену подачи', 'err'); return; }
+          const finalNoVat = priceNoVat || Math.round(priceWithVat / vatMul * 100) / 100;
+          const finalWithVat = priceWithVat || Math.round(priceNoVat * vatMul * 100) / 100;
           const comment = document.getElementById('won_comment').value.trim();
           const btn = document.getElementById('wonOk'); btn.disabled = true;
           try {
@@ -3555,7 +3580,7 @@ window.AsgardTendersPage = (function(){
             const resp = await fetch(`/api/tenders/${tid}/win`, {
               method: 'POST',
               headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ contract_value: price, win_comment: comment })
+              body: JSON.stringify({ submission_price: finalNoVat, submission_price_with_vat: finalWithVat, win_comment: comment })
             });
             const data = await resp.json();
             if (!resp.ok) { toast('Победа', data.error || 'Ошибка', 'err'); btn.disabled = false; return; }

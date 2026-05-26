@@ -1116,7 +1116,7 @@ async function routes(fastify, options) {
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
     const user = request.user;
-    const { contract_value, win_comment } = request.body || {};
+    const { submission_price, submission_price_with_vat, win_comment } = request.body || {};
 
     const { rows: [tender] } = await db.query('SELECT * FROM tenders WHERE id = $1', [id]);
     if (!tender) return reply.code(404).send({ error: 'Тендер не найден' });
@@ -1124,22 +1124,24 @@ async function routes(fastify, options) {
       return reply.code(409).send({ error: `Перевод в «Выиграли» возможен только из статуса «КП отправлено», текущий: «${tender.tender_status}»` });
     }
 
-    const finalPrice = (contract_value != null && contract_value !== '') ? Number(contract_value) : null;
+    const finalPrice = (submission_price != null && submission_price !== '') ? Number(submission_price) : null;
+    const finalPriceVat = (submission_price_with_vat != null && submission_price_with_vat !== '') ? Number(submission_price_with_vat) : null;
 
     await db.query(`
       UPDATE tenders SET
         tender_status = 'Выиграли',
         won_at = NOW(),
         won_by_user_id = $2,
-        tender_price = COALESCE($3, tender_price),
+        submission_price = COALESCE($3, submission_price),
+        submission_price_with_vat = COALESCE($4, submission_price_with_vat),
         updated_at = NOW()
       WHERE id = $1
-    `, [id, user.id, finalPrice]);
+    `, [id, user.id, finalPrice, finalPriceVat]);
 
     await db.query(
       `INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
        VALUES ($1, 'tender', $2, 'win', $3, NOW())`,
-      [user.id, id, JSON.stringify({ from_status: 'КП отправлено', contract_value: finalPrice, comment: win_comment || null })]
+      [user.id, id, JSON.stringify({ from_status: 'КП отправлено', submission_price: finalPrice, submission_price_with_vat: finalPriceVat, comment: win_comment || null })]
     );
 
     // Уведомить HEAD_TO/директоров — назначить РП на работы
