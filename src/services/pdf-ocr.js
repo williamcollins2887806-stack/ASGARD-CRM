@@ -25,11 +25,51 @@ const { spawn } = require('child_process');
 const db = require('./db');
 const aiProvider = require('./ai-provider');
 
-const OCR_MODEL = process.env.OCR_MODEL || 'google/gemini-2.5-flash';
+// OCR-модель: pixtral-large тестово показал лучшее качество на сканах УРАЛХИМ
+// (правильно распознал "Воскресенск" + структуру). gemini-2.5-flash дешевле но
+// может галлюцинировать когда страница повёрнута/плохого качества — он "додумал"
+// "Инструкция по эксплуатации прибора" вместо реального ТЗ для дока 284.
+const OCR_MODEL = process.env.OCR_MODEL || 'mistralai/pixtral-large-2411';
+const OCR_FALLBACK_MODEL = process.env.OCR_FALLBACK_MODEL || 'google/gemini-2.5-flash';
 const OCR_MAX_PAGES = parseInt(process.env.OCR_MAX_PAGES || '20', 10); // защита от 100-страничных монстров
 const PDFTOPPM_BIN = '/usr/bin/pdftoppm';
 
-const OCR_PROMPT = 'Прочитай ВСЁ что написано на этом изображении (страница технического документа). Извлеки текст ДОСЛОВНО, сохраняя структуру (заголовки, пункты списка, таблицы). НЕ добавляй комментарии и НЕ переводи. Если есть таблицы — расшифровывай построчно. Если есть штампы или подписи — упомяни их (например: "[штамп: ОТК]", "[подпись]").';
+// КРИТИЧНО: антигаллюцинационный промпт. Без него gemini-2.5-flash на повёрнутых
+// сканах придумывает "инструкции к приборам" вместо чтения. Принудительно требуем
+// "если не видишь — пиши [НЕЧИТАЕМО]" и запрещаем додумывать.
+const OCR_PROMPT = `Твоя задача — извлечь текст со скана документа.
+
+СТРОГИЕ ПРАВИЛА:
+1. Читай ТОЛЬКО то что РЕАЛЬНО видишь на изображении.
+2. НЕ ВЫДУМЫВАЙ текст. Если страница повёрнута — мысленно поверни.
+3. Если фрагмент нечитаем — пиши "[НЕЧИТАЕМО]" вместо догадки.
+4. Если изображение пустое или это не текст — пиши "[ПУСТАЯ СТРАНИЦА]".
+5. Сохраняй структуру: заголовки, нумерация пунктов, таблицы построчно.
+6. НЕ добавляй комментарии "вот что я вижу" — только сам текст.
+7. Особое внимание: название организации, ИНН, ГОРОД, АДРЕС, номера документов, даты.
+8. Штампы и подписи помечай: [штамп: текст], [подпись].
+
+Сейчас извлеки текст со страницы:`;
+
+/**
+ * Эвристика: похоже ли что OCR вернул мусор/галлюцинацию.
+ * Используется для решения нужен ли fallback на другую модель.
+ */
+function _looksLikeHallucination(text, originalName) {
+  if (!text || text.length < 50) return true;
+  // Если в названии документа есть слова — хотя бы одно должно быть в OCR
+  const nameWords = (originalName || '').toLowerCase()
+    .replace(/[.,\-_()]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 4 && !/^\d/.test(w));
+  if (nameWords.length > 0) {
+    const lower = text.toLowerCase();
+    const found = nameWords.filter(w => lower.includes(w));
+    // Если ни одно слово из названия не нашлось — подозрительно
+    if (found.length === 0) return true;
+  }
+  return false;
+}
 
 /**
  * Выполнить shell-команду промисом.
@@ -93,27 +133,48 @@ async function _cleanup(tmpDir) {
 
 /**
  * Прогнать одну PNG-страницу через OCR-модель.
+ * Если основная модель вернула мусор/галлюцинацию — fallback на резервную.
  */
-async function _ocrOnePage(pngPath, pageNum) {
+async function _ocrOnePage(pngPath, pageNum, originalName) {
   const pngBuf = await fs.readFile(pngPath);
   const pngBase64 = pngBuf.toString('base64');
+
+  const imageContent = [
+    { type: 'text', text: OCR_PROMPT },
+    { type: 'image_url', image_url: { url: 'data:image/png;base64,' + pngBase64 } }
+  ];
+
   const t0 = Date.now();
   const result = await aiProvider.complete({
     system: 'Ты — высокоточный OCR-движок. Извлекаешь текст из изображения дословно и структурированно.',
-    messages: [{
-      role: 'user',
-      content: [
-        { type: 'text', text: OCR_PROMPT },
-        { type: 'image_url', image_url: { url: 'data:image/png;base64,' + pngBase64 } }
-      ]
-    }],
+    messages: [{ role: 'user', content: imageContent }],
     model: OCR_MODEL,
     maxTokens: 4000,
     temperature: 0.0
   });
+  let text = result.text || '';
   const ms = Date.now() - t0;
-  const text = result.text || '';
   console.log(`[OCR] page ${pageNum}: ${text.length} chars, ${ms}ms (model=${OCR_MODEL})`);
+
+  // Если результат похож на галлюцинацию — пробуем резервную модель
+  if (_looksLikeHallucination(text, originalName)) {
+    console.warn(`[OCR] page ${pageNum}: looks like hallucination, retrying with ${OCR_FALLBACK_MODEL}`);
+    try {
+      const r2 = await aiProvider.complete({
+        system: 'Ты — высокоточный OCR-движок. Извлекаешь текст из изображения дословно и структурированно.',
+        messages: [{ role: 'user', content: imageContent }],
+        model: OCR_FALLBACK_MODEL,
+        maxTokens: 4000,
+        temperature: 0.0
+      });
+      const text2 = r2.text || '';
+      console.log(`[OCR] page ${pageNum} fallback: ${text2.length} chars (model=${OCR_FALLBACK_MODEL})`);
+      if (text2.length > text.length) text = text2;
+    } catch (fe) {
+      console.warn(`[OCR] page ${pageNum} fallback failed: ${fe.message}`);
+    }
+  }
+
   return text;
 }
 
@@ -186,7 +247,7 @@ async function ocrDocument(documentId) {
     const texts = [];
     for (const p of conv.pages) {
       try {
-        const txt = await _ocrOnePage(p.path, p.page_number);
+        const txt = await _ocrOnePage(p.path, p.page_number, doc.original_name);
         texts.push(`═══ Страница ${p.page_number} ═══\n${txt.trim()}`);
       } catch (e) {
         console.warn(`[OCR] page ${p.page_number} FAILED:`, e.message);

@@ -167,6 +167,9 @@ function _convertContentForOpenAI(contentArray) {
         type: 'image_url',
         image_url: { url: `data:${block.source.media_type};base64,${block.source.data}` }
       });
+    } else if (block.type === 'image_url') {
+      // Already in OpenAI native format — pass through as-is (used by pdf-ocr.js)
+      result.push(block);
     } else if (block.type === 'document') {
       // OpenAI doesn't support PDF documents — skip with warning
       console.warn('[AI Provider] Skipping document block — OpenAI does not support PDF document input');
