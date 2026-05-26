@@ -731,6 +731,41 @@ window.AsgardPmCalcsPage = (function(){
 
       tb.innerHTML = list.map(row).join("");
       cnt.textContent = `Показано: ${list.length} из ${tenders.length}.`;
+      updateMimirBtns();
+    }
+
+    // Обновить кнопки «Просчитать» — показать статус существующего просчёта
+    async function updateMimirBtns() {
+      var tids = [];
+      tb.querySelectorAll('tr[data-id]').forEach(function(tr) {
+        var tid = tr.getAttribute('data-id');
+        if (tid) tids.push(tid);
+      });
+      if (!tids.length) return;
+      try {
+        var auth = await AsgardAuth.getAuth();
+        var res = await fetch('/api/mimir/auto-estimate-status-batch?tender_ids=' + tids.join(','), {
+          headers: { 'Authorization': 'Bearer ' + auth.token }
+        });
+        if (!res.ok) return;
+        var statuses = await res.json();
+        tb.querySelectorAll('tr[data-id]').forEach(function(tr) {
+          var tid = tr.getAttribute('data-id');
+          var btn = tr.querySelector('[data-act="auto_estimate"]');
+          if (!btn || !tid) return;
+          var info = statuses[tid];
+          if (!info) return;
+          if (info.status === 'running' || info.status === 'questions') {
+            btn.textContent = '⏳ Считает...';
+            btn.style.background = 'linear-gradient(135deg,#B8860B,#8B6F2A)';
+            btn.title = 'Мимир сейчас считает — нажмите чтобы открыть прогресс';
+          } else if (info.status === 'done') {
+            btn.textContent = '✅ Открыть просчёт';
+            btn.style.background = 'linear-gradient(135deg,#27AE60,#1E8449)';
+            btn.title = 'Готовый просчёт Мимира — нажмите чтобы открыть';
+          }
+        });
+      } catch (e) {}
     }
 
     // CRSelect init — filters

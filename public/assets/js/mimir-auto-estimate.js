@@ -181,7 +181,15 @@
         background: 'linear-gradient(135deg, #C8293B 0%, #1E4D8C 100%)',
         color: '#fff', cursor: 'pointer', fontSize: '13px', fontWeight: '700',
       },
-      onclick: () => { stepsBox.innerHTML = ''; resultBox.innerHTML = ''; state.estimateId = null; state.composerVisible = false; renderComposer(); runStream(workId, state, stepsBox, resultBox, retryFt, composerWrap); },
+      onclick: async () => {
+        // Явно отменяем предыдущий running джоб перед перезапуском
+        const _t = getToken();
+        const _qp = state.workId ? 'work_id=' + state.workId : 'tender_id=' + state.tenderId;
+        if (_t && _qp) try { await fetch('/api/mimir/auto-estimate-status?' + _qp, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + _t } }); } catch (_) {}
+        stepsBox.innerHTML = ''; resultBox.innerHTML = '';
+        state.estimateId = null; state.composerVisible = false; renderComposer();
+        runStream(workId, state, stepsBox, resultBox, retryFt, composerWrap);
+      },
     }, 'Пересчитать');
     footer.appendChild(closeFt);
     footer.appendChild(retryFt);
@@ -245,25 +253,14 @@
 
   function closeModal(overlay) {
     _aeRunning = false;
-    // Снять localStorage lock и серверный джоб
     try {
       var keys = Object.keys(localStorage);
       for (var i = 0; i < keys.length; i++) {
         if (keys[i].startsWith('ae_lock_')) localStorage.removeItem(keys[i]);
       }
     } catch (e) {}
-    // Сбросить серверный джоб при закрытии модалки
-    try {
-      var wid = overlay.dataset.workId;
-      var tid = overlay.dataset.tenderId;
-      var qp = wid ? 'work_id=' + wid : 'tender_id=' + tid;
-      var token = localStorage.getItem('asgard_token') || localStorage.getItem('token');
-      if (qp && token) {
-        fetch('/api/mimir/auto-estimate-status?' + qp, {
-          method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token }
-        }).catch(function() {});
-      }
-    } catch (e) {}
+    // Не отменяем серверный джоб — он продолжает считать в фоне.
+    // При повторном нажатии кнопки openMimirAutoEstimate увидит running/done и переподключится.
     overlay.style.animation = 'mimirAeFadeOut 0.2s ease forwards';
     setTimeout(() => overlay.remove(), 200);
   }
@@ -394,9 +391,6 @@
       }
       rightSide.appendChild(dotsRow);
 
-      // Timer — НЕ запускаем локальный счётчик (он конфликтовал с серверным
-      // heartbeat и прыгал между значениями). Сервер шлёт seconds каждые 3 сек
-      // через SSE heartbeat → пишет в .mimir-ae-think-timer напрямую.
       var timerEl = el('div', {
         class: 'mimir-ae-think-timer',
         style: { fontSize: '11px', color: 'rgba(212,168,67,0.5)', marginTop: '4px' },
@@ -412,7 +406,18 @@
       wrapper.appendChild(thinkBox);
       stepsBox.appendChild(wrapper);
       _thinkingEl = wrapper;
-      // Локального интервала больше нет — таймер обновляется через серверный SSE heartbeat
+
+      // Плавный локальный таймер — тикает каждую секунду без прыжков.
+      // Heartbeat синхронизирует _thinkStartTime с серверным значением.
+      _thinkStartTime = Date.now();
+      var _localTimerInterval = setInterval(function() {
+        if (timerEl.parentNode) {
+          timerEl.textContent = Math.round((Date.now() - _thinkStartTime) / 1000) + ' сек...';
+        } else {
+          clearInterval(_localTimerInterval);
+        }
+      }, 1000);
+      wrapper._timerInterval = _localTimerInterval;
     } else {
       stepsBox.appendChild(row);
     }
@@ -738,9 +743,7 @@
                   var evt = JSON.parse(line.slice(5));
                   if (evt.type === 'progress') enqueueStep(stepsBox, evt);
                   else if (evt.type === 'heartbeat') {
-                    var t = document.querySelector('.mimir-ae-think-timer');
-                    if (t) t.textContent = evt.seconds + ' сек...';
-                    // Показываем "мысли" Мимира в основной строке заголовка
+                    if (evt.seconds != null) _thinkStartTime = Date.now() - evt.seconds * 1000;
                     var label = document.querySelector('.mimir-ae-think-label');
                     if (label && evt.message) label.textContent = evt.message;
                   }
@@ -988,9 +991,8 @@
           if (event.type === 'start' || event.type === 'progress') {
             enqueueStep(stepsBox, event);
           } else if (event.type === 'heartbeat') {
-            // Обновляем thinking animation таймер + "мысли" Мимира
-            var thinkTimer = document.querySelector('.mimir-ae-think-timer');
-            if (thinkTimer) thinkTimer.textContent = event.seconds + ' сек...';
+            // Синхронизируем локальный таймер с серверным значением
+            if (event.seconds != null) _thinkStartTime = Date.now() - event.seconds * 1000;
             var thinkLabel = document.querySelector('.mimir-ae-think-label');
             if (thinkLabel && event.message) thinkLabel.textContent = event.message;
           } else if (event.type === 'questions') {
@@ -1049,6 +1051,7 @@
   }
 
   let _aeRunning = false;
+  let _thinkStartTime = 0; // синхронизируется с серверным heartbeat.seconds
   // localStorage guard — блокирует повторный запуск даже после перезахода (TTL 5 мин)
   function _aeIsLocked(key) {
     try {
@@ -1220,14 +1223,26 @@
           return;
         }
         if (statusData.status === 'done' && statusData.result && statusData.result.estimate_id) {
-          // Просчёт готов — открыть карточку тендера на pm-calcs
-          AsgardUI.toast('Мимир', 'Просчёт готов! Открываю...', 'ok');
-          // Очистить джоб
-          fetch('/api/mimir/auto-estimate-status?' + qp, {
-            method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token }
-          }).catch(function() {});
-          if (tenderId) window.location.hash = '#/pm-calcs?tender_id=' + tenderId;
-          else window.location.hash = '#/pm-calcs';
+          // Просчёт готов — открываем модалку с готовым результатом
+          _aeRunning = true;
+          _aeLock(lockKey);
+          injectStyles();
+          const doneState = {
+            workId: workId || null, tenderId: tenderId || null,
+            estimateId: statusData.result.estimate_id,
+            lastCard: statusData.result.card || null,
+            lastAnalysis: statusData.result.analysis || null,
+            composerVisible: false, chatLoading: false, chatHistory: [],
+          };
+          const doneEffId = workId || ('t' + tenderId);
+          const doneModal = buildModal(doneEffId, doneState);
+          document.body.appendChild(doneModal.overlay);
+          showResult(doneModal.resultBox, {
+            estimate_id: statusData.result.estimate_id,
+            card: statusData.result.card || null,
+            comment: statusData.result.comment || null,
+            analysis: statusData.result.analysis || null,
+          }, doneState, doneModal.composerWrap, doneModal.overlay);
           return;
         }
         // status === 'error' или 'none' — разрешаем запуск нового

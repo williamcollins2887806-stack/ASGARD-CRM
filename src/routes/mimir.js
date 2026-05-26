@@ -2017,6 +2017,31 @@ ${analogsSummary}
     };
   });
 
+  // GET /api/mimir/auto-estimate-status-batch — статус нескольких тендеров сразу
+  // Используется pm_calcs.js для окраски кнопок «⚡ Просчитать»
+  fastify.get('/auto-estimate-status-batch', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { tender_ids } = request.query || {};
+    if (!tender_ids) return {};
+    const ids = String(tender_ids).split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n) && n > 0).slice(0, 50);
+    if (!ids.length) return {};
+    const { rows } = await db.query(`
+      SELECT DISTINCT ON (tender_id) tender_id, status, estimate_id
+      FROM mimir_estimate_jobs
+      WHERE tender_id = ANY($1::int[])
+        AND (
+          status IN ('running','questions')
+          OR (status = 'done' AND started_at > NOW() - INTERVAL '7 days')
+          OR (status = 'error' AND started_at > NOW() - INTERVAL '24 hours')
+        )
+      ORDER BY tender_id, started_at DESC
+    `, [ids]);
+    const result = {};
+    for (const r of rows) result[r.tender_id] = { status: r.status, estimate_id: r.estimate_id || null };
+    return result;
+  });
+
   // GET /api/mimir/auto-estimate-active — вернуть все идущие/недавние просчёты юзера
   fastify.get('/auto-estimate-active', {
     preHandler: [fastify.authenticate]
