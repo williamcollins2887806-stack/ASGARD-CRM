@@ -2810,7 +2810,8 @@ window.AsgardFieldTab = (function () {
     AsgardUI.showModal({ title: 'Выплата', html, icon: '💰', subtitle: esc(employeeName) });
 
     // Radio chip toggle
-    const body = document.getElementById('modalBody');
+    const _visOvs2 = document.querySelectorAll('.cr-m-overlay--visible');
+    const body = _visOvs2.length ? _visOvs2[_visOvs2.length - 1].querySelector('[id="modalBody"]') : document.getElementById('modalBody');
     if (body) {
       body.querySelectorAll('label.cr-f-chip').forEach(label => {
         label.addEventListener('click', () => {
@@ -2860,6 +2861,7 @@ window.AsgardFieldTab = (function () {
       title: 'Выплата рабочему',
       subtitle: esc(fio),
       icon: '💰',
+      wide: true,
       html: '<div style="text-align:center;padding:60px"><div style="font-size:40px;margin-bottom:12px">⏳</div><div style="color:var(--t2)">Загружаем баланс…</div></div>'
     });
     fetch('/api/worker-payments/employee-summary?work_id=' + work.id + '&employee_id=' + employeeId, { headers: hdr() })
@@ -3016,7 +3018,11 @@ window.AsgardFieldTab = (function () {
       AsgardUI.showModal({ title: 'Выплата рабочему', subtitle: esc(fio), icon: '💰', html: html, wide: true });
     }
 
-    var body = document.getElementById('modalBody');
+    // Field-tab itself runs inside a modal, so there are ≥2 elements with id="modalBody".
+    // getElementById always returns the first (outer) one. We need the topmost visible overlay.
+    var _visOvs = document.querySelectorAll('.cr-m-overlay--visible');
+    var _topOv = _visOvs.length ? _visOvs[_visOvs.length - 1] : null;
+    var body = _topOv ? _topOv.querySelector('[id="modalBody"]') : document.getElementById('modalBody');
 
     function showInlineErr(msg) {
       var errBox = document.getElementById('pwErr');
