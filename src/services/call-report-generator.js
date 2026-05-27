@@ -43,15 +43,20 @@ class CallReportGenerator {
     // 2. По сотрудникам
     const byEmployeeRes = await db.query(`
       SELECT
-        u.name,
+        COALESCE(u.name, u2.name) as name,
         COUNT(*) as total,
         COUNT(*) FILTER (WHERE ch.ai_is_target = true) as target,
         COUNT(*) FILTER (WHERE ch.call_type = 'missed' AND COALESCE(ch.missed_acknowledged, false) = false AND ch.missed_callback_at IS NULL) as missed,
         AVG(ch.duration_seconds) FILTER (WHERE ch.duration_seconds > 0) as avg_duration
       FROM call_history ch
       LEFT JOIN users u ON ch.user_id = u.id
+      LEFT JOIN users u2 ON u.id IS NULL AND u2.is_active = true
+        AND replace(replace(COALESCE(u2.phone,''), '+', ''), '-', '') LIKE '%' ||
+            RIGHT(replace(replace(
+              CASE WHEN ch.direction = 'inbound' THEN ch.to_number ELSE ch.from_number END,
+            '+', ''), '-', ''), 10)
       WHERE ch.created_at >= $1::date AND ch.created_at < ($2::date + INTERVAL '1 day')
-      GROUP BY u.name
+      GROUP BY ch.user_id, u.name, u2.name
       ORDER BY total DESC
       LIMIT 20
     `, [dateFrom, dateTo]);

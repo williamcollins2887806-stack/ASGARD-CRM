@@ -1279,12 +1279,43 @@ window.AsgardTelephonyPage = (function () {
     }
 
     container.innerHTML =
-      '<div style="display:flex;justify-content:flex-end;margin-bottom:1rem">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">' +
+        '<button class="btn btn--sm" id="syncExtBtn" title="Загрузить внутренние номера сотрудников из Mango Office и привязать к аккаунтам CRM" style="background:var(--bg3);color:var(--t2);border:1px solid var(--brd)">🔄 Синхронизировать extensions из Mango</button>' +
         '<button class="btn btn--primary" id="addRuleBtn">+ Добавить правило</button>' +
       '</div>' +
+      '<div id="syncResult" style="display:none;margin-bottom:1rem;font-size:13px"></div>' +
       '<div id="routingList">' + skeletonRules() + '</div>';
 
     $('#addRuleBtn').addEventListener('click', function () { openRuleModal(); });
+
+    $('#syncExtBtn').addEventListener('click', async function () {
+      var btn = $('#syncExtBtn');
+      btn.disabled = true;
+      btn.textContent = 'Синхронизация...';
+      var resultDiv = $('#syncResult');
+      resultDiv.style.display = 'none';
+      try {
+        var data = await api('/extensions/sync-mango', { method: 'POST' });
+        var html = '✅ Синхронизировано: <strong>' + data.synced_count + '</strong> из ' + data.total_mango_users + ' сотрудников Mango.';
+        if (data.unmatched_count > 0) {
+          html += ' <span style="color:var(--warn-t)">⚠️ Не найдено в CRM: ' + data.unmatched_count + ' (' +
+            data.unmatched.map(function (u) { return esc(u.name || u.ext); }).join(', ') + ')</span>';
+        }
+        resultDiv.innerHTML = html;
+        resultDiv.style.display = 'block';
+        resultDiv.style.color = 'var(--ok-t)';
+        if (data.synced_count > 0) toast('Extensions синхронизированы: ' + data.synced_count + ' сотрудников', 'success');
+      } catch (e) {
+        resultDiv.innerHTML = '❌ Ошибка: ' + esc(e.message);
+        resultDiv.style.display = 'block';
+        resultDiv.style.color = 'var(--err-t)';
+        toast('Ошибка синхронизации', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🔄 Синхронизировать extensions из Mango';
+      }
+    });
+
     fetchRouting();
   }
 

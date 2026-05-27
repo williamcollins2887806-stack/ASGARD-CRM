@@ -1161,6 +1161,80 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     reply.send(res.rows[0]);
   });
 
+  // --- Синхронизация extensions из Mango Office ---
+  fastify.post('/extensions/sync-mango', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    if (!TEL_ADMIN_ROLES.includes(request.user.role)) {
+      return reply.code(403).send({ error: 'Admin access required' });
+    }
+    if (!mango.isConfigured()) {
+      return reply.code(503).send({ error: 'Mango не настроен' });
+    }
+
+    let mangoUsers;
+    try {
+      const res = await mango.getUsers();
+      mangoUsers = res.vpbx_users || res.users || res.response || res || [];
+      if (!Array.isArray(mangoUsers)) {
+        return reply.code(502).send({ error: 'Неожиданный формат ответа Mango', raw: res });
+      }
+    } catch (e) {
+      return reply.code(502).send({ error: 'Ошибка запроса к Mango API: ' + e.message });
+    }
+
+    const synced = [];
+    const unmatched = [];
+
+    for (const mu of mangoUsers) {
+      const ext = mu.ext || mu.extension || (mu.general && mu.general.work_num) || mu.work_num || null;
+      const email = mu.email || (mu.general && mu.general.email) || null;
+      const mangoName = mu.name || (mu.general && mu.general.name) || null;
+      const mobile = mu.mobile || mu.phone || (mu.general && mu.general.mobile) || null;
+
+      if (!ext) continue;
+
+      // Ищем пользователя CRM по email (точное совпадение), потом по имени
+      let crmUser = null;
+      if (email) {
+        const r = await db.query('SELECT id, name FROM users WHERE LOWER(login) = LOWER($1) AND is_active = true LIMIT 1', [email]);
+        if (r.rows.length) crmUser = r.rows[0];
+      }
+      if (!crmUser && mangoName) {
+        const r = await db.query(
+          `SELECT id, name FROM users WHERE is_active = true
+           AND LOWER(name) = LOWER($1) LIMIT 1`,
+          [mangoName]
+        );
+        if (r.rows.length) crmUser = r.rows[0];
+      }
+
+      if (crmUser) {
+        await db.query(
+          `INSERT INTO user_call_status (user_id, mango_extension, fallback_mobile, updated_at)
+           VALUES ($1, $2, $3, NOW())
+           ON CONFLICT (user_id) DO UPDATE SET
+             mango_extension = $2,
+             fallback_mobile = COALESCE($3, user_call_status.fallback_mobile),
+             updated_at = NOW()`,
+          [crmUser.id, String(ext), mobile || null]
+        );
+        synced.push({ crm_id: crmUser.id, crm_name: crmUser.name, ext, email, mobile });
+      } else {
+        unmatched.push({ ext, name: mangoName, email, mobile });
+      }
+    }
+
+    reply.send({
+      status: 'ok',
+      synced_count: synced.length,
+      unmatched_count: unmatched.length,
+      synced,
+      unmatched,
+      total_mango_users: mangoUsers.length
+    });
+  });
+
   // --- Активные звонки ---
   fastify.get('/active', {
     preHandler: [fastify.authenticate]
