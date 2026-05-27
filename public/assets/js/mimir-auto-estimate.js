@@ -791,15 +791,37 @@
       resultBox.appendChild(warningsBox);
     }
 
-    // 5. Workers + warehouse status
-    if (event.analysis?.workers_status || event.analysis?.warehouse_status) {
-      let txt = '';
-      if (event.analysis.workers_status) txt += '👷 Рабочие: ' + event.analysis.workers_status;
-      if (event.analysis.warehouse_status) txt += (txt ? '\n' : '') + '🏭 Склад: ' + event.analysis.warehouse_status;
-      resultBox.appendChild(mimirBubble(txt));
+    // 5. Рекомендованный состав бригады
+    if (event.recommended_crew && event.recommended_crew.length > 0) {
+      const crewLines = event.recommended_crew.map(function(p) {
+        return '• ' + (p.name || '—') + ' (' + (p.role || '?') + ')' + (p.reason ? ' — ' + p.reason : '');
+      }).join('\n');
+      resultBox.appendChild(mimirBubble(crewLines, '👷 Рекомендованный состав'));
     }
 
-    // 6. Open estimate CTA
+    // 6. Оборудование — сводка (детали в полном отчёте)
+    if (event.equipment_status) {
+      const eq = event.equipment_status;
+      let eqTxt = '';
+      if (eq.from_warehouse && eq.from_warehouse.length > 0)
+        eqTxt += '✅ Со склада: ' + eq.from_warehouse.map(function(r){ return r.item + ' ×' + (r.quantity||1); }).join(', ') + '\n';
+      if (eq.to_purchase && eq.to_purchase.length > 0)
+        eqTxt += '🛒 Закупить: ' + eq.to_purchase.map(function(r){ return r.item + ' ×' + (r.quantity||1); }).join(', ') + '\n';
+      if (eq.summary) eqTxt += eq.summary;
+      if (eqTxt.trim()) resultBox.appendChild(mimirBubble(eqTxt.trim(), '🔧 Оборудование'));
+    }
+
+    // 7. Маршрут — сводка
+    if (event.route_plan?.summary) {
+      resultBox.appendChild(mimirBubble('🗺 ' + event.route_plan.summary, '🗺 Маршрут'));
+    }
+
+    // 8. self_check.tz_compliance — если Мимир нашёл несоответствия ТЗ
+    if (event.self_check?.tz_compliance) {
+      resultBox.appendChild(mimirBubble(event.self_check.tz_compliance, '📋 Соответствие ТЗ'));
+    }
+
+    // 9. Open estimate CTA
     if (event.estimate_id) {
       resultBox.appendChild(buildOpenEstimateBtn(event.estimate_id, overlay));
     }

@@ -2443,14 +2443,14 @@ ${analogsSummary}
         },
         analysis: {
           markup_reasoning: ai.analysis?.markup_reasoning || null,
-          warnings: ai.analysis?.warnings || [],
-          purchases_needed: ai.analysis?.purchases_needed || []
+          warnings: ai.analysis?.warnings || []
         },
         equipment_status: ai.equipment_status || null,
         permits_status: ai.permits_status || null,
         route_plan: ai.route_plan || null,
         recommended_crew: ai.recommended_crew || null,
         comment: ai.estimate?.comment || null,
+        self_check: ai.self_check || null,
         ai_meta: {
           model: aiResult.model,
           provider: aiResult.provider,
@@ -2460,15 +2460,40 @@ ${analogsSummary}
         elapsed_ms: Date.now() - startTime
       });
 
-      // Сохранить результат в БД (done = навсегда)
+      // Сохранить результат в БД — полная карточка, чтобы при повторном открытии показать всё
       await mimirJobs.set(jobKey, {
         status: 'done',
-        result: { estimate_id: created.estimate_id, version_no: created.version_no, card: {
-          title: ai.estimate?.title || ctx.work.work_title,
-          total_with_margin: totals.total_with_margin,
-          total_with_vat: totals.total_with_vat,
-          crew_count: ai.estimate?.crew_count, work_days: ai.estimate?.work_days
-        }}
+        result: {
+          estimate_id: created.estimate_id,
+          version_no: created.version_no,
+          card: {
+            title: ai.estimate?.title || ctx.work.work_title,
+            customer: ctx.work.customer_name || ctx.tender?.customer_name,
+            city: ai.estimate?.object_city || ctx.work.city,
+            crew_count: ai.estimate?.crew_count,
+            work_days: ai.estimate?.work_days,
+            road_days: ai.estimate?.road_days,
+            markup_multiplier: totals.markup_multiplier,
+            total_cost: totals.total_cost,
+            total_with_margin: totals.total_with_margin,
+            total_with_vat: totals.total_with_vat,
+            margin_pct: totals.margin_pct,
+            fot_subtotal: totals.personnel_with_tax,
+            travel_subtotal: totals.travel_subtotal,
+            transport_subtotal: totals.transport_subtotal,
+            chemistry_subtotal: totals.chemistry_subtotal,
+            current_subtotal: totals.current_subtotal,
+            drift_pct: recomputed.drift
+          },
+          comment: ai.estimate?.comment || null,
+          analysis: {
+            markup_reasoning: ai.analysis?.markup_reasoning || null,
+            warnings: ai.analysis?.warnings || []
+          },
+          equipment_status: ai.equipment_status || null,
+          route_plan: ai.route_plan || null,
+          recommended_crew: ai.recommended_crew || null
+        }
       }, { user_id: request.user?.id || null });
 
       sendEvent({ type: 'done' });

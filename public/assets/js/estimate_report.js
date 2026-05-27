@@ -917,6 +917,26 @@ window.AsgardEstimateReportPage = (function () {
       html += '</div></div>';
     }
 
+    // ── Рекомендованный состав (recommended_crew) ──
+    const crew = ms.recommended_crew;
+    if (crew && crew.length > 0) {
+      html += '<div class="er-eblock er-eblock--open" style="margin-bottom:16px;border-left:3px solid #D4A843">';
+      html += '<div class="er-eblock__head" style="background:rgba(212,168,67,0.08);border-left:3px solid #D4A843;padding:10px 14px;border-radius:8px 8px 0 0;cursor:pointer">';
+      html += '<b style="color:#D4A843">👷 Рекомендованный состав бригады</b></div>';
+      html += '<div class="er-eblock__body" style="padding:12px 14px;background:var(--bg3);border-radius:0 0 8px 8px;border:0.5px solid rgba(212,168,67,0.2)">';
+      html += '<table class="er-mini-table"><thead><tr><th>Сотрудник</th><th>Роль</th><th>Город</th><th>Обоснование</th></tr></thead><tbody>';
+      crew.forEach(function(p) {
+        html += '<tr>';
+        html += '<td style="font-weight:600">' + esc(p.name || '—') + '</td>';
+        html += '<td>' + esc(p.role || '—') + '</td>';
+        html += '<td style="color:var(--t3)">' + esc(p.city || '—') + '</td>';
+        html += '<td style="font-size:12px;color:var(--t2)">' + esc(p.reason || '—') + '</td>';
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+      html += '</div></div>';
+    }
+
     // ── Оборудование ──
     html += '<div class="er-eblock er-eblock--open" style="margin-bottom:16px">';
     html += '<div class="er-eblock__head" style="background:rgba(30,77,140,0.08);border-left:3px solid #1E4D8C;padding:10px 14px;border-radius:8px 8px 0 0;cursor:pointer">';
@@ -1005,6 +1025,25 @@ window.AsgardEstimateReportPage = (function () {
       html += '<p style="font-size:12px;color:var(--t3)">Маршрут не заполнен</p>';
     }
     html += '</div></div>';
+
+    // ── Self-check Мимира (соответствие ТЗ + области неуверенности) ──
+    const sc = ms.self_check;
+    if (sc && (sc.tz_compliance || (sc.uncertainty_areas && sc.uncertainty_areas.length > 0))) {
+      html += '<div class="er-eblock er-eblock--open" style="margin-bottom:16px">';
+      html += '<div class="er-eblock__head" style="background:rgba(100,100,200,0.08);border-left:3px solid #6464c8;padding:10px 14px;border-radius:8px 8px 0 0;cursor:pointer">';
+      html += '<b style="color:#8888ee">🔍 Самопроверка Мимира</b></div>';
+      html += '<div class="er-eblock__body" style="padding:12px 14px;background:var(--bg3);border-radius:0 0 8px 8px;border:0.5px solid rgba(100,100,200,0.2)">';
+      if (sc.tz_compliance) {
+        html += '<p style="font-size:12px;font-weight:700;color:var(--t2);margin-bottom:4px">Соответствие ТЗ:</p>';
+        html += '<p style="font-size:13px;color:var(--t1);line-height:1.5;margin-bottom:10px">' + esc(sc.tz_compliance) + '</p>';
+      }
+      if (sc.uncertainty_areas && sc.uncertainty_areas.length > 0) {
+        html += '<p style="font-size:12px;font-weight:700;color:#D4A843;margin-bottom:4px">⚠️ Где Мимир не уверен:</p><ul style="padding-left:18px;margin:0">';
+        sc.uncertainty_areas.forEach(function(u) { html += '<li style="font-size:12px;color:var(--t2);margin-bottom:3px">' + esc(u) + '</li>'; });
+        html += '</ul>';
+      }
+      html += '</div></div>';
+    }
 
     html += '</div>';
     return html;

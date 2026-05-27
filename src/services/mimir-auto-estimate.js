@@ -1675,10 +1675,11 @@ async function createDraftEstimate(db, ctx, ai, recomputed, user) {
   const mimirSuggestions = {
     markup_reasoning: ai.analysis?.markup_reasoning || null,
     warnings: ai.analysis?.warnings || [],
-    purchases_needed: ai.analysis?.purchases_needed || [],
     equipment_status: ai.equipment_status || null,
     permits_status: ai.permits_status || null,
     route_plan: ai.route_plan || null,
+    recommended_crew: ai.recommended_crew || null,
+    self_check: ai.self_check || null,
     mimir_notes: ai.mimir_notes || null,
     chat_history: [],
     generated_at: new Date().toISOString(),
