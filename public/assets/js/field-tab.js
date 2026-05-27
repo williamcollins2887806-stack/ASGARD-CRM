@@ -2790,9 +2790,6 @@ window.AsgardFieldTab = (function () {
             <input type="radio" name="payMethod" value="cash" checked style="display:none"> 💵 Наличные
           </label>
           <label class="cr-f-chip" style="flex:1;text-align:center;cursor:pointer">
-            <input type="radio" name="payMethod" value="card" style="display:none"> 💳 Карта
-          </label>
-          <label class="cr-f-chip" style="flex:1;text-align:center;cursor:pointer">
             <input type="radio" name="payMethod" value="transfer" style="display:none"> 🏦 Перевод
           </label>
         </div>
@@ -2917,7 +2914,7 @@ window.AsgardFieldTab = (function () {
       '.pw-quick{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}' +
       '.pw-quick-btn{padding:6px 12px;background:var(--bg1,transparent);border:1px solid var(--brd);border-radius:8px;font-size:12px;color:var(--t2);cursor:pointer;font-weight:600}' +
       '.pw-quick-btn:hover{border-color:var(--gold);color:var(--gold)}' +
-      '.pw-method-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px}' +
+      '.pw-method-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}' +
       '.pw-method{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 4px;border:2px solid var(--brd);border-radius:10px;cursor:pointer;background:var(--bg1,transparent);transition:all 0.15s}' +
       '.pw-method:hover{border-color:var(--gold)}' +
       '.pw-method.is-active{border-color:var(--gold);background:rgba(212,168,67,0.12)}' +
@@ -2996,7 +2993,6 @@ window.AsgardFieldTab = (function () {
         '<div style="font-size:11px;color:var(--t2);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Способ <span style="color:#ef4444">*</span></div>' +
         '<div class="pw-method-grid">' +
           '<label class="pw-method is-active" data-method="cash"><input type="radio" name="pwMethod" value="cash" checked><span class="ic">💵</span><span class="nm">Нал</span></label>' +
-          '<label class="pw-method" data-method="card"><input type="radio" name="pwMethod" value="card"><span class="ic">💳</span><span class="nm">Карта</span></label>' +
           '<label class="pw-method" data-method="transfer"><input type="radio" name="pwMethod" value="transfer"><span class="ic">🏦</span><span class="nm">Перевод</span></label>' +
         '</div>' +
         // Коммент
