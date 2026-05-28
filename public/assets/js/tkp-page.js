@@ -365,6 +365,7 @@ window.AsgardTkpPage = (function() {
               '<button class="tkp-tbl-btn" data-action="edit" data-id="' + i.id + '" title="Редактировать"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
               '<button class="tkp-tbl-btn" data-action="copy" data-id="' + i.id + '" title="Копировать ТКП"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>' +
               '<button class="tkp-tbl-btn" data-action="pdf" data-id="' + i.id + '" title="Скачать PDF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></button>' +
+              '<button class="tkp-tbl-btn" data-action="excel" data-id="' + i.id + '" title="Скачать Excel" style="color:#1B7340"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="9" y1="13" x2="15" y2="19"/><line x1="15" y1="13" x2="9" y2="19"/></svg></button>' +
               '<button class="tkp-tbl-btn" data-action="send" data-id="' + i.id + '" title="Отправить"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9z"/></svg></button>' +
             '</td></tr>';
         }).join('') : '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--t3)">Нет созданных ТКП</td></tr>') +
@@ -398,6 +399,12 @@ window.AsgardTkpPage = (function() {
       );
       el.querySelectorAll('[data-action="pdf"]').forEach(b =>
         b.addEventListener('click', () => showPdfDialog(b.dataset.id))
+      );
+      el.querySelectorAll('[data-action="excel"]').forEach(b =>
+        b.addEventListener('click', () => {
+          var token = localStorage.getItem('asgard_token');
+          window.open('/api/tkp/' + b.dataset.id + '/excel?token=' + token, '_blank');
+        })
       );
       el.querySelectorAll('[data-action="send"]').forEach(b =>
         b.addEventListener('click', () => openSendTkpModal(b.dataset.id))
@@ -542,6 +549,10 @@ window.AsgardTkpPage = (function() {
           '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>' +
           'Сохранить и скачать PDF' +
         '</button>' +
+        (o.id ? '<button class="tkp-btn-pdf" id="btnSaveExcel" style="color:#1B7340;border-color:rgba(27,115,64,0.35)!important">' +
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="9" y1="13" x2="15" y2="19"/><line x1="15" y1="13" x2="9" y2="19"/></svg>' +
+          'Скачать Excel' +
+        '</button>' : '') +
         (o.id ? '<button class="tkp-btn-send" id="btnSendTkpEmail">' +
           '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9z"/></svg>' +
           'Отправить' +
@@ -974,6 +985,32 @@ window.AsgardTkpPage = (function() {
                   if (stCb && stCb.checked) pdfUrl += '&stamp=1';
                   window.open(pdfUrl, '_blank');
                 }
+              } else {
+                const err = await resp.json().catch(function() { return {}; });
+                toast('Ошибка', err.error || 'Не удалось сохранить (HTTP ' + resp.status + ')', 'err');
+              }
+            } catch (ex) {
+              toast('Ошибка', ex.message, 'err');
+            }
+          });
+        }
+
+        // Скачать Excel (сначала сохранить)
+        const btnXls = $('#btnSaveExcel');
+        if (btnXls) {
+          btnXls.addEventListener('click', async function() {
+            const body = buildSaveBody();
+            const token = localStorage.getItem('asgard_token');
+            try {
+              const resp = await fetch(currentId ? '/api/tkp/' + currentId : '/api/tkp', {
+                method: currentId ? 'PUT' : 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                body: JSON.stringify(body)
+              });
+              if (resp.ok) {
+                const result = await resp.json();
+                if (!currentId) currentId = result.id || (result.item && result.item.id);
+                if (currentId) window.open('/api/tkp/' + currentId + '/excel?token=' + token, '_blank');
               } else {
                 const err = await resp.json().catch(function() { return {}; });
                 toast('Ошибка', err.error || 'Не удалось сохранить (HTTP ' + resp.status + ')', 'err');

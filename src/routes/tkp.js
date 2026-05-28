@@ -677,6 +677,32 @@ async function routes(fastify, options) {
   });
 
   // ═══════════════════════════════════════════════════════════════
+  // GET /:id/excel — выгрузка ТКП в Excel (красивый шаблон, без печати)
+  // ═══════════════════════════════════════════════════════════════
+  fastify.get('/:id/excel', {
+    preHandler: [
+      async (request, reply) => {
+        if (!request.headers.authorization && request.query.token) {
+          request.headers.authorization = 'Bearer ' + request.query.token;
+        }
+      },
+      fastify.authenticate
+    ]
+  }, async (request, reply) => {
+    const { rows } = await db.query(
+      `SELECT t.*, u.name as author_name, te.tender_title as tender_number
+       FROM tkp t LEFT JOIN users u ON t.author_id = u.id
+       LEFT JOIN tenders te ON t.tender_id = te.id WHERE t.id = $1`,
+      [request.params.id]
+    );
+    if (!rows[0]) return reply.code(404).send({ error: 'TKP not found' });
+    const buf = await generateTkpExcel(rows[0], db);
+    reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    reply.header('Content-Disposition', `attachment; filename="TKP_${rows[0].id}.xlsx"`);
+    return reply.send(Buffer.from(buf));
+  });
+
+  // ═══════════════════════════════════════════════════════════════
   // POST /preview-pdf — генерация PDF без записи в БД (для предпросмотра)
   // body: те же поля что и POST / (subject, items, customer_*, total_sum…)
   // Возвращает PDF inline; нет аудита, нет уведомлений, ничего не сохраняется.
@@ -1192,6 +1218,246 @@ async function generateTkpPdfKit(tkp, db, opts) {
   doc.end();
   await new Promise(resolve => doc.on('end', resolve));
   return Buffer.concat(chunks);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Excel-версия ТКП — чистый белый лист, логотип, ровные колонки,
+// без печати. Визуально близко к PDF. Возвращает Buffer.
+// ═══════════════════════════════════════════════════════════════
+async function generateTkpExcel(tkp, db) {
+  const ExcelJS = require('exceljs');
+
+  // company profile
+  let company = {};
+  try {
+    const { rows } = await db.query("SELECT value_json FROM settings WHERE key = 'company_profile'");
+    if (rows.length) company = typeof rows[0].value_json === 'string' ? JSON.parse(rows[0].value_json) : rows[0].value_json;
+  } catch (_) {}
+  if (!company.name) company = {
+    name: 'ООО «Асгард-Сервис»', inn: '7736244785', kpp: '770101001',
+    phone: '8(499)322-30-62', email: 'info@asgard-service.com',
+  };
+
+  // author
+  let authorName = tkp.author_name || '';
+  let authorPos = '';
+  let iObj = {};
+  try { iObj = typeof tkp.items === 'string' ? JSON.parse(tkp.items) : (tkp.items || {}); } catch (_) {}
+  if (!authorName && tkp.author_id) {
+    try { const r = await db.query('SELECT name FROM users WHERE id=$1', [tkp.author_id]); if (r.rows[0]) authorName = r.rows[0].name; } catch (_) {}
+  }
+  authorName = iObj.author_name || authorName;
+  authorPos = iObj.author_position || 'Руководитель проекта';
+
+  const iList = iObj.items || (Array.isArray(iObj) ? iObj : []);
+  const vatPct = parseFloat(iObj.vat_pct != null ? iObj.vat_pct : 22);
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'АСГАРД CRM';
+  wb.created = new Date();
+  const ws = wb.addWorksheet('ТКП', {
+    views: [{ showGridLines: false }],
+    pageSetup: { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+                 margins: { left: 0.5, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 } },
+  });
+  ws.columns = [
+    { width: 5 }, { width: 46 }, { width: 9 }, { width: 9 }, { width: 16 }, { width: 17 },
+  ];
+
+  const NAVY = 'FF1E3A5F', WHITE = 'FFFFFFFF', GREY = 'FF8890B0', DARK = 'FF2A2A40', GREEN = 'FF1B5E20';
+  const thin = { style: 'thin', color: { argb: 'FFCBD2DE' } };
+  const allBorder = { top: thin, bottom: thin, left: thin, right: thin };
+  let r = 1;
+
+  // ── Логотип ──
+  const logoPath = path.join(__dirname, '..', '..', 'public', 'assets', 'img', 'logo.png');
+  if (fs.existsSync(logoPath)) {
+    try {
+      const imgId = wb.addImage({ filename: logoPath, extension: 'png' });
+      ws.addImage(imgId, { tl: { col: 0, row: 0 }, ext: { width: 196, height: 56 } });
+      ws.getRow(1).height = 46; r = 2;
+    } catch (_) {}
+  }
+  if (r === 1) {
+    ws.mergeCells('A1:F1');
+    const h = ws.getCell('A1'); h.value = company.name; h.font = { bold: true, size: 14, color: { argb: NAVY } };
+    ws.getRow(1).height = 24; r = 2;
+  }
+
+  // Контакты компании
+  ws.mergeCells(`A${r}:F${r}`);
+  const cc = ws.getCell(`A${r}`);
+  cc.value = `${company.name}  ·  ИНН ${company.inn || ''}  ·  ${company.phone || ''}  ·  ${company.email || ''}`;
+  cc.font = { size: 9, color: { argb: GREY } };
+  cc.alignment = { horizontal: 'left' };
+  ws.getRow(r).height = 14; r++;
+
+  // линия-разделитель
+  ws.mergeCells(`A${r}:F${r}`);
+  ws.getCell(`A${r}`).border = { bottom: { style: 'medium', color: { argb: NAVY } } };
+  ws.getRow(r).height = 6; r++;
+  r++; // отступ
+
+  // ── Заголовок ──
+  ws.mergeCells(`A${r}:F${r}`);
+  const t = ws.getCell(`A${r}`);
+  t.value = 'ТЕХНИКО-КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ';
+  t.font = { bold: true, size: 16, color: { argb: NAVY } };
+  t.alignment = { horizontal: 'center', vertical: 'middle' };
+  ws.getRow(r).height = 28; r++;
+
+  ws.mergeCells(`A${r}:F${r}`);
+  const num = ws.getCell(`A${r}`);
+  const dateStr = tkp.created_at ? new Date(tkp.created_at).toLocaleDateString('ru-RU') : new Date().toLocaleDateString('ru-RU');
+  num.value = `${tkp.tkp_number || ('№ ТКП-' + tkp.id)}  от  ${dateStr}`;
+  num.font = { size: 11, color: { argb: DARK } };
+  num.alignment = { horizontal: 'center' };
+  ws.getRow(r).height = 18; r++;
+  r++; // отступ
+
+  // ── Реквизиты заказчика ──
+  const info = [
+    ['Заказчик:', tkp.customer_name || ''],
+    ['ИНН / КПП:', `${tkp.customer_inn || '—'}${iObj.customer_kpp ? ' / ' + iObj.customer_kpp : ''}`],
+    ['Адрес объекта:', tkp.customer_address || '—'],
+    ['Контактное лицо:', tkp.contact_person || '—'],
+    ['Телефон:', tkp.contact_phone || '—'],
+    ['E-mail:', tkp.contact_email || '—'],
+    ['Предмет:', tkp.subject || ''],
+  ];
+  for (const [lbl, val] of info) {
+    if (val === '—' && (lbl === 'Телефон:' || lbl === 'E-mail:')) continue;
+    const rr = ws.getRow(r);
+    rr.getCell(1).value = lbl;
+    rr.getCell(1).font = { bold: true, size: 10, color: { argb: GREY } };
+    rr.getCell(1).alignment = { horizontal: 'left', vertical: 'top' };
+    ws.mergeCells(`B${r}:F${r}`);
+    rr.getCell(2).value = val;
+    rr.getCell(2).font = { size: 10, color: { argb: DARK } };
+    rr.getCell(2).alignment = { wrapText: true, vertical: 'top' };
+    rr.height = Math.max(15, Math.ceil(String(val).length / 70) * 14);
+    r++;
+  }
+  r++; // отступ
+
+  // ── Таблица позиций ──
+  const thRow = ws.getRow(r); thRow.height = 22;
+  ['№', 'Наименование работ', 'Ед.', 'Кол-во', 'Цена, ₽', 'Сумма, ₽'].forEach((v, i) => {
+    const c = thRow.getCell(i + 1);
+    c.value = v;
+    c.font = { bold: true, size: 10, color: { argb: WHITE } };
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: NAVY } };
+    c.border = allBorder;
+    c.alignment = { horizontal: i === 1 ? 'left' : 'center', vertical: 'middle', wrapText: true };
+  });
+  r++;
+
+  const firstItem = r;
+  for (let i = 0; i < iList.length; i++) {
+    const it = iList[i];
+    const qty = parseFloat(it.qty || it.quantity || 1);
+    const price = parseFloat(it.price || it.unit_price || 0);
+    const nameLen = (it.name || '').length;
+    const rr = ws.getRow(r); rr.height = Math.max(18, Math.ceil(nameLen / 46) * 14);
+    const vals = [i + 1, it.name || '', it.unit || 'усл.', qty, price, null];
+    vals.forEach((v, ci) => {
+      const c = rr.getCell(ci + 1);
+      if (ci === 5) { c.value = { formula: `D${r}*E${r}` }; c.numFmt = '#,##0'; }
+      else { c.value = v; if (ci === 4) c.numFmt = '#,##0'; if (ci === 3) c.numFmt = '#,##0.##'; }
+      c.font = { size: 10, color: { argb: DARK } };
+      c.border = allBorder;
+      c.alignment = { horizontal: ci === 1 ? 'left' : (ci === 0 ? 'center' : 'right'), vertical: 'middle', wrapText: ci === 1 };
+      if (ci === 2 || ci === 3) c.alignment.horizontal = 'center';
+    });
+    r++;
+  }
+  const lastItem = r - 1;
+  r++; // отступ
+
+  // ── Итоги ──
+  function totalRow(label, formula, opts2) {
+    opts2 = opts2 || {};
+    const rr = ws.getRow(r); rr.height = opts2.big ? 24 : 19;
+    ws.mergeCells(`A${r}:E${r}`);
+    const lc = rr.getCell(1);
+    lc.value = label;
+    lc.font = { bold: !!opts2.bold, size: opts2.big ? 13 : 11, color: { argb: opts2.green ? GREEN : DARK } };
+    lc.alignment = { horizontal: 'right', vertical: 'middle' };
+    const vc = rr.getCell(6);
+    vc.value = { formula };
+    vc.numFmt = '#,##0.00 "₽"';
+    vc.font = { bold: !!opts2.bold, size: opts2.big ? 13 : 11, color: { argb: opts2.green ? GREEN : DARK } };
+    vc.alignment = { horizontal: 'right', vertical: 'middle' };
+    vc.border = { top: thin, bottom: opts2.big ? { style: 'double', color: { argb: NAVY } } : thin };
+    r++;
+  }
+  totalRow('Итого без НДС:', `SUM(F${firstItem}:F${lastItem})`, { bold: true });
+  totalRow(`НДС ${vatPct}%:`, `F${lastItem + 2}*${vatPct / 100}`, {});
+  totalRow('ИТОГО с НДС:', `F${lastItem + 2}+F${lastItem + 3}`, { bold: true, big: true, green: true });
+  r++; // отступ
+
+  // Сумма прописью
+  const totalWithVat = parseFloat(tkp.total_sum || iObj.total_with_vat || 0);
+  ws.mergeCells(`A${r}:F${r}`);
+  const wp = ws.getCell(`A${r}`);
+  wp.value = `Сумма прописью: ${numberToWordsRu(totalWithVat)}`;
+  wp.font = { italic: true, size: 10, color: { argb: DARK } };
+  wp.alignment = { wrapText: true };
+  ws.getRow(r).height = 28; r++;
+  r++;
+
+  // Условия / сроки
+  const conds = [];
+  if (iObj.payment_terms) conds.push(['Условия оплаты:', iObj.payment_terms]);
+  if (tkp.deadline) conds.push(['Срок выполнения:', tkp.deadline]);
+  conds.push(['Срок действия КП:', `${tkp.validity_days || 30} дней`]);
+  for (const [lbl, val] of conds) {
+    const rr = ws.getRow(r);
+    rr.getCell(1).value = lbl;
+    rr.getCell(1).font = { bold: true, size: 10, color: { argb: GREY } };
+    rr.getCell(1).alignment = { vertical: 'top' };
+    ws.mergeCells(`B${r}:F${r}`);
+    rr.getCell(2).value = val;
+    rr.getCell(2).font = { size: 10, color: { argb: DARK } };
+    rr.getCell(2).alignment = { wrapText: true, vertical: 'top' };
+    rr.height = Math.max(15, Math.ceil(String(val).length / 70) * 14);
+    r++;
+  }
+
+  // Обеспечение Заказчика
+  if (Array.isArray(iObj.customer_provides) && iObj.customer_provides.length) {
+    r++;
+    ws.mergeCells(`A${r}:F${r}`);
+    const h = ws.getCell(`A${r}`);
+    h.value = 'Обеспечение Заказчика (вне стоимости работ):';
+    h.font = { bold: true, size: 10, color: { argb: NAVY } };
+    ws.getRow(r).height = 16; r++;
+    for (const x of iObj.customer_provides) {
+      ws.mergeCells(`A${r}:F${r}`);
+      const c = ws.getCell(`A${r}`);
+      c.value = `•  ${x}`;
+      c.font = { size: 9.5, color: { argb: DARK } };
+      c.alignment = { wrapText: true };
+      ws.getRow(r).height = Math.max(14, Math.ceil(String(x).length / 90) * 13);
+      r++;
+    }
+  }
+  r++;
+
+  // Подпись (без печати)
+  r++;
+  const sg = ws.getRow(r); sg.height = 20;
+  sg.getCell(1).value = authorPos + ':';
+  sg.getCell(1).font = { size: 10, color: { argb: GREY } };
+  ws.mergeCells(`B${r}:C${r}`);
+  sg.getCell(2).value = authorName;
+  sg.getCell(2).font = { bold: true, size: 10, color: { argb: DARK } };
+  ws.mergeCells(`E${r}:F${r}`);
+  sg.getCell(5).value = '_______________ / подпись';
+  sg.getCell(5).font = { size: 10, color: { argb: GREY } };
+  sg.getCell(5).alignment = { horizontal: 'center' };
+
+  return await wb.xlsx.writeBuffer();
 }
 
 module.exports = routes;
