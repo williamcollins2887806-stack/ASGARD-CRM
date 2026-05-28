@@ -221,7 +221,7 @@ async function routes(fastify, options) {
       }
 
       const { rows: pRows } = await db.query(`
-        SELECT wp.*, w.pm_id, w.head_pm_id, w.work_title,
+        SELECT wp.*, w.pm_id, w.work_title,
                e.fio AS employee_fio, e.user_id AS employee_user_id
         FROM worker_payments wp
         LEFT JOIN works w ON w.id = wp.work_id
@@ -251,7 +251,7 @@ async function routes(fastify, options) {
       if (adminRoles.includes(role)) {
         hasAccess = true;
       } else if (pmRoles.includes(role)) {
-        hasAccess = p.pm_id === userId || p.head_pm_id === userId;
+        hasAccess = p.pm_id === userId;
       }
 
       if (!hasAccess) {
@@ -404,7 +404,7 @@ async function routes(fastify, options) {
       const eId = parseInt(employee_id), wId = parseInt(work_id);
 
       const { rows: ctx } = await db.query(`
-        SELECT w.pm_id, w.head_pm_id, w.work_title,
+        SELECT w.pm_id, w.work_title,
                e.fio, e.user_id AS employee_user_id
         FROM works w, employees e
         WHERE w.id = $1 AND e.id = $2
@@ -416,7 +416,7 @@ async function routes(fastify, options) {
       const adminRoles = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH'];
       let hasAccess = adminRoles.includes(role);
       if (!hasAccess && (role === 'PM' || role === 'HEAD_PM')) {
-        hasAccess = c.pm_id === userId || c.head_pm_id === userId;
+        hasAccess = c.pm_id === userId;
       }
       if (!hasAccess) return reply.code(403).send({ error: 'Недостаточно прав' });
 
