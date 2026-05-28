@@ -1771,8 +1771,8 @@ window.AsgardTendersPage = (function(){
             <div class="cr-f-field">
               <div class="cr-f-label">Ответственный РП <span class="cr-f-label__req">*</span></div>
               <div id="e_pm_w"></div>
-              ${(user.role==="TO" && (!t || !t.handoff_at)) ? `<div class="cr-f-help">РП назначается Рук. ТО после отправки «На анализ».</div>` : ``}
-              ${(t && t.tender_status==='На анализе') ? `<div class="cr-f-help" style="color:var(--gold)"><b>На анализе.</b> Рук. ТО назначит РП.</div>` : ``}
+              ${(user.role==="TO" && (!t || !t.handoff_at)) ? `<div class="cr-f-help">Выберите предпочтительного РП. Рук. ТО может изменить выбор.</div>` : ``}
+              ${(t && t.tender_status==='На анализе') ? `<div class="cr-f-help" style="color:var(--gold)"><b>На анализе.</b> Рук. ТО рассматривает тендер.</div>` : ``}
               ${(t && t.handoff_at && canReassign) ? `<button class="btn ghost mini" style="margin-top:6px" id="btnReassign">Переназначить</button>` : ``}
             </div>
             <div class="cr-f-field">
@@ -2239,7 +2239,7 @@ window.AsgardTendersPage = (function(){
 
       /* Mount CRSelect for editor fields */
       const _eTypeDis = !full;
-      const _ePmDis = (user.role==="TO") || !full;
+      const _ePmDis = !full;
       const _eStatusDis = !full || isNew;
       // Tender type as CrField.chips (WOW visual) instead of CRSelect
       _typeChipsEl = null;
@@ -3345,6 +3345,70 @@ window.AsgardTendersPage = (function(){
         }
       }
 
+      // ── Отправка тендера на анализ HEAD_TO ──────────────────────────
+      async function sendToAnalysis(id) {
+        const token = localStorage.getItem('asgard_token');
+        const resp = await fetch('/api/tenders/' + id, {
+          method: 'PUT',
+          headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tender_status: 'На анализе' })
+        });
+        const data = await resp.json();
+        if (!resp.ok) { toast("Анализ", data.error || "Ошибка", "err"); return false; }
+        try {
+          const allU = await getUsers();
+          const headTo = (allU || []).filter(u => u.role === 'HEAD_TO');
+          for (const h of headTo) {
+            await notify(h.id, "Тендер на анализ",
+              (data.tender && data.tender.customer_name || "") + " — " + (data.tender && data.tender.tender_title || "") + "\nДедлайн: " + (data.tender && data.tender.docs_deadline || "—"),
+              "#/tenders");
+          }
+        } catch(e) {}
+        toast("Анализ", "Тендер отправлен на анализ Рук. ТО", "ok");
+        return true;
+      }
+
+      // ── После сохранения нового тендера ТО — предлагаем отправить на анализ ──
+      async function openAfterSave(id) {
+        if (!id) return;
+        if (isNew && user.role === 'TO') {
+          AsgardUI.showModal({
+            title: 'Отправить на анализ?',
+            icon: '📊',
+            html: '<div style="color:var(--t2);margin-bottom:20px;font-size:14px">Тендер сохранён в статусе <b style="color:var(--t1)">Новый</b>. Отправить Рук. ТО на анализ прямо сейчас?</div>' +
+              '<div style="display:flex;gap:10px">' +
+                '<button class="btn primary" id="_btnAnalysisNow">📊 Отправить на анализ</button>' +
+                '<button class="btn ghost" id="_btnAnalysisLater">Отправлю позже</button>' +
+              '</div>'
+          });
+          document.getElementById('_btnAnalysisNow').addEventListener('click', async () => {
+            const btn = document.getElementById('_btnAnalysisNow');
+            if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Отправляем...'; }
+            try {
+              const ok = await sendToAnalysis(id);
+              if (ok) {
+                AsgardUI.hideModal();
+                await render({ layout, title });
+                openTenderEditor(id);
+              } else {
+                if (btn) { btn.disabled = false; btn.innerHTML = '📊 Отправить на анализ'; }
+              }
+            } catch(e) {
+              toast("Ошибка", "Ошибка сети", "err");
+              if (btn) { btn.disabled = false; btn.innerHTML = '📊 Отправить на анализ'; }
+            }
+          });
+          document.getElementById('_btnAnalysisLater').addEventListener('click', async () => {
+            AsgardUI.hideModal();
+            await render({ layout, title });
+            openTenderEditor(id);
+          });
+        } else {
+          await render({ layout, title });
+          openTenderEditor(id);
+        }
+      }
+
       document.getElementById("btnSave").addEventListener("click", async ()=>{
         if (isNew) {
           // Check required fields — offer draft save if missing
@@ -3408,7 +3472,7 @@ window.AsgardTendersPage = (function(){
                 duplicates,
                 async () => {
                   const id = await saveTender();
-                  if(id){ await render({layout, title}); openTenderEditor(id); }
+                  await openAfterSave(id);
                 },
                 () => {
                   toast("Отменено", "Создание тендера отменено");
@@ -3421,36 +3485,18 @@ window.AsgardTendersPage = (function(){
 
         // Обычное сохранение (без дубликатов или редактирование)
         const id = await saveTender();
-        if(id){ await render({layout, title}); openTenderEditor(id); }
+        await openAfterSave(id);
       });
 
       if(document.getElementById("btnDist")){
         document.getElementById("btnDist").addEventListener("click", async ()=>{
           const id = isNew ? await saveTender() : tenderId;
           if(!id) return;
-
           const btnEl = document.getElementById("btnDist");
           if(btnEl) btnEl.disabled = true;
           try {
-            const token = localStorage.getItem('asgard_token');
-            const resp = await fetch(`/api/tenders/${id}`, {
-              method: 'PUT',
-              headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ tender_status: 'На анализе' })
-            });
-            const data = await resp.json();
-            if(!resp.ok){ toast("Анализ", data.error || "Ошибка", "err"); if(btnEl) btnEl.disabled=false; return; }
-
-            // Уведомляем HEAD_TO
-            try{
-              const allU = await getUsers();
-              const headTo = (allU||[]).filter(u=>u.role==='HEAD_TO');
-              for(const h of headTo){
-                await notify(h.id, "Тендер на анализ", `${data.tender?.customer_name||""} — ${data.tender?.tender_title||""}\nДедлайн: ${data.tender?.docs_deadline||"—"}`, "#/tenders");
-              }
-            }catch(e){}
-
-            toast("Анализ","Тендер отправлен на анализ Рук. ТО","ok");
+            const ok = await sendToAnalysis(id);
+            if (!ok) { if(btnEl) btnEl.disabled = false; return; }
             await render({layout, title});
             openTenderEditor(id);
           } catch(e) {
