@@ -747,7 +747,7 @@ window.AsgardContractsPage = (function(){
   function formatMoney(amount) { return AsgardUI.money(amount) + ' ₽'; }
 
   // ═══════ WOW Модалка создания нового контрагента (inline из договора) ═══════
-  function openNewCustomerModal(onCreated) {
+  function openNewCustomerModal(onCreated, opts) {
     // Не открывать дубль — если уже открыта, закрыть старую
     const existing = document.getElementById('newCustomerModal');
     if (existing) existing.remove();
@@ -955,9 +955,10 @@ window.AsgardContractsPage = (function(){
     }
 
     // ── Закрытие ──
-    const closeNcm = () => { CRAutocomplete.destroy('ncmSmartSearch'); ncModal.remove(); document.removeEventListener('keydown', ncKey); };
+    const closeNcm = () => { CRAutocomplete.destroy('ncmSmartSearch'); ncModal.remove(); document.removeEventListener('keydown', ncKey, true); };
     const ncKey = (e) => { if (e.key === 'Escape') { e.stopImmediatePropagation(); closeNcm(); } };
-    document.addEventListener('keydown', ncKey);
+    // capture-фаза: Escape закрывает ТОЛЬКО эту модалку, а не родительскую (тендер) под ней
+    document.addEventListener('keydown', ncKey, true);
     // Store cleanup fn on DOM element so parent modal can clean up if it closes first
     ncModal._cleanup = closeNcm;
     ncModal.querySelectorAll('.ncm-close').forEach(b => b.addEventListener('click', closeNcm));
@@ -1287,6 +1288,20 @@ window.AsgardContractsPage = (function(){
         saveBtn.innerHTML = 'Создать контрагента';
       }
     });
+
+    // ── Prefill из ДаДата (когда модалку открыли из карточки тендера по выбранному ИНН) ──
+    if (opts && (opts.prefill || opts.prefillInn)) {
+      const p = opts.prefill || {};
+      const innP = String(p.inn || opts.prefillInn || '').replace(/\D/g, '');
+      if (p.name || p.full_name || p.kpp || p.ogrn || p.address) {
+        cascadeFill({ inn: innP, kpp: p.kpp, name: p.name, full_name: p.full_name, ogrn: p.ogrn, address: p.address });
+        egrjulBadge.innerHTML = '<div class="ncm-egrjul-badge ok"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 7 7 11 13 3"/></svg>Данные из ЕГРЮЛ</div>';
+        egrjulBadge.style.display = 'block';
+      } else if (innP.length === 10 || innP.length === 12) {
+        innInput.value = innP;
+        doLookup();
+      }
+    }
 
     // ── Автофокус на Smart Search ──
     setTimeout(() => smartSearch.focus(), 100);

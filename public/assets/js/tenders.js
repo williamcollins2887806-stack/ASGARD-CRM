@@ -2627,6 +2627,11 @@ window.AsgardTendersPage = (function(){
             }
             updateInnUi();
             updateCustomerScore(item.value || item.label || "");
+            // Новый ИНН (нет в локальной базе) → предложить создать карточку контрагента
+            const innSel = normInn(_selectedInn);
+            if ((innSel.length === 10 || innSel.length === 12) && !byInn.has(innSel)) {
+              promptCreateCustomer(innSel, _selectedFromDadata);
+            }
           }
         }));
       }
@@ -2675,32 +2680,65 @@ window.AsgardTendersPage = (function(){
       }
       if(t && t.customer_name){ updateCustomerScore(t.customer_name); }
 
-      // Кнопка «Создать контрагента» — открывает openNewCustomerModal БЕЗ закрытия модалки тендера.
-      // После создания подставляет в поле и в _selectedInn.
+      // Колбэк после создания контрагента — подставляет в тендер БЕЗ закрытия модалки тендера.
+      const onCustomerCreated = (created) => {
+        if (!created || !created.inn) return;
+        _selectedInn = String(created.inn);
+        _selectedFromDadata = null;
+        // Гарантированно кладём нового контрагента в локальное состояние
+        // (AsgardDB.all кэшируется на 30с, поэтому обновляем byInn/custList напрямую).
+        byInn.set(String(created.inn), created);
+        if (Array.isArray(custList) && !custList.some(c => String(c.inn||"") === String(created.inn))) {
+          custList.push(created);
+        }
+        if (nameInput) {
+          nameInput.value = created.short_name || created.name || created.full_name || '';
+          CRAutocomplete.setValue('e_customer', nameInput.value);
+        }
+        updateInnUi();
+        updateCustomerScore(nameInput?.value || '');
+        toast('Контрагент', 'Создан и подставлен в тендер', 'ok');
+      };
+
+      // Открывает модалку создания контрагента ПОВЕРХ тендера (тендер не закрывается).
+      const openCustomerCreator = (inn, dadataRaw) => {
+        if (!window.AsgardContractsPage || !AsgardContractsPage.openNewCustomerModal) {
+          toast('Контрагент', 'Модуль договоров не загружен. Перейдите в раздел «Заказчики».', 'err');
+          return;
+        }
+        AsgardContractsPage.openNewCustomerModal(onCustomerCreated, {
+          prefillInn: inn || normInn(_selectedInn),
+          prefill: dadataRaw || _selectedFromDadata || null
+        });
+      };
+
+      // Попап-подтверждение «создать карточку?» при вводе нового ИНН.
+      let _createPromptInn = null; // чтобы не спамить попапом по одному и тому же ИНН
+      function promptCreateCustomer(inn, dadataRaw){
+        if (!inn || _createPromptInn === inn) return;
+        _createPromptInn = inn;
+        const nm = (dadataRaw && (dadataRaw.name || dadataRaw.full_name)) ? esc(dadataRaw.name || dadataRaw.full_name) : '';
+        const html = `
+          <div style="padding:4px 2px">
+            <div style="font-size:14px;color:var(--t2);line-height:1.55;margin-bottom:20px">
+              Контрагента с ИНН <b>${esc(inn)}</b>${nm ? ' (<b>'+nm+'</b>)' : ''} нет в базе.<br>Создать карточку контрагента?
+            </div>
+            <div style="display:flex;gap:10px;justify-content:flex-end">
+              <button type="button" class="btn ghost" id="ccNo">Не сейчас</button>
+              <button type="button" class="btn primary" id="ccYes">➕ Создать карточку</button>
+            </div>
+          </div>`;
+        showModal({ title: 'Новый контрагент', html, icon: '🏢' });
+        const yes = document.getElementById('ccYes');
+        const no  = document.getElementById('ccNo');
+        if (yes) yes.onclick = () => { hideModal(); openCustomerCreator(inn, dadataRaw); };
+        if (no)  no.onclick  = () => { hideModal(); };
+      }
+
+      // Кнопка «Создать контрагента» (ручной триггер) — сразу открывает создание, без повторного попапа.
       if (btnCreateCustomer) {
         btnCreateCustomer.addEventListener('click', () => {
-          if (!window.AsgardContractsPage || !AsgardContractsPage.openNewCustomerModal) {
-            toast('Контрагент', 'Модуль договоров не загружен. Перейдите в раздел «Заказчики».', 'err');
-            return;
-          }
-          AsgardContractsPage.openNewCustomerModal(async (created) => {
-            if (!created || !created.inn) return;
-            _selectedInn = String(created.inn);
-            _selectedFromDadata = null;
-            // Перезагружаем custList чтобы byInn увидел нового клиента (фон)
-            try {
-              const fresh = await AsgardDB.all("customers");
-              const freshById = new Map(fresh.map(c=>[String(c.inn||""), c]));
-              freshById.forEach((v,k) => byInn.set(k,v));
-            } catch(_) {}
-            if (nameInput) {
-              nameInput.value = created.short_name || created.name || created.full_name || '';
-              CRAutocomplete.setValue('e_customer', nameInput.value);
-            }
-            updateInnUi();
-            updateCustomerScore(nameInput?.value || '');
-            toast('Контрагент', 'Создан и подставлен в тендер', 'ok');
-          });
+          openCustomerCreator(normInn(_selectedInn), _selectedFromDadata);
         });
       }
 
@@ -3284,7 +3322,9 @@ window.AsgardTendersPage = (function(){
           };
           // Customer directory validation (no auto-create)
           if(customer_inn && (customer_inn.length===10 || customer_inn.length===12)){
-            const exists = await AsgardDB.get("customers", customer_inn);
+            // byInn обновляется при создании контрагента из этой же модалки;
+            // fallback на сервер для существующих (AsgardDB.get кэширует негатив на 30с).
+            const exists = byInn.has(customer_inn) || await AsgardDB.get("customers", customer_inn);
             if(!exists){ toast("Контрагент","ИНН не найден в базе. Создайте карточку контрагента.","err",7000); return null; }
           }else{
             const nm = String(customer||"").trim().toLowerCase();
