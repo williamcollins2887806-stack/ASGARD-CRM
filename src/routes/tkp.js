@@ -87,15 +87,20 @@ async function routes(fastify, options) {
   fastify.get('/', {
     preHandler: [fastify.authenticate]
   }, async (request) => {
-    const { tender_id, status, limit = 100, offset = 0 } = request.query;
+    const { tender_id, status, link_type, client_decision, customer_inn, limit = 100, offset = 0 } = request.query;
     const userRole = request.user.role;
     const userId = request.user.id;
 
     let sql = `
-      SELECT t.*, u.name as creator_name, te.customer_name as tender_customer
+      SELECT t.*, u.name as creator_name,
+             te.customer_name as tender_customer, te.tender_title,
+             pt.customer_name as pre_tender_customer,
+             cdec.name as client_decision_by_name
       FROM tkp t
-      LEFT JOIN users u ON t.author_id = u.id
-      LEFT JOIN tenders te ON t.tender_id = te.id
+      LEFT JOIN users u    ON t.author_id          = u.id
+      LEFT JOIN users cdec ON t.client_decision_by = cdec.id
+      LEFT JOIN tenders te ON t.tender_id          = te.id
+      LEFT JOIN pre_tender_requests pt ON t.pre_tender_id = pt.id
       WHERE 1=1
     `;
     const params = [];
@@ -106,8 +111,11 @@ async function routes(fastify, options) {
       params.push(userId);
     }
 
-    if (tender_id) { sql += ` AND t.tender_id = $${idx++}`; params.push(tender_id); }
-    if (status) { sql += ` AND t.status = $${idx++}`; params.push(status); }
+    if (tender_id)       { sql += ` AND t.tender_id = $${idx++}`;       params.push(tender_id); }
+    if (status)          { sql += ` AND t.status = $${idx++}`;           params.push(status); }
+    if (link_type)       { sql += ` AND t.link_type = $${idx++}`;        params.push(link_type); }
+    if (client_decision) { sql += ` AND t.client_decision = $${idx++}`;  params.push(client_decision); }
+    if (customer_inn)    { sql += ` AND t.customer_inn = $${idx++}`;     params.push(customer_inn); }
 
     sql += ` ORDER BY t.id DESC LIMIT $${idx++} OFFSET $${idx++}`;
     params.push(Math.min(parseInt(limit), 200), parseInt(offset));
@@ -142,7 +150,8 @@ async function routes(fastify, options) {
     const { subject, title, tender_id, work_id, customer_name, customer_inn,
             contact_person, contact_phone, contact_email, customer_email,
             items, content_json, services, total_sum, deadline, validity_days,
-            source, customer_address, work_description, estimate_id } = request.body;
+            source, customer_address, work_description, estimate_id,
+            link_type, pre_tender_id, purpose_reason } = request.body;
 
     const subj = subject || title;
     if (!subj || !String(subj).trim()) {
@@ -160,13 +169,20 @@ async function routes(fastify, options) {
       ? (typeof items === 'string' ? items : JSON.stringify(items))
       : (content_json ? JSON.stringify(content_json) : '{}');
 
+    // Авто-определение link_type: если явно не передан — вычисляем из FK
+    const resolvedLinkType = link_type ||
+      (tender_id     ? 'tender'         :
+       work_id       ? 'work'           :
+       pre_tender_id ? 'direct_request' : 'standalone');
+
     const { rows } = await db.query(`
       INSERT INTO tkp (subject, tender_id, work_id, customer_name, customer_inn,
                         contact_person, contact_phone, contact_email,
                         customer_address, work_description,
                         items, services, total_sum, deadline, validity_days,
-                        author_id, source, estimate_id)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+                        author_id, source, estimate_id,
+                        link_type, pre_tender_id, purpose_reason)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
       RETURNING *
     `, [
       subj.trim(), tender_id || null, work_id || null,
@@ -176,7 +192,8 @@ async function routes(fastify, options) {
       customer_address || null, work_description || null,
       itemsVal, services || null, total_sum || 0,
       deadline || null, validity_days || 30, request.user.id,
-      source || null, estimate_id || null
+      source || null, estimate_id || null,
+      resolvedLinkType, pre_tender_id || null, purpose_reason || null
     ]);
 
     const newTkp = rows[0];
@@ -487,7 +504,9 @@ async function routes(fastify, options) {
     const allowed = ['subject', 'tender_id', 'work_id', 'customer_name', 'customer_inn',
                      'contact_person', 'contact_phone', 'contact_email',
                      'items', 'services', 'total_sum', 'deadline', 'validity_days', 'tkp_type',
-                     'source', 'customer_address', 'work_description', 'estimate_id'];
+                     'source', 'customer_address', 'work_description', 'estimate_id',
+                     'link_type', 'pre_tender_id', 'purpose_reason',
+                     'client_decision', 'client_decision_comment'];
     const updates = [];
     const values = [];
     let idx = 1;
@@ -607,8 +626,9 @@ async function routes(fastify, options) {
                         contact_person, contact_phone, contact_email,
                         customer_address, work_description,
                         items, services, total_sum, deadline, validity_days,
-                        author_id, source, estimate_id, tkp_type)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+                        author_id, source, estimate_id, tkp_type,
+                        link_type, pre_tender_id, purpose_reason)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
       RETURNING *
     `, [
       '(Копия) ' + (src.subject || ''), src.tender_id, src.work_id,
@@ -617,7 +637,8 @@ async function routes(fastify, options) {
       src.customer_address, src.work_description,
       src.items ? (typeof src.items === 'string' ? src.items : JSON.stringify(src.items)) : '{}',
       src.services, src.total_sum, src.deadline, src.validity_days || 30,
-      request.user.id, src.source, src.estimate_id, src.tkp_type
+      request.user.id, src.source, src.estimate_id, src.tkp_type,
+      src.link_type || 'standalone', src.pre_tender_id || null, src.purpose_reason || null
     ]);
 
     return { item: copy };
@@ -1461,3 +1482,327 @@ async function generateTkpExcel(tkp, db) {
 }
 
 module.exports = routes;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Дополнительные endpoints (V128): парсинг файлов, загрузка готового ТКП,
+// решение клиента, скачать оригинальный файл.
+// Регистрируются в той же функции routes — чтобы не плодить отдельный файл.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Добавить в routes() следующие endpoint-ы (вызывается из patch ниже):
+ *
+ * POST  /parse-attachment        — парсинг файла, без сохранения в БД
+ * POST  /upload-ready            — multipart: поля + файл → создать ТКП + сохранить файл
+ * POST  /:id/client-decision     — отметить решение клиента (accepted/rejected/no_response)
+ * GET   /:id/attachment          — скачать оригинальный прикреплённый файл
+ *
+ * Расширения существующих endpoint-ов (inline патчи ниже):
+ * GET   /   — новые фильтры: link_type, client_decision, customer_inn
+ * POST  /   — новые поля: link_type, pre_tender_id, purpose_reason + auto-detect link_type
+ * PUT   /:id — новые поля: те же
+ */
+
+// Патч: регистрируем дополнительные endpoint-ы поверх уже экспортированной routes().
+const _origRoutes = module.exports;
+
+module.exports = async function routesWithExtensions(fastify, options) {
+  // Регистрируем исходные маршруты
+  await _origRoutes(fastify, options);
+
+  const db = fastify.db;
+  const { createNotification } = require('../services/notify');
+
+  const tkpParser = require('../services/tkp-parser');
+  const pathLib   = require('path');
+  const fsLib     = require('fs');
+
+  const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads';
+  const EDIT_ROLES  = ['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // POST /api/tkp/parse-attachment
+  // Принимает один файл (multipart), возвращает структуру parsed-ТКП.
+  // Ничего не сохраняет в БД.
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.post('/parse-attachment', {
+    preHandler: [fastify.requireRoles(EDIT_ROLES)]
+  }, async (request, reply) => {
+    let data;
+    try {
+      data = await request.file();
+    } catch (e) {
+      return reply.code(400).send({ error: 'Файл не передан или превышен лимит размера (200 МБ)' });
+    }
+    if (!data) return reply.code(400).send({ error: 'Файл не передан' });
+
+    let buf;
+    try {
+      buf = await data.toBuffer();
+    } catch (e) {
+      return reply.code(400).send({ error: 'Не удалось прочитать файл: ' + e.message });
+    }
+
+    if (data.file.truncated) {
+      return reply.code(413).send({ error: 'Файл превышает 200 МБ' });
+    }
+
+    try {
+      const result = await tkpParser.parseTkpBuffer({
+        buf,
+        originalName: data.filename || 'file',
+        mime: data.mimetype
+      });
+      return { success: true, ...result };
+    } catch (err) {
+      request.log.error(err, '[TKP parse-attachment]');
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // POST /api/tkp/upload-ready
+  // Multipart форма: поля ТКП + один файл.
+  // Создаёт запись в tkp + сохраняет оригинальный файл + вносит в documents.
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.post('/upload-ready', {
+    preHandler: [fastify.requireRoles(EDIT_ROLES)]
+  }, async (request, reply) => {
+    const body   = {};
+    let fileBuf  = null;
+    let fileInfo = null;
+
+    // Итерируем multipart-части: поля → body, файл → fileBuf
+    for await (const part of request.parts()) {
+      if (part.type === 'file') {
+        try {
+          fileBuf  = await part.toBuffer();
+          fileInfo = { filename: part.filename, mimetype: part.mimetype, truncated: part.file.truncated };
+        } catch (e) {
+          return reply.code(400).send({ error: 'Не удалось прочитать файл: ' + e.message });
+        }
+      } else {
+        body[part.fieldname] = part.value;
+      }
+    }
+
+    if (!fileBuf || !fileInfo) return reply.code(400).send({ error: 'Файл обязателен' });
+    if (fileInfo.truncated) return reply.code(413).send({ error: 'Файл превышает 200 МБ' });
+
+    const subject = String(body.subject || body.title || '').trim();
+    if (!subject) return reply.code(400).send({ error: 'Обязательное поле: subject' });
+
+    // Определяем link_type
+    const tenderId    = body.tender_id     ? parseInt(body.tender_id)     : null;
+    const preTenderId = body.pre_tender_id ? parseInt(body.pre_tender_id) : null;
+    const workId      = body.work_id       ? parseInt(body.work_id)       : null;
+    const linkType    = body.link_type     ||
+      (tenderId    ? 'tender'         :
+       preTenderId ? 'direct_request' :
+       workId      ? 'work'           : 'standalone');
+
+    // Парсим items если переданы строкой
+    let itemsVal = '{}';
+    if (body.items) {
+      try {
+        const parsed = typeof body.items === 'string' ? JSON.parse(body.items) : body.items;
+        itemsVal = JSON.stringify(parsed);
+      } catch (_) { itemsVal = '{}'; }
+    }
+
+    // INSERT tkp
+    const { rows: [newTkp] } = await db.query(`
+      INSERT INTO tkp (
+        subject, tender_id, work_id, pre_tender_id, link_type,
+        customer_name, customer_inn, customer_address,
+        contact_person, contact_phone, contact_email,
+        items, total_sum, deadline, validity_days,
+        source, status, parsed_from_attachment,
+        purpose_reason, author_id
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+      RETURNING *
+    `, [
+      subject,
+      tenderId, workId, preTenderId, linkType,
+      body.customer_name || null, body.customer_inn || null, body.customer_address || null,
+      body.contact_person || null, body.contact_phone || null, body.contact_email || null,
+      itemsVal,
+      parseFloat(body.total_sum || 0) || 0,
+      body.deadline || null,
+      parseInt(body.validity_days || 30) || 30,
+      'uploaded', 'sent',
+      body.parsed_from_attachment === 'true' || body.parsed_from_attachment === true,
+      body.purpose_reason || null,
+      request.user.id
+    ]);
+
+    // Сохраняем файл на диск
+    const ext       = pathLib.extname(fileInfo.filename || '').toLowerCase() || '.bin';
+    const safeExt   = ext.replace(/[^a-z0-9.]/gi, '');
+    const ts        = Date.now();
+    const filename  = `tkp_ready_${newTkp.id}_${ts}${safeExt}`;
+    const tkpDir    = pathLib.join(UPLOAD_DIR, 'tkp', 'ready');
+    fsLib.mkdirSync(tkpDir, { recursive: true });
+    const absPath   = pathLib.join(tkpDir, filename);
+    const relPath   = pathLib.join('tkp', 'ready', filename);
+
+    try {
+      fsLib.writeFileSync(absPath, fileBuf);
+    } catch (e) {
+      request.log.error(e, '[TKP upload-ready] file save failed');
+      return reply.code(500).send({ error: 'Не удалось сохранить файл на диск' });
+    }
+
+    // Обновляем attachment_* в tkp
+    await db.query(`
+      UPDATE tkp SET
+        attachment_path = $1, attachment_mime = $2,
+        attachment_original_name = $3, attachment_size = $4,
+        updated_at = NOW()
+      WHERE id = $5
+    `, [relPath, fileInfo.mimetype, fileInfo.filename, fileBuf.length, newTkp.id]);
+
+    // Вносим в documents (для единообразия с остальными файлами тендера)
+    try {
+      await db.query(`
+        INSERT INTO documents (filename, original_name, mime_type, size, type, tender_id, uploaded_by, download_url, created_at)
+        VALUES ($1, $2, $3, $4, 'tkp', $5, $6, $7, NOW())
+      `, [
+        pathLib.join('tkp', 'ready', filename),
+        fileInfo.filename,
+        fileInfo.mimetype,
+        fileBuf.length,
+        tenderId || null,
+        request.user.id,
+        `/uploads/tkp/ready/${filename}`
+      ]);
+    } catch (docErr) {
+      request.log.warn('[TKP upload-ready] documents insert failed: ' + docErr.message);
+    }
+
+    // Если создавался из прямого запроса — проставляем обратную ссылку
+    if (preTenderId) {
+      await db.query(
+        'UPDATE pre_tender_requests SET created_tkp_id = $1 WHERE id = $2 AND created_tkp_id IS NULL',
+        [newTkp.id, preTenderId]
+      );
+    }
+
+    const { rows: [full] } = await db.query('SELECT * FROM tkp WHERE id = $1', [newTkp.id]);
+    return { item: full };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // POST /api/tkp/:id/client-decision
+  // Отметить решение клиента по ТКП.
+  // При accepted/rejected + link_type='tender' → меняет tender_status.
+  // При rejected + link_type='direct_request' → меняет pre_tender status.
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.post('/:id/client-decision', {
+    preHandler: [fastify.requireRoles(EDIT_ROLES)]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    const { decision, comment } = request.body || {};
+
+    const VALID_DECISIONS = ['accepted', 'rejected', 'no_response'];
+    if (!VALID_DECISIONS.includes(decision)) {
+      return reply.code(400).send({ error: `decision должен быть одним из: ${VALID_DECISIONS.join(', ')}` });
+    }
+
+    const { rows: [tkp] } = await db.query('SELECT * FROM tkp WHERE id = $1', [id]);
+    if (!tkp) return reply.code(404).send({ error: 'ТКП не найден' });
+
+    // Обновляем ТКП
+    const { rows: [updated] } = await db.query(`
+      UPDATE tkp SET
+        client_decision         = $1,
+        client_decision_at      = NOW(),
+        client_decision_by      = $2,
+        client_decision_comment = $3,
+        updated_at              = NOW()
+      WHERE id = $4
+      RETURNING *
+    `, [decision, request.user.id, comment || null, id]);
+
+    // Каскадные действия по типу связи
+    if (tkp.link_type === 'tender' && tkp.tender_id) {
+      if (decision === 'accepted') {
+        await db.query(
+          `UPDATE tenders SET tender_status = 'Выиграли', updated_at = NOW()
+           WHERE id = $1 AND tender_status NOT IN ('Выиграли','Проиграли','Отменён')`,
+          [tkp.tender_id]
+        );
+      } else if (decision === 'rejected') {
+        await db.query(
+          `UPDATE tenders SET tender_status = 'Проиграли', updated_at = NOW()
+           WHERE id = $1 AND tender_status NOT IN ('Выиграли','Проиграли','Отменён')`,
+          [tkp.tender_id]
+        );
+      }
+    } else if (tkp.link_type === 'direct_request' && tkp.pre_tender_id && decision === 'rejected') {
+      await db.query(
+        `UPDATE pre_tender_requests SET status = 'rejected', decision_at = NOW(), decision_by = $1 WHERE id = $2`,
+        [request.user.id, tkp.pre_tender_id]
+      );
+    }
+
+    // Уведомляем автора ТКП
+    if (tkp.author_id && tkp.author_id !== request.user.id) {
+      const decisionLabels = { accepted: '✅ Принято клиентом', rejected: '❌ Отказ клиента', no_response: '⏳ Нет ответа' };
+      createNotification(db, {
+        user_id: tkp.author_id,
+        title: decisionLabels[decision] || decision,
+        message: `ТКП «${tkp.subject}»${comment ? ': ' + comment : ''}`,
+        type: 'tkp',
+        link: `#/tkp?id=${id}`
+      });
+    }
+
+    // Аудит
+    try {
+      await db.query(
+        `INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, details, created_at)
+         VALUES ($1, 'tkp', $2, 'client_decision', $3, NOW())`,
+        [request.user.id, id, JSON.stringify({ decision, comment, link_type: tkp.link_type })]
+      );
+    } catch (_) {}
+
+    return { item: updated };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // GET /api/tkp/:id/attachment
+  // Скачать оригинальный прикреплённый файл (только для ТКП с attachment_path).
+  // Поддерживает ?token= как GET /:id/pdf.
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.get('/:id/attachment', {
+    preHandler: [
+      async (request, reply) => {
+        if (!request.headers.authorization && request.query.token) {
+          request.headers.authorization = 'Bearer ' + request.query.token;
+        }
+      },
+      fastify.authenticate
+    ]
+  }, async (request, reply) => {
+    const { rows: [tkp] } = await db.query('SELECT * FROM tkp WHERE id = $1', [request.params.id]);
+    if (!tkp) return reply.code(404).send({ error: 'ТКП не найден' });
+    if (!tkp.attachment_path) return reply.code(404).send({ error: 'Файл не прикреплён к этому ТКП' });
+
+    const absPath = pathLib.resolve(UPLOAD_DIR, tkp.attachment_path);
+    // Защита path-traversal
+    if (!absPath.startsWith(pathLib.resolve(UPLOAD_DIR))) {
+      return reply.code(403).send({ error: 'Доступ запрещён' });
+    }
+
+    if (!fsLib.existsSync(absPath)) {
+      return reply.code(404).send({ error: 'Файл не найден на диске' });
+    }
+
+    const mime     = tkp.attachment_mime || 'application/octet-stream';
+    const dispName = encodeURIComponent(tkp.attachment_original_name || pathLib.basename(tkp.attachment_path));
+    reply.header('Content-Type', mime);
+    reply.header('Content-Disposition', `attachment; filename*=UTF-8''${dispName}`);
+    return reply.send(fsLib.createReadStream(absPath));
+  });
+};

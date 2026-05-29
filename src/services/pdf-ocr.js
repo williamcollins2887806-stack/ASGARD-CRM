@@ -356,10 +356,58 @@ async function ocrWorkDocuments(workId) {
   return results;
 }
 
+/**
+ * OCR PDF-файла по пути на диске (без привязки к БД).
+ * Используется в tkp-parser для скан-PDF при загрузке готового ТКП.
+ * @param {string} pdfPath  Абсолютный путь к файлу на диске
+ * @param {string} originalName  Для anti-hallucination эвристики
+ * @returns {Promise<string>}
+ */
+async function ocrPdfPath(pdfPath, originalName) {
+  const { tmpDir, pages } = await _pdfToPages(pdfPath);
+  try {
+    if (pages.length === 0) return '';
+    const texts = [];
+    for (const p of pages) {
+      try {
+        const txt = await _ocrOnePage(p.path, p.page_number, originalName);
+        texts.push(txt.trim());
+      } catch (e) {
+        console.warn(`[OCR:pdfPath] page ${p.page_number} failed: ${e.message}`);
+        texts.push(`[ошибка OCR стр.${p.page_number}]`);
+      }
+    }
+    return texts.join('\n\n');
+  } finally {
+    await _cleanup(tmpDir);
+  }
+}
+
+/**
+ * OCR буфера изображения (JPG/PNG/WEBP) без записи документа в БД.
+ * Используется в tkp-parser для загружаемых фото/скринов ТКП.
+ * @param {Buffer} buf
+ * @param {string} mime  MIME-тип (image/jpeg, image/png, ...)
+ * @param {string} originalName
+ * @returns {Promise<string>}
+ */
+async function ocrImageBuffer(buf, mime, originalName) {
+  const ext = (mime || '').includes('png') ? '.png' : '.jpg';
+  const tmpPath = path.join(os.tmpdir(), `tkp_img_${Date.now()}${ext}`);
+  try {
+    await fs.writeFile(tmpPath, buf);
+    return await _ocrOnePage(tmpPath, 1, originalName);
+  } finally {
+    try { await fs.unlink(tmpPath); } catch (_) {}
+  }
+}
+
 module.exports = {
   ocrDocument,
   ocrTenderDocuments,
   ocrWorkDocuments,
+  ocrPdfPath,
+  ocrImageBuffer,
   OCR_MODEL,
   OCR_MAX_PAGES
 };
