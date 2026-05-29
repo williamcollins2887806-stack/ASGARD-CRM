@@ -888,9 +888,9 @@ window.AsgardContractsPage = (function(){
     // Динамически берём z-index выше топ-overlay.
     (function liftAboveAllModals() {
       let maxZ = 0;
-      document.querySelectorAll('.cr-m-overlay, [style*="z-index"]').forEach(el => {
-        if (el === ncOverlay || el.contains(ncOverlay)) return;
-        const z = parseInt(window.getComputedStyle(el).zIndex, 10);
+      // Только AsgardUI-оверлеи (cr-m-overlay имеют inline z-index из showModal)
+      document.querySelectorAll('.cr-m-overlay').forEach(el => {
+        const z = parseInt(el.style.zIndex || window.getComputedStyle(el).zIndex, 10);
         if (Number.isFinite(z) && z > maxZ) maxZ = z;
       });
       ncOverlay.style.zIndex = String(Math.max(maxZ + 50, 12000));

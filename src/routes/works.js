@@ -159,6 +159,29 @@ async function routes(fastify, options) {
           link: `#/pm-works?id=${work.id}`
         });
       }
+
+      // Автоматически создать групповой чат в MAX для работы
+      try {
+        const max = require('../services/max-messenger');
+        if (max.isEnabled()) {
+          const { chat_id } = await max.createWorkChat(work.id, work.work_title);
+          const inviteLink = await max.getChatInviteLink(chat_id);
+          await db.query(
+            'UPDATE works SET max_chat_id=$1, max_invite_link=$2, max_chat_created_at=NOW() WHERE id=$3',
+            [chat_id, inviteLink, work.id]
+          );
+          // Первое сообщение в чате
+          await max.sendMessage(chat_id,
+            `🏗️ Создана работа «${work.work_title}»\nЭтот чат — рабочее пространство для всех участников объекта.`
+          );
+          work.max_chat_id = chat_id;
+          work.max_invite_link = inviteLink;
+          fastify.log.info(`[MAX] Chat created for work #${work.id}: chat_id=${chat_id}`);
+        }
+      } catch (maxErr) {
+        fastify.log.warn(`[MAX] Не удалось создать чат для работы #${work.id}:`, maxErr.message);
+      }
+
       return { work };
     } catch (err) {
       fastify.log.error('Works POST error:', err);

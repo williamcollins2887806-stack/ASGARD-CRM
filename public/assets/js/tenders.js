@@ -2619,16 +2619,19 @@ window.AsgardTendersPage = (function(){
           },
           onSelect: (item) => {
             if (!item) return;
+            const prevInn = normInn(_selectedInn);
             _selectedInn = item.inn || "";
             if (item._source === 'dadata') {
               _selectedFromDadata = item._raw || null;
             } else {
               _selectedFromDadata = null;
             }
+            // При смене ИНН — разрешаем повторный popup для прежнего ИНН
+            const innSel = normInn(_selectedInn);
+            if (_createPromptInn && innSel !== _createPromptInn) _createPromptInn = null;
             updateInnUi();
             updateCustomerScore(item.value || item.label || "");
             // Новый ИНН (нет в локальной базе) → предложить создать карточку контрагента
-            const innSel = normInn(_selectedInn);
             if ((innSel.length === 10 || innSel.length === 12) && !byInn.has(innSel)) {
               promptCreateCustomer(innSel, _selectedFromDadata);
             }
@@ -2732,7 +2735,7 @@ window.AsgardTendersPage = (function(){
         const yes = document.getElementById('ccYes');
         const no  = document.getElementById('ccNo');
         if (yes) yes.onclick = () => { hideModal(); openCustomerCreator(inn, dadataRaw); };
-        if (no)  no.onclick  = () => { hideModal(); };
+        if (no)  no.onclick  = () => { _createPromptInn = null; hideModal(); };
       }
 
       // Кнопка «Создать контрагента» (ручной триггер) — сразу открывает создание, без повторного попапа.
@@ -2756,6 +2759,15 @@ window.AsgardTendersPage = (function(){
           if (hit && !_selectedInn) { _selectedInn = String(hit.inn||""); }
           updateInnUi();
           updateCustomerScore(nameInput.value);
+        });
+        // Ручной ввод ИНН — 10/12 цифр без выбора из автодопа
+        nameInput.addEventListener('blur', () => {
+          const v = nameInput.value.trim();
+          if (/^\d{10,12}$/.test(v)) {
+            const inn = v.replace(/\D/g, '');
+            if (normInn(_selectedInn) !== inn) { _selectedInn = inn; updateInnUi(); }
+            if (!byInn.has(inn)) promptCreateCustomer(inn, null);
+          }
         });
         let scoreTimeout;
         nameInput.addEventListener('input', () => {

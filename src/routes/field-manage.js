@@ -234,6 +234,50 @@ async function routes(fastify, options) {
         results.push({ employee_id, field_role: field_role || 'worker', day_rate: totalRate, per_diem: perDiem, ok: true });
       }
 
+      // Авто-SMS с приглашением в MAX чат для новых рабочих
+      try {
+        const max = require('../services/max-messenger');
+        const { rows: workMaxRows } = await db.query(
+          'SELECT max_chat_id, max_invite_link, work_title FROM works WHERE id = $1', [workId]
+        );
+        const workData = workMaxRows[0];
+        if (workData?.max_chat_id && max.isEnabled()) {
+          const addedIds = results.filter(r => r.ok).map(r => r.employee_id);
+          if (addedIds.length > 0) {
+            const { rows: empRows } = await db.query(
+              `SELECT id, fio, phone FROM employees WHERE id = ANY($1::int[])`, [addedIds]
+            );
+            const inviteLink = workData.max_invite_link || await max.getChatInviteLink(workData.max_chat_id);
+            const mango = require('../services/mango');
+            for (const emp of empRows) {
+              if (!emp.phone) continue;
+              const phone = emp.phone.replace(/\D/g, '');
+              if (!phone) continue;
+              const smsText = inviteLink
+                ? `АСГАРД: Вас назначили на объект «${workData.work_title}». Вступите в рабочий чат MAX: ${inviteLink}`
+                : `АСГАРД: Вас назначили на объект «${workData.work_title}». Откройте мессенджер MAX и найдите чат объекта.`;
+              try {
+                await mango.sendSms(phone, smsText);
+                await db.query(
+                  `UPDATE employee_assignments SET max_invite_sent_at=NOW(), max_invite_status='sms_sent'
+                   WHERE employee_id=$1 AND work_id=$2`,
+                  [emp.id, workId]
+                );
+                fastify.log.info(`[MAX] SMS invite sent to ${emp.fio} (${phone})`);
+              } catch (smsErr) {
+                fastify.log.warn(`[MAX] SMS failed for employee ${emp.id}:`, smsErr.message);
+                await db.query(
+                  `UPDATE employee_assignments SET max_invite_status='failed' WHERE employee_id=$1 AND work_id=$2`,
+                  [emp.id, workId]
+                );
+              }
+            }
+          }
+        }
+      } catch (maxErr) {
+        fastify.log.warn('[MAX] crew invite error:', maxErr.message);
+      }
+
       return { results, count: results.filter(r => r.ok).length };
     } catch (err) {
       fastify.log.error('[field-manage] crew error:', err);
@@ -303,6 +347,78 @@ async function routes(fastify, options) {
       return { sent, failed, total: crew.length };
     } catch (err) {
       fastify.log.error('[field-manage] send-invites error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // POST /projects/:work_id/send-max-invites — SMS с приглашением в MAX-чат
+  // ─────────────────────────────────────────────────────────────────────
+  fastify.post('/projects/:work_id/send-max-invites', roleCheck, async (req, reply) => {
+    try {
+      const workId = parseInt(req.params.work_id);
+      const { employee_ids } = req.body || {};
+
+      const max = require('../services/max-messenger');
+      if (!max.isEnabled()) {
+        return reply.code(400).send({ error: 'MAX_BOT_TOKEN не задан в .env' });
+      }
+
+      const workRes = await db.query(
+        'SELECT id, work_title, max_chat_id, max_invite_link FROM works WHERE id = $1',
+        [workId]
+      );
+      const workData = workRes.rows[0];
+      if (!workData?.max_chat_id) {
+        return reply.code(400).send({ error: 'У работы нет MAX-чата. Создайте чат при создании работы.' });
+      }
+
+      let inviteLink = workData.max_invite_link;
+      if (!inviteLink) {
+        inviteLink = await max.getChatInviteLink(workData.max_chat_id);
+        if (inviteLink) {
+          await db.query('UPDATE works SET max_invite_link=$1 WHERE id=$2', [inviteLink, workId]);
+        }
+      }
+
+      const params = [workId];
+      let whereEmp = '';
+      if (employee_ids && employee_ids.length > 0) {
+        whereEmp = ` AND ea.employee_id = ANY($2)`;
+        params.push(employee_ids);
+      }
+      const { rows: emps } = await db.query(`
+        SELECT ea.employee_id, ea.max_invite_status, e.phone, e.fio
+        FROM employee_assignments ea
+        JOIN employees e ON e.id = ea.employee_id
+        WHERE ea.work_id = $1 AND ea.is_active = true AND ea.departure_date IS NULL
+          AND ea.max_invite_status != 'joined'
+        ${whereEmp}
+      `, params);
+
+      let sent = 0, failed = 0, skipped = 0;
+      for (const emp of emps) {
+        if (!emp.phone) { skipped++; continue; }
+        const smsText = inviteLink
+          ? `АСГАРД: Вступите в рабочий чат MAX по объекту «${workData.work_title}»: ${inviteLink}`
+          : `АСГАРД: Вас добавили на объект «${workData.work_title}». Откройте приложение MAX и найдите рабочий чат.`;
+        try {
+          await mango.sendSms(emp.phone, smsText);
+          await db.query(
+            `UPDATE employee_assignments SET max_invite_sent_at=NOW(), max_invite_status='sms_sent'
+             WHERE employee_id=$1 AND work_id=$2`,
+            [emp.employee_id, workId]
+          );
+          sent++;
+        } catch (e) {
+          fastify.log.warn(`[MAX invite] SMS failed for emp ${emp.employee_id}:`, e.message);
+          failed++;
+        }
+      }
+
+      return reply.send({ ok: true, sent, failed, skipped });
+    } catch (err) {
+      fastify.log.error('[field-manage] send-max-invites error:', err);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -544,97 +660,219 @@ async function routes(fastify, options) {
         const { rows: workInfo } = await db.query(`SELECT work_title FROM works WHERE id = $1`, [workId]);
         const workTitle = workInfo[0]?.work_title || `Работа #${workId}`;
 
-        // Collect all dates
-        const allDates = new Set();
-        timesheet.forEach(emp => (emp.days || []).forEach(d => allDates.add(d.date)));
-        const dates = [...allDates].sort();
+        // point_value из тарифа (для пересчёта: баллы = day_rate / point_value)
+        let pointValue = 500;
+        try {
+          const pvRes = await db.query(`
+            SELECT ft.point_value FROM employee_assignments ea
+            JOIN field_tariff_grid ft ON ft.id = ea.tariff_id
+            WHERE ea.work_id = $1 AND ft.point_value > 0 LIMIT 1`, [workId]);
+          if (pvRes.rows[0]?.point_value) pointValue = parseFloat(pvRes.rows[0].point_value);
+        } catch (_) {}
+
+        // Генерируем ВСЕ даты от dateFrom до dateTo (не только с checkin'ами)
+        const dates = [];
+        if (dateFrom && dateTo) {
+          const cur = new Date(dateFrom + 'T00:00:00');
+          const end = new Date(dateTo + 'T00:00:00');
+          while (cur <= end) {
+            dates.push(cur.toISOString().slice(0, 10));
+            cur.setDate(cur.getDate() + 1);
+          }
+        } else {
+          const allDates = new Set();
+          timesheet.forEach(emp => (emp.days || []).forEach(d => allDates.add(String(d.date).slice(0,10))));
+          dates.push(...[...allDates].sort());
+        }
+
+        const DAY_NAMES = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+        const TOTAL_COLS = 5; // Дней | Баллов | Заработок | Суточные | ИТОГО
+        const totalCols = 2 + dates.length + TOTAL_COLS;
 
         const wb = new ExcelJS.Workbook();
         wb.creator = 'АСГАРД CRM';
         wb.created = new Date();
         const ws = wb.addWorksheet('Табель');
 
-        // Title
-        ws.mergeCells(1, 1, 1, dates.length + 6);
-        ws.getCell('A1').value = `ТАБЕЛЬ — ${workTitle}`;
-        ws.getCell('A1').font = { bold: true, size: 14 };
+        // ── Строка 1: заголовок ──
+        ws.mergeCells(1, 1, 1, totalCols);
+        const t1 = ws.getCell('A1');
+        t1.value = `ТАБЕЛЬ — ${workTitle}`;
+        t1.font = { bold: true, size: 14, color: { argb: 'FF1A2B4A' } };
+        t1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD5E8F0' } };
+        t1.alignment = { horizontal: 'center', vertical: 'middle' };
+        ws.getRow(1).height = 28;
 
-        ws.mergeCells(2, 1, 2, dates.length + 6);
-        ws.getCell('A2').value = `Период: ${dateFrom || '—'} — ${dateTo || '—'} · Суточные: ${perDiem} ₽/день`;
-        ws.getCell('A2').font = { size: 10, italic: true, color: { argb: 'FF666666' } };
+        // ── Строка 2: период + суточные ──
+        ws.mergeCells(2, 1, 2, totalCols);
+        const t2 = ws.getCell('A2');
+        t2.value = `Период: ${dateFrom || '—'} — ${dateTo || '—'}  |  Суточные: ${perDiem} ₽/смену  |  1 балл = ${pointValue} ₽`;
+        t2.font = { size: 10, italic: true, color: { argb: 'FF555555' } };
+        t2.alignment = { horizontal: 'center' };
+        ws.getRow(2).height = 16;
 
-        // Header row
-        const headers = ['№', 'ФИО'];
-        dates.forEach(d => {
-          const day = new Date(d + 'T00:00:00');
-          headers.push(String(day.getDate()).padStart(2, '0') + '.' + String(day.getMonth() + 1).padStart(2, '0'));
-        });
-        headers.push('Дней', 'Часов', 'Заработок', 'Суточные', 'ИТОГО');
+        // ── Строка 3: легенда ──
+        ws.mergeCells(3, 1, 3, totalCols);
+        const t3 = ws.getCell('A3');
+        t3.value = 'Д — дневная смена (белый)  |  Н — ночная смена (синий)  |  цифра = количество баллов';
+        t3.font = { size: 9, color: { argb: 'FF888888' } };
+        t3.alignment = { horizontal: 'center' };
+        ws.getRow(3).height = 14;
 
-        const headerRow = ws.addRow(headers);
-        headerRow.number = 4;
-        ws.getRow(4).values = headers;
-        ws.getRow(4).font = { bold: true, size: 10 };
-        ws.getRow(4).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD5E8F0' } };
-        ws.getRow(4).eachCell(c => { c.border = { bottom: { style: 'thin' } }; c.alignment = { horizontal: 'center' }; });
-
-        // Column widths
-        ws.getColumn(1).width = 5;
-        ws.getColumn(2).width = 30;
-        for (let i = 0; i < dates.length; i++) ws.getColumn(i + 3).width = 7;
-        ws.getColumn(dates.length + 3).width = 7;
-        ws.getColumn(dates.length + 4).width = 9;
-        ws.getColumn(dates.length + 5).width = 12;
-        ws.getColumn(dates.length + 6).width = 12;
-        ws.getColumn(dates.length + 7).width = 14;
-
-        // Data rows
-        let grandHours = 0, grandEarned = 0, grandPd = 0, grandTotal = 0;
-        timesheet.forEach((emp, idx) => {
-          const dayMap = {};
-          (emp.days || []).forEach(d => { dayMap[d.date] = d; });
-
-          const vals = [idx + 1, emp.fio || '—'];
-          dates.forEach(d => {
-            const day = dayMap[d];
-            vals.push(day ? parseFloat(day.hours_paid || day.hours_worked || 0) : '');
+        // ── Строка 4: заголовки столбцов ──
+        ws.getRow(4).height = 30;
+        const hdrStyle = {
+          font: { bold: true, size: 10, color: { argb: 'FF1A2B4A' } },
+          fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFB8D4E8' } },
+          alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
+          border: { top: { style: 'thin' }, bottom: { style: 'medium' }, left: { style: 'thin' }, right: { style: 'thin' } }
+        };
+        ws.getCell(4, 1).value = '№'; Object.assign(ws.getCell(4, 1), hdrStyle);
+        ws.getCell(4, 2).value = 'ФИО'; Object.assign(ws.getCell(4, 2), { ...hdrStyle, alignment: { ...hdrStyle.alignment, horizontal: 'left' } });
+        dates.forEach((d, i) => {
+          const dt = new Date(d + 'T00:00:00');
+          const dayNum = String(dt.getDate()).padStart(2, '0');
+          const dayName = DAY_NAMES[dt.getDay()];
+          const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
+          const cell = ws.getCell(4, 3 + i);
+          cell.value = `${dayNum}\n${dayName}`;
+          Object.assign(cell, {
+            ...hdrStyle,
+            font: { ...hdrStyle.font, color: { argb: isWeekend ? 'FFCC0000' : 'FF1A2B4A' } },
+            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: isWeekend ? 'FFFDE8E8' : 'FFB8D4E8' } }
           });
-          vals.push(emp.days_count || 0);
-          vals.push(emp.total_paid_hours || emp.total_hours || 0);
-          vals.push(emp.total_earned || 0);
-          vals.push(emp.per_diem_total || 0);
-          vals.push(emp.grand_total || 0);
-
-          const row = ws.addRow(vals);
-          row.getCell(vals.length).font = { bold: true };
-          row.getCell(vals.length).numFmt = '#,##0 "₽"';
-          row.getCell(vals.length - 1).numFmt = '#,##0 "₽"';
-          row.getCell(vals.length - 2).numFmt = '#,##0 "₽"';
-
-          grandHours += emp.total_paid_hours || emp.total_hours || 0;
-          grandEarned += emp.total_earned || 0;
-          grandPd += emp.per_diem_total || 0;
-          grandTotal += emp.grand_total || 0;
+        });
+        const summaryHdrs = ['Дней', 'Баллов', 'Заработок', 'Суточные', 'ИТОГО'];
+        summaryHdrs.forEach((h, i) => {
+          const cell = ws.getCell(4, 3 + dates.length + i);
+          cell.value = h;
+          Object.assign(cell, {
+            ...hdrStyle,
+            fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: i === 4 ? 'FFD4A843' : 'FFB8D4E8' } },
+            font: { ...hdrStyle.font, color: { argb: i === 4 ? 'FF1A2B4A' : 'FF1A2B4A' } }
+          });
         });
 
-        // Totals row
-        const totals = ['', 'ИТОГО'];
-        dates.forEach(() => totals.push(''));
-        totals.push(timesheet.reduce((s, e) => s + (e.days_count || 0), 0));
-        totals.push(Math.round(grandHours * 100) / 100);
-        totals.push(Math.round(grandEarned));
-        totals.push(Math.round(grandPd));
-        totals.push(Math.round(grandTotal));
-        const totalRow = ws.addRow(totals);
-        totalRow.font = { bold: true };
-        totalRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3CD' } };
-        totalRow.getCell(totals.length).numFmt = '#,##0 "₽"';
-        totalRow.getCell(totals.length - 1).numFmt = '#,##0 "₽"';
-        totalRow.getCell(totals.length - 2).numFmt = '#,##0 "₽"';
+        // ── Ширины столбцов ──
+        ws.getColumn(1).width = 5;
+        ws.getColumn(2).width = 32;
+        for (let i = 0; i < dates.length; i++) ws.getColumn(3 + i).width = 6;
+        ws.getColumn(3 + dates.length).width = 7;      // Дней
+        ws.getColumn(4 + dates.length).width = 9;      // Баллов
+        ws.getColumn(5 + dates.length).width = 14;     // Заработок
+        ws.getColumn(6 + dates.length).width = 12;     // Суточные
+        ws.getColumn(7 + dates.length).width = 16;     // ИТОГО
+
+        // ── Данные сотрудников ──
+        let grandDays = 0, grandPoints = 0, grandEarned = 0, grandPd = 0, grandTotal = 0;
+        const dataStartRow = 5;
+
+        timesheet.forEach((emp, idx) => {
+          const rowNum = dataStartRow + idx;
+          const dayMap = {};
+          (emp.days || []).forEach(d => { dayMap[String(d.date).slice(0, 10)] = d; });
+
+          const isEven = idx % 2 === 0;
+          const rowBg = isEven ? 'FFFFFFFF' : 'FFF7FAFD';
+
+          // № и ФИО
+          const numCell = ws.getCell(rowNum, 1);
+          numCell.value = idx + 1;
+          numCell.alignment = { horizontal: 'center', vertical: 'middle' };
+          numCell.font = { size: 10, color: { argb: 'FF888888' } };
+          numCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
+
+          const fioCell = ws.getCell(rowNum, 2);
+          fioCell.value = emp.fio || '—';
+          fioCell.font = { size: 10, bold: true };
+          fioCell.alignment = { vertical: 'middle' };
+          fioCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
+
+          // Ячейки по дням
+          dates.forEach((d, i) => {
+            const day = dayMap[d];
+            const cell = ws.getCell(rowNum, 3 + i);
+            if (day) {
+              const pts = Math.round(parseFloat(day.day_rate || 0) / pointValue) || 0;
+              const isNight = day.shift === 'night';
+              cell.value = pts > 0 ? (isNight ? `Н${pts}` : `Д${pts}`) : (isNight ? 'Н' : 'Д');
+              // Ночная — синеватый фон, дневная — светло-зелёный
+              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isNight ? 'FFD6E4FF' : 'FFE8F5E9' } };
+              cell.font = { size: 9, bold: pts >= 18, color: { argb: isNight ? 'FF1E40AF' : 'FF166534' } };
+              cell.note = `${isNight ? 'Ночная' : 'Дневная'} смена\n${pts} балл. × ${pointValue} ₽ = ${pts * pointValue} ₽`;
+            } else {
+              const dt = new Date(d + 'T00:00:00');
+              const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
+              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isWeekend ? 'FFFDE8E8' : rowBg } };
+              cell.value = '';
+            }
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell.border = { left: { style: 'hair' }, right: { style: 'hair' } };
+          });
+
+          // Итоговые ячейки
+          const daysCount = emp.days_count || 0;
+          const totalPoints = Math.round((emp.total_earned || 0) / pointValue);
+          const earned = Math.round(emp.total_earned || 0);
+          const pd = Math.round(emp.per_diem_total || 0);
+          const total = Math.round(emp.grand_total || 0);
+
+          grandDays += daysCount;
+          grandPoints += totalPoints;
+          grandEarned += earned;
+          grandPd += pd;
+          grandTotal += total;
+
+          const summaryCol = 3 + dates.length;
+          const summaryVals = [daysCount, totalPoints, earned, pd, total];
+          summaryVals.forEach((v, si) => {
+            const cell = ws.getCell(rowNum, summaryCol + si);
+            cell.value = v;
+            cell.alignment = { horizontal: 'right', vertical: 'middle' };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: si === 4 ? 'FFFFF9E6' : rowBg } };
+            if (si >= 2) { cell.numFmt = '#,##0 "₽"'; }
+            if (si === 4) { cell.font = { bold: true, size: 10, color: { argb: 'FF92610A' } }; }
+            else { cell.font = { size: 10 }; }
+            cell.border = { left: { style: si === 0 ? 'medium' : 'hair' }, right: { style: si === 4 ? 'medium' : 'hair' } };
+          });
+
+          ws.getRow(rowNum).height = 18;
+          // Боковые границы строки
+          ws.getCell(rowNum, 1).border = { left: { style: 'medium' } };
+          ws.getCell(rowNum, totalCols).border = { right: { style: 'medium' } };
+        });
+
+        // ── Итоговая строка ──
+        const totalRowNum = dataStartRow + timesheet.length;
+        ws.getRow(totalRowNum).height = 22;
+        ws.mergeCells(totalRowNum, 1, totalRowNum, 2 + dates.length);
+        const totalLabel = ws.getCell(totalRowNum, 1);
+        totalLabel.value = 'ИТОГО ПО ОБЪЕКТУ:';
+        totalLabel.font = { bold: true, size: 11, color: { argb: 'FF1A2B4A' } };
+        totalLabel.alignment = { horizontal: 'right', vertical: 'middle' };
+        totalLabel.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3CD' } };
+
+        const grandVals = [grandDays, grandPoints, grandEarned, grandPd, grandTotal];
+        grandVals.forEach((v, si) => {
+          const cell = ws.getCell(totalRowNum, 3 + dates.length + si);
+          cell.value = v;
+          cell.alignment = { horizontal: 'right', vertical: 'middle' };
+          cell.font = { bold: true, size: 11, color: { argb: si === 4 ? 'FF92610A' : 'FF1A2B4A' } };
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: si === 4 ? 'FFD4A843' : 'FFFFF3CD' } };
+          if (si >= 2) cell.numFmt = '#,##0 "₽"';
+          cell.border = {
+            top: { style: 'medium' }, bottom: { style: 'medium' },
+            left: { style: si === 0 ? 'medium' : 'thin' }, right: { style: si === 4 ? 'medium' : 'thin' }
+          };
+        });
+
+        // ── Freeze panes: закрепить строки 1-4 и столбец ФИО ──
+        ws.views = [{ state: 'frozen', xSplit: 2, ySplit: 4 }];
 
         const buffer = await wb.xlsx.writeBuffer();
         reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        reply.header('Content-Disposition', `attachment; filename="timesheet_${workId}_${Date.now()}.xlsx"`);
+        const fname = encodeURIComponent(`Табель_${workTitle.replace(/[^\wа-яА-Я ]/g, '')}_${dateFrom||''}–${dateTo||''}.xlsx`);
+        reply.header('Content-Disposition', `attachment; filename*=UTF-8''${fname}`);
         return reply.send(Buffer.from(buffer));
       }
 

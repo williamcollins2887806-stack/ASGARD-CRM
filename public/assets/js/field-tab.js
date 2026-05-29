@@ -297,6 +297,7 @@ window.AsgardFieldTab = (function () {
       <th style="padding:8px 6px;text-align:right;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">₽/смену</th>
       <th style="padding:8px 6px;text-align:center;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">Совмещ.</th>
       <th style="padding:8px 6px;text-align:center;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">SMS</th>
+      <th style="padding:8px 6px;text-align:center;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">MAX</th>
       <th style="padding:8px 6px;text-align:center;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px"></th>
     </tr>`;
     table.appendChild(thead);
@@ -433,6 +434,28 @@ window.AsgardFieldTab = (function () {
       smsBtn.textContent = '📨 Отправить SMS бригаде';
     });
     actions.appendChild(smsBtn);
+
+    // MAX invite button (only if work has MAX chat configured)
+    if (work.max_chat_id) {
+      const maxInvBtn = document.createElement('button');
+      maxInvBtn.className = 'btn ghost';
+      maxInvBtn.textContent = '📲 MAX-чат приглашения';
+      maxInvBtn.addEventListener('click', async () => {
+        if (!confirm('Отправить SMS с ссылкой в MAX-чат всем, кто ещё не вступил?')) return;
+        maxInvBtn.disabled = true;
+        maxInvBtn.textContent = 'Отправка…';
+        try {
+          const result = await api(`/projects/${work.id}/send-max-invites`, { method: 'POST', body: '{}' });
+          toast('MAX', `Отправлено: ${result.sent}, пропущено: ${result.skipped || 0}, ошибок: ${result.failed || 0}`, result.sent > 0 ? 'ok' : 'warn');
+          renderCrewTab(container, work, user, settingsData, isActive);
+        } catch (e) {
+          toast('Ошибка MAX', String(e), 'err');
+          maxInvBtn.disabled = false;
+          maxInvBtn.textContent = '📲 MAX-чат приглашения';
+        }
+      });
+      actions.appendChild(maxInvBtn);
+    }
 
     container.appendChild(actions);
 
@@ -677,6 +700,51 @@ window.AsgardFieldTab = (function () {
       tdSms.appendChild(smsOneBtn);
     }
     tr.appendChild(tdSms);
+
+    // MAX invite status
+    const tdMax = document.createElement('td');
+    tdMax.style.cssText = cellStyle + ';text-align:center';
+    if (assignment) {
+      const maxStatus = assignment.max_invite_status || 'not_sent';
+      if (maxStatus === 'joined') {
+        tdMax.innerHTML = '<span style="color:#10b981;font-size:15px" title="Вступил в MAX-чат">✅</span>';
+      } else if (maxStatus === 'sms_sent') {
+        tdMax.innerHTML = '<span style="color:#f59e0b;font-size:15px" title="SMS отправлено, ожидаем вступления">⏳</span>';
+      } else if (employee && work.max_chat_id) {
+        const maxOneBtn = document.createElement('button');
+        maxOneBtn.title = 'Отправить SMS с приглашением в MAX-чат';
+        maxOneBtn.textContent = '📲';
+        maxOneBtn.style.cssText = 'background:none;border:1px solid var(--brd);border-radius:4px;cursor:pointer;font-size:15px;padding:2px 5px;transition:background .15s';
+        maxOneBtn.addEventListener('mouseenter', () => { maxOneBtn.style.background = 'var(--bg3)'; });
+        maxOneBtn.addEventListener('mouseleave', () => { maxOneBtn.style.background = 'none'; });
+        maxOneBtn.addEventListener('click', async () => {
+          maxOneBtn.disabled = true;
+          maxOneBtn.textContent = '⏳';
+          try {
+            const res = await api('/projects/' + work.id + '/send-max-invites', {
+              method: 'POST',
+              body: JSON.stringify({ employee_ids: [employee.id] })
+            });
+            if (res.sent > 0) {
+              tdMax.innerHTML = '<span style="color:#f59e0b;font-size:15px" title="SMS отправлено, ожидаем вступления">⏳</span>';
+              toast('MAX', (employee.fio || 'Сотрудник') + ' — приглашение в MAX отправлено', 'ok');
+            } else {
+              maxOneBtn.disabled = false;
+              maxOneBtn.textContent = '📲';
+              toast('MAX', res.error || 'Нет телефона или уже вступил', 'warn');
+            }
+          } catch (e) {
+            maxOneBtn.disabled = false;
+            maxOneBtn.textContent = '📲';
+            toast('Ошибка MAX', String(e), 'err');
+          }
+        });
+        tdMax.appendChild(maxOneBtn);
+      } else {
+        tdMax.innerHTML = '<span style="color:var(--t3);font-size:11px" title="Чат MAX не создан для этой работы">—</span>';
+      }
+    }
+    tr.appendChild(tdMax);
 
     // Action buttons (departure + remove)
     const tdActions = document.createElement('td');

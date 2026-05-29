@@ -542,6 +542,7 @@ fastify.register(require('./routes/worker_profiles'), { prefix: '/api/worker-pro
 fastify.register(require('./routes/worker-payments'), { prefix: '/api/worker-payments' });
 fastify.register(require('./routes/call-reports'),     { prefix: '/api/call-reports' });
 fastify.register(require('./routes/office-academy'),   { prefix: '/api/office-academy' });
+fastify.register(require('./routes/max-webhook'),      { prefix: '/api/max' });
 
 // ── Telephony Job Queue & Escalation ──
 try {
