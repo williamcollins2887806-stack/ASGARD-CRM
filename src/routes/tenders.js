@@ -224,16 +224,37 @@ async function routes(fastify, options) {
       [id]
     );
 
-    // Get related works
+    // Get related works (only main works in the main list)
     const works = await db.query(
-      'SELECT * FROM works WHERE tender_id = $1 ORDER BY created_at DESC',
+      "SELECT * FROM works WHERE tender_id = $1 AND work_kind = 'main' AND deleted_at IS NULL ORDER BY created_at DESC",
       [id]
     );
+
+    // Get addenda (separate from main works)
+    const addenda = await db.query(`
+      SELECT w.*,
+             COUNT(DISTINCT a.id)::int AS acts_cnt,
+             COUNT(DISTINCT i.id)::int AS invoices_cnt
+      FROM works w
+      LEFT JOIN acts    a ON a.work_id = w.id
+      LEFT JOIN invoices i ON i.work_id = w.id
+      WHERE w.tender_id = $1 AND w.work_kind = 'addendum' AND w.deleted_at IS NULL
+      GROUP BY w.id
+      ORDER BY w.created_at
+    `, [id]);
+
+    const mainWork = works.rows[0] || null;
+    const contractValueMain    = mainWork ? Number(mainWork.contract_value || 0) : 0;
+    const contractValueAddenda = addenda.rows.reduce((s, w) => s + Number(w.contract_value || 0), 0);
 
     return {
       tender: result.rows[0],
       estimates: estimates.rows,
-      works: works.rows
+      works: works.rows,
+      addenda: addenda.rows,
+      contract_value_main:    contractValueMain,
+      contract_value_addenda: contractValueAddenda,
+      contract_value_total:   contractValueMain + contractValueAddenda
     };
   });
 

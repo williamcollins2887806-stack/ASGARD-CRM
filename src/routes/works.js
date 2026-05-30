@@ -16,7 +16,9 @@ const ALLOWED_COLS = new Set([
   'advance_date_fact', 'payment_date_fact', 'act_signed_date_fact',
   'delay_workdays', 'crew_size', 'comment',
   'closeout_submitted_at', 'closeout_submitted_by', 'closed_at',
-  'vat_pct', 'customer_score'
+  'vat_pct', 'customer_score',
+  // V130: доп.соглашения
+  'work_kind', 'parent_work_id', 'addendum_number', 'addendum_signed_date', 'addendum_reason'
 ]);
 
 // Маппинг устаревших имён колонок на канонические (обратная совместимость AsgardDB)
@@ -88,7 +90,7 @@ async function routes(fastify, options) {
   const { createNotification } = require('../services/notify');
 
   fastify.get('/', { preHandler: [fastify.authenticate] }, async (request) => {
-    const { tender_id, pm_id, status, limit = 100, offset = 0, include_deleted } = request.query;
+    const { tender_id, pm_id, status, kind, limit = 100, offset = 0, include_deleted } = request.query;
     const user = request.user;
     let sql = 'SELECT w.*, t.customer_name as customer, u.name as pm_name FROM works w LEFT JOIN tenders t ON w.tender_id = t.id LEFT JOIN users u ON w.pm_id = u.id WHERE w.deleted_at IS NULL';
     const params = [];
@@ -104,6 +106,7 @@ async function routes(fastify, options) {
     if (tender_id) { sql += ` AND w.tender_id = $${idx}`; params.push(tender_id); idx++; }
     if (pm_id) { sql += ` AND w.pm_id = $${idx}`; params.push(pm_id); idx++; }
     if (status) { sql += ` AND w.work_status = $${idx}`; params.push(status); idx++; }
+    if (kind && kind !== 'all') { sql += ` AND w.work_kind = $${idx}`; params.push(kind); idx++; }
     sql += ` ORDER BY w.id DESC LIMIT $${idx} OFFSET $${idx + 1}`;
     params.push(limit, offset);
     const result = await db.query(sql, params);
@@ -122,7 +125,16 @@ async function routes(fastify, options) {
   });
 
   fastify.get('/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
-    const result = await db.query('SELECT * FROM works WHERE id = $1 AND deleted_at IS NULL', [request.params.id]);
+    const result = await db.query(`
+      SELECT w.*,
+             pw.work_title  AS parent_work_title,
+             pw.work_number AS parent_work_number,
+             pw.contract_value AS parent_contract_value,
+             pw.work_status AS parent_work_status
+      FROM works w
+      LEFT JOIN works pw ON pw.id = w.parent_work_id
+      WHERE w.id = $1 AND w.deleted_at IS NULL
+    `, [request.params.id]);
     if (!result.rows[0]) return reply.code(404).send({ error: 'Работа не найдена' });
     const expenses = await db.query('SELECT * FROM work_expenses WHERE work_id = $1', [request.params.id]);
     return { work: result.rows[0], expenses: expenses.rows };
@@ -792,3 +804,91 @@ async function routes(fastify, options) {
 }
 
 module.exports = routes;
+
+// ════════════════════════════════════════════════════════════════════════════
+// POST /api/works/addendum — создать доп.соглашение к основной работе (V130)
+// ════════════════════════════════════════════════════════════════════════════
+
+const _origWorksRoutes = module.exports;
+
+module.exports = async function worksWithAddendum(fastify, options) {
+  await _origWorksRoutes(fastify, options);
+
+  const db = fastify.db;
+  const ADDENDUM_ROLES = ['ADMIN', 'PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+
+  fastify.post('/addendum', {
+    preHandler: [fastify.requireRoles(ADDENDUM_ROLES)]
+  }, async (request, reply) => {
+    const {
+      parent_work_id, work_title, contract_value,
+      vat_pct, start_plan, end_plan,
+      addendum_reason, addendum_signed_date
+    } = request.body || {};
+
+    if (!parent_work_id) {
+      return reply.code(400).send({ error: 'parent_work_id обязателен' });
+    }
+    if (!contract_value && contract_value !== 0) {
+      return reply.code(400).send({ error: 'contract_value обязателен' });
+    }
+
+    // Родительская работа должна быть main (нельзя ДС на ДС)
+    const { rows: [parent] } = await db.query(
+      'SELECT * FROM works WHERE id = $1 AND deleted_at IS NULL',
+      [parent_work_id]
+    );
+    if (!parent) {
+      return reply.code(404).send({ error: 'Родительская работа не найдена' });
+    }
+    if (parent.work_kind !== 'main') {
+      return reply.code(400).send({ error: 'Нельзя создать ДС на ДС — родительская работа должна быть main' });
+    }
+
+    // Нумерация ДС-1, ДС-2…
+    const { rows: [cntRow] } = await db.query(
+      'SELECT COUNT(*) AS cnt FROM works WHERE parent_work_id = $1',
+      [parent_work_id]
+    );
+    const addNumber = 'ДС-' + (Number(cntRow.cnt) + 1);
+
+    const { rows: [w] } = await db.query(`
+      INSERT INTO works (
+        tender_id, pm_id, work_number, work_title, work_status,
+        contract_value, customer_name, customer_inn, site_id, vat_pct,
+        start_plan, end_plan,
+        work_kind, parent_work_id, addendum_number, addendum_signed_date, addendum_reason,
+        created_by
+      ) VALUES ($1,$2,$3,$4,'Новая',$5,$6,$7,$8,$9,$10,$11,'addendum',$12,$13,$14,$15,$16)
+      RETURNING *
+    `, [
+      parent.tender_id,
+      parent.pm_id,
+      (parent.work_number || '') + '/' + addNumber,
+      work_title || (parent.work_title + ' — ' + addNumber),
+      Number(contract_value) || 0,
+      parent.customer_name,
+      parent.customer_inn || null,
+      parent.site_id || null,
+      vat_pct != null ? Number(vat_pct) : (parent.vat_pct || 20),
+      start_plan || null,
+      end_plan || null,
+      parent_work_id,
+      addNumber,
+      addendum_signed_date || null,
+      addendum_reason || null,
+      request.user.id
+    ]);
+
+    // Аудит
+    try {
+      await db.query(
+        `INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+         VALUES ($1,'work',$2,'addendum_created',$3,NOW())`,
+        [request.user.id, w.id, JSON.stringify({ parent_work_id, contract_value, addendum_number: addNumber })]
+      );
+    } catch (_) {}
+
+    return { item: w };
+  });
+};
