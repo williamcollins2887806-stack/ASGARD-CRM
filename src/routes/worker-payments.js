@@ -1536,54 +1536,92 @@ async function routes(fastify, options) {
 
       // Column count: ФИО + days 1..N + Дней + Баллов + Заработок + Суточные + Итого
       const totalCols = 1 + lastDay + 5;
+      const DAY_NAMES_SHORT = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
 
-      // Header row 1: title
+      // ── Строка 1: заголовок ──
       ws.mergeCells(1, 1, 1, totalCols);
       const titleCell = ws.getCell(1, 1);
-      titleCell.value = `Ведомость — ${mName} ${year}`;
-      titleCell.font = { bold: true, size: 14 };
+      titleCell.value = `ВЕДОМОСТЬ БАЛЛОВ — ${mName} ${year}`;
+      titleCell.font = { bold: true, size: 14, color: { argb: 'FF1A2B4A' } };
+      titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD5E8F0' } };
+      titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+      ws.getRow(1).height = 28;
 
-      // Header row 2: PM + company
-      ws.mergeCells(2, 1, 2, Math.floor(totalCols / 2));
-      ws.getCell(2, 1).value = `РП: ${pmName}`;
-      ws.getCell(2, 1).font = { size: 11 };
-      ws.mergeCells(2, Math.floor(totalCols / 2) + 1, 2, totalCols);
-      ws.getCell(2, Math.floor(totalCols / 2) + 1).value = 'ООО Асгард Сервис';
-      ws.getCell(2, Math.floor(totalCols / 2) + 1).font = { size: 11 };
+      // ── Строка 2: РП + компания ──
+      const half = Math.floor(totalCols / 2);
+      ws.mergeCells(2, 1, 2, half);
+      const pmCell = ws.getCell(2, 1);
+      pmCell.value = pmName ? `РП: ${pmName}` : 'ООО Асгард Сервис';
+      pmCell.font = { size: 11, italic: true, color: { argb: 'FF444444' } };
+      pmCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F7FA' } };
+      ws.mergeCells(2, half + 1, 2, totalCols);
+      const compCell = ws.getCell(2, half + 1);
+      compCell.value = `ООО Асгард Сервис  |  1 балл = ${pointValue} ₽`;
+      compCell.font = { size: 11, italic: true, color: { argb: 'FF444444' } };
+      compCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F7FA' } };
+      compCell.alignment = { horizontal: 'right' };
+      ws.getRow(2).height = 18;
 
-      // Header row 3: blank
-      ws.addRow([]);
+      // ── Строка 3: легенда цветов ──
+      ws.mergeCells(3, 1, 3, totalCols);
+      const legendCell = ws.getCell(3, 1);
+      legendCell.value = '🟦 6+ баллов   🟩 10+ баллов   🟢 12+ баллов   🟡 18+ баллов   Выходные выделены красным';
+      legendCell.font = { size: 9, color: { argb: 'FF666666' } };
+      legendCell.alignment = { horizontal: 'center' };
+      ws.getRow(3).height = 14;
 
-      // Header row 4: column titles
+      // ── Строка 4: заголовки столбцов ──
       const headerRow = ws.getRow(4);
-      headerRow.getCell(1).value = 'ФИО';
+      headerRow.height = 32;
+      const hdrBase = {
+        font: { bold: true, size: 10, color: { argb: 'FF1A2B4A' } },
+        fill: headerFill,
+        alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
+        border: { top: { style: 'thin' }, bottom: { style: 'medium' }, left: { style: 'thin' }, right: { style: 'thin' } }
+      };
+
+      const fioHdr = headerRow.getCell(1);
+      fioHdr.value = 'ФИО';
+      fioHdr.font = hdrBase.font;
+      fioHdr.fill = hdrBase.fill;
+      fioHdr.alignment = { horizontal: 'left', vertical: 'middle' };
+      fioHdr.border = hdrBase.border;
+
       for (let d = 1; d <= lastDay; d++) {
-        headerRow.getCell(1 + d).value = d;
-      }
-      headerRow.getCell(1 + lastDay + 1).value = 'Дней';
-      headerRow.getCell(1 + lastDay + 2).value = 'Баллов';
-      headerRow.getCell(1 + lastDay + 3).value = 'Заработок';
-      headerRow.getCell(1 + lastDay + 4).value = 'Суточные';
-      headerRow.getCell(1 + lastDay + 5).value = 'Итого';
-      headerRow.font = { bold: true, size: 10 };
-      headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
-      for (let c = 1; c <= totalCols; c++) {
-        headerRow.getCell(c).fill = headerFill;
-        headerRow.getCell(c).border = thinBorder;
+        const dt = new Date(year, month - 1, d);
+        const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
+        const dayName = DAY_NAMES_SHORT[dt.getDay()];
+        const cell = headerRow.getCell(1 + d);
+        cell.value = `${d}\n${dayName}`;
+        cell.font = { bold: true, size: 9, color: { argb: isWeekend ? 'FFCC0000' : 'FF1A2B4A' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isWeekend ? 'FFFDE8E8' : 'FFB8D4E8' } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        cell.border = hdrBase.border;
       }
 
-      // Column widths
-      ws.getColumn(1).width = 25;
-      for (let d = 1; d <= lastDay; d++) {
-        ws.getColumn(1 + d).width = 6;
-      }
+      const summaryHdrs = ['Дней', 'Баллов', 'Заработок', 'Суточные', 'Итого'];
+      summaryHdrs.forEach((h, i) => {
+        const cell = headerRow.getCell(1 + lastDay + 1 + i);
+        cell.value = h;
+        cell.font = { bold: true, size: 10, color: { argb: 'FF1A2B4A' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: i === 4 ? 'FFD4A843' : 'FFB8D4E8' } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        cell.border = hdrBase.border;
+      });
+
+      // ── Ширины столбцов ──
+      ws.getColumn(1).width = 28;
+      for (let d = 1; d <= lastDay; d++) ws.getColumn(1 + d).width = 5.5;
       ws.getColumn(1 + lastDay + 1).width = 8;
       ws.getColumn(1 + lastDay + 2).width = 10;
-      ws.getColumn(1 + lastDay + 3).width = 12;
+      ws.getColumn(1 + lastDay + 3).width = 14;
       ws.getColumn(1 + lastDay + 4).width = 12;
-      ws.getColumn(1 + lastDay + 5).width = 12;
+      ws.getColumn(1 + lastDay + 5).width = 14;
 
-      // Data rows
+      // ── Заморозка: строки 1-4, столбец ФИО ──
+      ws.views = [{ state: 'frozen', xSplit: 1, ySplit: 4 }];
+
+      // ── Данные ──
       const daySums = new Array(lastDay).fill(0);
       let sumDays = 0, sumPoints = 0, sumEarned = 0, sumPerDiem = 0, sumTotal = 0;
       let rowIdx = 5;
@@ -1592,38 +1630,48 @@ async function routes(fastify, options) {
 
       for (const [empId, emp] of employees) {
         const dataRow = ws.getRow(rowIdx);
-        dataRow.getCell(1).value = emp.fio;
-        dataRow.getCell(1).border = thinBorder;
+        dataRow.height = 18;
+        const isEven = (rowIdx - 5) % 2 === 0;
+        const rowBg = isEven ? 'FFFFFFFF' : 'FFF7FAFD';
+
+        const fioCell2 = dataRow.getCell(1);
+        fioCell2.value = emp.fio;
+        fioCell2.font = { size: 10, bold: true };
+        fioCell2.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
+        fioCell2.border = thinBorder;
 
         for (let d = 1; d <= lastDay; d++) {
+          const dt = new Date(year, month - 1, d);
+          const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
           const cell = dataRow.getCell(1 + d);
-          const pts = emp.dayMap[d] || null;
-          if (pts !== null) {
-            cell.value = pts;
+          const pts = emp.dayMap[d] !== undefined ? emp.dayMap[d] : null;
+          if (pts !== null && pts > 0) {
+            cell.value = Math.round(pts * 100) / 100;
             const fill = getPointFill(pts);
-            if (fill) cell.fill = fill;
+            cell.fill = fill || { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
+            cell.font = { size: 9, bold: pts >= 18 };
             daySums[d - 1] += pts;
+          } else {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isWeekend ? 'FFFDE8E8' : rowBg } };
           }
           cell.border = thinBorder;
-          cell.alignment = { horizontal: 'center' };
+          cell.alignment = { horizontal: 'center', vertical: 'middle' };
         }
 
         const empPerDiem = perDiemMap[parseInt(empId)] || 0;
         const empTotal = emp.total_amount + empPerDiem;
 
-        dataRow.getCell(1 + lastDay + 1).value = emp.days_count;
-        dataRow.getCell(1 + lastDay + 2).value = Math.round(emp.total_points * 100) / 100;
-        dataRow.getCell(1 + lastDay + 3).value = Math.round(emp.total_amount * 100) / 100;
-        dataRow.getCell(1 + lastDay + 3).numFmt = '#,##0.00';
-        dataRow.getCell(1 + lastDay + 4).value = empPerDiem;
-        dataRow.getCell(1 + lastDay + 4).numFmt = '#,##0.00';
-        dataRow.getCell(1 + lastDay + 5).value = Math.round(empTotal * 100) / 100;
-        dataRow.getCell(1 + lastDay + 5).numFmt = '#,##0.00';
-
-        for (let c = 1 + lastDay + 1; c <= totalCols; c++) {
-          dataRow.getCell(c).border = thinBorder;
-          dataRow.getCell(c).alignment = { horizontal: 'center' };
-        }
+        const summaryVals = [emp.days_count, Math.round(emp.total_points * 100) / 100,
+          Math.round(emp.total_amount * 100) / 100, empPerDiem, Math.round(empTotal * 100) / 100];
+        summaryVals.forEach((v, si) => {
+          const cell = dataRow.getCell(1 + lastDay + 1 + si);
+          cell.value = v;
+          cell.font = si === 4 ? { bold: true, size: 10, color: { argb: 'FF92610A' } } : { size: 10 };
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: si === 4 ? 'FFFFF9E6' : rowBg } };
+          cell.alignment = { horizontal: 'right', vertical: 'middle' };
+          if (si >= 2) cell.numFmt = '#,##0 "₽"';
+          cell.border = thinBorder;
+        });
 
         sumDays += emp.days_count;
         sumPoints += emp.total_points;
@@ -1633,35 +1681,43 @@ async function routes(fastify, options) {
         rowIdx++;
       }
 
-      // Totals row
+      // ── Итоговая строка ──
       const totRow = ws.getRow(rowIdx);
-      totRow.getCell(1).value = 'ИТОГО';
-      totRow.font = { bold: true, size: 10 };
+      totRow.height = 22;
+      ws.mergeCells(rowIdx, 1, rowIdx, 1);
+      totRow.getCell(1).value = 'ИТОГО ПО ВЕДОМОСТИ:';
+      totRow.getCell(1).font = { bold: true, size: 11, color: { argb: 'FF1A2B4A' } };
+      totRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3CD' } };
+      totRow.getCell(1).alignment = { horizontal: 'right', vertical: 'middle' };
+      totRow.getCell(1).border = thinBorder;
 
       for (let d = 1; d <= lastDay; d++) {
         const cell = totRow.getCell(1 + d);
-        cell.value = daySums[d - 1] > 0 ? Math.round(daySums[d - 1] * 100) / 100 : null;
+        const v = daySums[d - 1];
+        cell.value = v > 0 ? Math.round(v * 100) / 100 : null;
+        cell.font = { bold: true, size: 9 };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF3CD' } };
         cell.border = thinBorder;
         cell.alignment = { horizontal: 'center' };
       }
-      totRow.getCell(1 + lastDay + 1).value = sumDays;
-      totRow.getCell(1 + lastDay + 2).value = Math.round(sumPoints * 100) / 100;
-      totRow.getCell(1 + lastDay + 3).value = Math.round(sumEarned * 100) / 100;
-      totRow.getCell(1 + lastDay + 3).numFmt = '#,##0.00';
-      totRow.getCell(1 + lastDay + 4).value = Math.round(sumPerDiem * 100) / 100;
-      totRow.getCell(1 + lastDay + 4).numFmt = '#,##0.00';
-      totRow.getCell(1 + lastDay + 5).value = Math.round(sumTotal * 100) / 100;
-      totRow.getCell(1 + lastDay + 5).numFmt = '#,##0.00';
 
-      for (let c = 1; c <= totalCols; c++) {
-        totRow.getCell(c).fill = totalFill;
-        totRow.getCell(c).border = thinBorder;
-      }
+      const grandVals = [sumDays, Math.round(sumPoints * 100) / 100,
+        Math.round(sumEarned * 100) / 100, Math.round(sumPerDiem * 100) / 100, Math.round(sumTotal * 100) / 100];
+      grandVals.forEach((v, si) => {
+        const cell = totRow.getCell(1 + lastDay + 1 + si);
+        cell.value = v;
+        cell.font = { bold: true, size: 11, color: { argb: si === 4 ? 'FF92610A' : 'FF1A2B4A' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: si === 4 ? 'FFD4A843' : 'FFFFF3CD' } };
+        cell.alignment = { horizontal: 'right', vertical: 'middle' };
+        if (si >= 2) cell.numFmt = '#,##0 "₽"';
+        cell.border = { top: { style: 'medium' }, bottom: { style: 'medium' }, left: { style: 'thin' }, right: si === 4 ? { style: 'medium' } : { style: 'thin' } };
+      });
 
       // Send
       const buf = await workbook.xlsx.writeBuffer();
       reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      reply.header('Content-Disposition', `attachment; filename="payroll_${year}_${month}.xlsx"`);
+      const fname = encodeURIComponent(`Ведомость_${mName}_${year}.xlsx`);
+      reply.header('Content-Disposition', `attachment; filename*=UTF-8''${fname}`);
       return reply.send(Buffer.from(buf));
     } catch (err) {
       fastify.log.error('[worker-payments] payroll-grid export error:', err);
