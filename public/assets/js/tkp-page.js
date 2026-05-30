@@ -1,4 +1,4 @@
-// ASGARD CRM — ТКП (Техническо-коммерческое предложение)
+﻿// ASGARD CRM — ТКП (Техническо-коммерческое предложение)
 window.AsgardTkpPage = (function() {
   'use strict';
   const { $, esc, toast, showModal, hideModal } = AsgardUI;
@@ -9,6 +9,22 @@ window.AsgardTkpPage = (function() {
     accepted: { label: 'Принято', color: 'var(--ok-t)' },
     rejected: { label: 'Отклонено', color: 'var(--err-t)' },
     expired: { label: 'Просрочено', color: 'var(--amber)' }
+  };
+
+  const LINK_TYPE_MAP = {
+    tender:         'Тендер',
+    pre_tender:     'Заявка',
+    addendum:       'Доп. соглашение',
+    direct_request: 'Прямой запрос',
+    standalone:     'Самостоятельно',
+    uploaded:       'Загружено',
+    work:           'Работа'
+  };
+
+  const CLIENT_DECISION_MAP = {
+    accepted:    { label: 'Принято',    color: 'var(--ok-t)'  },
+    rejected:    { label: 'Отказ',      color: 'var(--err-t)' },
+    no_response: { label: 'Нет ответа', color: 'var(--t3)'    }
   };
 
   const TKP_TYPES = [
@@ -62,6 +78,7 @@ window.AsgardTkpPage = (function() {
   let _tkpRowId = 0;
   let _docClickBound = false;
   let _mimirStylesInjected = false;
+  let _tkpAllItems = [];
 
   function injectMimirTkpStyles() {
     if (_mimirStylesInjected) return;
@@ -340,82 +357,147 @@ window.AsgardTkpPage = (function() {
       const resp = await fetch('/api/tkp', { headers: { Authorization: 'Bearer ' + token } });
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       const data = await resp.json();
-      const items = data.items || [];
-
-      el.innerHTML =
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">' +
-          '<h3 style="margin:0">ТКП (' + items.length + ')</h3>' +
-          '<button class="btn primary" id="btnNewTkp">+ Создать ТКП</button>' +
-        '</div>' +
-        '<div class="tbl-wrap"><table class="data-table"><thead><tr>' +
-          '<th>\u2116</th><th>Номер</th><th>Название</th><th>Заказчик</th>' +
-          '<th>Сумма</th><th>Статус</th><th>Дата</th><th></th>' +
-        '</tr></thead><tbody>' +
-        (items.length ? items.map(function(i) {
-          const st = STATUS_MAP[i.status] || STATUS_MAP.draft;
-          return '<tr>' +
-            '<td>' + i.id + '</td>' +
-            '<td>' + esc(i.tkp_number || '\u2014') + '</td>' +
-            '<td>' + esc(i.subject || i.title || '') + '</td>' +
-            '<td>' + esc(i.customer_name || i.tender_customer || '\u2014') + '</td>' +
-            '<td style="text-align:right">' + (i.total_sum ? fmt(i.total_sum) : '\u2014') + '</td>' +
-            '<td><span style="color:' + st.color + ';font-weight:600">' + st.label + '</span></td>' +
-            '<td>' + (i.created_at ? new Date(i.created_at).toLocaleDateString('ru-RU') : '') + '</td>' +
-            '<td style="white-space:nowrap">' +
-              '<button class="tkp-tbl-btn" data-action="edit" data-id="' + i.id + '" title="Редактировать"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
-              '<button class="tkp-tbl-btn" data-action="copy" data-id="' + i.id + '" title="Копировать ТКП"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>' +
-              '<button class="tkp-tbl-btn" data-action="pdf" data-id="' + i.id + '" title="Скачать PDF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></button>' +
-              '<button class="tkp-tbl-btn" data-action="excel" data-id="' + i.id + '" title="Скачать Excel" style="color:#1B7340"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="9" y1="13" x2="15" y2="19"/><line x1="15" y1="13" x2="9" y2="19"/></svg></button>' +
-              '<button class="tkp-tbl-btn" data-action="send" data-id="' + i.id + '" title="Отправить"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9z"/></svg></button>' +
-            '</td></tr>';
-        }).join('') : '<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--t3)">Нет созданных ТКП</td></tr>') +
-        '</tbody></table></div>';
-
-      $('#btnNewTkp').addEventListener('click', () => openForm());
-      el.querySelectorAll('[data-action="edit"]').forEach(b =>
-        b.addEventListener('click', () => openForm(b.dataset.id))
-      );
-      el.querySelectorAll('[data-action="copy"]').forEach(b =>
-        b.addEventListener('click', async () => {
-          const token = localStorage.getItem('asgard_token');
-          try {
-            const resp = await fetch('/api/tkp/' + b.dataset.id + '/copy', {
-              method: 'POST',
-              headers: { Authorization: 'Bearer ' + token }
-            });
-            if (resp.ok) {
-              const data = await resp.json();
-              toast('Готово', 'ТКП скопировано');
-              loadList();
-              if (data.item && data.item.id) openForm(data.item.id);
-            } else {
-              const err = await resp.json().catch(function() { return {}; });
-              toast('Ошибка', err.error || 'Не удалось скопировать', 'err');
-            }
-          } catch (ex) {
-            toast('Ошибка', ex.message, 'err');
-          }
-        })
-      );
-      el.querySelectorAll('[data-action="pdf"]').forEach(b =>
-        b.addEventListener('click', () => showPdfDialog(b.dataset.id))
-      );
-      el.querySelectorAll('[data-action="excel"]').forEach(b =>
-        b.addEventListener('click', () => {
-          var token = localStorage.getItem('asgard_token');
-          window.open('/api/tkp/' + b.dataset.id + '/excel?token=' + token, '_blank');
-        })
-      );
-      el.querySelectorAll('[data-action="send"]').forEach(b =>
-        b.addEventListener('click', () => openSendTkpModal(b.dataset.id))
-      );
+      _tkpAllItems = data.items || [];
+      renderTkpPage(el);
     } catch (e) {
       el.innerHTML = '<div class="err">Ошибка загрузки: ' + esc(e.message) + '</div>';
     }
   }
 
+  function _cdBadge(decision) {
+    const d = CLIENT_DECISION_MAP[decision];
+    return d ? '<span style="color:' + d.color + ';font-size:11px;font-weight:600">' + esc(d.label) + '</span>' : '—';
+  }
+
+  function renderTkpPage(el) {
+    const fLinkType = (el.querySelector('#fTkpLinkType') || {}).value || '';
+    const fDecision = (el.querySelector('#fTkpDecision') || {}).value || '';
+    const fStatus   = (el.querySelector('#fTkpStatus')   || {}).value || '';
+
+    const items = _tkpAllItems.filter(function(i) {
+      if (fLinkType && i.link_type !== fLinkType) return false;
+      if (fDecision && i.client_decision !== fDecision) return false;
+      if (fStatus   && i.status !== fStatus) return false;
+      return true;
+    });
+
+    const selStyle = 'font-size:12px;padding:4px 8px;background:var(--bg2);color:var(--t1);border:1px solid var(--brd);border-radius:6px';
+
+    const filtersHtml =
+      '<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:center">' +
+        '<select id="fTkpLinkType" style="' + selStyle + '">' +
+          '<option value="">Все источники</option>' +
+          Object.keys(LINK_TYPE_MAP).map(function(k) {
+            return '<option value="' + k + '"' + (fLinkType === k ? ' selected' : '') + '>' + LINK_TYPE_MAP[k] + '</option>';
+          }).join('') +
+        '</select>' +
+        '<select id="fTkpDecision" style="' + selStyle + '">' +
+          '<option value="">Все решения</option>' +
+          Object.keys(CLIENT_DECISION_MAP).map(function(k) {
+            return '<option value="' + k + '"' + (fDecision === k ? ' selected' : '') + '>' + CLIENT_DECISION_MAP[k].label + '</option>';
+          }).join('') +
+        '</select>' +
+        '<select id="fTkpStatus" style="' + selStyle + '">' +
+          '<option value="">Все статусы</option>' +
+          Object.keys(STATUS_MAP).map(function(k) {
+            return '<option value="' + k + '"' + (fStatus === k ? ' selected' : '') + '>' + STATUS_MAP[k].label + '</option>';
+          }).join('') +
+        '</select>' +
+        '<span style="font-size:11px;color:var(--t3);margin-left:4px">' + items.length + ' из ' + _tkpAllItems.length + '</span>' +
+      '</div>';
+
+    el.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">' +
+        '<h3 style="margin:0">ТКП</h3>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+          '<button class="btn ghost" id="btnUploadTkp" style="font-size:12px">📎 Загрузить ТКП</button>' +
+          '<button class="mimir-tkp-btn" id="btnMimirQuickTkp" style="font-size:12px">🧙 Быстрое ТКП</button>' +
+          '<button class="btn primary" id="btnNewTkp" style="font-size:12px">+ Создать ТКП</button>' +
+        '</div>' +
+      '</div>' +
+      filtersHtml +
+      '<div class="tbl-wrap"><table class="data-table"><thead><tr>' +
+        '<th>№</th><th>Номер</th><th>Название</th><th>Заказчик</th>' +
+        '<th>Источник</th><th>Решение клиента</th>' +
+        '<th>Сумма</th><th>Статус</th><th>Дата</th><th></th>' +
+      '</tr></thead><tbody>' +
+      (items.length ? items.map(function(i) {
+        const st = STATUS_MAP[i.status] || STATUS_MAP.draft;
+        const ltLabel = LINK_TYPE_MAP[i.link_type] || '';
+        return '<tr>' +
+          '<td>' + i.id + '</td>' +
+          '<td>' + esc(i.tkp_number || '—') + '</td>' +
+          '<td>' + esc(i.subject || i.title || '') + '</td>' +
+          '<td>' + esc(i.customer_name || i.tender_customer || '—') + '</td>' +
+          '<td style="font-size:11px;color:var(--t3)">' + esc(ltLabel || '—') + '</td>' +
+          '<td>' + _cdBadge(i.client_decision) + '</td>' +
+          '<td style="text-align:right">' + (i.total_sum ? fmt(i.total_sum) : '—') + '</td>' +
+          '<td><span style="color:' + st.color + ';font-weight:600">' + st.label + '</span></td>' +
+          '<td>' + (i.created_at ? new Date(i.created_at).toLocaleDateString('ru-RU') : '') + '</td>' +
+          '<td style="white-space:nowrap">' +
+            '<button class="tkp-tbl-btn" data-action="edit" data-id="' + i.id + '" title="Редактировать"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
+            '<button class="tkp-tbl-btn" data-action="copy" data-id="' + i.id + '" title="Копировать ТКП"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>' +
+            '<button class="tkp-tbl-btn" data-action="pdf" data-id="' + i.id + '" title="Скачать PDF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></button>' +
+            '<button class="tkp-tbl-btn" data-action="excel" data-id="' + i.id + '" title="Скачать Excel" style="color:#1B7340"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="9" y1="13" x2="15" y2="19"/><line x1="15" y1="13" x2="9" y2="19"/></svg></button>' +
+            '<button class="tkp-tbl-btn" data-action="send" data-id="' + i.id + '" title="Отправить"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9z"/></svg></button>' +
+            '<button class="tkp-tbl-btn" data-action="decision" data-id="' + i.id + '" title="Решение клиента" style="color:var(--blue)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></button>' +
+          '</td></tr>';
+      }).join('') : '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--t3)">Нет ТКП по выбранным фильтрам</td></tr>') +
+      '</tbody></table></div>';
+
+    ['fTkpLinkType', 'fTkpDecision', 'fTkpStatus'].forEach(function(id) {
+      var sel = el.querySelector('#' + id);
+      if (sel) sel.addEventListener('change', function() { renderTkpPage(el); });
+    });
+
+    el.querySelector('#btnNewTkp').addEventListener('click', function() { openForm(); });
+    el.querySelector('#btnMimirQuickTkp').addEventListener('click', function() { openMimirQuickModal(); });
+    el.querySelector('#btnUploadTkp').addEventListener('click', function() { openUploadTkpModal(); });
+
+    el.querySelectorAll('[data-action="edit"]').forEach(function(b) {
+      b.addEventListener('click', function() { openForm(b.dataset.id); });
+    });
+    el.querySelectorAll('[data-action="copy"]').forEach(function(b) {
+      b.addEventListener('click', async function() {
+        const token = localStorage.getItem('asgard_token');
+        try {
+          const resp = await fetch('/api/tkp/' + b.dataset.id + '/copy', {
+            method: 'POST',
+            headers: { Authorization: 'Bearer ' + token }
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            toast('Готово', 'ТКП скопировано');
+            loadList();
+            if (data.item && data.item.id) openForm(data.item.id);
+          } else {
+            const err = await resp.json().catch(function() { return {}; });
+            toast('Ошибка', err.error || 'Не удалось скопировать', 'err');
+          }
+        } catch (ex) {
+          toast('Ошибка', ex.message, 'err');
+        }
+      });
+    });
+    el.querySelectorAll('[data-action="pdf"]').forEach(function(b) {
+      b.addEventListener('click', function() { showPdfDialog(b.dataset.id); });
+    });
+    el.querySelectorAll('[data-action="excel"]').forEach(function(b) {
+      b.addEventListener('click', function() {
+        var token = localStorage.getItem('asgard_token');
+        window.open('/api/tkp/' + b.dataset.id + '/excel?token=' + token, '_blank');
+      });
+    });
+    el.querySelectorAll('[data-action="send"]').forEach(function(b) {
+      b.addEventListener('click', function() { openSendTkpModal(b.dataset.id); });
+    });
+    el.querySelectorAll('[data-action="decision"]').forEach(function(b) {
+      b.addEventListener('click', function() { openClientDecisionModal(b.dataset.id); });
+    });
+  }
+
   // ═══════════════════════════════════════════
-  // Форма: сборка HTML
+    // Форма: сборка HTML
   // ═══════════════════════════════════════════
 
   function buildFormHtml(o) {
@@ -439,6 +521,7 @@ window.AsgardTkpPage = (function() {
         '<div><label>ИНН</label><input id="tkpInn" value="' + esc(o.item.customer_inn || '') + '"/></div>' +
         '<div><label>КПП</label><input id="tkpKpp" value="' + esc(o.parsed.customer_kpp || '') + '"/></div>' +
       '</div>' +
+      '<div id="tkpCustomerCardWrap" style="margin:2px 0 8px"></div>' +
       '<div class="formrow"><div style="grid-column:1/-1">' +
         '<label>Адрес</label><input id="tkpAddress" value="' + esc(o.item.customer_address || '') + '"/>' +
       '</div></div>' +
@@ -827,6 +910,12 @@ window.AsgardTkpPage = (function() {
         setupTenderAutocomplete(allTenders);
         ensureDocClick();
 
+        // Карточка-светофор контрагента при редактировании
+        if (item.customer_inn && window.AsgardCustomerCard) {
+          var _cWrap = document.getElementById('tkpCustomerCardWrap');
+          if (_cWrap) AsgardCustomerCard.mount(_cWrap, item.customer_inn);
+        }
+
         // Оплата: радио-карточки (аванс / постоплата)
         function updatePayText() {
           var checked = document.querySelector('input[name="tkpPayType"]:checked');
@@ -1091,6 +1180,10 @@ window.AsgardTkpPage = (function() {
       const phF = $('#tkpContactPhone'); if (phF) phF.value = c.phone || '';
       const emF = $('#tkpContactEmail'); if (emF) emF.value = c.email || '';
       dropdown.style.display = 'none';
+      const cardWrap = document.getElementById('tkpCustomerCardWrap');
+      if (cardWrap && (c.inn || '') && window.AsgardCustomerCard) {
+        AsgardCustomerCard.mount(cardWrap, c.inn);
+      }
     });
   }
 
@@ -1308,10 +1401,457 @@ window.AsgardTkpPage = (function() {
     });
   }
 
+
+  // ═══════════════════════════════════════════
+  // Быстрое ТКП через Мимира (3 фазы: ввод → расчёт SSE → чат)
+  // ═══════════════════════════════════════════
+
+  function openMimirQuickModal(prefill) {
+    prefill = prefill || {};
+    var _uid = null;
+    var _estimate = null;
+    var _attachedFile = null;
+
+    function _renderEstTable(est) {
+      if (!est || !est.items) return '<p style="color:var(--t3);font-size:12px">Смета не сформирована</p>';
+      var rows = (est.items || []).map(function(it, idx) {
+        return '<tr><td>' + (idx+1) + '</td>' +
+          '<td>' + esc(it.name||'') + '</td>' +
+          '<td style="text-align:center">' + esc(it.unit||'') + '</td>' +
+          '<td style="text-align:right">' + (it.qty||0) + '</td>' +
+          '<td style="text-align:right">' + Number(it.price||0).toLocaleString('ru-RU') + '</td>' +
+          '<td style="text-align:right"><b>' + Number(it.total||0).toLocaleString('ru-RU') + '</b></td>' +
+        '</tr>';
+      }).join('');
+      return '<div style="overflow-x:auto;margin-top:4px">' +
+        '<table class="data-table" style="font-size:11px">' +
+        '<thead><tr><th>#</th><th>Наименование</th><th>Ед.</th><th>Кол</th><th>Цена ₽</th><th>Сумма ₽</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+        '<tfoot>' +
+          '<tr style="background:var(--bg3)"><td colspan="5" style="text-align:right;font-weight:600">Без НДС:</td>' +
+          '<td style="text-align:right;font-weight:600">' + Number(est.subtotal||0).toLocaleString('ru-RU') + ' ₽</td></tr>' +
+          '<tr><td colspan="5" style="text-align:right">НДС ' + (est.vat_pct||20) + '%:</td>' +
+          '<td style="text-align:right">' + Number(est.vat_sum||0).toLocaleString('ru-RU') + ' ₽</td></tr>' +
+          '<tr style="background:rgba(30,77,140,0.06)"><td colspan="5" style="text-align:right;font-weight:700">ИТОГО с НДС:</td>' +
+          '<td style="text-align:right;font-weight:700;color:var(--blue)">' + Number(est.total_with_vat||0).toLocaleString('ru-RU') + ' ₽</td></tr>' +
+        '</tfoot></table></div>';
+    }
+
+    function _phaseInput(container) {
+      container.innerHTML =
+        '<div style="margin-bottom:12px">' +
+          '<label style="font-size:11px;text-transform:uppercase;color:var(--t3)">Заказчик</label>' +
+          '<div style="display:flex;gap:8px;margin-top:6px">' +
+            '<input id="mqInn" placeholder="ИНН" style="width:130px" value="' + esc(prefill.customer_inn||'') + '"/>' +
+            '<input id="mqName" placeholder="Название организации" style="flex:1" value="' + esc(prefill.customer_name||'') + '"/>' +
+            '<button class="btn ghost" id="btnMqDadata" type="button" style="white-space:nowrap;font-size:12px">🔍 Найти</button>' +
+          '</div>' +
+          '<div id="mqCustomerCard" style="margin-top:8px"></div>' +
+        '</div>' +
+        '<div style="margin-bottom:12px">' +
+          '<label style="font-size:11px;text-transform:uppercase;color:var(--t3)">Техническое задание</label>' +
+          '<textarea id="mqTzText" rows="7" placeholder="Опишите задачу: что нужно сделать, на каком объекте, примерный объём работ..." style="width:100%;box-sizing:border-box;margin-top:6px;resize:vertical">' + esc(prefill.tz_text||'') + '</textarea>' +
+        '</div>' +
+        '<div style="margin-bottom:16px">' +
+          '<label style="font-size:11px;text-transform:uppercase;color:var(--t3)">Прикрепить ТЗ (PDF, Word, Excel)</label>' +
+          '<div id="mqDropZone" style="margin-top:6px;border:2px dashed var(--brd);border-radius:8px;padding:12px;text-align:center;cursor:pointer;color:var(--t3);font-size:12px;transition:all .2s">📎 Перетащите файл или нажмите для выбора</div>' +
+          '<input type="file" id="mqFileInput" style="display:none" accept=".pdf,.doc,.docx,.xls,.xlsx"/>' +
+          '<div id="mqFileList" style="margin-top:6px;font-size:12px;color:var(--t2)"></div>' +
+        '</div>' +
+        '<div style="display:flex;justify-content:flex-end"><button class="mimir-tkp-btn" id="btnMqCalc" type="button">🧙 Рассчитать</button></div>';
+
+      var btnDadata = document.getElementById('btnMqDadata');
+      if (btnDadata) {
+        btnDadata.addEventListener('click', function() {
+          var inn = (document.getElementById('mqInn')||{}).value || '';
+          var cardWrap = document.getElementById('mqCustomerCard');
+          if (cardWrap && inn && window.AsgardCustomerCard) AsgardCustomerCard.mount(cardWrap, inn);
+          if (_uid) {
+            var token = localStorage.getItem('asgard_token');
+            var name = (document.getElementById('mqName')||{}).value || '';
+            fetch('/api/tkp-quick/sessions/' + _uid + '/dadata', {
+              method: 'POST',
+              headers: { 'Content-Type':'application/json', Authorization: 'Bearer ' + token },
+              body: JSON.stringify({ inn: inn, company_name: name })
+            }).then(function(r){ return r.ok ? r.json() : null; }).then(function(d){
+              if (!d) return;
+              if (d.inn) { var el=document.getElementById('mqInn'); if(el) el.value=d.inn; }
+              if (d.name) { var el=document.getElementById('mqName'); if(el) el.value=d.name; }
+              if (d.inn && cardWrap && window.AsgardCustomerCard) AsgardCustomerCard.mount(cardWrap, d.inn);
+            }).catch(function(){});
+          }
+        });
+      }
+
+      var dz = document.getElementById('mqDropZone');
+      var fi = document.getElementById('mqFileInput');
+      if (dz && fi) {
+        dz.addEventListener('click', function() { fi.click(); });
+        dz.addEventListener('dragover', function(e) { e.preventDefault(); dz.style.borderColor='var(--blue)'; dz.style.background='rgba(30,77,140,0.04)'; });
+        dz.addEventListener('dragleave', function() { dz.style.borderColor=''; dz.style.background=''; });
+        dz.addEventListener('drop', function(e) { e.preventDefault(); dz.style.borderColor=''; dz.style.background=''; var f=e.dataTransfer.files[0]; if(f){ _attachedFile=f; document.getElementById('mqFileList').textContent='📄 '+f.name; } });
+        fi.addEventListener('change', function() { if(fi.files[0]){ _attachedFile=fi.files[0]; document.getElementById('mqFileList').textContent='📄 '+fi.files[0].name; } });
+      }
+
+      var btnCalc = document.getElementById('btnMqCalc');
+      if (btnCalc) {
+        btnCalc.addEventListener('click', async function() {
+          var tz = (document.getElementById('mqTzText')||{}).value || '';
+          var inn = (document.getElementById('mqInn')||{}).value || '';
+          var name = (document.getElementById('mqName')||{}).value || '';
+          if (!tz.trim()) { toast('Внимание', 'Введите техническое задание', 'warn'); return; }
+          btnCalc.disabled = true;
+          btnCalc.innerHTML = '<span class="mimir-spinner"></span> Создаю сессию...';
+          try {
+            var token = localStorage.getItem('asgard_token');
+            var sr = await fetch('/api/tkp-quick/sessions', {
+              method: 'POST',
+              headers: { 'Content-Type':'application/json', Authorization: 'Bearer ' + token },
+              body: JSON.stringify({ tz_text: tz, customer_inn: inn||null, customer_name: name||null, pre_tender_id: prefill.pre_tender_id||null, tender_id: prefill.tender_id||null })
+            });
+            if (!sr.ok) throw new Error('HTTP ' + sr.status);
+            var sd = await sr.json();
+            _uid = sd.uid;
+            if (_attachedFile) {
+              var fd = new FormData(); fd.append('file', _attachedFile);
+              await fetch('/api/tkp-quick/sessions/' + _uid + '/upload', { method:'POST', headers:{Authorization:'Bearer '+token}, body:fd }).catch(function(){});
+            }
+            if (inn) {
+              fetch('/api/tkp-quick/sessions/' + _uid + '/dadata', { method:'POST', headers:{'Content-Type':'application/json', Authorization:'Bearer '+token}, body:JSON.stringify({inn:inn, company_name:name}) }).catch(function(){});
+            }
+            _phaseCalc(container);
+            var resp = await fetch('/api/tkp-quick/sessions/' + _uid + '/calculate', { headers:{ Authorization:'Bearer '+token } });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            var reader = resp.body.getReader();
+            var decoder = new TextDecoder();
+            var buf = '';
+            while (true) {
+              var chunk = await reader.read();
+              if (chunk.done) break;
+              buf += decoder.decode(chunk.value, { stream: true });
+              var lines = buf.split('\n'); buf = lines.pop();
+              for (var li = 0; li < lines.length; li++) {
+                if (!lines[li].startsWith('data: ')) continue;
+                try { _onCalcEvent(container, JSON.parse(lines[li].slice(6))); } catch(_){}
+              }
+            }
+          } catch (ex) {
+            toast('Ошибка', ex.message, 'err');
+            btnCalc.disabled = false;
+            btnCalc.innerHTML = '🧙 Рассчитать';
+          }
+        });
+      }
+    }
+
+    function _phaseCalc(container) {
+      container.innerHTML =
+        '<div style="text-align:center;padding:32px 16px">' +
+          '<div class="mimir-spinner" style="width:32px;height:32px;border-width:3px"></div>' +
+          '<div id="mqCalcStatus" style="margin-top:16px;font-size:14px;color:var(--t1);font-weight:600">Мимир анализирует задание...</div>' +
+          '<div id="mqCalcStatus2" style="margin-top:6px;font-size:12px;color:var(--t3)"></div>' +
+        '</div>' +
+        '<div id="mqCalcLog" style="max-height:130px;overflow-y:auto;padding:8px 12px;background:var(--bg3);border-radius:6px;font-size:11px;color:var(--t3);margin-top:4px;font-family:monospace;white-space:pre-wrap"></div>';
+    }
+
+    function _onCalcEvent(container, ev) {
+      var s1 = document.getElementById('mqCalcStatus');
+      var s2 = document.getElementById('mqCalcStatus2');
+      var log = document.getElementById('mqCalcLog');
+      if (ev.type === 'status' && s1) s1.textContent = ev.message || '';
+      if (ev.type === 'progress') {
+        if (s2) s2.textContent = ev.message || '';
+        if (log) { log.textContent += (ev.message||'') + '\n'; log.scrollTop = log.scrollHeight; }
+      }
+      if (ev.type === 'done') { _estimate = ev.estimate||null; _phaseChat(container, ev.chat_response_md||''); }
+      if (ev.type === 'error' && s1) s1.textContent = '❌ ' + (ev.message||'Ошибка расчёта');
+    }
+
+    function _phaseChat(container, chatMd) {
+      container.innerHTML =
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;min-height:280px">' +
+          '<div style="overflow:hidden">' +
+            '<div style="font-size:11px;text-transform:uppercase;color:var(--t3);margin-bottom:4px">📊 Смета</div>' +
+            '<div id="mqEstTable">' + _renderEstTable(_estimate) + '</div>' +
+          '</div>' +
+          '<div style="display:flex;flex-direction:column">' +
+            '<div style="font-size:11px;text-transform:uppercase;color:var(--t3);margin-bottom:4px">💬 Диалог с Мимиром</div>' +
+            '<div id="mqChatMessages" style="flex:1;overflow-y:auto;max-height:240px;padding:8px;background:var(--bg3);border-radius:6px;font-size:12px;margin-bottom:8px;white-space:pre-wrap;word-break:break-word">' +
+              (chatMd ? esc(chatMd) : '<span style="color:var(--t3)">Задайте вопрос или уточните смету</span>') +
+            '</div>' +
+            '<div style="display:flex;gap:6px">' +
+              '<textarea id="mqChatInput" rows="2" placeholder="Ctrl+Enter для отправки..." style="flex:1;resize:none"></textarea>' +
+              '<button class="btn ghost" id="btnMqSend" type="button" style="align-self:flex-end;padding:6px 10px">➤</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--brd);display:flex;gap:8px;justify-content:flex-end">' +
+          '<button class="btn ghost" id="btnMqBack" type="button">← Изменить ТЗ</button>' +
+          '<button class="btn primary" id="btnMqFinalize" type="button">✅ Сохранить как ТКП</button>' +
+        '</div>';
+
+      function sendChat() {
+        var inputEl = document.getElementById('mqChatInput');
+        var msg = inputEl ? inputEl.value.trim() : '';
+        if (!msg) return;
+        inputEl.value = '';
+        var msgBox = document.getElementById('mqChatMessages');
+        if (msgBox) { msgBox.innerHTML += '\n\n[Вы]: ' + esc(msg) + '\n[Мимир]: <span id="mqReplySpan"><span class="mimir-spinner"></span></span>'; msgBox.scrollTop = msgBox.scrollHeight; }
+        var sendBtn = document.getElementById('btnMqSend');
+        if (sendBtn) sendBtn.disabled = true;
+        var token = localStorage.getItem('asgard_token');
+        fetch('/api/tkp-quick/sessions/' + _uid + '/chat', {
+          method:'POST', headers:{'Content-Type':'application/json', Authorization:'Bearer '+token},
+          body: JSON.stringify({ message: msg })
+        }).then(async function(resp) {
+          if (!resp.ok) throw new Error('HTTP ' + resp.status);
+          var reader = resp.body.getReader(); var decoder = new TextDecoder(); var buf = '';
+          while (true) {
+            var chunk = await reader.read(); if (chunk.done) break;
+            buf += decoder.decode(chunk.value, { stream: true });
+            var lines = buf.split('\n'); buf = lines.pop();
+            for (var li=0; li<lines.length; li++) {
+              if (!lines[li].startsWith('data: ')) continue;
+              try {
+                var ev = JSON.parse(lines[li].slice(6));
+                if (ev.type === 'done') {
+                  if (ev.estimate) { _estimate = ev.estimate; var estEl=document.getElementById('mqEstTable'); if(estEl) estEl.innerHTML=_renderEstTable(_estimate); }
+                  var span = document.getElementById('mqReplySpan');
+                  if (span) span.outerHTML = esc(ev.chat_response_md||'');
+                  var mb = document.getElementById('mqChatMessages'); if(mb) mb.scrollTop=mb.scrollHeight;
+                }
+              } catch(_){}
+            }
+          }
+        }).catch(function(ex) {
+          var span = document.getElementById('mqReplySpan');
+          if (span) span.outerHTML = '<span style="color:var(--err-t)">Ошибка: ' + esc(ex.message) + '</span>';
+        }).finally(function() { var b=document.getElementById('btnMqSend'); if(b) b.disabled=false; });
+      }
+
+      var sb = document.getElementById('btnMqSend'); if(sb) sb.addEventListener('click', sendChat);
+      var ci = document.getElementById('mqChatInput'); if(ci) ci.addEventListener('keydown', function(e){ if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)) sendChat(); });
+      var bb = document.getElementById('btnMqBack'); if(bb) bb.addEventListener('click', function(){ _phaseInput(container); });
+      var fb = document.getElementById('btnMqFinalize');
+      if (fb) {
+        fb.addEventListener('click', async function() {
+          if (!_estimate) { toast('Внимание', 'Смета не сформирована', 'warn'); return; }
+          fb.disabled = true; fb.textContent = '⏳ Сохраняю...';
+          try {
+            var token = localStorage.getItem('asgard_token');
+            var r = await fetch('/api/tkp-quick/sessions/' + _uid + '/finalize', {
+              method:'POST', headers:{'Content-Type':'application/json', Authorization:'Bearer '+token},
+              body: JSON.stringify({ tender_id: prefill.tender_id||null, pre_tender_id: prefill.pre_tender_id||null, work_id: prefill.work_id||null })
+            });
+            if (!r.ok) { var e=await r.json().catch(function(){return{};}); throw new Error(e.error||'HTTP '+r.status); }
+            var d = await r.json();
+            toast('🧙 Мимир', 'ТКП #' + (d.tkp_id||'?') + ' создано!', 'ok');
+            hideModal(); loadList();
+          } catch (ex) { toast('Ошибка', ex.message, 'err'); fb.disabled=false; fb.textContent='✅ Сохранить как ТКП'; }
+        });
+      }
+    }
+
+    showModal({
+      title: 'Быстрое ТКП через Мимира', icon: '🧙', subtitle: 'AI-расчёт на основе ТЗ', wide: true,
+      html: '<div id="mqContainer"></div>',
+      onMount: function() { var c=document.getElementById('mqContainer'); if(c) _phaseInput(c); }
+    });
+  }
+
+  // ═══════════════════════════════════════════
+  // Загрузить готовое ТКП (2 фазы: файл → форма)
+  // ═══════════════════════════════════════════
+
+  function openUploadTkpModal(prefill) {
+    prefill = prefill || {};
+    var _parsedData = null;
+    var _selectedFile = null;
+
+    function _phaseA(container) {
+      container.innerHTML =
+        '<div id="upDropZone" style="border:2px dashed var(--brd);border-radius:10px;padding:32px;text-align:center;cursor:pointer;color:var(--t3);font-size:13px;transition:all .2s">' +
+          '<div style="font-size:36px;margin-bottom:12px">📄</div>' +
+          '<div style="font-weight:600;color:var(--t1);margin-bottom:4px">Перетащите файл ТКП сюда</div>' +
+          '<div style="font-size:12px">PDF, Excel (.xlsx), Word (.docx)</div>' +
+        '</div>' +
+        '<input type="file" id="upFileInput" style="display:none" accept=".pdf,.doc,.docx,.xls,.xlsx"/>' +
+        '<div id="upFileName" style="margin-top:10px;font-size:13px;font-weight:600;color:var(--t1)"></div>' +
+        '<div style="display:flex;justify-content:flex-end;margin-top:14px"><button class="btn primary" id="btnUpParse" disabled>📄 Распознать файл</button></div>';
+
+      var dz=container.querySelector('#upDropZone'), fi=container.querySelector('#upFileInput'),
+          fn=container.querySelector('#upFileName'), btn=container.querySelector('#btnUpParse');
+
+      function setFile(f) {
+        _selectedFile = f;
+        fn.textContent = '📎 ' + f.name + ' (' + (f.size>1048576 ? (f.size/1048576).toFixed(1)+'MB' : Math.round(f.size/1024)+'KB') + ')';
+        btn.disabled = false; dz.style.borderColor='var(--blue)'; dz.style.background='rgba(30,77,140,0.04)';
+      }
+
+      dz.addEventListener('click', function(){ fi.click(); });
+      dz.addEventListener('dragover', function(e){ e.preventDefault(); dz.style.borderColor='var(--blue)'; });
+      dz.addEventListener('dragleave', function(){ dz.style.borderColor=''; });
+      dz.addEventListener('drop', function(e){ e.preventDefault(); var f=e.dataTransfer.files[0]; if(f) setFile(f); });
+      fi.addEventListener('change', function(){ if(fi.files[0]) setFile(fi.files[0]); });
+
+      btn.addEventListener('click', async function() {
+        if (!_selectedFile) return;
+        btn.disabled=true; btn.textContent='⏳ Распознаю...';
+        try {
+          var token = localStorage.getItem('asgard_token');
+          var fd = new FormData(); fd.append('file', _selectedFile);
+          var r = await fetch('/api/tkp/parse-attachment', { method:'POST', headers:{Authorization:'Bearer '+token}, body:fd });
+          if (!r.ok) { var e=await r.json().catch(function(){return{};}); throw new Error(e.error||'HTTP '+r.status); }
+          _parsedData = await r.json();
+          _phaseB(container);
+        } catch (ex) { toast('Ошибка', ex.message, 'err'); btn.disabled=false; btn.textContent='📄 Распознать файл'; }
+      });
+    }
+
+    function _phaseB(container) {
+      var d = _parsedData || {};
+      var items = d.items || [];
+      var ddStyle = 'position:absolute;top:100%;left:0;right:0;z-index:100;background:var(--bg2);border:1px solid var(--brd);border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.15);display:none;max-height:200px;overflow-y:auto';
+
+      container.innerHTML =
+        '<div style="background:rgba(30,77,140,0.06);border:1px solid rgba(30,77,140,0.2);border-radius:8px;padding:9px 14px;margin-bottom:12px;font-size:12px">✅ Файл распознан. Проверьте данные и нажмите «Сохранить».</div>' +
+        '<div style="margin-bottom:10px">' +
+          '<label style="font-size:11px;text-transform:uppercase;color:var(--t3)">Заказчик</label>' +
+          '<div style="display:flex;gap:8px;margin-top:6px">' +
+            '<input id="upInn" placeholder="ИНН" style="width:130px" value="' + esc(d.customer_inn||'') + '"/>' +
+            '<div style="flex:1;position:relative"><input id="upCustomerName" placeholder="Название организации" style="width:100%;box-sizing:border-box" value="' + esc(d.customer_name||'') + '"/><div id="upCustomerDropdown" style="' + ddStyle + '"></div></div>' +
+          '</div>' +
+          '<div id="upCustomerCard" style="margin-top:8px"></div>' +
+        '</div>' +
+        '<div class="formrow" style="margin-bottom:8px"><div style="grid-column:1/-1"><label>Адрес</label><input id="upAddress" value="' + esc(d.customer_address||'') + '" style="width:100%;box-sizing:border-box"/></div></div>' +
+        '<div style="margin-bottom:8px"><label style="font-size:11px;text-transform:uppercase;color:var(--t3)">Название ТКП</label><input id="upSubject" style="width:100%;box-sizing:border-box;margin-top:6px" value="' + esc(d.subject||'') + '" placeholder="Название коммерческого предложения"/></div>' +
+        '<div style="margin-bottom:8px"><label style="font-size:11px;text-transform:uppercase;color:var(--t3)">Описание работ</label><textarea id="upDescription" rows="3" style="width:100%;box-sizing:border-box;margin-top:6px">' + esc(d.work_description||d.description||'') + '</textarea></div>' +
+        (items.length ? '<div style="margin-bottom:8px"><label style="font-size:11px;text-transform:uppercase;color:var(--t3)">Позиции (' + items.length + ')</label><div style="overflow-x:auto;margin-top:6px"><table class="data-table" style="font-size:11px"><thead><tr><th>#</th><th>Наименование</th><th>Ед.</th><th>Кол</th><th style="text-align:right">Цена ₽</th><th style="text-align:right">Сумма ₽</th></tr></thead><tbody>' +
+          items.map(function(it,idx){ return '<tr><td>'+(idx+1)+'</td><td>'+esc(it.name||'')+'</td><td>'+esc(it.unit||'')+'</td><td>'+(it.qty||1)+'</td><td style="text-align:right">'+Number(it.price||0).toLocaleString('ru-RU')+'</td><td style="text-align:right"><b>'+Number(it.total||0).toLocaleString('ru-RU')+'</b></td></tr>'; }).join('') +
+          '</tbody></table></div></div>' : '') +
+        '<div class="formrow" style="margin-bottom:8px"><div><label>Итого с НДС, ₽</label><input id="upTotalSum" type="number" value="' + (d.total_with_vat||d.total_sum||'') + '"/></div><div><label>Сроки выполнения</label><input id="upDeadline" value="' + esc(d.deadline||'') + '"/></div><div><label>Срок действия, дн.</label><input id="upValidity" type="number" value="' + (d.validity_days||30) + '"/></div></div>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end;padding-top:12px;border-top:1px solid var(--brd)"><button class="btn ghost" id="btnUpBack" type="button">← Назад</button><button class="btn primary" id="btnUpSave" type="button">💾 Сохранить ТКП</button></div>';
+
+      if (d.customer_inn && window.AsgardCustomerCard) AsgardCustomerCard.mount(container.querySelector('#upCustomerCard'), d.customer_inn);
+
+      var innEl = container.querySelector('#upInn');
+      innEl.addEventListener('blur', function() {
+        var inn = innEl.value.replace(/\D/g,'');
+        if ((inn.length===10||inn.length===12) && window.AsgardCustomerCard) AsgardCustomerCard.mount(container.querySelector('#upCustomerCard'), inn);
+      });
+
+      var nameEl=container.querySelector('#upCustomerName'), nameDd=container.querySelector('#upCustomerDropdown'), _nTimer=null, _nCusts=[];
+      nameEl.addEventListener('input', function() {
+        clearTimeout(_nTimer); var q=nameEl.value.trim();
+        if (q.length<2) { nameDd.style.display='none'; return; }
+        _nTimer = setTimeout(async function() {
+          try {
+            var token=localStorage.getItem('asgard_token');
+            var r=await fetch('/api/customers?search='+encodeURIComponent(q)+'&limit=8',{headers:{Authorization:'Bearer '+token}});
+            if (!r.ok) return; var data=await r.json(); _nCusts=data.customers||[];
+            if (!_nCusts.length) { nameDd.style.display='none'; return; }
+            nameDd.innerHTML=_nCusts.map(function(c,i){ return '<div class="ac-item" data-idx="'+i+'" style="padding:7px 12px;cursor:pointer;border-bottom:1px solid var(--brd)">'+esc(c.name||'')+' <span style="color:var(--t3)">'+esc(c.inn||'')+'</span></div>'; }).join('');
+            nameDd.style.display='block';
+          } catch(_){}
+        }, 300);
+      });
+      nameDd.addEventListener('click', function(e) {
+        var el=e.target.closest('.ac-item'); if(!el) return;
+        var c=_nCusts[parseInt(el.dataset.idx)]; if(!c) return;
+        nameEl.value=c.name||''; innEl.value=c.inn||''; nameDd.style.display='none';
+        if (c.inn && window.AsgardCustomerCard) AsgardCustomerCard.mount(container.querySelector('#upCustomerCard'), c.inn);
+      });
+
+      container.querySelector('#btnUpBack').addEventListener('click', function(){ _phaseA(container); });
+
+      container.querySelector('#btnUpSave').addEventListener('click', async function() {
+        var btn=this; btn.disabled=true; btn.textContent='⏳ Сохраняю...';
+        try {
+          var token=localStorage.getItem('asgard_token');
+          var fd=new FormData();
+          if (_selectedFile) fd.append('file', _selectedFile);
+          fd.append('subject', (container.querySelector('#upSubject')||{}).value||'');
+          fd.append('customer_name', (container.querySelector('#upCustomerName')||{}).value||'');
+          fd.append('customer_inn', (container.querySelector('#upInn')||{}).value||'');
+          fd.append('customer_address', (container.querySelector('#upAddress')||{}).value||'');
+          fd.append('work_description', (container.querySelector('#upDescription')||{}).value||'');
+          fd.append('total_sum', parseFloat((container.querySelector('#upTotalSum')||{}).value)||0);
+          fd.append('deadline', (container.querySelector('#upDeadline')||{}).value||'');
+          fd.append('validity_days', parseInt((container.querySelector('#upValidity')||{}).value)||30);
+          fd.append('items', JSON.stringify({ items: _parsedData ? (_parsedData.items||[]) : [] }));
+          fd.append('parsed_from_attachment', 'true');
+          var r=await fetch('/api/tkp/upload-ready', { method:'POST', headers:{Authorization:'Bearer '+token}, body:fd });
+          if (!r.ok) { var e=await r.json().catch(function(){return{};}); throw new Error(e.error||'HTTP '+r.status); }
+          toast('Готово', 'ТКП загружено и сохранено'); hideModal(); loadList();
+        } catch (ex) { toast('Ошибка', ex.message, 'err'); btn.disabled=false; btn.textContent='💾 Сохранить ТКП'; }
+      });
+    }
+
+    showModal({
+      title: 'Загрузить готовое ТКП', icon: '📎', subtitle: 'Загрузка и распознавание файла', wide: true,
+      html: '<div id="upContainer"></div>',
+      onMount: function() { var c=document.getElementById('upContainer'); if(c) _phaseA(c); }
+    });
+  }
+
+  // ═══════════════════════════════════════════
+  // Решение клиента по ТКП
+  // ═══════════════════════════════════════════
+
+  function openClientDecisionModal(tkpId) {
+    var _decision = null;
+    showModal({
+      title: 'Решение клиента', icon: '📋', subtitle: 'ТКП #' + tkpId,
+      html:
+        '<div style="display:flex;gap:10px;margin-bottom:16px;justify-content:center">' +
+          '<button id="btnDecAccepted" type="button" style="flex:1;background:rgba(27,124,47,0.12);color:var(--ok-t);border:1.5px solid rgba(27,124,47,0.3);border-radius:8px;padding:10px;font-weight:600;cursor:pointer;font-size:13px">✅ Принято</button>' +
+          '<button id="btnDecRejected" type="button" style="flex:1;background:rgba(176,0,32,0.08);color:var(--err-t);border:1.5px solid rgba(176,0,32,0.2);border-radius:8px;padding:10px;font-weight:600;cursor:pointer;font-size:13px">❌ Отказ</button>' +
+          '<button id="btnDecNoResp" type="button" style="flex:1;background:var(--bg3);color:var(--t2);border:1.5px solid var(--brd);border-radius:8px;padding:10px;font-weight:600;cursor:pointer;font-size:13px">⏳ Нет ответа</button>' +
+        '</div>' +
+        '<div><label>Комментарий (необязательно)</label><textarea id="decComment" rows="3" style="width:100%;box-sizing:border-box;margin-top:6px" placeholder="Причина отказа, условия, примечания..."></textarea></div>' +
+        '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px"><button class="btn ghost" id="btnDecCancel" type="button">Отмена</button><button class="btn primary" id="btnDecSave" type="button" disabled>Сохранить</button></div>',
+      onMount: function() {
+        var decMap = { btnDecAccepted:'accepted', btnDecRejected:'rejected', btnDecNoResp:'no_response' };
+        Object.keys(decMap).forEach(function(id) {
+          var btn = document.getElementById(id); if (!btn) return;
+          btn.addEventListener('click', function() {
+            _decision = decMap[id];
+            Object.keys(decMap).forEach(function(bid){ var b=document.getElementById(bid); if(b) b.style.outline=''; });
+            btn.style.outline = '2px solid var(--blue)';
+            var sv = document.getElementById('btnDecSave'); if(sv) sv.disabled=false;
+          });
+        });
+        var cancelBtn = document.getElementById('btnDecCancel'); if(cancelBtn) cancelBtn.addEventListener('click', function(){ hideModal(); });
+        var saveBtn = document.getElementById('btnDecSave');
+        if (saveBtn) {
+          saveBtn.addEventListener('click', async function() {
+            if (!_decision) return;
+            saveBtn.disabled=true; saveBtn.textContent='⏳';
+            try {
+              var token=localStorage.getItem('asgard_token');
+              var comment=(document.getElementById('decComment')||{}).value||'';
+              var r=await fetch('/api/tkp/' + tkpId + '/client-decision', {
+                method:'POST', headers:{'Content-Type':'application/json', Authorization:'Bearer '+token},
+                body: JSON.stringify({ decision: _decision, comment: comment||null })
+              });
+              if (!r.ok) { var e=await r.json().catch(function(){return{};}); throw new Error(e.error||'HTTP '+r.status); }
+              var label = (CLIENT_DECISION_MAP[_decision]||{}).label || _decision;
+              toast('Сохранено', 'Решение: ' + label, 'ok');
+              hideModal(); loadList();
+            } catch (ex) { toast('Ошибка', ex.message, 'err'); saveBtn.disabled=false; saveBtn.textContent='Сохранить'; }
+          });
+        }
+      }
+    });
+  }
+
   return {
     render: render,
     openSendTkpModal: openSendTkpModal,
     openNew: function(prefill) { openForm(null, prefill || {}); },
     openEdit: function(id) { openForm(id); },
+    openMimirQuickModal: openMimirQuickModal,
+    openUploadTkpModal: openUploadTkpModal,
+    openClientDecisionModal: openClientDecisionModal,
   };
 })();
