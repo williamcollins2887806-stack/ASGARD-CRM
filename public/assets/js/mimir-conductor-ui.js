@@ -425,7 +425,34 @@
         <div class="mc-clar-q">${esc(c.question_ru || '')}</div>
         ${c.why_we_ask ? `<div class="mc-clar-why">Зачем: ${esc(c.why_we_ask)}</div>` : ''}
       </div>`).join('');
-    bar.innerHTML = `<div class="mc-clar-title">🟣 ${open.length} уточнени${open.length === 1 ? 'е' : 'й'}</div><div class="mc-clar-list">${cards}</div>`;
+
+    // Кнопка формирования письма, если есть открытые вопросы к ЗАКАЗЧИКУ.
+    const customerOpen = open.filter((c) => c.channel === 'CUSTOMER');
+    const letterBtn = customerOpen.length
+      ? `<button id="mc-gen-letter" class="mc-btn mc-btn-primary" style="margin-left:8px;">📄 Сформировать письмо заказчику (${customerOpen.length})</button>`
+      : '';
+
+    bar.innerHTML = `<div class="mc-clar-title">🟣 ${open.length} уточнени${open.length === 1 ? 'е' : 'й'}${letterBtn}</div><div class="mc-clar-list">${cards}</div>`;
+
+    const gb = $('mc-gen-letter');
+    if (gb) gb.addEventListener('click', () => generateLetter(customerOpen.map((c) => c.id)));
+  }
+
+  // Сформировать письмо заказчику из открытых CUSTOMER-уточнений War Room.
+  async function generateLetter(ids) {
+    const runId = state.runId || (state.run && (state.run.run_id || state.run.id));
+    if (!runId || !ids.length) { toast('Нет данных', 'Не найдены вопросы к заказчику', 'warn'); return; }
+    try {
+      const r = await authFetch(`${API}/letter/generate`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ run_id: Number(runId), clarification_ids: ids })
+      });
+      if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error || ('HTTP ' + r.status)); }
+      const res = await r.json();
+      toast('Письмо сформировано', 'Исх. № ' + res.letterNumber + '. Управление — на странице «Ожидание заказчика».', 'ok');
+    } catch (e) {
+      toast('Ошибка', e.message, 'err');
+    }
   }
 
   // ─────────── Финал ───────────

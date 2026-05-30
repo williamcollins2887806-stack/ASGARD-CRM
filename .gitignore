@@ -35,3 +35,7 @@ public/mobile-app/android-field/
 
 # Локальные билд-скрипты (содержат жёсткие пути на конкретном Windows-разработчике)
 build_apk.ps1
+
+# Mimir Conductor — сгенерированные письма заказчику и загруженные ответы (Сессия 5)
+storage/letters/*
+!storage/letters/.gitkeep

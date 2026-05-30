@@ -16,8 +16,13 @@
 
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
 const cr = require('../services/mimir-conductor/conductor-run');
 const { runConductor } = require('../services/mimir-conductor/conductor');
+const { generateClarificationLetter, getLetterById, LETTERS_DIR } = require('../services/mimir-conductor/letter-generator');
+const { parseReplyAndMap } = require('../services/mimir-conductor/reply-parser');
+const { applyAnswers, resumeConductorIfBlocked } = require('../services/mimir-conductor/apply-answers');
 
 // Роли, которым разрешён запуск Conductor (ADMIN проходит автоматически,
 // HEAD_* наследуют — это уже встроено в fastify.requireRoles).
@@ -211,6 +216,160 @@ async function mimirConductorRoutes(fastify, options) {
     const artifact = await cr.getArtifactById(artifactId);
     if (!artifact) return reply.code(404).send({ error: 'Artifact not found' });
     return artifact;
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // СЕССИЯ 5 — Уточнения, письма заказчику, async-ответы
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // POST /conductor/letter/generate — { run_id, clarification_ids }
+  fastify.post('/conductor/letter/generate', {
+    preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
+  }, async (request, reply) => {
+    const body = request.body || {};
+    const runId = Number(body.run_id);
+    const ids = Array.isArray(body.clarification_ids) ? body.clarification_ids.map(Number).filter(Boolean) : [];
+    if (!Number.isInteger(runId) || runId <= 0) return reply.code(400).send({ error: 'run_id required' });
+    if (!ids.length) return reply.code(400).send({ error: 'clarification_ids required' });
+    try {
+      return await generateClarificationLetter({ runId, clarificationIds: ids, pmUserId: request.user.id });
+    } catch (e) {
+      request.log.error(`[letter/generate] ${e.message}`);
+      return reply.code(400).send({ error: e.message });
+    }
+  });
+
+  // GET /conductor/letter/:id/download/:format — format: docx | pdf
+  fastify.get('/conductor/letter/:id/download/:format', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const letter = await getLetterById(Number(request.params.id));
+    if (!letter) return reply.code(404).send({ error: 'Letter not found' });
+    const format = request.params.format === 'pdf' ? 'pdf' : 'docx';
+    const filePath = format === 'pdf' ? letter.pdf_path : letter.docx_path;
+    if (!filePath || !fs.existsSync(filePath)) return reply.code(404).send({ error: 'Файл письма не найден на диске' });
+
+    const mime = format === 'pdf'
+      ? 'application/pdf'
+      : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    const fname = `${(letter.letter_number || 'letter').replace(/[\\/]/g, '_')}.${format}`;
+    reply.header('Content-Type', mime);
+    reply.header('Content-Disposition', `attachment; filename="${fname}"`);
+    return reply.send(fs.createReadStream(filePath));
+  });
+
+  // POST /conductor/letter/:id/mark-sent — { sent_at?, channel? }
+  fastify.post('/conductor/letter/:id/mark-sent', {
+    preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
+  }, async (request, reply) => {
+    const letterId = Number(request.params.id);
+    const letter = await getLetterById(letterId);
+    if (!letter) return reply.code(404).send({ error: 'Letter not found' });
+    const body = request.body || {};
+    const sentAt = body.sent_at ? new Date(body.sent_at) : new Date();
+
+    await fastify.db.query(
+      "UPDATE mimir_customer_letters SET status = 'SENT', sent_at = $1, sent_by = $2 WHERE id = $3",
+      [sentAt, request.user.id, letterId]
+    );
+    // Открытые вопросы письма → ждут ответа заказчика (остаются OPEN+blocking, но
+    // помечаем источник статусом ожидания через событие).
+    try {
+      await cr.addEvent(letter.conductor_run_id, null, 'letter_sent', {
+        letter_id: letterId, letter_number: letter.letter_number, channel: body.channel || 'manual'
+      });
+    } catch (_) { /* noop */ }
+    return { ok: true };
+  });
+
+  // POST /conductor/letter/:id/upload-reply — multipart file ИЛИ body.text
+  fastify.post('/conductor/letter/:id/upload-reply', {
+    preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
+  }, async (request, reply) => {
+    const letterId = Number(request.params.id);
+    const letter = await getLetterById(letterId);
+    if (!letter) return reply.code(404).send({ error: 'Letter not found' });
+
+    let replyPath = null;
+    let rawText = null;
+
+    if (request.isMultipart && request.isMultipart()) {
+      const file = await request.file();
+      if (file) {
+        if (!fs.existsSync(LETTERS_DIR)) fs.mkdirSync(LETTERS_DIR, { recursive: true });
+        const safe = `reply_${letterId}_${Date.now()}${path.extname(file.filename || '') || '.bin'}`;
+        replyPath = path.join(LETTERS_DIR, safe);
+        await new Promise((resolve, rej) => {
+          const ws = fs.createWriteStream(replyPath);
+          file.file.pipe(ws);
+          ws.on('finish', resolve);
+          ws.on('error', rej);
+        });
+        // Текстовое поле text может ехать рядом в multipart
+        if (file.fields && file.fields.text && file.fields.text.value) rawText = file.fields.text.value;
+      }
+    } else {
+      rawText = (request.body && request.body.text) || null;
+    }
+
+    if (!replyPath && !rawText) return reply.code(400).send({ error: 'Нужен файл или текст ответа' });
+
+    try {
+      const mapping = await parseReplyAndMap(letterId, replyPath, rawText);
+      return { mapping };
+    } catch (e) {
+      request.log.error(`[letter/upload-reply] ${e.message}`);
+      return reply.code(500).send({ error: e.message });
+    }
+  });
+
+  // POST /conductor/letter/:id/apply-mapping — { mapping:[{question_id, answer_text}] }
+  fastify.post('/conductor/letter/:id/apply-mapping', {
+    preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
+  }, async (request, reply) => {
+    const letterId = Number(request.params.id);
+    const body = request.body || {};
+    const mapping = Array.isArray(body.mapping) ? body.mapping : [];
+    if (!mapping.length) return reply.code(400).send({ error: 'mapping required' });
+    try {
+      const applied = await applyAnswers(letterId, mapping, request.user.id);
+      const resume = await resumeConductorIfBlocked(letterId);
+      return { ok: true, applied, resume };
+    } catch (e) {
+      request.log.error(`[letter/apply-mapping] ${e.message}`);
+      return reply.code(500).send({ error: e.message });
+    }
+  });
+
+  // GET /conductor/awaiting-customer — просчёты в ожидании заказчика для PM
+  fastify.get('/conductor/awaiting-customer', {
+    preHandler: [fastify.authenticate]
+  }, async () => {
+    const r = await fastify.db.query(
+      `SELECT r.id AS run_id, r.status, r.tender_id, r.blocked_since, r.created_at,
+              t.tender_title, t.customer_name,
+              l.id AS letter_id, l.letter_number, l.status AS letter_status,
+              l.sent_at, l.reply_received_at, l.reminders_sent_count,
+              (SELECT COUNT(*)::int FROM mimir_clarifications c
+                WHERE c.conductor_run_id = r.id AND c.channel = 'CUSTOMER' AND c.status = 'OPEN') AS open_questions
+         FROM mimir_conductor_runs r
+         LEFT JOIN tenders t ON t.id = r.tender_id
+         LEFT JOIN LATERAL (
+            SELECT * FROM mimir_customer_letters ml
+             WHERE ml.conductor_run_id = r.id
+             ORDER BY ml.id DESC LIMIT 1
+         ) l ON true
+        WHERE r.status = 'BLOCKED_BY_CUSTOMER'
+        ORDER BY r.blocked_since ASC NULLS LAST, r.id DESC
+        LIMIT 200`
+    );
+    const now = Date.now();
+    const items = r.rows.map((row) => {
+      const sinceTs = row.blocked_since || row.sent_at || row.created_at;
+      const days = sinceTs ? Math.floor((now - new Date(sinceTs).getTime()) / 86400000) : 0;
+      return { ...row, days_waiting: days };
+    });
+    return { items };
   });
 }
 

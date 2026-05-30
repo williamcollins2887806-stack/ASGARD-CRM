@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Просчёты в ожидании заказчика — Asgard CRM</title>
+  <link rel="stylesheet" href="/assets/css/mimir-conductor.css">
+</head>
+<body class="mc-body">
+  <header class="mc-topbar">
+    <div class="mc-title">
+      <span class="mc-icon">📭</span>
+      <span>Просчёты в ожидании заказчика</span>
+    </div>
+    <div class="mc-controls">
+      <button id="ac-refresh" class="mc-btn mc-btn-ghost">↻ Обновить</button>
+      <a href="/index.html" class="mc-btn mc-btn-ghost">← На главную</a>
+    </div>
+  </header>
+
+  <main class="mc-main" style="display:block;padding:18px;">
+    <div id="ac-empty" class="mc-empty" style="display:none;">Нет просчётов, ожидающих ответа заказчика 🎉</div>
+    <div id="ac-list" class="ac-list"></div>
+  </main>
+
+  <script defer src="/assets/js/ui.js"></script>
+  <script defer src="/assets/js/auth.js"></script>
+  <script defer src="/assets/js/awaiting-customer.js"></script>
+</body>
+</html>

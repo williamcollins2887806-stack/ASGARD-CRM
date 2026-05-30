@@ -640,6 +640,19 @@ try {
   fastify.log.warn('[AchievementsCron] Init skipped: ' + cronErr.message);
 }
 
+// ── Mimir Letter Reminders Cron: напоминания по письмам заказчику (Сессия 5) ──
+try {
+  const mimirLetterReminders = require('./services/mimir-letter-reminders-cron');
+  fastify.addHook('onReady', async () => {
+    mimirLetterReminders.start(fastify.db, fastify.log);
+  });
+  fastify.addHook('onClose', async () => {
+    mimirLetterReminders.stop();
+  });
+} catch (cronErr) {
+  fastify.log.warn('[MimirLetterReminders] Init skipped: ' + cronErr.message);
+}
+
 // ── Shift Autocomplete: every 30 min ──
 try {
   const shiftAutocomplete = require('./services/shift-autocomplete');
