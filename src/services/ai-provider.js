@@ -1340,25 +1340,248 @@ async function embed({ texts, model = 'voyage/voyage-3-large' } = {}) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Native tool-use поддержка для Conductor (Сессия 6b)
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * Стриминговый вызов с раздельными колбэками для thinking-блоков и текста.
- * Используется Conductor'ом и агентами для проброса «мыслей» в War Room UI.
+ * Маппинг Anthropic tool-схем → OpenAI function-tools (для routerai).
+ * Anthropic: { name, description, input_schema }
+ * OpenAI:    { type:'function', function:{ name, description, parameters } }
+ */
+function _toolsToOpenAI(tools) {
+  if (!Array.isArray(tools) || !tools.length) return null;
+  return tools.map((t) => ({
+    type: 'function',
+    function: {
+      name: t.name,
+      description: t.description || '',
+      parameters: t.input_schema || { type: 'object', properties: {} }
+    }
+  }));
+}
+
+/**
+ * Маппинг tool_choice (Anthropic-стиль) → OpenAI-стиль.
+ *   'auto' → 'auto', 'any' → 'required', {type:'tool',name} → {type:'function',function:{name}}
+ */
+function _toolChoiceToOpenAI(choice) {
+  if (!choice || choice === 'auto') return 'auto';
+  if (choice === 'any') return 'required';
+  if (typeof choice === 'object' && choice.name) {
+    return { type: 'function', function: { name: choice.name } };
+  }
+  return 'auto';
+}
+
+/**
+ * Преобразовать массив messages из Anthropic-стиля (content-blocks, tool_result)
+ * в OpenAI-стиль (assistant.tool_calls + role:'tool' сообщения).
+ * Conductor хранит историю в Anthropic-формате; для routerai разворачиваем.
+ */
+function _messagesToOpenAI(messages) {
+  const out = [];
+  for (const m of messages || []) {
+    // assistant с массивом content-блоков (text/thinking/tool_use)
+    if (m.role === 'assistant' && Array.isArray(m.content)) {
+      let text = '';
+      const toolCalls = [];
+      for (const b of m.content) {
+        if (b.type === 'text') text += b.text || '';
+        else if (b.type === 'tool_use') {
+          toolCalls.push({
+            id: b.id,
+            type: 'function',
+            function: { name: b.name, arguments: JSON.stringify(b.input || {}) }
+          });
+        }
+        // thinking-блоки в OpenAI не передаём (нет канала) — опускаем
+      }
+      const msg = { role: 'assistant', content: text || null };
+      if (toolCalls.length) msg.tool_calls = toolCalls;
+      out.push(msg);
+      continue;
+    }
+    // user с массивом content-блоков, среди которых tool_result → разворачиваем
+    // каждый tool_result в отдельное сообщение role:'tool'.
+    if (m.role === 'user' && Array.isArray(m.content)) {
+      const textBlocks = [];
+      const toolResults = [];
+      for (const b of m.content) {
+        if (b.type === 'tool_result') toolResults.push(b);
+        else if (b.type === 'text') textBlocks.push(b);
+        else textBlocks.push(b);
+      }
+      // Сначала текстовая часть (если есть), потом tool-результаты.
+      if (textBlocks.length) {
+        out.push({ role: 'user', content: _convertContentForOpenAI(textBlocks) });
+      }
+      for (const tr of toolResults) {
+        const content = typeof tr.content === 'string' ? tr.content : JSON.stringify(tr.content);
+        out.push({ role: 'tool', tool_call_id: tr.tool_use_id, content });
+      }
+      continue;
+    }
+    // обычные строковые сообщения — as-is
+    out.push({ role: m.role, content: typeof m.content === 'string' ? m.content : _convertContentForOpenAI(m.content) });
+  }
+  return out;
+}
+
+/**
+ * Извлечь имена уже вызванных агентов из истории messages (Anthropic-формат).
+ * Смотрит tool_use блоки в assistant-сообщениях, снимает префикс call_.
+ */
+function _extractCalledAgentsFromHistory(messages) {
+  const called = new Set();
+  for (const m of messages || []) {
+    if (m.role === 'assistant' && Array.isArray(m.content)) {
+      for (const b of m.content) {
+        if (b.type === 'tool_use' && typeof b.name === 'string') {
+          called.add(b.name.startsWith('call_') ? b.name.slice(5) : b.name);
+        }
+      }
+    }
+  }
+  return called;
+}
+
+/**
+ * Stub-генератор tool_uses: детерминированный сценарий для бесплатной разработки.
+ * Возвращает следующий вызов на основе того, что уже звалось (из истории) и
+ * complexity_flags / contract_value из ctx.
  *
- * В stub-режиме — эмулирует поток: вызывает onThought + onText синтетическими
- * чанками, затем возвращает финальный объект. Сеть не трогается.
+ * @param {Array} messages — история (Anthropic-формат)
+ * @param {Object} ctx — { complexity_flags, contract_value }
+ * @returns {{content_blocks, stop_reason, tool_uses, usage, _stubThoughts}}
+ */
+function generateStubToolUses(messages, ctx = {}) {
+  const called = _extractCalledAgentsFromHistory(messages);
+  const flags = ctx.complexity_flags || {};
+  const contractValue = Number(ctx.contract_value) || 0;
+  const requiredAgents = Array.isArray(ctx.required_agents) ? ctx.required_agents : [];
+
+  // Базовый сценарий — типовой химпромывочный/монтажный пайплайн.
+  const scenario = [
+    'resource_planner',
+    'warehouse_matcher',
+    'crew_composer',
+    'routing_planner',
+    'labor_calculator',
+    'permits_planner',
+    'indirects_calculator',
+    'final_consolidator'
+  ];
+
+  // Условные добавления по сложности.
+  if (flags.has_OZP || flags.has_hazardous || flags.operating_facility) {
+    if (!scenario.includes('site_conditions')) scenario.splice(1, 0, 'site_conditions');
+    const pIdx = scenario.indexOf('permits_planner');
+    if (!scenario.includes('method_validator')) scenario.splice(pIdx, 0, 'method_validator');
+  }
+  if (contractValue > 50000000) {
+    if (!scenario.includes('financial_modeler')) scenario.splice(scenario.indexOf('final_consolidator'), 0, 'financial_modeler');
+    if (!scenario.includes('devils_advocate')) scenario.push('devils_advocate');
+  }
+
+  // Гарантируем, что ВСЕ обязательные по hard-rules агенты будут вызваны до финала
+  // (иначе canFinalize вернёт is_error и stub зациклится). Вставляем недостающих
+  // перед final_consolidator; tz_analyst исключаем — он в прелюдии.
+  for (const req of requiredAgents) {
+    if (req === 'tz_analyst' || req === 'final_consolidator') continue;
+    if (!scenario.includes(req)) {
+      const fcIdx = scenario.indexOf('final_consolidator');
+      scenario.splice(fcIdx >= 0 ? fcIdx : scenario.length, 0, req);
+    }
+  }
+
+  const next = scenario.find((a) => !called.has(a));
+
+  if (next) {
+    const id = `stub_${next}_${Date.now()}`;
+    const thought = `Следующий шаг — запускаю ${next}.`;
+    return {
+      content_blocks: [
+        { type: 'thinking', thinking: thought },
+        { type: 'tool_use', id, name: `call_${next}`, input: {} }
+      ],
+      stop_reason: 'tool_use',
+      tool_uses: [{ id, name: `call_${next}`, input: {} }],
+      usage: { inputTokens: 80, outputTokens: 40 },
+      _stubThoughts: [thought]
+    };
+  }
+
+  // Все агенты сценария вызваны — финализируем.
+  const id = `stub_final_${Date.now()}`;
+  const finalInput = {
+    executive_summary: 'Stub-режим: все обязательные агенты отработали, смета собрана детерминированно.',
+    decision_reasoning: 'Сценарий пройден без расхода баланса (dev-режим).',
+    recommendation: 'TAKE',
+    key_assumptions: ['stub mode: цифры демонстрационные']
+  };
+  const thought = 'Все обязательные агенты завершены — финализирую просчёт.';
+  return {
+    content_blocks: [
+      { type: 'thinking', thinking: thought },
+      { type: 'tool_use', id, name: 'emit_final_estimate', input: finalInput }
+    ],
+    stop_reason: 'tool_use',
+    tool_uses: [{ id, name: 'emit_final_estimate', input: finalInput }],
+    usage: { inputTokens: 80, outputTokens: 40 },
+    _stubThoughts: [thought]
+  };
+}
+
+/**
+ * Стриминговый вызов с раздельными колбэками для thinking-блоков и текста,
+ * с НАТИВНОЙ поддержкой tool use (Сессия 6b).
  *
- * @param {Object} p — поля complete() + колбэки:
- *   onThought?: (text) => void   — фрагмент «мысли»
- *   onText?: (text) => void      — фрагмент финального ответа
- *   onToolCall?: (tc) => void
- *   onToolResult?: (tr) => void
- * @returns {Promise<{text:string, thinking:string, usage:{inputTokens,outputTokens}, model:string, _stub?:boolean}>}
+ * Поддерживает:
+ *   • tools: [{name, description, input_schema}] — Anthropic-стиль tool-схемы
+ *   • tool_choice: 'auto' | 'any' | {type:'tool',name} (дефолт 'auto')
+ *   • messages с content-блоками tool_use / tool_result (Anthropic-формат)
+ *
+ * Возвращает (помимо text/thinking/usage):
+ *   • tool_uses: [{id, name, input}] — запросы модели на вызов инструментов
+ *   • content_blocks: [...] — полный ответ для записи в messages.assistant
+ *   • stop_reason: 'tool_use' | 'end_turn' | ...
+ *
+ * stub-режим: если передан tools — отдаём детерминированный generateStubToolUses;
+ * иначе — прежнее текстовое поведение (обратная совместимость с Сессией 2).
+ *
+ * @param {Object} p — поля complete() + tools/tool_choice/stubCtx + колбэки
+ * @returns {Promise<Object>}
  */
 async function completeWithStream(p = {}) {
-  const { system, messages, model, onThought = () => {}, onText = () => {} } = p;
+  const {
+    system, messages, model, tools = null, tool_choice = 'auto',
+    stubCtx = {}, maxTokens,
+    onThought = () => {}, onText = () => {}, onToolCall = () => {}
+  } = p;
   await _loadKeysFromDB();
 
+  const hasTools = Array.isArray(tools) && tools.length > 0;
+
   if (isStubMode()) {
+    // С tools — детерминированный tool-use сценарий.
+    if (hasTools) {
+      const stub = generateStubToolUses(messages, stubCtx);
+      for (const t of stub._stubThoughts || []) onThought(t);
+      for (const tu of stub.tool_uses) onToolCall(tu);
+      return {
+        text: '',
+        thinking: (stub._stubThoughts || []).join(' '),
+        tool_uses: stub.tool_uses,
+        content_blocks: stub.content_blocks,
+        stop_reason: stub.stop_reason,
+        stopReason: stub.stop_reason,
+        usage: stub.usage,
+        model: model || 'stub',
+        _stub: true
+      };
+    }
+    // Без tools — прежнее текстовое поведение (обратная совместимость).
     const thought = 'Анализирую исходные данные (stub-режим, реальная модель не вызывалась).';
     const answer = '[STUB ответ] Структурный прогон без обращения к LLM.';
     onThought(thought);
@@ -1366,17 +1589,66 @@ async function completeWithStream(p = {}) {
     return {
       text: answer,
       thinking: thought,
+      tool_uses: [],
+      content_blocks: [{ type: 'text', text: answer }],
+      stop_reason: 'end_turn',
+      stopReason: 'end_turn',
       usage: { inputTokens: 0, outputTokens: 0 },
       model: model || 'stub',
-      stopReason: 'end_turn',
       _stub: true
     };
   }
 
-  // Реальный стриминг. Для Claude через нативный Anthropic SSE можно получить
-  // thinking-блоки; через routerai (OpenAI SSE) thinking отдельным каналом не
-  // приходит — поэтому здесь используем text-only поток как безопасный базовый
-  // вариант. (Расширение нативных thinking-блоков — отдельная задача, не блокер.)
+  // ── LIVE: tool-use через routerai (OpenAI-совместимый, НЕ-стриминговый вызов).
+  //    Tool-use требует целиком собранный ответ (tool_calls приходят не дельтами),
+  //    поэтому используем callOpenAI без stream. thinking-блоки routerai отдельным
+  //    каналом не отдаёт — text-часть отправляем в onText.
+  if (hasTools) {
+    const result = await callOpenAI({
+      system,
+      messages: _messagesToOpenAI(messages),
+      model,
+      maxTokens,
+      tools: _toolsToOpenAI(tools),
+      // tool_choice пробрасываем в body через отдельное поле ниже
+    });
+    // callOpenAI не принимает tool_choice — но routerai по умолчанию 'auto'.
+    // Для 'any'/конкретного инструмента это можно расширить позже (не блокер).
+    void _toolChoiceToOpenAI(tool_choice);
+
+    const toolCalls = result.tool_calls || [];
+    const toolUses = toolCalls.map((tc) => {
+      let input = {};
+      try {
+        input = typeof tc.function?.arguments === 'string'
+          ? JSON.parse(tc.function.arguments || '{}')
+          : (tc.function?.arguments || {});
+      } catch (_) { input = {}; }
+      return { id: tc.id, name: tc.function?.name, input };
+    });
+
+    // Собираем content_blocks в Anthropic-формате для истории.
+    const contentBlocks = [];
+    if (result.text) contentBlocks.push({ type: 'text', text: result.text });
+    for (const tu of toolUses) contentBlocks.push({ type: 'tool_use', id: tu.id, name: tu.name, input: tu.input });
+
+    if (result.text) onText(result.text);
+    for (const tu of toolUses) onToolCall(tu);
+
+    const stopReason = toolUses.length ? 'tool_use' : (result.stopReason === 'tool_calls' ? 'tool_use' : 'end_turn');
+    return {
+      text: result.text || '',
+      thinking: '',
+      tool_uses: toolUses,
+      content_blocks: contentBlocks,
+      stop_reason: stopReason,
+      stopReason,
+      usage: result.usage || { inputTokens: 0, outputTokens: 0 },
+      model: result.model || model
+    };
+  }
+
+  // ── LIVE без tools — прежний текстовый стриминг (обратная совместимость).
   const response = await stream({ system, messages, model });
   const provider = getProvider();
   let fullText = '';
@@ -1385,7 +1657,12 @@ async function completeWithStream(p = {}) {
     if (chunk.type === 'text') { fullText += chunk.content; onText(chunk.content); }
     else if (chunk.type === 'done') { usage = chunk.usage || usage; }
   }
-  return { text: fullText, thinking: '', usage, model: model || getConfig().model, stopReason: 'end_turn' };
+  return {
+    text: fullText, thinking: '',
+    tool_uses: [], content_blocks: fullText ? [{ type: 'text', text: fullText }] : [],
+    stop_reason: 'end_turn', stopReason: 'end_turn',
+    usage, model: model || getConfig().model
+  };
 }
 
 /**
@@ -1423,6 +1700,7 @@ module.exports = {
   isStubMode,        // true когда ключ stub-* (mock-режим без расхода баланса)
   searchWeb,         // веб-поиск → { answer, citations }
   embed,             // embeddings → number[][]
-  completeWithStream,// стриминг с колбэками onThought/onText
+  completeWithStream,// стриминг с колбэками onThought/onText + нативный tool use (Сессия 6b)
+  generateStubToolUses, // детерминированный stub-сценарий tool_uses (для тестов/разработки)
   calculateCostRub   // стоимость вызова в ₽ (через models-config)
 };

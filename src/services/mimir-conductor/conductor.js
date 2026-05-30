@@ -1,17 +1,22 @@
 /**
- * ASGARD CRM — Mimir Conductor: ядро agent loop (Сессия 2, Шаг 2.3)
+ * ASGARD CRM — Mimir Conductor: ядро agent loop (Сессия 6b — нативный tool-use)
  * ═══════════════════════════════════════════════════════════════════════════
  * Главный мозг просчёта. Запускается в фоне после POST /conductor/start.
  *
- * ДВА ПУТИ (по ai-provider.isStubMode()):
- *  • STUB (dev, по умолчанию — баланс не тратится): Conductor детерминированно
- *    оркеструет агентов по hard-rules (прелюдия → обязательные агенты → финал),
- *    параллельно прогоняя completeWithStream для генерации потока «мыслей» в
- *    War Room. Это рабочий dev-режим Сессии 2 — НЕ заглушка вместо логики.
- *  • LIVE (живые ключи, включается в сессии 08): тот же детерминированный
- *    safety-каркас + поток мыслей реальной модели. Полноценный самостоятельный
- *    tool-use loop (модель сама выбирает инструменты) — TODO сессии 08, когда
- *    completeWithStream научится возвращать tool_use блоки и пополнят баланс.
+ * НАТИВНЫЙ TOOL-USE LOOP (Сессия 6b): Conductor сам решает каких агентов и в
+ * каком порядке вызывать. На каждой итерации completeWithStream({tools}) возвращает
+ * tool_uses; conductor.js их исполняет (executeTool), возвращает tool_results в
+ * историю и продолжает loop, пока модель не вызовет emit_final_estimate.
+ *
+ *  • STUB (dev, по умолчанию): completeWithStream отдаёт детерминированный сценарий
+ *    tool_uses (generateStubToolUses) — баланс не тратится. Логика loop одна и та же.
+ *  • LIVE (живые ключи): реальный Claude через routerai сам выбирает инструменты.
+ *
+ * Hard-rules остаются ТОЛЬКО safety floor: canFinalize() проверяет полноту перед
+ * emit_final_estimate. Они НЕ оркеструют вызовы — это делает Conductor.
+ *
+ * Fallback: при process.env.MIMIR_FORCE_DETERMINISTIC=true используется старый
+ * детерминированный путь Сессии 2 (для дебага). UI/SSE одинаков в обоих режимах.
  *
  * Стейт живёт в БД (mimir_conductor_runs / agent_runs / artifacts / events),
  * переживает рестарты. Async: при ask_customer(blocking) run переходит в
@@ -30,8 +35,8 @@ const { callAgent, executeTool, buildToolSchemas } = require('./tool-executor');
 const { buildConductorSystemPrompt } = require('./prompts/conductor');
 const { pickConductorModel } = require('./models-config');
 
-const MAX_ITERATIONS = 20;
-const MAX_RUN_COST_RUB = 5000; // потолок стоимости одного просчёта
+const MAX_ITERATIONS = 30;
+const MAX_RUN_COST_RUB = 800; // потолок стоимости одного просчёта (Сессия 6b)
 
 /**
  * Собрать стартовый контекст: работа + метаданные документов.
@@ -87,9 +92,9 @@ function classifyComplexity(tzSummary, ctx, runFlags = {}) {
 /**
  * Финализация просчёта.
  */
-async function finalizeRun(runId, input) {
+async function finalizeRun(runId, input = {}) {
   const finalData = {
-    summary: input.summary || null,
+    summary: input.executive_summary || input.summary || null,
     decision_reasoning: input.decision_reasoning || null,
     recommendation: input.recommendation || 'THINK',
     key_assumptions: input.key_assumptions || []
@@ -109,17 +114,26 @@ async function pauseRunForCustomer(runId, clarificationResult) {
 }
 
 /**
- * Главный прогон Conductor.
+ * Главный прогон Conductor — нативный tool-use agent loop (Сессия 6b).
+ *
+ * Claude (или stub-сценарий) сам выбирает каких агентов и в каком порядке звать.
+ * Hard-rules проверяются только перед emit_final_estimate (safety floor).
+ *
  * @param {number} runId
  * @param {Object} [opts]
  */
 async function runConductor(runId, opts = {}) {
+  // Дебаг-fallback: старый детерминированный путь Сессии 2.
+  if (process.env.MIMIR_FORCE_DETERMINISTIC === 'true') {
+    return runConductorDeterministic(runId, opts);
+  }
+
   const run = await cr.getRun(runId);
   if (!run) throw new Error(`ConductorRun ${runId} не найден`);
 
   const ctx = await buildInitialContext(run);
 
-  // 1. Прелюдия: парсер документов + аналитик ТЗ (без Conductor — ему нужен tz_summary)
+  // 1. Прелюдия: парсер документов + аналитик ТЗ (Conductor не работает без tz_summary).
   await cr.updateRunStatus(runId, 'RUNNING', {});
   await callAgent('document_parser', { documents: (ctx.documents || []).map((d) => d.id) }, runId);
   await callAgent('tz_analyst', { documents: (ctx.documents || []).map((d) => d.id), focus_areas: ['all'] }, runId);
@@ -127,76 +141,205 @@ async function runConductor(runId, opts = {}) {
   const tzArt = await cr.getArtifact(runId, 'tz_summary');
   const tzSummary = tzArt ? tzArt.content : null;
 
-  // 2. Классификация сложности + выбор модели Conductor
+  // 2. Классификация сложности + выбор модели Conductor.
   const complexityFlags = classifyComplexity(tzSummary, ctx, run.complexity_flags);
   const conductorModel = pickConductorModel(ctx.contract_value);
   await cr.updateRunStatus(runId, 'RUNNING', { conductorModel });
   await db.query('UPDATE mimir_conductor_runs SET complexity_flags = $2 WHERE id = $1', [runId, JSON.stringify(complexityFlags)]);
 
-  // 3. Создаём agent_run для самого Conductor
+  // 3. Agent_run для самого Conductor.
   const conductorAgentRunId = await cr.startAgentRun(runId, {
     agentName: 'conductor', model: conductorModel, promptHash: ''
   });
 
-  // 4. Системный промпт + tools
+  // 4. Системный промпт + tools + stub-контекст.
   const required = hardRules.getRequiredAgents(tzSummary, ctx.contract_value, complexityFlags);
   const systemPrompt = buildConductorSystemPrompt(ctx, tzSummary, complexityFlags);
   const tools = buildToolSchemas(REGISTRY, required);
+  const stubCtx = { complexity_flags: complexityFlags, contract_value: ctx.contract_value, required_agents: required };
 
-  // Поток «мыслей» Conductor в War Room (в stub — синтетический; на живых ключах — реальный)
-  const emitThoughts = async (userMessage) => {
-    try {
-      await aiProvider.completeWithStream({
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userMessage }],
-        model: conductorModel,
-        tools,
-        onThought: (text) => cr.addEvent(runId, conductorAgentRunId, 'thought', { text }),
-        onText: (text) => cr.addEvent(runId, conductorAgentRunId, 'conductor_message', { text })
+  cr.addEvent(runId, conductorAgentRunId, 'mode', {
+    stub: aiProvider.isStubMode(), conductor_model: conductorModel, required_agents: required
+  });
+
+  // 5. История диалога (Anthropic-формат: content-блоки).
+  const messages = [{
+    role: 'user',
+    content: 'Начни работу по сборке сметы. Используй инструменты для вызова агентов. ' +
+      'Перед emit_final_estimate убедись, что завершены обязательные агенты: ' +
+      (required.length ? required.join(', ') : '(жёстких требований нет — действуй по ситуации)') + '.'
+  }];
+
+  // 6. Native tool-use loop.
+  for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+    const result = await aiProvider.completeWithStream({
+      system: systemPrompt,
+      messages,
+      model: conductorModel,
+      tools,
+      tool_choice: 'auto',
+      stubCtx,
+      onThought: (text) => cr.addEvent(runId, conductorAgentRunId, 'thought', { text }),
+      onText: (text) => cr.addEvent(runId, conductorAgentRunId, 'conductor_message', { text }),
+      onToolCall: (tu) => cr.addEvent(runId, conductorAgentRunId, 'tool_call', { tool: tu.name, input: tu.input })
+    });
+
+    // Записываем полный assistant-ответ (text + tool_use блоки) в историю.
+    messages.push({ role: 'assistant', content: result.content_blocks || [] });
+
+    const toolUses = result.tool_uses || [];
+
+    // Conductor завершил без вызова инструмента — аномалия: подталкиваем к явному emit.
+    if (result.stop_reason !== 'tool_use' || !toolUses.length) {
+      messages.push({
+        role: 'user',
+        content: 'Ты завершил ход без вызова инструмента. Либо вызови нужного агента, ' +
+          'либо emit_final_estimate (если все обязательные готовы).'
       });
-    } catch (e) {
-      // Поток мыслей не критичен для оркестрации — логируем, но не валим прогон
-      cr.addEvent(runId, conductorAgentRunId, 'warning', { text: `Поток мыслей недоступен: ${e.message}` });
+      continue;
     }
-  };
 
-  await emitThoughts('Начни работу по сборке сметы. Опиши план: каких агентов и в каком порядке запустишь.');
+    // Исполняем все tool_uses (параллельно — independent-агенты ускоряются).
+    const toolResults = await Promise.all(
+      toolUses.map((tu) => _runOneTool(tu, runId, conductorAgentRunId))
+    );
 
-  // 5. Оркестрация. Safety-каркас детерминирован (hard-rules) в ОБОИХ режимах.
-  //    Самостоятельный tool-use loop модели — TODO сессии 08 (нужен tool_use в
-  //    completeWithStream + баланс). Сейчас Conductor как главный инженер
-  //    последовательно выполняет обязательную программу агентов.
-  const stub = aiProvider.isStubMode();
-  cr.addEvent(runId, conductorAgentRunId, 'mode', { stub, conductor_model: conductorModel, required_agents: required });
+    // ── Особый случай: ask_customer + blocking → пауза прогона.
+    const blockingIdx = toolUses.findIndex(
+      (tu) => tu.name === 'ask_customer' && tu.input && tu.input.blocking !== false
+    );
+    if (blockingIdx !== -1) {
+      await pauseRunForCustomer(runId, toolResults[blockingIdx].raw);
+      await cr.finishAgentRun(conductorAgentRunId, { status: 'SUCCESS', outputSummary: 'Пауза: ожидание заказчика' });
+      return;
+    }
+    // Агент мог поднять блокирующее уточнение к заказчику сам (внутри callAgent).
+    const agentBlocked = toolResults.find((tr) => tr.blockingCustomer);
+    if (agentBlocked) {
+      await pauseRunForCustomer(runId, agentBlocked.blockingCustomer);
+      await cr.finishAgentRun(conductorAgentRunId, { status: 'SUCCESS', outputSummary: 'Пауза: ожидание заказчика' });
+      return;
+    }
+
+    // ── Особый случай: emit_final_estimate → проверка canFinalize.
+    const emitIdx = toolUses.findIndex((tu) => tu.name === 'emit_final_estimate');
+    if (emitIdx !== -1) {
+      const canFin = await hardRules.canFinalize(runId, ctx.contract_value, complexityFlags);
+      if (canFin.ok) {
+        await finalizeRun(runId, toolUses[emitIdx].input || {});
+        await cr.finishAgentRun(conductorAgentRunId, {
+          status: 'SUCCESS', outputSummary: 'Просчёт финализирован', durationMs: null
+        });
+        return;
+      }
+      // Hard-rules отклонили финал — возвращаем is_error, Conductor продолжит loop.
+      toolResults[emitIdx] = {
+        tool_use_id: toolUses[emitIdx].id,
+        content: `ОТКАЗ финализации: ${canFin.reason}. Запусти недостающих агентов и попробуй снова.`,
+        is_error: true
+      };
+      cr.addEvent(runId, conductorAgentRunId, 'warning', { text: `emit_final_estimate отклонён: ${canFin.reason}` });
+    }
+
+    // Возвращаем tool_results в историю.
+    messages.push({
+      role: 'user',
+      content: toolResults.map((tr) => ({
+        type: 'tool_result',
+        tool_use_id: tr.tool_use_id,
+        content: typeof tr.content === 'string' ? tr.content : JSON.stringify(tr.content),
+        is_error: !!tr.is_error
+      }))
+    });
+
+    // Safety: лимит стоимости.
+    const totalCost = await cr.getTotalCost(runId);
+    if (totalCost > MAX_RUN_COST_RUB) {
+      cr.addEvent(runId, conductorAgentRunId, 'error', { text: `Лимит стоимости ${MAX_RUN_COST_RUB}₽ достигнут` });
+      await cr.finishAgentRun(conductorAgentRunId, { status: 'ERROR', errorText: 'Cost limit exceeded' });
+      throw new Error('Cost limit exceeded');
+    }
+  }
+
+  await cr.finishAgentRun(conductorAgentRunId, { status: 'ERROR', errorText: `MAX_ITERATIONS=${MAX_ITERATIONS}` });
+  throw new Error(`Conductor превысил MAX_ITERATIONS (${MAX_ITERATIONS})`);
+}
+
+/**
+ * Исполнить один tool_use и привести результат к форме tool_result.
+ * Возвращает { tool_use_id, content, is_error?, raw?, blockingCustomer? }.
+ */
+async function _runOneTool(toolUse, runId, conductorAgentRunId) {
+  // emit_final_estimate обрабатывается в loop (canFinalize) — здесь только ack.
+  if (toolUse.name === 'emit_final_estimate') {
+    return { tool_use_id: toolUse.id, content: 'acknowledged', raw: { acknowledged: true } };
+  }
+  try {
+    const res = await executeTool(toolUse, runId, conductorAgentRunId);
+    // Блокирующее уточнение к заказчику, поднятое самим агентом.
+    const blockingCustomer = (res.clarifications_raised || []).find(
+      (c) => c.status === 'awaiting_customer_letter' && c.blocking
+    );
+    // Компактная сводка для модели (не весь артефакт).
+    const summary = res.success === false
+      ? `Ошибка: ${res.error}`
+      : (res.summary || res.content || res.status || 'готово');
+    return {
+      tool_use_id: toolUse.id,
+      content: typeof summary === 'string' ? summary : JSON.stringify(summary),
+      is_error: res.success === false,
+      raw: res,
+      blockingCustomer: blockingCustomer || null
+    };
+  } catch (e) {
+    return { tool_use_id: toolUse.id, content: `Ошибка инструмента: ${e.message}`, is_error: true };
+  }
+}
+
+/**
+ * СТАРЫЙ детерминированный путь (Сессия 2). Сохранён как fallback за env-флагом
+ * MIMIR_FORCE_DETERMINISTIC=true для дебага. Не оркеструет через Claude — гоняет
+ * обязательных агентов по hard-rules последовательно.
+ */
+async function runConductorDeterministic(runId, opts = {}) {
+  const run = await cr.getRun(runId);
+  if (!run) throw new Error(`ConductorRun ${runId} не найден`);
+
+  const ctx = await buildInitialContext(run);
+
+  await cr.updateRunStatus(runId, 'RUNNING', {});
+  await callAgent('document_parser', { documents: (ctx.documents || []).map((d) => d.id) }, runId);
+  await callAgent('tz_analyst', { documents: (ctx.documents || []).map((d) => d.id), focus_areas: ['all'] }, runId);
+
+  const tzArt = await cr.getArtifact(runId, 'tz_summary');
+  const tzSummary = tzArt ? tzArt.content : null;
+
+  const complexityFlags = classifyComplexity(tzSummary, ctx, run.complexity_flags);
+  const conductorModel = pickConductorModel(ctx.contract_value);
+  await cr.updateRunStatus(runId, 'RUNNING', { conductorModel });
+  await db.query('UPDATE mimir_conductor_runs SET complexity_flags = $2 WHERE id = $1', [runId, JSON.stringify(complexityFlags)]);
+
+  const conductorAgentRunId = await cr.startAgentRun(runId, {
+    agentName: 'conductor', model: conductorModel, promptHash: ''
+  });
+
+  const required = hardRules.getRequiredAgents(tzSummary, ctx.contract_value, complexityFlags);
+  cr.addEvent(runId, conductorAgentRunId, 'mode', { stub: aiProvider.isStubMode(), conductor_model: conductorModel, required_agents: required, deterministic: true });
 
   let iteration = 0;
-  // Очередь обязательных агентов, исключая уже отработавшую прелюдию
   const done = new Set(await cr.getCompletedAgents(runId));
   const queue = required.filter((a) => !done.has(a) && a !== 'tz_analyst');
 
   for (const agentName of queue) {
-    if (++iteration > MAX_ITERATIONS) {
-      throw new Error(`Conductor превысил MAX_ITERATIONS (${MAX_ITERATIONS})`);
-    }
-
-    // Проверяем зависимости агента: если не хватает требуемых артефактов —
-    // дотягиваем их (упрощённый разрешитель зависимостей для Сессии 2).
+    if (++iteration > MAX_ITERATIONS) throw new Error(`Conductor превысил MAX_ITERATIONS (${MAX_ITERATIONS})`);
     await ensureDependencies(agentName, runId, conductorAgentRunId);
-
-    const toolUse = { name: `call_${agentName}`, input: {}, id: `auto-${agentName}` };
-    const res = await executeTool(toolUse, runId, conductorAgentRunId);
-
-    // Если агент поднял блокирующее уточнение к заказчику — пауза
-    const blockingCustomer = (res.clarifications_raised || []).find(
-      (c) => c.status === 'awaiting_customer_letter' && c.blocking
-    );
+    const res = await executeTool({ name: `call_${agentName}`, input: {}, id: `auto-${agentName}` }, runId, conductorAgentRunId);
+    const blockingCustomer = (res.clarifications_raised || []).find((c) => c.status === 'awaiting_customer_letter' && c.blocking);
     if (blockingCustomer) {
       await pauseRunForCustomer(runId, blockingCustomer);
       await cr.finishAgentRun(conductorAgentRunId, { status: 'SUCCESS', outputSummary: 'Пауза: ожидание заказчика' });
       return;
     }
-
-    // Safety: лимит стоимости
     const totalCost = await cr.getTotalCost(runId);
     if (totalCost > MAX_RUN_COST_RUB) {
       cr.addEvent(runId, conductorAgentRunId, 'error', { text: `Лимит стоимости ${MAX_RUN_COST_RUB}₽ достигнут` });
@@ -204,26 +347,20 @@ async function runConductor(runId, opts = {}) {
     }
   }
 
-  // 6. Проверка готовности к финалу
   const finalCheck = await hardRules.canFinalize(runId, ctx.contract_value, complexityFlags);
   if (!finalCheck.ok) {
     cr.addEvent(runId, conductorAgentRunId, 'warning', { text: `Не готов к финалу: ${finalCheck.reason}` });
-    // В Сессии 2 (моки уточнений не поднимают) этого не должно случиться; если
-    // случилось — фиксируем как блокировку, а не падаем.
     await cr.updateRunStatus(runId, 'BLOCKED_BY_PM', { blockedReason: finalCheck.reason });
     await cr.finishAgentRun(conductorAgentRunId, { status: 'SUCCESS', outputSummary: finalCheck.reason });
     return;
   }
 
-  await emitThoughts('Все обязательные агенты завершены. Сформулируй финальное резюме и рекомендацию.');
-
-  // 7. Финал
   const finalArt = await cr.getArtifact(runId, 'final_estimate');
   await finalizeRun(runId, {
-    summary: finalArt?.content?.summary || 'Просчёт собран (stub-режим, агенты — моки).',
-    decision_reasoning: 'Автоматическая сборка обязательных артефактов по hard-rules.',
+    summary: finalArt?.content?.summary || 'Просчёт собран (детерминированный режим).',
+    decision_reasoning: 'Детерминированная сборка обязательных артефактов по hard-rules.',
     recommendation: 'THINK',
-    key_assumptions: ['Сессия 2: агенты заменены моками, цифры демонстрационные.']
+    key_assumptions: ['Детерминированный fallback-режим.']
   });
   await cr.finishAgentRun(conductorAgentRunId, { status: 'SUCCESS', outputSummary: 'Просчёт финализирован' });
 }
@@ -251,6 +388,7 @@ async function ensureDependencies(agentName, runId, conductorAgentRunId, depth =
 
 module.exports = {
   runConductor,
+  runConductorDeterministic,
   buildInitialContext,
   classifyComplexity,
   finalizeRun,

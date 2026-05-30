@@ -280,16 +280,16 @@ function buildToolSchemas(registry, requiredAgents = []) {
     },
     {
       name: 'emit_final_estimate',
-      description: 'Финализировать просчёт. Вызывать ТОЛЬКО когда все обязательные агенты завершены и нет открытых блокирующих уточнений.',
+      description: 'Финализировать просчёт. Вызывай ТОЛЬКО после того как все обязательные агенты завершены и сборка консолидатором сделана. Hard-rules проверят полноту автоматически — если что-то пропущено, ты получишь is_error=true и список недостающих агентов, после чего продолжи loop.',
       input_schema: {
         type: 'object',
         properties: {
-          summary: { type: 'string', description: 'Краткое инженерное резюме (3-5 предложений)' },
-          decision_reasoning: { type: 'string', description: 'Почему именно такая цена' },
+          executive_summary: { type: 'string', description: 'Краткое инженерное резюме для директора (3-5 предложений)' },
+          decision_reasoning: { type: 'string', description: 'Ключевые решения и почему именно такая цена' },
           recommendation: { type: 'string', enum: ['TAKE', 'THINK', 'DECLINE'] },
           key_assumptions: { type: 'array', items: { type: 'string' } }
         },
-        required: ['summary', 'recommendation']
+        required: ['executive_summary', 'recommendation']
       }
     }
   ];
