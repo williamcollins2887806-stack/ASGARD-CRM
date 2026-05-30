@@ -1040,6 +1040,10 @@ window.AsgardPreTendersPage = (function(){
           ${it.ai_cost_estimate ? '<span style="align-self:center;font-weight:700;font-size:15px;color:var(--ok-t)">Итого: ' + money(it.ai_cost_estimate) + '</span>' : ''}
         </div>
         ` : ''}
+        ${['ADMIN','PM','HEAD_PM','TO','HEAD_TO','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV'].includes(userRole) && it.customer_inn ? `
+        <div style="margin-bottom:8px">
+          <button class="btn ghost" id="btnMimirTkp" style="width:100%">🧙 Быстрое ТКП через Мимира</button>
+        </div>` : ''}
         <div style="display:flex;gap:10px;flex-wrap:wrap">
         ${canEdit ? `
           <button class="btn green" id="btnAcceptPT" style="flex:1;min-width:140px">✓ ПРИНЯТЬ</button>
@@ -1232,6 +1236,22 @@ window.AsgardPreTendersPage = (function(){
         if (comment === null) return;
         const r = await api('/' + id + '/request-docs', { method: 'POST', body: { comment } });
         if (r.success) { toast('Статус', 'Запрос документов отправлен'); hideModal(); loadStats(); loadList(); }
+      });
+
+      // ── Быстрое ТКП через Мимира ──────────────────────────────────
+      const _btnMimTkp = document.getElementById('btnMimirTkp');
+      if (_btnMimTkp) _btnMimTkp.addEventListener('click', () => {
+        if (!window.AsgardTkpPage || !AsgardTkpPage.openMimirQuickModal) {
+          toast('ТКП', 'Модуль ТКП не загружен. Откройте раздел «ТКП».', 'err');
+          return;
+        }
+        hideModal();
+        AsgardTkpPage.openMimirQuickModal({
+          pre_tender_id: it.id,
+          customer_inn: it.customer_inn || '',
+          customer_name: it.customer_name || '',
+          tz_text: it.work_description || ''
+        });
       });
     }});
   }

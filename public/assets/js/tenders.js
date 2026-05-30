@@ -1724,6 +1724,7 @@ window.AsgardTendersPage = (function(){
             <div class="cr-f-help" id="innWarn" style="display:none; color:var(--err-t)">Контрагент не найден в базе. Создайте карточку — она подставится автоматически.</div>
             <div id="innCreateRow" style="display:none; margin-top:6px"><button type="button" class="btn ghost mini" id="btnCreateCustomer">➕ Создать контрагента</button></div>
             <div id="customerScoreBlock" style="margin-top:8px;display:none"></div>
+            <div id="tenderCustCardWrap" style="margin-top:6px"></div>
           </div>
 
           <div class="cr-f-row--2">
@@ -1859,6 +1860,12 @@ window.AsgardTendersPage = (function(){
             <span>Когда: ${esc(formatDateTime(t.archived_at))}</span>
           </div>` : ''}
         </div>
+
+        ${!isNew ? `
+        <!-- ═══ ДС: Доп. соглашения ═══ -->
+        <div id="addendaSection" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--brd)">
+          <div id="addendaContent"><span style="color:var(--t3);font-size:12px">⏳ Загрузка ДС...</span></div>
+        </div>` : ''}
 
         <!-- ═══ FOOTER: actions ═══ -->
         <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:16px; padding-top:14px; border-top:1px solid var(--brd)">
@@ -2631,6 +2638,8 @@ window.AsgardTendersPage = (function(){
             if (_createPromptInn && innSel !== _createPromptInn) _createPromptInn = null;
             updateInnUi();
             updateCustomerScore(item.value || item.label || "");
+            var _ccI = document.getElementById('tenderCustCardWrap');
+            if (_ccI && item.inn && window.AsgardCustomerCard) AsgardCustomerCard.mount(_ccI, item.inn);
             // Новый ИНН (нет в локальной базе) → предложить создать карточку контрагента
             if ((innSel.length === 10 || innSel.length === 12) && !byInn.has(innSel)) {
               promptCreateCustomer(innSel, _selectedFromDadata);
@@ -2682,6 +2691,122 @@ window.AsgardTendersPage = (function(){
         }
       }
       if(t && t.customer_name){ updateCustomerScore(t.customer_name); }
+      if (t && t.customer_inn && window.AsgardCustomerCard) {
+        var _ccW2 = document.getElementById('tenderCustCardWrap');
+        if (_ccW2) AsgardCustomerCard.mount(_ccW2, t.customer_inn);
+      }
+
+      function _openCreateAddendumModal(parentWorkId, parentTitle) {
+        showModal({
+          title: 'Создать доп. соглашение',
+          icon: '📄',
+          html: '<div style="font-size:12px;color:var(--t3);margin-bottom:12px">К работе: ' + esc(parentTitle||'') + '</div>' +
+            '<div class="cr-f-field"><div class="cr-f-label">Название ДС</div>' +
+            '<input id="dsTitle" class="inp" placeholder="Название работ по ДС" style="width:100%"/></div>' +
+            '<div class="cr-f-field"><div class="cr-f-label">Сумма договора, ₽ <span class="cr-f-label__req">*</span></div>' +
+            '<input id="dsValue" class="inp" type="number" min="0" step="1000" placeholder="0" style="width:100%"/></div>' +
+            '<div class="cr-f-row--2">' +
+              '<div class="cr-f-field"><div class="cr-f-label">Дата подписания</div>' +
+              '<input id="dsSigned" class="inp" type="date" style="width:100%"/></div>' +
+              '<div class="cr-f-field"><div class="cr-f-label">НДС %</div>' +
+              '<input id="dsVat" class="inp" type="number" value="20" style="width:100%"/></div>' +
+            '</div>' +
+            '<div class="cr-f-field"><div class="cr-f-label">Плановые сроки</div>' +
+            '<div class="cr-f-row--2">' +
+              '<input id="dsStart" class="inp" type="date" style="width:100%"/>' +
+              '<input id="dsEnd" class="inp" type="date" style="width:100%"/>' +
+            '</div></div>' +
+            '<div class="cr-f-field"><div class="cr-f-label">Основание</div>' +
+            '<textarea id="dsReason" class="inp" rows="2" placeholder="Расширение объёма работ..." style="width:100%;resize:vertical"></textarea></div>' +
+            '<div style="display:flex;gap:8px;margin-top:12px">' +
+              '<button class="btn primary" id="btnDsSave">💾 Создать ДС</button>' +
+              '<button class="btn ghost" id="btnDsCancel">Отмена</button>' +
+            '</div>'
+        });
+        document.getElementById('btnDsCancel').addEventListener('click', function() { hideModal(); });
+        document.getElementById('btnDsSave').addEventListener('click', async function() {
+          var btn = document.getElementById('btnDsSave');
+          var valEl = document.getElementById('dsValue');
+          if (!valEl || !valEl.value) { toast('ДС', 'Укажите сумму договора', 'err'); return; }
+          if (btn) { btn.disabled = true; btn.textContent = '⏳ Создаём...'; }
+          try {
+            var tok = localStorage.getItem('asgard_token');
+            var resp = await fetch('/api/works/addendum', {
+              method: 'POST',
+              headers: { 'Authorization': 'Bearer ' + tok, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                parent_work_id: parentWorkId,
+                work_title: (document.getElementById('dsTitle').value||'').trim() || null,
+                contract_value: Number(valEl.value) || 0,
+                vat_pct: Number(document.getElementById('dsVat').value) || 20,
+                start_plan: document.getElementById('dsStart').value || null,
+                end_plan: document.getElementById('dsEnd').value || null,
+                addendum_signed_date: document.getElementById('dsSigned').value || null,
+                addendum_reason: (document.getElementById('dsReason').value||'').trim() || null
+              })
+            });
+            var data = await resp.json();
+            if (!resp.ok) { toast('ДС', data.error || 'Ошибка', 'err'); if (btn) { btn.disabled = false; btn.textContent = '💾 Создать ДС'; } return; }
+            toast('ДС', 'Создано: ' + ((data.item && data.item.addendum_number) || ''), 'ok');
+            hideModal();
+            openTenderEditor(tenderId);
+          } catch(e) {
+            toast('ДС', 'Ошибка сети', 'err');
+            if (btn) { btn.disabled = false; btn.textContent = '💾 Создать ДС'; }
+          }
+        });
+      }
+
+      async function _loadAddenda() {
+        var _s = document.getElementById('addendaContent');
+        if (!_s) return;
+        try {
+          var _tok = localStorage.getItem('asgard_token');
+          var _r = await fetch('/api/tenders/' + tenderId, { headers: { Authorization: 'Bearer ' + _tok } });
+          if (!_r.ok) throw new Error('HTTP ' + _r.status);
+          var _td = await _r.json();
+          var _list = _td.addenda || [];
+          var _mw = (_td.works || [])[0] || null;
+          var _mv = _td.contract_value_main || 0;
+          var _av = _td.contract_value_addenda || 0;
+          var _tv = _td.contract_value_total || 0;
+          var _fn = function(n) { return Number(n||0).toLocaleString('ru-RU'); };
+          var _canDs = ['ADMIN','PM','HEAD_PM','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV'].includes(user.role);
+          var _h = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">';
+          _h += '<b style="font-size:13px">📄 Доп. соглашения</b>';
+          if (_canDs && _mw) _h += '<button class="btn ghost mini" id="btnCreateAddendum">＋ Создать ДС</button>';
+          _h += '</div>';
+          if (_mv || _av) {
+            _h += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px">';
+            _h += '<div style="background:var(--bg3,#f5f7fa);border-radius:8px;padding:8px"><div style="font-size:9px;color:var(--t3);text-transform:uppercase">Основной договор</div><div style="font-weight:700;font-size:13px">' + _fn(_mv) + ' ₽</div></div>';
+            _h += '<div style="background:var(--bg3,#f5f7fa);border-radius:8px;padding:8px"><div style="font-size:9px;color:var(--t3);text-transform:uppercase">Доп. соглашения</div><div style="font-weight:700;font-size:13px">' + _fn(_av) + ' ₽</div></div>';
+            _h += '<div style="background:var(--bg3,#f5f7fa);border-radius:8px;padding:8px"><div style="font-size:9px;color:var(--t3);text-transform:uppercase">Итого</div><div style="font-weight:700;font-size:13px;color:var(--blue)">' + _fn(_tv) + ' ₽</div></div>';
+            _h += '</div>';
+          }
+          if (_list.length > 0) {
+            _h += '<table style="width:100%;border-collapse:collapse;font-size:11px">';
+            _h += '<tr style="color:var(--t3);border-bottom:1px solid var(--brd)"><th style="text-align:left;padding:4px 6px">Номер</th><th style="text-align:left;padding:4px 6px">Название</th><th style="text-align:right;padding:4px 6px">Сумма</th><th style="text-align:left;padding:4px 6px">Статус</th></tr>';
+            _list.forEach(function(a) {
+              _h += '<tr style="border-bottom:1px solid var(--brd)">';
+              _h += '<td style="padding:4px 6px;font-weight:600">' + esc(a.addendum_number||'—') + '</td>';
+              _h += '<td style="padding:4px 6px">' + esc(a.work_title||'—') + '</td>';
+              _h += '<td style="padding:4px 6px;text-align:right">' + _fn(a.contract_value) + ' ₽</td>';
+              _h += '<td style="padding:4px 6px">' + esc(a.work_status||'—') + '</td>';
+              _h += '</tr>';
+            });
+            _h += '</table>';
+          } else {
+            _h += '<div style="color:var(--t3);font-size:11px">Нет доп. соглашений.</div>';
+          }
+          _s.innerHTML = _h;
+          var _btn = document.getElementById('btnCreateAddendum');
+          if (_btn && _mw) _btn.addEventListener('click', function() { _openCreateAddendumModal(_mw.id, _mw.work_title); });
+        } catch(e) {
+          if (_s) _s.innerHTML = '<span style="color:var(--t3);font-size:11px">Не удалось загрузить: ' + esc(e.message) + '</span>';
+        }
+      }
+
+      if (!isNew && tenderId) { _loadAddenda(); }
 
       // Колбэк после создания контрагента — подставляет в тендер БЕЗ закрытия модалки тендера.
       const onCustomerCreated = (created) => {

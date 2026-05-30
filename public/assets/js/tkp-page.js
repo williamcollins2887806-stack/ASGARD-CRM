@@ -1460,6 +1460,19 @@ window.AsgardTkpPage = (function() {
         '</div>' +
         '<div style="display:flex;justify-content:flex-end"><button class="mimir-tkp-btn" id="btnMqCalc" type="button">🧙 Рассчитать</button></div>';
 
+      if (prefill.customer_inn && window.AsgardCustomerCard) {
+        var _mqcc = document.getElementById('mqCustomerCard');
+        if (_mqcc) AsgardCustomerCard.mount(_mqcc, prefill.customer_inn);
+      }
+      var _mqInnEl = document.getElementById('mqInn');
+      if (_mqInnEl) {
+        _mqInnEl.addEventListener('blur', function() {
+          var _i = (_mqInnEl.value || '').replace(/\D/g, '');
+          var _w = document.getElementById('mqCustomerCard');
+          if (_w && (_i.length === 10 || _i.length === 12) && window.AsgardCustomerCard) AsgardCustomerCard.mount(_w, _i);
+        });
+      }
+
       var btnDadata = document.getElementById('btnMqDadata');
       if (btnDadata) {
         btnDadata.addEventListener('click', function() {
@@ -1511,7 +1524,7 @@ window.AsgardTkpPage = (function() {
             });
             if (!sr.ok) throw new Error('HTTP ' + sr.status);
             var sd = await sr.json();
-            _uid = sd.uid;
+            _uid = (sd.session && sd.session.session_uid) || sd.uid || null;
             if (_attachedFile) {
               var fd = new FormData(); fd.append('file', _attachedFile);
               await fetch('/api/tkp-quick/sessions/' + _uid + '/upload', { method:'POST', headers:{Authorization:'Bearer '+token}, body:fd }).catch(function(){});
@@ -1520,7 +1533,7 @@ window.AsgardTkpPage = (function() {
               fetch('/api/tkp-quick/sessions/' + _uid + '/dadata', { method:'POST', headers:{'Content-Type':'application/json', Authorization:'Bearer '+token}, body:JSON.stringify({inn:inn, company_name:name}) }).catch(function(){});
             }
             _phaseCalc(container);
-            var resp = await fetch('/api/tkp-quick/sessions/' + _uid + '/calculate', { headers:{ Authorization:'Bearer '+token } });
+            var resp = await fetch('/api/tkp-quick/sessions/' + _uid + '/calculate', { method:'POST', headers:{ Authorization:'Bearer '+token } });
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
             var reader = resp.body.getReader();
             var decoder = new TextDecoder();
@@ -1645,7 +1658,7 @@ window.AsgardTkpPage = (function() {
             });
             if (!r.ok) { var e=await r.json().catch(function(){return{};}); throw new Error(e.error||'HTTP '+r.status); }
             var d = await r.json();
-            toast('🧙 Мимир', 'ТКП #' + (d.tkp_id||'?') + ' создано!', 'ok');
+            toast('🧙 Мимир', 'ТКП #' + ((d.tkp && d.tkp.id) || d.tkp_id || '?') + ' создано!', 'ok');
             hideModal(); loadList();
           } catch (ex) { toast('Ошибка', ex.message, 'err'); fb.disabled=false; fb.textContent='✅ Сохранить как ТКП'; }
         });
@@ -1702,7 +1715,9 @@ window.AsgardTkpPage = (function() {
           var fd = new FormData(); fd.append('file', _selectedFile);
           var r = await fetch('/api/tkp/parse-attachment', { method:'POST', headers:{Authorization:'Bearer '+token}, body:fd });
           if (!r.ok) { var e=await r.json().catch(function(){return{};}); throw new Error(e.error||'HTTP '+r.status); }
-          _parsedData = await r.json();
+          var raw = await r.json();
+          if (raw && !raw.parsed) { toast('Внимание', 'Не удалось извлечь данные из файла. Заполните вручную.', 'warn'); }
+          _parsedData = (raw && raw.parsed) ? raw.parsed : (raw || {});
           _phaseB(container);
         } catch (ex) { toast('Ошибка', ex.message, 'err'); btn.disabled=false; btn.textContent='📄 Распознать файл'; }
       });
