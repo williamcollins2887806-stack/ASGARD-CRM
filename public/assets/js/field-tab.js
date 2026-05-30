@@ -317,7 +317,7 @@ window.AsgardFieldTab = (function () {
     for (const a of assignments) {
       const emp = allEmployees.find(e => e.id === a.employee_id);
       if (!emp) continue;
-      addCrewRow(tbody, emp, a, filteredTariffs, comboTariffs, allEmployees);
+      addCrewRow(tbody, emp, a, filteredTariffs, comboTariffs, allEmployees, work);
     }
 
     // Category change → re-filter tariffs (CRSelect onChange)
@@ -349,7 +349,7 @@ window.AsgardFieldTab = (function () {
     addBtn.className = 'btn ghost';
     addBtn.textContent = '➕ Добавить сотрудника';
     addBtn.addEventListener('click', () => {
-      addCrewRow(tbody, null, null, filteredTariffs, comboTariffs, allEmployees);
+      addCrewRow(tbody, null, null, filteredTariffs, comboTariffs, allEmployees, work);
     });
     actions.appendChild(addBtn);
 
@@ -511,7 +511,7 @@ window.AsgardFieldTab = (function () {
   }
 
   // ── Add a crew row ──
-  function addCrewRow(tbody, employee, assignment, tariffs, comboTariffs, allEmployees) {
+  function addCrewRow(tbody, employee, assignment, tariffs, comboTariffs, allEmployees, work) {
     const rid = _ftRowId++;
     const tr = document.createElement('tr');
     tr.dataset.crewRow = '1';
