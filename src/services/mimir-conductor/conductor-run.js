@@ -300,6 +300,20 @@ async function getArtifactById(artifactId) {
   return res.rows[0] || null;
 }
 
+/**
+ * Все актуальные (не superseded) артефакты run с полным content.
+ * @returns {Promise<Array<{artifact_type, content, content_hash}>>}
+ */
+async function getAllArtifacts(runId) {
+  const res = await db.query(
+    `SELECT id, artifact_type, content, content_hash FROM mimir_artifacts
+     WHERE conductor_run_id = $1 AND superseded_by IS NULL
+     ORDER BY id ASC`,
+    [runId]
+  );
+  return res.rows;
+}
+
 module.exports = {
   hashContent,
   // runs
@@ -307,7 +321,7 @@ module.exports = {
   // agent runs
   startAgentRun, finishAgentRun,
   // artifacts
-  addArtifact, getArtifact, supersedeArtifact, getArtifactById,
+  addArtifact, getArtifact, supersedeArtifact, getArtifactById, getAllArtifacts,
   // events
   addEvent, listEvents,
   // aggregates (Сессия 2)

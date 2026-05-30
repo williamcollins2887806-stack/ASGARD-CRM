@@ -23,6 +23,7 @@ const { runConductor } = require('../services/mimir-conductor/conductor');
 const { generateClarificationLetter, getLetterById, LETTERS_DIR } = require('../services/mimir-conductor/letter-generator');
 const { parseReplyAndMap } = require('../services/mimir-conductor/reply-parser');
 const { applyAnswers, resumeConductorIfBlocked } = require('../services/mimir-conductor/apply-answers');
+const { generateDirectorReport } = require('../services/mimir-conductor/director-report');
 
 // Роли, которым разрешён запуск Conductor (ADMIN проходит автоматически,
 // HEAD_* наследуют — это уже встроено в fastify.requireRoles).
@@ -201,6 +202,54 @@ async function mimirConductorRoutes(fastify, options) {
     const details = await cr.getFullRunDetails(runId);
     if (!details) return reply.code(404).send({ error: 'Run not found' });
     return details;
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // СЕССИЯ 7 — Директорский отчёт (PDF)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // POST /conductor/run/:id/generate-report — сгенерировать директорский PDF
+  fastify.post('/conductor/run/:id/generate-report', {
+    preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
+  }, async (request, reply) => {
+    const runId = Number(request.params.id);
+    if (!Number.isInteger(runId) || runId <= 0) {
+      return reply.code(400).send({ error: 'Invalid run id' });
+    }
+    const run = await cr.getRun(runId);
+    if (!run) return reply.code(404).send({ error: 'Run not found' });
+    // Отчёт строится по готовому просчёту.
+    if (!['READY_FOR_REVIEW', 'APPROVED', 'REJECTED'].includes(run.status)) {
+      return reply.code(409).send({
+        error: `Отчёт можно сгенерировать только по завершённому просчёту (статус: ${run.status})`
+      });
+    }
+    try {
+      const { pdfPath } = await generateDirectorReport(runId);
+      return { ok: true, run_id: runId, report_path: pdfPath };
+    } catch (e) {
+      request.log.error(`[conductor/generate-report] run ${runId}: ${e.message}`);
+      return reply.code(500).send({ error: `Не удалось сгенерировать отчёт: ${e.message}` });
+    }
+  });
+
+  // GET /conductor/run/:id/report — скачать сгенерированный PDF
+  fastify.get('/conductor/run/:id/report', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const runId = Number(request.params.id);
+    if (!Number.isInteger(runId) || runId <= 0) {
+      return reply.code(400).send({ error: 'Invalid run id' });
+    }
+    const run = await cr.getRun(runId);
+    if (!run) return reply.code(404).send({ error: 'Run not found' });
+    const filePath = run.director_report_path;
+    if (!filePath || !fs.existsSync(filePath)) {
+      return reply.code(404).send({ error: 'Отчёт ещё не сгенерирован. Сначала вызовите generate-report.' });
+    }
+    reply.header('Content-Type', 'application/pdf');
+    reply.header('Content-Disposition', `inline; filename="director_report_${runId}.pdf"`);
+    return reply.send(fs.createReadStream(filePath));
   });
 
   // ═══════════════════════════════════════════════════════════════════════════

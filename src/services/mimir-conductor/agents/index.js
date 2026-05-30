@@ -42,8 +42,22 @@ const REAL = {
   routing_planner: require('./routing_planner'),
   travel_pricer: require('./travel_pricer'),
   permits_planner: require('./permits_planner'),
-  indirects_calculator: require('./indirects_calculator')
-  // Остальные агенты — моки до сессии 7.
+  indirects_calculator: require('./indirects_calculator'),
+  // Сессия 7 — финмодель, риски, адвокат, аналоги, нормоконтроль, расширенные python:
+  risk_quantifier: require('./risk_quantifier'),
+  financial_modeler: require('./financial_modeler'),
+  devils_advocate: require('./devils_advocate'),
+  historical_comparator: require('./historical_comparator'),
+  contract_decomposer: require('./contract_decomposer'),
+  norms_compliance: require('./norms_compliance'),
+  pre_mob_calculator: require('./pre_mob_calculator'),
+  standby_estimator: require('./standby_estimator'),
+  consumables_calculator: require('./consumables_calculator'),
+  executive_docs_planner: require('./executive_docs_planner'),
+  warranty_reserve: require('./warranty_reserve'),
+  quality_control_planner: require('./quality_control_planner'),
+  marine_permits: require('./marine_permits')
+  // Остаётся моком: site_access_planner (вне объёма Сессии 7).
 };
 
 /**
