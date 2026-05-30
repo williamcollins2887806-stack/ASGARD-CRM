@@ -20,8 +20,16 @@
 
 const mock = require('./_mock');
 
-// Реальные реализации появятся здесь в сессиях 4-7.
-const REAL = {};
+// Реальные реализации (заменяют мок точечно).
+// Сессия 4 — 5 ядерных агентов (MVP end-to-end просчёта):
+const REAL = {
+  document_parser: require('./document_parser'),
+  tz_analyst: require('./tz_analyst'),
+  crew_composer: require('./crew_composer'),
+  labor_calculator: require('./labor_calculator'),
+  final_consolidator: require('./final_consolidator')
+  // Остальные агенты — моки до сессий 5-7.
+};
 
 /**
  * Вернуть реализацию агента по имени. Пока всё, что не реализовано, — мок.
