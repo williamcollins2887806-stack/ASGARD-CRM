@@ -245,8 +245,8 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/cash",l:"Касса",d:"Авансовые отчёты",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"finances",p:"cash",g:"finance"},
     {r:"/cash-admin",l:"Касса (управление)",d:"Согласование и контроль",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"cash_admin",g:"finance"},
     {r:"/approval-payment",l:"Очередь оплаты",d:"Оплата согласованных заявок",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"approval_payment",g:"finance"},
-    {r:"/payroll",l:"Расчёты с рабочими",d:"Ведомости и выплаты",roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES],i:"finances",p:"payroll",g:"finance"},
-    {r:"/payroll-grid",l:"Ведомость (табель)",d:"Сетка баллов по дням, авто из табелей",roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES],i:"finances",p:"payroll_grid",g:"finance"},
+    {r:"/payroll",l:"Расчёты с рабочими",d:"Ведомости и выплаты",roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO","PROC","BUH",...DIRECTOR_ROLES],i:"finances",p:"payroll",g:"finance"},
+    {r:"/payroll-grid",l:"Ведомость (табель)",d:"Сетка баллов по дням, авто из табелей",roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO","PROC","BUH",...DIRECTOR_ROLES],i:"finances",p:"payroll_grid",g:"finance"},
     {r:"/self-employed",l:"Самозанятые",d:"Реестр СЗ и договора",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"payroll",g:"finance"},
     {r:"/one-time-pay",l:"Разовые оплаты",d:"Такси, топливо, разовые",roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES],i:"finances",p:"payroll",g:"finance"},
     {r:"/reports/payroll",l:"Отчёты по выплатам",d:"Сводный табель, ФОТ, суточные, Excel",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"reports-payroll",g:"finance"},
@@ -2132,9 +2132,9 @@ AsgardRouter.add("/assembly", ()=>AsgardAssemblyPage.render({layout, title:"Сб
       AsgardApprovalPaymentPage.render(document.getElementById('approval-payment-page'));
     }, {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
 
-    AsgardRouter.add("/payroll", ()=>AsgardPayrollPage.render({layout, title:"Расчёты с рабочими"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/payroll", ()=>AsgardPayrollPage.render({layout, title:"Расчёты с рабочими"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO","PROC","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/payroll-sheet", ({query})=>AsgardPayrollPage.renderSheet({layout, title:"Ведомость", query}), {auth:true, roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES]});
-    AsgardRouter.add("/payroll-grid", ()=>AsgardPayrollPage.renderPayrollGrid({layout}), {auth:true, roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/payroll-grid", ()=>AsgardPayrollPage.renderPayrollGrid({layout}), {auth:true, roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO","PROC","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/self-employed", ()=>AsgardPayrollPage.renderSelfEmployed({layout, title:"Самозанятые"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/one-time-pay", ()=>AsgardPayrollPage.renderOneTimePay({layout, title:"Разовые оплаты"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/reports/payroll", ()=>AsgardPaymentsReportPage.render({layout, title:"Отчёты по выплатам"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});

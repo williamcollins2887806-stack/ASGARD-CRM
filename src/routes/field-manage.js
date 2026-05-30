@@ -23,7 +23,7 @@ const { createNotification } = require('../services/notify');
 const { getWorkerFinances } = require('../lib/worker-finances');
 const MANGO_SMS_FROM = process.env.MANGO_SMS_EXTENSION || '101';
 
-const MANAGE_ROLES = ['PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+const MANAGE_ROLES = ['PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 
 async function routes(fastify, options) {
   const db = fastify.db;

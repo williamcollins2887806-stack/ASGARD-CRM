@@ -12,10 +12,11 @@ const MONTH_NAMES = ['', 'Январь', 'Февраль', 'Март', 'Апре
 
 async function routes(fastify) {
   const db = fastify.db;
-  const auth = { preHandler: [fastify.requireRoles(['PM', 'HEAD_PM', 'ADMIN'])] };
+  const auth = { preHandler: [fastify.requireRoles(['PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'ADMIN'])] };
+  const SUPERVISOR_ROLES = ['ADMIN', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 
   function pmFilter(user) {
-    const isAdmin = user.role === 'ADMIN';
+    const isAdmin = SUPERVISOR_ROLES.includes(user.role);
     return { isAdmin, userId: user.id };
   }
 

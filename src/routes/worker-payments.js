@@ -35,7 +35,7 @@
 
 const { getWorkerFinances } = require('../lib/worker-finances');
 
-const MANAGE_ROLES = ['PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH', 'ADMIN'];
+const MANAGE_ROLES = ['PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'PROC', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH', 'ADMIN'];
 const DIRECTOR_ROLES = ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH', 'ADMIN'];
 
 async function routes(fastify, options) {
@@ -1156,7 +1156,7 @@ async function routes(fastify, options) {
         return reply.code(400).send({ error: 'Некорректный год/месяц' });
       }
 
-      const isDir = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_PM'].includes(req.user.role);
+      const isDir = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_PM', 'BUH', 'TO', 'HEAD_TO', 'PROC'].includes(req.user.role);
 
       // Point value from settings
       const pvRes = await db.query("SELECT key, value_json FROM settings WHERE key = 'point_value'");
@@ -1318,7 +1318,7 @@ async function routes(fastify, options) {
         return reply.code(400).send({ error: 'Укажите rows: [{employee_id, days: [{date, points, work_id?}]}]' });
       }
 
-      const isDir = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_PM'].includes(req.user.role);
+      const isDir = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_PM', 'BUH', 'TO', 'HEAD_TO', 'PROC'].includes(req.user.role);
 
       // Point value from settings
       const pvRes = await db.query("SELECT key, value_json FROM settings WHERE key = 'point_value'");
@@ -1425,7 +1425,7 @@ async function routes(fastify, options) {
       const mName = monthNames[month - 1] || '';
       const lastDay = new Date(year, month, 0).getDate();
 
-      const isDir = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_PM'].includes(req.user.role);
+      const isDir = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_PM', 'BUH', 'TO', 'HEAD_TO', 'PROC'].includes(req.user.role);
 
       // Point value from settings
       const pvRes = await db.query("SELECT key, value_json FROM settings WHERE key = 'point_value'");

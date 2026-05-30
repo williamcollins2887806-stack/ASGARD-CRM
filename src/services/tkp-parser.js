@@ -111,7 +111,8 @@ async function _extractText(buf, originalName) {
           if (v == null) return;
           if (typeof v === 'object' && v.text) vals.push(String(v.text));
           else if (typeof v === 'object' && v.result != null) vals.push(String(v.result));
-          else vals.push(String(v));
+          else if (typeof v === 'object' && v.error) vals.push(String(v.error));
+          else if (typeof v !== 'object') vals.push(String(v));
         });
         if (vals.length) text += vals.join(' | ') + '\n';
       });

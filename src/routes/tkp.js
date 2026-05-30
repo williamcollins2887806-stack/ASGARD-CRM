@@ -1614,17 +1614,18 @@ module.exports = async function routesWithExtensions(fastify, options) {
     const { rows: [newTkp] } = await db.query(`
       INSERT INTO tkp (
         subject, tender_id, work_id, pre_tender_id, link_type,
-        customer_name, customer_inn, customer_address,
+        customer_name, customer_inn, customer_address, work_description,
         contact_person, contact_phone, contact_email,
         items, total_sum, deadline, validity_days,
         source, status, parsed_from_attachment,
         purpose_reason, author_id
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
       RETURNING *
     `, [
       subject,
       tenderId, workId, preTenderId, linkType,
       body.customer_name || null, body.customer_inn || null, body.customer_address || null,
+      body.work_description || null,
       body.contact_person || null, body.contact_phone || null, body.contact_email || null,
       itemsVal,
       parseFloat(body.total_sum || 0) || 0,
@@ -1790,8 +1791,8 @@ module.exports = async function routesWithExtensions(fastify, options) {
     if (!tkp.attachment_path) return reply.code(404).send({ error: 'Файл не прикреплён к этому ТКП' });
 
     const absPath = pathLib.resolve(UPLOAD_DIR, tkp.attachment_path);
-    // Защита path-traversal
-    if (!absPath.startsWith(pathLib.resolve(UPLOAD_DIR))) {
+    // Защита path-traversal: проверяем с trailing-sep чтобы /uploads_evil не прошёл как /uploads
+    if (!absPath.startsWith(pathLib.resolve(UPLOAD_DIR) + pathLib.sep)) {
       return reply.code(403).send({ error: 'Доступ запрещён' });
     }
 
