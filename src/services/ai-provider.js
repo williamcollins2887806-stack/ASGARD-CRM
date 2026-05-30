@@ -110,6 +110,23 @@ let YANDEX_FOLDER_ID = process.env.YANDEX_FOLDER_ID || '';
 const YANDEX_GPT_MODEL = process.env.YANDEX_GPT_MODEL || 'qwen3-235b-a22b-fp8/latest';
 const YANDEX_GPT_URL = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// STUB-режим для локальной разработки без расхода баланса.
+// Если ключ начинается с 'stub-' — новые Conductor-методы (searchWeb, embed,
+// completeWithStream) возвращают замоканные результаты правильной формы и НЕ
+// делают сетевых вызовов. Это позволяет прогонять оркестратор/UI/структурные
+// smoke-тесты без денег. Реальные AI-вызовы — только когда ключ настоящий.
+// (Существующие complete()/stream()/runAgentLoop() сохраняют прежнее поведение,
+//  включая встроенный demo-режим при полностью пустых ключах.)
+// ─────────────────────────────────────────────────────────────────────────────
+function _isStubKey(k) {
+  return typeof k === 'string' && k.startsWith('stub-');
+}
+/** Включён ли stub-режим для OpenAI/routerai-пути (основной для Conductor). */
+function isStubMode() {
+  return _isStubKey(OPENAI_API_KEY) || (!OPENAI_API_KEY && _isStubKey(ANTHROPIC_API_KEY));
+}
+
 // DB settings cache
 let _dbKeysLoaded = false;
 
@@ -1229,6 +1246,164 @@ async function completeAnalytics(options) {
   return complete(options);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Mimir Conductor — расширения ai-provider (Сессия 1, Шаг 1.3)
+// Новые методы НЕ ломают существующие. Все они уважают stub-режим.
+// Всё идёт через единый routerai-эндпоинт (OPENAI_URL) — отдельных провайдеров
+// для Perplexity/Voyage/DeepSeek НЕТ, модель задаётся параметром `model`.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Веб-поиск с возвратом структурированного результата.
+ * Обёртка над executeWebSearch (plugin 'web' через routerai), но возвращает
+ * { answer, citations: [{url,title,snippet}] } вместо «сырого» текста.
+ *
+ * @param {Object} p
+ * @param {string} p.query
+ * @param {string} [p.model]            — по умолчанию WEB_SEARCH_MODEL
+ * @param {number} [p.maxResults=5]
+ * @param {string[]} [p.includeDomains]
+ * @returns {Promise<{answer:string, citations:Array<{url:string,title:string,snippet:string}>, _stub?:boolean}>}
+ */
+async function searchWeb({ query, model, maxResults = 5, includeDomains = [] } = {}) {
+  await _loadKeysFromDB();
+  if (isStubMode()) {
+    return {
+      answer: `[STUB web search] По запросу «${query}» цены не запрашивались (stub-режим, баланс не тратится).`,
+      citations: [
+        { url: 'https://example.com/stub-1', title: 'STUB источник 1', snippet: 'Замоканный результат поиска.' }
+      ],
+      _stub: true
+    };
+  }
+  // Реальный путь: используем существующий executeWebSearch (он уже знает про
+  // правильную модель-исполнитель и plugin 'web'). Затем оборачиваем результат.
+  const t0 = Date.now();
+  const text = await executeWebSearch(query, { includeDomains, maxResults });
+  // executeWebSearch возвращает текст; citations берём из annotations при наличии
+  // (для этого делаем «тонкий» повторный путь только если нужно — но чтобы не
+  //  тратить лишний вызов, citations здесь best-effort парсятся из текста URL'ов).
+  const urls = Array.from(new Set((text.match(/https?:\/\/[^\s)\]]+/g) || []))).slice(0, maxResults);
+  return {
+    answer: text,
+    citations: urls.map(u => ({ url: u, title: '', snippet: '' })),
+    _durationMs: Date.now() - t0,
+    _model: model || WEB_SEARCH_MODEL
+  };
+}
+
+/**
+ * Получить embeddings для массива текстов.
+ * Через routerai (модель voyage-3-large, fallback text-embedding-3-large).
+ * Используется RAG-агентами (сессия 6).
+ *
+ * @param {Object} p
+ * @param {string[]} p.texts
+ * @param {string} [p.model='voyage/voyage-3-large']
+ * @returns {Promise<number[][]>} — массив векторов (по одному на текст)
+ */
+async function embed({ texts, model = 'voyage/voyage-3-large' } = {}) {
+  await _loadKeysFromDB();
+  const list = Array.isArray(texts) ? texts : [texts];
+  const DIM = 1024; // TODO: уточнить размерность voyage-3-large в routerai
+  if (isStubMode()) {
+    // Детерминированный псевдо-вектор по длине строки — стабилен между прогонами.
+    return list.map((t) => {
+      const seed = (t || '').length;
+      return Array.from({ length: DIM }, (_, i) => ((Math.sin(seed + i) + 1) / 2));
+    });
+  }
+  if (!OPENAI_API_KEY) throw new AIProviderError({ code: 'auth', providerMessage: 'OPENAI_API_KEY не настроен для embeddings' });
+
+  // routerai — OpenAI-совместимый embeddings endpoint.
+  // OPENAI_URL указывает на /chat/completions — заменяем хвост на /embeddings.
+  const embUrl = OPENAI_URL.replace(/\/chat\/completions\/?$/, '/embeddings');
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+  try {
+    const res = await fetch(embUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + OPENAI_API_KEY },
+      body: JSON.stringify({ model, input: list }),
+      signal: controller.signal
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      const code = _classifyHttpError(res.status, errText);
+      throw new AIProviderError({ code, status: res.status, providerMessage: _extractProviderMessage(errText), body: errText.substring(0, 1000) });
+    }
+    const data = await res.json();
+    // OpenAI-совместимый формат: { data: [{ embedding: [...] }, ...] }
+    return (data.data || []).map(d => d.embedding);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Стриминговый вызов с раздельными колбэками для thinking-блоков и текста.
+ * Используется Conductor'ом и агентами для проброса «мыслей» в War Room UI.
+ *
+ * В stub-режиме — эмулирует поток: вызывает onThought + onText синтетическими
+ * чанками, затем возвращает финальный объект. Сеть не трогается.
+ *
+ * @param {Object} p — поля complete() + колбэки:
+ *   onThought?: (text) => void   — фрагмент «мысли»
+ *   onText?: (text) => void      — фрагмент финального ответа
+ *   onToolCall?: (tc) => void
+ *   onToolResult?: (tr) => void
+ * @returns {Promise<{text:string, thinking:string, usage:{inputTokens,outputTokens}, model:string, _stub?:boolean}>}
+ */
+async function completeWithStream(p = {}) {
+  const { system, messages, model, onThought = () => {}, onText = () => {} } = p;
+  await _loadKeysFromDB();
+
+  if (isStubMode()) {
+    const thought = 'Анализирую исходные данные (stub-режим, реальная модель не вызывалась).';
+    const answer = '[STUB ответ] Структурный прогон без обращения к LLM.';
+    onThought(thought);
+    onText(answer);
+    return {
+      text: answer,
+      thinking: thought,
+      usage: { inputTokens: 0, outputTokens: 0 },
+      model: model || 'stub',
+      stopReason: 'end_turn',
+      _stub: true
+    };
+  }
+
+  // Реальный стриминг. Для Claude через нативный Anthropic SSE можно получить
+  // thinking-блоки; через routerai (OpenAI SSE) thinking отдельным каналом не
+  // приходит — поэтому здесь используем text-only поток как безопасный базовый
+  // вариант. (Расширение нативных thinking-блоков — отдельная задача, не блокер.)
+  const response = await stream({ system, messages, model });
+  const provider = getProvider();
+  let fullText = '';
+  let usage = { inputTokens: 0, outputTokens: 0 };
+  for await (const chunk of parseStream(response, provider === 'anthropic' ? 'anthropic' : 'openai')) {
+    if (chunk.type === 'text') { fullText += chunk.content; onText(chunk.content); }
+    else if (chunk.type === 'done') { usage = chunk.usage || usage; }
+  }
+  return { text: fullText, thinking: '', usage, model: model || getConfig().model, stopReason: 'end_turn' };
+}
+
+/**
+ * Стоимость вызова в рублях. Тонкая обёртка над models-config.calculateCostRub,
+ * чтобы цена считалась единообразно. Принимает ключ модели из models-config.
+ * Загружается лениво, чтобы не создавать циклической зависимости при require.
+ *
+ * @param {string} modelKey — ключ из models-config (например 'sonnet-4-6')
+ * @param {{inputTokens:number, outputTokens:number}} usage
+ * @param {number} [usdRub] — курс; если не передан, используется DEFAULT_USD_RUB
+ * @returns {number}
+ */
+function calculateCostRub(modelKey, usage, usdRub) {
+  // eslint-disable-next-line global-require
+  const mc = require('./mimir-conductor/models-config');
+  return mc.calculateCostRub(modelKey, usage, usdRub);
+}
+
 module.exports = {
   complete,
   completeFast,
@@ -1243,5 +1418,11 @@ module.exports = {
   _loadKeysFromDB, // AP5: agent needs to ensure keys are loaded
   AIProviderError, // экспорт класса для классификации ошибок в caller-ах
   runAgentLoop, // agent-loop с автоматическим выполнением tool_calls (WebSearch)
-  executeWebSearch // прямой вызов web search (можно использовать без agent loop)
+  executeWebSearch, // прямой вызов web search (можно использовать без agent loop)
+  // ── Mimir Conductor (Сессия 1) ──
+  isStubMode,        // true когда ключ stub-* (mock-режим без расхода баланса)
+  searchWeb,         // веб-поиск → { answer, citations }
+  embed,             // embeddings → number[][]
+  completeWithStream,// стриминг с колбэками onThought/onText
+  calculateCostRub   // стоимость вызова в ₽ (через models-config)
 };
