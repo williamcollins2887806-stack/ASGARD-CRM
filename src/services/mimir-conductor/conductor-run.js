@@ -244,6 +244,62 @@ async function listEvents(runId, sinceEventId = 0, limit = 1000) {
   return res.rows;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Запросы-агрегаты (Сессия 2): для hard-rules, лимитов и API
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Уникальные имена успешно завершённых агентов run. */
+async function getCompletedAgents(runId) {
+  const res = await db.query(
+    `SELECT DISTINCT agent_name FROM mimir_agent_runs
+     WHERE conductor_run_id = $1 AND status = 'SUCCESS'`,
+    [runId]
+  );
+  return res.rows.map((r) => r.agent_name);
+}
+
+/** Текущая суммарная стоимость run в рублях (из агрегата на runs). */
+async function getTotalCost(runId) {
+  const res = await db.query('SELECT total_cost_rub FROM mimir_conductor_runs WHERE id = $1', [runId]);
+  return Number(res.rows[0]?.total_cost_rub) || 0;
+}
+
+/** Открытые блокирующие уточнения run. */
+async function getBlockingClarifications(runId) {
+  const res = await db.query(
+    `SELECT * FROM mimir_clarifications
+     WHERE conductor_run_id = $1 AND blocking = TRUE AND status = 'OPEN'
+     ORDER BY id ASC`,
+    [runId]
+  );
+  return res.rows;
+}
+
+/** Полные детали run: сам run + дочерние agent_runs, artifacts, счётчик событий. */
+async function getFullRunDetails(runId) {
+  const run = await getRun(runId);
+  if (!run) return null;
+  const [agentRuns, artifacts, eventCount, clarifications] = await Promise.all([
+    db.query('SELECT * FROM mimir_agent_runs WHERE conductor_run_id = $1 ORDER BY id ASC', [runId]),
+    db.query('SELECT id, artifact_type, content_hash, superseded_by, created_at FROM mimir_artifacts WHERE conductor_run_id = $1 ORDER BY id ASC', [runId]),
+    db.query('SELECT COUNT(*)::int AS n FROM mimir_agent_events WHERE conductor_run_id = $1', [runId]),
+    db.query('SELECT * FROM mimir_clarifications WHERE conductor_run_id = $1 ORDER BY id ASC', [runId])
+  ]);
+  return {
+    run,
+    agent_runs: agentRuns.rows,
+    artifacts: artifacts.rows,
+    event_count: eventCount.rows[0]?.n || 0,
+    clarifications: clarifications.rows
+  };
+}
+
+/** Один артефакт по id (с полным content). */
+async function getArtifactById(artifactId) {
+  const res = await db.query('SELECT * FROM mimir_artifacts WHERE id = $1', [artifactId]);
+  return res.rows[0] || null;
+}
+
 module.exports = {
   hashContent,
   // runs
@@ -251,7 +307,9 @@ module.exports = {
   // agent runs
   startAgentRun, finishAgentRun,
   // artifacts
-  addArtifact, getArtifact, supersedeArtifact,
+  addArtifact, getArtifact, supersedeArtifact, getArtifactById,
   // events
-  addEvent, listEvents
+  addEvent, listEvents,
+  // aggregates (Сессия 2)
+  getCompletedAgents, getTotalCost, getBlockingClarifications, getFullRunDetails
 };
