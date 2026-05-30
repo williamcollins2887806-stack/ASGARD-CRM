@@ -215,7 +215,7 @@ const REGISTRY = {
     description: 'Планирует доставку людей и техники: маршруты, дни дороги, транспорт.',
     model_default: 'sonnet-4-6',
     output_artifact_type: 'routing_plan',
-    requires_artifacts: ['crew_plan'],
+    requires_artifacts: ['crew_plan', 'tz_summary'],
     triggers: [{ type: 'threshold', field: 'distance_km', gt: 100 }]
   }),
 

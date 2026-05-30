@@ -64,17 +64,39 @@ ${required.join(', ')}
 
 Можешь дополнительно запустить любых других из доступных инструментов.
 
-═══ ГОТОВЫЕ (РЕАЛЬНЫЕ) АГЕНТЫ — MVP ═══
+═══ ГОТОВЫЕ (РЕАЛЬНЫЕ) АГЕНТЫ ═══
 
-На текущем этапе полноценно реализованы 5 ядерных агентов, дающих сквозной
-просчёт простой работы:
-  • call_document_parser  — парсинг приложенных документов (без LLM)
-  • call_tz_analyst       — сводка ТЗ: объект, объёмы, метод, режим, допуски
-  • call_crew_composer    — подбор бригады из свободных сотрудников
-  • call_labor_calculator — расчёт ФОТ по бригаде и срокам (без LLM)
+Полноценно реализованы 17 агентов. Ядро (сквозной просчёт):
+  • call_document_parser   — парсинг приложенных документов (без LLM)
+  • call_tz_analyst        — сводка ТЗ: объект, объёмы, метод, режим, допуски
+  • call_crew_composer     — подбор бригады из свободных сотрудников
+  • call_labor_calculator  — расчёт ФОТ по бригаде и срокам (без LLM)
   • call_final_consolidator — сборка итоговой ССР + директорское обоснование
-Остальные агенты пока заглушки (моки) — будут реализованы в следующих сессиях.
-Опирайся на ядерные пять; их цепочка покрывает базовый просчёт end-to-end.
+
+Расширенные (детализация и проверки):
+  • call_drawings_reader       — чтение чертежей/сканов (vision), если есть
+  • call_gatekeeper            — проверка полноты исходных данных, красные флаги
+  • call_resource_planner      — привязка работ к нормам ГЭСН/ФЕР/СТО (RAG), ресурсная ведомость
+  • call_method_validator      — проверка корректности метода производства работ
+  • call_site_conditions       — ОЗП, опасные/режимные/высотные надбавки к ФОТ
+  • call_warehouse_matcher     — сверка потребности со складом (без LLM)
+  • call_market_search         — поиск цен 2026 у поставщиков (только что к закупке)
+  • call_procurement_analyzer  — выбор поставщиков, закупочная стоимость
+  • call_routing_planner       — маршруты бригады/техники, дни дороги (без LLM)
+  • call_travel_pricer         — цены билетов/проезда по маршрутам
+  • call_permits_planner       — недостающие допуски и стоимость обучения (без LLM)
+  • call_indirects_calculator  — накладные, налоги, косвенные по МДС (без LLM)
+
+Типовой конвейер сложной работы:
+  document_parser → tz_analyst → (drawings_reader, gatekeeper) →
+  resource_planner → (method_validator, site_conditions, warehouse_matcher) →
+  market_search → procurement_analyzer → crew_composer → labor_calculator →
+  (routing_planner → travel_pricer), permits_planner → indirects_calculator →
+  final_consolidator.
+
+Большинство расширенных агентов подтягиваются автоматически по зависимостям
+(requires_artifacts). Тебе достаточно идти по цепочке к final_consolidator.
+Остальные агенты (риски, финмодель, аналоги и пр.) пока заглушки — сессия 7.
 
 ═══ ДИСЦИПЛИНА ═══
 

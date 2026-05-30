@@ -8,12 +8,20 @@
  *
  * Что проверяем (без расхода баланса — обязателен stub-режим):
  *   1. isStubMode() === true (иначе тест отказывается работать, чтобы не жечь баланс)
- *   2. runConductor доводит прогон до READY_FOR_REVIEW
+ *   2. runConductor корректно отрабатывает agent loop до терминального состояния
  *   3. ≥3 agent_runs со статусом SUCCESS
  *   4. ≥3 артефакта создано
- *   5. в событиях есть thought / artifact_emitted / final_estimate
- *   6. в complexity_flags выставлены флаги; final_estimate_data записан
+ *   5. в событиях есть thought / artifact_emitted
+ *   6. в complexity_flags выставлены флаги
  *   7. чистит за собой (cascade удаляет дочерние строки)
+ *
+ * ВАЖНО (после Сессии 6): прогон создаётся БЕЗ документов, поэтому stub-сводка
+ * ТЗ имеет has_volumes=false. Контракт 60M → обязателен реальный агент
+ * gatekeeper, который при отсутствии объёмов корректно поднимает БЛОКИРУЮЩЕЕ
+ * уточнение заказчику → прогон встаёт в BLOCKED_BY_CUSTOMER (это правильное
+ * продакшн-поведение входного контроля, а не ошибка). Полный путь до
+ * READY_FOR_REVIEW с реальными агентами проверяется в Сессии 6
+ * (mimir-conductor-extended) и Сессии 4 (mimir-conductor-core-agents).
  */
 
 'use strict';
@@ -46,38 +54,43 @@ async function run() {
     runId = created.runId;
     assert('createRun → runId', isPosId(runId));
 
-    // Полный прогон Conductor (прелюдия → обязательные моки → финал)
+    // Полный прогон Conductor (прелюдия → обязательные агенты → гейткипер блок)
     await runConductor(runId);
 
-    // 1) Статус
+    // 1) Статус: gatekeeper без объёмов корректно ставит прогон на паузу
+    //    в ожидании заказчика (продакшн-поведение входного контроля).
     const finished = await cr.getRun(runId);
-    assert('статус READY_FOR_REVIEW', finished.status === 'READY_FOR_REVIEW');
-    assert('final_estimate_data записан', finished.final_estimate_data && typeof finished.final_estimate_data === 'object');
-    assert('recommendation присутствует', finished.final_estimate_data.recommendation === 'THINK');
+    assert('статус BLOCKED_BY_CUSTOMER (gatekeeper: нет объёмов)', finished.status === 'BLOCKED_BY_CUSTOMER');
+    assert('blocked_reason задан', typeof finished.blocked_reason === 'string' && finished.blocked_reason.length > 0);
 
     // 2) complexity_flags обновлены оркестратором
     assert('complexity_flags объект', finished.complexity_flags && typeof finished.complexity_flags === 'object');
 
-    // 3) agent_runs SUCCESS
+    // 3) agent_runs SUCCESS (прелюдия + часть обязательных до блокировки)
     const completed = await cr.getCompletedAgents(runId);
     assert('≥3 успешных агентов', completed.length >= 3);
     assert('tz_analyst отработал', completed.includes('tz_analyst'));
     assert('document_parser отработал', completed.includes('document_parser'));
-    assert('final_consolidator отработал', completed.includes('final_consolidator'));
-    assert('devils_advocate отработал (контракт >50M)', completed.includes('devils_advocate'));
+    assert('gatekeeper отработал (контракт >10M)', completed.includes('gatekeeper'));
 
     // 4) Артефакты
     const details = await cr.getFullRunDetails(runId);
     assert('≥3 артефакта', details.artifacts.length >= 3);
     const tz = await cr.getArtifact(runId, 'tz_summary');
     assert('tz_summary артефакт есть', !!tz);
+    const gk = await cr.getArtifact(runId, 'gatekeeper_report');
+    assert('gatekeeper_report артефакт есть', !!gk);
 
-    // 5) События нужных типов
+    // 5) Блокирующее уточнение к заказчику поднято
+    const blocking = await cr.getBlockingClarifications(runId);
+    assert('есть открытое блокирующее уточнение CUSTOMER', blocking.length >= 1);
+
+    // 6) События нужных типов
     const events = await cr.listEvents(runId, 0, 5000);
     const types = new Set(events.map((e) => e.event_type));
     assert('есть событие thought', types.has('thought'));
     assert('есть событие artifact_emitted', types.has('artifact_emitted'));
-    assert('есть событие final_estimate', types.has('final_estimate'));
+    assert('есть событие paused', types.has('paused'));
     assert('есть событие status_change', types.has('status_change'));
 
     // 6) Стоимость в пределах лимита и неотрицательна

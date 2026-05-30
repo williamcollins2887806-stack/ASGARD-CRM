@@ -21,14 +21,29 @@
 const mock = require('./_mock');
 
 // Реальные реализации (заменяют мок точечно).
-// Сессия 4 — 5 ядерных агентов (MVP end-to-end просчёта):
+// Сессия 4 — 5 ядерных агентов (MVP end-to-end просчёта).
+// Сессия 6 — +12 расширенных агентов (RAG-нормы, рынок, логистика, допуски).
 const REAL = {
+  // Сессия 4 — ядро:
   document_parser: require('./document_parser'),
   tz_analyst: require('./tz_analyst'),
   crew_composer: require('./crew_composer'),
   labor_calculator: require('./labor_calculator'),
-  final_consolidator: require('./final_consolidator')
-  // Остальные агенты — моки до сессий 5-7.
+  final_consolidator: require('./final_consolidator'),
+  // Сессия 6 — расширенные:
+  drawings_reader: require('./drawings_reader'),
+  gatekeeper: require('./gatekeeper'),
+  resource_planner: require('./resource_planner'),
+  method_validator: require('./method_validator'),
+  site_conditions: require('./site_conditions'),
+  warehouse_matcher: require('./warehouse_matcher'),
+  market_search: require('./market_search'),
+  procurement_analyzer: require('./procurement_analyzer'),
+  routing_planner: require('./routing_planner'),
+  travel_pricer: require('./travel_pricer'),
+  permits_planner: require('./permits_planner'),
+  indirects_calculator: require('./indirects_calculator')
+  // Остальные агенты — моки до сессии 7.
 };
 
 /**
