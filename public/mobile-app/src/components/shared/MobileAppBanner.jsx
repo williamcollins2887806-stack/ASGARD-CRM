@@ -134,7 +134,7 @@ export function MobileAppBanner() {
         {/* CTA */}
         <div style={{ padding: '0 20px 28px', display: 'flex', flexDirection: 'column', gap: 10 }}>
           <a
-            href="https://92.242.61.184/download"
+            href="https://asgard-crm.ru/download"
             target="_blank"
             rel="noreferrer"
             style={{

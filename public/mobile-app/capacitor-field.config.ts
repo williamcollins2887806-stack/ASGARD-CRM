@@ -6,7 +6,7 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   bundledWebRuntime: false,
   server: {
-    url: 'https://92.242.61.184/field/',
+    url: 'https://asgard-crm.ru/field/',
     cleartext: false,
   },
   android: {

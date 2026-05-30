@@ -5,8 +5,12 @@ const config: CapacitorConfig = {
   appName: 'ASGARD CRM',
   webDir: 'dist',
   bundledWebRuntime: false,
+  server: {
+    url: 'https://asgard-crm.ru/m/',
+    cleartext: false,
+  },
   android: {
-    allowMixedContent: true,
+    allowMixedContent: false,
     captureInput: true,
     webContentsDebuggingEnabled: false,
   },
