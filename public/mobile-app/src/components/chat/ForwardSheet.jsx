@@ -21,7 +21,7 @@ export function ForwardSheet({ message, onClose, onForwarded }) {
     (async () => {
       try {
         const data = await api.get('/chat-groups');
-        setChats(data.chats || data.groups || []);
+        setChats(api.extractRows(data) || []);
       } catch {}
     })();
   }, []);

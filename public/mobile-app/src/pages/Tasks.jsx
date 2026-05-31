@@ -349,7 +349,7 @@ function CreateTaskSheet({ open, onClose, onCreated }) {
 
   useEffect(() => {
     if (!open) return;
-    api.get('/users/list').then((res) => {
+    api.get('/users').then((res) => {
       const rows = api.extractRows(res) || [];
       setEmployees(rows.filter((u) => u.is_active));
     }).catch(() => {});

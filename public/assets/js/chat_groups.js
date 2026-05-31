@@ -1505,7 +1505,7 @@ window.AsgardChatGroups = (function(){
       if (!url) return;
       if (_lpCache[url]) { _renderDesktopPreview(el, _lpCache[url], url); return; }
       fetch('/api/chat-groups/link-preview?url=' + encodeURIComponent(url), {
-        headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') }
+        headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('asgard_token') || '') }
       })
         .then(r => r.json())
         .then(data => { _lpCache[url] = data; _renderDesktopPreview(el, data, url); })

@@ -83,7 +83,7 @@ export default function FieldShift() {
       const client_date = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
       const client_time = now.toISOString();
       const client_local_hour = now.getHours();
-      await fieldApi.post('/checkin/', { work_id: data.assignment?.id, ...geo, client_date, client_time, client_local_hour });
+      await fieldApi.post('/checkin/', { work_id: data.assignment?.work_id, ...geo, client_date, client_time, client_local_hour });
       await fetchData();
     } catch (e) { setError(e.message); }
     finally { setSubmitting(false); }

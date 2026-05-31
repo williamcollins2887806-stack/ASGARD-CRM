@@ -1,5 +1,5 @@
 window.ASGARD_BUILD = window.ASGARD_BUILD || {};
-window.ASGARD_BUILD.version = "v46-warehouse-complete";
+window.ASGARD_BUILD.version = "v46-warehouse-complete-wave1";
 window.ASGARD_BUILD.built_at = "2026-02-01T20:00:00Z";
 window.ASGARD_BUILD.features = [
   "SERVER: PostgreSQL backend с JWT auth",
