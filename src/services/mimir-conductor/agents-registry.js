@@ -398,5 +398,4 @@ const REGISTRY = {
   })
 };
 
-module.exports = REGISTRY;
-module.exports.agent = agent;
+module.exports = { REGISTRY, agent };

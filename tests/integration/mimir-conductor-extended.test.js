@@ -120,7 +120,7 @@ async function runScenario() {
     }
 
     // Проверяем, что каждый расширенный агент произвёл свой артефакт.
-    const REGISTRY = require('../../src/services/mimir-conductor/agents-registry');
+    const { REGISTRY } = require('../../src/services/mimir-conductor/agents-registry');
     for (const a of EXTENDED) {
       const type = REGISTRY[a].output_artifact_type;
       const art = await cr.getArtifact(runId, type);

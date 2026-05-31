@@ -29,7 +29,7 @@
 const db = require('../db');
 const aiProvider = require('../ai-provider');
 const cr = require('./conductor-run');
-const REGISTRY = require('./agents-registry');
+const { REGISTRY } = require('./agents-registry');
 const hardRules = require('./hard-rules');
 const { callAgent, executeTool, buildToolSchemas } = require('./tool-executor');
 const { buildConductorSystemPrompt } = require('./prompts/conductor');
@@ -388,7 +388,7 @@ async function ensureDependencies(agentName, runId, conductorAgentRunId, depth =
     if (existing) continue;
     // Найти агента, который производит этот артефакт
     const providerName = Object.keys(REGISTRY).find(
-      (k) => k !== 'agent' && REGISTRY[k].output_artifact_type === at
+      (k) => REGISTRY[k].output_artifact_type === at
     );
     if (!providerName) continue;
     await ensureDependencies(providerName, runId, conductorAgentRunId, depth + 1);

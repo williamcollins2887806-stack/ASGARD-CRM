@@ -25,7 +25,7 @@ require('dotenv').config();
 const db = require('../../src/services/db');
 const aiProvider = require('../../src/services/ai-provider');
 const cr = require('../../src/services/mimir-conductor/conductor-run');
-const REGISTRY = require('../../src/services/mimir-conductor/agents-registry');
+const { REGISTRY } = require('../../src/services/mimir-conductor/agents-registry');
 const { buildToolSchemas } = require('../../src/services/mimir-conductor/tool-executor');
 const { runConductor } = require('../../src/services/mimir-conductor/conductor');
 

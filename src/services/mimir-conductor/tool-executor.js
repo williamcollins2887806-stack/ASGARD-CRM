@@ -19,7 +19,7 @@
 
 const db = require('../db');
 const cr = require('./conductor-run');
-const REGISTRY = require('./agents-registry');
+const { REGISTRY } = require('./agents-registry');
 const { getAgentImpl } = require('./agents');
 const modelsConfig = require('./models-config');
 
@@ -214,7 +214,6 @@ async function executeTool(toolUse, runId, conductorRunId) {
 function buildToolSchemas(registry, requiredAgents = []) {
   const reqSet = new Set(requiredAgents);
   const agentTools = Object.entries(registry)
-    .filter(([key]) => key !== 'agent') // 'agent' — это фабрика, не агент
     .map(([key, spec]) => {
       const t = spec.tool_schema;
       const mustHave = reqSet.has(key) ? ' [ОБЯЗАТЕЛЬНЫЙ по правилам]' : '';

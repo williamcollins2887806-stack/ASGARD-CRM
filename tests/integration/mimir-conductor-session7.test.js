@@ -37,7 +37,7 @@ const { getAgentImpl, mock } = require('../../src/services/mimir-conductor/agent
 const { runMonteCarlo } = require('../../src/services/mimir-conductor/montecarlo');
 const { computeCashFlow } = require('../../src/services/mimir-conductor/cashflow');
 const { generateDirectorReport } = require('../../src/services/mimir-conductor/director-report');
-const REGISTRY = require('../../src/services/mimir-conductor/agents-registry');
+const { REGISTRY } = require('../../src/services/mimir-conductor/agents-registry');
 
 // Все 13 агентов Сессии 7.
 const SESSION7 = [
