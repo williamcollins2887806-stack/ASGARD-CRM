@@ -32,9 +32,39 @@ const ALLOWED_ROLES = [
   'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'
 ];
 
+// Роли «всевидящего» доступа: руководство и директора читают ЛЮБОЙ просчёт.
+// Остальные роли из ALLOWED_ROLES видят только свои (initiated_by === user.id).
+const SUPERVISOR_ROLES = new Set([
+  'ADMIN', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'CHIEF_ENGINEER'
+]);
+
+/**
+ * Проверка доступа к конкретному прогону: владелец ИЛИ супервизорская роль.
+ * @returns {boolean}
+ */
+function canAccessRun(user, run) {
+  if (!user || !run) return false;
+  if (SUPERVISOR_ROLES.has(user.role)) return true;
+  return Number(run.initiated_by) === Number(user.id);
+}
+
 // Терминальные статусы прогона — на них SSE закрывает поток.
 const TERMINAL_STATUSES = new Set([
   'READY_FOR_REVIEW', 'ERROR', 'APPROVED', 'REJECTED'
+]);
+
+// Ответ заказчика на письмо: допустимые MIME и лимит размера (Сессия 08, fix #3).
+const MAX_REPLY_BYTES = 50 * 1024 * 1024; // 50 MB
+const ALLOWED_REPLY_MIMES = new Set([
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // docx
+  'application/msword', // doc (на всякий)
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // xlsx
+  'application/vnd.ms-excel', // xls
+  'image/jpeg',
+  'image/png',
+  'image/tiff',
+  'text/plain'
 ]);
 
 async function mimirConductorRoutes(fastify, options) {
@@ -115,10 +145,16 @@ async function mimirConductorRoutes(fastify, options) {
     const token = request.query.token;
     if (!token) return reply.code(401).send({ error: 'Token required' });
 
+    let tokenUser;
     try {
-      fastify.jwt.verify(token);
+      tokenUser = fastify.jwt.verify(token);
     } catch (err) {
       return reply.code(401).send({ error: 'Invalid token' });
+    }
+
+    // Роль-гейт (preHandler здесь не применим — авторизация через ?token=).
+    if (!(tokenUser.role === 'ADMIN' || ALLOWED_ROLES.includes(tokenUser.role))) {
+      return reply.code(403).send({ error: 'Недостаточно прав' });
     }
 
     const runId = Number(request.query.run_id);
@@ -129,6 +165,11 @@ async function mimirConductorRoutes(fastify, options) {
     // Проверим, что прогон существует.
     const run = await cr.getRun(runId);
     if (!run) return reply.code(404).send({ error: 'Run not found' });
+
+    // Доступ — владелец прогона ИЛИ супервизорская роль.
+    if (!canAccessRun(tokenUser, run)) {
+      return reply.code(403).send({ error: 'Нет доступа к этому просчёту' });
+    }
 
     const raw = reply.raw;
     raw.writeHead(200, {
@@ -193,7 +234,7 @@ async function mimirConductorRoutes(fastify, options) {
   // GET /conductor/run/:id — детали прогона
   // ═══════════════════════════════════════════════════════════════════════════
   fastify.get('/conductor/run/:id', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const runId = Number(request.params.id);
     if (!Number.isInteger(runId) || runId <= 0) {
@@ -201,6 +242,9 @@ async function mimirConductorRoutes(fastify, options) {
     }
     const details = await cr.getFullRunDetails(runId);
     if (!details) return reply.code(404).send({ error: 'Run not found' });
+    if (!canAccessRun(request.user, details.run)) {
+      return reply.code(403).send({ error: 'Нет доступа к этому просчёту' });
+    }
     return details;
   });
 
@@ -235,7 +279,7 @@ async function mimirConductorRoutes(fastify, options) {
 
   // GET /conductor/run/:id/report — скачать сгенерированный PDF
   fastify.get('/conductor/run/:id/report', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const runId = Number(request.params.id);
     if (!Number.isInteger(runId) || runId <= 0) {
@@ -243,6 +287,9 @@ async function mimirConductorRoutes(fastify, options) {
     }
     const run = await cr.getRun(runId);
     if (!run) return reply.code(404).send({ error: 'Run not found' });
+    if (!canAccessRun(request.user, run)) {
+      return reply.code(403).send({ error: 'Нет доступа к этому отчёту' });
+    }
     const filePath = run.director_report_path;
     if (!filePath || !fs.existsSync(filePath)) {
       return reply.code(404).send({ error: 'Отчёт ещё не сгенерирован. Сначала вызовите generate-report.' });
@@ -256,7 +303,7 @@ async function mimirConductorRoutes(fastify, options) {
   // GET /conductor/artifact/:id — один артефакт
   // ═══════════════════════════════════════════════════════════════════════════
   fastify.get('/conductor/artifact/:id', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const artifactId = Number(request.params.id);
     if (!Number.isInteger(artifactId) || artifactId <= 0) {
@@ -264,6 +311,11 @@ async function mimirConductorRoutes(fastify, options) {
     }
     const artifact = await cr.getArtifactById(artifactId);
     if (!artifact) return reply.code(404).send({ error: 'Artifact not found' });
+    // Доступ — по владельцу прогона, к которому принадлежит артефакт.
+    const run = await cr.getRun(artifact.conductor_run_id);
+    if (!canAccessRun(request.user, run)) {
+      return reply.code(403).send({ error: 'Нет доступа к этому артефакту' });
+    }
     return artifact;
   });
 
@@ -343,8 +395,15 @@ async function mimirConductorRoutes(fastify, options) {
     let rawText = null;
 
     if (request.isMultipart && request.isMultipart()) {
-      const file = await request.file();
+      // Лимит размера на уровне стрима: при превышении файл будет «truncated».
+      const file = await request.file({ limits: { fileSize: MAX_REPLY_BYTES } });
       if (file) {
+        // MIME-whitelist (fix #3) — отсекаем до записи на диск.
+        if (file.mimetype && !ALLOWED_REPLY_MIMES.has(file.mimetype)) {
+          return reply.code(415).send({
+            error: `Тип файла не поддерживается: ${file.mimetype}. Разрешены: PDF, DOCX, XLSX, JPG, PNG, TIFF, TXT.`
+          });
+        }
         if (!fs.existsSync(LETTERS_DIR)) fs.mkdirSync(LETTERS_DIR, { recursive: true });
         const safe = `reply_${letterId}_${Date.now()}${path.extname(file.filename || '') || '.bin'}`;
         replyPath = path.join(LETTERS_DIR, safe);
@@ -354,6 +413,13 @@ async function mimirConductorRoutes(fastify, options) {
           ws.on('finish', resolve);
           ws.on('error', rej);
         });
+        // Превышение лимита: поток обрезан → удаляем огрызок и возвращаем 413.
+        if (file.file.truncated) {
+          try { fs.unlinkSync(replyPath); } catch (_) { /* noop */ }
+          return reply.code(413).send({
+            error: `Файл превышает лимит ${Math.floor(MAX_REPLY_BYTES / (1024 * 1024))} МБ`
+          });
+        }
         // Текстовое поле text может ехать рядом в multipart
         if (file.fields && file.fields.text && file.fields.text.value) rawText = file.fields.text.value;
       }

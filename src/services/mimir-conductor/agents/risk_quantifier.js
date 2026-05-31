@@ -100,8 +100,12 @@ async function run({ requiredArtifacts, onThought, input, runId }) {
   }
   for (const r of (scen.top_risks || []).slice(0, 5)) findings.push(r);
 
+  const lossPart = contractValue > 0
+    ? `, риск убытка ${(simulation.loss_probability * 100).toFixed(1)}%`
+    : '';
+
   return {
-    summary: `Риск-анализ: P50=${formatRub(simulation.p50)}, P90=${formatRub(simulation.p90)}${contractValue > 0 ? `, риск убытка ${(simulation.loss_probability * 100).toFixed(1)}%` : ''}`,
+    summary: `Риск-анализ: P50=${formatRub(simulation.p50)}, P90=${formatRub(simulation.p90)}${lossPart}`,
     key_findings: findings,
     simulation,
     scenarios: scen.scenarios || [],

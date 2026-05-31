@@ -39,6 +39,16 @@ const MAX_ITERATIONS = 30;
 const MAX_RUN_COST_RUB = 800; // потолок стоимости одного просчёта (Сессия 6b)
 
 /**
+ * Fire-and-forget событие в War Room: не блокируем loop, но потерянный промис
+ * при ошибке логируем (раньше addEvent вызывался без await и .catch — fix #6).
+ */
+function emitEvent(runId, agentRunId, type, payload) {
+  Promise.resolve(cr.addEvent(runId, agentRunId, type, payload)).catch((err) => {
+    console.warn(`[conductor] addEvent(${type}) failed for run ${runId}: ${err.message}`);
+  });
+}
+
+/**
  * Собрать стартовый контекст: работа + метаданные документов.
  */
 async function buildInitialContext(run) {
@@ -99,7 +109,7 @@ async function finalizeRun(runId, input = {}) {
     recommendation: input.recommendation || 'THINK',
     key_assumptions: input.key_assumptions || []
   };
-  cr.addEvent(runId, null, 'final_estimate', finalData);
+  emitEvent(runId, null, 'final_estimate', finalData);
   await cr.updateRunStatus(runId, 'READY_FOR_REVIEW', { finalEstimateData: finalData, completedAt: true });
 }
 
@@ -107,7 +117,7 @@ async function finalizeRun(runId, input = {}) {
  * Пауза в ожидании заказчика.
  */
 async function pauseRunForCustomer(runId, clarificationResult) {
-  cr.addEvent(runId, null, 'paused', { reason: 'awaiting_customer', clarification: clarificationResult });
+  emitEvent(runId, null, 'paused', { reason: 'awaiting_customer', clarification: clarificationResult });
   await cr.updateRunStatus(runId, 'BLOCKED_BY_CUSTOMER', {
     blockedReason: 'Ожидание ответа заказчика на блокирующее уточнение'
   });
@@ -158,7 +168,7 @@ async function runConductor(runId, opts = {}) {
   const tools = buildToolSchemas(REGISTRY, required);
   const stubCtx = { complexity_flags: complexityFlags, contract_value: ctx.contract_value, required_agents: required };
 
-  cr.addEvent(runId, conductorAgentRunId, 'mode', {
+  emitEvent(runId, conductorAgentRunId, 'mode', {
     stub: aiProvider.isStubMode(), conductor_model: conductorModel, required_agents: required
   });
 
@@ -179,9 +189,9 @@ async function runConductor(runId, opts = {}) {
       tools,
       tool_choice: 'auto',
       stubCtx,
-      onThought: (text) => cr.addEvent(runId, conductorAgentRunId, 'thought', { text }),
-      onText: (text) => cr.addEvent(runId, conductorAgentRunId, 'conductor_message', { text }),
-      onToolCall: (tu) => cr.addEvent(runId, conductorAgentRunId, 'tool_call', { tool: tu.name, input: tu.input })
+      onThought: (text) => emitEvent(runId, conductorAgentRunId, 'thought', { text }),
+      onText: (text) => emitEvent(runId, conductorAgentRunId, 'conductor_message', { text }),
+      onToolCall: (tu) => emitEvent(runId, conductorAgentRunId, 'tool_call', { tool: tu.name, input: tu.input })
     });
 
     // Записываем полный assistant-ответ (text + tool_use блоки) в историю.
@@ -238,7 +248,7 @@ async function runConductor(runId, opts = {}) {
         content: `ОТКАЗ финализации: ${canFin.reason}. Запусти недостающих агентов и попробуй снова.`,
         is_error: true
       };
-      cr.addEvent(runId, conductorAgentRunId, 'warning', { text: `emit_final_estimate отклонён: ${canFin.reason}` });
+      emitEvent(runId, conductorAgentRunId, 'warning', { text: `emit_final_estimate отклонён: ${canFin.reason}` });
     }
 
     // Возвращаем tool_results в историю.
@@ -255,7 +265,7 @@ async function runConductor(runId, opts = {}) {
     // Safety: лимит стоимости.
     const totalCost = await cr.getTotalCost(runId);
     if (totalCost > MAX_RUN_COST_RUB) {
-      cr.addEvent(runId, conductorAgentRunId, 'error', { text: `Лимит стоимости ${MAX_RUN_COST_RUB}₽ достигнут` });
+      await cr.addEvent(runId, conductorAgentRunId, 'error', { text: `Лимит стоимости ${MAX_RUN_COST_RUB}₽ достигнут` });
       await cr.finishAgentRun(conductorAgentRunId, { status: 'ERROR', errorText: 'Cost limit exceeded' });
       throw new Error('Cost limit exceeded');
     }
@@ -324,7 +334,7 @@ async function runConductorDeterministic(runId, opts = {}) {
   });
 
   const required = hardRules.getRequiredAgents(tzSummary, ctx.contract_value, complexityFlags);
-  cr.addEvent(runId, conductorAgentRunId, 'mode', { stub: aiProvider.isStubMode(), conductor_model: conductorModel, required_agents: required, deterministic: true });
+  emitEvent(runId, conductorAgentRunId, 'mode', { stub: aiProvider.isStubMode(), conductor_model: conductorModel, required_agents: required, deterministic: true });
 
   let iteration = 0;
   const done = new Set(await cr.getCompletedAgents(runId));
@@ -342,14 +352,14 @@ async function runConductorDeterministic(runId, opts = {}) {
     }
     const totalCost = await cr.getTotalCost(runId);
     if (totalCost > MAX_RUN_COST_RUB) {
-      cr.addEvent(runId, conductorAgentRunId, 'error', { text: `Лимит стоимости ${MAX_RUN_COST_RUB}₽ достигнут` });
+      await cr.addEvent(runId, conductorAgentRunId, 'error', { text: `Лимит стоимости ${MAX_RUN_COST_RUB}₽ достигнут` });
       throw new Error('Cost limit exceeded');
     }
   }
 
   const finalCheck = await hardRules.canFinalize(runId, ctx.contract_value, complexityFlags);
   if (!finalCheck.ok) {
-    cr.addEvent(runId, conductorAgentRunId, 'warning', { text: `Не готов к финалу: ${finalCheck.reason}` });
+    emitEvent(runId, conductorAgentRunId, 'warning', { text: `Не готов к финалу: ${finalCheck.reason}` });
     await cr.updateRunStatus(runId, 'BLOCKED_BY_PM', { blockedReason: finalCheck.reason });
     await cr.finishAgentRun(conductorAgentRunId, { status: 'SUCCESS', outputSummary: finalCheck.reason });
     return;

@@ -653,6 +653,19 @@ try {
   fastify.log.warn('[MimirLetterReminders] Init skipped: ' + cronErr.message);
 }
 
+// ── Conductor Run Sweeper: startup orphan-cleanup + hourly stale-run sweep ──
+try {
+  const conductorSweeper = require('./services/mimir-conductor/run-sweeper');
+  fastify.addHook('onReady', async () => {
+    conductorSweeper.start(fastify.db, fastify.log);
+  });
+  fastify.addHook('onClose', async () => {
+    conductorSweeper.stop();
+  });
+} catch (cronErr) {
+  fastify.log.warn('[ConductorSweeper] Init skipped: ' + cronErr.message);
+}
+
 // ── Shift Autocomplete: every 30 min ──
 try {
   const shiftAutocomplete = require('./services/shift-autocomplete');

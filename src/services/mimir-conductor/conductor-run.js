@@ -96,6 +96,12 @@ async function updateRunStatus(runId, status, opts = {}) {
     const vals = [runId, status];
     let i = 3;
     if (opts.blockedReason !== undefined) { sets.push(`blocked_reason = $${i++}`); vals.push(opts.blockedReason); }
+    // errorMessage — алиас для blocked_reason при переходе в ERROR (в таблице нет
+    // отдельной error-колонки; текст ошибки храним в свободном blocked_reason).
+    if (opts.errorMessage !== undefined && opts.blockedReason === undefined) {
+      sets.push(`blocked_reason = $${i++}`); vals.push(opts.errorMessage);
+      if (!opts.completedAt) sets.push('completed_at = NOW()');
+    }
     if (opts.blockedSince !== undefined) { sets.push(`blocked_since = $${i++}`); vals.push(opts.blockedSince); }
     if (opts.conductorModel !== undefined) { sets.push(`conductor_model = $${i++}`); vals.push(opts.conductorModel); }
     if (opts.finalArtifactHash !== undefined) { sets.push(`final_artifact_hash = $${i++}`); vals.push(opts.finalArtifactHash); }

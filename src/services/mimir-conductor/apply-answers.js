@@ -37,15 +37,25 @@ async function applyAnswers(letterId, confirmedMapping, userId) {
       const qid = Number(m.question_id);
       if (!qid) continue;
       if (m.answer_text != null && String(m.answer_text).trim() !== '') {
-        await client.query(
+        // Scope-guard (fix #4): вопрос ДОЛЖЕН принадлежать прогону этого письма.
+        // Иначе авторизованный РП мог бы пометить ответом чужое уточнение.
+        const upd = await client.query(
           `UPDATE mimir_clarifications
               SET status = 'ANSWERED', answer_text = $1, answered_by = $2,
                   answered_at = NOW(), answer_source = 'customer_letter',
                   answer_letter_id = $3, updated_at = NOW()
-            WHERE id = $4`,
+            WHERE id = $4
+              AND conductor_run_id = (
+                SELECT conductor_run_id FROM mimir_customer_letters WHERE id = $3
+              )`,
           [String(m.answer_text), userId || null, letterId, qid]
         );
-        answeredCount += 1;
+        if (upd.rowCount > 0) {
+          answeredCount += 1;
+        } else {
+          // Вопрос не из этого прогона (или не существует) — игнорируем + лог.
+          console.warn(`[apply-answers] вопрос ${qid} не принадлежит письму ${letterId} — пропущен`);
+        }
       }
       // answer_text пуст → вопрос остаётся OPEN.
     }
