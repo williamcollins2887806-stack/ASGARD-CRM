@@ -1,0 +1,234 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   ASGARD CRM — Mimir Conductor War Room (Сессия 3)
+   Тёмный «боевой штаб»: 3 колонки, поток мыслей как терминал, статусы цветом.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --mc-bg:        #0e1117;
+  --mc-bg2:       #161b22;
+  --mc-bg3:       #1c2230;
+  --mc-brd:       #2a3140;
+  --mc-text:      #e6edf3;
+  --mc-text2:     #9aa7b4;
+  --mc-text3:     #6b7785;
+  --mc-blue:      #2f81f7;
+  --mc-gold:      #d4a017;
+  --mc-green:     #2ea043;
+  --mc-yellow:    #d29922;
+  --mc-red:       #f85149;
+  --mc-purple:    #a371f7;
+  --mc-term-bg:   #0a0d12;
+}
+
+* { box-sizing: border-box; }
+
+.mc-body {
+  margin: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--mc-bg);
+  color: var(--mc-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+  font-size: 14px;
+  overflow: hidden;
+}
+
+/* ─────────── TopBar ─────────── */
+.mc-topbar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 10px 18px;
+  background: var(--mc-bg2);
+  border-bottom: 1px solid var(--mc-brd);
+  flex-shrink: 0;
+}
+.mc-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; min-width: 220px; }
+.mc-icon { font-size: 20px; }
+.mc-progress-block { display: flex; align-items: center; gap: 8px; flex: 1; max-width: 360px; }
+.mc-progress-bar { flex: 1; height: 8px; background: var(--mc-bg3); border-radius: 6px; overflow: hidden; }
+.mc-progress-fill { height: 100%; width: 0; background: linear-gradient(90deg, var(--mc-blue), var(--mc-green)); transition: width .4s ease; }
+.mc-progress-block span { font-size: 12px; color: var(--mc-text2); min-width: 34px; }
+.mc-meta { display: flex; align-items: center; gap: 14px; font-size: 13px; color: var(--mc-text2); }
+.mc-meta-item b { color: var(--mc-text); }
+.mc-status-pill {
+  padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700;
+  background: var(--mc-bg3); border: 1px solid var(--mc-brd); color: var(--mc-text2);
+}
+.mc-status-pill[data-status="RUNNING"] { color: var(--mc-yellow); border-color: var(--mc-yellow); }
+.mc-status-pill[data-status="READY_FOR_REVIEW"],
+.mc-status-pill[data-status="APPROVED"] { color: var(--mc-green); border-color: var(--mc-green); }
+.mc-status-pill[data-status="ERROR"],
+.mc-status-pill[data-status="REJECTED"] { color: var(--mc-red); border-color: var(--mc-red); }
+.mc-status-pill[data-status="BLOCKED_BY_CUSTOMER"],
+.mc-status-pill[data-status="BLOCKED_BY_PM"] { color: var(--mc-purple); border-color: var(--mc-purple); }
+.mc-status-live { animation: mc-pulse 1.6s ease-in-out infinite; }
+@keyframes mc-pulse { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
+
+.mc-controls { display: flex; gap: 8px; margin-left: auto; }
+.mc-btn {
+  padding: 7px 14px; border-radius: 8px; border: 1px solid var(--mc-brd);
+  background: var(--mc-bg3); color: var(--mc-text); font-size: 13px; cursor: pointer;
+  text-decoration: none; display: inline-flex; align-items: center; transition: all .15s;
+}
+.mc-btn:hover { border-color: var(--mc-blue); }
+.mc-btn-primary { background: linear-gradient(135deg, #1f6feb, #2f81f7); border-color: transparent; }
+.mc-btn-primary:disabled { opacity: .45; cursor: not-allowed; }
+.mc-btn-ghost { background: transparent; }
+.mc-btn-sm { padding: 4px 10px; font-size: 12px; }
+
+/* ─────────── Main grid ─────────── */
+.mc-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 320px 1fr 400px;
+  min-height: 0;
+}
+.mc-left, .mc-center, .mc-right { min-height: 0; overflow-y: auto; }
+.mc-left { background: var(--mc-bg2); border-right: 1px solid var(--mc-brd); padding: 10px; }
+.mc-center { display: flex; flex-direction: column; }
+.mc-right { background: var(--mc-bg2); border-left: 1px solid var(--mc-brd); padding: 14px; }
+.mc-empty { color: var(--mc-text3); font-size: 13px; padding: 18px; text-align: center; }
+
+/* ─────────── Левая колонка: агенты ─────────── */
+.mc-phase { margin-bottom: 14px; }
+.mc-phase-header {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .5px;
+  color: var(--mc-text3); padding: 4px 6px; font-weight: 700;
+}
+.mc-agent {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 8px; border-radius: 8px; cursor: pointer;
+  border: 1px solid transparent;
+}
+.mc-agent:hover { background: var(--mc-bg3); }
+.mc-agent-active { background: var(--mc-bg3); border-color: var(--mc-brd); }
+.mc-agent-idle { opacity: .5; }
+.mc-agent-running { background: rgba(210,153,34,.08); }
+.mc-agent-expand { width: 12px; color: var(--mc-text3); font-size: 10px; }
+.mc-agent-status { width: 16px; text-align: center; }
+.mc-agent-name { flex: 1; font-size: 13px; }
+.mc-agent-meta { font-size: 11px; color: var(--mc-text3); white-space: nowrap; }
+
+.mc-agent-details {
+  margin: 4px 0 10px; padding: 10px; border-radius: 8px;
+  background: var(--mc-term-bg); border: 1px solid var(--mc-brd);
+}
+.mc-details-section { margin-bottom: 10px; }
+.mc-details-section:last-child { margin-bottom: 0; }
+.mc-details-header { font-size: 11px; color: var(--mc-text2); font-weight: 700; margin-bottom: 6px; }
+.mc-thoughts, .mc-tools { font-family: 'SF Mono', Consolas, 'Courier New', monospace; font-size: 12px; }
+.mc-thought { display: flex; gap: 8px; padding: 2px 0; line-height: 1.45; }
+.mc-ts { color: var(--mc-text3); font-size: 11px; flex-shrink: 0; }
+.mc-thought-text { color: #b9e6c9; }
+.mc-tool-call { color: var(--mc-blue); padding: 2px 0; }
+.mc-tool-result { color: var(--mc-text2); padding: 2px 0 2px 14px; }
+.mc-blink { color: var(--mc-green); animation: mc-blink 1s step-end infinite; }
+@keyframes mc-blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+
+/* ─────────── Центр: лента событий ─────────── */
+.mc-center-head {
+  padding: 10px 16px; font-size: 12px; font-weight: 700; color: var(--mc-text2);
+  border-bottom: 1px solid var(--mc-brd); text-transform: uppercase; letter-spacing: .5px;
+  flex-shrink: 0;
+}
+.mc-event-stream { flex: 1; overflow-y: auto; padding: 10px 16px; }
+.mc-ev {
+  display: flex; gap: 10px; padding: 5px 0; font-size: 13px;
+  border-bottom: 1px solid rgba(42,49,64,.4); line-height: 1.4;
+}
+.mc-ev-ts { color: var(--mc-text3); font-size: 11px; flex-shrink: 0; width: 64px; }
+.mc-ev-who { color: var(--mc-blue); flex-shrink: 0; width: 130px; font-size: 12px; }
+.mc-ev-text { color: var(--mc-text); flex: 1; }
+.mc-ev-error .mc-ev-text { color: var(--mc-red); }
+.mc-ev-clarification_raised .mc-ev-text { color: var(--mc-purple); }
+.mc-ev-final_estimate .mc-ev-text { color: var(--mc-green); font-weight: 700; }
+.mc-ev-thought .mc-ev-text { color: var(--mc-text2); }
+
+/* ─────────── Правая: артефакт ─────────── */
+.mc-artifact-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.mc-artifact-type { font-weight: 700; font-size: 14px; }
+.mc-artifact-id { color: var(--mc-text3); font-size: 12px; }
+.mc-artifact-json {
+  background: var(--mc-term-bg); border: 1px solid var(--mc-brd); border-radius: 8px;
+  padding: 12px; font-family: 'SF Mono', Consolas, monospace; font-size: 12px;
+  color: #c9d6e3; overflow: auto; white-space: pre-wrap; word-break: break-word; margin: 0;
+}
+.mc-final-rec {
+  display: inline-block; padding: 6px 16px; border-radius: 8px; font-weight: 800;
+  font-size: 16px; margin-bottom: 14px;
+}
+.mc-final-rec-take { background: rgba(46,160,67,.15); color: var(--mc-green); }
+.mc-final-rec-think { background: rgba(210,153,34,.15); color: var(--mc-yellow); }
+.mc-final-rec-decline { background: rgba(248,81,73,.15); color: var(--mc-red); }
+.mc-final-block { margin-bottom: 14px; }
+.mc-final-block b { font-size: 12px; color: var(--mc-text2); text-transform: uppercase; }
+.mc-final-block p { margin: 4px 0 0; line-height: 1.5; }
+.mc-final-block ul { margin: 4px 0 0; padding-left: 18px; }
+.mc-final-block li { margin: 3px 0; line-height: 1.45; }
+
+/* ─────────── Низ: уточнения ─────────── */
+.mc-bottom { flex-shrink: 0; background: var(--mc-bg2); border-top: 1px solid var(--mc-brd); max-height: 0; overflow: hidden; transition: max-height .25s ease; }
+.mc-bottom-active { max-height: 220px; overflow-y: auto; padding: 12px 18px; }
+.mc-clar-title { font-weight: 700; color: var(--mc-purple); margin-bottom: 10px; font-size: 13px; }
+.mc-clar-list { display: flex; gap: 12px; flex-wrap: wrap; }
+.mc-clar {
+  background: var(--mc-bg3); border: 1px solid var(--mc-brd); border-left: 3px solid var(--mc-purple);
+  border-radius: 8px; padding: 10px 12px; min-width: 280px; max-width: 380px;
+}
+.mc-clar-customer { border-left-color: var(--mc-gold); }
+.mc-clar-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.mc-clar-channel { font-size: 11px; font-weight: 700; color: var(--mc-text2); }
+.mc-clar-impact { font-size: 11px; color: var(--mc-gold); }
+.mc-clar-q { font-size: 13px; line-height: 1.4; }
+.mc-clar-why { font-size: 11px; color: var(--mc-text3); margin-top: 4px; }
+
+/* ─────────── Карточки выбора метода (модалка) ─────────── */
+.mc-pick-card {
+  background: var(--mc-bg2, #161b22); border: 2px solid var(--mc-brd, #2a3140);
+  border-radius: 12px; padding: 22px 18px; text-align: center;
+  cursor: pointer; transition: all .2s; font-family: inherit;
+}
+.mc-pick-card:hover { border-color: var(--mc-blue, #2f81f7); transform: translateY(-2px); }
+.mc-pick-card--featured { border-color: var(--mc-gold, #d4a017); }
+.mc-pick-card--featured:hover { border-color: #f0c040; }
+
+/* ─────────── Мобильная адаптация ─────────── */
+@media (max-width: 900px) {
+  .mc-main { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; }
+  .mc-left { border-right: none; border-bottom: 1px solid var(--mc-brd); max-height: 38vh; }
+  .mc-right { border-left: none; border-top: 1px solid var(--mc-brd); }
+  .mc-topbar { flex-wrap: wrap; gap: 10px; }
+  .mc-progress-block { order: 3; max-width: 100%; flex-basis: 100%; }
+  .mc-ev-who { width: 90px; }
+}
+
+/* ─────────── Сессия 5: дашборд «Ожидание заказчика» + модалки ─────────── */
+.ac-list { display: flex; flex-direction: column; gap: 12px; max-width: 980px; margin: 0 auto; }
+.ac-card { background: var(--mc-card, #1b2330); border: 1px solid var(--mc-brd, #2a3647); border-radius: 10px; padding: 14px 16px; }
+.ac-card-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.ac-card-title { font-weight: 600; font-size: 15px; }
+.ac-card-sub { opacity: 0.75; font-size: 13px; margin: 4px 0 10px; }
+.ac-days { font-size: 13px; padding: 2px 8px; border-radius: 6px; background: rgba(255,255,255,0.06); white-space: nowrap; }
+.ac-days-warn { background: rgba(245,180,60,0.18); color: #f5b43c; }
+.ac-days-danger { background: rgba(240,80,80,0.2); color: #ff6b6b; }
+.ac-letter { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;
+  border-top: 1px dashed var(--mc-brd, #2a3647); padding-top: 10px; }
+.ac-letter-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.ac-modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center;
+  justify-content: center; z-index: 9999; }
+.ac-modal { background: var(--mc-card, #1b2330); border: 1px solid var(--mc-brd, #2a3647); border-radius: 12px;
+  width: min(640px, 94vw); max-height: 90vh; overflow: auto; }
+.ac-modal-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px;
+  border-bottom: 1px solid var(--mc-brd, #2a3647); font-weight: 600; }
+.ac-modal-x { background: none; border: none; color: inherit; font-size: 18px; cursor: pointer; }
+.ac-modal-body { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.ac-modal-body textarea, .ac-map-ans { width: 100%; background: rgba(255,255,255,0.04);
+  border: 1px solid var(--mc-brd, #2a3647); border-radius: 8px; color: inherit; padding: 8px; font: inherit; }
+.ac-or { text-align: center; opacity: 0.6; font-size: 13px; }
+.ac-map-title { font-weight: 600; margin-top: 8px; }
+.ac-map-row { border: 1px solid var(--mc-brd, #2a3647); border-radius: 8px; padding: 10px; margin-top: 8px; }
+.ac-map-q { font-size: 13px; opacity: 0.85; margin-bottom: 6px; }
+.ac-map-note { font-size: 12px; color: #f5b43c; margin-top: 4px; }

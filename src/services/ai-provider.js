@@ -110,6 +110,23 @@ let YANDEX_FOLDER_ID = process.env.YANDEX_FOLDER_ID || '';
 const YANDEX_GPT_MODEL = process.env.YANDEX_GPT_MODEL || 'qwen3-235b-a22b-fp8/latest';
 const YANDEX_GPT_URL = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// STUB-режим для локальной разработки без расхода баланса.
+// Если ключ начинается с 'stub-' — новые Conductor-методы (searchWeb, embed,
+// completeWithStream) возвращают замоканные результаты правильной формы и НЕ
+// делают сетевых вызовов. Это позволяет прогонять оркестратор/UI/структурные
+// smoke-тесты без денег. Реальные AI-вызовы — только когда ключ настоящий.
+// (Существующие complete()/stream()/runAgentLoop() сохраняют прежнее поведение,
+//  включая встроенный demo-режим при полностью пустых ключах.)
+// ─────────────────────────────────────────────────────────────────────────────
+function _isStubKey(k) {
+  return typeof k === 'string' && k.startsWith('stub-');
+}
+/** Включён ли stub-режим для OpenAI/routerai-пути (основной для Conductor). */
+function isStubMode() {
+  return _isStubKey(OPENAI_API_KEY) || (!OPENAI_API_KEY && _isStubKey(ANTHROPIC_API_KEY));
+}
+
 // DB settings cache
 let _dbKeysLoaded = false;
 
@@ -1229,6 +1246,441 @@ async function completeAnalytics(options) {
   return complete(options);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Mimir Conductor — расширения ai-provider (Сессия 1, Шаг 1.3)
+// Новые методы НЕ ломают существующие. Все они уважают stub-режим.
+// Всё идёт через единый routerai-эндпоинт (OPENAI_URL) — отдельных провайдеров
+// для Perplexity/Voyage/DeepSeek НЕТ, модель задаётся параметром `model`.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Веб-поиск с возвратом структурированного результата.
+ * Обёртка над executeWebSearch (plugin 'web' через routerai), но возвращает
+ * { answer, citations: [{url,title,snippet}] } вместо «сырого» текста.
+ *
+ * @param {Object} p
+ * @param {string} p.query
+ * @param {string} [p.model]            — по умолчанию WEB_SEARCH_MODEL
+ * @param {number} [p.maxResults=5]
+ * @param {string[]} [p.includeDomains]
+ * @returns {Promise<{answer:string, citations:Array<{url:string,title:string,snippet:string}>, _stub?:boolean}>}
+ */
+async function searchWeb({ query, model, maxResults = 5, includeDomains = [] } = {}) {
+  await _loadKeysFromDB();
+  if (isStubMode()) {
+    return {
+      answer: `[STUB web search] По запросу «${query}» цены не запрашивались (stub-режим, баланс не тратится).`,
+      citations: [
+        { url: 'https://example.com/stub-1', title: 'STUB источник 1', snippet: 'Замоканный результат поиска.' }
+      ],
+      _stub: true
+    };
+  }
+  // Реальный путь: используем существующий executeWebSearch (он уже знает про
+  // правильную модель-исполнитель и plugin 'web'). Затем оборачиваем результат.
+  const t0 = Date.now();
+  const text = await executeWebSearch(query, { includeDomains, maxResults });
+  // executeWebSearch возвращает текст; citations берём из annotations при наличии
+  // (для этого делаем «тонкий» повторный путь только если нужно — но чтобы не
+  //  тратить лишний вызов, citations здесь best-effort парсятся из текста URL'ов).
+  const urls = Array.from(new Set((text.match(/https?:\/\/[^\s)\]]+/g) || []))).slice(0, maxResults);
+  return {
+    answer: text,
+    citations: urls.map(u => ({ url: u, title: '', snippet: '' })),
+    _durationMs: Date.now() - t0,
+    _model: model || WEB_SEARCH_MODEL
+  };
+}
+
+/**
+ * Получить embeddings для массива текстов.
+ * Через routerai (модель voyage-3-large, fallback text-embedding-3-large).
+ * Используется RAG-агентами (сессия 6).
+ *
+ * @param {Object} p
+ * @param {string[]} p.texts
+ * @param {string} [p.model='voyage/voyage-3-large']
+ * @returns {Promise<number[][]>} — массив векторов (по одному на текст)
+ */
+async function embed({ texts, model = 'voyage/voyage-3-large' } = {}) {
+  await _loadKeysFromDB();
+  const list = Array.isArray(texts) ? texts : [texts];
+  const DIM = 1024; // TODO: уточнить размерность voyage-3-large в routerai
+  if (isStubMode()) {
+    // Детерминированный псевдо-вектор по длине строки — стабилен между прогонами.
+    return list.map((t) => {
+      const seed = (t || '').length;
+      return Array.from({ length: DIM }, (_, i) => ((Math.sin(seed + i) + 1) / 2));
+    });
+  }
+  if (!OPENAI_API_KEY) throw new AIProviderError({ code: 'auth', providerMessage: 'OPENAI_API_KEY не настроен для embeddings' });
+
+  // routerai — OpenAI-совместимый embeddings endpoint.
+  // OPENAI_URL указывает на /chat/completions — заменяем хвост на /embeddings.
+  const embUrl = OPENAI_URL.replace(/\/chat\/completions\/?$/, '/embeddings');
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+  try {
+    const res = await fetch(embUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + OPENAI_API_KEY },
+      body: JSON.stringify({ model, input: list }),
+      signal: controller.signal
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      const code = _classifyHttpError(res.status, errText);
+      throw new AIProviderError({ code, status: res.status, providerMessage: _extractProviderMessage(errText), body: errText.substring(0, 1000) });
+    }
+    const data = await res.json();
+    // OpenAI-совместимый формат: { data: [{ embedding: [...] }, ...] }
+    return (data.data || []).map(d => d.embedding);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Native tool-use поддержка для Conductor (Сессия 6b)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Маппинг Anthropic tool-схем → OpenAI function-tools (для routerai).
+ * Anthropic: { name, description, input_schema }
+ * OpenAI:    { type:'function', function:{ name, description, parameters } }
+ */
+function _toolsToOpenAI(tools) {
+  if (!Array.isArray(tools) || !tools.length) return null;
+  return tools.map((t) => ({
+    type: 'function',
+    function: {
+      name: t.name,
+      description: t.description || '',
+      parameters: t.input_schema || { type: 'object', properties: {} }
+    }
+  }));
+}
+
+/**
+ * Маппинг tool_choice (Anthropic-стиль) → OpenAI-стиль.
+ *   'auto' → 'auto', 'any' → 'required', {type:'tool',name} → {type:'function',function:{name}}
+ */
+function _toolChoiceToOpenAI(choice) {
+  if (!choice || choice === 'auto') return 'auto';
+  if (choice === 'any') return 'required';
+  if (typeof choice === 'object' && choice.name) {
+    return { type: 'function', function: { name: choice.name } };
+  }
+  return 'auto';
+}
+
+/**
+ * Преобразовать массив messages из Anthropic-стиля (content-blocks, tool_result)
+ * в OpenAI-стиль (assistant.tool_calls + role:'tool' сообщения).
+ * Conductor хранит историю в Anthropic-формате; для routerai разворачиваем.
+ */
+function _messagesToOpenAI(messages) {
+  const out = [];
+  for (const m of messages || []) {
+    // assistant с массивом content-блоков (text/thinking/tool_use)
+    if (m.role === 'assistant' && Array.isArray(m.content)) {
+      let text = '';
+      const toolCalls = [];
+      for (const b of m.content) {
+        if (b.type === 'text') text += b.text || '';
+        else if (b.type === 'tool_use') {
+          toolCalls.push({
+            id: b.id,
+            type: 'function',
+            function: { name: b.name, arguments: JSON.stringify(b.input || {}) }
+          });
+        }
+        // thinking-блоки в OpenAI не передаём (нет канала) — опускаем
+      }
+      const msg = { role: 'assistant', content: text || null };
+      if (toolCalls.length) msg.tool_calls = toolCalls;
+      out.push(msg);
+      continue;
+    }
+    // user с массивом content-блоков, среди которых tool_result → разворачиваем
+    // каждый tool_result в отдельное сообщение role:'tool'.
+    if (m.role === 'user' && Array.isArray(m.content)) {
+      const textBlocks = [];
+      const toolResults = [];
+      for (const b of m.content) {
+        if (b.type === 'tool_result') toolResults.push(b);
+        else if (b.type === 'text') textBlocks.push(b);
+        else textBlocks.push(b);
+      }
+      // Сначала текстовая часть (если есть), потом tool-результаты.
+      if (textBlocks.length) {
+        out.push({ role: 'user', content: _convertContentForOpenAI(textBlocks) });
+      }
+      for (const tr of toolResults) {
+        const content = typeof tr.content === 'string' ? tr.content : JSON.stringify(tr.content);
+        out.push({ role: 'tool', tool_call_id: tr.tool_use_id, content });
+      }
+      continue;
+    }
+    // обычные строковые сообщения — as-is
+    out.push({ role: m.role, content: typeof m.content === 'string' ? m.content : _convertContentForOpenAI(m.content) });
+  }
+  return out;
+}
+
+/**
+ * Извлечь имена уже вызванных агентов из истории messages (Anthropic-формат).
+ * Смотрит tool_use блоки в assistant-сообщениях, снимает префикс call_.
+ */
+function _extractCalledAgentsFromHistory(messages) {
+  const called = new Set();
+  for (const m of messages || []) {
+    if (m.role === 'assistant' && Array.isArray(m.content)) {
+      for (const b of m.content) {
+        if (b.type === 'tool_use' && typeof b.name === 'string') {
+          called.add(b.name.startsWith('call_') ? b.name.slice(5) : b.name);
+        }
+      }
+    }
+  }
+  return called;
+}
+
+/**
+ * Stub-генератор tool_uses: детерминированный сценарий для бесплатной разработки.
+ * Возвращает следующий вызов на основе того, что уже звалось (из истории) и
+ * complexity_flags / contract_value из ctx.
+ *
+ * @param {Array} messages — история (Anthropic-формат)
+ * @param {Object} ctx — { complexity_flags, contract_value }
+ * @returns {{content_blocks, stop_reason, tool_uses, usage, _stubThoughts}}
+ */
+function generateStubToolUses(messages, ctx = {}) {
+  const called = _extractCalledAgentsFromHistory(messages);
+  const flags = ctx.complexity_flags || {};
+  const contractValue = Number(ctx.contract_value) || 0;
+  const requiredAgents = Array.isArray(ctx.required_agents) ? ctx.required_agents : [];
+
+  // Базовый сценарий — типовой химпромывочный/монтажный пайплайн.
+  const scenario = [
+    'resource_planner',
+    'warehouse_matcher',
+    'crew_composer',
+    'routing_planner',
+    'labor_calculator',
+    'permits_planner',
+    'indirects_calculator',
+    'final_consolidator'
+  ];
+
+  // Условные добавления по сложности.
+  if (flags.has_OZP || flags.has_hazardous || flags.operating_facility) {
+    if (!scenario.includes('site_conditions')) scenario.splice(1, 0, 'site_conditions');
+    const pIdx = scenario.indexOf('permits_planner');
+    if (!scenario.includes('method_validator')) scenario.splice(pIdx, 0, 'method_validator');
+  }
+  if (contractValue > 50000000) {
+    if (!scenario.includes('financial_modeler')) scenario.splice(scenario.indexOf('final_consolidator'), 0, 'financial_modeler');
+    if (!scenario.includes('devils_advocate')) scenario.push('devils_advocate');
+  }
+
+  // Гарантируем, что ВСЕ обязательные по hard-rules агенты будут вызваны до финала
+  // (иначе canFinalize вернёт is_error и stub зациклится). Вставляем недостающих
+  // перед final_consolidator; tz_analyst исключаем — он в прелюдии.
+  for (const req of requiredAgents) {
+    if (req === 'tz_analyst' || req === 'final_consolidator') continue;
+    if (!scenario.includes(req)) {
+      const fcIdx = scenario.indexOf('final_consolidator');
+      scenario.splice(fcIdx >= 0 ? fcIdx : scenario.length, 0, req);
+    }
+  }
+
+  const next = scenario.find((a) => !called.has(a));
+
+  if (next) {
+    const id = `stub_${next}_${Date.now()}`;
+    const thought = `Следующий шаг — запускаю ${next}.`;
+    return {
+      content_blocks: [
+        { type: 'thinking', thinking: thought },
+        { type: 'tool_use', id, name: `call_${next}`, input: {} }
+      ],
+      stop_reason: 'tool_use',
+      tool_uses: [{ id, name: `call_${next}`, input: {} }],
+      usage: { inputTokens: 80, outputTokens: 40 },
+      _stubThoughts: [thought]
+    };
+  }
+
+  // Все агенты сценария вызваны — финализируем.
+  const id = `stub_final_${Date.now()}`;
+  const finalInput = {
+    executive_summary: 'Stub-режим: все обязательные агенты отработали, смета собрана детерминированно.',
+    decision_reasoning: 'Сценарий пройден без расхода баланса (dev-режим).',
+    recommendation: 'TAKE',
+    key_assumptions: ['stub mode: цифры демонстрационные']
+  };
+  const thought = 'Все обязательные агенты завершены — финализирую просчёт.';
+  return {
+    content_blocks: [
+      { type: 'thinking', thinking: thought },
+      { type: 'tool_use', id, name: 'emit_final_estimate', input: finalInput }
+    ],
+    stop_reason: 'tool_use',
+    tool_uses: [{ id, name: 'emit_final_estimate', input: finalInput }],
+    usage: { inputTokens: 80, outputTokens: 40 },
+    _stubThoughts: [thought]
+  };
+}
+
+/**
+ * Стриминговый вызов с раздельными колбэками для thinking-блоков и текста,
+ * с НАТИВНОЙ поддержкой tool use (Сессия 6b).
+ *
+ * Поддерживает:
+ *   • tools: [{name, description, input_schema}] — Anthropic-стиль tool-схемы
+ *   • tool_choice: 'auto' | 'any' | {type:'tool',name} (дефолт 'auto')
+ *   • messages с content-блоками tool_use / tool_result (Anthropic-формат)
+ *
+ * Возвращает (помимо text/thinking/usage):
+ *   • tool_uses: [{id, name, input}] — запросы модели на вызов инструментов
+ *   • content_blocks: [...] — полный ответ для записи в messages.assistant
+ *   • stop_reason: 'tool_use' | 'end_turn' | ...
+ *
+ * stub-режим: если передан tools — отдаём детерминированный generateStubToolUses;
+ * иначе — прежнее текстовое поведение (обратная совместимость с Сессией 2).
+ *
+ * @param {Object} p — поля complete() + tools/tool_choice/stubCtx + колбэки
+ * @returns {Promise<Object>}
+ */
+async function completeWithStream(p = {}) {
+  const {
+    system, messages, model, tools = null, tool_choice = 'auto',
+    stubCtx = {}, maxTokens,
+    onThought = () => {}, onText = () => {}, onToolCall = () => {}
+  } = p;
+  await _loadKeysFromDB();
+
+  const hasTools = Array.isArray(tools) && tools.length > 0;
+
+  if (isStubMode()) {
+    // С tools — детерминированный tool-use сценарий.
+    if (hasTools) {
+      const stub = generateStubToolUses(messages, stubCtx);
+      for (const t of stub._stubThoughts || []) onThought(t);
+      for (const tu of stub.tool_uses) onToolCall(tu);
+      return {
+        text: '',
+        thinking: (stub._stubThoughts || []).join(' '),
+        tool_uses: stub.tool_uses,
+        content_blocks: stub.content_blocks,
+        stop_reason: stub.stop_reason,
+        stopReason: stub.stop_reason,
+        usage: stub.usage,
+        model: model || 'stub',
+        _stub: true
+      };
+    }
+    // Без tools — прежнее текстовое поведение (обратная совместимость).
+    const thought = 'Анализирую исходные данные (stub-режим, реальная модель не вызывалась).';
+    const answer = '[STUB ответ] Структурный прогон без обращения к LLM.';
+    onThought(thought);
+    onText(answer);
+    return {
+      text: answer,
+      thinking: thought,
+      tool_uses: [],
+      content_blocks: [{ type: 'text', text: answer }],
+      stop_reason: 'end_turn',
+      stopReason: 'end_turn',
+      usage: { inputTokens: 0, outputTokens: 0 },
+      model: model || 'stub',
+      _stub: true
+    };
+  }
+
+  // ── LIVE: tool-use через routerai (OpenAI-совместимый, НЕ-стриминговый вызов).
+  //    Tool-use требует целиком собранный ответ (tool_calls приходят не дельтами),
+  //    поэтому используем callOpenAI без stream. thinking-блоки routerai отдельным
+  //    каналом не отдаёт — text-часть отправляем в onText.
+  if (hasTools) {
+    const result = await callOpenAI({
+      system,
+      messages: _messagesToOpenAI(messages),
+      model,
+      maxTokens,
+      tools: _toolsToOpenAI(tools),
+      // tool_choice пробрасываем в body через отдельное поле ниже
+    });
+    // callOpenAI не принимает tool_choice — но routerai по умолчанию 'auto'.
+    // Для 'any'/конкретного инструмента это можно расширить позже (не блокер).
+    void _toolChoiceToOpenAI(tool_choice);
+
+    const toolCalls = result.tool_calls || [];
+    const toolUses = toolCalls.map((tc) => {
+      let input = {};
+      try {
+        input = typeof tc.function?.arguments === 'string'
+          ? JSON.parse(tc.function.arguments || '{}')
+          : (tc.function?.arguments || {});
+      } catch (_) { input = {}; }
+      return { id: tc.id, name: tc.function?.name, input };
+    });
+
+    // Собираем content_blocks в Anthropic-формате для истории.
+    const contentBlocks = [];
+    if (result.text) contentBlocks.push({ type: 'text', text: result.text });
+    for (const tu of toolUses) contentBlocks.push({ type: 'tool_use', id: tu.id, name: tu.name, input: tu.input });
+
+    if (result.text) onText(result.text);
+    for (const tu of toolUses) onToolCall(tu);
+
+    const stopReason = toolUses.length ? 'tool_use' : (result.stopReason === 'tool_calls' ? 'tool_use' : 'end_turn');
+    return {
+      text: result.text || '',
+      thinking: '',
+      tool_uses: toolUses,
+      content_blocks: contentBlocks,
+      stop_reason: stopReason,
+      stopReason,
+      usage: result.usage || { inputTokens: 0, outputTokens: 0 },
+      model: result.model || model
+    };
+  }
+
+  // ── LIVE без tools — прежний текстовый стриминг (обратная совместимость).
+  const response = await stream({ system, messages, model });
+  const provider = getProvider();
+  let fullText = '';
+  let usage = { inputTokens: 0, outputTokens: 0 };
+  for await (const chunk of parseStream(response, provider === 'anthropic' ? 'anthropic' : 'openai')) {
+    if (chunk.type === 'text') { fullText += chunk.content; onText(chunk.content); }
+    else if (chunk.type === 'done') { usage = chunk.usage || usage; }
+  }
+  return {
+    text: fullText, thinking: '',
+    tool_uses: [], content_blocks: fullText ? [{ type: 'text', text: fullText }] : [],
+    stop_reason: 'end_turn', stopReason: 'end_turn',
+    usage, model: model || getConfig().model
+  };
+}
+
+/**
+ * Стоимость вызова в рублях. Тонкая обёртка над models-config.calculateCostRub,
+ * чтобы цена считалась единообразно. Принимает ключ модели из models-config.
+ * Загружается лениво, чтобы не создавать циклической зависимости при require.
+ *
+ * @param {string} modelKey — ключ из models-config (например 'sonnet-4-6')
+ * @param {{inputTokens:number, outputTokens:number}} usage
+ * @param {number} [usdRub] — курс; если не передан, используется DEFAULT_USD_RUB
+ * @returns {number}
+ */
+function calculateCostRub(modelKey, usage, usdRub) {
+  // eslint-disable-next-line global-require
+  const mc = require('./mimir-conductor/models-config');
+  return mc.calculateCostRub(modelKey, usage, usdRub);
+}
+
 module.exports = {
   complete,
   completeFast,
@@ -1243,5 +1695,12 @@ module.exports = {
   _loadKeysFromDB, // AP5: agent needs to ensure keys are loaded
   AIProviderError, // экспорт класса для классификации ошибок в caller-ах
   runAgentLoop, // agent-loop с автоматическим выполнением tool_calls (WebSearch)
-  executeWebSearch // прямой вызов web search (можно использовать без agent loop)
+  executeWebSearch, // прямой вызов web search (можно использовать без agent loop)
+  // ── Mimir Conductor (Сессия 1) ──
+  isStubMode,        // true когда ключ stub-* (mock-режим без расхода баланса)
+  searchWeb,         // веб-поиск → { answer, citations }
+  embed,             // embeddings → number[][]
+  completeWithStream,// стриминг с колбэками onThought/onText + нативный tool use (Сессия 6b)
+  generateStubToolUses, // детерминированный stub-сценарий tool_uses (для тестов/разработки)
+  calculateCostRub   // стоимость вызова в ₽ (через models-config)
 };

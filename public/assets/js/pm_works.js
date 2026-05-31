@@ -859,7 +859,11 @@ window.AsgardPmWorksPage=(function(){
       if(!tr) return;
       const act = e.target.getAttribute("data-act");
       if(act==="open") openWork(Number(tr.getAttribute("data-id")));
-      if(act==="auto_estimate") window.openMimirAutoEstimate(Number(tr.getAttribute("data-id")));
+      if(act==="auto_estimate"){
+        var _wid = Number(tr.getAttribute("data-id"));
+        if(typeof window.openEstimateMethodPicker === "function") window.openEstimateMethodPicker(_wid);
+        else window.openMimirAutoEstimate(_wid);
+      }
     });
 
     $("#btnGantt").addEventListener("click", ()=>openGantt());

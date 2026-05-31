@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Просчёт Мимира (Conductor) — Asgard CRM</title>
+  <link rel="stylesheet" href="/assets/css/mimir-conductor.css?v=20.13.45">
+</head>
+<body class="mc-body">
+  <header class="mc-topbar">
+    <div class="mc-title">
+      <span class="mc-icon">🎼</span>
+      <span id="mc-run-title">Загрузка просчёта…</span>
+    </div>
+    <div class="mc-progress-block">
+      <div class="mc-progress-bar"><div class="mc-progress-fill" id="mc-progress-fill"></div></div>
+      <span id="mc-progress-text">0%</span>
+    </div>
+    <div class="mc-meta">
+      <span class="mc-meta-item">💰 <b id="mc-cost">0&nbsp;₽</b></span>
+      <span class="mc-meta-item">⏱ <b id="mc-eta">—</b></span>
+      <span class="mc-status-pill" id="mc-status">DRAFT</span>
+    </div>
+    <div class="mc-controls">
+      <button id="mc-final-report" class="mc-btn mc-btn-primary" disabled>📊 Полный отчёт</button>
+      <a href="/index.html" class="mc-btn mc-btn-ghost">← К работам</a>
+    </div>
+  </header>
+
+  <main class="mc-main">
+    <aside class="mc-left" id="mc-agents-list">
+      <div class="mc-empty">Ожидание запуска агентов…</div>
+    </aside>
+
+    <section class="mc-center">
+      <div class="mc-center-head">Лента событий</div>
+      <div class="mc-event-stream" id="mc-event-stream"></div>
+    </section>
+
+    <aside class="mc-right" id="mc-artifact-panel">
+      <div class="mc-empty">Выберите агента слева, чтобы увидеть его артефакт</div>
+    </aside>
+  </main>
+
+  <footer class="mc-bottom" id="mc-clarifications-bar"></footer>
+
+  <script defer src="/assets/js/ui.js"></script>
+  <script defer src="/assets/js/auth.js"></script>
+  <script defer src="/assets/js/mimir-conductor-ui.js?v=20.13.45"></script>
+</body>
+</html>

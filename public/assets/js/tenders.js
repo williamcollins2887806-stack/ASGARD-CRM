@@ -1628,13 +1628,15 @@ window.AsgardTendersPage = (function(){
       const act=e.target.getAttribute("data-act");
       if(act==="open") openTenderEditor(id);
       if(act==="auto_estimate"){
-        if(!window.openMimirAutoEstimate){ toast("Просчёт","Модуль авто-просчёта не загружен","err"); return; }
         const workRes = await AsgardDB.byIndex("works","tender_id", id);
         const work = workRes[0] || null;
-        if(work && work.id){
-          window.openMimirAutoEstimate(work.id);
+        const wid = (work && work.id) ? work.id : null;
+        if(typeof window.openEstimateMethodPicker === "function"){
+          window.openEstimateMethodPicker(wid, id);
+        } else if(window.openMimirAutoEstimate){
+          if(wid) window.openMimirAutoEstimate(wid); else window.openMimirAutoEstimate(null, id);
         } else {
-          window.openMimirAutoEstimate(null, id);
+          toast("Просчёт","Модуль авто-просчёта не загружен","err");
         }
       }
       if(act==="handoff") { openTenderEditor(id); setTimeout(()=>{ const b=document.getElementById("btnDist")||document.getElementById("btnCreateTkp"); if(b) b.scrollIntoView({block:"center"}); }, 50); }

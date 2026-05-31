@@ -814,13 +814,15 @@ window.AsgardPmCalcsPage = (function(){
         openTender(tenderId);
       }
       if(e.target.getAttribute("data-act")==="auto_estimate"){
-        if(!window.openMimirAutoEstimate){ toast("Просчёт","Модуль авто-просчёта не загружен","err"); return; }
         const workRes = await AsgardDB.byIndex("works","tender_id", tenderId);
         const work = workRes[0] || null;
-        if(work && work.id){
-          window.openMimirAutoEstimate(work.id);
+        const wid = (work && work.id) ? work.id : null;
+        if(typeof window.openEstimateMethodPicker === "function"){
+          window.openEstimateMethodPicker(wid, tenderId);
+        } else if(window.openMimirAutoEstimate){
+          if(wid) window.openMimirAutoEstimate(wid); else window.openMimirAutoEstimate(null, tenderId);
         } else {
-          window.openMimirAutoEstimate(null, tenderId);
+          toast("Просчёт","Модуль авто-просчёта не загружен","err");
         }
       }
       if(e.target.getAttribute("data-act")==="docs"){

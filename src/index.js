@@ -503,6 +503,7 @@ fastify.register(require('./routes/files'), { prefix: '/api/files' });
 fastify.register(require('./routes/settings'), { prefix: '/api/settings' });
 fastify.register(require('./routes/reports'), { prefix: '/api/reports' });
 fastify.register(require('./routes/mimir'), { prefix: '/api/mimir' });
+fastify.register(require('./routes/mimir-conductor'), { prefix: '/api/mimir' });
 fastify.register(require('./routes/hints'), { prefix: '/api' });
 fastify.register(require('./routes/geo'), { prefix: '/api/geo' });
 fastify.register(require('./routes/email'), { prefix: '/api/email' });
@@ -637,6 +638,32 @@ try {
   achievementsCron.init(fastify);
 } catch (cronErr) {
   fastify.log.warn('[AchievementsCron] Init skipped: ' + cronErr.message);
+}
+
+// ── Mimir Letter Reminders Cron: напоминания по письмам заказчику (Сессия 5) ──
+try {
+  const mimirLetterReminders = require('./services/mimir-letter-reminders-cron');
+  fastify.addHook('onReady', async () => {
+    mimirLetterReminders.start(fastify.db, fastify.log);
+  });
+  fastify.addHook('onClose', async () => {
+    mimirLetterReminders.stop();
+  });
+} catch (cronErr) {
+  fastify.log.warn('[MimirLetterReminders] Init skipped: ' + cronErr.message);
+}
+
+// ── Conductor Run Sweeper: startup orphan-cleanup + hourly stale-run sweep ──
+try {
+  const conductorSweeper = require('./services/mimir-conductor/run-sweeper');
+  fastify.addHook('onReady', async () => {
+    conductorSweeper.start(fastify.db, fastify.log);
+  });
+  fastify.addHook('onClose', async () => {
+    conductorSweeper.stop();
+  });
+} catch (cronErr) {
+  fastify.log.warn('[ConductorSweeper] Init skipped: ' + cronErr.message);
 }
 
 // ── Shift Autocomplete: every 30 min ──
