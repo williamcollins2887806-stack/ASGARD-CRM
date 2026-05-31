@@ -52,7 +52,9 @@ ALTER TABLE user_call_status
   ADD COLUMN IF NOT EXISTS mango_extension VARCHAR(20),
   ADD COLUMN IF NOT EXISTS fallback_user_id INTEGER,
   ADD COLUMN IF NOT EXISTS fallback_mobile VARCHAR(50),
-  ADD COLUMN IF NOT EXISTS work_schedule JSONB DEFAULT '{mon:{start:09:00,end:18:00},tue:{start:09:00,end:18:00},wed:{start:09:00,end:18:00},thu:{start:09:00,end:18:00},fri:{start:09:00,end:18:00}}'::jsonb,
+  -- [AUDIT-FIX V001b-era] original default was invalid JSON (unquoted keys/values),
+  -- which made V039 un-appliable on a clean DB. Replaced with dev's valid value.
+  ADD COLUMN IF NOT EXISTS work_schedule JSONB DEFAULT '{"mon":{"start":"09:00","end":"18:00"},"tue":{"start":"09:00","end":"18:00"},"wed":{"start":"09:00","end":"18:00"},"thu":{"start":"09:00","end":"18:00"},"fri":{"start":"09:00","end":"18:00"}}'::jsonb,
   ADD COLUMN IF NOT EXISTS is_duty BOOLEAN DEFAULT false,
   ADD COLUMN IF NOT EXISTS display_name VARCHAR(200),
   ADD COLUMN IF NOT EXISTS sip_login VARCHAR(100),
@@ -130,12 +132,16 @@ CREATE INDEX IF NOT EXISTS idx_active_calls_user ON active_calls(assigned_user_i
 CREATE INDEX IF NOT EXISTS idx_active_calls_state ON active_calls(call_state);
 
 -- 7. Настройки телефонии (глобальные)
-INSERT INTO settings (key, value) VALUES
+-- [AUDIT-FIX V001b-era] settings has no "value" column (it is "value_json");
+-- original INSERT referenced a non-existent column. Corrected to value_json.
+INSERT INTO settings (key, value_json) VALUES
   ('telephony_config', '{missed_deadline_minutes:30,ai_enabled:true,auto_transcribe:true,auto_analyze:true,ivr_enabled:false,record_storage:./uploads/call_records,default_greeting:Добрый день! Компания Асгард Сервис. Чем можем помочь?,after_hours_greeting:Спасибо за звонок. Сейчас нерабочее время. Оставьте сообщение после сигнала.,work_hours_start:09:00,work_hours_end:18:00}'::text)
 ON CONFLICT (key) DO NOTHING;
 
 -- 8. Добавляем модуль телефонии в permissions
-INSERT INTO modules (code, name, description) VALUES
+-- [AUDIT-FIX V001b-era] modules columns are (key, label, ...), not (code, name).
+-- Original INSERT referenced non-existent columns code/name. Corrected.
+INSERT INTO modules (key, label, description) VALUES
   ('telephony', 'Телефония', 'Журнал звонков, маршрутизация, статистика')
 ON CONFLICT DO NOTHING;
 

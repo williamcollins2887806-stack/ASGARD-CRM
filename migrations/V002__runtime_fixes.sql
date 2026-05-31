@@ -111,21 +111,24 @@ UPDATE staff_requests SET status = 'new' WHERE status = 'pending' AND id <= 5;
 -- 4. PERMISSION FIXES (role_presets and user_permissions)
 -- ═══════════════════════════════════════════════════════════════
 
+-- [AUDIT-FIX V001b-era] role_presets/user_permissions use column `module_key`, not `module`,
+-- and role_presets has no `created_at` (true both in dev and on a clean chain). V002 was
+-- written against an older schema where the column was `module`. Corrected to match dev.
 -- Remove wrong role/module combinations from role_presets
-DELETE FROM role_presets WHERE role IN ('PM', 'HEAD_PM', 'HEAD_TO') AND module = 'tasks_admin';
-DELETE FROM role_presets WHERE role = 'HEAD_PM' AND module = 'cash_admin';
-DELETE FROM role_presets WHERE role = 'CHIEF_ENGINEER' AND module = 'permits';
+DELETE FROM role_presets WHERE role IN ('PM', 'HEAD_PM', 'HEAD_TO') AND module_key = 'tasks_admin';
+DELETE FROM role_presets WHERE role = 'HEAD_PM' AND module_key = 'cash_admin';
+DELETE FROM role_presets WHERE role = 'CHIEF_ENGINEER' AND module_key = 'permits';
 
 -- Add BUH cash permission (read-only, can't approve)
-INSERT INTO role_presets (role, module, can_read, can_write, created_at)
-VALUES ('BUH', 'cash', true, false, NOW())
-ON CONFLICT (role, module) DO UPDATE SET can_read = true;
+INSERT INTO role_presets (role, module_key, can_read, can_write)
+VALUES ('BUH', 'cash', true, false)
+ON CONFLICT (role, module_key) DO UPDATE SET can_read = true;
 
 -- BUH cash_admin should be read-only
-UPDATE role_presets SET can_write = false WHERE role = 'BUH' AND module = 'cash_admin';
+UPDATE role_presets SET can_write = false WHERE role = 'BUH' AND module_key = 'cash_admin';
 
 -- Clean up user_permissions that shouldn't exist
-DELETE FROM user_permissions WHERE module = 'tasks_admin'
+DELETE FROM user_permissions WHERE module_key = 'tasks_admin'
   AND user_id IN (SELECT id FROM users WHERE role IN ('PM', 'HEAD_PM', 'HEAD_TO'));
-DELETE FROM user_permissions WHERE module = 'cash_admin'
+DELETE FROM user_permissions WHERE module_key = 'cash_admin'
   AND user_id IN (SELECT id FROM users WHERE role = 'HEAD_PM');
