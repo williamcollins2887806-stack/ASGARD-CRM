@@ -150,7 +150,7 @@ window.AsgardHrRequestsPage = (function () {
         </div>
 
         <div class="tablewrap">
-          <table class="crm-table">
+          <table class="asg">
             <thead><tr>
               <th>#</th><th>Объект / Заказчик</th><th>РП</th><th>Состав</th><th>Статус</th><th>Дата</th><th></th>
             </tr></thead>
@@ -252,7 +252,11 @@ window.AsgardHrRequestsPage = (function () {
       });
     }
     $('#sr_refresh').addEventListener('click', loadList);
-    $('#sr_search').addEventListener('input', loadList);
+    let _searchTimer = null;
+    $('#sr_search').addEventListener('input', () => {
+      clearTimeout(_searchTimer);
+      _searchTimer = setTimeout(loadList, 300);
+    });
 
     loadList();
   }
@@ -296,7 +300,7 @@ window.AsgardHrRequestsPage = (function () {
         <div class="formrow">
           <div style="grid-column:1/-1">
             <label>Объект</label>
-            <select id="df_work" style="width:100%;padding:8px;background:var(--bg2);color:var(--t1);border:1px solid var(--brd);border-radius:var(--r-sm)">
+            <select id="df_work">
               <option value="">Выберите объект...</option>
               ${works.map(w => `<option value="${w.id}"${w.id === workId ? ' selected' : ''}>${esc(w.work_title || '')} — ${esc(w.customer_name || '')}</option>`).join('')}
             </select>
@@ -310,7 +314,7 @@ window.AsgardHrRequestsPage = (function () {
           ${POSITION_ROLES.map(pr => `
             <div>
               <label style="font-size:12px">${pr.label}</label>
-              <input id="df_pos_${pr.key}" type="number" min="0" value="${positionValues[pr.key]}" style="width:100%;padding:6px;background:var(--bg2);color:var(--t1);border:1px solid var(--brd);border-radius:var(--r-sm)"/>
+              <input id="df_pos_${pr.key}" type="number" min="0" value="${positionValues[pr.key]}"/>
             </div>
           `).join('')}
         </div>
@@ -318,7 +322,7 @@ window.AsgardHrRequestsPage = (function () {
         <div class="formrow">
           <div style="grid-column:1/-1">
             <label>Описание работ</label>
-            <textarea id="df_desc" rows="3" style="width:100%;padding:8px;background:var(--bg2);color:var(--t1);border:1px solid var(--brd);border-radius:var(--r-sm)">${esc(draft.work_description || '')}</textarea>
+            <textarea id="df_desc" rows="3">${esc(draft.work_description || '')}</textarea>
           </div>
         </div>
 
@@ -326,7 +330,7 @@ window.AsgardHrRequestsPage = (function () {
         <div class="formrow">
           <div>
             <label>Питание</label>
-            <select id="df_food" style="width:100%;padding:8px;background:var(--bg2);color:var(--t1);border:1px solid var(--brd);border-radius:var(--r-sm)">
+            <select id="df_food">
               <option value="ration"${conditions.food === 'ration' ? ' selected' : ''}>Сухпаёк</option>
               <option value="canteen"${conditions.food === 'canteen' ? ' selected' : ''}>Столовая</option>
               <option value="self"${conditions.food === 'self' ? ' selected' : ''}>Самостоятельно</option>
@@ -334,7 +338,7 @@ window.AsgardHrRequestsPage = (function () {
           </div>
           <div>
             <label>Жильё</label>
-            <select id="df_housing" style="width:100%;padding:8px;background:var(--bg2);color:var(--t1);border:1px solid var(--brd);border-radius:var(--r-sm)">
+            <select id="df_housing">
               <option value="wagon"${conditions.housing === 'wagon' ? ' selected' : ''}>Вагон-дом</option>
               <option value="hotel"${conditions.housing === 'hotel' ? ' selected' : ''}>Гостиница</option>
               <option value="dormitory"${conditions.housing === 'dormitory' ? ' selected' : ''}>Общежитие</option>
@@ -342,7 +346,7 @@ window.AsgardHrRequestsPage = (function () {
           </div>
           <div>
             <label>Вахта (ротация)</label>
-            <input id="df_rotation" placeholder="45/15" value="${esc(conditions.rotation || '')}" style="width:100%;padding:8px;background:var(--bg2);color:var(--t1);border:1px solid var(--brd);border-radius:var(--r-sm)"/>
+            <input id="df_rotation" placeholder="45/15" value="${esc(conditions.rotation || '')}"/>
           </div>
         </div>
 
@@ -390,11 +394,11 @@ window.AsgardHrRequestsPage = (function () {
       try {
         if (existingDraft) {
           await apiPut(`/api/staff-requests/${existingDraft.id}/draft`, data, token);
-          toast('Черновик', 'Сохранён', 'success');
+          toast('Черновик', 'Сохранён', 'ok');
         } else {
           const result = await apiPost('/api/staff-requests', data, token);
           existingDraft = result;
-          toast('Черновик', 'Создан', 'success');
+          toast('Черновик', 'Создан', 'ok');
         }
       } catch (e) { toast('Ошибка', e.message, 'err'); }
     });
@@ -412,7 +416,7 @@ window.AsgardHrRequestsPage = (function () {
           reqId = result.id;
         }
         await apiPut(`/api/staff-requests/${reqId}/submit`, null, token);
-        toast('Заявка', 'Отправлена HR', 'success');
+        toast('Заявка', 'Отправлена HR', 'ok');
         location.hash = '#/hr-requests';
       } catch (e) { toast('Ошибка', e.message, 'err'); }
     });
@@ -487,7 +491,7 @@ window.AsgardHrRequestsPage = (function () {
           if (!await AsgardUI.confirm('Добавить утверждённых рабочих в бригаду?')) return;
           try {
             await apiPut(`/api/staff-requests/${id}/add-to-crew`, null, token);
-            toast('Готово', 'Рабочие добавлены в бригаду', 'success');
+            toast('Готово', 'Рабочие добавлены в бригаду', 'ok');
             closeModal();
           } catch (e) { toast('Ошибка', e.message, 'err'); }
         });
@@ -546,7 +550,7 @@ window.AsgardHrRequestsPage = (function () {
           <div style="overflow-y:auto;border-left:1px solid var(--brd);padding-left:16px">
             <div style="display:flex;gap:8px;margin-bottom:8px">
               <input id="hr_worker_search" class="input" placeholder="Поиск по ФИО..." style="flex:1"/>
-              <select id="hr_role_filter" style="padding:6px;background:var(--bg2);color:var(--t1);border:1px solid var(--brd);border-radius:var(--r-sm)">
+              <select id="hr_role_filter" style="min-width:140px">
                 <option value="">Все роли</option>
                 ${positions.map(p => `<option value="${p.role_key}">${esc(p.role_label)}</option>`).join('')}
               </select>
@@ -578,7 +582,7 @@ window.AsgardHrRequestsPage = (function () {
       $('#hr_send_pm').addEventListener('click', async () => {
         try {
           await apiPut(`/api/staff-requests/${id}/send-to-pm`, null, token);
-          toast('Готово', 'Отправлено РП', 'success');
+          toast('Готово', 'Отправлено РП', 'ok');
           closeModal();
         } catch (e) { toast('Ошибка', e.message, 'err'); }
       });
@@ -587,19 +591,37 @@ window.AsgardHrRequestsPage = (function () {
         if (!await AsgardUI.confirm('Утвердить заявку?')) return;
         try {
           await apiPut(`/api/staff-requests/${id}/approve`, null, token);
-          toast('Готово', 'Заявка утверждена', 'success');
+          toast('Готово', 'Заявка утверждена', 'ok');
           closeModal();
         } catch (e) { toast('Ошибка', e.message, 'err'); }
       });
 
-      $('#hr_rework').addEventListener('click', async () => {
-        const comment = prompt('Комментарий (обязательно):');
-        if (!comment || !comment.trim()) { toast('Проверка', 'Комментарий обязателен', 'err'); return; }
-        try {
-          await apiPut(`/api/staff-requests/${id}/rework`, { comment: comment.trim() }, token);
-          toast('Готово', 'Возвращено на доработку', 'success');
-          closeModal();
-        } catch (e) { toast('Ошибка', e.message, 'err'); }
+      $('#hr_rework').addEventListener('click', () => {
+        showModal('Вернуть на доработку', `
+          <div style="margin-bottom:12px">
+            <label style="font-size:13px;color:var(--t2)">Комментарий <span style="color:var(--err)">*</span></label>
+            <textarea id="rw_comment" rows="3" placeholder="Укажите причину возврата…" style="margin-top:4px"></textarea>
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button class="btn ghost" id="rw_cancel">Отмена</button>
+            <button class="btn" id="rw_send">Вернуть</button>
+          </div>
+        `);
+        $('#rw_cancel')?.addEventListener('click', () => closeModal());
+        $('#rw_send')?.addEventListener('click', async () => {
+          const comment = ($('#rw_comment')?.value || '').trim();
+          if (!comment) { toast('Проверка', 'Комментарий обязателен', 'err'); return; }
+          const btn = $('#rw_send');
+          btn.disabled = true; btn.textContent = 'Отправка…';
+          try {
+            await apiPut(`/api/staff-requests/${id}/rework`, { comment }, token);
+            toast('Готово', 'Возвращено на доработку', 'ok');
+            closeModal();
+          } catch (e) {
+            toast('Ошибка', e.message, 'err');
+            btn.disabled = false; btn.textContent = 'Вернуть';
+          }
+        });
       });
 
     } catch (e) {
@@ -655,7 +677,7 @@ window.AsgardHrRequestsPage = (function () {
         btn.addEventListener('click', async () => {
           try {
             await apiDelete(`/api/staff-requests/${reqId}/assign/${btn.dataset.removeAssign}`, token);
-            toast('Убрано', '', 'success');
+            toast('Убрано', '', 'ok');
             await loadAssigned(reqId, token);
             await loadAvailableWorkers(reqId, token, req.positions || []);
           } catch (e) { toast('Ошибка', e.message, 'err'); }
@@ -726,7 +748,7 @@ window.AsgardHrRequestsPage = (function () {
               position_id: targetPos.id,
               assigned_role: targetPos.role_key
             }, token);
-            toast('Добавлен', '', 'success');
+            toast('Добавлен', '', 'ok');
             btn.disabled = true;
             btn.textContent = '✓';
             await loadAssigned(reqId, token);

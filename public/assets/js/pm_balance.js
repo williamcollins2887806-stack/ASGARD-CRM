@@ -18,6 +18,16 @@ window.AsgardPmBalancePage = (function () {
 
   const ALLOWED = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'BUH'];
 
+  /* ── one-time CSS injection ──────────────────────────────────────────── */
+  (function injectStyles() {
+    if (document.getElementById('pmb-styles')) return;
+    const s = document.createElement('style');
+    s.id = 'pmb-styles';
+    s.textContent = `.pmb-hover-row:hover td { background: var(--bg2); }
+      .pmb-row:hover td { background: var(--bg2); }`;
+    document.head.appendChild(s);
+  })();
+
   /* ── helpers ────────────────────────────────────────────────────────── */
 
   function getToken() {
@@ -49,7 +59,7 @@ window.AsgardPmBalancePage = (function () {
 
   function statCard(label, value, bgVar, colorVar) {
     return `
-      <div style="padding:12px 18px;background:${bgVar};border-radius:8px;min-width:140px;">
+      <div style="padding:12px 18px;background:${bgVar};border-radius:var(--r-md);min-width:140px;">
         <div style="font-size:11px;color:${colorVar};opacity:.75;font-weight:500;
                     text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;">
           ${label}
@@ -98,7 +108,7 @@ window.AsgardPmBalancePage = (function () {
 
     const th = label => `
       <th style="padding:10px 14px;text-align:left;color:var(--t2);font-size:13px;
-                 font-weight:600;white-space:nowrap;border-bottom:2px solid var(--border);">
+                 font-weight:600;white-space:nowrap;border-bottom:2px solid var(--brd);">
         ${label}
       </th>`;
 
@@ -111,7 +121,7 @@ window.AsgardPmBalancePage = (function () {
       const name     = pm.pm_name || pm.name || '—';
       return `
         <tr class="pmb-row" data-pm="${pm.pm_id || pm.id}"
-            style="border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;"
+            style="border-bottom:1px solid var(--brd);cursor:pointer;transition:background .12s;"
             title="Открыть детали по ${esc(name)}">
           <td style="padding:10px 14px;color:var(--t1);font-weight:500;">${esc(name)}</td>
           <td style="padding:10px 14px;color:var(--t2);">${rub(pm.cash_in)}</td>
@@ -134,7 +144,7 @@ window.AsgardPmBalancePage = (function () {
 
     const tfoot = `
       <tfoot>
-        <tr style="background:var(--bg2);border-top:2px solid var(--border);">
+        <tr style="background:var(--bg2);border-top:2px solid var(--brd);">
           <td style="padding:10px 14px;color:var(--t1);font-weight:700;">Итого (${list.length} РП)</td>
           <td style="padding:10px 14px;color:var(--t1);font-weight:600;">${rub(totalIn)}</td>
           <td style="padding:10px 14px;color:var(--t1);font-weight:600;">${rub(totalSeIn)}</td>
@@ -161,7 +171,7 @@ window.AsgardPmBalancePage = (function () {
     const token = auth.token || getToken();
 
     if (!ALLOWED.includes(user.role)) {
-      toast('Недостаточно прав', 'error');
+      toast('Доступ', 'Недостаточно прав', 'err');
       location.hash = '#/home';
       return;
     }
@@ -176,7 +186,7 @@ window.AsgardPmBalancePage = (function () {
           </div>
           <div style="display:flex;gap:8px;align-items:center;">
             <select id="pmb_month"
-              style="padding:7px 10px;border:1px solid var(--border);border-radius:6px;
+              style="padding:7px 10px;border:1px solid var(--brd);border-radius:var(--r-sm);
                      background:var(--bg2);color:var(--t2);font-size:13px;cursor:pointer;">
               ${buildMonthOptions('')}
             </select>
@@ -188,8 +198,8 @@ window.AsgardPmBalancePage = (function () {
              style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;"></div>
 
         <div id="pmb_table_wrap"
-             style="background:var(--bg1);border:1px solid var(--border);
-                    border-radius:8px;overflow:hidden;">
+             style="background:var(--bg1);border:1px solid var(--brd);
+                    border-radius:var(--r-md);overflow:hidden;">
         </div>
       </div>`;
 
@@ -260,7 +270,7 @@ window.AsgardPmBalancePage = (function () {
         <div style="margin-bottom:24px;">
           <h3 style="color:var(--t1);font-size:15px;font-weight:600;
                      margin:0 0 10px;padding-bottom:8px;
-                     border-bottom:2px solid ${accentColor || 'var(--border)'};">
+                     border-bottom:2px solid ${accentColor || 'var(--brd)'};">
             ${heading}
           </h3>
           <p style="color:var(--t3);font-size:13px;padding:10px 0;">
@@ -276,7 +286,7 @@ window.AsgardPmBalancePage = (function () {
 
     const th = c => `
       <th style="padding:9px 12px;text-align:left;color:var(--t2);font-size:12px;
-                 font-weight:600;white-space:nowrap;border-bottom:1px solid var(--border);">
+                 font-weight:600;white-space:nowrap;border-bottom:1px solid var(--brd);">
         ${c.label}
       </th>`;
 
@@ -295,7 +305,7 @@ window.AsgardPmBalancePage = (function () {
       <div style="margin-bottom:24px;">
         <div style="display:flex;align-items:center;justify-content:space-between;
                     margin-bottom:10px;padding-bottom:8px;
-                    border-bottom:2px solid ${accentColor || 'var(--border)'};">
+                    border-bottom:2px solid ${accentColor || 'var(--brd)'};">
           <h3 style="color:var(--t1);font-size:15px;font-weight:600;margin:0;">
             ${heading}
           </h3>
@@ -312,9 +322,8 @@ window.AsgardPmBalancePage = (function () {
             </thead>
             <tbody>
               ${rows.map(r => `
-                <tr style="border-bottom:1px solid var(--border);transition:background .1s;"
-                    onmouseenter="this.style.background='var(--bg2)'"
-                    onmouseleave="this.style.background=''">
+                <tr style="border-bottom:1px solid var(--brd);transition:background .1s;"
+                    class="pmb-hover-row">
                   ${columns.map(c => td(r, c)).join('')}
                 </tr>`).join('')}
             </tbody>
@@ -330,7 +339,7 @@ window.AsgardPmBalancePage = (function () {
     const token = auth.token || getToken();
 
     if (!ALLOWED.includes(user.role)) {
-      toast('Недостаточно прав', 'error');
+      toast('Доступ', 'Недостаточно прав', 'err');
       location.hash = '#/home';
       return;
     }
@@ -338,7 +347,7 @@ window.AsgardPmBalancePage = (function () {
     /* parse pm_id from hash: #/pm-balance/123 */
     const pmId = location.hash.split('/').pop();
     if (!pmId || isNaN(Number(pmId))) {
-      toast('ID РП не указан', 'error');
+      toast('Ошибка', 'ID РП не указан', 'err');
       location.hash = '#/pm-balance';
       return;
     }

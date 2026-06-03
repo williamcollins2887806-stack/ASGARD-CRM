@@ -1,4 +1,5 @@
 window.AsgardGlobalTimesheetPage=(function(){
+  'use strict';
   const { $, $$, esc, toast, showModal, closeModal } = AsgardUI;
   const isDirRole = (r)=> (window.AsgardAuth&&AsgardAuth.isDirectorRole)?AsgardAuth.isDirectorRole(r):(String(r||"").startsWith("DIRECTOR"));
   const fmt = (n)=> n==null?'—': new Intl.NumberFormat('ru-RU').format(Math.round(n));
@@ -23,8 +24,37 @@ window.AsgardGlobalTimesheetPage=(function(){
   };
 
   let _refreshTimer = null;
+  let _stylesInjected = false;
+
+  function injectStyles() {
+    if (_stylesInjected) return;
+    _stylesInjected = true;
+    const s = document.createElement('style');
+    s.id = 'ts-styles';
+    s.textContent = `
+      .ts-table { border-collapse: collapse; font-size: 12px; width: max-content; min-width: 100%; }
+      .ts-table th, .ts-table td { padding: 4px 6px; border: 1px solid var(--brd); white-space: nowrap; text-align: center; }
+      .ts-table thead { position: sticky; top: 0; z-index: 3; }
+      .ts-table thead th { background: var(--bg2); color: var(--t2); font-weight: 600; font-size: 11px; }
+      .ts-table thead th:first-child { z-index: 4; }
+      .ts-table td:first-child, .ts-table th:first-child { position: sticky; left: 0; z-index: 2; background: var(--bg1); text-align: left; min-width: 180px; max-width: 220px; }
+      .ts-table tbody tr:hover td { background: var(--bg3); }
+      .ts-table tbody tr:hover td:first-child { background: var(--bg3); }
+      .ts-cell { width: 28px; height: 24px; border-radius: var(--r-sm); display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; cursor: default; }
+      .ts-cell.editable { cursor: pointer; }
+      .ts-cell.editable:hover { opacity: .8; box-shadow: 0 0 0 2px var(--gold); }
+      .ts-group-header td { background: var(--bg3) !important; font-weight: 600; color: var(--t1); font-size: 13px; }
+      .ts-total { font-weight: 600; color: var(--t1); }
+      .ts-sum { color: var(--ok-t); font-weight: 600; }
+      .ts-dropdown { position: absolute; z-index: 100; background: var(--bg2); border: 1px solid var(--brd); border-radius: var(--r-md); padding: 4px; box-shadow: var(--shadow-md); min-width: 120px; }
+      .ts-dropdown button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px; border: none; background: none; color: var(--t1); cursor: pointer; border-radius: var(--r-sm); font-size: 13px; }
+      .ts-dropdown button:hover { background: var(--bg4); }
+    `;
+    document.head.appendChild(s);
+  }
 
   async function render({layout, title}){
+    injectStyles();
     const auth = await AsgardAuth.requireUser();
     if(!auth){ location.hash="#/login"; return; }
     const user = auth.user;
@@ -55,22 +85,6 @@ window.AsgardGlobalTimesheetPage=(function(){
           <div style="padding:40px;text-align:center;color:var(--t3)">Загрузка...</div>
         </div>
       </div>
-      <style>
-        .ts-table{border-collapse:collapse;font-size:12px;width:max-content;min-width:100%}
-        .ts-table th,.ts-table td{padding:4px 6px;border:1px solid var(--brd);white-space:nowrap;text-align:center}
-        .ts-table thead{position:sticky;top:0;z-index:3}
-        .ts-table thead th{background:var(--bg2);color:var(--t2);font-weight:600;font-size:11px}
-        .ts-table thead th:first-child{z-index:4}
-        .ts-table td:first-child,.ts-table th:first-child{position:sticky;left:0;z-index:2;background:var(--bg1);text-align:left;min-width:180px;max-width:220px}
-        .ts-table tbody tr:hover td{background:var(--bg3)}
-        .ts-table tbody tr:hover td:first-child{background:var(--bg3)}
-        .ts-cell{width:28px;height:24px;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;cursor:default}
-        .ts-cell.editable{cursor:pointer}
-        .ts-cell.editable:hover{opacity:.8;box-shadow:0 0 0 2px var(--gold)}
-        .ts-group-header td{background:var(--bg3)!important;font-weight:600;color:var(--t1);font-size:13px}
-        .ts-total{font-weight:600;color:var(--t1)}
-        .ts-sum{color:var(--ok-t);font-weight:600}
-      </style>
     `;
     await layout(html, {title: title || "Общий табель"});
 
@@ -179,15 +193,11 @@ window.AsgardGlobalTimesheetPage=(function(){
 
       const dd = document.createElement('div');
       dd.className = 'ts-dropdown';
-      dd.style.cssText = 'position:absolute;z-index:100;background:var(--bg2);border:1px solid var(--brd);border-radius:var(--r-md);padding:4px;box-shadow:var(--shadow-md);min-width:120px';
 
       editableTypes.forEach(type=>{
         const ct = CELL_TYPES[type];
         const btn = document.createElement('button');
-        btn.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;padding:6px 10px;border:none;background:none;color:var(--t1);cursor:pointer;border-radius:var(--r-sm);font-size:13px';
-        btn.innerHTML = `<span style="background:${ct.bg};color:${ct.color};width:24px;height:20px;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600">${ct.label}</span> ${ct.title}`;
-        btn.addEventListener('mouseenter', ()=>{ btn.style.background='var(--bg4)'; });
-        btn.addEventListener('mouseleave', ()=>{ btn.style.background='none'; });
+        btn.innerHTML = `<span class="ts-cell" style="background:${ct.bg};color:${ct.color}">${ct.label}</span> ${ct.title}`;
         btn.addEventListener('click', async ()=>{
           dd.remove();
           try{
@@ -200,7 +210,7 @@ window.AsgardGlobalTimesheetPage=(function(){
               const err = await resp.json().catch(()=>({}));
               throw new Error(err.error||'Ошибка сохранения');
             }
-            toast("Табель","Отметка добавлена","success");
+            toast("Табель","Отметка добавлена","ok");
             await refresh();
           }catch(e){
             toast("Ошибка", e.message, "err");
@@ -258,7 +268,7 @@ window.AsgardGlobalTimesheetPage=(function(){
         a.download = `табель_${curYear}_${String(curMonth).padStart(2,'0')}.xlsx`;
         a.click();
         URL.revokeObjectURL(url);
-        toast("Экспорт","Файл скачан","success");
+        toast("Экспорт","Файл скачан","ok");
       }catch(e){
         toast("Ошибка","Не удалось скачать Excel","err");
       }

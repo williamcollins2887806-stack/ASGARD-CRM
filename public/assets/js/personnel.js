@@ -137,8 +137,8 @@ window.AsgardPersonnelPage = (function () {
     return `
       <div style="min-width:110px">
         <div style="font-size:11px;color:var(--t3);margin-bottom:3px">${fmtMoney(transferred)} / ${fmtMoney(limit)}</div>
-        <div style="background:var(--bg3);border-radius:4px;height:6px;overflow:hidden">
-          <div style="width:${pct}%;height:100%;background:${barColor};border-radius:4px;transition:width .3s"></div>
+        <div style="background:var(--bg3);border-radius:var(--r-sm);height:6px;overflow:hidden">
+          <div style="width:${pct}%;height:100%;background:${barColor};border-radius:var(--r-sm);transition:width .3s"></div>
         </div>
         <div style="font-size:10px;color:var(--t3);margin-top:2px;text-align:right">${pct}%</div>
       </div>`;
@@ -237,7 +237,7 @@ window.AsgardPersonnelPage = (function () {
       const cnt = groups[s.code] || 0;
       const active = qStatus === s.code ? 'outline:2px solid var(--accent);' : '';
       return `<button class="btn-status-badge" data-status="${s.code}"
-        style="background:var(${s.bgVar});color:var(${s.tVar});border:none;border-radius:8px;
+        style="background:var(${s.bgVar});color:var(${s.tVar});border:none;border-radius:var(--r-md);
                padding:8px 14px;cursor:pointer;${active}transition:opacity .15s">
         <div style="font-size:22px;font-weight:800;line-height:1">${cnt}</div>
         <div style="font-size:11px;opacity:.85;margin-top:2px">${esc(s.label)}</div>
@@ -332,7 +332,7 @@ window.AsgardPersonnelPage = (function () {
 
         <!-- Таблица -->
         <div class="tablewrap">
-          <table class="crm-table" id="prs_table">
+          <table class="asg" id="prs_table">
             <thead>
               <tr>
                 <th>ФИО / Телефон</th>
@@ -579,7 +579,7 @@ window.AsgardPersonnelPage = (function () {
       </div>` : '';
 
     const seBlockHtml = emp?.is_self_employed ? `
-      <div style="margin-top:16px;padding:12px;background:var(--bg2);border-radius:8px">
+      <div style="margin-top:16px;padding:12px;background:var(--bg2);border-radius:var(--r-md)">
         <div style="font-weight:600;color:var(--t1);margin-bottom:8px">СЗ — годовой лимит</div>
         ${seLimitBar(seTrans, SE_YEAR_LIMIT)}
         <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--t3);margin-top:6px">
@@ -630,14 +630,14 @@ window.AsgardPersonnelPage = (function () {
 
         <!-- Форма изменения статуса (скрыта по умолчанию) -->
         <div id="prs_statusForm" style="display:none;margin-top:12px;padding:12px;
-             background:var(--bg2);border-radius:8px">
+             background:var(--bg2);border-radius:var(--r-md)">
         </div>
 
         ${seBlockHtml}
 
         <!-- Официальное трудоустройство (read-only) -->
         ${emp?.is_officially_employed ? `
-          <div style="margin-top:16px;padding:12px;background:var(--bg2);border-radius:8px">
+          <div style="margin-top:16px;padding:12px;background:var(--bg2);border-radius:var(--r-md)">
             <div style="font-weight:600;color:var(--t1);margin-bottom:8px">Официальное трудоустройство</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:13px">
               <div style="color:var(--t3)">Оклад:</div>
@@ -646,7 +646,7 @@ window.AsgardPersonnelPage = (function () {
               <div style="color:var(--t1)">${fmtDate(emp.hire_date || emp.employment_date)}</div>
               <div style="color:var(--t3)">Статус:</div>
               <div><span style="background:var(--ok-bg);color:var(--ok-t);padding:2px 8px;
-                   border-radius:6px;font-size:11px">Трудоустроен</span></div>
+                   border-radius:var(--r-sm);font-size:11px">Трудоустроен</span></div>
             </div>
           </div>` : ''}
 

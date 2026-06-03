@@ -52,7 +52,7 @@ window.AsgardTrainingBoard = (function () {
 
   function statusBadge(key) {
     const s = STATUS_CFG[key] || { label: key || '—', bg: 'var(--bg3)', color: 'var(--t3)' };
-    return `<span style="display:inline-block;padding:3px 9px;border-radius:4px;
+    return `<span style="display:inline-block;padding:3px 9px;border-radius:var(--r-sm);
                          font-size:12px;font-weight:600;
                          background:${s.bg};color:${s.color};">${esc(s.label)}</span>`;
   }
@@ -62,9 +62,9 @@ window.AsgardTrainingBoard = (function () {
     if (!deadline) return '';
     const diff = (new Date(deadline) - Date.now()) / (1000 * 60 * 60 * 24);
     if (diff < 0) return `background:var(--err-bg);color:var(--err-t);font-weight:700;
-                          padding:3px 7px;border-radius:4px;`;
+                          padding:3px 7px;border-radius:var(--r-sm);`;
     if (diff < 7) return `background:var(--warn-bg);color:var(--warn-t);font-weight:600;
-                          padding:3px 7px;border-radius:4px;`;
+                          padding:3px 7px;border-radius:var(--r-sm);`;
     return '';
   }
 
@@ -79,7 +79,7 @@ window.AsgardTrainingBoard = (function () {
 
     const th = label => `
       <th style="padding:10px 14px;text-align:left;color:var(--t2);font-size:13px;
-                 font-weight:600;white-space:nowrap;border-bottom:2px solid var(--border);">
+                 font-weight:600;white-space:nowrap;border-bottom:2px solid var(--brd);">
         ${label}
       </th>`;
 
@@ -103,7 +103,7 @@ window.AsgardTrainingBoard = (function () {
 
       return `
         <tr class="tb-row" data-id="${t.id}"
-            style="border-bottom:1px solid var(--border);transition:background .12s;">
+            style="border-bottom:1px solid var(--brd);transition:background .12s;">
           <td style="padding:10px 14px;color:var(--t1);font-weight:500;">
             ${esc(name)}
             ${t.position ? `<div style="font-size:11px;color:var(--t3);margin-top:2px;">${esc(t.position)}</div>` : ''}
@@ -186,10 +186,10 @@ window.AsgardTrainingBoard = (function () {
         </div>
 
         ${hasFile ? `
-          <div style="padding-top:8px;border-top:1px solid var(--border);">
+          <div style="padding-top:8px;border-top:1px solid var(--brd);">
             <a href="/api/training/download/${t.id}" target="_blank"
                style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;
-                      border-radius:6px;background:var(--info-bg);color:var(--info-t);
+                      border-radius:var(--r-sm);background:var(--info-bg);color:var(--info-t);
                       text-decoration:none;font-size:13px;font-weight:500;">
               📄 Скачать сертификат
             </a>
@@ -202,7 +202,7 @@ window.AsgardTrainingBoard = (function () {
 
   function openCompleteModal(t) {
     const inpStyle = `style="width:100%;box-sizing:border-box;padding:9px 11px;
-                             border:1px solid var(--border);border-radius:6px;
+                             border:1px solid var(--brd);border-radius:var(--r-sm);
                              background:var(--bg2);color:var(--t1);font-size:14px;"`;
 
     const body = `
@@ -236,7 +236,7 @@ window.AsgardTrainingBoard = (function () {
           </label>
           <input id="tc_file" type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
             style="width:100%;box-sizing:border-box;padding:8px;
-                   background:var(--bg2);border:1px solid var(--border);border-radius:6px;
+                   background:var(--bg2);border:1px solid var(--brd);border-radius:var(--r-sm);
                    color:var(--t1);font-size:13px;cursor:pointer;">
           <div id="tc_file_status" style="margin-top:6px;font-size:12px;color:var(--t3);"></div>
         </div>
@@ -244,12 +244,12 @@ window.AsgardTrainingBoard = (function () {
 
       <div style="display:flex;justify-content:flex-end;gap:10px;">
         <button id="tc_cancel"
-          style="padding:9px 22px;border:1px solid var(--border);border-radius:6px;
+          style="padding:9px 22px;border:1px solid var(--brd);border-radius:var(--r-sm);
                  background:var(--bg2);color:var(--t2);cursor:pointer;font-size:14px;">
           Отмена
         </button>
         <button id="tc_save"
-          style="padding:9px 24px;border:none;border-radius:6px;background:var(--ok-bg);
+          style="padding:9px 24px;border:none;border-radius:var(--r-sm);background:var(--ok-bg);
                  color:var(--ok-t);cursor:pointer;font-weight:600;font-size:14px;
                  border:1px solid var(--ok-t);">
           ✅ Завершить обучение
@@ -302,11 +302,11 @@ window.AsgardTrainingBoard = (function () {
           valid_to:           validTo,
         });
 
-        toast('Обучение завершено', 'success');
+        toast('Готово', 'Обучение завершено', 'ok');
         closeModal();
         await load();
       } catch (e) {
-        toast('Ошибка: ' + e.message, 'error');
+        toast('Ошибка', e.message, 'err');
         btn.disabled    = false;
         btn.textContent = '✅ Завершить обучение';
         $('#tc_file_status').textContent = '';
@@ -341,10 +341,10 @@ window.AsgardTrainingBoard = (function () {
         }).length;
 
         summary.innerHTML = [
-          counts.pending     ? `<span style="padding:5px 12px;background:var(--warn-bg);border-radius:6px;font-size:13px;color:var(--warn-t);">Ожидает: <b>${counts.pending}</b></span>` : '',
-          counts.in_progress ? `<span style="padding:5px 12px;background:var(--info-bg);border-radius:6px;font-size:13px;color:var(--info-t);">В процессе: <b>${counts.in_progress}</b></span>` : '',
-          counts.overdue     ? `<span style="padding:5px 12px;background:var(--err-bg);border-radius:6px;font-size:13px;color:var(--err-t);">Просрочено: <b>${counts.overdue}</b></span>` : '',
-          soon               ? `<span style="padding:5px 12px;background:var(--warn-bg);border-radius:6px;font-size:13px;color:var(--warn-t);">Дедлайн &lt;7д: <b>${soon}</b></span>` : '',
+          counts.pending     ? `<span style="padding:5px 12px;background:var(--warn-bg);border-radius:var(--r-sm);font-size:13px;color:var(--warn-t);">Ожидает: <b>${counts.pending}</b></span>` : '',
+          counts.in_progress ? `<span style="padding:5px 12px;background:var(--info-bg);border-radius:var(--r-sm);font-size:13px;color:var(--info-t);">В процессе: <b>${counts.in_progress}</b></span>` : '',
+          counts.overdue     ? `<span style="padding:5px 12px;background:var(--err-bg);border-radius:var(--r-sm);font-size:13px;color:var(--err-t);">Просрочено: <b>${counts.overdue}</b></span>` : '',
+          soon               ? `<span style="padding:5px 12px;background:var(--warn-bg);border-radius:var(--r-sm);font-size:13px;color:var(--warn-t);">Дедлайн &lt;7д: <b>${soon}</b></span>` : '',
         ].filter(Boolean).join('');
       }
 
@@ -364,10 +364,10 @@ window.AsgardTrainingBoard = (function () {
           btn.textContent = '…';
           try {
             await apiFetch('PUT', `/api/training/${btn.dataset.id}/start`);
-            toast('Обучение начато', 'success');
+            toast('Готово', 'Обучение начато', 'ok');
             await load();
           } catch (e) {
-            toast('Ошибка: ' + e.message, 'error');
+            toast('Ошибка', e.message, 'err');
             btn.disabled = false;
             btn.textContent = '▶ Начать';
           }
@@ -409,7 +409,7 @@ window.AsgardTrainingBoard = (function () {
     _token = auth.token || localStorage.getItem('asgard_token') || localStorage.getItem('auth_token') || '';
 
     if (!ALLOWED.includes(user.role)) {
-      toast('Недостаточно прав', 'error');
+      toast('Доступ', 'Недостаточно прав', 'err');
       location.hash = '#/home';
       return;
     }
@@ -429,8 +429,8 @@ window.AsgardTrainingBoard = (function () {
              style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;"></div>
 
         <div id="tb_table_wrap"
-             style="background:var(--bg1);border:1px solid var(--border);
-                    border-radius:8px;overflow:hidden;">
+             style="background:var(--bg1);border:1px solid var(--brd);
+                    border-radius:var(--r-md);overflow:hidden;">
         </div>
       </div>`;
 

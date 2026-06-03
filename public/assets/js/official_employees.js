@@ -57,7 +57,7 @@ window.AsgardOfficialEmployeesPage = (function () {
 
   function statusBadge(key) {
     const s = STATUS_CFG[key] || { label: key || '—', bg: 'var(--bg3)', color: 'var(--t2)' };
-    return `<span style="display:inline-block;padding:3px 10px;border-radius:4px;
+    return `<span style="display:inline-block;padding:3px 10px;border-radius:var(--r-sm);
                          font-size:12px;font-weight:600;
                          background:${s.bg};color:${s.color};">${esc(s.label)}</span>`;
   }
@@ -73,7 +73,7 @@ window.AsgardOfficialEmployeesPage = (function () {
 
     const th = label => `
       <th style="padding:10px 14px;text-align:left;color:var(--t2);font-size:13px;
-                 font-weight:600;white-space:nowrap;border-bottom:2px solid var(--border);">
+                 font-weight:600;white-space:nowrap;border-bottom:2px solid var(--brd);">
         ${label}
       </th>`;
 
@@ -87,7 +87,7 @@ window.AsgardOfficialEmployeesPage = (function () {
       const name       = e.full_name  || e.fio || '—';
       return `
         <tr class="oe-row" data-id="${e.id}"
-            style="border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;">
+            style="border-bottom:1px solid var(--brd);cursor:pointer;transition:background .12s;">
           <td style="padding:10px 14px;color:var(--t1);font-weight:500;">
             ${esc(name)}
             ${e.position || e.role_tag
@@ -121,7 +121,7 @@ window.AsgardOfficialEmployeesPage = (function () {
       .join('');
 
     const inpStyle = `style="width:100%;box-sizing:border-box;padding:9px 11px;
-                             border:1px solid var(--border);border-radius:6px;
+                             border:1px solid var(--brd);border-radius:var(--r-sm);
                              background:var(--bg2);color:var(--t1);font-size:14px;"`;
 
     const body = `
@@ -147,7 +147,7 @@ window.AsgardOfficialEmployeesPage = (function () {
           Статус занятости
         </label>
         <select id="oe_status"
-          style="width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:6px;
+          style="width:100%;padding:9px 11px;border:1px solid var(--brd);border-radius:var(--r-sm);
                  background:var(--bg2);color:var(--t1);font-size:14px;">
           ${statusOptions}
         </select>
@@ -172,8 +172,8 @@ window.AsgardOfficialEmployeesPage = (function () {
       </div>
 
       <!-- Смена типа занятости -->
-      <div style="padding:14px 16px;background:var(--bg2);border-radius:8px;
-                  border:1px solid var(--border);margin-bottom:22px;">
+      <div style="padding:14px 16px;background:var(--bg2);border-radius:var(--r-md);
+                  border:1px solid var(--brd);margin-bottom:22px;">
         <p style="margin:0 0 6px;font-size:12px;color:var(--t2);font-weight:600;
                   text-transform:uppercase;letter-spacing:.04em;">
           Смена типа занятости
@@ -184,13 +184,13 @@ window.AsgardOfficialEmployeesPage = (function () {
         </p>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button id="oe_to_self"
-            style="padding:7px 14px;border:1px solid var(--warn-t);border-radius:6px;
+            style="padding:7px 14px;border:1px solid var(--warn-t);border-radius:var(--r-sm);
                    background:transparent;color:var(--warn-t);cursor:pointer;
                    font-size:13px;font-weight:500;">
             → Перевести в самозанятые
           </button>
           <button id="oe_to_salary"
-            style="padding:7px 14px;border:1px solid var(--info-t);border-radius:6px;
+            style="padding:7px 14px;border:1px solid var(--info-t);border-radius:var(--r-sm);
                    background:transparent;color:var(--info-t);cursor:pointer;
                    font-size:13px;font-weight:500;">
             → Перевести на оклад
@@ -200,12 +200,12 @@ window.AsgardOfficialEmployeesPage = (function () {
 
       <div style="display:flex;justify-content:flex-end;gap:10px;">
         <button id="oe_cancel"
-          style="padding:9px 22px;border:1px solid var(--border);border-radius:6px;
+          style="padding:9px 22px;border:1px solid var(--brd);border-radius:var(--r-sm);
                  background:var(--bg2);color:var(--t2);cursor:pointer;font-size:14px;">
           Отмена
         </button>
         <button id="oe_save"
-          style="padding:9px 24px;border:none;border-radius:6px;background:var(--accent);
+          style="padding:9px 24px;border:none;border-radius:var(--r-sm);background:var(--accent);
                  color:var(--t1);cursor:pointer;font-weight:600;font-size:14px;">
           Сохранить
         </button>
@@ -236,11 +236,11 @@ window.AsgardOfficialEmployeesPage = (function () {
           official_leave_from:   $('#oe_leave_from').value || null,
           official_leave_to:     $('#oe_leave_to').value   || null,
         });
-        toast('Данные обновлены', 'success');
+        toast('Готово', 'Данные обновлены', 'ok');
         closeModal();
         await load();
       } catch (e) {
-        toast('Ошибка: ' + e.message, 'error');
+        toast('Ошибка', e.message, 'err');
         btn.disabled    = false;
         btn.textContent = 'Сохранить';
       }
@@ -248,10 +248,9 @@ window.AsgardOfficialEmployeesPage = (function () {
 
     /* transfer to self-employed */
     $('#oe_to_self').addEventListener('click', async () => {
-      const ok = window.confirm(
+      const ok = await AsgardUI.confirm(
         `Перевести «${name}» в самозанятые?\n\n` +
-        '⚠ ВНИМАНИЕ: убедитесь, что текущий месяц закрыт.\n' +
-        'Изменение типа занятости влияет на расчёт зарплаты и налоговую отчётность.'
+        'Убедитесь, что текущий месяц закрыт. Изменение типа занятости влияет на расчёт зарплаты и налоговую отчётность.'
       );
       if (!ok) return;
       try {
@@ -259,20 +258,19 @@ window.AsgardOfficialEmployeesPage = (function () {
           is_officially_employed: false,
           is_self_employed:       true,
         });
-        toast('Переведён в самозанятые', 'success');
+        toast('Готово', 'Переведён в самозанятые', 'ok');
         closeModal();
         await load();
       } catch (e) {
-        toast('Ошибка: ' + e.message, 'error');
+        toast('Ошибка', e.message, 'err');
       }
     });
 
     /* transfer to official salary */
     $('#oe_to_salary').addEventListener('click', async () => {
-      const ok = window.confirm(
+      const ok = await AsgardUI.confirm(
         `Перевести «${name}» на официальный оклад?\n\n` +
-        '⚠ ВНИМАНИЕ: убедитесь, что текущий месяц закрыт.\n' +
-        'Изменение типа занятости влияет на расчёт зарплаты и налоговую отчётность.'
+        'Убедитесь, что текущий месяц закрыт. Изменение типа занятости влияет на расчёт зарплаты и налоговую отчётность.'
       );
       if (!ok) return;
       try {
@@ -280,11 +278,11 @@ window.AsgardOfficialEmployeesPage = (function () {
           is_officially_employed: true,
           is_self_employed:       false,
         });
-        toast('Переведён на официальный оклад', 'success');
+        toast('Готово', 'Переведён на официальный оклад', 'ok');
         closeModal();
         await load();
       } catch (e) {
-        toast('Ошибка: ' + e.message, 'error');
+        toast('Ошибка', e.message, 'err');
       }
     });
   }
@@ -309,17 +307,17 @@ window.AsgardOfficialEmployeesPage = (function () {
       const summary = $('#oe_summary');
       if (summary) {
         summary.innerHTML = `
-          <span style="padding:6px 14px;background:var(--bg2);border-radius:6px;font-size:13px;color:var(--t2);">
+          <span style="padding:6px 14px;background:var(--bg2);border-radius:var(--r-sm);font-size:13px;color:var(--t2);">
             Всего: <b style="color:var(--t1);">${total}</b>
           </span>
-          <span style="padding:6px 14px;background:var(--ok-bg);border-radius:6px;font-size:13px;color:var(--ok-t);">
+          <span style="padding:6px 14px;background:var(--ok-bg);border-radius:var(--r-sm);font-size:13px;color:var(--ok-t);">
             Работают: <b>${active}</b>
           </span>
           ${onLeave ? `
-            <span style="padding:6px 14px;background:var(--warn-bg);border-radius:6px;font-size:13px;color:var(--warn-t);">
+            <span style="padding:6px 14px;background:var(--warn-bg);border-radius:var(--r-sm);font-size:13px;color:var(--warn-t);">
               В отпуске/больничном: <b>${onLeave}</b>
             </span>` : ''}
-          <span style="padding:6px 14px;background:var(--bg2);border-radius:6px;font-size:13px;color:${debtColor};">
+          <span style="padding:6px 14px;background:var(--bg2);border-radius:var(--r-sm);font-size:13px;color:${debtColor};">
             Суммарный долг: <b>${rub(totalDebt)}</b>
           </span>`;
       }
@@ -351,7 +349,7 @@ window.AsgardOfficialEmployeesPage = (function () {
     _token = auth.token || localStorage.getItem('asgard_token') || localStorage.getItem('auth_token') || '';
 
     if (!ALLOWED.includes(user.role)) {
-      toast('Недостаточно прав', 'error');
+      toast('Доступ', 'Недостаточно прав', 'err');
       location.hash = '#/home';
       return;
     }
@@ -371,8 +369,8 @@ window.AsgardOfficialEmployeesPage = (function () {
              style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;"></div>
 
         <div id="oe_table_wrap"
-             style="background:var(--bg1);border:1px solid var(--border);
-                    border-radius:8px;overflow:hidden;">
+             style="background:var(--bg1);border:1px solid var(--brd);
+                    border-radius:var(--r-md);overflow:hidden;">
         </div>
       </div>`;
 

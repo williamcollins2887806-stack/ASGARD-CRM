@@ -1,4 +1,5 @@
 window.AsgardPayrollDashboard=(function(){
+  'use strict';
   const { $, $$, esc, toast, showModal, closeModal } = AsgardUI;
   const isDirRole = (r)=> (window.AsgardAuth&&AsgardAuth.isDirectorRole)?AsgardAuth.isDirectorRole(r):(String(r||"").startsWith("DIRECTOR"));
   const fmt = (n)=> n==null?'—': new Intl.NumberFormat('ru-RU').format(Math.round(n));
@@ -49,7 +50,7 @@ window.AsgardPayrollDashboard=(function(){
           </div>
         </div>
         <div class="tablewrap" style="margin-bottom:20px">
-          <table class="crm-table" id="pd_transfers_table">
+          <table class="asg" id="pd_transfers_table">
             <thead><tr>
               <th>ФИО</th><th>Тип</th><th>Заработал</th><th>Перевели</th><th>Возврат</th><th>Статус</th><th></th>
             </tr></thead>
@@ -60,7 +61,7 @@ window.AsgardPayrollDashboard=(function(){
 
         <h3 style="color:var(--t1);margin-bottom:12px">Годовые лимиты самозанятых</h3>
         <div class="tablewrap">
-          <table class="crm-table" id="pd_limits_table">
+          <table class="asg" id="pd_limits_table">
             <thead><tr>
               <th>ФИО</th><th>Переведено за год</th><th>Годовой лимит</th><th>Остаток</th><th>Прогресс</th>
             </tr></thead>
@@ -179,7 +180,7 @@ window.AsgardPayrollDashboard=(function(){
             if(!await AsgardUI.confirm('Подтвердить получение наличных?')) return;
             try{
               await apiPut(`/api/payroll-dashboard/se-transfers/${id}/confirm-return`);
-              toast("Готово","Возврат подтверждён","success");
+              toast("Готово","Возврат подтверждён","ok");
               await refreshAll();
             }catch(e){ toast("Ошибка",e.message,"err"); }
           });
@@ -237,17 +238,17 @@ window.AsgardPayrollDashboard=(function(){
           <div class="formrow">
             <div style="grid-column:1/-1">
               <label>Рабочий (самозанятый)</label>
-              <select id="at_employee" style="width:100%;padding:8px;background:var(--bg2);color:var(--t1);border:1px solid var(--brd);border-radius:var(--r-sm)">
+              <select id="at_employee">
                 <option value="">Выберите...</option>${opts}
               </select>
             </div>
             <div>
               <label>Сумма перевода</label>
-              <input id="at_amount" type="number" value="${monthlyLimit}" style="width:100%;padding:8px;background:var(--bg2);color:var(--t1);border:1px solid var(--brd);border-radius:var(--r-sm)"/>
+              <input id="at_amount" type="number" value="${monthlyLimit}"/>
             </div>
             <div style="grid-column:1/-1">
               <label>Комментарий</label>
-              <textarea id="at_comment" rows="2" style="width:100%;padding:8px;background:var(--bg2);color:var(--t1);border:1px solid var(--brd);border-radius:var(--r-sm)" placeholder="По договорённости"></textarea>
+              <textarea id="at_comment" rows="2" placeholder="По договорённости"></textarea>
             </div>
           </div>
           <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
@@ -276,7 +277,7 @@ window.AsgardPayrollDashboard=(function(){
               comment: comment || 'По договорённости'
             });
             closeModal();
-            toast("Готово","Перевод создан","success");
+            toast("Готово","Перевод создан","ok");
             await refreshAll();
           }catch(e){
             toast("Ошибка", e.message, "err");
