@@ -279,6 +279,11 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/workers-schedule",l:"График: Рабочие",d:"Бронь и доступность",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"workers",p:"workers_schedule",g:"personnel"},
     {r:"/hr-rating",l:"Рейтинг Дружины",d:"Оценки и средний балл",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"rating",p:"hr_rating",g:"personnel"},
     {r:"/travel",l:"Жильё и билеты",d:"Проживание и транспорт",roles:["ADMIN","OFFICE_MANAGER","HR","HR_MANAGER","PM",...DIRECTOR_ROLES],i:"travel",p:"travel",g:"personnel"},
+    {r:"/global-timesheet",l:"Общий табель",d:"Все рабочие за месяц",roles:["ADMIN","TO","HEAD_TO","WAREHOUSE",...DIRECTOR_ROLES],i:"calendar",p:"global_timesheet",g:"personnel"},
+    {r:"/payroll-dashboard",l:"Финансы персонала",d:"Дашборд выплат",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"money",p:"payroll_dashboard",g:"personnel"},
+    {r:"/official-employees",l:"Официально устроенные",d:"Оклады и статусы",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"workers",p:"official_employees",g:"personnel"},
+    {r:"/training-board",l:"Обучение и допуски",d:"Допуски и обучение рабочих",roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES],i:"school",p:"training_board",g:"personnel"},
+    {r:"/pm-balance",l:"Баланс РП",d:"Наличные на руках",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"money",p:"pm_balance",g:"personnel"},
 
     // ── КОММУНИКАЦИИ ──
     {r:"/messenger",l:"Хугинн",d:"Вороний Вестник — чаты",roles:ALL_ROLES,i:"correspondence",p:"chat_groups",g:"comm"},
@@ -2098,7 +2103,13 @@ var _setupPinKeypad = null;
     AsgardRouter.add("/collections", () => { AsgardEmployeeCollections.render({layout, title:"Подборки Дружины"}); }, {auth:true, roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES]});
     AsgardRouter.add("/hr-requests", () => {
       AsgardHrRequestsPage.render({layout, title:"Заявки персонала"});
-    }, {auth:true, roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES]});
+    }, {auth:true, roles:["ADMIN","HR","HR_MANAGER","PM","HEAD_PM",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/global-timesheet", ()=>AsgardGlobalTimesheetPage.render({layout, title:"Общий табель"}), {auth:true, roles:["ADMIN","TO","HEAD_TO","WAREHOUSE",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/payroll-dashboard", ()=>AsgardPayrollDashboard.render({layout, title:"Финансы персонала"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/official-employees", ()=>AsgardOfficialEmployeesPage.render({layout, title:"Официально устроенные"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/training-board", ()=>AsgardTrainingBoard.render({layout, title:"Обучение и допуски"}), {auth:true, roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/pm-balance", ()=>AsgardPmBalancePage.render({layout, title:"Баланс РП"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/pm-balance/:pm_id", ()=>AsgardPmBalancePage.renderDetail({layout, title:"Баланс РП"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/procurement", ()=>AsgardProcurementPage.render({layout, title:"Закупки"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","PROC","BUH","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"]});
 AsgardRouter.add("/assembly", ()=>AsgardAssemblyPage.render({layout, title:"Сбор"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","WAREHOUSE","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"]});
     AsgardRouter.add("/training", () => { AsgardTrainingPage.render({layout, title:"Обучение"}); }, {auth:true});

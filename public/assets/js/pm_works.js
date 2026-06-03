@@ -962,28 +962,9 @@ window.AsgardPmWorksPage=(function(){
         </div>
 
         <hr class="hr"/>
-        <div class="cr-f-section"><span class="cr-f-section__icon" style="color:var(--purple-l)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><span>Персонал (заявка HR)</span></div>
-        <div class="formrow">
-          <div style="display:flex; align-items:flex-end; gap:10px">
-            <label style="display:flex; gap:10px; align-items:center; text-transform:none !important; font-size:13px !important">
-              <input type="checkbox" id="sr_is_vachta" />
-              <span>Вахта</span>
-            </label>
-          </div>
-          <div><label>Срок ротации, дней</label><input id="sr_rotation_days" placeholder="0" /></div>
-        </div>
-        <div class="formrow">
-          <div><label>Мастера</label><input id="sr_Мастера" placeholder="0" /></div>
-          <div><label>Слесари</label><input id="sr_Слесари" placeholder="0" /></div>
-          <div><label>ПТО</label><input id="sr_ПТО" placeholder="0" /></div>
-          <div><label>Промывщики</label><input id="sr_Промывщики" placeholder="0" /></div>
-          <div style="grid-column:1/-1"><label>Комментарий к запросу</label><input id="sr_comment" placeholder="условия, сменность, требования" /></div>
-        </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px">
-          <button class="btn primary" id="btnReqStaff">Запросить рабочих</button>
-          <button class="btn ghost" id="btnViewStaff">Статус/ответ</button>
-          <button class="btn ghost" id="btnApproveStaff">Принять</button>
-          <button class="btn ghost" id="btnAskStaff">Вопрос</button>
+        <div style="display:flex; gap:8px; align-items:center; margin-bottom:16px">
+          <button class="btn primary" id="btnNewStaffRequest">📨 Запросить рабочих</button>
+          <button class="btn ghost" id="btnViewStaffRequests">📋 Мои заявки</button>
         </div>
 
         <hr class="hr"/>
@@ -1383,138 +1364,14 @@ window.AsgardPmWorksPage=(function(){
         }
       }
 
-      const hrUserId = AsgardWorksShared.findHrUserId;
-
-      const btnReqStaff = document.getElementById("btnReqStaff");
-      const btnViewStaff = document.getElementById("btnViewStaff");
-      const btnApproveStaff = document.getElementById("btnApproveStaff");
-      const btnAskStaff = document.getElementById("btnAskStaff");
-
-      if(btnViewStaff) btnViewStaff.addEventListener("click", openStaffReqModal);
-      if(btnAskStaff) btnAskStaff.addEventListener("click", openStaffReqModal);
-
-      if(btnReqStaff) btnReqStaff.addEventListener("click", async ()=>{
-        // вахта
-        w.is_vachta = !!(document.getElementById("sr_is_vachta") && document.getElementById("sr_is_vachta").checked);
-        w.rotation_days = Math.max(0, Math.round(num((document.getElementById("sr_rotation_days")||{}).value,0)));
-        if(w.is_vachta && !w.rotation_days){
-          toast("Вахта","Укажите срок ротации (дней)","err");
-          return;
-        }
-        const reqObj = {
-          "Мастера": Math.max(0, Math.round(num($("#sr_Мастера").value,0))),
-          "Слесари": Math.max(0, Math.round(num($("#sr_Слесари").value,0))),
-          "ПТО": Math.max(0, Math.round(num($("#sr_ПТО").value,0))),
-          "Промывщики": Math.max(0, Math.round(num($("#sr_Промывщики").value,0)))
-        };
-        const total = Object.values(reqObj).reduce((a,b)=>a+Number(b||0),0);
-        if(!total){ toast("Персонал","Укажите количество людей","err"); return; }
-        const comment = String($("#sr_comment").value||"").trim();
-        const idReq = await upsertStaffRequest({ work:w, pmUser:user, requestObj:reqObj, comment });
-        await audit(user.id, "staff_request", idReq, "send", { work_id:w.id, req:reqObj });
-        const hrId = await hrUserId();
-        await notify(hrId, "Новая заявка персонала", `${w.customer_name||""} — ${w.work_title||""}`, "#/hr-requests");
-        toast("Персонал","Заявка отправлена HR");
+      // Новые кнопки персонала — переход на страницу заявок HR v2
+      const btnNewStaffRequest = document.getElementById("btnNewStaffRequest");
+      const btnViewStaffRequests = document.getElementById("btnViewStaffRequests");
+      if(btnNewStaffRequest) btnNewStaffRequest.addEventListener("click", ()=>{
+        location.hash = `#/hr-requests?create=1&work_id=${w.id}`;
       });
-
-      if(btnApproveStaff) btnApproveStaff.addEventListener("click", async ()=>{
-        const req = await getStaffReq();
-        if(!req){ toast("Персонал","Заявка не найдена","err"); return; }
-        if(String(req.status||"") !== "answered"){
-          toast("Персонал","Нужно дождаться ответа HR (статус answered)","err");
-          return;
-        }
-        const isVachta = !!req.is_vachta;
-        let idsA2 = safeJson(req.proposed_staff_ids_a_json, []);
-        let idsB2 = safeJson(req.proposed_staff_ids_b_json, []);
-        let ids2 = safeJson(req.proposed_staff_ids_json, []);
-        if (!Array.isArray(idsA2)) idsA2 = [];
-        if (!Array.isArray(idsB2)) idsB2 = [];
-        if (!Array.isArray(ids2)) ids2 = [];
-        const roster = isVachta ? Array.from(new Set([...idsA2,...idsB2])) : ids2;
-        if(!Array.isArray(roster) || !roster.length){ toast("Персонал","HR не выбрал людей","err"); return; }
-
-        // Auto-booking to workers schedule (обычная/вахта)
-        const booking = window.AsgardBooking;
-        if(!booking){ toast("Персонал","Модуль брони не найден","err"); return; }
-
-        function vachtaDates(startIso, endIso, rotationDays, crewIndex){
-          const out=[];
-          const s=new Date(String(startIso)); s.setHours(0,0,0,0);
-          const e=new Date(String(endIso)); e.setHours(0,0,0,0);
-          if(isNaN(s.getTime())||isNaN(e.getTime())||e<s) return out;
-          const d = Math.max(1, Math.round(Number(rotationDays||0)));
-          for(let cur=new Date(s); cur<=e; cur.setDate(cur.getDate()+1)){
-            const diffDays = Math.floor((cur.getTime()-s.getTime())/(24*60*60*1000));
-            const seg = Math.floor(diffDays/d) % 2;
-            if(seg===crewIndex){ out.push(booking.ymd(cur)); }
-          }
-          return out;
-        }
-
-        let res = null;
-        if(!isVachta){
-          res = await (booking.bookEmployeesForWork ? booking.bookEmployeesForWork({ employeeIds: roster, work: w, staff_request_id: req.id, actor_user_id: user.id }) : { ok:false, error:"NO_BOOKING" });
-        }else{
-          const rot = Number(req.rotation_days||w.rotation_days||0)||0;
-          if(!rot){ toast("Вахта","Не задан срок ротации","err"); return; }
-          const dr = await booking.getWorkDateRange(w);
-          if(!dr.start || !dr.end){ res = { ok:false, error:"NO_DATES" }; }
-          else{
-            const datesA = vachtaDates(dr.start, dr.end, rot, 0);
-            const datesB = vachtaDates(dr.start, dr.end, rot, 1);
-            const rA = await booking.bookEmployeesForDates({ employeeIds: (idsA||[]), dates: datesA, work: w, staff_request_id: req.id, actor_user_id: user.id, note:"вахта А" });
-            if(!rA.ok){ res = Object.assign({ which:"A" }, rA); }
-            else{
-              const rB = await booking.bookEmployeesForDates({ employeeIds: (idsB||[]), dates: datesB, work: w, staff_request_id: req.id, actor_user_id: user.id, note:"вахта Б" });
-              res = rB.ok ? { ok:true, start:dr.start, end:dr.end, written:(rA.written||0)+(rB.written||0) } : Object.assign({ which:"B" }, rB);
-            }
-          }
-        }
-        if(!res.ok){
-          if(res.error==="NO_DATES"){
-            toast("Персонал","Не заданы даты работ (старт/план). Укажите в карточке работы.","err", 7000);
-            return;
-          }
-          if(res.error==="CONFLICT"){
-            const emps = await AsgardDB.all("employees");
-            const empById = new Map((emps||[]).map(e=>[e.id,e]));
-            const rows = (res.conflicts||[]).map(c=>{
-              const e = empById.get(c.employee_id);
-              const name = e ? (e.fio||"") : `ID ${c.employee_id}`;
-              const days = c.rows.map(r=>`${r.date ? AsgardUI.formatDate(r.date) : r.date} (work #${esc(String(r.work_id||""))})`).join(", ");
-              return `<div class="pill"><div class="who"><b>${esc(name)}</b></div><div class="role">${days}</div></div>`;
-            }).join("");
-            showModal("Конфликт брони", `
-              <div class="help">Найден конфликт брони на период ${esc(res.start)} — ${esc(res.end)}. Согласование заблокировано.
-              Сдвигать бронь может только Трухин (страница «График Дружины • Рабочие»).</div>
-              <div style="margin-top:10px">${rows || ""}</div>
-              <div class="row" style="justify-content:flex-end; gap:8px; margin-top:12px">
-                <a class="btn" href="#/workers-schedule">Открыть график</a>
-              </div>
-            `);
-            return;
-          }
-          toast("Персонал","Не удалось выполнить автобронь","err", 7000);
-          return;
-        }
-
-        req.status = "approved";
-        if(isVachta){
-          req.approved_staff_ids_a_json = JSON.stringify(idsA||[]);
-          req.approved_staff_ids_b_json = JSON.stringify(idsB||[]);
-          req.approved_staff_ids_json = JSON.stringify(roster||[]);
-        }else{
-          req.approved_staff_ids_json = JSON.stringify(roster||[]);
-        }
-        req.updated_at = isoNow();
-        await AsgardDB.put("staff_requests", req);
-        await audit(user.id, "staff_request", req.id, "approve", { work_id:w.id, start:res.start||w.start_in_work_date||null, end:res.end||w.end_plan||null, employees:roster, is_vachta:isVachta });
-        const hrId = await hrUserId();
-        await notify(hrId, "Заявка персонала согласована", `${w.customer_name||""} — ${w.work_title||""}`, "#/workers-schedule");
-        const s = res.start||w.start_in_work_date||"";
-        const e = res.end||w.end_plan||"";
-        toast("Персонал", `Согласовано и забронировано: ${s} — ${e}`);
+      if(btnViewStaffRequests) btnViewStaffRequests.addEventListener("click", ()=>{
+        location.hash = `#/hr-requests?work_id=${w.id}`;
       });
 
       $("#btnSaveWork").addEventListener("click", async ()=>{
