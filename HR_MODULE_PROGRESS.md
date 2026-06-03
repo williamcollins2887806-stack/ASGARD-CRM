@@ -1,5 +1,5 @@
 # HR Module v2 — Журнал прогресса
-Последнее обновление: 2026-06-04 ~05:00 UTC
+Последнее обновление: 2026-06-04 ~18:10 UTC
 Сервер: 92.242.61.184 | Ветка: mobile-v3
 
 ---
@@ -84,8 +84,15 @@
 - [x] Все API endpoints соответствуют backend роутам Сессии 1
 
 ### Git
-- [ ] commit: [ожидает]
-- [ ] push origin mobile-v3
+- [x] commit 1: a10ded9 feat(hr-v2): сессия 2 — 7 desktop страниц + маршруты + навигация
+- [x] commit 2: 43b4285 fix(hr-v2): аудит фронтенда — P0+P1+P2 исправления
+- [x] push origin mobile-v3
+
+### Аудит фронтенда (43b4285)
+Полный аудит 7 файлов, исправлено 15 проблем:
+- P0: prompt() → модалка, window.confirm() → AsgardUI.confirm(), CSP (onmouseenter), style-дубли, toast сигнатура
+- P1: crm-table → asg, inline стили форм убраны, --border → --brd, border-radius хардкоды → var()
+- P2: 'use strict', debounce поиска, CSS hover вместо JS
 
 ### Известные проблемы / что не сделано
 - Браузерное тестирование не проводилось (нет доступа к браузеру из CLI)
@@ -110,23 +117,74 @@
 4. Запустить smoke curl тесты — все должны быть 200 (не 404, не 500)
 5. ЕСЛИ что-то не работает → НЕ начинать Шаг 3, сначала починить
 
-### Как запустить тест-сервер для проверки
-```bash
-# На сервере (SSH root@92.242.61.184):
-kill $(lsof -t -i:3001) 2>/dev/null; true
-cd /var/www/asgard-crm && DB_NAME=asgard_crm_test DB_HOST=localhost DB_PASSWORD=123456789 DB_USER=asgard PORT=3001 nohup node src/index.js > /tmp/hr_test_server.log 2>&1 &
-sleep 5
-curl -s http://localhost:3001/api/health  # должен вернуть 200
+---
 
-# Smoke-тесты:
-TOKEN=$(curl -s -X POST http://localhost:3001/api/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"login":"test_director","password":"Test123!"}' | node -e "process.stdin||(d='');process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>console.log(JSON.parse(d).token))")
-for ep in "staff/readiness" "staff-requests/pending" "timesheet/global/2026/6" "payroll-dashboard/summary/2026/6" "payroll-dashboard/pm-balance" "training/pending"; do
-  CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $TOKEN" http://localhost:3001/api/$ep)
-  echo "$ep → $CODE"
-done
+## СЕССИЯ 3: Mobile + Cron + Deploy
 
-# Остановить:
-kill $(lsof -t -i:3001) 2>/dev/null
-```
+### Верификация Сессий 1 и 2
+- [x] Backend файлы существуют (6 route файлов)
+- [x] Роуты зарегистрированы в index.js (6 совпадений)
+- [x] Desktop JS файлы существуют (5 файлов)
+- [x] SHELL_VERSION = 20.13.50
+- [x] Тест-сервер на порту 3001 — все 6 endpoints → 200
+
+### Mobile — Полевой рабочий
+- [x] FieldReadiness.jsx — создан, маршрут /field/readiness (статус, DatePicker, причины, документы)
+- [x] FieldHome.jsx — BottomSheet вопрос добавлен (при отсутствии проекта + unknown/on_site статус)
+- [x] App.jsx — маршрут /field/readiness добавлен
+
+### Mobile — Офисная мобилка
+- [x] Personnel.jsx — переписан с группировкой по 5 статусам (on_site/approved/ready/not_ready/archive), кнопки HR
+- [x] GlobalTimesheet.jsx — создан (горизонтальный скролл, sticky ФИО, цветные ячейки, Excel export)
+- [x] PayrollDashboard.jsx — создан (4 StatCard, операции СЗ, agreement_transfer, годовые лимиты)
+- [x] OfficialEmployees.jsx — создан (список карточек, BottomSheet редактирование оклада/статуса)
+- [x] TrainingBoard.jsx — создан (список обучений, загрузка файлов, завершение)
+- [x] StaffRequests.jsx — создан (PM: draft + submit, HR: take + approve, FAB создание, счётчики ролей)
+- [x] PmBalance.jsx — создан (список РП с балансами, детальная раскладка в BottomSheet)
+- [x] More.jsx — обновлён (+6 пунктов: staff-requests, global-timesheet, training-board, payroll-dashboard, official-employees, pm-balance)
+- [x] App.jsx — обновлён (+7 маршрутов + 7 импортов)
+- [x] rbac.js — обновлён (TO+personnel, HEAD_TO+finances, HR+finances, HR_MANAGER+finances, BUH+personnel, WAREHOUSE+personnel)
+- [x] npm run build — OK (1.50s, 1555KB JS + 85KB CSS)
+- [x] cp dist/* → ../m/ — OK
+
+### Cron
+- [x] readiness-cron.js — создан (3 задачи: monthly reminder 09:00 1-го, daily archive 06:00, daily departure 07:00 MSK)
+- [x] Зарегистрирован в index.js (try/catch + onReady + onClose)
+
+### Deploy
+- [x] git commit: 3d4d744 feat(hr-v2): сессия 3 — mobile + cron + deploy (18 files, +4071/-187)
+- [x] git push origin mobile-v3
+- [x] Сервер: git fetch + reset → HEAD at 3d4d744f
+- [x] Миграции V141-V145 применены на боевой БД (ранее были только на тест-БД)
+- [x] systemctl restart asgard-crm → health OK
+- [x] app_updates баннер: v20.14.0 «HR Module v2 — Управление персоналом» (9 пунктов)
+
+### Финальные smoke тесты (прод, порт 3000)
+- GET /api/staff/readiness → 200 ✅
+- GET /api/staff-requests/pending → 200 ✅
+- GET /api/timesheet/global/2026/6 → 200 ✅
+- GET /api/payroll-dashboard/summary/2026/6 → 200 ✅
+- GET /api/payroll-dashboard/pm-balance → 200 ✅
+- GET /api/training/pending → 200 ✅
+
+### Браузерные проверки (требуют ручной проверки)
+- [ ] /m/personnel — группировка по статусам
+- [ ] /m/global-timesheet — табель
+- [ ] /m/payroll-dashboard — финансы + операции СЗ
+- [ ] /m/official-employees — официальные
+- [ ] /m/training-board — обучение
+- [ ] /m/staff-requests — заявки PM/HR
+- [ ] /m/pm-balance — баланс РП
+- [ ] /m/field/readiness — статус готовности рабочего
+- [ ] #/personnel — desktop группировка
+- [ ] #/hr-requests — desktop draft save
+- [ ] #/payroll-dashboard — desktop операции СЗ
+- [ ] #/pm-balance — desktop баланс РП
+
+### Известные проблемы / что не сделано
+- Браузерное тестирование не проводилось (нет доступа к браузеру из CLI)
+- SHELL_VERSION не бампнут (desktop JS не менялся в этой сессии)
+- Дубли миграций V141/V142 (wa_group_columns, employees_wa_phones) — не применены, не конфликтуют
+
+### СТАТУС МОДУЛЯ
+✅ ЗАВЕРШЁН — все 3 сессии выполнены, код задеплоен, API работает на проде
