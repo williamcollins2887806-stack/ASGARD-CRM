@@ -135,7 +135,7 @@ window.AsgardTrainingBoard = (function () {
 
     return `
       <div style="overflow-x:auto;">
-        <table style="width:100%;border-collapse:collapse;">
+        <table class="asg">
           <thead><tr style="background:var(--bg2);">${theads}</tr></thead>
           <tbody>${tbodies}</tbody>
         </table>
