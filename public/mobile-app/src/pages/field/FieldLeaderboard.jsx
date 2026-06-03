@@ -245,6 +245,7 @@ function PlayerRow({ player, isSelf, idx, visible }) {
         <span style={{ fontSize: 11, fontWeight: 600, color: '#D4A843' }}>
           {parseInt(player.earned_runes || 0).toLocaleString('ru-RU')} <span style={{ fontSize: 9, opacity: 0.7 }}>ᚱ</span>
         </span>
+        <span style={{ fontSize: 8, color: '#6b7280', marginTop: -2 }}>заработано</span>
       </div>
     </div>
   );
@@ -376,7 +377,8 @@ function MyBanner({ me, total }) {
       </div>
       <div style={{ textAlign: 'right' }}>
         <div style={{ fontSize: 15, fontWeight: 800, color: '#f97316' }}>{parseInt(me.warrior_power || 0).toLocaleString('ru-RU')} ⚔️</div>
-        <div style={{ fontSize: 11, color: '#D4A843' }}>{parseInt(me.earned_runes || 0).toLocaleString('ru-RU')} ᚱ</div>
+        <div style={{ fontSize: 11, color: '#D4A843' }}>{parseInt(me.earned_runes || 0).toLocaleString('ru-RU')} ᚱ заработано</div>
+        <div style={{ fontSize: 10, color: '#9ca3af' }}>{parseInt(me.runes || 0).toLocaleString('ru-RU')} ᚱ в кошельке</div>
       </div>
     </div>
   );
@@ -535,7 +537,7 @@ export default function FieldLeaderboard() {
               <div style={{ display: 'flex', gap: 6 }}>
                 {[
                   { key: 'power',  label: '⚔️ Сила',  color: '#f97316' },
-                  { key: 'runes',  label: 'ᚱ Руны',   color: '#D4A843' },
+                  { key: 'runes',  label: 'ᚱ Заработано',   color: '#D4A843' },
                   { key: 'shifts', label: '📅 Смены', color: '#60a5fa' },
                 ].map(s => (
                   <button key={s.key} onClick={() => setSortBy(s.key)} style={{
