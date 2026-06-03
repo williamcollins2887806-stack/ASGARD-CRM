@@ -79,6 +79,13 @@ async function routes(fastify) {
         ON CONFLICT (employee_id, currency) DO UPDATE
         SET balance = gamification_wallets.balance + $2
       `, [employeeId, runes]);
+      await db.query(
+        `INSERT INTO gamification_currency_ledger (employee_id, currency, amount, balance_after, operation, reference_type)
+         VALUES ($1, 'runes', $2,
+           (SELECT balance FROM gamification_wallets WHERE employee_id = $1 AND currency = 'runes'),
+           'academy_reward', 'academy')`,
+        [employeeId, runes]
+      );
 
       await db.query(`
         INSERT INTO gamification_wallets (employee_id, currency, balance)
@@ -86,6 +93,15 @@ async function routes(fastify) {
         ON CONFLICT (employee_id, currency) DO UPDATE
         SET balance = gamification_wallets.balance + $2
       `, [employeeId, xp]);
+      if (xp > 0) {
+        await db.query(
+          `INSERT INTO gamification_currency_ledger (employee_id, currency, amount, balance_after, operation, reference_type)
+           VALUES ($1, 'xp', $2,
+             (SELECT balance FROM gamification_wallets WHERE employee_id = $1 AND currency = 'xp'),
+             'academy_reward', 'academy')`,
+          [employeeId, xp]
+        );
+      }
     }
   }
 

@@ -1557,8 +1557,22 @@ async function routes(fastify) {
           [loserId, duel.stake_runes]
         );
         await client.query(
+          `INSERT INTO gamification_currency_ledger (employee_id, currency, amount, balance_after, operation, reference_id, reference_type)
+           VALUES ($1, 'runes', $2,
+             (SELECT balance FROM gamification_wallets WHERE employee_id = $1 AND currency = 'runes'),
+             'duel_loss', $3, 'duel')`,
+          [loserId, -duel.stake_runes, duelId]
+        );
+        await client.query(
           `UPDATE gamification_wallets SET balance = balance + $2, updated_at = NOW() WHERE employee_id = $1 AND currency = 'runes'`,
           [winnerId, duel.stake_runes]
+        );
+        await client.query(
+          `INSERT INTO gamification_currency_ledger (employee_id, currency, amount, balance_after, operation, reference_id, reference_type)
+           VALUES ($1, 'runes', $2,
+             (SELECT balance FROM gamification_wallets WHERE employee_id = $1 AND currency = 'runes'),
+             'duel_win', $3, 'duel')`,
+          [winnerId, duel.stake_runes, duelId]
         );
         await client.query(`UPDATE gamification_duels SET reward_paid = true WHERE id = $1`, [duelId]);
       }
