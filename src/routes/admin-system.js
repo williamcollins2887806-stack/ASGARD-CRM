@@ -477,4 +477,85 @@ module.exports = async function(fastify) {
       });
     });
   }
+
+  // ─── Тарифная сетка (HR Module v2) ──────────────────────────────────────
+  // Доступ: ADMIN, DIRECTOR_GEN
+  const adminOrDirector = {
+    preHandler: [fastify.authenticate, async (req, reply) => {
+      const r = req.user.role;
+      if (r !== 'ADMIN' && r !== 'DIRECTOR_GEN') {
+        return reply.code(403).send({ error: 'Только ADMIN/DIRECTOR_GEN' });
+      }
+    }]
+  };
+
+  fastify.get('/settings/tariffs', adminOrDirector, async (req, reply) => {
+    try {
+      const { rows } = await db.query(`
+        SELECT id, category, position_name, points, rate_per_shift, is_combinable
+        FROM field_tariff_grid
+        ORDER BY category, position_name
+      `);
+      return { tariffs: rows };
+    } catch (e) {
+      return reply.code(500).send({ error: 'field_tariff_grid недоступна: ' + e.message });
+    }
+  });
+
+  fastify.put('/settings/tariffs/:id', adminOrDirector, async (req, reply) => {
+    const id = parseInt(req.params.id, 10);
+    const { points, rate_per_shift, is_combinable } = req.body || {};
+    const updates = [];
+    const values  = [];
+    let idx = 1;
+    if (points         !== undefined) { updates.push(`points = $${idx}`);         values.push(points);         idx++; }
+    if (rate_per_shift !== undefined) { updates.push(`rate_per_shift = $${idx}`); values.push(rate_per_shift); idx++; }
+    if (is_combinable  !== undefined) { updates.push(`is_combinable = $${idx}`);  values.push(!!is_combinable); idx++; }
+    if (!updates.length) return reply.code(400).send({ error: 'Нет данных' });
+    values.push(id);
+    const { rows } = await db.query(
+      `UPDATE field_tariff_grid SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`,
+      values
+    );
+    if (!rows[0]) return reply.code(404).send({ error: 'Тариф не найден' });
+    return { tariff: rows[0] };
+  });
+
+  fastify.get('/settings/finance-limits', adminOrDirector, async () => {
+    const { rows } = await db.query(`
+      SELECT key, value_json FROM settings
+      WHERE key IN ('self_employed_monthly_limit', 'self_employed_yearly_limit')
+    `);
+    const out = { monthly: 350000, yearly: 2400000 };
+    for (const r of rows) {
+      const v = parseFloat(String(r.value_json).replace(/[^\d.\-]/g, ''));
+      if (r.key === 'self_employed_monthly_limit' && Number.isFinite(v)) out.monthly = v;
+      if (r.key === 'self_employed_yearly_limit'  && Number.isFinite(v)) out.yearly  = v;
+    }
+    return out;
+  });
+
+  fastify.put('/settings/finance-limits', adminOrDirector, async (req, reply) => {
+    const { monthly, yearly } = req.body || {};
+    const updates = [];
+    if (monthly !== undefined) {
+      const v = parseFloat(monthly);
+      if (!Number.isFinite(v) || v < 0) return reply.code(400).send({ error: 'monthly должен быть числом >= 0' });
+      await db.query(`
+        INSERT INTO settings (key, value_json, updated_at) VALUES ('self_employed_monthly_limit', $1, NOW())
+        ON CONFLICT (key) DO UPDATE SET value_json = EXCLUDED.value_json, updated_at = NOW()
+      `, [String(v)]);
+      updates.push({ key: 'self_employed_monthly_limit', value: v });
+    }
+    if (yearly !== undefined) {
+      const v = parseFloat(yearly);
+      if (!Number.isFinite(v) || v < 0) return reply.code(400).send({ error: 'yearly должен быть числом >= 0' });
+      await db.query(`
+        INSERT INTO settings (key, value_json, updated_at) VALUES ('self_employed_yearly_limit', $1, NOW())
+        ON CONFLICT (key) DO UPDATE SET value_json = EXCLUDED.value_json, updated_at = NOW()
+      `, [String(v)]);
+      updates.push({ key: 'self_employed_yearly_limit', value: v });
+    }
+    return { ok: true, updated: updates };
+  });
 };

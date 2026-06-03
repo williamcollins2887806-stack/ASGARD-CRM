@@ -546,6 +546,13 @@ fastify.register(require('./routes/call-reports'),     { prefix: '/api/call-repo
 fastify.register(require('./routes/office-academy'),   { prefix: '/api/office-academy' });
 fastify.register(require('./routes/max-webhook'),      { prefix: '/api/max' });
 
+// ── HR Module v2 (Сессия 1) ──
+fastify.register(require('./routes/worker-readiness'),  { prefix: '/api/staff/readiness' });
+fastify.register(require('./routes/staff-requests-v2'), { prefix: '/api/staff-requests' });
+fastify.register(require('./routes/global-timesheet'),  { prefix: '/api/timesheet' });
+fastify.register(require('./routes/payroll-dashboard'), { prefix: '/api/payroll-dashboard' });
+fastify.register(require('./routes/training'),          { prefix: '/api/training' });
+
 // ── Telephony Job Queue & Escalation ──
 try {
   const TelephonyJobQueue = require('./services/job-queue');

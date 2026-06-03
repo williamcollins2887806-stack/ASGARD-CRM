@@ -981,6 +981,90 @@ async function routes(fastify, options) {
     return { disputes: rows };
   });
 
+  // ─── Worker Readiness (Mobile field app) ──────────────────────────────────
+  // GET /readiness — мой текущий статус
+  fastify.get('/readiness', auth, async (req) => {
+    const emp = req.fieldEmployee;
+    const { rows: [row] } = await db.query(`
+      SELECT readiness_status, readiness_date, readiness_reason, readiness_comment, readiness_updated_at
+      FROM employees WHERE id = $1
+    `, [emp.id]);
+    return { readiness: row || null };
+  });
+
+  // GET /readiness/can-update — можно ли обновить сегодня
+  fastify.get('/readiness/can-update', auth, async (req) => {
+    const emp = req.fieldEmployee;
+    // На активном объекте — нельзя обновлять
+    const { rows: active } = await db.query(`
+      SELECT 1 FROM employee_assignments
+      WHERE employee_id = $1 AND COALESCE(is_active, true) = true AND departure_date IS NULL
+      LIMIT 1
+    `, [emp.id]);
+    if (active.length) return { can_update: false, reason: 'on_active_assignment' };
+
+    // Не чаще 1 раза в сутки
+    const { rows: [row] } = await db.query(
+      `SELECT readiness_updated_at FROM employees WHERE id = $1`,
+      [emp.id]
+    );
+    if (row && row.readiness_updated_at) {
+      const last = new Date(row.readiness_updated_at);
+      const now  = new Date();
+      const sameDay = last.toISOString().slice(0, 10) === now.toISOString().slice(0, 10);
+      if (sameDay) return { can_update: false, reason: 'already_updated_today' };
+    }
+    return { can_update: true };
+  });
+
+  // PUT /readiness — обновить статус готовности (1 раз в день)
+  fastify.put('/readiness', auth, async (req, reply) => {
+    const emp = req.fieldEmployee;
+
+    const { rows: active } = await db.query(`
+      SELECT 1 FROM employee_assignments
+      WHERE employee_id = $1 AND COALESCE(is_active, true) = true AND departure_date IS NULL
+      LIMIT 1
+    `, [emp.id]);
+    if (active.length) return reply.code(409).send({ error: 'Нельзя обновлять статус на активном объекте' });
+
+    const { rows: [row] } = await db.query(
+      `SELECT readiness_status, readiness_updated_at FROM employees WHERE id = $1`,
+      [emp.id]
+    );
+    if (row && row.readiness_updated_at) {
+      const sameDay = new Date(row.readiness_updated_at).toISOString().slice(0,10) === new Date().toISOString().slice(0,10);
+      if (sameDay) return reply.code(409).send({ error: 'Уже обновляли сегодня' });
+    }
+
+    const { status, date, reason, comment } = req.body || {};
+    if (!['ready', 'not_ready'].includes(status)) {
+      return reply.code(400).send({ error: 'status: ready|not_ready' });
+    }
+    if (status === 'ready' && !date) return reply.code(400).send({ error: 'Для ready нужна дата' });
+    if (status === 'not_ready' && !reason) return reply.code(400).send({ error: 'Для not_ready нужна причина' });
+
+    const oldStatus = row?.readiness_status;
+    await db.query(`
+      UPDATE employees SET
+        readiness_status     = $1,
+        readiness_date       = $2,
+        readiness_reason     = $3,
+        readiness_comment    = $4,
+        readiness_updated_at = NOW(),
+        updated_at           = NOW()
+      WHERE id = $5
+    `, [status, status === 'ready' ? date : null, status === 'not_ready' ? reason : null, comment || null, emp.id]);
+
+    await db.query(`
+      INSERT INTO worker_readiness_log
+        (employee_id, old_status, new_status, readiness_date, reason, comment, source)
+      VALUES ($1, $2, $3, $4, $5, $6, 'worker_app')
+    `, [emp.id, oldStatus, status, date || null, reason || null, comment || null]);
+
+    return { ok: true };
+  });
+
   // DELETE /worker/disputes/:id — отозвать (только пока open)
   fastify.delete('/disputes/:id', auth, async (req, reply) => {
     const empId = req.fieldEmployee.id;
