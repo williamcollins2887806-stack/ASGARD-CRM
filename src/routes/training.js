@@ -108,7 +108,7 @@ async function routes(fastify, options) {
       try {
         await db.query(`
           INSERT INTO employee_permits
-            (employee_id, type_id, valid_to, is_active, created_at)
+            (employee_id, type_id, expiry_date, is_active, created_at)
           VALUES ($1, $2, $3, true, NOW())
         `, [t.employee_id, t.permit_type_id, valid_to]);
       } catch (e) {

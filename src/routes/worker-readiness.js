@@ -103,8 +103,8 @@ async function routes(fastify, options) {
     const { rows: permits } = await db.query(`
       SELECT
         ep.employee_id,
-        COUNT(*) FILTER (WHERE ep.valid_to IS NOT NULL AND ep.valid_to < CURRENT_DATE)                                            AS expired,
-        COUNT(*) FILTER (WHERE ep.valid_to IS NOT NULL AND ep.valid_to >= CURRENT_DATE AND ep.valid_to < CURRENT_DATE + INTERVAL '30 days') AS expiring
+        COUNT(*) FILTER (WHERE ep.expiry_date IS NOT NULL AND ep.expiry_date < CURRENT_DATE)                                            AS expired,
+        COUNT(*) FILTER (WHERE ep.expiry_date IS NOT NULL AND ep.expiry_date >= CURRENT_DATE AND ep.expiry_date < CURRENT_DATE + INTERVAL '30 days') AS expiring
       FROM employee_permits ep
       WHERE ep.employee_id = ANY($1::int[])
         AND COALESCE(ep.is_active, true) = true
