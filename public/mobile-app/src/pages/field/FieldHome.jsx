@@ -4,7 +4,7 @@ import {
   Clock, Wallet, History, Users, Truck, UserCircle,
   MapPin, AlertCircle, RefreshCw, Play, Square,
   Phone, Briefcase, Camera, FileText, AlertTriangle, Package, DollarSign, Map,
-  Calendar,
+  Calendar, Shield,
 } from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
 import { useFieldAuthStore } from '@/stores/fieldAuthStore';
@@ -127,6 +127,7 @@ export default function FieldHome() {
   const [academyAlert, setAcademyAlert] = useState(null); // {type:'blocked'|'reminder', title, lesson_id, daysLeft}
   const [showPushPrompt, setShowPushPrompt] = useState(false);
   const [showIOSHint, setShowIOSHint] = useState(false);
+  const [showReadinessPrompt, setShowReadinessPrompt] = useState(false);
   const push = usePushSubscription();
   const timerRef = useRef(null);
   const touchStartY = useRef(0);
@@ -170,6 +171,19 @@ export default function FieldHome() {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Check readiness status — show prompt if no active project and status is unknown/on_site
+  useEffect(() => {
+    if (loading || !data) return;
+    const hasProject = data.project && data.project.is_active !== false && !data.project.departure_date;
+    if (hasProject) return;
+    fieldApi.get('/readiness').then(res => {
+      const st = res?.readiness?.readiness_status;
+      if (!st || st === 'unknown' || st === 'on_site') {
+        setShowReadinessPrompt(true);
+      }
+    }).catch(() => {});
+  }, [loading, data]);
 
   // Show push prompt after data loaded (not dismissed, not subscribed, supported)
   useEffect(() => {
@@ -792,6 +806,60 @@ export default function FieldHome() {
           </button>
         ))}
       </div>
+
+      {/* Readiness prompt BottomSheet */}
+      {showReadinessPrompt && (
+        <div style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 600,
+          animation: 'fadeInUp 300ms var(--ease-spring) both',
+        }}>
+          <div
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+              zIndex: 599,
+            }}
+            onClick={() => setShowReadinessPrompt(false)}
+          />
+          <div style={{
+            position: 'relative', zIndex: 601,
+            background: 'var(--bg-elevated)',
+            borderTopLeftRadius: 24, borderTopRightRadius: 24,
+            padding: '24px 20px 32px',
+            boxShadow: '0 -8px 32px rgba(0,0,0,0.3)',
+          }}>
+            <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border-norse)', margin: '0 auto 20px' }} />
+            <div className="text-center mb-5">
+              <Shield size={40} style={{ color: 'var(--gold)', margin: '0 auto 12px' }} />
+              <p className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+                Готов к новому походу?
+              </p>
+              <p className="text-sm mt-2" style={{ color: 'var(--text-secondary)' }}>
+                Обнови свой статус готовности, чтобы HR мог подобрать тебя на объект
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { haptic.medium(); setShowReadinessPrompt(false); navigate('/field/readiness'); }}
+                className="flex-1 py-3.5 rounded-xl font-semibold text-sm active:scale-95 transition-transform"
+                style={{ background: 'linear-gradient(135deg, var(--green), #166534)', color: '#fff' }}
+              >
+                ⚔️ Готов
+              </button>
+              <button
+                onClick={() => { haptic.light(); setShowReadinessPrompt(false); navigate('/field/readiness'); }}
+                className="flex-1 py-3.5 rounded-xl font-semibold text-sm active:scale-95 transition-transform"
+                style={{
+                  background: 'color-mix(in srgb, var(--warn-t) 15%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--warn-t) 35%, transparent)',
+                  color: 'var(--warn-t)',
+                }}
+              >
+                🛏 Отдыхаю
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

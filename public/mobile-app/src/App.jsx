@@ -42,6 +42,7 @@ import FieldAcademyLibrary from '@/pages/field/FieldAcademyLibrary';
 import FieldEarningsMonthly from '@/pages/field/FieldEarningsMonthly';
 import FieldSeasonal from '@/pages/field/FieldSeasonal';
 import FieldDiary from '@/pages/field/FieldDiary';
+import FieldReadiness from '@/pages/field/FieldReadiness';
 import PmDashboard from '@/pages/pm/PmDashboard';
 import PmWorkers from '@/pages/pm/PmWorkers';
 import PmWorkerProfile from '@/pages/pm/PmWorkerProfile';
@@ -100,6 +101,12 @@ import OfficeAcademyQuiz from '@/pages/OfficeAcademyQuiz';
 import OfficeAcademyAdmin from '@/pages/OfficeAcademyAdmin';
 import Integrations from '@/pages/Integrations';
 import More from '@/pages/More';
+import GlobalTimesheet from '@/pages/GlobalTimesheet';
+import PayrollDashboard from '@/pages/PayrollDashboard';
+import OfficialEmployees from '@/pages/OfficialEmployees';
+import TrainingBoard from '@/pages/TrainingBoard';
+import StaffRequests from '@/pages/StaffRequests';
+import PmBalance from '@/pages/PmBalance';
 import CallAnalytics from '@/pages/CallAnalytics';
 import EstimateReport from '@/pages/EstimateReport';
 import MimirAutoEstimate from '@/pages/MimirAutoEstimate';
@@ -202,6 +209,12 @@ function AppLayout() {
           <Route path="/warehouse" element={<ProtectedRoute section="dashboard"><PinGuard><Warehouse /></PinGuard></ProtectedRoute>} />
           <Route path="/gantt" element={<ProtectedRoute section="works"><PinGuard><Gantt /></PinGuard></ProtectedRoute>} />
           <Route path="/workers-schedule" element={<ProtectedRoute section="personnel"><PinGuard><WorkersSchedule /></PinGuard></ProtectedRoute>} />
+          <Route path="/global-timesheet" element={<ProtectedRoute section="personnel"><PinGuard><GlobalTimesheet /></PinGuard></ProtectedRoute>} />
+          <Route path="/training-board" element={<ProtectedRoute section="personnel"><PinGuard><TrainingBoard /></PinGuard></ProtectedRoute>} />
+          <Route path="/payroll-dashboard" element={<ProtectedRoute section="finances"><PinGuard><PayrollDashboard /></PinGuard></ProtectedRoute>} />
+          <Route path="/official-employees" element={<ProtectedRoute section="finances"><PinGuard><OfficialEmployees /></PinGuard></ProtectedRoute>} />
+          <Route path="/pm-balance" element={<ProtectedRoute section="finances"><PinGuard><PmBalance /></PinGuard></ProtectedRoute>} />
+          <Route path="/staff-requests" element={<ProtectedRoute section="works"><PinGuard><StaffRequests /></PinGuard></ProtectedRoute>} />
           <Route path="/worker-profile/:id" element={<ProtectedRoute section="personnel"><PinGuard><WorkerProfile /></PinGuard></ProtectedRoute>} />
           <Route path="/approval-payment" element={<ProtectedRoute section="finances"><PinGuard><ApprovalPayment /></PinGuard></ProtectedRoute>} />
           <Route path="/my-equipment" element={<ProtectedRoute section="profile"><PinGuard><MyEquipment /></PinGuard></ProtectedRoute>} />
@@ -261,6 +274,7 @@ function AppLayout() {
                 <Route path="quests" element={<FieldQuests />} />
                 <Route path="seasonal" element={<FieldSeasonal />} />
                 <Route path="diary" element={<FieldDiary />} />
+                <Route path="readiness" element={<FieldReadiness />} />
                 <Route path="journey" element={<FieldJourney />} />
                 <Route path="academy" element={<FieldAcademy />} />
                 <Route path="academy/library" element={<FieldAcademyLibrary />} />

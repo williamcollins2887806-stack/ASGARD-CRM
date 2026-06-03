@@ -726,6 +726,20 @@ try {
   fastify.log.warn('[OfficAcademyCron] Init skipped: ' + cronErr.message);
 }
 
+// ── Readiness Cron: monthly reminder + auto-archive + departure handler ──
+try {
+  const readinessCron = require('./services/readiness-cron');
+  fastify.addHook('onReady', async () => {
+    readinessCron.start(fastify.db, fastify.log);
+    fastify.log.info('[ReadinessCron] Readiness cron started (monthly + daily)');
+  });
+  fastify.addHook('onClose', async () => {
+    readinessCron.stop();
+  });
+} catch (cronErr) {
+  fastify.log.warn('[ReadinessCron] Init skipped: ' + cronErr.message);
+}
+
 // ── Call Report Scheduler ──
 try {
   const ReportScheduler = require('./services/report-scheduler');

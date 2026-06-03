@@ -8,8 +8,8 @@ import {
   // Продажи
   Trophy, FilePen, Building2, Filter, Calculator,
   // Финансы
-  BarChart2, Receipt, FileCheck2, Banknote, Users2,
-  Building, Landmark, CreditCard,
+  BarChart2, BarChart3, Receipt, FileCheck2, Banknote, Users2,
+  Building, Landmark, CreditCard, Briefcase, Wallet,
   // Персонал
   Users, UserPlus, Plane, ShieldCheck, Stamp, CalendarDays,
   // Документы
@@ -70,6 +70,9 @@ const GROUPS = [
       { path: '/office-expenses',  icon: Building,   label: 'Офис расходы',  section: 'finances' },
       { path: '/cash-admin',       icon: Landmark,   label: 'Касса (упр.)',  section: 'finances' },
       { path: '/approval-payment', icon: CreditCard, label: 'Оплаты',        section: 'finances' },
+      { path: '/payroll-dashboard',icon: BarChart3,  label: 'Финансы персонала', section: 'finances' },
+      { path: '/official-employees',icon: Briefcase, label: 'Официальные',      section: 'finances' },
+      { path: '/pm-balance',       icon: Wallet,     label: 'Баланс РП',        section: 'finances' },
     ],
   },
   {
@@ -79,6 +82,9 @@ const GROUPS = [
     items: [
       { path: '/personnel',        icon: Users,       label: 'Сотрудники',       section: 'personnel' },
       { path: '/hr-requests',      icon: UserPlus,    label: 'Заявки HR',        section: 'personnel' },
+      { path: '/staff-requests',   icon: Users,       label: 'Заявки на персонал', section: 'works' },
+      { path: '/global-timesheet', icon: CalendarDays,label: 'Общий табель',     section: 'personnel' },
+      { path: '/training-board',   icon: GraduationCap,label: 'Обучение',        section: 'personnel' },
       { path: '/travel',           icon: Plane,       label: 'Командировки',     section: 'personnel' },
       { path: '/permits',          icon: ShieldCheck, label: 'Допуски',          section: 'personnel' },
       { path: '/proxies',          icon: Stamp,       label: 'Доверенности',     section: 'works' },
