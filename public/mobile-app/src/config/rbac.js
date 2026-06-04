@@ -36,4 +36,10 @@ export const ROUTE_SECTIONS = {
   '/profile':   'profile',
   '/settings':       'settings',
   '/call-analytics': 'dashboard',
+  '/global-timesheet':   'personnel',
+  '/training-board':     'personnel',
+  '/payroll-dashboard':  'finances',
+  '/official-employees': 'finances',
+  '/pm-balance':         'finances',
+  '/staff-requests':     'works',
 };

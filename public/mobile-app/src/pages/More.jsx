@@ -11,7 +11,7 @@ import {
   BarChart2, BarChart3, Receipt, FileCheck2, Banknote, Users2,
   Building, Landmark, CreditCard, Briefcase, Wallet,
   // Персонал
-  Users, UserPlus, Plane, ShieldCheck, Stamp, CalendarDays,
+  Users, UserPlus, Plane, ShieldCheck, Stamp, CalendarDays, Table2,
   // Документы
   Inbox, Calendar, HardHat, Warehouse, Package,
   ShoppingCart, Disc3, GanttChartSquare,
@@ -83,7 +83,7 @@ const GROUPS = [
       { path: '/personnel',        icon: Users,       label: 'Сотрудники',       section: 'personnel' },
       { path: '/hr-requests',      icon: UserPlus,    label: 'Заявки HR',        section: 'personnel' },
       { path: '/staff-requests',   icon: Users,       label: 'Заявки на персонал', section: 'works' },
-      { path: '/global-timesheet', icon: CalendarDays,label: 'Общий табель',     section: 'personnel' },
+      { path: '/global-timesheet', icon: Table2,      label: 'Общий табель',     section: 'personnel' },
       { path: '/training-board',   icon: GraduationCap,label: 'Обучение',        section: 'personnel' },
       { path: '/travel',           icon: Plane,       label: 'Командировки',     section: 'personnel' },
       { path: '/permits',          icon: ShieldCheck, label: 'Допуски',          section: 'personnel' },
@@ -400,7 +400,7 @@ export default function More() {
         className="text-center pb-3"
         style={{ fontSize: 11, color: 'var(--text-tertiary)', opacity: 0.4 }}
       >
-        ASGARD Mobile v2.0
+        ASGARD Mobile v20.14.0
       </p>
     </PageShell>
   );
