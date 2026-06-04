@@ -13,12 +13,12 @@ import {
 const MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 
 const CELL_COLORS = {
-  day:       { bg: 'color-mix(in srgb, var(--green) 20%, transparent)', text: 'var(--green)',  label: 'Д' },
-  night:     { bg: 'color-mix(in srgb, var(--blue) 20%, transparent)',  text: 'var(--blue)',   label: 'Н' },
-  travel:    { bg: 'rgba(249,115,22,0.15)',  text: '#F97316', label: '🚗' },
-  warehouse: { bg: 'rgba(168,85,247,0.15)',  text: '#A855F7', label: '📦' },
-  medical:   { bg: 'rgba(236,72,153,0.15)',  text: '#EC4899', label: '🏥' },
-  waiting:   { bg: 'rgba(156,163,175,0.15)', text: '#9CA3AF', label: '⏳' },
+  day:       { bg: 'color-mix(in srgb, var(--green) 20%, transparent)', text: 'var(--green)',  label: 'Д', name: 'Дневная смена' },
+  night:     { bg: 'color-mix(in srgb, var(--blue) 20%, transparent)',  text: 'var(--blue)',   label: 'Н', name: 'Ночная смена' },
+  travel:    { bg: 'color-mix(in srgb, var(--warn-t) 15%, transparent)', text: 'var(--warn-t)', label: '🚗', name: 'Дорога' },
+  warehouse: { bg: 'color-mix(in srgb, var(--info-t) 15%, transparent)', text: 'var(--info-t)', label: '📦', name: 'Склад' },
+  medical:   { bg: 'color-mix(in srgb, var(--err-t) 12%, transparent)',  text: 'var(--err-t)',  label: '🏥', name: 'Медосмотр' },
+  waiting:   { bg: 'color-mix(in srgb, var(--text-tertiary) 15%, transparent)', text: 'var(--text-tertiary)', label: '⏳', name: 'Ожидание' },
 };
 
 function daysInMonth(y, m) { return new Date(y, m, 0).getDate(); }
@@ -35,11 +35,13 @@ export default function GlobalTimesheet() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await api.get(`/timesheet/global/${year}/${month}`);
       setData(res);
-    } catch {
+    } catch (e) {
       setData(null);
+      setError(e.message || 'Ошибка загрузки');
     } finally {
       setLoading(false);
     }
@@ -58,10 +60,12 @@ export default function GlobalTimesheet() {
     else setMonth(m => m + 1);
   };
 
+  const [error, setError] = useState(null);
+
   const handleExport = async () => {
     haptic.medium();
     try {
-      const token = localStorage.getItem('asgard_token');
+      const token = api.getToken ? api.getToken() : localStorage.getItem('asgard_token');
       const url = `/api/timesheet/global/${year}/${month}/export`;
       const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       if (!resp.ok) throw new Error('Ошибка экспорта');
@@ -70,8 +74,9 @@ export default function GlobalTimesheet() {
       a.href = URL.createObjectURL(blob);
       a.download = `Табель_${year}_${month}.xlsx`;
       a.click();
+      URL.revokeObjectURL(a.href);
     } catch (e) {
-      alert(e.message);
+      setError(e.message);
     }
   };
 
@@ -109,7 +114,7 @@ export default function GlobalTimesheet() {
         </div>
 
         {loading ? <SkeletonList count={5} /> : workers.length === 0 ? (
-          <EmptyState icon={CalendarDays} iconColor="var(--blue)" iconBg="rgba(30,77,140,0.1)"
+          <EmptyState icon={CalendarDays} iconColor="var(--blue)" iconBg="color-mix(in srgb, var(--blue) 10%, transparent)"
             title="Нет данных" description="За этот месяц нет отметок" />
         ) : (
           <div ref={scrollRef} className="overflow-x-auto pb-4 -mx-1" style={{ WebkitOverflowScrolling: 'touch' }}>
@@ -209,7 +214,7 @@ export default function GlobalTimesheet() {
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">Тип</p>
               <p className="text-[14px] c-primary">
-                {CELL_COLORS[cellDetail.type]?.label || cellDetail.type || '—'}
+                {CELL_COLORS[cellDetail.type]?.name || cellDetail.type || '—'}
               </p>
             </div>
             {cellDetail.amount != null && (

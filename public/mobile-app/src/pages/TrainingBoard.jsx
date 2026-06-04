@@ -26,17 +26,20 @@ export default function TrainingBoard() {
   const haptic = useHaptic();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [detail, setDetail] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [completing, setCompleting] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await api.get('/training/pending');
       setItems(api.extractRows(res) || []);
-    } catch {
+    } catch (e) {
       setItems([]);
+      setError(e.message || 'Ошибка загрузки');
     } finally {
       setLoading(false);
     }
@@ -56,7 +59,7 @@ export default function TrainingBoard() {
       try {
         const formData = new FormData();
         formData.append('file', file);
-        const token = localStorage.getItem('asgard_token');
+        const token = api.getToken ? api.getToken() : localStorage.getItem('asgard_token');
         const resp = await fetch(`/api/training/upload/${trainingId}`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}` },
@@ -72,7 +75,7 @@ export default function TrainingBoard() {
         }
       } catch (err) {
         haptic.error();
-        alert(err.message);
+        setError(err.message);
       } finally {
         setUploading(false);
       }
@@ -90,7 +93,7 @@ export default function TrainingBoard() {
       await fetchData();
     } catch (e) {
       haptic.error();
-      alert(e.message);
+      setError(e.message);
     } finally {
       setCompleting(false);
     }
@@ -100,7 +103,7 @@ export default function TrainingBoard() {
     <PageShell title="Обучение и допуски">
       <PullToRefresh onRefresh={fetchData}>
         {loading ? <SkeletonList count={5} /> : items.length === 0 ? (
-          <EmptyState icon={GraduationCap} iconColor="#7B68EE" iconBg="rgba(123,104,238,0.1)"
+          <EmptyState icon={GraduationCap} iconColor="var(--info-t)" iconBg="color-mix(in srgb, var(--info-t) 10%, transparent)"
             title="Нет обучений" description="Все допуски в порядке" />
         ) : (
           <div className="flex flex-col gap-2 pb-4">

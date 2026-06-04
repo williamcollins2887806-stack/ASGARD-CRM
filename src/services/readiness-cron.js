@@ -50,14 +50,14 @@ async function sendReadinessReminders(db, log) {
   try {
     log.info('[readiness-cron] Sending monthly readiness reminders...');
 
-    // Рабочие которым нужно обновить статус
+    // Рабочие которым нужно обновить статус (только unknown — не спамим тем кто уже ответил not_ready)
     const { rows } = await db.query(`
       SELECT e.id, e.fio, e.phone, e.readiness_status,
              u.id AS user_id, u.max_user_id
       FROM employees e
       LEFT JOIN users u ON u.id = e.user_id
       WHERE e.is_active = true
-        AND e.readiness_status NOT IN ('ready', 'on_site', 'archive')
+        AND (e.readiness_status IS NULL OR e.readiness_status = 'unknown')
     `);
 
     if (rows.length === 0) {
@@ -148,18 +148,18 @@ async function autoArchive(db, log) {
           WHERE is_active = true
         )
         AND (readiness_updated_at IS NULL OR readiness_updated_at < $1)
-      RETURNING id, fio
+      RETURNING id, fio, readiness_status AS old_status
     `, [sixMonthsAgo.toISOString().slice(0, 10)]);
 
     if (rows.length > 0) {
       log.info(`[readiness-cron] Auto-archived ${rows.length} workers: ${rows.map(r => r.fio).join(', ')}`);
 
-      // Log each archive
+      // Log each archive with real old_status
       for (const worker of rows) {
         await db.query(`
           INSERT INTO worker_readiness_log (employee_id, old_status, new_status, source, created_at)
-          VALUES ($1, 'unknown', 'archive', 'auto', NOW())
-        `, [worker.id]);
+          VALUES ($1, $2, 'archive', 'auto', NOW())
+        `, [worker.id, worker.old_status || 'unknown']);
       }
     } else {
       log.info('[readiness-cron] No workers to auto-archive');
@@ -194,7 +194,7 @@ async function handleDepartures(db, log) {
             AND ea2.is_active = true
             AND ea2.departure_date IS NULL
         )
-      RETURNING e.id, e.fio
+      RETURNING e.id, e.fio, e.readiness_status AS old_status
     `, [yesterdayStr]);
 
     if (rows.length > 0) {
@@ -203,8 +203,8 @@ async function handleDepartures(db, log) {
       for (const worker of rows) {
         await db.query(`
           INSERT INTO worker_readiness_log (employee_id, old_status, new_status, reason, source, created_at)
-          VALUES ($1, 'on_site', 'not_ready', 'departure', 'auto', NOW())
-        `, [worker.id]);
+          VALUES ($1, $2, 'not_ready', 'departure', 'auto', NOW())
+        `, [worker.id, worker.old_status || 'on_site']);
       }
     } else {
       log.info('[readiness-cron] No departures to process');

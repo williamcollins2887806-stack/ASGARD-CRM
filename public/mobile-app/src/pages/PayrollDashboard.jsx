@@ -41,6 +41,8 @@ export default function PayrollDashboard() {
   const [formAmount, setFormAmount] = useState('');
   const [formComment, setFormComment] = useState('');
   const [formSaving, setFormSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const [confirmingId, setConfirmingId] = useState(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -72,6 +74,8 @@ export default function PayrollDashboard() {
 
   const openCreate = async () => {
     haptic.medium();
+    setFormEmpId(''); setFormAmount(''); setFormComment('');
+    setError(null);
     try {
       const limits = await api.get('/payroll-dashboard/self-employed-limits');
       setSeWorkers(api.extractRows(limits) || []);
@@ -83,6 +87,7 @@ export default function PayrollDashboard() {
     if (!formEmpId || !formAmount) return;
     haptic.medium();
     setFormSaving(true);
+    setError(null);
     try {
       await api.post('/payroll-dashboard/se-transfers', {
         employee_id: Number(formEmpId),
@@ -98,7 +103,7 @@ export default function PayrollDashboard() {
       await fetchData();
     } catch (e) {
       haptic.error();
-      alert(e.message);
+      setError(e.message);
     } finally {
       setFormSaving(false);
     }
@@ -106,13 +111,16 @@ export default function PayrollDashboard() {
 
   const handleConfirmReturn = async (id) => {
     haptic.medium();
+    setConfirmingId(id);
     try {
       await api.put(`/payroll-dashboard/se-transfers/${id}/confirm-return`);
       haptic.success();
       await fetchData();
     } catch (e) {
       haptic.error();
-      alert(e.message);
+      setError(e.message);
+    } finally {
+      setConfirmingId(null);
     }
   };
 
@@ -133,7 +141,7 @@ export default function PayrollDashboard() {
         </div>
 
         {loading ? <SkeletonList count={4} /> : !summary ? (
-          <EmptyState icon={BarChart3} iconColor="var(--green)" iconBg="rgba(45,134,89,0.1)"
+          <EmptyState icon={BarChart3} iconColor="var(--green)" iconBg="color-mix(in srgb, var(--green) 10%, transparent)"
             title="Нет данных" description="За этот месяц нет данных" />
         ) : (
           <>
@@ -211,7 +219,8 @@ export default function PayrollDashboard() {
                       </div>
                       {t.status === 'transferred' && (
                         <button onClick={() => handleConfirmReturn(t.id)}
-                          className="mt-2 flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium spring-tap"
+                          disabled={confirmingId === t.id}
+                          className="mt-2 flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium spring-tap disabled:opacity-50"
                           style={{
                             background: 'color-mix(in srgb, var(--green) 15%, transparent)',
                             border: '1px solid color-mix(in srgb, var(--green) 35%, transparent)',
@@ -303,7 +312,7 @@ export default function PayrollDashboard() {
           </div>
           <button onClick={handleCreate} disabled={formSaving || !formEmpId || !formAmount}
             className="w-full py-3 rounded-xl font-semibold text-sm disabled:opacity-50"
-            style={{ background: 'linear-gradient(135deg, var(--blue), #1E40AF)', color: '#fff' }}>
+            style={{ background: 'linear-gradient(135deg, var(--blue), var(--info))', color: '#fff' }}>
             {formSaving ? 'Создаю...' : '📨 Создать перевод'}
           </button>
         </div>

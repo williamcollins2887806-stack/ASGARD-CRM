@@ -17,7 +17,7 @@ const STATUS_CONFIG = {
   draft:        { label: 'Черновик',     color: 'var(--text-tertiary)', icon: Save },
   new:          { label: 'Ожидает HR',   color: 'var(--warn-t)',        icon: Clock },
   in_progress:  { label: 'В работе',     color: 'var(--blue)',          icon: Users },
-  sent_to_pm:   { label: 'На просмотре', color: '#7B68EE',             icon: Send },
+  sent_to_pm:   { label: 'На просмотре', color: 'var(--info-t)',             icon: Send },
   approved:     { label: 'Утверждена',   color: 'var(--green)',         icon: CheckCircle },
   added_to_crew:{ label: 'Добавлены',    color: 'var(--green)',         icon: UserPlus },
   rework:       { label: 'Доработка',    color: 'var(--err-t)',         icon: AlertTriangle },
@@ -100,35 +100,68 @@ export default function StaffRequests() {
     setShowCreate(true);
   };
 
+  const [formError, setFormError] = useState(null);
+
+  const buildBody = () => {
+    const positions = ROLES.filter(r => (formRoles[r.key] || 0) > 0)
+      .map(r => ({ role_key: r.key, role_label: r.label, required_count: formRoles[r.key] }));
+    return {
+      work_id: Number(formWorkId),
+      date_from: formDateFrom || null,
+      work_description: formDescription,
+      work_conditions: { food: formFood, housing: formHousing, rotation: formRotation },
+      positions,
+    };
+  };
+
   const handleSaveDraft = async () => {
     if (!formWorkId) return;
     haptic.medium();
     setFormSaving(true);
+    setFormError(null);
     try {
-      const positions = ROLES.filter(r => (formRoles[r.key] || 0) > 0)
-        .map(r => ({ role_key: r.key, role_label: r.label, required_count: formRoles[r.key] }));
-      const body = {
-        work_id: Number(formWorkId),
-        date_from: formDateFrom || null,
-        work_description: formDescription,
-        work_conditions: { food: formFood, housing: formHousing, rotation: formRotation },
-        positions,
-      };
-      await api.post('/staff-requests', body);
+      await api.post('/staff-requests', buildBody());
       haptic.success();
       setShowCreate(false);
       resetForm();
       await fetchRequests();
     } catch (e) {
       haptic.error();
-      alert(e.message);
+      setFormError(e.message);
     } finally {
       setFormSaving(false);
     }
   };
 
+  const handleSaveAndSubmit = async () => {
+    if (!formWorkId) return;
+    haptic.medium();
+    setFormSaving(true);
+    setFormError(null);
+    try {
+      // Сохраняем черновик и получаем ID
+      const created = await api.post('/staff-requests', buildBody());
+      const draftId = created?.id || created?.request?.id;
+      if (draftId) {
+        await api.put(`/staff-requests/${draftId}/submit`);
+      }
+      haptic.success();
+      setShowCreate(false);
+      resetForm();
+      await fetchRequests();
+    } catch (e) {
+      haptic.error();
+      setFormError(e.message);
+    } finally {
+      setFormSaving(false);
+    }
+  };
+
+  const [actionError, setActionError] = useState(null);
+
   const handleSubmit = async (id) => {
     haptic.medium();
+    setActionError(null);
     try {
       await api.put(`/staff-requests/${id}/submit`);
       haptic.success();
@@ -136,27 +169,27 @@ export default function StaffRequests() {
       await fetchRequests();
     } catch (e) {
       haptic.error();
-      alert(e.message);
+      setActionError(e.message);
     }
   };
 
   const handleTake = async (id) => {
     haptic.medium();
+    setActionError(null);
     try {
       await api.put(`/staff-requests/${id}/take`);
       haptic.success();
       await fetchRequests();
-      // Refresh detail
-      const updated = await api.get(`/staff-requests/${id}`);
-      setDetail(updated);
+      try { const updated = await api.get(`/staff-requests/${id}`); setDetail(updated); } catch {}
     } catch (e) {
       haptic.error();
-      alert(e.message);
+      setActionError(e.message);
     }
   };
 
   const handleApprove = async (id) => {
     haptic.medium();
+    setActionError(null);
     try {
       await api.put(`/staff-requests/${id}/approve`);
       haptic.success();
@@ -164,12 +197,13 @@ export default function StaffRequests() {
       await fetchRequests();
     } catch (e) {
       haptic.error();
-      alert(e.message);
+      setActionError(e.message);
     }
   };
 
   const handleAddToCrew = async (id) => {
     haptic.medium();
+    setActionError(null);
     try {
       await api.put(`/staff-requests/${id}/add-to-crew`);
       haptic.success();
@@ -177,7 +211,7 @@ export default function StaffRequests() {
       await fetchRequests();
     } catch (e) {
       haptic.error();
-      alert(e.message);
+      setActionError(e.message);
     }
   };
 
@@ -217,7 +251,7 @@ export default function StaffRequests() {
         )}
 
         {loading ? <SkeletonList count={5} /> : requests.length === 0 ? (
-          <EmptyState icon={Users} iconColor="#7B68EE" iconBg="rgba(123,104,238,0.1)"
+          <EmptyState icon={Users} iconColor="var(--info-t)" iconBg="color-mix(in srgb, var(--info-t) 10%, transparent)"
             title="Нет заявок" description={tab === 'my' ? 'Создайте первую заявку' : 'Нет входящих заявок'} />
         ) : (
           <div className="flex flex-col gap-2 pb-4">
@@ -267,14 +301,24 @@ export default function StaffRequests() {
         )}
       </PullToRefresh>
 
+      {/* Error toast */}
+      {actionError && (
+        <div className="fixed top-4 left-4 right-4 z-50 rounded-xl px-4 py-3 flex items-center gap-2"
+          style={{ background: 'color-mix(in srgb, var(--err-t) 15%, var(--bg-elevated))', border: '1px solid color-mix(in srgb, var(--err-t) 40%, transparent)' }}
+          onClick={() => setActionError(null)}>
+          <AlertTriangle size={16} style={{ color: 'var(--err-t)', flexShrink: 0 }} />
+          <span className="text-sm" style={{ color: 'var(--err-t)' }}>{actionError}</span>
+        </div>
+      )}
+
       {/* FAB */}
       {isPM && (
         <button onClick={openCreate}
           style={{
             position: 'fixed', bottom: 80, right: 20, zIndex: 50,
             width: 56, height: 56, borderRadius: 16,
-            background: 'linear-gradient(135deg, var(--blue), #1E40AF)',
-            boxShadow: '0 4px 16px rgba(30,77,140,0.4)',
+            background: 'linear-gradient(135deg, var(--blue), var(--info))',
+            boxShadow: '0 4px 16px color-mix(in srgb, var(--blue) 40%, transparent)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             color: '#fff',
           }}
@@ -344,7 +388,7 @@ export default function StaffRequests() {
               {isPM && (detail.status_v2 === 'draft' || detail.status_v2 === 'rework') && (
                 <button onClick={() => handleSubmit(detail.id)}
                   className="w-full py-2.5 rounded-xl text-sm font-semibold spring-tap"
-                  style={{ background: 'linear-gradient(135deg, var(--blue), #1E40AF)', color: '#fff' }}>
+                  style={{ background: 'linear-gradient(135deg, var(--blue), var(--info))', color: '#fff' }}>
                   📨 Отправить HR
                 </button>
               )}
@@ -352,7 +396,7 @@ export default function StaffRequests() {
               {isPM && detail.status_v2 === 'approved' && (
                 <button onClick={() => handleAddToCrew(detail.id)}
                   className="w-full py-2.5 rounded-xl text-sm font-semibold spring-tap"
-                  style={{ background: 'linear-gradient(135deg, var(--green), #166534)', color: '#fff' }}>
+                  style={{ background: 'linear-gradient(135deg, var(--green), var(--ok))', color: '#fff' }}>
                   👥 Добавить в бригаду
                 </button>
               )}
@@ -360,7 +404,7 @@ export default function StaffRequests() {
               {isHR && detail.status_v2 === 'new' && (
                 <button onClick={() => handleTake(detail.id)}
                   className="w-full py-2.5 rounded-xl text-sm font-semibold spring-tap"
-                  style={{ background: 'linear-gradient(135deg, var(--blue), #1E40AF)', color: '#fff' }}>
+                  style={{ background: 'linear-gradient(135deg, var(--blue), var(--info))', color: '#fff' }}>
                   📋 Взять в работу
                 </button>
               )}
@@ -368,7 +412,7 @@ export default function StaffRequests() {
               {isHR && (detail.status_v2 === 'in_progress' || detail.status_v2 === 'sent_to_pm') && (
                 <button onClick={() => handleApprove(detail.id)}
                   className="w-full py-2.5 rounded-xl text-sm font-semibold spring-tap"
-                  style={{ background: 'linear-gradient(135deg, var(--green), #166534)', color: '#fff' }}>
+                  style={{ background: 'linear-gradient(135deg, var(--green), var(--ok))', color: '#fff' }}>
                   ✅ Утвердить
                 </button>
               )}
@@ -456,16 +500,9 @@ export default function StaffRequests() {
               style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }}>
               {formSaving ? '...' : '💾 Черновик'}
             </button>
-            <button onClick={async () => {
-              await handleSaveDraft();
-              // After saving, submit the latest draft
-              const res = await api.get('/staff-requests/my');
-              const rows = api.extractRows(res) || [];
-              const draft = rows.find(r => r.status_v2 === 'draft' && r.work_id === Number(formWorkId));
-              if (draft) await handleSubmit(draft.id);
-            }} disabled={formSaving || !formWorkId}
+            <button onClick={() => handleSaveAndSubmit()} disabled={formSaving || !formWorkId}
               className="flex-1 py-3 rounded-xl font-semibold text-sm disabled:opacity-50 spring-tap"
-              style={{ background: 'linear-gradient(135deg, var(--blue), #1E40AF)', color: '#fff' }}>
+              style={{ background: 'linear-gradient(135deg, var(--blue), var(--info))', color: '#fff' }}>
               {formSaving ? '...' : '📨 Отправить HR'}
             </button>
           </div>

@@ -15,7 +15,7 @@ import { StatCard, StatRow } from '@/components/shared/StatCard';
 
 const STATUS_CONFIG = {
   on_site:  { label: 'На объекте',  color: 'var(--green)',  icon: MapPin,      emoji: '🏗', border: 'var(--green)' },
-  approved: { label: 'Утверждён',   color: '#7B68EE',       icon: UserCheck,   emoji: '✅', border: '#7B68EE' },
+  approved: { label: 'Утверждён',   color: 'var(--info-t)',       icon: UserCheck,   emoji: '✅', border: 'var(--info-t)' },
   ready:    { label: 'Готов',        color: 'var(--blue)',   icon: Shield,      emoji: '⚔️', border: 'var(--blue)' },
   not_ready:{ label: 'Не готов',     color: 'var(--warn-t)', icon: XCircle,     emoji: '🛏', border: 'var(--warn-t)' },
   archive:  { label: 'Архив',       color: 'var(--text-tertiary)', icon: Archive, emoji: '📦', border: 'var(--text-tertiary)' },
@@ -24,6 +24,7 @@ const STATUS_CONFIG = {
 const FILTER_PILLS = [
   { key: 'all',       label: 'Все' },
   { key: 'on_site',   label: 'На объекте' },
+  { key: 'approved',  label: 'Утверждён' },
   { key: 'ready',     label: 'Готов' },
   { key: 'not_ready', label: 'Не готов' },
 ];
@@ -46,21 +47,23 @@ export default function Personnel() {
 
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [filter, setFilter] = useState('all');
   const [detail, setDetail] = useState(null);
-  const [statusAction, setStatusAction] = useState(null); // { emp, status }
   const [saving, setSaving] = useState(false);
 
   const fetchEmployees = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await api.get('/staff/readiness');
       const rows = api.extractRows(res) || [];
       setEmployees(rows);
-    } catch {
+    } catch (e) {
       setEmployees([]);
+      setError(e.message || 'Ошибка загрузки');
     } finally {
       setLoading(false);
     }
@@ -108,12 +111,11 @@ export default function Personnel() {
     try {
       await api.put(`/staff/readiness/${emp.id}/status`, { status: newStatus });
       haptic.success();
-      setStatusAction(null);
       setDetail(null);
       await fetchEmployees();
     } catch (e) {
       haptic.error();
-      alert(e.message);
+      setError(e.message);
     } finally {
       setSaving(false);
     }
@@ -129,6 +131,16 @@ export default function Personnel() {
       }
     >
       <PullToRefresh onRefresh={fetchEmployees}>
+        {/* Error */}
+        {error && (
+          <div className="rounded-xl px-4 py-3 mb-3 flex items-center gap-2"
+            style={{ background: 'color-mix(in srgb, var(--err-t) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--err-t) 30%, transparent)' }}
+            onClick={() => setError(null)}>
+            <AlertTriangle size={16} style={{ color: 'var(--err-t)', flexShrink: 0 }} />
+            <span className="text-sm" style={{ color: 'var(--err-t)' }}>{error}</span>
+          </div>
+        )}
+
         {/* Stats */}
         {!loading && employees.length > 0 && (
           <StatRow cols={4}>
@@ -160,7 +172,7 @@ export default function Personnel() {
         </div>
 
         {loading ? <SkeletonList count={6} /> : grouped.length === 0 ? (
-          <EmptyState icon={Users} iconColor="#7B68EE" iconBg="rgba(123,104,238,0.1)"
+          <EmptyState icon={Users} iconColor="var(--info-t)" iconBg="color-mix(in srgb, var(--info-t) 10%, transparent)"
             title={search ? 'Никого не найдено' : 'Нет сотрудников'}
             description={search ? 'Попробуйте изменить запрос' : 'Сотрудники появятся здесь'} />
         ) : (

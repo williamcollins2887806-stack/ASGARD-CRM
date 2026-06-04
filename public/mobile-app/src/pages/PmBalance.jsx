@@ -17,17 +17,20 @@ export default function PmBalance() {
   const haptic = useHaptic();
   const [pms, setPms] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [detail, setDetail] = useState(null);
   const [detailData, setDetailData] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await api.get('/payroll-dashboard/pm-balance');
       setPms(api.extractRows(res) || []);
-    } catch {
+    } catch (e) {
       setPms([]);
+      setError(e.message || 'Ошибка загрузки');
     } finally {
       setLoading(false);
     }
@@ -62,7 +65,7 @@ export default function PmBalance() {
         )}
 
         {loading ? <SkeletonList count={5} /> : pms.length === 0 ? (
-          <EmptyState icon={Wallet} iconColor="var(--gold)" iconBg="rgba(212,168,67,0.1)"
+          <EmptyState icon={Wallet} iconColor="var(--gold)" iconBg="color-mix(in srgb, var(--gold) 10%, transparent)"
             title="Нет данных" description="Нет РП с балансом" />
         ) : (
           <div className="flex flex-col gap-2 pb-4">

@@ -72,7 +72,7 @@ export default function FieldReadiness() {
       try {
         const empId = employee?.id;
         if (empId) {
-          const docs = await fieldApi.get('/worker/permits');
+          const docs = await fieldApi.get('/permits');
           if (Array.isArray(docs)) {
             const now = Date.now();
             const thirtyDays = 30 * 86400000;
@@ -113,6 +113,9 @@ export default function FieldReadiness() {
       haptic.success();
       setSuccess(mode === 'ready' ? 'Статус обновлён — ты готов к походу!' : 'Статус обновлён — отдыхай, воин!');
       setMode(null);
+      setReason('');
+      setComment('');
+      setReadyDate(todayISO());
       await fetchData();
     } catch (e) {
       haptic.error();
@@ -303,8 +306,8 @@ export default function FieldReadiness() {
                 <button
                   onClick={handleSubmit}
                   disabled={saving}
-                  className="flex-1 py-3 rounded-xl font-semibold text-sm disabled:opacity-50"
-                  style={{ background: 'linear-gradient(135deg, var(--green), #166534)', color: '#fff' }}
+                  className="flex-1 py-3 rounded-xl font-semibold text-sm disabled:opacity-50 spring-tap"
+                  style={{ background: 'linear-gradient(135deg, var(--green), var(--ok))', color: '#fff' }}
                 >
                   {saving ? 'Сохраняю...' : '✅ Подтвердить'}
                 </button>
@@ -362,10 +365,10 @@ export default function FieldReadiness() {
                 <button
                   onClick={handleSubmit}
                   disabled={saving || !reason}
-                  className="flex-1 py-3 rounded-xl font-semibold text-sm disabled:opacity-50"
+                  className="flex-1 py-3 rounded-xl font-semibold text-sm disabled:opacity-50 spring-tap"
                   style={{
                     background: reason
-                      ? 'linear-gradient(135deg, var(--warn-t), #92400E)'
+                      ? 'linear-gradient(135deg, var(--warn-t), var(--warn))'
                       : 'var(--bg-primary)',
                     color: reason ? '#fff' : 'var(--text-tertiary)',
                     border: reason ? 'none' : '1px solid var(--border-norse)',

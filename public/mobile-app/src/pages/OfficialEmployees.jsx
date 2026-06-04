@@ -16,13 +16,14 @@ const STATUS_LABELS = {
 };
 const STATUS_COLORS = {
   active: 'var(--green)', unpaid_leave: 'var(--warn-t)',
-  maternity: '#A855F7', sick_leave: 'var(--err-t)', fired: 'var(--text-tertiary)',
+  maternity: 'var(--info-t)', sick_leave: 'var(--err-t)', fired: 'var(--text-tertiary)',
 };
 
 export default function OfficialEmployees() {
   const haptic = useHaptic();
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [detail, setDetail] = useState(null);
 
   // Edit form
@@ -33,11 +34,13 @@ export default function OfficialEmployees() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await api.get('/payroll-dashboard/official-employees');
       setEmployees(api.extractRows(res) || []);
-    } catch {
+    } catch (e) {
       setEmployees([]);
+      setError(e.message || 'Ошибка загрузки');
     } finally {
       setLoading(false);
     }
@@ -68,7 +71,7 @@ export default function OfficialEmployees() {
       await fetchData();
     } catch (e) {
       haptic.error();
-      alert(e.message);
+      setError(e.message);
     } finally {
       setSaving(false);
     }
@@ -78,7 +81,7 @@ export default function OfficialEmployees() {
     <PageShell title="Официально устроенные">
       <PullToRefresh onRefresh={fetchData}>
         {loading ? <SkeletonList count={5} /> : employees.length === 0 ? (
-          <EmptyState icon={Briefcase} iconColor="var(--blue)" iconBg="rgba(30,77,140,0.1)"
+          <EmptyState icon={Briefcase} iconColor="var(--blue)" iconBg="color-mix(in srgb, var(--blue) 10%, transparent)"
             title="Нет данных" description="Нет официально устроенных сотрудников" />
         ) : (
           <div className="flex flex-col gap-2 pb-4">
@@ -149,7 +152,7 @@ export default function OfficialEmployees() {
             </div>
             <button onClick={handleSave} disabled={saving}
               className="w-full py-3 rounded-xl font-semibold text-sm disabled:opacity-50"
-              style={{ background: 'linear-gradient(135deg, var(--green), #166534)', color: '#fff' }}>
+              style={{ background: 'linear-gradient(135deg, var(--green), var(--ok))', color: '#fff' }}>
               {saving ? 'Сохраняю...' : '💾 Сохранить'}
             </button>
           </div>
