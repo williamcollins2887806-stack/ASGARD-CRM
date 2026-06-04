@@ -74,7 +74,7 @@ export default function Personnel() {
   const stats = useMemo(() => {
     const s = { on_site: 0, approved: 0, ready: 0, not_ready: 0, archive: 0 };
     employees.forEach(e => {
-      const st = e.readiness_status || 'not_ready';
+      const st = e.effective_status || e.readiness_status || 'not_ready';
       if (s[st] !== undefined) s[st]++;
     });
     return s;
@@ -83,7 +83,7 @@ export default function Personnel() {
   const grouped = useMemo(() => {
     let list = employees;
     if (filter !== 'all') {
-      list = list.filter(e => (e.readiness_status || 'not_ready') === filter);
+      list = list.filter(e => (e.effective_status || e.readiness_status || 'not_ready') === filter);
     }
     if (search) {
       const q = search.toLowerCase();
@@ -98,7 +98,7 @@ export default function Personnel() {
     const order = ['on_site', 'approved', 'ready', 'not_ready', 'archive'];
     order.forEach(k => { groups[k] = []; });
     list.forEach(e => {
-      const st = e.readiness_status || 'not_ready';
+      const st = e.effective_status || e.readiness_status || 'not_ready';
       if (!groups[st]) groups[st] = [];
       groups[st].push(e);
     });
@@ -242,10 +242,10 @@ function EmployeeCard({ emp, cfg, index, onTap }) {
           <p className="text-[14px] font-semibold leading-tight truncate c-primary">{name}</p>
           <p className="text-[11px] mt-0.5 c-secondary">
             {emp.position || emp.role_tag || '—'}
-            {emp.work_title && <span className="c-tertiary"> · {emp.work_title}</span>}
+            {emp.last_work_title || emp.work_title && <span className="c-tertiary"> · {emp.last_work_title || emp.work_title}</span>}
           </p>
-          {emp.pm_name && (
-            <p className="text-[10px] mt-0.5 c-tertiary">РП: {emp.pm_name}</p>
+          {emp.last_pm_name || emp.pm_name && (
+            <p className="text-[10px] mt-0.5 c-tertiary">РП: {emp.last_pm_name || emp.pm_name}</p>
           )}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
@@ -280,8 +280,8 @@ function EmployeeDetailSheet({ employee, onClose, isHR, onStatusChange, saving }
         {cfg.emoji} {cfg.label}
       </span>
     )},
-    e.work_title && { label: 'Объект', value: e.work_title },
-    e.pm_name && { label: 'РП', value: e.pm_name },
+    e.last_work_title || e.work_title && { label: 'Объект', value: e.last_work_title || e.work_title },
+    e.last_pm_name || e.pm_name && { label: 'РП', value: e.last_pm_name || e.pm_name },
     e.readiness_date && st === 'ready' && { label: 'Готов с', value: fmtDate(e.readiness_date) },
     e.readiness_reason && st === 'not_ready' && { label: 'Причина', value: REASONS[e.readiness_reason] || e.readiness_reason },
     e.readiness_comment && { label: 'Комментарий', value: e.readiness_comment },

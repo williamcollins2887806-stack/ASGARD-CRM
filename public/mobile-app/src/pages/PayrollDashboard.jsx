@@ -44,18 +44,25 @@ export default function PayrollDashboard() {
   const [error, setError] = useState(null);
   const [confirmingId, setConfirmingId] = useState(null);
 
+  const [seLimits, setSeLimits] = useState([]);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const [sum, tr] = await Promise.all([
+      const [sum, tr, lim] = await Promise.all([
         api.get(`/payroll-dashboard/summary/${year}/${month}`),
         api.get(`/payroll-dashboard/se-transfers/${year}/${month}`),
+        api.get('/payroll-dashboard/self-employed-limits'),
       ]);
       setSummary(sum);
       setTransfers(api.extractRows(tr) || []);
-    } catch {
+      setSeLimits(api.extractRows(lim) || []);
+    } catch (e) {
       setSummary(null);
       setTransfers([]);
+      setSeLimits([]);
+      setError(e.message || 'Ошибка загрузки');
     } finally {
       setLoading(false);
     }
@@ -236,21 +243,24 @@ export default function PayrollDashboard() {
             </div>
 
             {/* Yearly limits */}
-            {summary.se_limits && summary.se_limits.length > 0 && (
+            {seLimits.length > 0 && (
               <div style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) 400ms both' }}>
                 <p className="text-xs font-semibold uppercase tracking-wider mb-2 c-tertiary">
                   Годовые лимиты самозанятых
                 </p>
                 <div className="flex flex-col gap-1.5">
-                  {summary.se_limits.map((l, i) => {
-                    const pct = l.yearly_limit > 0 ? Math.min(100, (l.transferred / l.yearly_limit) * 100) : 0;
-                    const danger = l.remaining < 700000;
+                  {seLimits.map((l, i) => {
+                    const yearlyLimit = Number(summary?.yearly_limit) || 2400000;
+                    const transferred = Number(l.transferred_year) || 0;
+                    const remaining = Number(l.remaining) || 0;
+                    const pct = yearlyLimit > 0 ? Math.min(100, (transferred / yearlyLimit) * 100) : 0;
+                    const danger = remaining < 700000;
                     return (
                       <div key={i} className="card-glass px-4 py-3">
                         <div className="flex items-center justify-between mb-1">
                           <p className="text-[13px] font-medium c-primary">{l.fio || '—'}</p>
                           <p className="text-[11px] font-semibold" style={{ color: danger ? 'var(--err-t)' : 'var(--green)' }}>
-                            {fmtMoney(l.remaining)} ост.
+                            {fmtMoney(remaining)} ост.
                           </p>
                         </div>
                         <div style={{
@@ -268,7 +278,7 @@ export default function PayrollDashboard() {
                           }} />
                         </div>
                         <p className="text-[10px] mt-1 c-tertiary">
-                          {fmtMoney(l.transferred)} из {fmtMoney(l.yearly_limit)}
+                          {fmtMoney(transferred)} из {fmtMoney(yearlyLimit)}
                         </p>
                       </div>
                     );

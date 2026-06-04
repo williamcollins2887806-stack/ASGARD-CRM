@@ -257,8 +257,8 @@ export default function StaffRequests() {
           <div className="flex flex-col gap-2 pb-4">
             {requests.map((req, i) => {
               const cfg = STATUS_CONFIG[req.status_v2 || req.status] || STATUS_CONFIG.new;
-              const totalRequired = (req.positions || []).reduce((s, p) => s + (p.required_count || 0), 0);
-              const totalFilled = (req.positions || []).reduce((s, p) => s + (p.filled_count || 0), 0);
+              const totalRequired = req.total_required || (req.positions || []).reduce((s, p) => s + (p.required_count || 0), 0);
+              const totalFilled = req.total_filled || (req.positions || []).reduce((s, p) => s + (p.filled_count || 0), 0);
               return (
                 <button key={req.id} onClick={() => { haptic.light(); setDetail(req); }}
                   className="card-glass w-full text-left px-4 py-3 spring-tap"
