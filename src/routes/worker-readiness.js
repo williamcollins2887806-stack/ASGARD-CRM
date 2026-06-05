@@ -12,8 +12,10 @@
  * Доступ: ADMIN, HR, HR_MANAGER, DIRECTOR_GEN, DIRECTOR_COMM
  */
 
+// READINESS_ROLES — смена статуса готовности (запись). PM сюда НЕ входит (read-only).
 const READINESS_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM'];
-const VIEW_ROLES      = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'TO', 'HEAD_TO'];
+// VIEW_ROLES — просмотр списка дружины. PM/HEAD_PM видят всех (свою бригаду — в полевом модуле).
+const VIEW_ROLES      = ['ADMIN', 'HR', 'HR_MANAGER', 'PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'TO', 'HEAD_TO'];
 
 const READINESS_REASONS = [
   { key: 'illness',    label: 'Болезнь' },

@@ -19,7 +19,10 @@ window.AsgardPersonnelPage = (function () {
 
   // ─── Константы ──────────────────────────────────────────────────────────────
 
-  const ALLOWED_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'TO', 'HEAD_TO'];
+  // ALLOWED_ROLES = просмотр (read) страницы «Дружина». Должен совпадать с ролями роута /personnel в app.js.
+  // PM/HEAD_PM видят всю дружину на десктопе (свою бригаду РП видит в полевом модуле, вкладка «Бригада»).
+  const ALLOWED_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'PM', 'HEAD_PM', 'OFFICE_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'TO', 'HEAD_TO'];
+  // EDIT_ROLES = редактирование. PM остаётся read-only — править анкеты может HR/директор.
   const EDIT_ROLES    = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM'];
 
   // 2,4М ₽ — стандартный годовой лимит СЗ (самозанятый)
