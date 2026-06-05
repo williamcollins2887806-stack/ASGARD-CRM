@@ -1519,7 +1519,8 @@ window.AsgardFieldTab = (function () {
   }
 
   // ── Inline shift+points editor (replaces cell content) ──
-  function _shiftEditor(td, currentShift, currentPts, pv, onSave, onCancel) {
+  // onDelete (необяз.) — если передан, показывает иконку «удалить смену»
+  function _shiftEditor(td, currentShift, currentPts, pv, onSave, onCancel, onDelete) {
     td.innerHTML = '';
     td.style.padding = '2px';
     const wrap = document.createElement('div');
@@ -1558,11 +1559,30 @@ window.AsgardFieldTab = (function () {
     input.style.cssText = 'width:44px;padding:2px;font-size:12px;text-align:center;border:1px solid var(--gold);border-radius:4px;background:var(--bg1);color:var(--t1);outline:none';
     input.addEventListener('input', () => { input.dataset.userEdited = '1'; });
     wrap.appendChild(input);
+
+    // Кнопка «удалить смену» (только при редактировании существующего чекина)
+    if (typeof onDelete === 'function') {
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.textContent = '🗑 Удалить';
+      delBtn.title = 'Удалить смену';
+      delBtn.style.cssText = 'margin-top:2px;border:1px solid rgba(239,68,68,.4);border-radius:4px;font-size:10px;cursor:pointer;padding:1px 4px;line-height:1.2;background:rgba(239,68,68,.12);color:#ef4444;white-space:nowrap';
+      // mousedown, чтобы сработать до blur-сохранения инпута
+      delBtn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        input.dataset.deleting = '1';
+        onDelete();
+      });
+      wrap.appendChild(delBtn);
+    }
+
     td.appendChild(wrap);
     input.focus();
     input.select();
 
     function doSave() {
+      if (input.dataset.deleting === '1') return; // удаление уже идёт — не сохранять
       const pts = parseInt(input.value) || 0;
       const st = _shiftIcon(selectedShift);
       onSave(pts, selectedShift, st);
@@ -1586,9 +1606,37 @@ window.AsgardFieldTab = (function () {
       td.style.background = si.bg || '';
     }
 
+    // Удаление (отмена) чекина — общая логика для «баллы=0» и кнопки «удалить»
+    async function deleteCheckin() {
+      try {
+        await api(`/projects/${work.id}/checkin/${day.id}`, { method: 'DELETE' });
+        // Превращаем ячейку обратно в «+» (добавить смену)
+        td.innerHTML = '+';
+        td.style.color = 'var(--t3)';
+        td.style.opacity = '0.5';
+        td.style.background = '';
+        td.style.padding = '4px 6px';
+        td.style.transition = 'outline 0.5s';
+        td.style.outline = '2px solid rgba(239,68,68,0.5)';
+        setTimeout(() => { td.style.outline = ''; }, 800);
+        // Перенавешиваем обработчик «добавить смену» на освободившуюся ячейку
+        const freshTd = td.cloneNode(true);
+        td.parentNode.replaceChild(freshTd, td);
+        freshTd.style.cursor = 'pointer';
+        freshTd.title = 'Добавить смену';
+        freshTd.addEventListener('click', () => addCheckinCell(freshTd, emp, date, work, pv));
+        toast('Табель', `Смена ${date} удалена`, 'ok');
+      } catch (e) {
+        toast('Ошибка', 'Не удалось удалить смену', 'err');
+        restore();
+      }
+    }
+
     _shiftEditor(td, origShift, origPts, pv,
       async (newPts, newShift, si) => {
         if (newPts === origPts && newShift === origShift) { restore(); return; }
+        // Баллы = 0 → удаляем (отменяем) чекин вместо записи с нулевой суммой
+        if (newPts === 0) { await deleteCheckin(); return; }
         const newRate = newPts * pv;
         const shiftDef = SHIFT_TYPES.find(s => s.value === newShift) || SHIFT_TYPES[0];
         try {
@@ -1607,7 +1655,8 @@ window.AsgardFieldTab = (function () {
           restore();
         }
       },
-      restore
+      restore,
+      deleteCheckin
     );
   }
 
