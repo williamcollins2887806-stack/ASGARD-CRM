@@ -159,7 +159,7 @@ async function routes(fastify) {
         ea.id AS assignment_id, ea.work_id, ea.field_role, ea.shift_type,
         ea.per_diem, ea.is_active, ea.departure_date,
         w.work_title, w.city AS work_city,
-        ft.points_per_shift, ft.name AS tariff_name,
+        ft.points AS points_per_shift, ft.position_name AS tariff_name,
         fc.id AS checkin_id, fc.status AS checkin_status, fc.shift AS checkin_shift,
         fc.checkin_at, fc.checkout_at, fc.amount_earned,
         gw.balance AS xp,
@@ -220,7 +220,7 @@ async function routes(fastify) {
         SELECT ea.id, ea.work_id, ea.field_role, ea.shift_type, ea.per_diem, ea.is_active,
           ea.date_from, ea.date_to, ea.departure_date, ea.departure_reason,
           w.work_title, w.city, w.work_status,
-          ft.name AS tariff_name, ft.points_per_shift
+          ft.position_name AS tariff_name, ft.points AS points_per_shift
         FROM employee_assignments ea
         JOIN works w ON w.id = ea.work_id
         LEFT JOIN field_tariff_grid ft ON ft.id = ea.tariff_id
