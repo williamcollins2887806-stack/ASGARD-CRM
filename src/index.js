@@ -408,7 +408,10 @@ fastify.decorate('requirePermission', function(moduleKey, operation = 'read') {
 // ─────────────────────────────────────────────────────────────────────────────
 const fieldJwt = require('jsonwebtoken');
 const fieldCrypto = require('crypto');
-const FIELD_JWT_SECRET = process.env.FIELD_JWT_SECRET || process.env.JWT_SECRET;
+// ВАЖНО: fallback должен совпадать с подписью токена в routes/field-auth.js
+// (там JWT_SECRET + '_field'). Иначе при отсутствии FIELD_JWT_SECRET в .env
+// секреты подписи и проверки расходятся → все field-токены дают 401.
+const FIELD_JWT_SECRET = process.env.FIELD_JWT_SECRET || (process.env.JWT_SECRET + '_field');
 
 fastify.decorate('fieldAuthenticate', async function(request, reply) {
   try {
