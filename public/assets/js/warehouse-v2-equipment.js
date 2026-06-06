@@ -145,7 +145,8 @@ window.WH2Equipment = (function () {
     container.innerHTML = `
       <div class="wh2-eq-head">
         ${isAdmin() ? '<button class="wh2-btn wh2-btn--primary" data-eq="add">➕ Оборудование</button>' : ''}
-        ${isPM() ? '<button class="wh2-btn" data-eq="request">📋 Запрос</button>' : ''}
+        ${isPM() && !isAdmin() ? '<button class="wh2-btn wh2-btn--primary" data-eq="request">📋 Заявка на выдачу</button>' : ''}
+        ${isAdmin() ? '<button class="wh2-btn" data-eq="batches">📋 Заявки</button>' : ''}
         <button class="wh2-btn" data-eq="mine">👤 Моё оборудование</button>
         <button class="wh2-btn" data-eq="qr">🔍 По QR</button>
         <button class="wh2-btn" data-eq="export">📥 Excel</button>
@@ -162,7 +163,8 @@ window.WH2Equipment = (function () {
     container.querySelectorAll('[data-eq]').forEach(b => b.onclick = () => {
       const a = b.dataset.eq;
       if (a === 'add') openForm();
-      else if (a === 'request') openRequestForm();
+      else if (a === 'request') openRequestCart();
+      else if (a === 'batches') openBatchesForWarehouse();
       else if (a === 'mine') openMine();
       else if (a === 'qr') openByQrPrompt();
       else if (a === 'export') doExport();
@@ -487,21 +489,87 @@ window.WH2Equipment = (function () {
       catch (e) { toast('Не найдено', 'Проверьте код', 'warn'); }
     };
   }
-  async function openRequestForm() {
-    modal('Запрос на оборудование', `<div class="wh2-loading">Загрузка доступного…</div>`);
-    let available = [];
-    try { const d = await api('/api/equipment/available'); available = d.equipment || d.items || []; } catch (_) {}
-    modal('Запрос на оборудование', `<div class="wh2-eq-form">
-      <select id="wh2rq-eq" class="wh2-btn" style="text-align:left"><option value="">Что нужно *…</option>${available.map(e => `<option value="${e.id}">${esc(e.name)}${e.inventory_number ? ' (№' + esc(e.inventory_number) + ')' : ''}</option>`).join('')}</select>
-      <select id="wh2rq-work" class="wh2-btn" style="text-align:left"><option value="">Работа…</option>${optHtml(S.refs.works, 'id', 'work_title')}</select>
-      <select id="wh2rq-obj" class="wh2-btn" style="text-align:left"><option value="">Объект…</option>${optHtml(S.refs.objects, 'id', 'name')}</select>
-      <textarea id="wh2rq-notes" class="wh2-btn" style="text-align:left;min-height:50px" placeholder="Комментарий"></textarea>
-      <button class="wh2-btn wh2-btn--primary" id="wh2rq-save">Отправить запрос</button></div>`);
-    document.getElementById('wh2rq-save').onclick = async () => {
-      const equipment_id = val('wh2rq-eq'); if (!equipment_id) { toast('Внимание', 'Выберите оборудование', 'warn'); return; }
-      try { await api('/api/equipment/request-issue', { method: 'POST', body: JSON.stringify({ equipment_id: +equipment_id, work_id: val('wh2rq-work') || null, object_id: val('wh2rq-obj') || null, notes: val('wh2rq-notes') || null }) });
-        toast('Отправлено', 'Запрос ожидает склад', 'ok'); close(); } catch (e) { toast('Ошибка', e.message, 'err'); }
+  // ── ЗАЯВКА НА ВЫДАЧУ: корзина РП (выбор доступного → работа/сроки → отправка) ──
+  const cart = []; // [{id,name,inv}]
+  async function openRequestCart() {
+    modal('Заявка на выдачу', `<div class="wh2-loading">Загрузка доступного оборудования…</div>`);
+    let avail = [];
+    try { const d = await api('/api/equipment/available-for-request'); avail = d.equipment || []; } catch (e) { toast('Ошибка', e.message, 'err'); }
+    drawCart(avail, '');
+  }
+  function drawCart(avail, filter) {
+    const list = filter ? avail.filter(e => (e.name + ' ' + (e.inventory_number || '')).toLowerCase().includes(filter.toLowerCase())) : avail;
+    const inCart = id => cart.some(c => c.id === id);
+    modal('Заявка на выдачу', `<div style="min-width:380px;display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="wh2cart-q" class="wh2-btn" style="text-align:left;flex:1" placeholder="Поиск доступного оборудования…" value="${esc(filter || '')}">
+        <span class="wh2-chip" style="background:rgba(212,168,67,.16);color:var(--gold,#D4A843)">🛒 ${cart.length}</span>
+      </div>
+      <div style="max-height:280px;overflow:auto">
+        ${!list.length ? '<div class="wh2-card__sub" style="padding:10px">Нет доступного оборудования</div>' : list.map(e => `
+          <div class="wh2-mv"><div style="flex:1"><b>${esc(e.name)}</b> <span class="wh2-card__sub">${e.inventory_number ? '№' + esc(e.inventory_number) : ''}${e.category_name ? ' · ' + esc(e.category_name) : ''}</span></div>
+            <button class="wh2-eq-act ${inCart(e.id) ? '' : 'wh2-eq-act--issue'}" data-cart="${e.id}">${inCart(e.id) ? '✓ В корзине' : '+ В корзину'}</button></div>`).join('')}
+      </div>
+      ${cart.length ? `<div style="border-top:1px solid var(--border,#262c38);padding-top:12px">
+        <div style="font-weight:700;margin-bottom:8px">Корзина (${cart.length})</div>
+        ${cart.map(c => `<div class="wh2-mv"><div style="flex:1">${esc(c.name)} <span class="wh2-card__sub">${c.inv ? '№' + esc(c.inv) : ''}</span></div><button class="wh2-eq-act" data-uncart="${c.id}">✕</button></div>`).join('')}
+        <select id="wh2cart-work" class="wh2-btn" style="text-align:left;width:100%;margin-top:10px"><option value="">Под работу *…</option>${optHtml(S.refs.works, 'id', 'work_title')}</select>
+        <div class="row" style="display:flex;gap:10px;margin-top:8px">
+          <div style="flex:1"><label class="wh2-card__sub">Когда нужно</label>${inp('wh2cart-from', '', '', 'date')}</div>
+          <div style="flex:1"><label class="wh2-card__sub">До (ориентир.)</label>${inp('wh2cart-to', '', '', 'date')}</div>
+        </div>
+        <textarea id="wh2cart-notes" class="wh2-btn" style="text-align:left;width:100%;min-height:46px;margin-top:8px" placeholder="Комментарий кладовщику"></textarea>
+        <button class="wh2-btn wh2-btn--primary" id="wh2cart-send" style="width:100%;margin-top:10px">📤 Отправить заявку кладовщику</button>
+      </div>` : '<div class="wh2-card__sub" style="text-align:center;padding:8px">Добавьте оборудование в корзину</div>'}
+    </div>`);
+    const qEl = document.getElementById('wh2cart-q');
+    if (qEl) { qEl.oninput = () => drawCart(avail, qEl.value); qEl.focus(); const v = qEl.value; qEl.setSelectionRange(v.length, v.length); }
+    document.querySelectorAll('[data-cart]').forEach(b => b.onclick = () => { const e = avail.find(x => x.id === +b.dataset.cart); if (e && !cart.some(c => c.id === e.id)) cart.push({ id: e.id, name: e.name, inv: e.inventory_number }); drawCart(avail, qEl ? qEl.value : ''); });
+    document.querySelectorAll('[data-uncart]').forEach(b => b.onclick = () => { const i = cart.findIndex(c => c.id === +b.dataset.uncart); if (i >= 0) cart.splice(i, 1); drawCart(avail, qEl ? qEl.value : ''); });
+    const send = document.getElementById('wh2cart-send');
+    if (send) send.onclick = async () => {
+      const work_id = val('wh2cart-work'); if (!work_id) { toast('Внимание', 'Выберите работу', 'warn'); return; }
+      try {
+        const r = await api('/api/equipment/requests/batch', { method: 'POST', body: JSON.stringify({
+          equipment_ids: cart.map(c => c.id), work_id: +work_id, needed_from: val('wh2cart-from') || null, needed_to: val('wh2cart-to') || null, notes: val('wh2cart-notes') || null }) });
+        toast('Отправлено', `Заявка на ${cart.length} ед. ожидает кладовщика`, 'ok'); cart.length = 0; close();
+      } catch (e) {
+        if (e.message && e.message.includes('занят')) toast('Занято', 'Часть оборудования уже забрали — обновите список', 'err');
+        else toast('Ошибка', e.message, 'err');
+        openRequestCart();
+      }
     };
+  }
+
+  // ── ЭКРАН КЛАДОВЩИКА: заявки на выдачу (подтвердить/отклонить/убрать позицию) ──
+  async function openBatchesForWarehouse() {
+    modal('Заявки на выдачу', `<div class="wh2-loading">Загрузка заявок…</div>`);
+    let batches = [];
+    try { const d = await api('/api/equipment/requests/batches?status=pending'); batches = d.batches || []; } catch (e) { toast('Ошибка', e.message, 'err'); }
+    if (!batches.length) { modal('Заявки на выдачу', `<div class="wh2-empty" style="min-width:340px"><div class="wh2-empty__i">📋</div>Нет заявок на рассмотрении.</div>`); return; }
+    modal('Заявки на выдачу', `<div style="min-width:380px;display:flex;flex-direction:column;gap:14px">
+      ${batches.map(b => `<div style="background:var(--bg-input,#10141b);border-radius:12px;padding:14px" data-batch="${b.batch_id}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div><b>${esc(b.requester_name || 'РП')}</b> <span class="wh2-card__sub">→ ${esc(b.work_title || '—')}</span>
+            <div class="wh2-card__sub">${b.needed_from ? 'Нужно: ' + dt(b.needed_from) : ''}${b.needed_to ? ' — ' + dt(b.needed_to) : ''}</div></div>
+          <span class="wh2-chip" style="background:rgba(255,176,32,.15);color:#ffb020">${b.items_count} ед.</span>
+        </div>
+        <div style="margin:10px 0">${(b.items || []).map(it => `<div class="wh2-mv" data-bitem="${it.id}"><div style="flex:1">${esc(it.name)} <span class="wh2-card__sub">${it.inv ? '№' + esc(it.inv) : ''}</span></div><button class="wh2-eq-act" data-rm-item="${it.id}" title="Убрать (не готово)">✕</button></div>`).join('')}</div>
+        <div style="display:flex;gap:8px">
+          <button class="wh2-btn wh2-btn--primary" data-approve="${b.batch_id}" style="flex:1">✅ Подтвердить</button>
+          <button class="wh2-btn" data-reject="${b.batch_id}">❌ Отклонить</button>
+        </div></div>`).join('')}
+    </div>`);
+    document.querySelectorAll('[data-rm-item]').forEach(b => b.onclick = async () => {
+      try { await api('/api/equipment/requests/item/' + b.dataset.rmItem, { method: 'DELETE' }); toast('Убрано', '', 'ok'); openBatchesForWarehouse(); } catch (e) { toast('Ошибка', e.message, 'err'); }
+    });
+    document.querySelectorAll('[data-approve]').forEach(b => b.onclick = async () => {
+      try { const r = await api('/api/equipment/requests/batch/' + b.dataset.approve + '/approve', { method: 'PUT' });
+        toast('Подтверждено', `Забронировано: ${r.approved}${r.conflicts && r.conflicts.length ? ', конфликтов: ' + r.conflicts.length : ''}`, 'ok'); openBatchesForWarehouse(); refreshAll(); } catch (e) { toast('Ошибка', e.message, 'err'); }
+    });
+    document.querySelectorAll('[data-reject]').forEach(b => b.onclick = () => askInput('Отклонить заявку', 'Причина отклонения', async (reason) => {
+      try { await api('/api/equipment/requests/batch/' + b.dataset.reject + '/reject', { method: 'PUT', body: JSON.stringify({ reason }) }); toast('Отклонено', '', 'ok'); openBatchesForWarehouse(); } catch (e) { toast('Ошибка', e.message, 'err'); }
+    }));
   }
   async function doExport() {
     const p = new URLSearchParams(); Object.entries(S.filters).forEach(([k, v]) => v && p.set(k, v));

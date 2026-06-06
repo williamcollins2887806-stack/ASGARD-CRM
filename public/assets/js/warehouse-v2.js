@@ -9,7 +9,7 @@ window.AsgardWarehouseV2 = (function () {
   const esc = UI.esc || (s => String(s == null ? '' : s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])));
   const toast = UI.toast || ((t, m, tp) => console.log(`[${tp}] ${t}: ${m}`));
 
-  let _user = null, _root = null, _tab = 'catalog';
+  let _user = null, _root = null, _tab = 'equipment';
   let _cats = [], _whs = [];
   const fmt = n => (n == null ? '—' : Number(n).toLocaleString('ru-RU'));
 
@@ -100,7 +100,27 @@ window.AsgardWarehouseV2 = (function () {
     try { const w = await api('/api/equipment/warehouses'); _whs = w.warehouses || []; } catch (_) { _whs = []; }
   }
 
-  // ════════════════════ ВКЛАДКА: КАТАЛОГ ════════════════════
+  // ════════════════════ ВКЛАДКА: РАСХОДНИКИ (каталог + наличие в одном) ════════════════════
+  async function renderConsumables(container, search) {
+    container.innerHTML = `
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+        <button class="wh2-btn" data-cop="receipt">📥 Приход</button>
+        <button class="wh2-btn" data-cop="issue">📤 Расход</button>
+        <button class="wh2-btn" data-cop="transfer">🔄 Перемещение</button>
+        <button class="wh2-btn" data-cop="writeoff">🗑️ Списание</button>
+        <span style="flex:1"></span>
+        <button class="wh2-btn" id="wh2-cview-table">☰ Таблицей</button>
+      </div>
+      <div id="wh2-cons-body"></div>`;
+    container.querySelectorAll('[data-cop]').forEach(b => b.onclick = () => openStockOp(b.dataset.cop));
+    const tableBtn = container.querySelector('#wh2-cview-table');
+    let tableMode = false;
+    const draw = () => tableMode ? renderStock(container.querySelector('#wh2-cons-body'), search) : renderCatalog(container.querySelector('#wh2-cons-body'), search);
+    if (tableBtn) tableBtn.onclick = () => { tableMode = !tableMode; tableBtn.textContent = tableMode ? '▦ Карточки' : '☰ Таблицей'; draw(); };
+    draw();
+  }
+
+  // ════════════════════ КАТАЛОГ-КАРТОЧКИ (используется внутри «Расходники») ════════════════════
   async function renderCatalog(container, search) {
     container.innerHTML = `<div class="wh2-loading">Загрузка каталога…</div>`;
     let prods = [];
@@ -379,13 +399,13 @@ window.AsgardWarehouseV2 = (function () {
   async function refresh() {
     const body = _root.querySelector('#wh2-body');
     const toolbar = _root.querySelector('#wh2-toolbar');
-    // toolbar зависит от вкладки
-    if (_tab === 'catalog') toolbar.querySelector('#wh2-add').style.display = '';
-    else if (_tab === 'locations') toolbar.querySelector('#wh2-add').style.display = '';
-    else toolbar.querySelector('#wh2-add').style.display = 'none';
+    // toolbar зависит от вкладки. На «Оборудование» поиск и кнопки рисует сам модуль.
+    const addBtn = toolbar.querySelector('#wh2-add');
+    addBtn.style.display = (_tab === 'consumables' || _tab === 'locations') ? '' : 'none';
+    if (_tab === 'consumables') addBtn.textContent = '➕ Позиция';
+    toolbar.style.display = (_tab === 'equipment' || _tab === 'incoming' || _tab === 'movements') ? 'none' : '';
     renderKPIs(_root.querySelector('#wh2-kpis'));
-    if (_tab === 'catalog') return renderCatalog(body, _searchVal);
-    if (_tab === 'stock') return renderStock(body, _searchVal);
+    if (_tab === 'consumables') return renderConsumables(body, _searchVal);
     if (_tab === 'equipment') {
       // Полноценный блок оборудования вынесен в warehouse-v2-equipment.js (window.WH2Equipment).
       if (window.WH2Equipment) return window.WH2Equipment.render(body, { user: _user, api, esc, toast, fmt, UI, search: _searchVal });
@@ -448,9 +468,8 @@ window.AsgardWarehouseV2 = (function () {
     _root.innerHTML = `
       <div class="wh2-kpis" id="wh2-kpis"></div>
       <div class="wh2-tabs" id="wh2-tabs">
-        <button class="wh2-tab wh2-tab--active" data-tab="catalog">📚 Каталог</button>
-        <button class="wh2-tab" data-tab="stock">📦 Наличие</button>
-        <button class="wh2-tab" data-tab="equipment">🛠️ Оборудование</button>
+        <button class="wh2-tab wh2-tab--active" data-tab="equipment">🛠️ Оборудование</button>
+        <button class="wh2-tab" data-tab="consumables">🧰 Расходники</button>
         <button class="wh2-tab" data-tab="incoming">🚚 Приёмка</button>
         <button class="wh2-tab" data-tab="locations">🗺️ Ячейки</button>
         <button class="wh2-tab" data-tab="movements">📜 Движения</button>

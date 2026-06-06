@@ -1237,6 +1237,154 @@ async function equipmentRoutes(fastify, options) {
   // ============================================
   // 24. POST /reserve — Бронирование оборудования
   // ============================================
+  // ════════════════════════════════════════════════════════════════════════
+  // НОВЫЙ ФЛОУ: «Заявка на выдачу» — РП собирает корзину доступного оборудования,
+  // указывает работу/сроки → кладовщик подтверждает/отклоняет/убирает позиции.
+  // ════════════════════════════════════════════════════════════════════════
+
+  // Доступное для заявки = на складе И не зарезервировано активной бронью И не в pending-заявке.
+  fastify.get('/available-for-request', { preHandler: [fastify.authenticate] }, async (request) => {
+    const { category_id, search } = request.query;
+    const params = []; let i = 1;
+    let sql = `
+      SELECT e.id, e.name, e.inventory_number, e.serial_number, e.brand, e.model, e.photo_url, e.custom_icon,
+        e.category_id, c.name AS category_name, c.icon AS category_icon, w.name AS warehouse_name
+      FROM equipment e
+      LEFT JOIN equipment_categories c ON e.category_id = c.id
+      LEFT JOIN warehouses w ON e.warehouse_id = w.id
+      WHERE e.status = 'on_warehouse'
+        AND NOT EXISTS (SELECT 1 FROM equipment_reservations r WHERE r.equipment_id = e.id AND r.status = 'active')
+        AND NOT EXISTS (SELECT 1 FROM equipment_requests rq WHERE rq.equipment_id = e.id AND rq.status = 'pending')`;
+    if (category_id) { sql += ` AND e.category_id = $${i++}`; params.push(category_id); }
+    if (search) { sql += ` AND (e.name ILIKE $${i} OR e.inventory_number ILIKE $${i})`; params.push(`%${search}%`); i++; }
+    sql += ` ORDER BY c.name, e.name LIMIT 500`;
+    const result = await db.query(sql, params);
+    return { success: true, equipment: result.rows };
+  });
+
+  // Создать заявку из корзины. Атомарно проверяет, что НИКТО не забрал единицы раньше.
+  fastify.post('/requests/batch', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const user = request.user;
+    const { equipment_ids, work_id, object_id, needed_from, needed_to, notes } = request.body;
+    if (!Array.isArray(equipment_ids) || !equipment_ids.length) return reply.code(400).send({ success: false, message: 'Выберите оборудование' });
+    if (!work_id) return reply.code(400).send({ success: false, message: 'Укажите работу' });
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      // Лочим выбранные единицы и проверяем доступность (защита от гонки «кто раньше забрал»)
+      const lock = await client.query(
+        `SELECT id, name, status FROM equipment WHERE id = ANY($1) FOR UPDATE`, [equipment_ids]);
+      const taken = [];
+      for (const id of equipment_ids) {
+        const e = lock.rows.find(r => r.id === id);
+        if (!e || e.status !== 'on_warehouse') { taken.push({ id, reason: 'не на складе' }); continue; }
+        const reserved = await client.query(`SELECT 1 FROM equipment_reservations WHERE equipment_id=$1 AND status='active'`, [id]);
+        if (reserved.rows[0]) { taken.push({ id, name: e.name, reason: 'уже забронировано' }); continue; }
+        const pending = await client.query(`SELECT 1 FROM equipment_requests WHERE equipment_id=$1 AND status='pending'`, [id]);
+        if (pending.rows[0]) { taken.push({ id, name: e.name, reason: 'уже в чужой заявке' }); continue; }
+      }
+      if (taken.length) {
+        await client.query('ROLLBACK');
+        return reply.code(409).send({ success: false, message: 'Часть оборудования уже занята', taken });
+      }
+      // Все свободны — создаём заявку (batch)
+      const { randomUUID } = require('crypto');
+      const batchId = randomUUID();
+      for (const id of equipment_ids) {
+        await client.query(
+          `INSERT INTO equipment_requests (batch_id, request_type, status, requester_id, equipment_id, work_id, object_id, target_holder_id, needed_from, needed_to, notes)
+           VALUES ($1, 'issue', 'pending', $2, $3, $4, $5, $2, $6, $7, $8)`,
+          [batchId, user.id, id, work_id, object_id || null, needed_from || null, needed_to || null, notes || null]);
+      }
+      await client.query('COMMIT');
+      // уведомляем кладовщиков
+      try {
+        const { createNotification } = require('../services/notify');
+        const whs = await db.query("SELECT id FROM users WHERE role='WAREHOUSE' AND is_active=true");
+        for (const w of whs.rows) createNotification(db, { user_id: w.id, title: '📋 Заявка на выдачу',
+          message: `${user.name || 'РП'} запросил ${equipment_ids.length} ед. оборудования`, type: 'equipment', link: `#/warehouse-v2` });
+      } catch (_) {}
+      return { success: true, batch_id: batchId, count: equipment_ids.length };
+    } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
+  });
+
+  // Список заявок (сгруппировано по batch) — для кладовщика и для РП (свои).
+  fastify.get('/requests/batches', { preHandler: [fastify.authenticate] }, async (request) => {
+    const user = request.user;
+    const { status = 'pending' } = request.query;
+    const isWh = isWarehouseAdmin(user.role);
+    const params = [status]; let i = 2;
+    let where = `rq.status = $1 AND rq.batch_id IS NOT NULL`;
+    if (!isWh) { where += ` AND rq.requester_id = $${i++}`; params.push(user.id); } // РП видит только свои
+    const sql = `
+      SELECT rq.batch_id,
+        MIN(rq.created_at) AS created_at, MIN(rq.needed_from) AS needed_from, MAX(rq.needed_to) AS needed_to,
+        rq.work_id, w.work_title, w.object_name AS work_object,
+        req.name AS requester_name, rq.requester_id,
+        COUNT(*) AS items_count,
+        json_agg(json_build_object('id', rq.id, 'equipment_id', rq.equipment_id, 'name', e.name,
+          'inv', e.inventory_number, 'status', rq.status) ORDER BY e.name) AS items
+      FROM equipment_requests rq
+      LEFT JOIN works w ON rq.work_id = w.id
+      LEFT JOIN users req ON rq.requester_id = req.id
+      LEFT JOIN equipment e ON rq.equipment_id = e.id
+      WHERE ${where}
+      GROUP BY rq.batch_id, rq.work_id, w.work_title, w.object_name, req.name, rq.requester_id
+      ORDER BY MIN(rq.created_at) DESC LIMIT 200`;
+    const { rows } = await db.query(sql, params);
+    return { success: true, batches: rows };
+  });
+
+  // Кладовщик убирает позицию из заявки (не готова и т.п.)
+  fastify.delete('/requests/item/:id', { preHandler: [fastify.requireRoles(WAREHOUSE_ADMINS)] }, async (request, reply) => {
+    const { rows } = await db.query("DELETE FROM equipment_requests WHERE id=$1 AND status='pending' RETURNING id", [request.params.id]);
+    if (!rows[0]) return reply.code(404).send({ success: false, message: 'Не найдено или уже обработано' });
+    return { success: true };
+  });
+
+  // Кладовщик подтверждает заявку — создаёт активные брони + меняет статусы.
+  fastify.put('/requests/batch/:batchId/approve', { preHandler: [fastify.requireRoles(WAREHOUSE_ADMINS)] }, async (request, reply) => {
+    const { batchId } = request.params;
+    const user = request.user;
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const items = await client.query("SELECT * FROM equipment_requests WHERE batch_id=$1 AND status='pending' FOR UPDATE", [batchId]);
+      if (!items.rows.length) { await client.query('ROLLBACK'); return reply.code(404).send({ success: false, message: 'Нет позиций к подтверждению' }); }
+      const conflicts = [];
+      for (const it of items.rows) {
+        // повторная проверка: вдруг забронировали между заявкой и подтверждением
+        const busy = await client.query("SELECT 1 FROM equipment_reservations WHERE equipment_id=$1 AND status='active'", [it.equipment_id]);
+        const e = await client.query("SELECT status, name FROM equipment WHERE id=$1", [it.equipment_id]);
+        if (busy.rows[0] || e.rows[0]?.status !== 'on_warehouse') { conflicts.push({ id: it.id, name: e.rows[0]?.name }); continue; }
+        await client.query(
+          `INSERT INTO equipment_reservations (equipment_id, work_id, reserved_by, reserved_from, reserved_to, status, notes)
+           VALUES ($1, $2, $3, COALESCE($4, CURRENT_DATE), COALESCE($5, CURRENT_DATE + INTERVAL '30 days'), 'active', $6)`,
+          [it.equipment_id, it.work_id, it.requester_id, it.needed_from, it.needed_to, 'Заявка на выдачу #' + batchId.slice(0, 8)]);
+        await client.query("UPDATE equipment_requests SET status='approved', processed_by=$1, processed_at=NOW() WHERE id=$2", [user.id, it.id]);
+      }
+      await client.query('COMMIT');
+      try {
+        const { createNotification } = require('../services/notify');
+        if (items.rows[0]) createNotification(db, { user_id: items.rows[0].requester_id, title: '✅ Заявка подтверждена',
+          message: `Оборудование забронировано за вами`, type: 'equipment', link: `#/warehouse-v2` });
+      } catch (_) {}
+      return { success: true, approved: items.rows.length - conflicts.length, conflicts };
+    } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
+  });
+
+  // Кладовщик отклоняет всю заявку.
+  fastify.put('/requests/batch/:batchId/reject', { preHandler: [fastify.requireRoles(WAREHOUSE_ADMINS)] }, async (request, reply) => {
+    const { batchId } = request.params; const { reason } = request.body; const user = request.user;
+    const { rows } = await db.query("UPDATE equipment_requests SET status='rejected', processed_by=$1, processed_at=NOW(), rejection_reason=$2 WHERE batch_id=$3 AND status='pending' RETURNING requester_id", [user.id, reason || null, batchId]);
+    if (!rows[0]) return reply.code(404).send({ success: false, message: 'Нет позиций' });
+    try {
+      const { createNotification } = require('../services/notify');
+      createNotification(db, { user_id: rows[0].requester_id, title: '❌ Заявка отклонена', message: reason || 'Без причины', type: 'equipment', link: `#/warehouse-v2` });
+    } catch (_) {}
+    return { success: true };
+  });
+
   fastify.post('/reserve', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
