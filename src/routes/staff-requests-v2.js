@@ -76,6 +76,87 @@ async function routes(fastify, options) {
     return { ...req, positions, assignments };
   }
 
+  // ─── Проверка допусков рабочих заявки против требований работы ──────────────
+  // Возвращает массив { employee_id, fio, missing: [{ permit_type_id, type_name, is_mandatory }] }
+  async function computePermitGaps(requestId) {
+    const { rows: [req] } = await db.query(
+      'SELECT work_id FROM staff_requests WHERE id = $1', [requestId]
+    );
+    if (!req || !req.work_id) return { work_id: null, requirements: [], gaps: [] };
+
+    const { rows: requirements } = await db.query(`
+      SELECT wpr.permit_type_id, wpr.is_mandatory, pt.name AS type_name
+      FROM work_permit_requirements wpr
+      JOIN permit_types pt ON pt.id = wpr.permit_type_id
+      WHERE wpr.work_id = $1
+    `, [req.work_id]);
+
+    if (!requirements.length) return { work_id: req.work_id, requirements: [], gaps: [] };
+
+    const { rows: assignments } = await db.query(`
+      SELECT sra.employee_id, e.fio
+      FROM staff_request_assignments sra
+      LEFT JOIN employees e ON e.id = sra.employee_id
+      WHERE sra.request_id = $1 AND sra.status NOT IN ('rejected', 'replaced')
+    `, [requestId]);
+
+    if (!assignments.length) return { work_id: req.work_id, requirements, gaps: [] };
+
+    const empIds = assignments.map(a => a.employee_id);
+    const { rows: permits } = await db.query(`
+      SELECT employee_id, type_id
+      FROM employee_permits
+      WHERE employee_id = ANY($1::int[])
+        AND is_active = true
+        AND (expiry_date IS NULL OR expiry_date >= CURRENT_DATE)
+    `, [empIds]);
+
+    const hasPermit = new Set(permits.map(p => `${p.employee_id}_${p.type_id}`));
+
+    const gaps = assignments.map(a => {
+      const missing = requirements
+        .filter(r => !hasPermit.has(`${a.employee_id}_${r.permit_type_id}`))
+        .map(r => ({ permit_type_id: r.permit_type_id, type_name: r.type_name, is_mandatory: r.is_mandatory }));
+      return { employee_id: a.employee_id, fio: a.fio, missing };
+    }).filter(g => g.missing.length);
+
+    return { work_id: req.work_id, requirements, gaps };
+  }
+
+  // Создаёт записи worker_training для недостающих допусков (без дублей)
+  async function enrollMissingTraining(requestId, userId) {
+    const { work_id, gaps } = await computePermitGaps(requestId);
+    if (!gaps.length) return { created: 0 };
+
+    let created = 0;
+    for (const g of gaps) {
+      for (const m of g.missing) {
+        // Не создаём дубль, если уже есть активное обучение по этому допуску
+        const { rows: existing } = await db.query(`
+          SELECT 1 FROM worker_training
+          WHERE employee_id = $1 AND permit_type_id = $2
+            AND status IN ('pending', 'in_progress')
+          LIMIT 1
+        `, [g.employee_id, m.permit_type_id]);
+        if (existing.length) continue;
+
+        await db.query(`
+          INSERT INTO worker_training
+            (employee_id, work_id, staff_request_id, permit_type_id,
+             training_type, title, description, status, assigned_by, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, 'permit', $5, $6, 'pending', $7, NOW(), NOW())
+        `, [
+          g.employee_id, work_id, requestId, m.permit_type_id,
+          `Оформление допуска: ${m.type_name}`,
+          `Автоматически назначено по заявке #${requestId} (отсутствует требуемый допуск${m.is_mandatory ? ', обязательный' : ''}).`,
+          userId,
+        ]);
+        created++;
+      }
+    }
+    return { created };
+  }
+
   // ─── POST / — создать черновик заявки (PM) ────────────────────────────────
   fastify.post('/', { preHandler: [fastify.requireRoles(PM_ROLES)] }, async (request, reply) => {
     const { work_id, date_from, date_to, positions, work_description, work_conditions, is_vachta } = request.body || {};
@@ -385,7 +466,25 @@ async function routes(fastify, options) {
       UPDATE staff_request_assignments SET status = 'approved'
       WHERE request_id = $1 AND status = 'proposed'
     `, [id]);
-    return { ok: true };
+
+    // Авто-постановка на обучение: рабочие без требуемых допусков → worker_training
+    let training = { created: 0 };
+    try {
+      training = await enrollMissingTraining(id, request.user.id);
+    } catch (e) {
+      fastify.log.warn('[staff-requests/approve] enrollMissingTraining failed: ' + e.message);
+    }
+
+    return { ok: true, training_created: training.created };
+  });
+
+  // ─── GET /:id/permit-check — превью нехватки допусков (для HR) ─────────────
+  fastify.get('/:id/permit-check', { preHandler: [fastify.requireRoles(VIEW_ROLES)] }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const { rows: [req] } = await db.query('SELECT id FROM staff_requests WHERE id = $1', [id]);
+    if (!req) return reply.code(404).send({ error: 'Заявка не найдена' });
+    const result = await computePermitGaps(id);
+    return result;
   });
 
   // ─── PUT /:id/rework ──────────────────────────────────────────────────────
