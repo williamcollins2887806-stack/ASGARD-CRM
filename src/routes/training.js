@@ -12,10 +12,16 @@
  * Доступ: ADMIN, TO, HEAD_TO, DIRECTOR_GEN
  */
 
+const path = require('path');
+const fs = require('fs');
+const fsp = require('fs').promises;
+const { v4: uuidv4 } = require('uuid');
+
 const ACCESS_ROLES = ['ADMIN', 'TO', 'HEAD_TO', 'DIRECTOR_GEN'];
 
 async function routes(fastify, options) {
   const db = fastify.db;
+  const uploadDir = process.env.UPLOAD_DIR || './uploads';
 
   // ─── GET /pending ─────────────────────────────────────────────────────────
   fastify.get('/pending', { preHandler: [fastify.requireRoles(ACCESS_ROLES)] }, async () => {
@@ -119,21 +125,86 @@ async function routes(fastify, options) {
     return { ok: true };
   });
 
-  // ─── POST /upload/:id — заглушка для multipart ────────────────────────────
+  // ─── POST /upload/:id — загрузка файла сертификата (multipart) ─────────────
   fastify.post('/upload/:id', { preHandler: [fastify.requireRoles(ACCESS_ROLES)] }, async (request, reply) => {
-    // Реальная загрузка multipart (через @fastify/multipart) реализуется в Сессии 3.
-    // Сейчас принимаем JSON { filename, original_name } чтобы запись попала в БД.
     const id = parseInt(request.params.id, 10);
-    const { filename, original_name } = request.body || {};
-    if (!filename) return reply.code(400).send({ error: 'filename обязателен' });
+    if (isNaN(id)) return reply.code(400).send({ error: 'Неверный id' });
+
+    const { rows: [t] } = await db.query(
+      'SELECT certificate_file FROM worker_training WHERE id = $1', [id]
+    );
+    if (!t) return reply.code(404).send({ error: 'Обучение не найдено' });
+
+    const contentType = request.headers['content-type'] || '';
+    if (!contentType.includes('multipart/form-data')) {
+      return reply.code(400).send({ error: 'Ожидается multipart/form-data' });
+    }
+
+    let file = null;
+    const parts = request.parts();
+    for await (const part of parts) {
+      if (part.file) {
+        file = {
+          filename: part.filename,
+          mimetype: part.mimetype,
+          buffer: await part.toBuffer(),
+        };
+      }
+    }
+    if (!file) return reply.code(400).send({ error: 'Файл не передан' });
+
+    // Удаляем старый файл (если был)
+    if (t.certificate_file) {
+      try { await fsp.unlink(path.join(uploadDir, t.certificate_file)); } catch (e) { /* ignore */ }
+    }
+
+    const ext = path.extname(file.filename) || '';
+    const certFile = `training_${uuidv4()}${ext}`;
+    await fsp.mkdir(uploadDir, { recursive: true });
+    await fsp.writeFile(path.join(uploadDir, certFile), file.buffer);
+
     await db.query(`
       UPDATE worker_training SET
         certificate_file = $2,
         certificate_original_name = $3,
         updated_at = NOW()
       WHERE id = $1
-    `, [id, filename, original_name || null]);
-    return { ok: true };
+    `, [id, certFile, file.filename || null]);
+
+    return { ok: true, certificate_file: certFile, certificate_original_name: file.filename };
+  });
+
+  // ─── GET /download/:id — скачать файл сертификата ──────────────────────────
+  // Токен принимаем через query (?token=) т.к. файл открывается в новой вкладке
+  // через <a href> без Authorization-заголовка (паттерн files.js download).
+  fastify.get('/download/:id', {
+    preHandler: [
+      async (request) => {
+        if (!request.headers.authorization && request.query.token) {
+          request.headers.authorization = 'Bearer ' + request.query.token;
+        }
+      },
+      fastify.authenticate,
+      fastify.requireRoles(ACCESS_ROLES),
+    ]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    if (isNaN(id)) return reply.code(400).send({ error: 'Неверный id' });
+
+    const { rows: [t] } = await db.query(
+      'SELECT certificate_file, certificate_original_name FROM worker_training WHERE id = $1', [id]
+    );
+    if (!t || !t.certificate_file) return reply.code(404).send({ error: 'Файл не найден' });
+
+    const filePath = path.join(uploadDir, t.certificate_file);
+    if (!fs.existsSync(filePath)) return reply.code(404).send({ error: 'Файл отсутствует на диске' });
+
+    const buffer = await fsp.readFile(filePath);
+    const origName = t.certificate_original_name || t.certificate_file;
+    reply
+      .header('Content-Length', buffer.length)
+      .header('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(origName)}`)
+      .send(buffer);
   });
 }
 

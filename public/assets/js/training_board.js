@@ -119,7 +119,7 @@ window.AsgardTrainingBoard = (function () {
           <td style="padding:10px 14px;">${statusBadge(t.status)}</td>
           <td style="padding:10px 14px;">
             ${hasFile
-              ? `<a href="/api/training/download/${t.id}" target="_blank"
+              ? `<a href="/api/training/download/${t.id}?token=${encodeURIComponent(_token || '')}" target="_blank"
                     style="color:var(--info-t);text-decoration:none;font-size:13px;">
                    📄 ${esc(t.certificate_original_name || 'Сертификат')}
                  </a>`

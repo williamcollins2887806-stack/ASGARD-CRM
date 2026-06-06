@@ -319,6 +319,14 @@ window.AsgardHrRequestsPage = (function () {
           `).join('')}
         </div>
 
+        <div style="margin:12px 0 8px;display:flex;align-items:center;justify-content:space-between">
+          <span style="font-weight:600;color:var(--t1)">Требуемые допуска по должностям</span>
+          <a href="#/permits" style="font-size:12px;color:var(--info-t);text-decoration:none">Открыть на странице «Допуски → Проекты» ↗</a>
+        </div>
+        <div id="df_permits_block" style="border:1px solid var(--brd);border-radius:var(--r-sm);padding:10px;margin-bottom:12px">
+          <div class="help">Выберите объект, чтобы задать требуемые допуска.</div>
+        </div>
+
         <div class="formrow">
           <div style="grid-column:1/-1">
             <label>Описание работ</label>
@@ -358,6 +366,102 @@ window.AsgardHrRequestsPage = (function () {
       </div>
     `;
     await layout(html, { title: 'Новая заявка на рабочих' });
+
+    // ── Блок «Требуемые допуска по должностям» (пишет в work_permit_requirements) ──
+    let permitTypesCache = null;
+    async function getPermitTypes() {
+      if (permitTypesCache) return permitTypesCache;
+      try {
+        const r = await apiFetch('/api/permits/types', token);
+        permitTypesCache = r.types || r || [];
+      } catch (e) { permitTypesCache = []; }
+      return permitTypesCache;
+    }
+
+    let missingRolesHighlight = [];
+    async function renderPermitsBlock(wId) {
+      const box = $('#df_permits_block');
+      if (!box) return;
+      if (!wId) { box.innerHTML = '<div class="help">Выберите объект, чтобы задать требуемые допуска.</div>'; return; }
+      box.innerHTML = '<div class="help">Загрузка…</div>';
+      const [types, reqResp] = await Promise.all([
+        getPermitTypes(),
+        apiFetch(`/api/permits/work/${wId}/requirements`, token).catch(() => ({ requirements: [] }))
+      ]);
+      const requirements = reqResp.requirements || [];
+      // активные должности из формы (required_count>0)
+      const activeRoles = POSITION_ROLES
+        .filter(pr => (Number($(`#df_pos_${pr.key}`)?.value) || 0) > 0);
+      const reqByRole = {};
+      requirements.forEach(r => { const k = r.role_key || ''; (reqByRole[k] = reqByRole[k] || []).push(r); });
+
+      const typeOptions = types.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('');
+
+      const rolesToShow = activeRoles.length ? activeRoles : [];
+      let inner = '';
+      if (!rolesToShow.length) {
+        inner = '<div class="help">Укажите состав (количество по должностям) выше — затем задайте допуска для каждой должности.</div>';
+      }
+      // блок «для всех должностей» + по каждой активной должности
+      const blocks = [{ key: '', label: 'Для всех должностей' }].concat(rolesToShow.map(r => ({ key: r.key, label: r.label })));
+      inner += blocks.map(b => {
+        const list = reqByRole[b.key] || [];
+        const marker = list.find(r => r.no_permits_required);
+        const perms = list.filter(r => !r.no_permits_required && r.permit_type_id);
+        const isMissing = missingRolesHighlight.includes(b.key);
+        return `
+          <div style="margin-bottom:10px;${isMissing ? 'border:1px solid var(--danger-t);border-radius:var(--r-sm);padding:6px' : ''}">
+            <div style="font-weight:600;color:var(--t1);font-size:13px;margin-bottom:4px">
+              ${esc(b.label)} ${isMissing ? '<span style="color:var(--danger-t);font-size:11px">— требуется заполнение</span>' : ''}
+            </div>
+            ${marker ? '<div class="help">Допуска не требуются</div>'
+              : (perms.length
+                  ? perms.map(r => `<span class="chip" style="display:inline-flex;align-items:center;gap:4px;margin:2px;padding:2px 6px;background:var(--bg2);border-radius:10px;font-size:12px">${esc(r.type_name)} <button data-del="${r.id}" style="border:none;background:none;cursor:pointer;color:var(--danger-t)">✕</button></span>`).join('')
+                  : '<span class="help">—</span>')}
+            <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+              <select data-typesel="${b.key}" style="font-size:12px;min-width:160px"><option value="">+ тип допуска…</option>${typeOptions}</select>
+              <button class="btn mini" data-addreq="${b.key}">Добавить</button>
+              ${marker ? `<button class="btn mini ghost" data-delmarker="${marker.id}">Отменить «не требуются»</button>`
+                       : `<button class="btn mini ghost" data-noreq="${b.key}">Не требуются</button>`}
+            </div>
+          </div>`;
+      }).join('');
+      box.innerHTML = inner;
+
+      // bind
+      box.querySelectorAll('[data-addreq]').forEach(btn => btn.addEventListener('click', async () => {
+        const rk = btn.getAttribute('data-addreq');
+        const sel = box.querySelector(`[data-typesel="${rk}"]`);
+        const typeId = sel && sel.value;
+        if (!typeId) { toast('Допуска', 'Выберите тип', 'err'); return; }
+        try {
+          await apiPost(`/api/permits/work/${wId}/requirements`, { permit_type_id: Number(typeId), role_key: rk || null, is_mandatory: true }, token);
+          await renderPermitsBlock(wId);
+        } catch (e) { toast('Ошибка', e.message, 'err'); }
+      }));
+      box.querySelectorAll('[data-noreq]').forEach(btn => btn.addEventListener('click', async () => {
+        const rk = btn.getAttribute('data-noreq');
+        try {
+          await apiPost(`/api/permits/work/${wId}/requirements`, { no_permits_required: true, role_key: rk || null }, token);
+          await renderPermitsBlock(wId);
+        } catch (e) { toast('Ошибка', e.message, 'err'); }
+      }));
+      box.querySelectorAll('[data-del],[data-delmarker]').forEach(btn => btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-del') || btn.getAttribute('data-delmarker');
+        try {
+          await apiDelete(`/api/permits/work/${wId}/requirements/${id}`, token);
+          await renderPermitsBlock(wId);
+        } catch (e) { toast('Ошибка', e.message, 'err'); }
+      }));
+    }
+
+    // initial + on work / состав change
+    renderPermitsBlock(Number($('#df_work').value) || null);
+    $('#df_work').addEventListener('change', () => { missingRolesHighlight = []; renderPermitsBlock(Number($('#df_work').value) || null); });
+    POSITION_ROLES.forEach(pr => {
+      const el = $(`#df_pos_${pr.key}`);
+      if (el) el.addEventListener('change', () => renderPermitsBlock(Number($('#df_work').value) || null));
+    });
 
     function collectFormData() {
       const positionsArr = POSITION_ROLES
@@ -413,9 +517,24 @@ window.AsgardHrRequestsPage = (function () {
           reqId = existingDraft.id;
         } else {
           const result = await apiPost('/api/staff-requests', data, token);
-          reqId = result.id;
+          existingDraft = result.request || result;
+          reqId = (result.request && result.request.id) || result.id;
         }
-        await apiPut(`/api/staff-requests/${reqId}/submit`, null, token);
+        // Submit с разбором 409 (не заданы допуска)
+        const resp = await fetch(`/api/staff-requests/${reqId}/submit`, {
+          method: 'PUT', headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (resp.status === 409) {
+          const err = await resp.json().catch(() => ({}));
+          missingRolesHighlight = err.missing_roles || [];
+          await renderPermitsBlock(Number($('#df_work').value) || null);
+          toast('Требуется заполнение', err.error || 'Не заданы требуемые допуска для должностей', 'err');
+          return;
+        }
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err.error || 'HTTP ' + resp.status);
+        }
         toast('Заявка', 'Отправлена HR', 'ok');
         location.hash = '#/hr-requests';
       } catch (e) { toast('Ошибка', e.message, 'err'); }

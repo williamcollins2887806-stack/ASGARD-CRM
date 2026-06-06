@@ -506,8 +506,8 @@ module.exports = async function(fastify) {
     const { rows } = await db.query(`
       SELECT wpr.*, pt.name as type_name, pt.category
       FROM work_permit_requirements wpr
-      JOIN permit_types pt ON wpr.permit_type_id = pt.id
-      WHERE wpr.work_id = $1 ORDER BY pt.sort_order
+      LEFT JOIN permit_types pt ON wpr.permit_type_id = pt.id
+      WHERE wpr.work_id = $1 ORDER BY wpr.role_key NULLS FIRST, pt.sort_order NULLS FIRST
     `, [workId]);
     return { requirements: rows };
   });
@@ -519,16 +519,34 @@ module.exports = async function(fastify) {
     const workId = parseInt(request.params.workId);
     if (isNaN(workId)) return reply.code(400).send({ error: 'Invalid workId' });
 
-    const { permit_type_id, is_mandatory, notes } = request.body || {};
+    const { permit_type_id, is_mandatory, notes, role_key, no_permits_required } = request.body || {};
+
+    // Маркер «допуска не требуются» для должности (без permit_type_id)
+    if (no_permits_required) {
+      // Снимаем предыдущий маркер этой должности и ставим новый (один на должность)
+      await db.query(
+        `DELETE FROM work_permit_requirements
+         WHERE work_id = $1 AND COALESCE(role_key,'') = COALESCE($2::varchar,'') AND permit_type_id IS NULL`,
+        [workId, role_key || null]
+      );
+      const result = await db.query(`
+        INSERT INTO work_permit_requirements (work_id, permit_type_id, is_mandatory, notes, role_key, no_permits_required, created_at)
+        VALUES ($1, NULL, false, $2, $3, true, NOW())
+        RETURNING *
+      `, [workId, notes || null, role_key || null]);
+      return { requirement: result.rows[0] || null };
+    }
+
     if (!permit_type_id) return reply.code(400).send({ error: 'Укажите permit_type_id' });
 
     const result = await db.query(`
-      INSERT INTO work_permit_requirements (work_id, permit_type_id, is_mandatory, notes, created_at)
-      VALUES ($1, $2, $3, $4, NOW())
-      ON CONFLICT DO NOTHING RETURNING *
-    `, [workId, permit_type_id, is_mandatory !== false, notes || null]);
+      INSERT INTO work_permit_requirements (work_id, permit_type_id, is_mandatory, notes, role_key, no_permits_required, created_at)
+      VALUES ($1, $2, $3, $4, $5, false, NOW())
+      ON CONFLICT (work_id, COALESCE(role_key, ''), permit_type_id) DO NOTHING
+      RETURNING *
+    `, [workId, permit_type_id, is_mandatory !== false, notes || null, role_key || null]);
 
-    return { requirement: result.rows[0] };
+    return { requirement: result.rows[0] || null };
   });
 
   // DELETE /api/permits/work/:workId/requirements/:id — Удалить требование
@@ -554,39 +572,39 @@ module.exports = async function(fastify) {
     const workId = parseInt(request.params.workId);
     if (isNaN(workId)) return reply.code(400).send({ error: 'Invalid workId' });
 
-    // Требования проекта
+    // Требования проекта (с role_key)
     const { rows: requirements } = await db.query(
-      'SELECT permit_type_id, is_mandatory FROM work_permit_requirements WHERE work_id = $1',
+      `SELECT permit_type_id, is_mandatory, role_key FROM work_permit_requirements
+       WHERE work_id = $1 AND permit_type_id IS NOT NULL`,
       [workId]
     );
 
-    // Назначенные сотрудники (через employee_assignments или work.team JSONB)
+    // Назначенные сотрудники + их должность (role_tag/position)
     const { rows: assignments } = await db.query(`
-      SELECT ea.employee_id, e.fio as employee_name
+      SELECT ea.employee_id, e.fio as employee_name, e.role_tag, e.position
       FROM employee_assignments ea
       JOIN employees e ON ea.employee_id = e.id
       WHERE ea.work_id = $1
     `, [workId]);
 
-    // Если нет таблицы employee_assignments, пробуем через team field
     let employeeIds = assignments.map(a => a.employee_id);
-    let employeeMap = {};
-    assignments.forEach(a => { employeeMap[a.employee_id] = a.employee_name; });
+    let employeeMap = {};  // id → { name, role }
+    assignments.forEach(a => { employeeMap[a.employee_id] = { name: a.employee_name, role: a.role_tag || a.position || null }; });
 
-    // Fallback: если нет assignments, получим из works.staff_ids_json
+    // Fallback: works.staff_ids_json
     if (employeeIds.length === 0) {
       const { rows: [work] } = await db.query('SELECT staff_ids_json FROM works WHERE id = $1', [workId]);
       const staffIds = work?.staff_ids_json;
       if (staffIds && Array.isArray(staffIds)) {
         employeeIds = staffIds.filter(Boolean);
         if (employeeIds.length > 0) {
-          const { rows: emps } = await db.query('SELECT id, fio FROM employees WHERE id = ANY($1)', [employeeIds]);
-          emps.forEach(e => { employeeMap[e.id] = e.fio || 'Unknown'; });
+          const { rows: emps } = await db.query('SELECT id, fio, role_tag, position FROM employees WHERE id = ANY($1)', [employeeIds]);
+          emps.forEach(e => { employeeMap[e.id] = { name: e.fio || 'Unknown', role: e.role_tag || e.position || null }; });
         }
       }
     }
 
-    // Действующие допуски назначенных
+    // Действующие (не просроченные) допуски назначенных
     let permitsMap = {};
     if (employeeIds.length > 0) {
       const { rows: permits } = await db.query(`
@@ -602,9 +620,11 @@ module.exports = async function(fastify) {
       });
     }
 
-    // Проверка
+    // Проверка per-role: для каждого рабочего берём требования его должности + role_key IS NULL
     const compliance = employeeIds.map(empId => {
-      const checks = requirements.map(req => {
+      const empRole = (employeeMap[empId] || {}).role || null;
+      const reqForEmp = requirements.filter(r => !r.role_key || r.role_key === empRole);
+      const checks = reqForEmp.map(req => {
         const key = `${empId}_${req.permit_type_id}`;
         const has = !!permitsMap[key];
         return { type_id: req.permit_type_id, mandatory: req.is_mandatory, has };
@@ -613,7 +633,8 @@ module.exports = async function(fastify) {
       const allOk = checks.every(c => c.has);
       return {
         employee_id: empId,
-        employee_name: employeeMap[empId] || 'ID:' + empId,
+        employee_name: (employeeMap[empId] || {}).name || 'ID:' + empId,
+        role: empRole,
         checks,
         mandatory_ok: mandatoryOk,
         all_ok: allOk

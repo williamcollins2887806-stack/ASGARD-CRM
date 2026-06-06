@@ -43,6 +43,19 @@ window.AsgardPermitsPage = (function(){
     docs: { name: 'Документы', color: '#0891b2' }
   };
 
+  // Должности (синхронно с hr_requests.js POSITION_ROLES / staff_request_positions.role_key)
+  const POSITION_ROLES = [
+    { key: 'master',    label: 'Мастера' },
+    { key: 'fitter',    label: 'Слесари' },
+    { key: 'welder',    label: 'Сварщики' },
+    { key: 'pto',       label: 'ПТО' },
+    { key: 'chemist',   label: 'Химики' },
+    { key: 'insulator', label: 'Изолировщики' },
+    { key: 'assembler', label: 'Монтажники' },
+    { key: 'laborer',   label: 'Разнорабочие' },
+  ];
+  const ROLE_LABEL = (k) => (POSITION_ROLES.find(r => r.key === k) || {}).label || k;
+
   // Кэш типов с сервера
   let serverTypes = null;
   let currentTab = 'list';
@@ -917,30 +930,56 @@ window.AsgardPermitsPage = (function(){
         const requirements = reqResp.requirements || [];
         const { compliance, team_ready } = compResp;
 
+        // Группируем требования по должности: '' = для всех должностей
+        const reqGroups = {};
+        requirements.forEach(r => {
+          const k = r.role_key || '';
+          (reqGroups[k] = reqGroups[k] || []).push(r);
+        });
+        const groupOrder = ['', ...POSITION_ROLES.map(p => p.key)].filter(k => reqGroups[k]);
+        const groupTitle = (k) => k === '' ? 'Для всех должностей' : ROLE_LABEL(k);
+
+        const renderReqGroup = (k) => {
+          const list = reqGroups[k];
+          // Маркер «допуска не требуются»
+          const marker = list.find(r => r.no_permits_required);
+          const perms = list.filter(r => !r.no_permits_required && r.permit_type_id);
+          return `
+            <div style="margin-bottom:14px">
+              <div style="font-weight:600;color:var(--t1);margin-bottom:6px">${esc(groupTitle(k))}</div>
+              ${marker ? `<div class="help" style="color:var(--t2)">Допуска не требуются ${canWrite ? `<button class="btn mini ghost btnDelReq" data-id="${marker.id}">Отменить</button>` : ''}</div>` : ''}
+              ${perms.length ? `
+                <table class="tbl">
+                  <thead><tr><th>Тип допуска</th><th>Обязательный</th>${canWrite ? '<th></th>' : ''}</tr></thead>
+                  <tbody>
+                    ${perms.map(r => `
+                      <tr>
+                        <td>${esc(r.type_name)}</td>
+                        <td>${r.is_mandatory ? '<span style="color:var(--green)">Да</span>' : 'Нет'}</td>
+                        ${canWrite ? `<td><button class="btn mini ghost btnDelReq" data-id="${r.id}">Удалить</button></td>` : ''}
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              ` : (marker ? '' : '<div class="help">—</div>')}
+            </div>
+          `;
+        };
+
         let html = `<div class="card" style="margin-bottom:16px">
-          <h4>Требуемые допуски</h4>
+          <h4>Требуемые допуски по должностям</h4>
           ${canWrite ? `
-            <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-              <div id="addReqType_w" style="flex:1;min-width:200px"></div>
+            <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:flex-end">
+              <div style="min-width:160px"><label style="font-size:12px;color:var(--t3)">Должность</label><div id="addReqRole_w"></div></div>
+              <div id="addReqType_w" style="flex:1;min-width:200px"><label style="font-size:12px;color:var(--t3)">Тип допуска</label><div id="addReqType_inner"></div></div>
               <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="addReqMandatory" checked/> Обязательный</label>
               <button class="btn mini" id="btnAddReq">Добавить</button>
+              <button class="btn mini ghost" id="btnNoReq" title="Отметить, что для выбранной должности допуска не нужны">Допуска не требуются</button>
             </div>
           ` : ''}
 
-          ${requirements.length === 0 ? '<div class="help">Требования не заданы</div>' : `
-            <table class="tbl">
-              <thead><tr><th>Тип допуска</th><th>Обязательный</th>${canWrite ? '<th></th>' : ''}</tr></thead>
-              <tbody>
-                ${requirements.map(r => `
-                  <tr>
-                    <td>${esc(r.type_name)}</td>
-                    <td>${r.is_mandatory ? '<span style="color:var(--green)">Да</span>' : 'Нет'}</td>
-                    ${canWrite ? `<td><button class="btn mini ghost btnDelReq" data-id="${r.id}">Удалить</button></td>` : ''}
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          `}
+          ${groupOrder.length === 0 ? '<div class="help">Требования не заданы</div>'
+            : groupOrder.map(renderReqGroup).join('')}
         </div>`;
 
         html += `<div class="card">
@@ -976,20 +1015,42 @@ window.AsgardPermitsPage = (function(){
 
         // Bind events
         if (canWrite) {
+          /* CRSelect: addReqRole (должность) */
+          const _roleOpts = [{ value: '', label: 'Для всех должностей' }]
+            .concat(POSITION_ROLES.map(p => ({ value: p.key, label: p.label })));
+          document.getElementById('addReqRole_w')?.appendChild(CRSelect.create({ id: 'addReqRole', placeholder: '— Должность —', options: _roleOpts, value: '', searchable: false }));
+
           /* CRSelect: addReqType (grouped) */
           const _arOpts = Object.entries(CATEGORIES).map(([catId, cat]) => ({ group: cat.name, items: types.filter(t => t.category === catId).map(t => ({ value: t.id, label: t.name })) })).filter(g => g.items.length);
-          document.getElementById('addReqType_w')?.appendChild(CRSelect.create({ id: 'addReqType', placeholder: '— Добавить тип —', options: _arOpts, searchable: true }));
+          document.getElementById('addReqType_inner')?.appendChild(CRSelect.create({ id: 'addReqType', placeholder: '— Добавить тип —', options: _arOpts, searchable: true }));
 
           document.getElementById('btnAddReq')?.addEventListener('click', async () => {
             const typeId = CRSelect.getValue('addReqType');
             if (!typeId) { AsgardUI.toast('Ошибка', 'Выберите тип', 'err'); return; }
+            const roleKey = CRSelect.getValue('addReqRole') || null;
             const mandatory = document.getElementById('addReqMandatory').checked;
             try {
               await api(`/work/${workId}/requirements`, {
                 method: 'POST',
-                body: { permit_type_id: typeId, is_mandatory: mandatory }
+                body: { permit_type_id: typeId, is_mandatory: mandatory, role_key: roleKey }
               });
               AsgardUI.toast('Добавлено', '', 'ok');
+              onProjectChange(CRSelect.getValue('projectSelect'));
+            } catch(e) {
+              AsgardUI.toast('Ошибка', e.message, 'err');
+            }
+          });
+
+          document.getElementById('btnNoReq')?.addEventListener('click', async () => {
+            const roleKey = CRSelect.getValue('addReqRole') || null;
+            const lbl = roleKey ? ROLE_LABEL(roleKey) : 'всех должностей';
+            if (!confirm(`Отметить, что для ${lbl} допуска не требуются?`)) return;
+            try {
+              await api(`/work/${workId}/requirements`, {
+                method: 'POST',
+                body: { no_permits_required: true, role_key: roleKey }
+              });
+              AsgardUI.toast('Отмечено', 'Допуска не требуются', 'ok');
               onProjectChange(CRSelect.getValue('projectSelect'));
             } catch(e) {
               AsgardUI.toast('Ошибка', e.message, 'err');

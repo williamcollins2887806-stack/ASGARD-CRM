@@ -85,7 +85,7 @@ async function routes(fastify, options) {
     if (!req || !req.work_id) return { work_id: null, requirements: [], gaps: [] };
 
     const { rows: requirements } = await db.query(`
-      SELECT wpr.permit_type_id, wpr.is_mandatory, pt.name AS type_name
+      SELECT wpr.permit_type_id, wpr.is_mandatory, wpr.role_key, pt.name AS type_name
       FROM work_permit_requirements wpr
       JOIN permit_types pt ON pt.id = wpr.permit_type_id
       WHERE wpr.work_id = $1
@@ -94,7 +94,7 @@ async function routes(fastify, options) {
     if (!requirements.length) return { work_id: req.work_id, requirements: [], gaps: [] };
 
     const { rows: assignments } = await db.query(`
-      SELECT sra.employee_id, e.fio
+      SELECT sra.employee_id, sra.assigned_role, e.fio, e.role_tag, e.position
       FROM staff_request_assignments sra
       LEFT JOIN employees e ON e.id = sra.employee_id
       WHERE sra.request_id = $1 AND sra.status NOT IN ('rejected', 'replaced')
@@ -114,10 +114,14 @@ async function routes(fastify, options) {
     const hasPermit = new Set(permits.map(p => `${p.employee_id}_${p.type_id}`));
 
     const gaps = assignments.map(a => {
-      const missing = requirements
+      // Роль рабочего: назначенная > role_tag > position
+      const empRole = a.assigned_role || a.role_tag || a.position || null;
+      // Требования: общие (role_key IS NULL) + требования его должности
+      const reqForEmp = requirements.filter(r => !r.role_key || r.role_key === empRole);
+      const missing = reqForEmp
         .filter(r => !hasPermit.has(`${a.employee_id}_${r.permit_type_id}`))
         .map(r => ({ permit_type_id: r.permit_type_id, type_name: r.type_name, is_mandatory: r.is_mandatory }));
-      return { employee_id: a.employee_id, fio: a.fio, missing };
+      return { employee_id: a.employee_id, fio: a.fio, role: empRole, missing };
     }).filter(g => g.missing.length);
 
     return { work_id: req.work_id, requirements, gaps };
@@ -264,6 +268,42 @@ async function routes(fastify, options) {
     }
     if (!['draft', 'rework'].includes(existing.status_v2)) {
       return reply.code(409).send({ error: 'Отправить можно только черновик или возвращённую на доработку' });
+    }
+
+    // ── Блокировка: требуемые допуска должны быть заданы для каждой должности ──
+    const { rows: [reqRow] } = await db.query(
+      'SELECT work_id FROM staff_requests WHERE id = $1', [id]
+    );
+    if (reqRow && reqRow.work_id) {
+      const { rows: positions } = await db.query(
+        `SELECT role_key, role_label FROM staff_request_positions
+         WHERE request_id = $1 AND required_count > 0`, [id]
+      );
+      if (positions.length) {
+        // Загружаем требования работы: role_key (NULL = для всех) + флаг "без допусков"
+        const { rows: reqs } = await db.query(
+          `SELECT role_key, no_permits_required FROM work_permit_requirements WHERE work_id = $1`,
+          [reqRow.work_id]
+        );
+        // Есть ли общее требование (для всех должностей)?
+        const hasGlobal = reqs.some(r => r.role_key === null);
+        // Множество должностей, для которых задано хотя бы одно требование
+        // или явно отмечено "допуска не требуются"
+        const coveredRoles = new Set(reqs.filter(r => r.role_key !== null).map(r => r.role_key));
+        const missing = [];
+        for (const p of positions) {
+          if (hasGlobal || coveredRoles.has(p.role_key)) continue;
+          missing.push({ role_key: p.role_key, role_label: p.role_label || ROLE_LABELS[p.role_key] || p.role_key });
+        }
+        if (missing.length) {
+          return reply.code(409).send({
+            error: 'Требуется заполнение: не заданы требуемые допуска для должностей: '
+              + missing.map(m => m.role_label).join(', '),
+            missing_roles: missing.map(m => m.role_key),
+            missing: missing,
+          });
+        }
+      }
     }
 
     await db.query(`
@@ -576,7 +616,7 @@ async function routes(fastify, options) {
   // ─── GET /:id/available-workers ───────────────────────────────────────────
   fastify.get('/:id/available-workers', { preHandler: [fastify.requireRoles(HR_ROLES)] }, async (request, reply) => {
     const id = parseInt(request.params.id, 10);
-    const { role_key } = request.query;
+    const role_key = request.query.role_key || request.query.role || null;
 
     const { rows: [req] } = await db.query(
       'SELECT work_id FROM staff_requests WHERE id = $1', [id]
@@ -635,6 +675,37 @@ async function routes(fastify, options) {
     LIMIT 200`;
 
     const { rows } = await db.query(sql, params);
+
+    // ── Пометка рабочих без требуемых допусков (conflict_reason='missing_permits') ──
+    if (rows.length && req.work_id) {
+      const { rows: requirements } = await db.query(
+        `SELECT permit_type_id, role_key FROM work_permit_requirements
+         WHERE work_id = $1 AND permit_type_id IS NOT NULL`, [req.work_id]
+      );
+      if (requirements.length) {
+        const candIds = rows.map(r => r.id);
+        const { rows: permits } = await db.query(`
+          SELECT employee_id, type_id FROM employee_permits
+          WHERE employee_id = ANY($1::int[])
+            AND is_active = true
+            AND (expiry_date IS NULL OR expiry_date >= CURRENT_DATE)
+        `, [candIds]);
+        const hasPermit = new Set(permits.map(p => `${p.employee_id}_${p.type_id}`));
+        for (const w of rows) {
+          // Роль кандидата для подбора требований: запрошенная (role_key) > его role_tag/position
+          const wRole = role_key || w.role_tag || w.position || null;
+          const reqForW = requirements.filter(r => !r.role_key || r.role_key === wRole);
+          const missing = reqForW
+            .filter(r => !hasPermit.has(`${w.id}_${r.permit_type_id}`))
+            .map(r => r.permit_type_id);
+          if (missing.length) {
+            w.conflict_reason = 'missing_permits';
+            w.missing_permit_type_ids = missing;
+          }
+        }
+      }
+    }
+
     return { workers: rows };
   });
 }
