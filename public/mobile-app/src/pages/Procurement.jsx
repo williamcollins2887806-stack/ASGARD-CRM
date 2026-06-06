@@ -44,7 +44,7 @@ const FILTERS = [
 ];
 
 const PM_ROLES = ['PM', 'HEAD_PM'];
-const CAN_ADD_ITEM_ROLES = ['PM', 'HEAD_PM', 'PROC'];
+const CAN_ADD_ITEM_ROLES = ['PM', 'HEAD_PM', 'PROC', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 
 // ─── Главный экран ──────────────────────────────────────────────────────────
 export default function Procurement() {

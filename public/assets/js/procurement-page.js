@@ -77,7 +77,7 @@ window.AsgardProcurementPage = (function() {
     const p = d.item, items = d.items||[], payments = d.payments||[], history = d.history||[];
     const actions = getActions(p);
     const isLocked = p.locked;
-    const canEditItems = !isLocked && [...['PM','HEAD_PM'],...['PROC','ADMIN']].includes(_user.role);
+    const canEditItems = !isLocked && ['PM','HEAD_PM','PROC','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV'].includes(_user.role);
     const isPROC = ['PROC','ADMIN'].includes(_user.role);
 
     let html = `<div class="proc-detail">
