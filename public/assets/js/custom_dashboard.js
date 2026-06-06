@@ -79,20 +79,24 @@ window.AsgardCustomDashboard = (function(){
       name: 'Моя почта', icon: '✉️', size: 'normal',
       roles: ['*'], render: renderMyMail
     },
+    academy: {
+      name: 'Залы Асгарда', icon: '🏛️', size: 'normal',
+      roles: ['*'], render: renderAcademy
+    },
 
   };
 
   const DEFAULT_LAYOUTS = {
-    ADMIN: ['welcome','kpi_summary','pre_tenders','quick_actions','overdue_works','tenders_funnel','my_mail','notifications'],
-    PM: ['welcome','quick_actions','my_works','my_cash_balance','gantt_mini','todo','my_mail','notifications','birthdays'],
-    TO: ['welcome','quick_actions','tenders_funnel','tender_dynamics','my_mail','notifications'],
-    HEAD_TO: ['welcome','pre_tenders','platform_alerts','tender_dynamics','tenders_funnel','my_mail','notifications'],
-    HEAD_PM: ['welcome','team_workload','overdue_works','gantt_mini','my_mail','notifications'],
-    CHIEF_ENGINEER: ['welcome','equipment_value','equipment_alerts','my_mail','notifications'],
-    HR: ['welcome','permits_expiry','birthdays','my_mail','notifications','calendar'],
-    HR_MANAGER: ['welcome','permits_expiry','birthdays','team_workload','my_mail','notifications'],
-    BUH: ['welcome','cash_balance','bank_summary','money_summary','my_mail','notifications'],
-    DEFAULT: ['welcome','my_mail','notifications','todo','calendar','birthdays']
+    ADMIN: ['welcome','academy','kpi_summary','pre_tenders','quick_actions','overdue_works','tenders_funnel','my_mail','notifications'],
+    PM: ['welcome','academy','quick_actions','my_works','my_cash_balance','gantt_mini','todo','my_mail','notifications','birthdays'],
+    TO: ['welcome','academy','quick_actions','tenders_funnel','tender_dynamics','my_mail','notifications'],
+    HEAD_TO: ['welcome','academy','pre_tenders','platform_alerts','tender_dynamics','tenders_funnel','my_mail','notifications'],
+    HEAD_PM: ['welcome','academy','team_workload','overdue_works','gantt_mini','my_mail','notifications'],
+    CHIEF_ENGINEER: ['welcome','academy','equipment_value','equipment_alerts','my_mail','notifications'],
+    HR: ['welcome','academy','permits_expiry','birthdays','my_mail','notifications','calendar'],
+    HR_MANAGER: ['welcome','academy','permits_expiry','birthdays','team_workload','my_mail','notifications'],
+    BUH: ['welcome','academy','cash_balance','bank_summary','money_summary','my_mail','notifications'],
+    DEFAULT: ['welcome','academy','my_mail','notifications','todo','calendar','birthdays']
   };
 
   async function getUserLayout(userId, role) {
@@ -1208,6 +1212,83 @@ window.AsgardCustomDashboard = (function(){
     if (diff < 86400) return Math.floor(diff / 3600) + ' \u0447';
     if (diff < 604800) return Math.floor(diff / 86400) + ' \u0434\u043d';
     return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+  }
+
+  // ── Виджет Академии Асгарда ──────────────────────────────────
+  async function renderAcademy(el) {
+    var token = localStorage.getItem('asgard_token');
+    var headers = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+
+    try {
+      var [lessonsResp, statsResp] = await Promise.all([
+        fetch('/api/office-academy/lessons', { headers: headers }).then(function(r) { return r.ok ? r.json() : null; }),
+        fetch('/api/office-academy/stats', { headers: headers }).then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; })
+      ]);
+    } catch(e) {
+      el.innerHTML = '<div style="text-align:center;padding:12px;color:var(--t3);font-size:12px">Не удалось загрузить</div>';
+      return;
+    }
+
+    if (!lessonsResp) {
+      el.innerHTML = '<div style="text-align:center;padding:12px;color:var(--t3);font-size:12px">Нет данных</div>';
+      return;
+    }
+
+    var total = lessonsResp.total || 0;
+    var passed = lessonsResp.passed || 0;
+    var mandatoryPending = lessonsResp.mandatory_pending || 0;
+    var rank = lessonsResp.rank || (statsResp && statsResp.rank);
+    var streak = (statsResp && statsResp.streak) || 0;
+    var totalXp = (statsResp && statsResp.total_xp) || lessonsResp.total_xp || 0;
+    var pct = total > 0 ? Math.round(passed / total * 100) : 0;
+
+    var rankHtml = '';
+    if (rank) {
+      var rc = rank.color || '#6b7280';
+      rankHtml = '<span style="display:inline-flex;align-items:center;gap:4px;background:' + rc + '15;border:1px solid ' + rc + '30;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:700;color:' + rc + '">' + (rank.icon || '📜') + ' ' + AsgardUI.esc(rank.name || '') + '</span>';
+    }
+
+    var badgesHtml = '';
+    if (streak > 0) {
+      var sc = streak >= 3 ? '#c8a84b' : 'var(--t3)';
+      badgesHtml += '<span style="font-size:11px;font-weight:700;color:' + sc + ';background:rgba(200,168,75,.1);border-radius:5px;padding:1px 6px">🔥 ' + streak + '</span> ';
+    }
+    if (totalXp > 0) {
+      badgesHtml += '<span style="font-size:11px;font-weight:700;color:#7b61ff;background:rgba(123,97,255,.1);border-radius:5px;padding:1px 6px">⚡ ' + totalXp + '</span>';
+    }
+
+    var alertHtml = '';
+    if (mandatoryPending > 0) {
+      var firstMandatory = (lessonsResp.lessons || []).find(function(l) { return l.is_mandatory && !l.passed; });
+      alertHtml = '<div style="display:flex;align-items:center;gap:8px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.18);border-radius:8px;padding:7px 10px;margin-top:8px">' +
+        '<span style="font-size:14px">⚠️</span>' +
+        '<div style="flex:1"><div style="font-size:11px;font-weight:700;color:#ef4444">' + mandatoryPending + ' обязательн' + (mandatoryPending === 1 ? 'ый свиток' : mandatoryPending < 5 ? 'ых свитка' : 'ых свитков') + '</div>' +
+        (firstMandatory ? '<div style="font-size:10px;color:var(--t3);margin-top:1px">' + AsgardUI.esc(firstMandatory.cover_icon || '') + ' ' + AsgardUI.esc(firstMandatory.title || '') + '</div>' : '') +
+        '</div></div>';
+    } else if (total > 0) {
+      alertHtml = '<div style="display:flex;align-items:center;gap:6px;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.12);border-radius:8px;padding:6px 10px;margin-top:8px">' +
+        '<span style="font-size:13px">✅</span>' +
+        '<span style="font-size:11px;font-weight:600;color:#22c55e">Все обязательные свитки сданы</span></div>';
+    }
+
+    var pctColor = pct >= 80 ? '#22c55e' : pct >= 40 ? '#f59e0b' : 'var(--t3)';
+
+    el.innerHTML =
+      '<div style="cursor:pointer" onclick="location.hash=\'#/office-academy\'">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">' +
+          rankHtml +
+          '<div style="display:flex;gap:4px;align-items:center">' + badgesHtml + '</div>' +
+        '</div>' +
+        '<div style="display:flex;justify-content:space-between;margin-bottom:4px">' +
+          '<span style="font-size:12px;font-weight:600;color:var(--t2)">Пройдено ' + passed + ' из ' + total + '</span>' +
+          '<span style="font-size:12px;font-weight:700;color:' + pctColor + '">' + pct + '%</span>' +
+        '</div>' +
+        '<div style="height:5px;border-radius:3px;overflow:hidden;background:var(--bg3)">' +
+          '<div style="height:100%;border-radius:3px;width:' + pct + '%;background:linear-gradient(90deg,#c8a84b,#7b61ff);transition:width .5s"></div>' +
+        '</div>' +
+        alertHtml +
+        '<div style="margin-top:8px;text-align:center;font-size:11px;font-weight:600;color:#7b61ff">Открыть Залы Асгарда →</div>' +
+      '</div>';
   }
 
   return { render, WIDGET_TYPES };

@@ -27,6 +27,7 @@ import TenderDynamicsWidget from './TenderDynamicsWidget';
 import TendersFunnelWidget from './TendersFunnelWidget';
 import CallAnalyticsWidget from './CallAnalyticsWidget';
 import ExpenseWalletWidget from './ExpenseWalletWidget';
+import AcademyWidget from './AcademyWidget';
 
 /** Реестр: id → { component, name, icon, size, roles, hero? } */
 export const WIDGET_REGISTRY = {
@@ -59,19 +60,20 @@ export const WIDGET_REGISTRY = {
   tenders_funnel:   { component: TendersFunnelWidget,    name: 'Воронка',               icon: '📊', size: 'normal', roles: ['ADMIN','TO','HEAD_TO','PM','DIRECTOR_*'] },
   call_analytics:   { component: CallAnalyticsWidget,   name: 'Аналитика звонков',     icon: '📊', size: 'normal', roles: ['ADMIN','DIRECTOR_*'] },
   expense_wallet:   { component: ExpenseWalletWidget,   name: 'Кошелёк проекта',       icon: '💰', size: 'normal', roles: ['PM','HEAD_PM'] },
+  academy:          { component: AcademyWidget,         name: 'Залы Асгарда',           icon: '🏛️', size: 'normal', roles: ['*'] },
 };
 
 /** Дефолтный набор виджетов по роли */
 export const DEFAULT_LAYOUTS = {
-  ADMIN:          ['welcome','kpi_summary','call_analytics','pre_tenders','quick_actions','overdue_works','tenders_funnel','my_mail','notifications'],
-  PM:             ['welcome','quick_actions','my_works','expense_wallet','my_cash_balance','gantt_mini','todo','my_mail','notifications','birthdays'],
-  TO:             ['welcome','quick_actions','tenders_funnel','tender_dynamics','my_mail','notifications'],
-  HEAD_TO:        ['welcome','pre_tenders','platform_alerts','tender_dynamics','tenders_funnel','my_mail','notifications'],
-  HEAD_PM:        ['welcome','team_workload','overdue_works','gantt_mini','my_mail','notifications'],
-  CHIEF_ENGINEER: ['welcome','equipment_value','equipment_alerts','my_mail','notifications'],
-  HR:             ['welcome','permits_expiry','birthdays','my_mail','notifications','calendar'],
-  BUH:            ['welcome','cash_balance','bank_summary','money_summary','my_mail','notifications'],
-  DEFAULT:        ['welcome','my_mail','notifications','todo','calendar','birthdays'],
+  ADMIN:          ['welcome','academy','kpi_summary','call_analytics','pre_tenders','quick_actions','overdue_works','tenders_funnel','my_mail','notifications'],
+  PM:             ['welcome','academy','quick_actions','my_works','expense_wallet','my_cash_balance','gantt_mini','todo','my_mail','notifications','birthdays'],
+  TO:             ['welcome','academy','quick_actions','tenders_funnel','tender_dynamics','my_mail','notifications'],
+  HEAD_TO:        ['welcome','academy','pre_tenders','platform_alerts','tender_dynamics','tenders_funnel','my_mail','notifications'],
+  HEAD_PM:        ['welcome','academy','team_workload','overdue_works','gantt_mini','my_mail','notifications'],
+  CHIEF_ENGINEER: ['welcome','academy','equipment_value','equipment_alerts','my_mail','notifications'],
+  HR:             ['welcome','academy','permits_expiry','birthdays','my_mail','notifications','calendar'],
+  BUH:            ['welcome','academy','cash_balance','bank_summary','money_summary','my_mail','notifications'],
+  DEFAULT:        ['welcome','academy','my_mail','notifications','todo','calendar','birthdays'],
 };
 
 /** Проверка роли виджета */
