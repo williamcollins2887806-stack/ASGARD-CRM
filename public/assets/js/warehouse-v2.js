@@ -386,8 +386,55 @@ window.AsgardWarehouseV2 = (function () {
     renderKPIs(_root.querySelector('#wh2-kpis'));
     if (_tab === 'catalog') return renderCatalog(body, _searchVal);
     if (_tab === 'stock') return renderStock(body, _searchVal);
+    if (_tab === 'equipment') {
+      // Полноценный блок оборудования вынесен в warehouse-v2-equipment.js (window.WH2Equipment).
+      if (window.WH2Equipment) return window.WH2Equipment.render(body, { user: _user, api, esc, toast, fmt, UI, search: _searchVal });
+      body.innerHTML = `<div class="wh2-empty"><div class="wh2-empty__i">🛠️</div>Модуль оборудования не загружен.</div>`;
+      return;
+    }
+    if (_tab === 'incoming') return renderIncoming(body);
     if (_tab === 'locations') return renderLocations(body);
     if (_tab === 'movements') return renderMovements(body);
+  }
+
+  // ════════════════════ ВКЛАДКА: ПРИЁМКА (входящие закупки онлайн) ════════════════════
+  const PI_STATUS = {
+    pending: { l: 'Ожидает', c: '#8b93a3' }, ordered: { l: 'Заказано', c: '#ffb020' },
+    shipped: { l: 'В пути', c: '#4A90D9' }, delivered: { l: 'Доставлено', c: '#30d158' },
+    partially_delivered: { l: 'Частично', c: '#ffb020' },
+  };
+  async function renderIncoming(container) {
+    container.innerHTML = `<div class="wh2-loading">Загрузка входящих поставок…</div>`;
+    let data;
+    try { data = await api('/api/stock/incoming?target=all'); }
+    catch (e) { container.innerHTML = `<div class="wh2-empty"><div class="wh2-empty__i">⚠️</div>${esc(e.message)}</div>`; return; }
+    const rows = data.items || [], sm = data.summary || {};
+    if (!rows.length) { container.innerHTML = `<div class="wh2-empty"><div class="wh2-empty__i">🚚</div>Входящих поставок нет.</div>`; return; }
+    const wh = rows.filter(r => r.delivery_target === 'warehouse');
+    const obj = rows.filter(r => r.delivery_target === 'object');
+    const dt = d => d ? new Date(d).toLocaleDateString('ru-RU') : '—';
+    const overdue = d => d && new Date(d) < new Date() ? 'color:var(--err-t,#ff5c5c);font-weight:700' : '';
+    const row = r => {
+      const st = PI_STATUS[r.item_status] || { l: r.item_status, c: '#8b93a3' };
+      const deadline = r.delivery_deadline || r.needed_by;
+      return `<tr>
+        <td><b>${esc(r.name)}</b>${r.article ? ' <span style="opacity:.5">' + esc(r.article) + '</span>' : ''}</td>
+        <td>${fmt(r.quantity)} ${esc(r.unit || 'шт')}</td>
+        <td><span class="wh2-chip" style="background:${st.c}22;color:${st.c}">${st.l}</span></td>
+        <td>${esc(r.work_title || r.object_name || '—')}</td>
+        <td style="${overdue(deadline)}">${dt(deadline)}</td>
+        <td>${esc(r.proc_name || '—')}</td></tr>`;
+    };
+    container.innerHTML = `
+      <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+        <div class="wh2-kpi wh2-kpi--blue" style="flex:1;min-width:150px"><div class="wh2-kpi__i">🚚</div><div class="wh2-kpi__v">${fmt(sm.to_warehouse_in_transit || 0)}</div><div class="wh2-kpi__l">В пути на склад</div></div>
+        <div class="wh2-kpi wh2-kpi--ok" style="flex:1;min-width:150px"><div class="wh2-kpi__i">📦</div><div class="wh2-kpi__v">${fmt(sm.to_warehouse_delivered || 0)}</div><div class="wh2-kpi__l">Доставлено на склад</div></div>
+        <div class="wh2-kpi" style="flex:1;min-width:150px"><div class="wh2-kpi__i">📍</div><div class="wh2-kpi__v">${fmt(sm.to_object || 0)}</div><div class="wh2-kpi__l">Напрямую на объект</div></div>
+      </div>
+      ${wh.length ? `<div style="font-weight:700;margin:8px 0">🏬 На склад (приёмка кладовщиком)</div>
+        <table class="wh2-table"><thead><tr><th>Позиция</th><th>Кол-во</th><th>Статус</th><th>Работа/объект</th><th>Срок</th><th>Закупщик</th></tr></thead><tbody>${wh.map(row).join('')}</tbody></table>` : ''}
+      ${obj.length ? `<div style="font-weight:700;margin:18px 0 8px">📍 Напрямую на объект (мимо склада — для информации)</div>
+        <table class="wh2-table"><thead><tr><th>Позиция</th><th>Кол-во</th><th>Статус</th><th>Работа/объект</th><th>Срок</th><th>Закупщик</th></tr></thead><tbody>${obj.map(row).join('')}</tbody></table>` : ''}`;
   }
 
   async function render({ layout, title }) {
@@ -403,6 +450,8 @@ window.AsgardWarehouseV2 = (function () {
       <div class="wh2-tabs" id="wh2-tabs">
         <button class="wh2-tab wh2-tab--active" data-tab="catalog">📚 Каталог</button>
         <button class="wh2-tab" data-tab="stock">📦 Наличие</button>
+        <button class="wh2-tab" data-tab="equipment">🛠️ Оборудование</button>
+        <button class="wh2-tab" data-tab="incoming">🚚 Приёмка</button>
         <button class="wh2-tab" data-tab="locations">🗺️ Ячейки</button>
         <button class="wh2-tab" data-tab="movements">📜 Движения</button>
       </div>

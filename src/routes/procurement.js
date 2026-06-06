@@ -460,17 +460,19 @@ async function routes(fastify) {
         const whId=item.warehouse_id||(wh.rows[0]&&wh.rows[0].id)||null;
         // WMS: если позиция привязана к каталогу-расходнику — приходуем количеством в stock,
         // иначе создаём поштучную единицу equipment (как было).
-        let isConsumable=false;
+        // W2: учитываем is_consumable только у НЕудалённого каталога.
+        let isConsumable=false, validProduct=false;
         if(item.product_id){
-          try{const pr=await client.query('SELECT is_consumable FROM products WHERE id=$1',[item.product_id]);isConsumable=!!pr.rows[0]?.is_consumable;}catch(_){}
+          try{const pr=await client.query('SELECT is_consumable FROM products WHERE id=$1 AND deleted_at IS NULL',[item.product_id]);
+            if(pr.rows[0]){validProduct=true;isConsumable=!!pr.rows[0].is_consumable;}}catch(_){}
         }
-        if(isConsumable){
-          const qty=parseFloat(item.quantity)||0;
-          await client.query(
-            `INSERT INTO stock(product_id,warehouse_id,location_id,quantity,unit) VALUES($1,$2,NULL,$3,$4)
-             ON CONFLICT (product_id,warehouse_id,location_id)
-             DO UPDATE SET quantity=stock.quantity+EXCLUDED.quantity, updated_at=NOW()`,
-            [item.product_id,whId,qty,item.unit||'шт']);
+        const qty=parseFloat(item.quantity)||0;
+        // W3: расходник приходуем в stock только при положительном количестве и валидном каталоге.
+        if(isConsumable && validProduct && qty>0){
+          // Надёжный upsert (location NULL): SELECT FOR UPDATE → UPDATE/INSERT.
+          const exSt=await client.query('SELECT id FROM stock WHERE product_id=$1 AND warehouse_id=$2 AND location_id IS NULL FOR UPDATE',[item.product_id,whId]);
+          if(exSt.rows[0]) await client.query('UPDATE stock SET quantity=quantity+$1, updated_at=NOW() WHERE id=$2',[qty,exSt.rows[0].id]);
+          else await client.query('INSERT INTO stock(product_id,warehouse_id,location_id,quantity,unit) VALUES($1,$2,NULL,$3,$4)',[item.product_id,whId,qty,item.unit||'шт']);
           await client.query(
             `INSERT INTO stock_movements(product_id,to_warehouse_id,qty,unit,movement_type,ref_type,ref_id,reason,created_by)
              VALUES($1,$2,$3,$4,'receipt','procurement',$5,$6,$7)`,
@@ -484,8 +486,12 @@ async function routes(fastify) {
           await client.query('UPDATE procurement_items SET equipment_id=$1 WHERE id=$2',[eq.rows[0].id,itemId]);
           await client.query(`INSERT INTO equipment_movements(equipment_id,movement_type,to_warehouse_id,notes,created_by)VALUES($1,'procurement_receipt',$2,$3,$4)`,
             [eq.rows[0].id,whId,'Приёмка из закупки #'+procId,user.id]);
-          if(pc.row.work_id) await client.query(`INSERT INTO equipment_reservations(equipment_id,work_id,reserved_by,reserved_from,reserved_to,status,notes)
-            VALUES($1,$2,$3,CURRENT_DATE,CURRENT_DATE+INTERVAL '30 days','active',$4)`,[eq.rows[0].id,pc.row.work_id,pc.row.pm_id||user.id,'Автобронь #'+procId]);
+          // Автобронь — только если работа ещё активна (не закрыта/не завершена).
+          if(pc.row.work_id){
+            const wa=await client.query('SELECT 1 FROM works WHERE id=$1 AND closed_at IS NULL AND completed_at IS NULL',[pc.row.work_id]);
+            if(wa.rows[0]) await client.query(`INSERT INTO equipment_reservations(equipment_id,work_id,reserved_by,reserved_from,reserved_to,status,notes)
+              VALUES($1,$2,$3,CURRENT_DATE,CURRENT_DATE+INTERVAL '30 days','active',$4)`,[eq.rows[0].id,pc.row.work_id,pc.row.pm_id||user.id,'Автобронь #'+procId]);
+          }
         }
       }
       const all=await client.query('SELECT item_status FROM procurement_items WHERE procurement_id=$1',[procId]);

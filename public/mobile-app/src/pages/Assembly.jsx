@@ -27,40 +27,59 @@ export default function Assembly() {
   const haptic = useHaptic();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [detail, setDetail] = useState(null);
   const [detailData, setDetailData] = useState(null);
+  const [detailError, setDetailError] = useState(null);
+  const [actionErr, setActionErr] = useState(null);
+  const [filter, setFilter] = useState('active'); // active | all
 
   const fetchData = useCallback(async () => {
-    setLoading(true);
+    setLoading(true); setError(null);
     try {
       const res = await api.get('/assembly?limit=100');
       setItems(api.extractRows ? (api.extractRows(res) || []) : (res.items || []));
-    } catch (_) { setItems([]); }
+    } catch (e) { setError(e.message || 'Не удалось загрузить'); }
     finally { setLoading(false); }
   }, []);
   useEffect(() => { fetchData(); }, [fetchData]);
 
   async function openDetail(id) {
-    haptic.light(); setDetail(id); setDetailData(null);
-    try { setDetailData(await api.get(`/assembly/${id}`)); } catch (_) {}
+    haptic.light(); setDetail(id); setDetailData(null); setDetailError(null); setActionErr(null);
+    try { setDetailData(await api.get(`/assembly/${id}`)); } catch (e) { setDetailError(e.message || 'Ошибка загрузки'); }
   }
   async function confirm(id) {
-    haptic.success();
-    try { await api.put(`/assembly/${id}/confirm`); await openDetail(id); fetchData(); } catch (e) { alert(e.message); }
+    haptic.success(); setActionErr(null);
+    try { await api.put(`/assembly/${id}/confirm`); await openDetail(id); fetchData(); } catch (e) { haptic.error(); setActionErr(e.message || 'Ошибка'); }
   }
   async function send(id) {
-    haptic.success();
-    try { await api.put(`/assembly/${id}/send`); await openDetail(id); fetchData(); } catch (e) { alert(e.message); }
+    haptic.success(); setActionErr(null);
+    try { await api.put(`/assembly/${id}/send`); await openDetail(id); fetchData(); } catch (e) { haptic.error(); setActionErr(e.message || 'Ошибка'); }
   }
+  const visibleItems = filter === 'active'
+    ? items.filter(a => !['closed', 'returned'].includes(a.status))
+    : items;
 
   return (
     <PageShell title="Сборка" subtitle="Ведомости мобилизации">
       <PullToRefresh onRefresh={fetchData}>
-        {loading ? <SkeletonList count={5} /> : items.length === 0 ? (
-          <EmptyState icon={Boxes} title="Нет ведомостей" subtitle="Сборы появятся здесь" />
+        {/* фильтр статуса */}
+        {!loading && !error && items.length > 0 && (
+          <div className="flex gap-2 px-4 pt-3">
+            {[{ v: 'active', l: 'Активные' }, { v: 'all', l: 'Все' }].map(f => (
+              <button key={f.v} onClick={() => { haptic.light(); setFilter(f.v); }}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg transition"
+                style={{ background: filter === f.v ? 'rgba(212,168,67,.16)' : 'var(--bg-elevated,#161a22)', color: filter === f.v ? '#D4A843' : 'var(--t2,#8b93a3)', border: `1px solid ${filter === f.v ? '#D4A843' : 'var(--border,#262c38)'}` }}>{f.l}</button>
+            ))}
+          </div>
+        )}
+        {loading ? <SkeletonList count={5} /> : error ? (
+          <EmptyState icon={Boxes} title="Ошибка загрузки" subtitle={error + ' · потяните вниз для повтора'} />
+        ) : visibleItems.length === 0 ? (
+          <EmptyState icon={Boxes} title="Нет ведомостей" subtitle={filter === 'active' ? 'Активных сборов нет' : 'Сборы появятся здесь'} />
         ) : (
           <div className="p-4 space-y-3">
-            {items.map(a => {
+            {visibleItems.map(a => {
               const meta = TYPE[a.type] || TYPE.mobilization;
               const pct = a.items_count > 0 ? Math.round((a.packed_count / a.items_count) * 100) : 0;
               return (
@@ -96,11 +115,17 @@ export default function Assembly() {
 
       {detail && (
         <BottomSheet open={!!detail} onClose={() => setDetail(null)} title={detailData?.item?.title || 'Ведомость'}>
-          {!detailData ? <div className="p-6 text-center opacity-60">Загрузка…</div> : (
+          {detailError ? (
+            <div className="p-6 text-center space-y-3">
+              <div className="opacity-70 text-sm">{detailError}</div>
+              <button onClick={() => openDetail(detail)} className="px-5 py-2.5 rounded-xl font-semibold" style={{ background: '#D4A843', color: '#1a1408' }}>Повторить</button>
+            </div>
+          ) : !detailData ? <div className="p-6 text-center opacity-60">Загрузка…</div> : (
             <div className="p-4 space-y-4">
               <div className="text-sm" style={{ color: 'var(--t2,#8b93a3)' }}>
                 {detailData.item.work_title} • {STATUS[detailData.item.status]}
               </div>
+              {actionErr && <div className="text-sm rounded-xl p-3" style={{ background: 'rgba(255,92,92,.12)', color: '#ff5c5c' }}>{actionErr}</div>}
               {/* паллеты */}
               {detailData.pallets?.length > 0 && (
                 <div className="flex gap-2 flex-wrap">

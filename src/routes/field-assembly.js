@@ -113,10 +113,15 @@ async function routes(fastify) {
     const acc = await assertAccess(reply, empId, id); if (!acc) return;
     if (!['confirmed', 'packing'].includes(acc.status)) return bad(reply, 'Сбор ещё не подтверждён РП', 409);
     const { label } = req.body || {};
-    const mx = await db.query('SELECT COALESCE(MAX(pallet_number),0)+1 AS n FROM assembly_pallets WHERE assembly_id=$1', [id]);
-    const { rows } = await db.query('INSERT INTO assembly_pallets(assembly_id,pallet_number,label) VALUES($1,$2,$3) RETURNING *',
-      [id, mx.rows[0].n, label || null]);
-    return { pallet: rows[0] };
+    // Ретрай при гонке номера (UNIQUE assembly_id,pallet_number) — два сборщика одновременно.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const mx = await db.query('SELECT COALESCE(MAX(pallet_number),0)+1 AS n FROM assembly_pallets WHERE assembly_id=$1', [id]);
+      try {
+        const { rows } = await db.query('INSERT INTO assembly_pallets(assembly_id,pallet_number,label) VALUES($1,$2,$3) RETURNING *',
+          [id, mx.rows[0].n, label || null]);
+        return { pallet: rows[0] };
+      } catch (e) { if (e.code === '23505' && attempt < 4) continue; throw e; }
+    }
   });
 
   // ── Быстрое добавление позиции «за 10 сек» (+авто-черновик каталога) ───────
@@ -125,27 +130,37 @@ async function routes(fastify) {
     const id = parseInt(req.params.id);
     const acc = await assertAccess(reply, empId, id); if (!acc) return;
     if (!['confirmed', 'packing'].includes(acc.status)) return bad(reply, 'Сбор ещё не подтверждён РП', 409);
-    const { name, unit, quantity, source, pallet_id, ean, packed } = req.body || {};
+    const { name, unit, quantity, source, pallet_id, packed } = req.body || {};
+    const ean = (req.body.ean || '').trim() || null; // W7
     if (!name || !name.trim()) return bad(reply, 'Название обязательно');
+    const nm = name.trim();
     const src = ['manual', 'on_site_purchase', 'from_warehouse'].includes(source) ? source : 'manual';
     const userId = await resolveUserId(empId); // packed_by ссылается на users(id)
+
+    // 1) Резолв/создание каталог-позиции ВНЕ основной транзакции — чтобы конфликт UNIQUE (C6)
+    //    не откатывал всю операцию сбора.
+    let pid = null;
+    if (ean) { const e = await db.query('SELECT id FROM products WHERE ean=$1 AND deleted_at IS NULL LIMIT 1', [ean]); pid = e.rows[0]?.id || null; }
+    if (!pid) { const n = await db.query('SELECT id FROM products WHERE lower(name)=lower($1) AND deleted_at IS NULL LIMIT 1', [nm]); pid = n.rows[0]?.id || null; }
+    if (!pid) {
+      const cf = src === 'on_site_purchase' ? 'on_site_purchase' : (src === 'from_warehouse' ? 'from_warehouse' : 'manual');
+      try {
+        const np = await db.query(`INSERT INTO products(name,unit,ean,is_draft,created_from,created_by) VALUES($1,$2,$3,true,$4,$5) RETURNING id`,
+          [nm, unit || 'шт', ean, cf, userId]);
+        pid = np.rows[0].id;
+      } catch (e) {
+        if (e.code === '23505') { const r = await db.query('SELECT id FROM products WHERE lower(name)=lower($1) AND deleted_at IS NULL LIMIT 1', [nm]); pid = r.rows[0]?.id || null; }
+        else throw e;
+      }
+    }
+
     const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
-      let pid = null;
-      if (ean) { const e = await client.query('SELECT id FROM products WHERE ean=$1 AND deleted_at IS NULL LIMIT 1', [ean]); pid = e.rows[0]?.id || null; }
-      if (!pid) { const n = await client.query('SELECT id FROM products WHERE lower(name)=lower($1) AND deleted_at IS NULL LIMIT 1', [name.trim()]); pid = n.rows[0]?.id || null; }
-      if (!pid) {
-        const cf = src === 'on_site_purchase' ? 'on_site_purchase' : (src === 'from_warehouse' ? 'from_warehouse' : 'manual');
-        const np = await client.query(
-          `INSERT INTO products(name,unit,ean,is_draft,created_from,created_by) VALUES($1,$2,$3,true,$4,$5) RETURNING id`,
-          [name.trim(), unit || 'шт', ean || null, cf, userId]);
-        pid = np.rows[0].id;
-      }
       const { rows } = await client.query(
         `INSERT INTO assembly_items(assembly_id,product_id,pallet_id,name,unit,quantity,source,packed,packed_at,packed_by)
          VALUES($1,$2,$3,$4,$5,$6,$7,$8,${packed ? 'NOW()' : 'NULL'},$9) RETURNING *`,
-        [id, pid, pallet_id || null, name.trim(), unit || 'шт', quantity || 1, src, !!packed, packed ? userId : null]);
+        [id, pid, pallet_id || null, nm, unit || 'шт', quantity || 1, src, !!packed, packed ? userId : null]);
       if (packed) await checkPackingProgress(client, id);
       await client.query('COMMIT');
       return { item: rows[0], product_id: pid };
@@ -235,13 +250,18 @@ async function routes(fastify) {
       }
       for (const ex of extras) {
         if (!ex.name || !ex.name.trim()) continue;
-        const np = await client.query(
-          `INSERT INTO products(name,unit,is_draft,created_from,created_by) VALUES($1,$2,true,'found',$3) RETURNING id`,
-          [ex.name.trim(), ex.unit || 'шт', userId]);
+        const nm = ex.name.trim();
+        // Не плодим дубли: ищем существующий каталог по имени, иначе создаём черновик-находку.
+        let pid = ex.product_id || null;
+        if (!pid) { const f = await client.query('SELECT id FROM products WHERE lower(name)=lower($1) AND deleted_at IS NULL LIMIT 1', [nm]); pid = f.rows[0]?.id || null; }
+        if (!pid) {
+          try { const np = await client.query(`INSERT INTO products(name,unit,is_draft,created_from,created_by) VALUES($1,$2,true,'found',$3) RETURNING id`, [nm, ex.unit || 'шт', userId]); pid = np.rows[0].id; }
+          catch (e) { if (e.code === '23505') { const r = await client.query('SELECT id FROM products WHERE lower(name)=lower($1) AND deleted_at IS NULL LIMIT 1', [nm]); pid = r.rows[0]?.id; } else throw e; }
+        }
         await client.query(
           `INSERT INTO assembly_items(assembly_id,product_id,name,unit,quantity,source,over_received,received,received_at,received_by)
            VALUES($1,$2,$3,$4,$5,'manual',true,true,NOW(),$6)`,
-          [id, np.rows[0].id, ex.name.trim(), ex.unit || 'шт', ex.quantity || 1, userId]);
+          [id, pid, nm, ex.unit || 'шт', ex.quantity || 1, userId]);
         extrasCreated++;
       }
       await client.query('COMMIT');

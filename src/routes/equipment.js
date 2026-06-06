@@ -1310,7 +1310,8 @@ async function equipmentRoutes(fastify, options) {
           performed_by, contractor, started_at, completed_at, next_date, invoice_id, notes, created_by
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         RETURNING *
-      `, [id, maintenance_type || 'scheduled', description || null, cost || null, spare_parts || null,
+      `, [id, maintenance_type || 'scheduled', description || null, cost || null,
+          spare_parts == null ? null : JSON.stringify(spare_parts), // jsonb-колонка: сериализуем (массив/объект/строка)
           performed_by || null, contractor || null, started_at || null, completed_at || null, next_date || null,
           invoice_id || null, notes || null, user.id]);
 

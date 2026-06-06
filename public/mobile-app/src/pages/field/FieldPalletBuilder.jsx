@@ -37,6 +37,8 @@ export default function FieldPalletBuilder() {
   const [live, setLive] = useState(null);
   const [activePallet, setActivePallet] = useState(null); // id паллета для «куда кладём»
   const [showAdd, setShowAdd] = useState(false);
+  const [toastMsg, setToastMsg] = useState(null);
+  function showErr(m) { haptic.error && haptic.error(); setToastMsg(m || 'Ошибка'); setTimeout(() => setToastMsg(null), 3500); }
 
   async function load() {
     try {
@@ -65,7 +67,7 @@ export default function FieldPalletBuilder() {
   async function addPallet() {
     haptic.light();
     try { await fieldApi.post(`/assembly/${id}/pallets`, { label: null }); await load(); }
-    catch (e) { alert(e.message); }
+    catch (e) { showErr(e.message); }
   }
 
   async function togglePack(item) {
@@ -74,14 +76,14 @@ export default function FieldPalletBuilder() {
     // оптимистично
     setData(d => ({ ...d, items: d.items.map(i => i.id === item.id ? { ...i, packed: !i.packed } : i) }));
     try { await fieldApi.put(`/assembly/${id}/items/${item.id}/pack`, { packed: !item.packed }); loadLive(); }
-    catch (e) { alert(e.message); load(); }
+    catch (e) { showErr(e.message); load(); }
   }
 
   async function assignToPallet(item, palletId) {
     haptic.light();
     setData(d => ({ ...d, items: d.items.map(i => i.id === item.id ? { ...i, pallet_id: palletId } : i) }));
     try { await fieldApi.put(`/assembly/${id}/items/${item.id}/pallet`, { pallet_id: palletId }); }
-    catch (e) { alert(e.message); load(); }
+    catch (e) { showErr(e.message); load(); }
   }
 
   // группировка: позиции без паллета + по паллетам
@@ -200,7 +202,15 @@ export default function FieldPalletBuilder() {
 
       {showAdd && (
         <AddItemSheet assemblyId={id} activePallet={activePallet} pallets={pallets}
-          onClose={() => setShowAdd(false)} onAdded={() => { setShowAdd(false); load(); loadLive(); }} />
+          onClose={() => setShowAdd(false)} onAdded={() => { setShowAdd(false); load(); loadLive(); }}
+          onErr={showErr} />
+      )}
+
+      {toastMsg && (
+        <div className="fixed left-4 right-4 z-50 px-4 py-3 rounded-xl text-sm font-medium text-center"
+          style={{ bottom: 90, background: 'rgba(255,92,92,.95)', color: '#fff', boxShadow: '0 6px 24px rgba(0,0,0,.4)' }}>
+          {toastMsg}
+        </div>
       )}
     </div>
   );
@@ -243,7 +253,7 @@ function ItemRow({ item, canPack, onPack, onAssign, assignLabel }) {
 }
 
 /* ─── Лист добавления позиции: поиск каталога + создание новой за 10 сек ─── */
-function AddItemSheet({ assemblyId, activePallet, pallets, onClose, onAdded }) {
+function AddItemSheet({ assemblyId, activePallet, pallets, onClose, onAdded, onErr }) {
   const haptic = useHaptic();
   const [q, setQ] = useState('');
   const [results, setResults] = useState([]);
@@ -275,7 +285,7 @@ function AddItemSheet({ assemblyId, activePallet, pallets, onClose, onAdded }) {
         product_id: productId || undefined, pallet_id: activePallet || undefined,
       });
       onAdded();
-    } catch (e) { alert(e.message); setSaving(false); }
+    } catch (e) { (onErr || (() => {}))(e.message); setSaving(false); }
   }
 
   return (

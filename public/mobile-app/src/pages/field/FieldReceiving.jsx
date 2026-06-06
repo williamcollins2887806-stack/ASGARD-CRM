@@ -26,6 +26,8 @@ export default function FieldReceiving() {
   const [marks, setMarks] = useState({}); // item_id → {return_status, received_qty}
   const [extras, setExtras] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [toastMsg, setToastMsg] = useState(null); // {text, ok}
+  function flash(text, ok) { if (ok) haptic.success && haptic.success(); else haptic.error && haptic.error(); setToastMsg({ text, ok }); setTimeout(() => setToastMsg(null), 3500); }
 
   async function onScan(qr) {
     setScanning(false);
@@ -37,7 +39,7 @@ export default function FieldReceiving() {
       setItems(d.items || []);
       const m = {}; (d.items || []).forEach(it => { m[it.id] = { return_status: 'returning', received_qty: Number(it.quantity) }; });
       setMarks(m);
-    } catch (e) { alert(e.message); }
+    } catch (e) { flash(e.message || 'Паллет не найден', false); }
   }
 
   function setMark(itemId, patch) { setMarks(m => ({ ...m, [itemId]: { ...m[itemId], ...patch } })); }
@@ -53,9 +55,9 @@ export default function FieldReceiving() {
       const payloadExtras = extras.filter(e => e.name.trim());
       const assemblyId = pallet.assembly_id;
       await fieldApi.post(`/assembly/${assemblyId}/reconcile`, { items: payloadItems, extras: payloadExtras });
-      alert('Принято. Спасибо!');
+      flash('Принято. Спасибо!', true);
       setPallet(null); setItems([]); setMarks({}); setExtras([]);
-    } catch (e) { alert(e.message); }
+    } catch (e) { flash(e.message || 'Ошибка', false); }
     finally { setSaving(false); }
   }
 
@@ -148,6 +150,13 @@ export default function FieldReceiving() {
       )}
 
       {scanning && <QRScanner onScan={onScan} onClose={() => setScanning(false)} />}
+
+      {toastMsg && (
+        <div className="fixed left-4 right-4 z-50 px-4 py-3 rounded-xl text-sm font-medium text-center"
+          style={{ bottom: 90, background: toastMsg.ok ? 'rgba(48,209,88,.95)' : 'rgba(255,92,92,.95)', color: '#fff', boxShadow: '0 6px 24px rgba(0,0,0,.4)' }}>
+          {toastMsg.text}
+        </div>
+      )}
     </div>
   );
 }

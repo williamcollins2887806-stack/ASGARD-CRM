@@ -1141,7 +1141,9 @@ window.AsgardPmWorksPage=(function(){
             icon: '🧰', label: 'Оборудование на работу',
             desc: 'Назначить/просмотреть оборудование',
             onClick: () => {
-              if(window.AsgardEquipment && AsgardEquipment.openWorkEquipmentModal){
+              if(window.WH2Equipment && WH2Equipment.openWorkEquipmentModal){
+                WH2Equipment.openWorkEquipmentModal(w, user);
+              } else if(window.AsgardEquipment && AsgardEquipment.openWorkEquipmentModal){
                 AsgardEquipment.openWorkEquipmentModal(w, user);
               } else {
                 toast("Оборудование", "Модуль склада не загружен", "err");

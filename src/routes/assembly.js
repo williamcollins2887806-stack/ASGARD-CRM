@@ -73,9 +73,16 @@ async function routes(fastify) {
       const asmId = rows[0].id;
 
       if (type === 'mobilization') {
-        // Забронированное
+        // Забронированное. C4: исключаем единицы, уже находящиеся в НЕзакрытой мобилизации
+        // другой работы (чтобы одну единицу не отгрузили на 2 объекта).
         const reserved = await client.query(`SELECT e.*,er.id as rid FROM equipment_reservations er
-          JOIN equipment e ON er.equipment_id=e.id WHERE er.work_id=$1 AND er.status='active'`, [work_id]);
+          JOIN equipment e ON er.equipment_id=e.id
+          WHERE er.work_id=$1 AND er.status='active'
+            AND NOT EXISTS (
+              SELECT 1 FROM assembly_items ai JOIN assembly_orders ao ON ai.assembly_id=ao.id
+              WHERE ai.equipment_id=e.id AND ao.type='mobilization'
+                AND ao.work_id<>$1 AND ao.status NOT IN ('returned','closed')
+            )`, [work_id]);
         for (const eq of reserved.rows)
           await client.query(`INSERT INTO assembly_items(assembly_id,equipment_id,name,article,unit,quantity,source)VALUES($1,$2,$3,$4,$5,$6,'reservation')`,
             [asmId, eq.id, eq.name, eq.article || null, eq.unit || 'шт', eq.quantity || 1]);
@@ -223,10 +230,15 @@ async function routes(fastify) {
   fastify.post('/:id/pallets', { preHandler: [fastify.requireRoles(ASSEMBLY_MANAGERS)] }, async (req) => {
     const asmId = parseInt(req.params.id);
     const { label, notes, capacity_items, capacity_kg } = req.body;
-    const mx = await db.query('SELECT COALESCE(MAX(pallet_number),0)+1 as n FROM assembly_pallets WHERE assembly_id=$1', [asmId]);
-    const { rows } = await db.query('INSERT INTO assembly_pallets(assembly_id,pallet_number,label,notes,capacity_items,capacity_kg)VALUES($1,$2,$3,$4,$5,$6) RETURNING *',
-      [asmId, mx.rows[0].n, label || null, notes || null, capacity_items || null, capacity_kg || null]);
-    return { pallet: rows[0] };
+    // Ретрай при гонке номера паллета (UNIQUE assembly_id,pallet_number).
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const mx = await db.query('SELECT COALESCE(MAX(pallet_number),0)+1 as n FROM assembly_pallets WHERE assembly_id=$1', [asmId]);
+      try {
+        const { rows } = await db.query('INSERT INTO assembly_pallets(assembly_id,pallet_number,label,notes,capacity_items,capacity_kg)VALUES($1,$2,$3,$4,$5,$6) RETURNING *',
+          [asmId, mx.rows[0].n, label || null, notes || null, capacity_items || null, capacity_kg || null]);
+        return { pallet: rows[0] };
+      } catch (e) { if (e.code === '23505' && attempt < 4) continue; throw e; }
+    }
   });
 
   fastify.put('/:id/pallets/:pid', { preHandler: [fastify.requireRoles(ASSEMBLY_MANAGERS)] }, async (req, reply) => {
@@ -359,7 +371,7 @@ async function routes(fastify) {
     return { item: rows[0] };
   });
 
-  fastify.post('/:id/pallets/:pid/scan', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+  fastify.post('/:id/pallets/:pid/scan', { preHandler: [fastify.requireRoles([...PM_ROLES, ...WH_ROLES, ...DIR_ROLES])] }, async (req, reply) => {
     const { lat, lon } = req.body || {};
     const { rows } = await db.query(`UPDATE assembly_pallets SET status='received',received_at=NOW(),received_by=$1,scanned_lat=$2,scanned_lon=$3
       WHERE id=$4 AND assembly_id=$5 RETURNING *`, [req.user.id, lat || null, lon || null, req.params.pid, req.params.id]);
@@ -383,11 +395,37 @@ async function routes(fastify) {
       for (const item of items.rows) {
         await client.query('UPDATE assembly_items SET received=true,received_at=NOW(),received_by=$1 WHERE id=$2', [req.user.id, item.id]);
         if (!item.equipment_id) {
-          if (item.source === 'on_site_purchase' && item.return_status === 'returning') {
+          const rs = item.return_status || 'returning';
+          // C3: расходник из WMS (есть product_id) — возвращаем КОЛИЧЕСТВОМ в stock либо списываем с причиной.
+          if (item.product_id) {
+            const wh = await client.query("SELECT id FROM warehouses WHERE is_main=true LIMIT 1");
+            const whId = wh.rows[0]?.id || null;
+            if (rs === 'returning') {
+              // Надёжный upsert без зависимости от NULL-семантики UNIQUE: ищем слот (location NULL), иначе вставляем.
+              const ex = await client.query('SELECT id FROM stock WHERE product_id=$1 AND warehouse_id=$2 AND location_id IS NULL FOR UPDATE', [item.product_id, whId]);
+              if (ex.rows[0]) await client.query('UPDATE stock SET quantity=quantity+$1, updated_at=NOW() WHERE id=$2', [item.quantity, ex.rows[0].id]);
+              else await client.query('INSERT INTO stock(product_id,warehouse_id,location_id,quantity,unit) VALUES($1,$2,NULL,$3,$4)', [item.product_id, whId, item.quantity, item.unit || 'шт']);
+              await client.query(
+                `INSERT INTO stock_movements(product_id,to_warehouse_id,qty,unit,movement_type,ref_type,ref_id,reason,created_by)
+                 VALUES($1,$2,$3,$4,'return','assembly',$5,$6,$7)`,
+                [item.product_id, whId, item.quantity, item.unit || 'шт', asmId, 'Возврат с объекта, демоб #' + asmId, req.user.id]);
+              retCnt++;
+            } else {
+              const reason = rs === 'damaged' ? 'Сломано' : rs === 'lost' ? 'Утеряно' : 'Израсходовано';
+              await client.query(
+                `INSERT INTO stock_movements(product_id,from_warehouse_id,qty,unit,movement_type,ref_type,ref_id,reason,created_by)
+                 VALUES($1,$2,$3,$4,'writeoff','assembly',$5,$6,$7)`,
+                [item.product_id, whId, item.quantity, item.unit || 'шт', asmId, `${reason}: ${item.return_reason || '—'} (демоб #${asmId})`, req.user.id]);
+              dmgCnt++;
+            }
+            continue;
+          }
+          // Куплено на объекте (поштучно, без каталога) — оприходуем как новую единицу equipment.
+          if (item.source === 'on_site_purchase' && rs === 'returning') {
             const qr = randomUUID(); const wh = await client.query("SELECT id FROM warehouses WHERE is_main=true LIMIT 1");
             const invNum='INV-'+Date.now().toString(36).toUpperCase();
-            await client.query(`INSERT INTO equipment(name,inventory_number,quantity,unit,status,warehouse_id,qr_uuid,qr_code,notes)VALUES($1,$2,$3,$4,'on_warehouse',$5,$6,$7,$8)`,
-              [item.name, invNum, item.quantity, item.unit, wh.rows[0]?.id || null, qr, qr, 'Купл. на объекте, демоб #' + asmId]);
+            await client.query(`INSERT INTO equipment(name,inventory_number,quantity,unit,status,warehouse_id,qr_uuid,qr_code,product_id,notes)VALUES($1,$2,$3,$4,'on_warehouse',$5,$6,$7,$8,$9)`,
+              [item.name, invNum, item.quantity, item.unit, wh.rows[0]?.id || null, qr, qr, item.product_id || null, 'Купл. на объекте, демоб #' + asmId]);
             retCnt++;
           }
           continue;
@@ -397,6 +435,8 @@ async function routes(fastify) {
           await client.query("UPDATE equipment SET status='on_warehouse',current_holder_id=NULL,current_object_id=NULL WHERE id=$1", [item.equipment_id]);
           await client.query(`INSERT INTO equipment_movements(equipment_id,movement_type,to_warehouse_id,notes,created_by)
             VALUES($1,'return',(SELECT warehouse_id FROM equipment WHERE id=$1),$2,$3)`, [item.equipment_id, 'Возврат демоб #' + asmId, req.user.id]);
+          // W1: снять активный резерв этой единицы (вернулась на склад — резерв больше не нужен).
+          await client.query("UPDATE equipment_reservations SET status='released' WHERE equipment_id=$1 AND status='active'", [item.equipment_id]);
           retCnt++;
         } else {
           await client.query("UPDATE equipment SET status='written_off' WHERE id=$1", [item.equipment_id]);
@@ -474,32 +514,28 @@ async function routes(fastify) {
     const { name, unit, quantity, source, pallet_id, product_id, category_id, ean, packed } = req.body;
     if (!name || !name.trim()) return reply.code(400).send({ error: 'name обязателен' });
     const src = ['manual', 'on_site_purchase', 'from_warehouse'].includes(source) ? source : 'manual';
+    const nm = name.trim();
+    const eanN = (ean || '').trim() || null;
+    // 1) Резолв/создание каталога ВНЕ транзакции — конфликт UNIQUE (23505) не должен ронять весь сбор.
+    let pid = product_id || null;
+    if (!pid && eanN) { const e = await db.query('SELECT id FROM products WHERE ean=$1 AND deleted_at IS NULL LIMIT 1', [eanN]); pid = e.rows[0]?.id || null; }
+    if (!pid) { const n = await db.query('SELECT id FROM products WHERE lower(name)=lower($1) AND deleted_at IS NULL LIMIT 1', [nm]); pid = n.rows[0]?.id || null; }
+    if (!pid) {
+      const cf = src === 'on_site_purchase' ? 'on_site_purchase' : (src === 'from_warehouse' ? 'from_warehouse' : 'manual');
+      try {
+        const np = await db.query(`INSERT INTO products(name,unit,category_id,ean,is_draft,created_from,created_by) VALUES($1,$2,$3,$4,true,$5,$6) RETURNING id`,
+          [nm, unit || 'шт', category_id || null, eanN, cf, req.user.id]);
+        pid = np.rows[0].id;
+      } catch (e) { if (e.code === '23505') { const r = await db.query('SELECT id FROM products WHERE lower(name)=lower($1) AND deleted_at IS NULL LIMIT 1', [nm]); pid = r.rows[0]?.id; } else throw e; }
+    }
     const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
-      // 1) Привязка к каталогу: используем переданный product_id, либо ищем по ean/имени, либо заводим черновик
-      let pid = product_id || null;
-      if (!pid && ean) {
-        const e = await client.query('SELECT id FROM products WHERE ean=$1 AND deleted_at IS NULL LIMIT 1', [ean]);
-        pid = e.rows[0]?.id || null;
-      }
-      if (!pid) {
-        const n = await client.query('SELECT id FROM products WHERE lower(name)=lower($1) AND deleted_at IS NULL LIMIT 1', [name.trim()]);
-        pid = n.rows[0]?.id || null;
-      }
-      if (!pid) {
-        const cf = src === 'on_site_purchase' ? 'on_site_purchase' : (src === 'from_warehouse' ? 'from_warehouse' : 'manual');
-        const np = await client.query(
-          `INSERT INTO products(name,unit,category_id,ean,is_draft,created_from,created_by)
-           VALUES($1,$2,$3,$4,true,$5,$6) RETURNING id`,
-          [name.trim(), unit || 'шт', category_id || null, ean || null, cf, req.user.id]);
-        pid = np.rows[0].id;
-      }
       // 2) Кладём позицию в сбор
       const { rows } = await client.query(
         `INSERT INTO assembly_items(assembly_id,product_id,pallet_id,name,unit,quantity,source,packed,packed_at,packed_by)
          VALUES($1,$2,$3,$4,$5,$6,$7,$8,${packed ? 'NOW()' : 'NULL'},$9) RETURNING *`,
-        [asmId, pid, pallet_id || null, name.trim(), unit || 'шт', quantity || 1, src, !!packed, packed ? req.user.id : null]);
+        [asmId, pid, pallet_id || null, nm, unit || 'шт', quantity || 1, src, !!packed, packed ? req.user.id : null]);
       if (packed && pallet_id) await checkPackingProgress(client, asmId);
       await client.query('COMMIT');
       return { item: rows[0], product_id: pid };
@@ -556,18 +592,20 @@ async function routes(fastify) {
       // 2) Излишки/неизвестное — заводим позиции (over_received) + каталог-черновик
       for (const ex of extras) {
         if (!ex.name || !ex.name.trim()) continue;
+        const nm = ex.name.trim();
         let pid = ex.product_id || null;
+        if (!pid) { const f = await client.query('SELECT id FROM products WHERE lower(name)=lower($1) AND deleted_at IS NULL LIMIT 1', [nm]); pid = f.rows[0]?.id || null; }
         if (!pid) {
-          const np = await client.query(
-            `INSERT INTO products(name,unit,ean,is_draft,created_from,created_by)
-             VALUES($1,$2,$3,true,'found',$4) RETURNING id`,
-            [ex.name.trim(), ex.unit || 'шт', ex.ean || null, req.user.id]);
-          pid = np.rows[0].id;
+          try {
+            const np = await client.query(`INSERT INTO products(name,unit,ean,is_draft,created_from,created_by) VALUES($1,$2,$3,true,'found',$4) RETURNING id`,
+              [nm, ex.unit || 'шт', ex.ean || null, req.user.id]);
+            pid = np.rows[0].id;
+          } catch (e) { if (e.code === '23505') { const r = await client.query('SELECT id FROM products WHERE lower(name)=lower($1) AND deleted_at IS NULL LIMIT 1', [nm]); pid = r.rows[0]?.id; } else throw e; }
         }
         await client.query(
           `INSERT INTO assembly_items(assembly_id,product_id,name,unit,quantity,source,over_received,received,received_at,received_by)
            VALUES($1,$2,$3,$4,$5,'manual',true,true,NOW(),$6)`,
-          [asmId, pid, ex.name.trim(), ex.unit || 'шт', ex.quantity || 1, req.user.id]);
+          [asmId, pid, nm, ex.unit || 'шт', ex.quantity || 1, req.user.id]);
         extrasCreated++;
       }
       await client.query('COMMIT');

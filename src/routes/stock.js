@@ -35,13 +35,19 @@ async function routes(fastify) {
    * delta>0 — приход, delta<0 — расход. Создаёт строку при отсутствии.
    * Бросает {code:'INSUFFICIENT'} если итог < 0.
    */
-  async function applyDelta(client, { product_id, warehouse_id, location_id, delta, unit }) {
+  // respectReserved=true: расход не может опустить остаток ниже зарезервированного
+  // (issue/transfer не трогают резерв; writeoff может — списание брака/недостачи с причиной).
+  async function applyDelta(client, { product_id, warehouse_id, location_id, delta, unit, respectReserved }) {
     const sel = await client.query(
-      `SELECT id, quantity FROM stock WHERE product_id=$1 AND warehouse_id=$2 AND location_id IS NOT DISTINCT FROM $3 FOR UPDATE`,
+      `SELECT id, quantity, reserved_qty FROM stock WHERE product_id=$1 AND warehouse_id=$2 AND location_id IS NOT DISTINCT FROM $3 FOR UPDATE`,
       [product_id, warehouse_id, location_id || null]);
     if (sel.rows[0]) {
       const next = parseFloat(sel.rows[0].quantity) + delta;
       if (next < 0) { const err = new Error('INSUFFICIENT'); err.code = 'INSUFFICIENT'; throw err; }
+      if (respectReserved && delta < 0) {
+        const reserved = parseFloat(sel.rows[0].reserved_qty || 0);
+        if (next < reserved) { const err = new Error('RESERVED'); err.code = 'RESERVED'; err.available = parseFloat(sel.rows[0].quantity) - reserved; throw err; }
+      }
       await client.query('UPDATE stock SET quantity=$1, updated_at=NOW() WHERE id=$2', [next, sel.rows[0].id]);
       return next;
     } else {
@@ -103,6 +109,43 @@ async function routes(fastify) {
     return { product_id: pid, total, slots: rows };
   });
 
+  /**
+   * Входящие поставки для кладовщика (онлайн-видимость склад↔закупки).
+   * GET /stock/incoming?target=warehouse|object|all&status=
+   * Показывает позиции закупок: что едет на склад (принять), что напрямую на объект (для инфо),
+   * статус (в пути/доставлено), ориентировочные сроки, получатель/работа.
+   */
+  fastify.get('/incoming', { preHandler: [fastify.requireRoles(WMS_READ)] }, async (req) => {
+    const { target = 'all', status } = req.query;
+    let sql = `SELECT pi.id, pi.name, pi.article, pi.quantity, pi.unit, pi.item_status, pi.delivery_target,
+        pi.actual_delivery, pi.equipment_id, pi.recipient_kind,
+        pr.id AS procurement_id, pr.work_id, pr.needed_by, pr.delivery_deadline, pr.delivery_date,
+        pr.delivery_address, pr.status AS request_status,
+        w.work_title, w.object_name,
+        wh.name AS warehouse_name,
+        u.name AS proc_name
+      FROM procurement_items pi
+      JOIN procurement_requests pr ON pi.procurement_id = pr.id
+      LEFT JOIN works w ON pr.work_id = w.id
+      LEFT JOIN warehouses wh ON pi.warehouse_id = wh.id
+      LEFT JOIN users u ON pr.proc_id = u.id
+      WHERE pr.status NOT IN ('draft','dir_rejected','closed')
+        AND pi.item_status IN ('ordered','shipped','delivered','partially_delivered','pending')`;
+    const p = []; let i = 1;
+    if (target === 'warehouse') sql += ` AND pi.delivery_target = 'warehouse'`;
+    else if (target === 'object') sql += ` AND pi.delivery_target = 'object'`;
+    if (status) { sql += ` AND pi.item_status = $${i++}`; p.push(status); }
+    sql += ` ORDER BY COALESCE(pr.delivery_deadline, pr.needed_by) NULLS LAST, pr.id DESC LIMIT 300`;
+    const { rows } = await db.query(sql, p);
+    // сводка для бейджей
+    const summary = {
+      to_warehouse_in_transit: rows.filter(r => r.delivery_target === 'warehouse' && ['ordered', 'shipped'].includes(r.item_status)).length,
+      to_warehouse_delivered: rows.filter(r => r.delivery_target === 'warehouse' && r.item_status === 'delivered').length,
+      to_object: rows.filter(r => r.delivery_target === 'object').length,
+    };
+    return { items: rows, summary };
+  });
+
   // Низкий остаток (для авто-заявки в закупки)
   fastify.get('/low', { preHandler: [fastify.requireRoles(WMS_READ)] }, async () => {
     const { rows } = await db.query(
@@ -118,25 +161,30 @@ async function routes(fastify) {
   // ═══ КАТАЛОГ-ЧЕРНОВИК «за 10 сек» ═══
   // Доступно широкому кругу. Создаёт products(is_draft=true) если такой ещё нет.
   fastify.post('/quick-product', { preHandler: [fastify.requireRoles(QUICK_CREATE)] }, async (req, reply) => {
-    const { name, unit, category_id, created_from, ean, article } = req.body;
+    const { name, unit, category_id, created_from, article } = req.body;
+    const ean = (req.body.ean || '').trim() || null; // W7: пустую строку → NULL
     if (!name || !name.trim()) return bad(reply, 'Название обязательно');
+    const nm = name.trim();
     const cf = created_from || 'manual';
-    // Попытка найти существующий каталог по точному имени (или EAN) — не плодим дубли
+    // Поиск существующего (по EAN или имени) — не плодим дубли
     let found = null;
-    if (ean) {
-      const e = await db.query('SELECT * FROM products WHERE ean=$1 AND deleted_at IS NULL LIMIT 1', [ean]);
-      found = e.rows[0] || null;
-    }
-    if (!found) {
-      const n = await db.query('SELECT * FROM products WHERE lower(name)=lower($1) AND deleted_at IS NULL LIMIT 1', [name.trim()]);
-      found = n.rows[0] || null;
-    }
+    if (ean) { const e = await db.query('SELECT * FROM products WHERE ean=$1 AND deleted_at IS NULL LIMIT 1', [ean]); found = e.rows[0] || null; }
+    if (!found) { const n = await db.query('SELECT * FROM products WHERE lower(name)=lower($1) AND deleted_at IS NULL LIMIT 1', [nm]); found = n.rows[0] || null; }
     if (found) return { item: found, existed: true };
-    const { rows } = await db.query(
-      `INSERT INTO products(name,article,unit,category_id,ean,is_draft,created_from,created_by)
-       VALUES($1,$2,$3,$4,$5,true,$6,$7) RETURNING *`,
-      [name.trim(), article || null, unit || 'шт', category_id || null, ean || null, cf, req.user.id]);
-    return { item: rows[0], existed: false };
+    try {
+      const { rows } = await db.query(
+        `INSERT INTO products(name,article,unit,category_id,ean,is_draft,created_from,created_by)
+         VALUES($1,$2,$3,$4,$5,true,$6,$7) RETURNING *`,
+        [nm, article || null, unit || 'шт', category_id || null, ean, cf, req.user.id]);
+      return { item: rows[0], existed: false };
+    } catch (e) {
+      // C6: гонка — другой запрос успел создать черновик с тем же именем (UNIQUE uq_products_draft_name)
+      if (e.code === '23505') {
+        const r = await db.query('SELECT * FROM products WHERE lower(name)=lower($1) AND deleted_at IS NULL LIMIT 1', [nm]);
+        if (r.rows[0]) return { item: r.rows[0], existed: true };
+      }
+      throw e;
+    }
   });
 
   // Снять черновик (подтвердить позицию каталога) — кладовщик/закупщик
@@ -154,16 +202,18 @@ async function routes(fastify) {
     const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
+      // C5: target и source должны существовать и быть не удалены (иначе остатки уйдут «в пустоту»).
+      const chk = await client.query('SELECT id, deleted_at FROM products WHERE id = ANY($1) FOR UPDATE', [[sourceId, targetId]]);
+      const tgt = chk.rows.find(r => r.id === targetId), src = chk.rows.find(r => r.id === sourceId);
+      if (!tgt || tgt.deleted_at) { await client.query('ROLLBACK'); return bad(reply, 'Целевая позиция не найдена или удалена', 409); }
+      if (!src || src.deleted_at) { await client.query('ROLLBACK'); return bad(reply, 'Исходная позиция не найдена или удалена', 409); }
       // Перенести stock-строки источника на target (суммируя)
       const srcStock = await client.query('SELECT * FROM stock WHERE product_id=$1 FOR UPDATE', [sourceId]);
       for (const s of srcStock.rows) {
-        await client.query(
-          `INSERT INTO stock(product_id,warehouse_id,location_id,quantity,reserved_qty,unit)
-           VALUES($1,$2,$3,$4,$5,$6)
-           ON CONFLICT (product_id,warehouse_id,location_id)
-           DO UPDATE SET quantity = stock.quantity + EXCLUDED.quantity,
-                         reserved_qty = stock.reserved_qty + EXCLUDED.reserved_qty, updated_at=NOW()`,
-          [targetId, s.warehouse_id, s.location_id, s.quantity, s.reserved_qty, s.unit]);
+        // Надёжный upsert (location может быть NULL): IS NOT DISTINCT FROM.
+        const exT = await client.query('SELECT id FROM stock WHERE product_id=$1 AND warehouse_id=$2 AND location_id IS NOT DISTINCT FROM $3 FOR UPDATE', [targetId, s.warehouse_id, s.location_id]);
+        if (exT.rows[0]) await client.query('UPDATE stock SET quantity=quantity+$1, reserved_qty=reserved_qty+$2, updated_at=NOW() WHERE id=$3', [s.quantity, s.reserved_qty, exT.rows[0].id]);
+        else await client.query('INSERT INTO stock(product_id,warehouse_id,location_id,quantity,reserved_qty,unit) VALUES($1,$2,$3,$4,$5,$6)', [targetId, s.warehouse_id, s.location_id, s.quantity, s.reserved_qty, s.unit]);
       }
       await client.query('DELETE FROM stock WHERE product_id=$1', [sourceId]);
       // Перецепить ссылки
@@ -171,6 +221,7 @@ async function routes(fastify) {
       await client.query('UPDATE equipment SET product_id=$1 WHERE product_id=$2', [targetId, sourceId]);
       await client.query('UPDATE assembly_items SET product_id=$1 WHERE product_id=$2', [targetId, sourceId]);
       await client.query('UPDATE procurement_items SET product_id=$1 WHERE product_id=$2', [targetId, sourceId]);
+      await client.query('UPDATE price_records SET product_id=$1 WHERE product_id=$2', [targetId, sourceId]); // W4: сохранить историю цен
       await client.query('UPDATE products SET deleted_at=NOW(), is_active=false WHERE id=$1', [sourceId]);
       await client.query('COMMIT');
       return { success: true, merged_into: targetId };
@@ -220,7 +271,7 @@ async function routes(fastify) {
     try {
       await client.query('BEGIN');
       const wh = warehouse_id || await mainWarehouseId(client);
-      await applyDelta(client, { product_id, warehouse_id: wh, location_id, delta: -q, unit });
+      await applyDelta(client, { product_id, warehouse_id: wh, location_id, delta: -q, unit, respectReserved: true });
       await logMove(client, { product_id, from_warehouse_id: wh, from_location_id: location_id, qty: q, unit,
         movement_type: 'issue', ref_type, ref_id, reason, created_by: req.user.id });
       await client.query('COMMIT');
@@ -228,6 +279,7 @@ async function routes(fastify) {
     } catch (e) {
       await client.query('ROLLBACK');
       if (e.code === 'INSUFFICIENT') return bad(reply, 'Недостаточно остатка', 409);
+      if (e.code === 'RESERVED') return bad(reply, `Нельзя выдать: часть зарезервирована. Доступно: ${e.available}`, 409);
       throw e;
     } finally { client.release(); }
   });
@@ -255,22 +307,37 @@ async function routes(fastify) {
 
   // Перемещение между ячейками/складами
   fastify.post('/transfer', { preHandler: [fastify.requireRoles(WMS_WRITE)] }, async (req, reply) => {
-    const { product_id, from_warehouse_id, from_location_id, to_warehouse_id, to_location_id, qty, unit, reason } = req.body;
+    const { product_id, qty, unit, reason } = req.body;
+    // Нормализуем id к числам/null (из JSON могут прийти строки → ломали сравнение типов).
+    const toInt = v => { const n = parseInt(v); return isNaN(n) ? null : n; };
+    const fromLoc = toInt(req.body.from_location_id), toLoc = toInt(req.body.to_location_id);
+    let fromWh = toInt(req.body.from_warehouse_id), toWh = toInt(req.body.to_warehouse_id);
     const q = num(qty); if (!product_id || !q || q <= 0) return bad(reply, 'product_id и qty>0 обязательны');
     const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
-      const fromWh = from_warehouse_id || await mainWarehouseId(client);
-      const toWh = to_warehouse_id || fromWh;
-      await applyDelta(client, { product_id, warehouse_id: fromWh, location_id: from_location_id, delta: -q, unit });
-      await applyDelta(client, { product_id, warehouse_id: toWh, location_id: to_location_id, delta: q, unit });
-      await logMove(client, { product_id, from_warehouse_id: fromWh, from_location_id, to_warehouse_id: toWh, to_location_id,
+      if (!fromWh) fromWh = await mainWarehouseId(client);
+      if (!toWh) toWh = fromWh;
+      // C2: перемещение в ту же позицию-ячейку — бессмысленно, отклоняем (числовое сравнение).
+      if (fromWh === toWh && fromLoc === toLoc) {
+        await client.query('ROLLBACK'); return bad(reply, 'Источник и назначение совпадают');
+      }
+      // C7: целевая ячейка не должна быть удалена/неактивна.
+      if (toLoc) {
+        const lc = await client.query('SELECT 1 FROM warehouse_locations WHERE id=$1 AND deleted_at IS NULL AND is_active=true', [toLoc]);
+        if (!lc.rows[0]) { await client.query('ROLLBACK'); return bad(reply, 'Целевая ячейка не найдена или неактивна', 409); }
+      }
+      // Списываем строго по порядку (product_id,wh,loc) — детерминированный порядок локов исключает deadlock.
+      await applyDelta(client, { product_id, warehouse_id: fromWh, location_id: fromLoc, delta: -q, unit, respectReserved: true });
+      await applyDelta(client, { product_id, warehouse_id: toWh, location_id: toLoc, delta: q, unit });
+      await logMove(client, { product_id, from_warehouse_id: fromWh, from_location_id: fromLoc, to_warehouse_id: toWh, to_location_id: toLoc,
         qty: q, unit, movement_type: 'transfer', reason, created_by: req.user.id });
       await client.query('COMMIT');
       return { success: true };
     } catch (e) {
       await client.query('ROLLBACK');
       if (e.code === 'INSUFFICIENT') return bad(reply, 'Недостаточно остатка для перемещения', 409);
+      if (e.code === 'RESERVED') return bad(reply, `Нельзя переместить: часть зарезервирована. Доступно: ${e.available}`, 409);
       throw e;
     } finally { client.release(); }
   });
