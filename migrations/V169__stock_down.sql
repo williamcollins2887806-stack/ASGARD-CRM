@@ -1,0 +1,2 @@
+-- Rollback V159
+DROP TABLE IF EXISTS stock CASCADE;

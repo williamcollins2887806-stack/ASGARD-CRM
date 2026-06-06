@@ -4,7 +4,7 @@ import {
   Clock, Wallet, History, Users, Truck, UserCircle,
   MapPin, AlertCircle, RefreshCw, Play, Square,
   Phone, Briefcase, Camera, FileText, AlertTriangle, Package, DollarSign, Map,
-  Calendar, Shield,
+  Calendar, Shield, PackageCheck,
 } from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
 import { useFieldAuthStore } from '@/stores/fieldAuthStore';
@@ -403,6 +403,7 @@ export default function FieldHome() {
     { icon: Map, label: 'Маршрут', path: '/field/stages' },
     { icon: Truck, label: 'Билеты', path: '/field/logistics' },
     { icon: Camera, label: 'Фото', path: '/field/photos' },
+    { icon: Package, label: 'Сбор паллет', path: '/field/assembly' },
     { icon: History, label: 'История', path: '/field/history' },
     { icon: Calendar, label: 'Зарплата по месяцам', path: '/field/earnings/monthly' },
   ];
@@ -412,6 +413,7 @@ export default function FieldHome() {
       { icon: AlertTriangle, label: 'Инцидент', path: '/field/incidents' },
       { icon: Wallet, label: 'Подотчёт', path: '/field/funds' },
       { icon: Package, label: 'Сборы', path: '/field/packing' },
+      { icon: PackageCheck, label: 'Приёмка', path: '/field/receiving' },
     );
   }
   actions.push({ icon: UserCircle, label: 'Профиль', path: '/field/profile' });

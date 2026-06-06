@@ -458,16 +458,35 @@ async function routes(fastify) {
       if(item.delivery_target==='warehouse'){
         const wh=await client.query("SELECT id FROM warehouses WHERE is_main=true LIMIT 1");
         const whId=item.warehouse_id||(wh.rows[0]&&wh.rows[0].id)||null;
-        const qr=randomUUID();
-        const invNum='INV-'+Date.now().toString(36).toUpperCase();
-        const eq=await client.query(`INSERT INTO equipment(name,inventory_number,category_id,quantity,unit,purchase_price,status,warehouse_id,qr_uuid,qr_code,notes)
-          VALUES($1,$2,NULL,$3,$4,$5,'on_warehouse',$6,$7,$8,$9) RETURNING id`,
-          [item.name,invNum,item.quantity,item.unit,item.unit_price,whId,qr,qr,'Из закупки #'+procId]);
-        await client.query('UPDATE procurement_items SET equipment_id=$1 WHERE id=$2',[eq.rows[0].id,itemId]);
-        await client.query(`INSERT INTO equipment_movements(equipment_id,movement_type,to_warehouse_id,notes,created_by)VALUES($1,'procurement_receipt',$2,$3,$4)`,
-          [eq.rows[0].id,whId,'Приёмка из закупки #'+procId,user.id]);
-        if(pc.row.work_id) await client.query(`INSERT INTO equipment_reservations(equipment_id,work_id,reserved_by,reserved_from,reserved_to,status,notes)
-          VALUES($1,$2,$3,CURRENT_DATE,CURRENT_DATE+INTERVAL '30 days','active',$4)`,[eq.rows[0].id,pc.row.work_id,pc.row.pm_id||user.id,'Автобронь #'+procId]);
+        // WMS: если позиция привязана к каталогу-расходнику — приходуем количеством в stock,
+        // иначе создаём поштучную единицу equipment (как было).
+        let isConsumable=false;
+        if(item.product_id){
+          try{const pr=await client.query('SELECT is_consumable FROM products WHERE id=$1',[item.product_id]);isConsumable=!!pr.rows[0]?.is_consumable;}catch(_){}
+        }
+        if(isConsumable){
+          const qty=parseFloat(item.quantity)||0;
+          await client.query(
+            `INSERT INTO stock(product_id,warehouse_id,location_id,quantity,unit) VALUES($1,$2,NULL,$3,$4)
+             ON CONFLICT (product_id,warehouse_id,location_id)
+             DO UPDATE SET quantity=stock.quantity+EXCLUDED.quantity, updated_at=NOW()`,
+            [item.product_id,whId,qty,item.unit||'шт']);
+          await client.query(
+            `INSERT INTO stock_movements(product_id,to_warehouse_id,qty,unit,movement_type,ref_type,ref_id,reason,created_by)
+             VALUES($1,$2,$3,$4,'receipt','procurement',$5,$6,$7)`,
+            [item.product_id,whId,qty,item.unit||'шт',procId,'Приёмка из закупки #'+procId,user.id]);
+        }else{
+          const qr=randomUUID();
+          const invNum='INV-'+Date.now().toString(36).toUpperCase();
+          const eq=await client.query(`INSERT INTO equipment(name,inventory_number,category_id,quantity,unit,purchase_price,status,warehouse_id,qr_uuid,qr_code,product_id,notes)
+            VALUES($1,$2,NULL,$3,$4,$5,'on_warehouse',$6,$7,$8,$9,$10) RETURNING id`,
+            [item.name,invNum,item.quantity,item.unit,item.unit_price,whId,qr,qr,item.product_id||null,'Из закупки #'+procId]);
+          await client.query('UPDATE procurement_items SET equipment_id=$1 WHERE id=$2',[eq.rows[0].id,itemId]);
+          await client.query(`INSERT INTO equipment_movements(equipment_id,movement_type,to_warehouse_id,notes,created_by)VALUES($1,'procurement_receipt',$2,$3,$4)`,
+            [eq.rows[0].id,whId,'Приёмка из закупки #'+procId,user.id]);
+          if(pc.row.work_id) await client.query(`INSERT INTO equipment_reservations(equipment_id,work_id,reserved_by,reserved_from,reserved_to,status,notes)
+            VALUES($1,$2,$3,CURRENT_DATE,CURRENT_DATE+INTERVAL '30 days','active',$4)`,[eq.rows[0].id,pc.row.work_id,pc.row.pm_id||user.id,'Автобронь #'+procId]);
+        }
       }
       const all=await client.query('SELECT item_status FROM procurement_items WHERE procurement_id=$1',[procId]);
       const dCnt=all.rows.filter(i=>i.item_status==='delivered').length;

@@ -137,11 +137,64 @@ window.AsgardAssemblyPage = (function() {
     };
 
     const addItemBtn=document.getElementById('asm-add-item');
-    if(addItemBtn)addItemBtn.onclick=async()=>{
-      const name=prompt('Наименование:');if(!name)return;
-      await apiPost(`/api/assembly/${a.id}/items`,{name,unit:'шт',quantity:1,source:'manual'});openDetail(a.id);
-    };
+    if(addItemBtn)addItemBtn.onclick=()=>openAddItemDialog(a.id);
     // Паллеты, drag-drop, return_status — всё внутри AsgardAssemblyDnD
+  }
+
+  // Быстрое добавление позиции с автокомплитом каталога (вместо prompt)
+  function openAddItemDialog(asmId){
+    const html=`<div style="display:flex;flex-direction:column;gap:12px;min-width:340px">
+      <div style="position:relative">
+        <input id="asm-ai-name" placeholder="Наименование (поиск по каталогу)…" autocomplete="off"
+          style="width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--border,#262c38);background:var(--bg-input,#10141b);color:var(--t1,#e6e9ef);outline:none">
+        <div id="asm-ai-sug" style="position:absolute;left:0;right:0;top:46px;z-index:5;background:var(--bg-card,#161a22);border:1px solid var(--border,#262c38);border-radius:10px;max-height:220px;overflow:auto;display:none"></div>
+      </div>
+      <div style="display:flex;gap:10px">
+        <input id="asm-ai-qty" type="number" value="1" min="0" step="any" placeholder="Кол-во" style="flex:1;padding:11px 12px;border-radius:10px;border:1px solid var(--border,#262c38);background:var(--bg-input,#10141b);color:var(--t1,#e6e9ef)">
+        <input id="asm-ai-unit" value="шт" placeholder="Ед." style="width:90px;padding:11px 12px;border-radius:10px;border:1px solid var(--border,#262c38);background:var(--bg-input,#10141b);color:var(--t1,#e6e9ef)">
+      </div>
+      <select id="asm-ai-src" style="padding:11px 12px;border-radius:10px;border:1px solid var(--border,#262c38);background:var(--bg-input,#10141b);color:var(--t1,#e6e9ef)">
+        <option value="from_warehouse">Со склада</option>
+        <option value="on_site_purchase">Куплено на объекте</option>
+        <option value="manual">Вручную / прочее</option>
+      </select>
+      <button class="btn primary" id="asm-ai-save" style="padding:11px">Добавить</button>
+    </div>`;
+    showModal({title:'➕ Позиция',html});
+    let selectedPid=null,deb;
+    const nameEl=document.getElementById('asm-ai-name');
+    const sugEl=document.getElementById('asm-ai-sug');
+    nameEl.oninput=()=>{
+      selectedPid=null;const q=nameEl.value.trim();
+      clearTimeout(deb);
+      if(q.length<2){sugEl.style.display='none';return;}
+      deb=setTimeout(async()=>{
+        try{
+          const d=await apiFetch('/api/products/search?q='+encodeURIComponent(q));
+          const items=d.items||[];
+          if(!items.length){sugEl.style.display='none';return;}
+          sugEl.innerHTML=items.map(it=>`<div class="asm-ai-opt" data-pid="${it.id}" data-name="${esc(it.name)}" data-unit="${esc(it.unit||'шт')}"
+            style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border,#1e2430)">
+            <div style="font-size:13px">${esc(it.name)}</div>
+            <div style="font-size:11px;color:var(--t2,#8b93a3)">${esc(it.category_name||'')}${it.article?' • '+esc(it.article):''}</div></div>`).join('');
+          sugEl.style.display='block';
+          sugEl.querySelectorAll('.asm-ai-opt').forEach(o=>o.onclick=()=>{
+            selectedPid=+o.dataset.pid;nameEl.value=o.dataset.name;
+            document.getElementById('asm-ai-unit').value=o.dataset.unit;sugEl.style.display='none';
+          });
+        }catch(_){sugEl.style.display='none';}
+      },280);
+    };
+    document.getElementById('asm-ai-save').onclick=async()=>{
+      const name=nameEl.value.trim();if(!name){toast('Внимание','Введите наименование','warn');return;}
+      const body={name,quantity:parseFloat(document.getElementById('asm-ai-qty').value)||1,
+        unit:document.getElementById('asm-ai-unit').value.trim()||'шт',
+        source:document.getElementById('asm-ai-src').value,product_id:selectedPid||undefined};
+      try{const r=await apiPost(`/api/assembly/${asmId}/items/quick`,body);
+        if(r.error){toast('Ошибка',r.error,'err');return;}
+        toast('Добавлено','','ok');closeModal();openDetail(asmId);
+      }catch(e){toast('Ошибка',e.message,'err');}
+    };
   }
 
   async function render({layout,title}){

@@ -212,12 +212,16 @@ async function routes(fastify) {
 
   fastify.get('/products', { preHandler: [fastify.authenticate] }, async (req) => {
     const { category_id, search, is_active, limit = 100, offset = 0 } = req.query;
+    const { include_drafts } = req.query;
+    // WMS-совместимость: каталог не показывает удалённые позиции и черновики рабочих (is_draft),
+    // если явно не запрошено include_drafts (для модерации).
     let sql = `SELECT p.*, c.name as category_name FROM products p
-      LEFT JOIN product_categories c ON p.category_id=c.id WHERE 1=1`;
+      LEFT JOIN product_categories c ON p.category_id=c.id WHERE p.deleted_at IS NULL`;
     const params = []; let i = 1;
     if (category_id) { sql += ` AND p.category_id=$${i++}`; params.push(category_id); }
     if (is_active !== undefined) { sql += ` AND p.is_active=$${i++}`; params.push(is_active === 'true' || is_active === true); }
     else { sql += ` AND p.is_active=true`; }
+    if (include_drafts !== 'true') { sql += ` AND p.is_draft IS NOT TRUE`; }
     if (search) { sql += ` AND (p.name ILIKE $${i} OR p.article ILIKE $${i})`; params.push(`%${search}%`); i++; }
     sql += ` ORDER BY p.name LIMIT $${i++} OFFSET $${i++}`;
     params.push(Math.min(parseInt(limit), 500), parseInt(offset));
@@ -233,7 +237,7 @@ async function routes(fastify) {
       `SELECT p.id, p.name, p.article, p.unit, p.category_id, c.name as category_name,
         similarity(p.name, $1) as sim
        FROM products p LEFT JOIN product_categories c ON p.category_id=c.id
-       WHERE p.is_active=true AND (p.name ILIKE $2 OR p.name % $1)
+       WHERE p.is_active=true AND p.deleted_at IS NULL AND p.is_draft IS NOT TRUE AND (p.name ILIKE $2 OR p.name % $1)
        ORDER BY sim DESC, p.name LIMIT 12`,
       [q, `%${q}%`]);
     return { items: rows };
@@ -241,7 +245,7 @@ async function routes(fastify) {
 
   fastify.get('/products/:id', { preHandler: [fastify.authenticate] }, async (req, reply) => {
     const { rows } = await db.query(`SELECT p.*, c.name as category_name FROM products p
-      LEFT JOIN product_categories c ON p.category_id=c.id WHERE p.id=$1`, [req.params.id]);
+      LEFT JOIN product_categories c ON p.category_id=c.id WHERE p.id=$1 AND p.deleted_at IS NULL`, [req.params.id]);
     if (!rows[0]) return bad(reply, 'Не найден', 404);
     return { item: rows[0] };
   });

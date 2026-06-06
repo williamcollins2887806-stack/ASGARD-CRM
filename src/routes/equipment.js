@@ -103,16 +103,18 @@ async function equipmentRoutes(fastify, options) {
     const { uuid } = request.params;
 
     const result = await db.query(`
-      SELECT e.*, 
+      SELECT e.*,
         c.name as category_name, c.icon as category_icon,
         w.name as warehouse_name,
         h.name as holder_name,
-        o.name as object_name
+        o.name as object_name,
+        l.label as location_label, l.zone as location_zone
       FROM equipment e
       LEFT JOIN equipment_categories c ON e.category_id = c.id
       LEFT JOIN warehouses w ON e.warehouse_id = w.id
       LEFT JOIN users h ON e.current_holder_id = h.id
       LEFT JOIN objects o ON e.current_object_id = o.id
+      LEFT JOIN warehouse_locations l ON e.location_id = l.id
       WHERE e.qr_uuid = $1
     `, [uuid]);
 
@@ -120,7 +122,30 @@ async function equipmentRoutes(fastify, options) {
       return reply.code(404).send({ success: false, message: 'Оборудование не найдено по QR' });
     }
 
-    return { success: true, equipment: result.rows[0] };
+    const eq = result.rows[0];
+
+    // Раскладка (как Ozon/WB): подсказать «куда класть».
+    // 1) если у единицы уже есть ячейка — туда же. 2) иначе — где обычно лежит
+    // эта каталог-позиция (по др. единицам). 3) иначе — последняя ячейка категории.
+    let suggested = null;
+    if (eq.location_id) {
+      suggested = { location_id: eq.location_id, label: eq.location_label, reason: 'текущая ячейка' };
+    } else if (eq.product_id) {
+      const s = await db.query(`
+        SELECT l.id, l.label FROM warehouse_locations l
+        WHERE l.id = (SELECT location_id FROM equipment WHERE product_id=$1 AND location_id IS NOT NULL
+                      ORDER BY updated_at DESC NULLS LAST LIMIT 1) AND l.deleted_at IS NULL`, [eq.product_id]);
+      if (s.rows[0]) suggested = { location_id: s.rows[0].id, label: s.rows[0].label, reason: 'обычное место позиции' };
+    }
+    if (!suggested && eq.category_id) {
+      const s = await db.query(`
+        SELECT l.id, l.label FROM warehouse_locations l
+        WHERE l.id = (SELECT location_id FROM equipment WHERE category_id=$1 AND location_id IS NOT NULL
+                      ORDER BY updated_at DESC NULLS LAST LIMIT 1) AND l.deleted_at IS NULL`, [eq.category_id]);
+      if (s.rows[0]) suggested = { location_id: s.rows[0].id, label: s.rows[0].label, reason: 'место категории' };
+    }
+
+    return { success: true, equipment: eq, suggested_location: suggested };
   });
 
   // ============================================

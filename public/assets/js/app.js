@@ -264,6 +264,7 @@ console.log('[ASGARD] Global period functions loaded');
  roles:["ADMIN","PM","HEAD_PM","WAREHOUSE","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"],
  i:"backup",p:"assembly",g:"resources"},
     {r:"/warehouse",l:"Склад ТМЦ",d:"Оборудование и инструменты",roles:ALL_ROLES,i:"backup",p:"warehouse",g:"resources"},
+    {r:"/warehouse-v2",l:"Склад 2.0",d:"Каталог, наличие, ячейки, движения",roles:ALL_ROLES,i:"backup",p:"warehouse",g:"resources"},
     {r:"/my-equipment",l:"Моё оборудование",d:"Выданное мне",roles:["PM","HEAD_PM","CHIEF_ENGINEER",...DIRECTOR_ROLES,"ADMIN"],i:"pmworks",p:"my_equipment",g:"resources"},
     {r:"/correspondence",l:"Корреспонденция",d:"Входящие и исходящие",roles:["ADMIN","OFFICE_MANAGER","DIRECTOR_COMM","DIRECTOR_GEN","DIRECTOR_DEV"],i:"correspondence",p:"correspondence",g:"resources"},
     {r:"/contracts",l:"Реестр договоров",d:"Договора поставщиков",roles:["ADMIN","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES],i:"proxies",p:"contracts",g:"resources"},
@@ -2130,6 +2131,7 @@ AsgardRouter.add("/assembly", ()=>AsgardAssemblyPage.render({layout, title:"Сб
     AsgardRouter.add("/invoices", ()=>AsgardInvoicesPage.render({layout, title:"Счета и оплаты"}), {auth:true, roles:["ADMIN","PM","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/reminders", ()=>AsgardReminders.render({layout, title:"Напоминания"}), {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/warehouse", ()=>AsgardEquipment.render({layout, title:"Склад ТМЦ"}), {auth:true, roles:ALL_ROLES});
+    AsgardRouter.add("/warehouse-v2", ()=>AsgardWarehouseV2.render({layout, title:"Склад 2.0"}), {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/my-equipment", ()=>AsgardMyEquipment.render({layout, title:"Моё оборудование"}), {auth:true, roles:["PM","HEAD_PM","CHIEF_ENGINEER",...DIRECTOR_ROLES,"ADMIN"]});
 
     // Касса (M2)

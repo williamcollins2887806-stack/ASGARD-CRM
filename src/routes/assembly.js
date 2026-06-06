@@ -94,6 +94,16 @@ async function routes(fastify) {
         for (const pi of pw.rows)
           await client.query(`INSERT INTO assembly_items(assembly_id,equipment_id,procurement_item_id,name,unit,quantity,source)VALUES($1,$2,$3,$4,$5,$6,'procurement_warehouse')`,
             [asmId, pi.eq_id, pi.id, pi.eq_name || pi.name, pi.unit || 'шт', pi.quantity || 1]);
+
+        // WMS: закупленные на склад РАСХОДНИКИ (ушли в stock количеством, без equipment_id),
+        // но привязаны к каталогу — тоже включаем в ведомость (иначе теряются).
+        const pwc = await client.query(`SELECT pi.* FROM procurement_items pi
+          JOIN procurement_requests pr ON pi.procurement_id=pr.id
+          WHERE pr.work_id=$1 AND pi.delivery_target='warehouse' AND pi.item_status='delivered'
+            AND pi.equipment_id IS NULL AND pi.product_id IS NOT NULL`, [work_id]);
+        for (const pi of pwc.rows)
+          await client.query(`INSERT INTO assembly_items(assembly_id,product_id,procurement_item_id,name,unit,quantity,source)VALUES($1,$2,$3,$4,$5,$6,'from_warehouse')`,
+            [asmId, pi.product_id, pi.id, pi.name, pi.unit || 'шт', pi.quantity || 1]);
       }
       await client.query('COMMIT');
       const detail = await db.query('SELECT * FROM assembly_orders WHERE id=$1', [asmId]);
@@ -451,6 +461,118 @@ async function routes(fastify) {
     const buf = await wb.xlsx.writeBuffer();
     reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     reply.header('Content-Disposition', `attachment; filename="assembly_${id}.xlsx"`); return reply.send(Buffer.from(buf));
+  });
+
+  // ═══ БЫСТРОЕ ДОБАВЛЕНИЕ ПОЗИЦИИ «ЗА 10 СЕК» (рабочий/РП/кладовщик) ═══
+  // Если позиции нет в каталоге — заводим products(is_draft=true) и сразу кладём в сбор.
+  // source: manual | on_site_purchase | from_warehouse. При наличии pallet_id — сразу на паллет.
+  fastify.post('/:id/items/quick', { preHandler: [fastify.requireRoles(ASSEMBLY_MANAGERS)] }, async (req, reply) => {
+    const asmId = parseInt(req.params.id);
+    const ck = await db.query('SELECT status FROM assembly_orders WHERE id=$1', [asmId]);
+    if (!ck.rows[0]) return reply.code(404).send({ error: 'Не найдена' });
+    if (!['draft', 'confirmed', 'packing'].includes(ck.rows[0].status)) return reply.code(409).send({ error: 'Нельзя добавлять в текущем статусе' });
+    const { name, unit, quantity, source, pallet_id, product_id, category_id, ean, packed } = req.body;
+    if (!name || !name.trim()) return reply.code(400).send({ error: 'name обязателен' });
+    const src = ['manual', 'on_site_purchase', 'from_warehouse'].includes(source) ? source : 'manual';
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      // 1) Привязка к каталогу: используем переданный product_id, либо ищем по ean/имени, либо заводим черновик
+      let pid = product_id || null;
+      if (!pid && ean) {
+        const e = await client.query('SELECT id FROM products WHERE ean=$1 AND deleted_at IS NULL LIMIT 1', [ean]);
+        pid = e.rows[0]?.id || null;
+      }
+      if (!pid) {
+        const n = await client.query('SELECT id FROM products WHERE lower(name)=lower($1) AND deleted_at IS NULL LIMIT 1', [name.trim()]);
+        pid = n.rows[0]?.id || null;
+      }
+      if (!pid) {
+        const cf = src === 'on_site_purchase' ? 'on_site_purchase' : (src === 'from_warehouse' ? 'from_warehouse' : 'manual');
+        const np = await client.query(
+          `INSERT INTO products(name,unit,category_id,ean,is_draft,created_from,created_by)
+           VALUES($1,$2,$3,$4,true,$5,$6) RETURNING id`,
+          [name.trim(), unit || 'шт', category_id || null, ean || null, cf, req.user.id]);
+        pid = np.rows[0].id;
+      }
+      // 2) Кладём позицию в сбор
+      const { rows } = await client.query(
+        `INSERT INTO assembly_items(assembly_id,product_id,pallet_id,name,unit,quantity,source,packed,packed_at,packed_by)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,${packed ? 'NOW()' : 'NULL'},$9) RETURNING *`,
+        [asmId, pid, pallet_id || null, name.trim(), unit || 'шт', quantity || 1, src, !!packed, packed ? req.user.id : null]);
+      if (packed && pallet_id) await checkPackingProgress(client, asmId);
+      await client.query('COMMIT');
+      return { item: rows[0], product_id: pid };
+    } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
+  });
+
+  // ═══ LIVE-ПРОГРЕСС (несколько сборщиков одновременно) ═══
+  // Кто что собрал + сводка по паллетам. Для поллинга с фронта рабочих.
+  fastify.get('/:id/live', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    const id = parseInt(req.params.id); if (isNaN(id)) return reply.code(400).send({ error: 'Bad ID' });
+    const o = await db.query('SELECT id,status,updated_at FROM assembly_orders WHERE id=$1', [id]);
+    if (!o.rows[0]) return reply.code(404).send({ error: 'Не найдена' });
+    const totals = await db.query(`SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE packed) AS packed,
+      COUNT(*) FILTER (WHERE pallet_id IS NOT NULL) AS assigned FROM assembly_items WHERE assembly_id=$1`, [id]);
+    const byUser = await db.query(`SELECT u.id,u.name, COUNT(*) AS packed_count, MAX(ai.packed_at) AS last_at
+      FROM assembly_items ai JOIN users u ON ai.packed_by=u.id
+      WHERE ai.assembly_id=$1 AND ai.packed=true GROUP BY u.id,u.name ORDER BY packed_count DESC`, [id]);
+    const pallets = await db.query(`SELECT ap.id,ap.pallet_number,ap.status,ap.label,
+      (SELECT COUNT(*) FROM assembly_items ai WHERE ai.pallet_id=ap.id) AS items,
+      (SELECT COUNT(*) FROM assembly_items ai WHERE ai.pallet_id=ap.id AND ai.packed) AS packed
+      FROM assembly_pallets ap WHERE ap.assembly_id=$1 ORDER BY ap.pallet_number`, [id]);
+    return { status: o.rows[0].status, updated_at: o.rows[0].updated_at,
+      totals: totals.rows[0], by_user: byUser.rows, pallets: pallets.rows };
+  });
+
+  // ═══ РАЗБОР ВОЗВРАТА С ОБЪЕКТА (план vs факт, расхождения) ═══
+  // body.items: [{ item_id, received_qty, return_status?, return_reason? }]
+  // body.extras: [{ name, quantity, unit, ean?, product_id? }] — излишек/неизвестное (приехало больше)
+  // Недостача (received_qty < expected) → отмечаем; излишек → оприходуем находкой (over_received).
+  fastify.post('/:id/reconcile', { preHandler: [fastify.requireRoles([...PM_ROLES, ...WH_ROLES])] }, async (req, reply) => {
+    const asmId = parseInt(req.params.id);
+    const asm = await db.query('SELECT * FROM assembly_orders WHERE id=$1', [asmId]);
+    if (!asm.rows[0]) return reply.code(404).send({ error: 'Не найдена' });
+    const { items = [], extras = [] } = req.body || {};
+    const client = await db.pool.connect();
+    let shortages = 0, extrasCreated = 0;
+    try {
+      await client.query('BEGIN');
+      // 1) Сверка ожидаемых позиций
+      for (const it of items) {
+        const cur = await client.query('SELECT * FROM assembly_items WHERE id=$1 AND assembly_id=$2', [it.item_id, asmId]);
+        if (!cur.rows[0]) continue;
+        const expected = parseFloat(cur.rows[0].expected_quantity ?? cur.rows[0].quantity);
+        const got = it.received_qty != null ? parseFloat(it.received_qty) : expected;
+        let rs = it.return_status || null;
+        if (got < expected && !rs) rs = 'lost'; // недостача без явной причины → утеря
+        await client.query(
+          `UPDATE assembly_items SET received=true, received_at=NOW(), received_by=$1,
+             quantity=$2, return_status=COALESCE($3,return_status), return_reason=COALESCE($4,return_reason)
+           WHERE id=$5`,
+          [req.user.id, got, rs, it.return_reason || null, it.item_id]);
+        if (got < expected) shortages++;
+      }
+      // 2) Излишки/неизвестное — заводим позиции (over_received) + каталог-черновик
+      for (const ex of extras) {
+        if (!ex.name || !ex.name.trim()) continue;
+        let pid = ex.product_id || null;
+        if (!pid) {
+          const np = await client.query(
+            `INSERT INTO products(name,unit,ean,is_draft,created_from,created_by)
+             VALUES($1,$2,$3,true,'found',$4) RETURNING id`,
+            [ex.name.trim(), ex.unit || 'шт', ex.ean || null, req.user.id]);
+          pid = np.rows[0].id;
+        }
+        await client.query(
+          `INSERT INTO assembly_items(assembly_id,product_id,name,unit,quantity,source,over_received,received,received_at,received_by)
+           VALUES($1,$2,$3,$4,$5,'manual',true,true,NOW(),$6)`,
+          [asmId, pid, ex.name.trim(), ex.unit || 'шт', ex.quantity || 1, req.user.id]);
+        extrasCreated++;
+      }
+      await client.query('COMMIT');
+      return { success: true, shortages, extras_created: extrasCreated };
+    } catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
   });
 }
 

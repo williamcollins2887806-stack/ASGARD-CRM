@@ -49,7 +49,7 @@ async function runMigrations() {
   const migrationsDir = path.join(__dirname);
   
   const files = fs.readdirSync(migrationsDir)
-    .filter(f => f.endsWith('.sql') && f.startsWith('V'))
+    .filter(f => f.endsWith('.sql') && f.startsWith('V') && !f.endsWith('_down.sql'))
     .sort();
 
   console.log(`Found ${files.length} migration files`);

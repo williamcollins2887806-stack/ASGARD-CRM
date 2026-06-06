@@ -33,6 +33,9 @@ import FieldLeaderboard from '@/pages/field/FieldLeaderboard';
 import WheelOfNorns from '@/pages/field/WheelOfNorns';
 import FieldShop from '@/pages/field/FieldShop';
 import FieldInventory from '@/pages/field/FieldInventory';
+import FieldAssembly from '@/pages/field/FieldAssembly';
+import FieldPalletBuilder from '@/pages/field/FieldPalletBuilder';
+import FieldReceiving from '@/pages/field/FieldReceiving';
 import FieldQuests from '@/pages/field/FieldQuests';
 import FieldJourney from '@/pages/field/FieldJourney';
 import FieldAcademy from '@/pages/field/FieldAcademy';
@@ -85,6 +88,7 @@ import OfficeExpenses from '@/pages/OfficeExpenses';
 import CashAdmin from '@/pages/CashAdmin';
 import TasksAdmin from '@/pages/TasksAdmin';
 import Warehouse from '@/pages/Warehouse';
+import Assembly from '@/pages/Assembly';
 import Gantt from '@/pages/Gantt';
 import WorkersSchedule from '@/pages/WorkersSchedule';
 import WorkerProfile from '@/pages/WorkerProfile';
@@ -208,6 +212,7 @@ function AppLayout() {
           <Route path="/cash-admin" element={<ProtectedRoute section="finances"><PinGuard><CashAdmin /></PinGuard></ProtectedRoute>} />
           <Route path="/tasks-admin" element={<ProtectedRoute section="settings"><PinGuard><TasksAdmin /></PinGuard></ProtectedRoute>} />
           <Route path="/warehouse" element={<ProtectedRoute section="dashboard"><PinGuard><Warehouse /></PinGuard></ProtectedRoute>} />
+          <Route path="/assembly" element={<ProtectedRoute section="works"><PinGuard><Assembly /></PinGuard></ProtectedRoute>} />
           <Route path="/gantt" element={<ProtectedRoute section="works"><PinGuard><Gantt /></PinGuard></ProtectedRoute>} />
           <Route path="/workers-schedule" element={<ProtectedRoute section="personnel"><PinGuard><WorkersSchedule /></PinGuard></ProtectedRoute>} />
           <Route path="/global-timesheet" element={<ProtectedRoute section="personnel"><PinGuard><GlobalTimesheet /></PinGuard></ProtectedRoute>} />
@@ -265,6 +270,9 @@ function AppLayout() {
                 <Route path="incidents" element={<FieldIncidents />} />
                 <Route path="photos" element={<FieldPhotos />} />
                 <Route path="packing" element={<FieldPacking />} />
+                <Route path="assembly" element={<FieldAssembly />} />
+                <Route path="assembly/:id" element={<FieldPalletBuilder />} />
+                <Route path="receiving" element={<FieldReceiving />} />
                 <Route path="stages" element={<FieldStages />} />
                 <Route path="crew-stages" element={<FieldCrewStages />} />
                 <Route path="achievements" element={<FieldAchievements />} />
