@@ -74,8 +74,7 @@ import Acts from '@/pages/Acts';
 import Invoices from '@/pages/Invoices';
 import HrRequests from '@/pages/HrRequests';
 import Travel from '@/pages/Travel';
-import TmcRequests from '@/pages/TmcRequests';
-import ProcRequests from '@/pages/ProcRequests';
+import Procurement from '@/pages/Procurement';
 import Permits from '@/pages/Permits';
 import Proxies from '@/pages/Proxies';
 import Funnel from '@/pages/Funnel';
@@ -195,8 +194,10 @@ function AppLayout() {
           <Route path="/invoices" element={<ProtectedRoute section="finances"><PinGuard><Invoices /></PinGuard></ProtectedRoute>} />
           <Route path="/hr-requests" element={<ProtectedRoute section="personnel"><PinGuard><HrRequests /></PinGuard></ProtectedRoute>} />
           <Route path="/travel" element={<ProtectedRoute section="personnel"><PinGuard><Travel /></PinGuard></ProtectedRoute>} />
-          <Route path="/tmc-requests" element={<ProtectedRoute section="works"><PinGuard><TmcRequests /></PinGuard></ProtectedRoute>} />
-          <Route path="/proc-requests" element={<ProtectedRoute section="works"><PinGuard><ProcRequests /></PinGuard></ProtectedRoute>} />
+          <Route path="/procurement" element={<ProtectedRoute section="works"><PinGuard><Procurement /></PinGuard></ProtectedRoute>} />
+          {/* Старые раздробленные маршруты закупок → редирект на единый модуль */}
+          <Route path="/tmc-requests" element={<Navigate to="/procurement" replace />} />
+          <Route path="/proc-requests" element={<Navigate to="/procurement" replace />} />
           <Route path="/permits" element={<ProtectedRoute section="personnel"><PinGuard><Permits /></PinGuard></ProtectedRoute>} />
           <Route path="/proxies" element={<ProtectedRoute section="works"><PinGuard><Proxies /></PinGuard></ProtectedRoute>} />
           <Route path="/funnel" element={<ProtectedRoute section="tenders"><PinGuard><Funnel /></PinGuard></ProtectedRoute>} />

@@ -257,6 +257,9 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/procurement",l:"Закупки",d:"Заявки на закупку материалов",
  roles:["ADMIN","PM","HEAD_PM","PROC","BUH","WAREHOUSE","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"],
  i:"approvals",p:"procurement",g:"resources"},
+    {r:"/suppliers-catalog",l:"Поставщики и цены",d:"Справочник поставщиков, каталог товаров, база цен",
+ roles:["ADMIN","PROC","PM","HEAD_PM","BUH","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"],
+ i:"approvals",p:"procurement",g:"resources"},
 {r:"/assembly",l:"Сбор на складе",d:"Ведомости сборки и мобилизации",
  roles:["ADMIN","PM","HEAD_PM","WAREHOUSE","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"],
  i:"backup",p:"assembly",g:"resources"},
@@ -2111,6 +2114,7 @@ var _setupPinKeypad = null;
     AsgardRouter.add("/pm-balance", ()=>AsgardPmBalancePage.render({layout, title:"Баланс РП"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/pm-balance/:pm_id", ()=>AsgardPmBalancePage.renderDetail({layout, title:"Баланс РП"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/procurement", ()=>AsgardProcurementPage.render({layout, title:"Закупки"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","PROC","BUH","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"]});
+    AsgardRouter.add("/suppliers-catalog", ()=>AsgardSuppliersPage.render({layout, title:"Поставщики и цены"}), {auth:true, roles:["ADMIN","PROC","PM","HEAD_PM","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","BUH"]});
 AsgardRouter.add("/assembly", ()=>AsgardAssemblyPage.render({layout, title:"Сбор"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","WAREHOUSE","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"]});
     AsgardRouter.add("/training", () => { AsgardTrainingPage.render({layout, title:"Обучение"}); }, {auth:true});
     AsgardRouter.add("/office-academy", () => { AsgardOfficeAcademyPage.render({layout, title:"Академия Асгарда"}); }, {auth:true, roles:ALL_ROLES});

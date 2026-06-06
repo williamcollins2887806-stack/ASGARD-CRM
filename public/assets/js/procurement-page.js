@@ -84,6 +84,10 @@ window.AsgardProcurementPage = (function() {
       <div class="proc-detail__header">
         <div><h2 style="margin:0">Заявка #${p.id}</h2><div style="margin-top:4px">${badge(p.status)}</div></div>
         ${isLocked?'<span class="badge" style="background:var(--warn-bg);color:var(--warn-t)">🔒 Заблокирована</span>':''}
+        <div style="display:flex;gap:6px;margin-left:auto">
+          <button class="btn ghost" id="proc-clone" style="font-size:12px" title="Создать копию этой заявки">🔁 Повторить</button>
+          ${items.length?'<button class="btn ghost" id="proc-save-tpl" style="font-size:12px" title="Сохранить как шаблон для постоянных работ">📋 В шаблон</button>':''}
+        </div>
       </div>
       <dl class="proc-detail__meta">
         <dt>Работа</dt><dd>${esc(p.work_title||'—')}</dd>
@@ -125,14 +129,21 @@ window.AsgardProcurementPage = (function() {
         </tr>`;
       });
       html += `</tbody></table>`;
-      if (canEditItems) html += `<div style="margin-top:var(--sp-2);display:flex;gap:var(--sp-2)">
+      if (canEditItems) html += `<div style="margin-top:var(--sp-2);display:flex;gap:var(--sp-2);flex-wrap:wrap">
         <button class="btn ghost" id="proc-save-items">💾 Сохранить изменения</button>
         <button class="btn ghost" id="proc-add-item">+ Позиция</button>
+        <button class="btn ghost" id="proc-add-text">📝 Текстом</button>
+        <button class="btn ghost" id="proc-ai-parse">🤖 AI по ТЗ</button>
         <button class="btn ghost" id="proc-import-xl">📥 Импорт Excel</button>
       </div>`;
     } else {
       html += `<div style="color:var(--t2);padding:var(--sp-3)">Позиций нет</div>`;
-      if (canEditItems) html += `<button class="btn primary" id="proc-add-item">+ Добавить позицию</button>`;
+      if (canEditItems) html += `<div style="margin-top:var(--sp-2);display:flex;gap:var(--sp-2);flex-wrap:wrap">
+        <button class="btn primary" id="proc-add-item">+ Позиция</button>
+        <button class="btn ghost" id="proc-add-text">📝 Списком</button>
+        <button class="btn ghost" id="proc-ai-parse">🤖 AI по ТЗ</button>
+        <button class="btn ghost" id="proc-import-xl">📥 Импорт Excel</button>
+      </div>`;
     }
     html += `</div>`;
 
@@ -203,12 +214,114 @@ window.AsgardProcurementPage = (function() {
       toast('Сохранено', '', 'ok'); openDetail(p.id);
     };
 
-    // Add item
+    // Add item — с подсказкой цены из базы
     const addBtn = document.getElementById('proc-add-item');
     if (addBtn) addBtn.onclick = async () => {
-      const name = prompt('Наименование:'); if (!name) return;
-      await apiPost(`/api/procurement/${p.id}/items`, { name, unit: 'шт', quantity: 1 });
-      openDetail(p.id);
+      const html = `<div style="display:flex;flex-direction:column;gap:var(--sp-2)">
+        <label>Наименование<input id="pa-name" placeholder="напр. Цемент М400" style="width:100%;padding:var(--sp-2);border:1px solid var(--brd);border-radius:var(--r-sm)"></label>
+        <div style="display:flex;gap:var(--sp-2)">
+          <label style="flex:1">Кол-во<input id="pa-qty" type="number" value="1" min="0" step="0.001" style="width:100%;padding:var(--sp-2);border:1px solid var(--brd);border-radius:var(--r-sm)"></label>
+          <label style="flex:1">Ед.<input id="pa-unit" value="шт" style="width:100%;padding:var(--sp-2);border:1px solid var(--brd);border-radius:var(--r-sm)"></label>
+        </div>
+        <div id="pa-hint" style="font-size:13px;color:var(--t2);min-height:18px"></div>
+        <button class="btn primary" id="pa-submit">Добавить</button>
+      </div>`;
+      showModal({ title: '+ Позиция', html: html });
+      const nameInp = document.getElementById('pa-name');
+      setTimeout(() => nameInp?.focus(), 100);
+      // Подсказка цены при вводе названия (debounce)
+      let hintTmr;
+      nameInp.oninput = () => {
+        clearTimeout(hintTmr);
+        const val = nameInp.value.trim();
+        const hintEl = document.getElementById('pa-hint');
+        if (val.length < 3) { hintEl.innerHTML = ''; return; }
+        hintTmr = setTimeout(async () => {
+          try {
+            const h = await apiFetch(`/api/price-records/hint?name=${encodeURIComponent(val)}`);
+            if (h && h.last) {
+              const d = h.last.recorded_at ? new Date(h.last.recorded_at).toLocaleDateString('ru-RU') : '';
+              let s = `💡 В прошлый раз: <strong>${money(h.last.unit_price)}</strong>${h.last.supplier_name?' у '+esc(h.last.supplier_name):''} <span style="color:var(--t3)">(${d})</span>`;
+              if (h.stats && h.stats.sample_count >= 3) s += `<br><span style="color:var(--t3)">Рынок: ср. ${money(h.stats.avg_price)}, мин ${money(h.stats.min_price)}</span>`;
+              hintEl.innerHTML = s;
+            } else { hintEl.innerHTML = '<span style="color:var(--t3)">Нет истории цен по этой позиции</span>'; }
+          } catch(e) { hintEl.innerHTML = ''; }
+        }, 400);
+      };
+      document.getElementById('pa-submit').onclick = async () => {
+        const name = nameInp.value.trim(); if (!name) { toast('Введите наименование', '', 'err'); return; }
+        const quantity = parseFloat(document.getElementById('pa-qty').value) || 1;
+        const unit = document.getElementById('pa-unit').value || 'шт';
+        await apiPost(`/api/procurement/${p.id}/items`, { name, unit, quantity });
+        closeModal(); openDetail(p.id);
+      };
+    };
+
+    // Add by text (списком)
+    const textBtn = document.getElementById('proc-add-text');
+    if (textBtn) textBtn.onclick = () => {
+      const html = `<div style="display:flex;flex-direction:column;gap:var(--sp-2)">
+        <div style="color:var(--t2);font-size:13px">Введите позиции — по одной в строке. Можно указать количество и единицу:</div>
+        <div style="color:var(--t3);font-size:12px;line-height:1.6">
+          Например:<br>10 мешков цемента<br>арматура 12мм - 5 шт<br>кран манипулятор - 2 смены<br>Кабель ВВГнг 3x2.5
+        </div>
+        <textarea id="proc-text-input" rows="8" placeholder="Каждая позиция с новой строки..." style="width:100%;padding:var(--sp-2);border:1px solid var(--brd);border-radius:var(--r-sm);font-size:14px;resize:vertical;font-family:inherit"></textarea>
+        <button class="btn primary" id="proc-text-submit">Добавить позиции</button>
+      </div>`;
+      showModal({ title: '📝 Добавить позиции списком', html: html });
+      setTimeout(() => document.getElementById('proc-text-input')?.focus(), 100);
+      document.getElementById('proc-text-submit').onclick = async () => {
+        const text = document.getElementById('proc-text-input')?.value || '';
+        if (!text.trim()) { toast('Пусто', 'Введите хотя бы одну позицию', 'err'); return; }
+        const r = await apiPost(`/api/procurement/${p.id}/items/import-text`, { text });
+        if (r.error) { toast('Ошибка', r.error, 'err'); return; }
+        toast('Добавлено', `${r.count} позиций`, 'ok'); closeModal(); openDetail(p.id);
+      };
+    };
+
+    // AI-разбор ТЗ
+    const aiBtn = document.getElementById('proc-ai-parse');
+    if (aiBtn) aiBtn.onclick = () => {
+      const html = `<div style="display:flex;flex-direction:column;gap:var(--sp-2)">
+        <div style="color:var(--t2);font-size:13px">Вставьте техзадание или описание работ — AI выделит позиции для закупки (без цен).</div>
+        <textarea id="proc-ai-input" rows="10" placeholder="Вставьте ТЗ сюда..." style="width:100%;padding:var(--sp-2);border:1px solid var(--brd);border-radius:var(--r-sm);font-size:13px;resize:vertical;font-family:inherit"></textarea>
+        <div id="proc-ai-status" style="font-size:13px;color:var(--t2);min-height:18px"></div>
+        <button class="btn primary" id="proc-ai-submit">🤖 Разобрать ТЗ</button>
+      </div>`;
+      showModal({ title: '🤖 AI-разбор техзадания', html: html });
+      setTimeout(() => document.getElementById('proc-ai-input')?.focus(), 100);
+      document.getElementById('proc-ai-submit').onclick = async () => {
+        const text = document.getElementById('proc-ai-input')?.value || '';
+        if (!text.trim()) { toast('Пусто', 'Вставьте ТЗ', 'err'); return; }
+        const btn = document.getElementById('proc-ai-submit'), stEl = document.getElementById('proc-ai-status');
+        btn.disabled = true; btn.innerHTML = '<span class="mimir-spinner"></span> AI анализирует...';
+        stEl.textContent = 'Это может занять до минуты...';
+        try {
+          const r = await apiPost(`/api/procurement/${p.id}/items/ai-parse`, { text });
+          if (r.error) { toast('Ошибка', r.error, 'err'); btn.disabled = false; btn.textContent = '🤖 Разобрать ТЗ'; return; }
+          if (r.count > 0) { toast('Готово', `AI добавил ${r.count} позиций`, 'ok'); closeModal(); openDetail(p.id); }
+          else { stEl.textContent = r.message || 'AI не нашёл позиций'; btn.disabled = false; btn.textContent = '🤖 Разобрать ТЗ'; }
+        } catch(e) { toast('Ошибка', 'AI недоступен', 'err'); btn.disabled = false; btn.textContent = '🤖 Разобрать ТЗ'; }
+      };
+    };
+
+    // Clone (повторить заявку)
+    const cloneBtn = document.getElementById('proc-clone');
+    if (cloneBtn) cloneBtn.onclick = async () => {
+      if (!confirm('Создать копию этой заявки со всеми позициями?')) return;
+      const r = await apiPost(`/api/procurement/${p.id}/clone`, {});
+      if (r.error) { toast('Ошибка', r.error, 'err'); return; }
+      toast('Создана копия', '', 'ok'); closeModal(); openDetail(r.item.id);
+    };
+
+    // Save as template
+    const saveTplBtn = document.getElementById('proc-save-tpl');
+    if (saveTplBtn) saveTplBtn.onclick = async () => {
+      const name = prompt('Название шаблона:', p.title || 'Шаблон закупки');
+      if (!name) return;
+      const r = await apiPost(`/api/procurement/templates/from-request/${p.id}`, { name });
+      if (r.error) { toast('Ошибка', r.error, 'err'); return; }
+      toast('Сохранено как шаблон', name, 'ok');
     };
 
     // Import Excel
@@ -387,14 +500,36 @@ window.AsgardProcurementPage = (function() {
       });
     } catch(e) {}
 
+    // Загрузим шаблоны для опции «из шаблона»
+    let templates = [];
+    try { const tr = await apiFetch('/api/procurement/templates'); templates = tr.items || []; } catch(e) {}
+    const tplBlock = templates.length ? `<div class="proc-create-tpl" style="margin-bottom:var(--sp-3);padding:var(--sp-2);background:var(--warn-bg,rgba(200,168,78,0.08));border-radius:var(--r-sm)">
+      <label style="display:block;margin-bottom:4px">📋 Создать из шаблона (для постоянных работ)<div id="pc-tpl_w" style="margin-top:4px"></div></label>
+      <button class="btn ghost" id="pc-from-tpl" style="margin-top:6px;font-size:13px">Создать из выбранного шаблона →</button>
+    </div>` : '';
+
     const html = `<div class="proc-create-form">
+      ${tplBlock}
+      <div style="color:var(--t3);font-size:12px;margin-bottom:var(--sp-2)">${templates.length ? '— или создайте новую заявку вручную —' : ''}</div>
       <label>Название<input id="pc-title" value="Заявка на закупку" required></label>
       <label>Работа<div id="pc-work_w"></div></label>
       <label>Приоритет<div id="pc-priority_w"></div></label>
       <label>Примечание<textarea id="pc-notes" rows="3"></textarea></label>
-      <button class="btn primary" id="pc-submit">Создать</button>
+      <button class="btn primary" id="pc-submit">Создать пустую заявку</button>
     </div>`;
     showModal({ title: 'Новая заявка', html: html });
+    if (templates.length) {
+      document.getElementById('pc-tpl_w')?.appendChild(CRSelect.create({ id: 'pc-tpl', options: [{ value: '', label: '— выберите шаблон —' }, ...templates.map(t => ({ value: String(t.id), label: `${t.name} (${t.items_count||0} поз.)` }))], value: '', dropdownClass: 'z-modal' }));
+      const fromTplBtn = document.getElementById('pc-from-tpl');
+      if (fromTplBtn) fromTplBtn.onclick = async () => {
+        const tplId = CRSelect.getValue('pc-tpl');
+        if (!tplId) { toast('Выберите шаблон', '', 'err'); return; }
+        const workId = CRSelect.getValue('pc-work') || null;
+        const r = await apiPost(`/api/procurement/from-template/${tplId}`, { work_id: workId });
+        if (r.error) { toast('Ошибка', r.error, 'err'); return; }
+        toast('Создано из шаблона', '', 'ok'); closeModal(); openDetail(r.item.id);
+      };
+    }
     document.getElementById('pc-work_w')?.appendChild(CRSelect.create({ id: 'pc-work', options: workOpts, value: workId ? String(workId) : '', searchable: true, dropdownClass: 'z-modal' }));
     document.getElementById('pc-priority_w')?.appendChild(CRSelect.create({ id: 'pc-priority', options: [{ value: 'normal', label: 'Обычный' }, { value: 'high', label: 'Высокий' }, { value: 'urgent', label: 'Срочный' }], value: 'normal', dropdownClass: 'z-modal' }));
     document.getElementById('pc-submit').onclick = async () => {

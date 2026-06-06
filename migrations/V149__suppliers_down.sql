@@ -1,0 +1,2 @@
+-- Rollback V149
+DROP TABLE IF EXISTS suppliers CASCADE;

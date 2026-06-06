@@ -219,7 +219,7 @@ async function routes(fastify) {
   fastify.post('/:id/items', {preHandler:[fastify.requireRoles([...PM_ROLES,...PROC_ROLES,...DIR_ROLES])]}, async(req,reply)=>{
     const procId=parseInt(req.params.id);
     const ck=await checkNotLocked(db,procId); if(ck.error) return reply.code(ck.code).send({error:ck.error});
-    const{name,article,unit,quantity,supplier,supplier_link,unit_price,delivery_target,delivery_address,warehouse_id,estimated_delivery,notes,sort_order}=req.body;
+    const{name,article,unit,quantity,supplier,supplier_link,unit_price,delivery_target,delivery_address,warehouse_id,estimated_delivery,notes,sort_order,product_id,supplier_id,product_category_id}=req.body;
     if(!name||!name.trim()) return reply.code(400).send({error:'Наименование обязательно'});
     const tgt=delivery_target||'warehouse';
     if(!['warehouse','object'].includes(tgt)) return reply.code(400).send({error:'delivery_target: warehouse или object'});
@@ -227,10 +227,11 @@ async function routes(fastify) {
     e=valNum(unit_price,'unit_price'); if(e) return reply.code(400).send({error:e});
     const q=parseFloat(quantity)||0, p=parseFloat(unit_price)||0;
     const{rows}=await db.query(`INSERT INTO procurement_items(procurement_id,name,article,unit,quantity,supplier,supplier_link,unit_price,total_price,
-      delivery_target,delivery_address,warehouse_id,estimated_delivery,notes,sort_order)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+      delivery_target,delivery_address,warehouse_id,estimated_delivery,notes,sort_order,product_id,supplier_id,product_category_id)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
       [procId,name.trim(),article||null,unit||'шт',q,supplier||null,supplier_link||null,p||null,q*p||null,
-       tgt,delivery_address||null,warehouse_id||null,estimated_delivery||null,notes||null,sort_order||0]);
+       tgt,delivery_address||null,warehouse_id||null,estimated_delivery||null,notes||null,sort_order||0,
+       product_id||null,supplier_id||null,product_category_id||null]);
     await recalcTotal(db,procId);
     await logHistory(db,procId,req.user.id,'item_added',null,null,`Позиция: ${name}`,{item_id:rows[0].id});
     return {item:rows[0]};
@@ -244,7 +245,8 @@ async function routes(fastify) {
     let e=valNum(req.body.quantity,'quantity'); if(e) return reply.code(400).send({error:e});
     e=valNum(req.body.unit_price,'unit_price'); if(e) return reply.code(400).send({error:e});
     const allowed=['name','article','unit','quantity','supplier','supplier_link','unit_price','delivery_target','delivery_address',
-      'warehouse_id','estimated_delivery','notes','sort_order','invoice_doc_id','item_status'];
+      'warehouse_id','estimated_delivery','notes','sort_order','invoice_doc_id','item_status',
+      'product_id','supplier_id','product_category_id'];
     const upd=[],vals=[];let i=1;
     for(const k of allowed){if(req.body[k]!==undefined){upd.push(`${k}=$${i++}`);vals.push(req.body[k]);}}
     if(req.body.quantity!==undefined||req.body.unit_price!==undefined){
@@ -442,6 +444,17 @@ async function routes(fastify) {
       if(ic.rows[0].item_status==='delivered'){await client.query('ROLLBACK');return reply.code(409).send({error:'Уже доставлена'});}
       const item=ic.rows[0];
       await client.query(`UPDATE procurement_items SET item_status='delivered',received_by=$1,received_at=NOW(),actual_delivery=CURRENT_DATE,updated_at=NOW() WHERE id=$2`,[user.id,itemId]);
+      // Авто-запись в базу цен: фиксируем фактическую закупочную цену для подсказок/анализа
+      if(item.unit_price&&parseFloat(item.unit_price)>0){
+        try{
+          let supName=item.supplier||null;
+          if(item.supplier_id&&!supName){const s=await client.query('SELECT name FROM suppliers WHERE id=$1',[item.supplier_id]);supName=s.rows[0]?.name||null;}
+          await client.query(`INSERT INTO price_records(product_id,product_category_id,item_name,article,unit,supplier_id,supplier_name,unit_price,source,procurement_item_id,recorded_by)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,'procurement',$9,$10)`,
+            [item.product_id||null,item.product_category_id||null,item.name,item.article||null,item.unit||'шт',
+             item.supplier_id||null,supName,parseFloat(item.unit_price),itemId,pc.row.proc_id||user.id]);
+        }catch(prErr){fastify.log.warn('[procurement] price_record insert failed: '+prErr.message);}
+      }
       if(item.delivery_target==='warehouse'){
         const wh=await client.query("SELECT id FROM warehouses WHERE is_main=true LIMIT 1");
         const whId=item.warehouse_id||(wh.rows[0]&&wh.rows[0].id)||null;
@@ -472,6 +485,241 @@ async function routes(fastify) {
 
   fastify.put('/:id/close', {preHandler:[fastify.authenticate]}, async(req,reply)=>{
     return transitionStatus(req,reply,{allowedRoles:[...PM_ROLES,...DIR_ROLES,'ADMIN'],fromStatuses:['delivered'],toStatus:'closed'});
+  });
+
+  // ═══ ВВОД ПОЗИЦИЙ ТЕКСТОМ ═══
+  // Лёгкий парсер «10 мешков цемента» / «арматура 12мм - 5 шт» → {name, quantity, unit}.
+  // Не-однозначное оставляем целиком в name (qty=1). AI здесь НЕ используется.
+  // Единицы измерения, отсортированы по убыванию длины (длинные альтернативы — первыми,
+  // иначе короткое «м» перехватит «мешков»). \b-границу ставим после единицы.
+  const PROC_UNITS = ['метров','мешков','штука','рулонов','литров','тонн','штук','мешок','рулон','метр','смены','смен','упак','компл','банка','пачка','вёдер','ведро','пара','пар','шт','кг','уп','м','т','л']
+    .sort((a, b) => b.length - a.length);
+  const PROC_UNIT_RE = PROC_UNITS.join('|');
+
+  function parseTextLine(line) {
+    const raw = line.trim();
+    if (!raw) return null;
+    let name = raw, quantity = 1, unit = 'шт';
+    // "<кол-во> <ед> <название>"  напр. "10 мешков цемента"
+    let m = raw.match(new RegExp('^(\\d+[.,]?\\d*)\\s*(' + PROC_UNIT_RE + ')\\.?\\s+(.+)$', 'i'));
+    if (m) { return { name: m[3].trim(), quantity: parseFloat(m[1].replace(',', '.')), unit: m[2].toLowerCase() }; }
+    // "<название> <разделитель> <кол-во> <ед>"  напр. "арматура 12мм - 5 шт", "кран - 2 смены"
+    m = raw.match(new RegExp('^(.+?)\\s*[\\-–:]?\\s*(\\d+[.,]?\\d*)\\s*(' + PROC_UNIT_RE + ')\\.?$', 'i'));
+    if (m && m[1].trim()) { return { name: m[1].trim().replace(/[\s\-–:]+$/, ''), quantity: parseFloat(m[2].replace(',', '.')), unit: m[3].toLowerCase() }; }
+    // "<название> <разделитель> <кол-во>" (без ед.)  напр. "Цемент М400: 20"
+    m = raw.match(/^(.+?)[\s\-–:]+(\d+[.,]?\d*)$/);
+    if (m && m[1].trim()) { return { name: m[1].trim(), quantity: parseFloat(m[2].replace(',', '.')), unit }; }
+    // "<кол-во> <название>"  напр. "30 саморезов"
+    m = raw.match(/^(\d+[.,]?\d*)\s+(.+)$/);
+    if (m) { return { name: m[2].trim(), quantity: parseFloat(m[1].replace(',', '.')), unit }; }
+    return { name, quantity, unit };
+  }
+
+  fastify.post('/:id/items/import-text', {preHandler:[fastify.requireRoles([...PM_ROLES,...PROC_ROLES,...DIR_ROLES])]}, async(req,reply)=>{
+    const procId=parseInt(req.params.id);
+    const ck=await checkNotLocked(db,procId); if(ck.error) return reply.code(ck.code).send({error:ck.error});
+    const text=(req.body&&req.body.text)||'';
+    const lines=String(text).split(/\r?\n/).map(parseTextLine).filter(Boolean);
+    if(!lines.length) return reply.code(400).send({error:'Пустой список'});
+    const client=await db.pool.connect();
+    try{
+      await client.query('BEGIN');
+      const n=[],q=[],u=[],o=[];
+      lines.forEach((it,idx)=>{n.push(it.name);q.push(it.quantity);u.push(it.unit);o.push(idx);});
+      const{rows}=await client.query(`INSERT INTO procurement_items(procurement_id,name,quantity,unit,sort_order)
+        SELECT $1,unnest($2::text[]),unnest($3::numeric[]),unnest($4::text[]),unnest($5::int[]) RETURNING *`,
+        [procId,n,q,u,o]);
+      await recalcTotal(client,procId);
+      await logHistory(client,procId,req.user.id,'items_import_text',null,null,`Текстом: ${rows.length} поз.`,null);
+      await client.query('COMMIT');
+      return{items:rows,count:rows.length};
+    }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+  });
+
+  // ═══ AI-РАЗБОР ТЗ В ПОЗИЦИИ ═══
+  // РП вставляет ТЗ/описание работ → AI выделяет номенклатуру (name/quantity/unit).
+  // Цены AI НЕ ищет (их подбирает закупщик). Stub/demo-safe: при невалидном ответе
+  // возвращаем пустой список с пометкой, НЕ падаем.
+  const AI_PARSE_PROMPT = `Ты — помощник по закупкам строительной компании «Асгард Сервис».
+Из текста техзадания/описания работ выдели СПИСОК материалов и оборудования для закупки.
+Для каждой позиции определи: наименование, количество (число), единицу измерения.
+НЕ придумывай цены и поставщиков. Если количество не указано — ставь 1.
+Аренда техники (краны, погрузчики, манипуляторы) — тоже позиция, единица «смена».
+
+Верни СТРОГО валидный JSON без markdown-обёртки и без текста до/после:
+{"items":[{"name":"...","quantity":1,"unit":"шт"}]}`;
+
+  function parseAIItemsResponse(text) {
+    if (!text) return null;
+    const codeMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    let raw = codeMatch ? codeMatch[1] : text;
+    const first = raw.indexOf('{'), last = raw.lastIndexOf('}');
+    if (first < 0 || last < 0) return null;
+    raw = raw.substring(first, last + 1);
+    try { return JSON.parse(raw); } catch (_) { return null; }
+  }
+
+  fastify.post('/:id/items/ai-parse', {preHandler:[fastify.requireRoles([...PM_ROLES,...PROC_ROLES,...DIR_ROLES])]}, async(req,reply)=>{
+    const procId=parseInt(req.params.id);
+    const ck=await checkNotLocked(db,procId); if(ck.error) return reply.code(ck.code).send({error:ck.error});
+    const tz=(req.body&&req.body.text)||'';
+    if(!tz.trim()) return reply.code(400).send({error:'Пустое ТЗ'});
+    const aiProvider=require('../services/ai-provider');
+    let aiResult;
+    try{
+      aiResult=await aiProvider.complete({
+        system:AI_PARSE_PROMPT,
+        messages:[{role:'user',content:'Техзадание:\n\n'+tz.slice(0,12000)}],
+        maxTokens:4000, temperature:0.1
+      });
+    }catch(e){
+      fastify.log.warn('[procurement] ai-parse failed: '+e.message);
+      return reply.send({items:[],count:0,ai_unavailable:true,message:'AI временно недоступен — добавьте позиции вручную или текстом'});
+    }
+    const parsed=parseAIItemsResponse(aiResult&&aiResult.text);
+    const aiItems=parsed&&Array.isArray(parsed.items)?parsed.items.filter(it=>it&&it.name&&String(it.name).trim()):[];
+    if(!aiItems.length){
+      return reply.send({items:[],count:0,ai_unavailable:!parsed,message:parsed?'AI не нашёл позиций в тексте':'AI вернул неожиданный ответ — попробуйте ввод текстом'});
+    }
+    // Вставляем распознанные позиции
+    const client=await db.pool.connect();
+    try{
+      await client.query('BEGIN');
+      const n=[],q=[],u=[],o=[];
+      aiItems.forEach((it,idx)=>{n.push(String(it.name).trim());q.push(parseFloat(it.quantity)||1);u.push((it.unit&&String(it.unit).trim())||'шт');o.push(idx);});
+      const{rows}=await client.query(`INSERT INTO procurement_items(procurement_id,name,quantity,unit,sort_order)
+        SELECT $1,unnest($2::text[]),unnest($3::numeric[]),unnest($4::text[]),unnest($5::int[]) RETURNING *`,
+        [procId,n,q,u,o]);
+      await recalcTotal(client,procId);
+      await logHistory(client,procId,req.user.id,'items_ai_parsed',null,null,`AI разобрал ТЗ: ${rows.length} поз.`,null);
+      await client.query('COMMIT');
+      return{items:rows,count:rows.length};
+    }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+  });
+
+  // ═══ КЛОН ЗАЯВКИ (повторить) ═══
+  fastify.post('/:id/clone', {preHandler:[fastify.requireRoles([...PM_ROLES,...PROC_ROLES,...DIR_ROLES])]}, async(req,reply)=>{
+    const srcId=parseInt(req.params.id); if(isNaN(srcId)) return reply.code(400).send({error:'Неверный ID'});
+    const src=await db.query('SELECT * FROM procurement_requests WHERE id=$1',[srcId]);
+    if(!src.rows[0]) return reply.code(404).send({error:'Заявка-источник не найдена'});
+    const s=src.rows[0];
+    const workId=req.body?.work_id!==undefined?req.body.work_id:s.work_id;
+    const title=(req.body?.title||(s.title?s.title+' (копия)':'Заявка на закупку')).trim();
+    const client=await db.pool.connect();
+    try{
+      await client.query('BEGIN');
+      const{rows:nr}=await client.query(`INSERT INTO procurement_requests(work_id,title,notes,priority,author_id,pm_id,status)
+        VALUES($1,$2,$3,$4,$5,$5,'draft') RETURNING *`,
+        [workId||null,title,s.notes||null,s.priority||'normal',req.user.id]);
+      const newId=nr[0].id;
+      await client.query(`INSERT INTO procurement_items(procurement_id,name,article,unit,quantity,supplier,supplier_link,unit_price,total_price,
+          product_id,product_category_id,supplier_id,delivery_target,notes,sort_order)
+        SELECT $1,name,article,unit,quantity,supplier,supplier_link,unit_price,
+          CASE WHEN unit_price IS NOT NULL THEN quantity*unit_price ELSE NULL END,
+          product_id,product_category_id,supplier_id,delivery_target,notes,sort_order
+        FROM procurement_items WHERE procurement_id=$2`,[newId,srcId]);
+      await recalcTotal(client,newId);
+      await logHistory(client,newId,req.user.id,'cloned',null,'draft',`Клон заявки #${srcId}`,{source_id:srcId});
+      await client.query('COMMIT');
+      return{item:nr[0]};
+    }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+  });
+
+  // ═══ ШАБЛОНЫ ЗАЯВОК ═══
+  fastify.get('/templates', {preHandler:[fastify.requireRoles([...PM_ROLES,...PROC_ROLES,...DIR_ROLES])]}, async()=>{
+    const{rows}=await db.query(`SELECT t.*,u.name as created_by_name,w.work_title as default_work_title,
+      (SELECT COUNT(*) FROM procurement_template_items ti WHERE ti.template_id=t.id) as items_count
+      FROM procurement_templates t LEFT JOIN users u ON t.created_by=u.id LEFT JOIN works w ON t.default_work_id=w.id
+      WHERE t.is_active=true ORDER BY t.usage_count DESC, t.name`);
+    return{items:rows};
+  });
+
+  fastify.get('/templates/:id', {preHandler:[fastify.requireRoles([...PM_ROLES,...PROC_ROLES,...DIR_ROLES])]}, async(req,reply)=>{
+    const{rows}=await db.query('SELECT * FROM procurement_templates WHERE id=$1',[req.params.id]);
+    if(!rows[0]) return reply.code(404).send({error:'Шаблон не найден'});
+    const items=await db.query('SELECT * FROM procurement_template_items WHERE template_id=$1 ORDER BY sort_order,id',[req.params.id]);
+    return{item:rows[0],items:items.rows};
+  });
+
+  fastify.post('/templates', {preHandler:[fastify.requireRoles([...PM_ROLES,...PROC_ROLES,...DIR_ROLES])]}, async(req,reply)=>{
+    const{name,description,default_work_id,items}=req.body;
+    if(!name||!name.trim()) return reply.code(400).send({error:'Название обязательно'});
+    const client=await db.pool.connect();
+    try{
+      await client.query('BEGIN');
+      const{rows:tr}=await client.query(`INSERT INTO procurement_templates(name,description,default_work_id,created_by)
+        VALUES($1,$2,$3,$4) RETURNING *`,[name.trim(),description||null,default_work_id||null,req.user.id]);
+      const tid=tr[0].id;
+      if(Array.isArray(items)&&items.length){
+        for(let idx=0;idx<items.length;idx++){const it=items[idx];if(!it.name||!it.name.trim())continue;
+          await client.query(`INSERT INTO procurement_template_items(template_id,name,article,unit,default_quantity,typical_supplier,notes,sort_order)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,[tid,it.name.trim(),it.article||null,it.unit||'шт',it.default_quantity||null,it.typical_supplier||null,it.notes||null,idx]);}
+      }
+      await client.query('COMMIT');
+      return{item:tr[0]};
+    }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+  });
+
+  // Сохранить существующую заявку как шаблон
+  fastify.post('/templates/from-request/:reqId', {preHandler:[fastify.requireRoles([...PM_ROLES,...PROC_ROLES,...DIR_ROLES])]}, async(req,reply)=>{
+    const reqId=parseInt(req.params.reqId);
+    const src=await db.query('SELECT * FROM procurement_requests WHERE id=$1',[reqId]);
+    if(!src.rows[0]) return reply.code(404).send({error:'Заявка не найдена'});
+    const name=(req.body?.name||src.rows[0].title||'Шаблон закупки').trim();
+    const client=await db.pool.connect();
+    try{
+      await client.query('BEGIN');
+      const{rows:tr}=await client.query(`INSERT INTO procurement_templates(name,description,default_work_id,created_by)
+        VALUES($1,$2,$3,$4) RETURNING *`,[name,req.body?.description||null,src.rows[0].work_id||null,req.user.id]);
+      await client.query(`INSERT INTO procurement_template_items(template_id,name,article,unit,default_quantity,product_id,product_category_id,typical_supplier_id,typical_supplier,notes,sort_order)
+        SELECT $1,name,article,unit,quantity,product_id,product_category_id,supplier_id,supplier,notes,sort_order
+        FROM procurement_items WHERE procurement_id=$2`,[tr[0].id,reqId]);
+      await client.query('COMMIT');
+      return{item:tr[0]};
+    }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+  });
+
+  fastify.put('/templates/:id', {preHandler:[fastify.requireRoles([...PM_ROLES,...PROC_ROLES,...DIR_ROLES])]}, async(req,reply)=>{
+    const allowed=['name','description','default_work_id','is_active'];
+    const upd=[],vals=[];let i=1;
+    for(const k of allowed) if(req.body[k]!==undefined){upd.push(`${k}=$${i++}`);vals.push(req.body[k]);}
+    if(!upd.length) return reply.code(400).send({error:'Нет данных'});
+    upd.push('updated_by=$'+(i++));vals.push(req.user.id);upd.push('updated_at=NOW()');vals.push(req.params.id);
+    const{rows}=await db.query(`UPDATE procurement_templates SET ${upd.join(',')} WHERE id=$${i} RETURNING *`,vals);
+    if(!rows[0]) return reply.code(404).send({error:'Не найден'});
+    return{item:rows[0]};
+  });
+
+  fastify.delete('/templates/:id', {preHandler:[fastify.requireRoles([...PM_ROLES,...PROC_ROLES,...DIR_ROLES])]}, async(req,reply)=>{
+    const{rows}=await db.query('UPDATE procurement_templates SET is_active=false WHERE id=$1 RETURNING id',[req.params.id]);
+    if(!rows[0]) return reply.code(404).send({error:'Не найден'});
+    return{success:true};
+  });
+
+  // Создать заявку из шаблона
+  fastify.post('/from-template/:tplId', {preHandler:[fastify.requireRoles([...PM_ROLES,...PROC_ROLES,...DIR_ROLES])]}, async(req,reply)=>{
+    const tplId=parseInt(req.params.tplId);
+    const tpl=await db.query('SELECT * FROM procurement_templates WHERE id=$1 AND is_active=true',[tplId]);
+    if(!tpl.rows[0]) return reply.code(404).send({error:'Шаблон не найден'});
+    const t=tpl.rows[0];
+    const workId=req.body?.work_id!==undefined?req.body.work_id:t.default_work_id;
+    const mult=parseFloat(req.body?.quantity_multiplier)||1;
+    const client=await db.pool.connect();
+    try{
+      await client.query('BEGIN');
+      const{rows:nr}=await client.query(`INSERT INTO procurement_requests(work_id,title,priority,needed_by,author_id,pm_id,status)
+        VALUES($1,$2,$3,$4,$5,$5,'draft') RETURNING *`,
+        [workId||null,t.name,req.body?.priority||'normal',req.body?.needed_by||null,req.user.id]);
+      const newId=nr[0].id;
+      await client.query(`INSERT INTO procurement_items(procurement_id,name,article,unit,quantity,product_id,product_category_id,supplier_id,supplier,notes,sort_order)
+        SELECT $1,name,article,unit,COALESCE(default_quantity,1)*$3,product_id,product_category_id,typical_supplier_id,typical_supplier,notes,sort_order
+        FROM procurement_template_items WHERE template_id=$2`,[newId,tplId,mult]);
+      await recalcTotal(client,newId);
+      await client.query('UPDATE procurement_templates SET usage_count=usage_count+1 WHERE id=$1',[tplId]);
+      await logHistory(client,newId,req.user.id,'created_from_template',null,'draft',`Из шаблона «${t.name}»`,{template_id:tplId});
+      await client.query('COMMIT');
+      return{item:nr[0]};
+    }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
   });
 }
 

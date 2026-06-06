@@ -478,6 +478,7 @@ fastify.register(require('./routes/field-manage'), { prefix: '/api/field/manage'
 fastify.register(require('./routes/field-logistics'), { prefix: '/api/field/logistics' });
 fastify.register(require('./routes/field-funds'), { prefix: '/api/field/funds' });
 fastify.register(require('./routes/field-packing'), { prefix: '/api/field/packing' });
+fastify.register(require('./routes/field-assembly'), { prefix: '/api/field/assembly' }); // WMS: сбор паллет рабочими
 fastify.register(require('./routes/field-stages'), { prefix: '/api/field/stages' });
 fastify.register(require('./routes/field-achievements'), { prefix: '/api/field/achievements' });
 fastify.register(require('./routes/field-gamification'), { prefix: '/api/field/gamification' });
@@ -532,7 +533,11 @@ fastify.register(require('./routes/tkp'),       { prefix: '/api/tkp' });
 fastify.register(require('./routes/tkp_quick'), { prefix: '/api/tkp-quick' });
 fastify.register(require('./routes/pass_requests'), { prefix: '/api/pass-requests' });
 fastify.register(require('./routes/procurement'), { prefix: '/api/procurement' });
+fastify.register(require('./routes/suppliers'), { prefix: '/api' }); // справочники закупок 2.0: /suppliers /products /product-categories /price-records
+fastify.register(require('./routes/wa-webhook'), { prefix: '/api' }); // Green API/MAX webhook + бот закупок (личка РП → заявка)
 fastify.register(require('./routes/assembly'), { prefix: '/api/assembly' });
+fastify.register(require('./routes/warehouse-locations'), { prefix: '/api/warehouse' }); // WMS: адресное хранение (ячейки) /warehouse/locations
+fastify.register(require('./routes/stock'), { prefix: '/api/stock' }); // WMS: количественный учёт расходников + движения + quick-каталог
 fastify.register(require('./routes/tmc_requests'), { prefix: '/api/tmc-requests' });
 fastify.register(require('./routes/sse'), { prefix: '/api/sse' });
 fastify.register(require('./routes/push'), { prefix: '/api/push' });

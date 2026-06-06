@@ -1,0 +1,1281 @@
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useHaptic } from '@/hooks/useHaptic';
+import { api } from '@/api/client';
+import { PageShell } from '@/components/layout/PageShell';
+import { BottomSheet } from '@/components/shared/BottomSheet';
+import { EmptyState } from '@/components/shared/EmptyState';
+import { SkeletonList } from '@/components/shared/SkeletonKit';
+import { PullToRefresh } from '@/components/shared/PullToRefresh';
+import AsgardSelect from '@/components/ui/AsgardSelect';
+import { formatMoney, relativeTime } from '@/lib/utils';
+import {
+  ShoppingCart, Plus, ChevronRight, FileText, Copy, Send,
+  Check, Package, Truck, Sparkles,
+} from 'lucide-react';
+
+// ─── Справочник статусов ────────────────────────────────────────────────────
+const STATUS_MAP = {
+  draft:               { label: 'Черновик',          color: 'var(--text-tertiary)' },
+  sent_to_proc:        { label: 'У закупщика',        color: 'var(--blue)' },
+  proc_responded:      { label: 'Ответ закупщика',    color: 'var(--gold)' },
+  pm_approved:         { label: 'РП согласовал',      color: 'var(--green)' },
+  dir_approved:        { label: 'Директор ✓',         color: 'var(--green)' },
+  dir_rework:          { label: 'На доработке',       color: 'var(--gold)' },
+  dir_question:        { label: 'Вопрос',             color: 'var(--gold)' },
+  dir_rejected:        { label: 'Отклонена',          color: 'var(--red-soft)' },
+  paid:                { label: 'Оплачено',           color: 'var(--blue)' },
+  partially_delivered: { label: 'Частично',           color: 'var(--gold)' },
+  delivered:           { label: 'Доставлено',         color: 'var(--green)' },
+  closed:              { label: 'Закрыта',            color: 'var(--text-tertiary)' },
+};
+
+const PRIORITY_MAP = {
+  low:    { label: 'Низкий',   color: 'var(--text-tertiary)' },
+  normal: { label: 'Обычный',  color: 'var(--blue)' },
+  high:   { label: 'Срочно',   color: 'var(--gold)' },
+  urgent: { label: 'Очень срочно', color: 'var(--red-soft)' },
+};
+
+const FILTERS = [
+  { id: 'all',          label: 'Все' },
+  { id: 'sent_to_proc', label: 'У закупщика' },
+  { id: 'proc_responded', label: 'Ответ' },
+  { id: 'delivered',    label: 'Доставлено' },
+];
+
+const PM_ROLES = ['PM', 'HEAD_PM'];
+const CAN_ADD_ITEM_ROLES = ['PM', 'HEAD_PM', 'PROC'];
+
+// ─── Главный экран ──────────────────────────────────────────────────────────
+export default function Procurement() {
+  const haptic = useHaptic();
+  const [requests, setRequests]     = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [filter, setFilter]         = useState('all');
+  const [detail, setDetail]         = useState(null); // { id } чтобы открыть детали
+  const [showCreate, setShowCreate] = useState(false);
+  const [userRole, setUserRole]     = useState(null);
+
+  // Получаем роль один раз
+  useEffect(() => {
+    api.get('/api/users/me')
+      .then((res) => {
+        const u = res?.user || res;
+        setUserRole(u?.role || null);
+      })
+      .catch(() => {});
+  }, []);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/api/procurement?limit=50');
+      const rows = res?.items || api.extractRows(res) || [];
+      setRequests(rows);
+    } catch {
+      setRequests([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const filtered = useMemo(() => {
+    if (filter === 'all') return requests;
+    return requests.filter((r) => r.status === filter);
+  }, [requests, filter]);
+
+  const handleCardClick = (req) => {
+    haptic.light();
+    setDetail(req);
+  };
+
+  return (
+    <PageShell
+      title="Закупки"
+      headerRight={
+        <button
+          onClick={() => { haptic.light(); setShowCreate(true); }}
+          className="btn-icon spring-tap c-blue"
+        >
+          <Plus size={22} />
+        </button>
+      }
+    >
+      <PullToRefresh onRefresh={fetchData}>
+        {/* Фильтры */}
+        <div className="flex gap-1.5 px-1 pb-3 overflow-x-auto no-scrollbar">
+          {FILTERS.map((f) => (
+            <button
+              key={f.id}
+              onClick={() => { haptic.light(); setFilter(f.id); }}
+              className="filter-pill spring-tap"
+              data-active={filter === f.id}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Список */}
+        {loading ? (
+          <SkeletonList count={5} />
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon={ShoppingCart}
+            iconColor="var(--blue)"
+            iconBg="rgba(74,144,217,0.1)"
+            title="Нет заявок"
+            description="Заявки на закупку появятся здесь"
+          />
+        ) : (
+          <div className="flex flex-col gap-2 pb-4">
+            {filtered.map((req, i) => {
+              const st = STATUS_MAP[req.status] || STATUS_MAP.draft;
+              const pr = PRIORITY_MAP[req.priority];
+              return (
+                <button
+                  key={req.id}
+                  onClick={() => handleCardClick(req)}
+                  className="w-full text-left rounded-2xl px-4 py-3 spring-tap card-glass"
+                  style={{ animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both` }}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-[14px] font-semibold leading-tight c-primary">
+                      {req.title || req.work_title || `Заявка #${req.id}`}
+                    </p>
+                    <ChevronRight size={16} className="c-tertiary" style={{ flexShrink: 0, marginTop: 2 }} />
+                  </div>
+
+                  {req.work_title && req.title && (
+                    <p className="text-[12px] c-secondary mt-0.5 leading-tight">{req.work_title}</p>
+                  )}
+
+                  <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                    {/* Статус */}
+                    <span
+                      className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                      style={{
+                        background: `color-mix(in srgb, ${st.color} 15%, transparent)`,
+                        color: st.color,
+                      }}
+                    >
+                      {st.label}
+                    </span>
+
+                    {/* Приоритет */}
+                    {pr && req.priority !== 'normal' && (
+                      <span
+                        className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                        style={{
+                          background: `color-mix(in srgb, ${pr.color} 15%, transparent)`,
+                          color: pr.color,
+                        }}
+                      >
+                        {pr.label}
+                      </span>
+                    )}
+
+                    {/* Позиции */}
+                    {Number(req.items_count) > 0 && (
+                      <span className="text-[10px] c-secondary">{req.items_count} поз.</span>
+                    )}
+
+                    {/* Сумма */}
+                    {Number(req.items_total || req.total_sum) > 0 && (
+                      <span className="text-[10px] font-semibold c-gold">
+                        {formatMoney(req.items_total || req.total_sum, { short: true })}
+                      </span>
+                    )}
+
+                    {/* РП */}
+                    {req.pm_name && (
+                      <span className="text-[10px] c-tertiary">{req.pm_name}</span>
+                    )}
+
+                    {/* Время */}
+                    {req.created_at && (
+                      <span className="text-[10px] c-tertiary">{relativeTime(req.created_at)}</span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </PullToRefresh>
+
+      {/* Детали заявки */}
+      <ProcDetailSheet
+        request={detail}
+        onClose={() => setDetail(null)}
+        userRole={userRole}
+        onRefresh={fetchData}
+      />
+
+      {/* Создание заявки */}
+      <CreateMethodSheet
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreated={fetchData}
+      />
+    </PageShell>
+  );
+}
+
+// ─── Детали заявки ──────────────────────────────────────────────────────────
+function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
+  const haptic = useHaptic();
+  const [full, setFull]       = useState(null); // полные данные из /api/procurement/:id
+  const [loading, setLoading] = useState(false);
+  const [acting, setActing]   = useState(null); // 'send'|'approve'|'return'|'clone'|'template'
+  const [showAddItem, setShowAddItem] = useState(false);
+  const [tplName, setTplName] = useState('');
+  const [showTplInput, setShowTplInput] = useState(false);
+
+  useEffect(() => {
+    if (!request) { setFull(null); return; }
+    setLoading(true);
+    api.get(`/api/procurement/${request.id}`)
+      .then((res) => setFull(res?.item ? res : { item: res, items: res.items || [], history: res.history || [] }))
+      .catch(() => setFull(null))
+      .finally(() => setLoading(false));
+  }, [request]);
+
+  if (!request) return null;
+
+  const item    = full?.item || request;
+  const items   = full?.items || [];
+  const history = full?.history || [];
+  const st      = STATUS_MAP[item.status] || STATUS_MAP.draft;
+  const pr      = PRIORITY_MAP[item.priority];
+
+  const isPM         = PM_ROLES.includes(userRole);
+  const canAddItem   = CAN_ADD_ITEM_ROLES.includes(userRole) && item.status === 'draft';
+  const hasItems     = items.length > 0;
+
+  const canSend      = isPM && item.status === 'draft';
+  const canApprove   = isPM && item.status === 'proc_responded';
+  const canReturn    = isPM && item.status === 'proc_responded';
+
+  const doAction = async (endpoint, label) => {
+    haptic.light();
+    setActing(endpoint);
+    try {
+      await api.put(`/api/procurement/${item.id}/${endpoint}`, {});
+      haptic.success();
+      const res = await api.get(`/api/procurement/${item.id}`);
+      setFull(res?.item ? res : { item: res, items: res.items || [], history: res.history || [] });
+      onRefresh();
+    } catch {
+      haptic.error();
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const doClone = async () => {
+    haptic.light();
+    setActing('clone');
+    try {
+      await api.post(`/api/procurement/${item.id}/clone`, {});
+      haptic.success();
+      onClose();
+      onRefresh();
+    } catch {
+      haptic.error();
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const doSaveTemplate = async () => {
+    if (!tplName.trim()) return;
+    haptic.light();
+    setActing('template');
+    try {
+      await api.post(`/api/procurement/templates/from-request/${item.id}`, { name: tplName.trim() });
+      haptic.success();
+      setShowTplInput(false);
+      setTplName('');
+    } catch {
+      haptic.error();
+    } finally {
+      setActing(null);
+    }
+  };
+
+  const metaFields = [
+    { label: 'Статус', value: st.label, color: st.color },
+    pr && item.priority !== 'normal' && { label: 'Приоритет', value: pr.label, color: pr.color },
+    item.work_title   && { label: 'Работа',     value: item.work_title },
+    item.customer_name && { label: 'Заказчик',  value: item.customer_name },
+    item.pm_name      && { label: 'РП',         value: item.pm_name },
+    item.proc_name    && { label: 'Закупщик',   value: item.proc_name },
+    item.delivery_deadline && { label: 'Дедлайн', value: relativeTime(item.delivery_deadline) },
+    (item.items_total || item.total_sum) > 0 && {
+      label: 'Сумма',
+      value: formatMoney(item.items_total || item.total_sum),
+    },
+    item.paid_at      && { label: 'Оплачено',   value: relativeTime(item.paid_at) },
+    item.delivered_at && { label: 'Доставлено', value: relativeTime(item.delivered_at) },
+  ].filter(Boolean);
+
+  return (
+    <BottomSheet open={!!request} onClose={onClose} title={item.title || item.work_title || `Заявка #${item.id}`}>
+      {loading ? (
+        <SkeletonList count={3} />
+      ) : (
+        <div className="flex flex-col gap-4 pb-4">
+          {/* Мета-поля */}
+          <div className="flex flex-col gap-2.5">
+            {metaFields.map((f, i) => (
+              <div key={i}>
+                <p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">{f.label}</p>
+                {f.color ? (
+                  <span
+                    className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block"
+                    style={{
+                      background: `color-mix(in srgb, ${f.color} 15%, transparent)`,
+                      color: f.color,
+                    }}
+                  >
+                    {f.value}
+                  </span>
+                ) : (
+                  <p className="text-[14px] c-primary">{f.value}</p>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Позиции */}
+          {hasItems && (
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider mb-2 c-tertiary">
+                Позиции ({items.length})
+              </p>
+              <div className="flex flex-col gap-1.5">
+                {items.map((it, i) => {
+                  const itSt = it.item_status
+                    ? (STATUS_MAP[it.item_status] || null)
+                    : null;
+                  return (
+                    <div
+                      key={it.id || i}
+                      className="rounded-xl px-3 py-2"
+                      style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-medium c-primary leading-tight truncate">
+                            {it.name}
+                            {it.article ? <span className="c-tertiary text-[11px] ml-1">({it.article})</span> : null}
+                          </p>
+                          <p className="text-[11px] c-secondary mt-0.5">
+                            {it.quantity} {it.unit}
+                            {it.supplier ? <span className="c-tertiary"> · {it.supplier}</span> : null}
+                          </p>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          {Number(it.total_price) > 0 && (
+                            <p className="text-[13px] font-semibold c-gold">
+                              {formatMoney(it.total_price, { short: true })}
+                            </p>
+                          )}
+                          {Number(it.unit_price) > 0 && (
+                            <p className="text-[10px] c-tertiary">
+                              {formatMoney(it.unit_price, { short: true })} / {it.unit}
+                            </p>
+                          )}
+                          {itSt && (
+                            <span
+                              className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+                              style={{
+                                background: `color-mix(in srgb, ${itSt.color} 15%, transparent)`,
+                                color: itSt.color,
+                              }}
+                            >
+                              {itSt.label}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Добавить позицию */}
+          {canAddItem && (
+            <div>
+              {showAddItem ? (
+                <AddItemForm
+                  procId={item.id}
+                  onDone={async () => {
+                    setShowAddItem(false);
+                    const res = await api.get(`/api/procurement/${item.id}`);
+                    setFull(res?.item ? res : { item: res, items: res.items || [], history: res.history || [] });
+                    onRefresh();
+                  }}
+                  onCancel={() => setShowAddItem(false)}
+                />
+              ) : (
+                <button
+                  onClick={() => { haptic.light(); setShowAddItem(true); }}
+                  className="w-full rounded-xl px-3 py-2.5 text-[13px] font-semibold c-blue spring-tap flex items-center justify-center gap-1.5"
+                  style={{ border: '1.5px dashed var(--blue)', background: 'rgba(74,144,217,0.06)' }}
+                >
+                  <Plus size={15} /> Добавить позицию
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Действия по статусу */}
+          {(canSend || canApprove || canReturn) && (
+            <div className="flex flex-col gap-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wider c-tertiary">Действия</p>
+              {canSend && (
+                <button
+                  onClick={() => doAction('send-to-proc', 'Отправить')}
+                  disabled={acting === 'send-to-proc'}
+                  className="btn-primary spring-tap flex items-center justify-center gap-2"
+                >
+                  <Send size={16} />
+                  {acting === 'send-to-proc' ? 'Отправляю...' : 'Отправить закупщику'}
+                </button>
+              )}
+              {canApprove && (
+                <button
+                  onClick={() => doAction('pm-approve', 'Согласовать')}
+                  disabled={acting === 'pm-approve'}
+                  className="btn-primary spring-tap flex items-center justify-center gap-2"
+                >
+                  <Check size={16} />
+                  {acting === 'pm-approve' ? 'Согласовываю...' : 'Согласовать'}
+                </button>
+              )}
+              {canReturn && (
+                <button
+                  onClick={() => doAction('return-to-proc', 'Вернуть')}
+                  disabled={acting === 'return-to-proc'}
+                  className="spring-tap flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[14px] font-semibold"
+                  style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-secondary)' }}
+                >
+                  {acting === 'return-to-proc' ? 'Возвращаю...' : 'Вернуть закупщику'}
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Утилиты: повторить / в шаблон */}
+          {hasItems && (
+            <div className="flex gap-2">
+              <button
+                onClick={doClone}
+                disabled={acting === 'clone'}
+                className="flex-1 spring-tap rounded-xl px-3 py-2.5 text-[13px] font-semibold flex items-center justify-center gap-1.5"
+                style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)', color: 'var(--text-primary)' }}
+              >
+                <Copy size={14} />
+                {acting === 'clone' ? 'Копирую...' : 'Повторить'}
+              </button>
+
+              {!showTplInput ? (
+                <button
+                  onClick={() => { haptic.light(); setShowTplInput(true); }}
+                  className="flex-1 spring-tap rounded-xl px-3 py-2.5 text-[13px] font-semibold flex items-center justify-center gap-1.5"
+                  style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)', color: 'var(--text-primary)' }}
+                >
+                  <FileText size={14} />
+                  В шаблон
+                </button>
+              ) : (
+                <div className="flex-1 flex gap-1.5">
+                  <input
+                    type="text"
+                    value={tplName}
+                    onChange={(e) => setTplName(e.target.value)}
+                    placeholder="Название шаблона"
+                    className="input-field flex-1 text-[12px] py-2"
+                    autoFocus
+                  />
+                  <button
+                    onClick={doSaveTemplate}
+                    disabled={!tplName.trim() || acting === 'template'}
+                    className="btn-icon spring-tap c-gold"
+                  >
+                    <Check size={16} />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* История */}
+          {history.length > 0 && (
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider mb-2 c-tertiary">
+                История
+              </p>
+              <div className="flex flex-col gap-1.5">
+                {history.map((h, i) => (
+                  <div
+                    key={i}
+                    className="rounded-xl px-3 py-2"
+                    style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-[12px] font-semibold c-primary">{h.action}</p>
+                      <span className="text-[10px] c-tertiary flex-shrink-0">{relativeTime(h.created_at)}</span>
+                    </div>
+                    {h.actor_name && (
+                      <p className="text-[11px] c-secondary mt-0.5">{h.actor_name}</p>
+                    )}
+                    {h.comment && (
+                      <p className="text-[11px] c-tertiary mt-0.5 italic">«{h.comment}»</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </BottomSheet>
+  );
+}
+
+// ─── Добавить позицию (мини-форма) ─────────────────────────────────────────
+function AddItemForm({ procId, onDone, onCancel }) {
+  const haptic = useHaptic();
+  const [name, setName]     = useState('');
+  const [qty, setQty]       = useState('');
+  const [unit, setUnit]     = useState('шт');
+  const [hint, setHint]     = useState(null);
+  const [saving, setSaving] = useState(false);
+  const debounceRef         = useRef(null);
+
+  const fetchHint = useCallback((val) => {
+    clearTimeout(debounceRef.current);
+    if (!val.trim() || val.trim().length < 3) { setHint(null); return; }
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await api.get(`/api/price-records/hint?name=${encodeURIComponent(val.trim())}`);
+        if (res?.last || res?.stats) setHint(res);
+        else setHint(null);
+      } catch { setHint(null); }
+    }, 400);
+  }, []);
+
+  const handleNameChange = (v) => {
+    setName(v);
+    fetchHint(v);
+  };
+
+  const handleSubmit = async () => {
+    if (!name.trim() || !qty) return;
+    haptic.light();
+    setSaving(true);
+    try {
+      await api.post(`/api/procurement/${procId}/items`, {
+        name: name.trim(),
+        quantity: Number(qty),
+        unit: unit.trim() || 'шт',
+      });
+      haptic.success();
+      onDone();
+    } catch {
+      haptic.error();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      className="rounded-2xl px-3 py-3 flex flex-col gap-2"
+      style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}
+    >
+      <p className="text-[11px] font-semibold uppercase tracking-wider c-tertiary">Новая позиция</p>
+
+      {/* Название */}
+      <div>
+        <label className="input-label">Наименование *</label>
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => handleNameChange(e.target.value)}
+          placeholder="Кабель ВВГнг 3x2.5..."
+          className="input-field"
+          autoFocus
+        />
+        {/* Подсказка цены */}
+        {hint && (
+          <div
+            className="mt-1 px-2.5 py-1.5 rounded-xl text-[11px] flex flex-col gap-0.5"
+            style={{ background: 'rgba(255,193,7,0.07)', border: '0.5px solid rgba(255,193,7,0.25)' }}
+          >
+            {hint.last && (
+              <p className="c-gold font-semibold">
+                Последняя цена: {formatMoney(hint.last.unit_price)}
+                {hint.last.supplier_name && <span className="c-tertiary font-normal"> · {hint.last.supplier_name}</span>}
+              </p>
+            )}
+            {hint.stats && hint.stats.sample_count > 1 && (
+              <p className="c-secondary">
+                Среднее {formatMoney(hint.stats.avg_price)} · от {formatMoney(hint.stats.min_price)} ({hint.stats.sample_count} покупок)
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Кол-во + ед. */}
+      <div className="flex gap-2">
+        <div className="flex-1">
+          <label className="input-label">Количество *</label>
+          <input
+            type="number"
+            value={qty}
+            onChange={(e) => setQty(e.target.value)}
+            placeholder="0"
+            className="input-field"
+            inputMode="decimal"
+          />
+        </div>
+        <div className="w-20">
+          <label className="input-label">Ед.</label>
+          <input
+            type="text"
+            value={unit}
+            onChange={(e) => setUnit(e.target.value)}
+            placeholder="шт"
+            className="input-field"
+          />
+        </div>
+      </div>
+
+      {/* Кнопки */}
+      <div className="flex gap-2 mt-1">
+        <button
+          onClick={handleSubmit}
+          disabled={!name.trim() || !qty || saving}
+          className="flex-1 btn-primary spring-tap text-[13px]"
+        >
+          {saving ? 'Добавляю...' : 'Добавить'}
+        </button>
+        <button
+          onClick={onCancel}
+          className="spring-tap rounded-xl px-4 py-2.5 text-[13px] font-semibold c-secondary"
+          style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}
+        >
+          Отмена
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Выбор способа создания ─────────────────────────────────────────────────
+function CreateMethodSheet({ open, onClose, onCreated }) {
+  const haptic = useHaptic();
+  const [method, setMethod] = useState(null); // 'text'|'template'|'manual'
+
+  const handleClose = () => {
+    setMethod(null);
+    onClose();
+  };
+
+  const handleCreated = () => {
+    setMethod(null);
+    onCreated();
+    onClose();
+  };
+
+  return (
+    <BottomSheet
+      open={open}
+      onClose={handleClose}
+      title={method ? (method === 'text' ? 'Новая заявка списком' : method === 'template' ? 'Из шаблона' : method === 'ai' ? 'AI по ТЗ' : 'Вручную') : 'Создать заявку'}
+    >
+      {/* Выбор метода */}
+      {!method && (
+        <div className="flex flex-col gap-3 pb-4">
+          <p className="text-[13px] c-secondary text-center mb-1">Выберите способ создания</p>
+
+          <button
+            onClick={() => { haptic.light(); setMethod('text'); }}
+            className="spring-tap rounded-2xl px-4 py-4 text-left card-glass"
+          >
+            <div className="flex items-start gap-3">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ background: 'rgba(74,144,217,0.12)' }}
+              >
+                <FileText size={20} style={{ color: 'var(--blue)' }} />
+              </div>
+              <div>
+                <p className="text-[15px] font-semibold c-primary">Списком</p>
+                <p className="text-[12px] c-secondary mt-0.5 leading-snug">
+                  Вводите позиции по одной на строку — система сама разберёт название, кол-во и ед. измерения
+                </p>
+              </div>
+            </div>
+          </button>
+
+          <button
+            onClick={() => { haptic.light(); setMethod('ai'); }}
+            className="spring-tap rounded-2xl px-4 py-4 text-left card-glass"
+          >
+            <div className="flex items-start gap-3">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ background: 'rgba(168,85,247,0.12)' }}
+              >
+                <Sparkles size={20} style={{ color: '#a855f7' }} />
+              </div>
+              <div>
+                <p className="text-[15px] font-semibold c-primary">AI по техзаданию</p>
+                <p className="text-[12px] c-secondary mt-0.5 leading-snug">
+                  Вставьте ТЗ или описание работ — AI сам выделит позиции для закупки
+                </p>
+              </div>
+            </div>
+          </button>
+
+          <button
+            onClick={() => { haptic.light(); setMethod('template'); }}
+            className="spring-tap rounded-2xl px-4 py-4 text-left card-glass"
+          >
+            <div className="flex items-start gap-3">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ background: 'rgba(255,193,7,0.12)' }}
+              >
+                <Package size={20} style={{ color: 'var(--gold)' }} />
+              </div>
+              <div>
+                <p className="text-[15px] font-semibold c-primary">Из шаблона / повторить</p>
+                <p className="text-[12px] c-secondary mt-0.5 leading-snug">
+                  Использовать сохранённый шаблон или повторить прошлую заявку
+                </p>
+              </div>
+            </div>
+          </button>
+
+          <button
+            onClick={() => { haptic.light(); setMethod('manual'); }}
+            className="spring-tap rounded-2xl px-4 py-4 text-left card-glass"
+          >
+            <div className="flex items-start gap-3">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ background: 'rgba(16,185,129,0.12)' }}
+              >
+                <Truck size={20} style={{ color: 'var(--green)' }} />
+              </div>
+              <div>
+                <p className="text-[15px] font-semibold c-primary">Вручную</p>
+                <p className="text-[12px] c-secondary mt-0.5 leading-snug">
+                  Создать пустую заявку и добавлять позиции по одной, с подсказками цен
+                </p>
+              </div>
+            </div>
+          </button>
+        </div>
+      )}
+
+      {/* Форма «Списком» */}
+      {method === 'text' && (
+        <CreateByTextForm onCreated={handleCreated} onBack={() => setMethod(null)} />
+      )}
+
+      {/* Форма «AI по ТЗ» */}
+      {method === 'ai' && (
+        <CreateByAIForm onCreated={handleCreated} onBack={() => setMethod(null)} />
+      )}
+
+      {/* Форма «Из шаблона» */}
+      {method === 'template' && (
+        <CreateFromTemplateForm onCreated={handleCreated} onBack={() => setMethod(null)} />
+      )}
+
+      {/* Форма «Вручную» */}
+      {method === 'manual' && (
+        <CreateManualForm onCreated={handleCreated} onBack={() => setMethod(null)} />
+      )}
+    </BottomSheet>
+  );
+}
+
+// ─── Хук: список работ ──────────────────────────────────────────────────────
+function useWorks() {
+  const [works, setWorks] = useState([]);
+  useEffect(() => {
+    api.get('/api/works?limit=200')
+      .then((res) => {
+        const rows = res?.items || api.extractRows(res) || [];
+        setWorks(rows.map((w) => ({ value: w.id, label: w.work_title || `Работа #${w.id}` })));
+      })
+      .catch(() => {});
+  }, []);
+  return works;
+}
+
+// ─── Форма «Списком» ────────────────────────────────────────────────────────
+function CreateByTextForm({ onCreated, onBack }) {
+  const haptic  = useHaptic();
+  const works   = useWorks();
+  const [workId, setWorkId]     = useState('');
+  const [title, setTitle]       = useState('');
+  const [itemsText, setItemsText] = useState('');
+  const [priority, setPriority] = useState('normal');
+  const [saving, setSaving]     = useState(false);
+  const [result, setResult]     = useState(null); // { count }
+
+  const priorityOpts = Object.entries(PRIORITY_MAP).map(([v, m]) => ({ value: v, label: m.label }));
+
+  const handleSubmit = async () => {
+    if (!workId || !title.trim() || !itemsText.trim()) return;
+    haptic.light();
+    setSaving(true);
+    try {
+      // 1. Создаём заявку
+      const createRes = await api.post('/api/procurement', {
+        title: title.trim(),
+        work_id: Number(workId),
+        priority,
+        notes: '',
+      });
+      const newId = createRes?.item?.id || createRes?.id;
+
+      // 2. Импортируем позиции из текста
+      const importRes = await api.post(`/api/procurement/${newId}/items/import-text`, {
+        text: itemsText.trim(),
+      });
+      const count = importRes?.count ?? importRes?.items?.length ?? 0;
+
+      haptic.success();
+      setResult({ count, id: newId });
+    } catch {
+      haptic.error();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (result) {
+    return (
+      <div className="flex flex-col items-center gap-4 pb-4 pt-2">
+        <div
+          className="w-16 h-16 rounded-full flex items-center justify-center"
+          style={{ background: 'rgba(16,185,129,0.12)' }}
+        >
+          <Check size={32} style={{ color: 'var(--green)' }} />
+        </div>
+        <div className="text-center">
+          <p className="text-[16px] font-semibold c-primary">Заявка создана!</p>
+          <p className="text-[13px] c-secondary mt-1">
+            Добавлено позиций: <strong>{result.count}</strong>
+          </p>
+        </div>
+        <button onClick={onCreated} className="btn-primary spring-tap w-full">Готово</button>
+      </div>
+    );
+  }
+
+  const valid = workId && title.trim() && itemsText.trim();
+  return (
+    <div className="flex flex-col gap-3 pb-4">
+      <div>
+        <label className="input-label">Работа *</label>
+        <AsgardSelect
+          options={works}
+          value={workId}
+          onChange={setWorkId}
+          placeholder="Выберите работу..."
+        />
+      </div>
+
+      <div>
+        <label className="input-label">Название заявки *</label>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Материалы для прокладки кабеля..."
+          className="input-field"
+        />
+      </div>
+
+      <div>
+        <label className="input-label">Позиции (по одной на строку) *</label>
+        <textarea
+          value={itemsText}
+          onChange={(e) => setItemsText(e.target.value)}
+          placeholder={'10 мешков цемента\nКабель ВВГнг 3x2.5 50м\nАвтомат ABB 25A 3шт'}
+          rows={6}
+          className="input-field resize-none font-mono text-[13px]"
+        />
+        <p className="text-[11px] c-tertiary mt-1">
+          Система сама разберёт название, кол-во и единицу
+        </p>
+      </div>
+
+      <div>
+        <label className="input-label">Приоритет</label>
+        <AsgardSelect
+          options={priorityOpts}
+          value={priority}
+          onChange={setPriority}
+          placeholder="Обычный"
+        />
+      </div>
+
+      <div className="flex gap-2 mt-1">
+        <button
+          onClick={handleSubmit}
+          disabled={!valid || saving}
+          className="flex-1 btn-primary spring-tap"
+        >
+          {saving ? 'Создаю...' : 'Создать заявку'}
+        </button>
+        <button
+          onClick={onBack}
+          className="spring-tap rounded-xl px-4 py-2.5 text-[14px] font-semibold c-secondary"
+          style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}
+        >
+          Назад
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Форма «AI по ТЗ» ───────────────────────────────────────────────────────
+function CreateByAIForm({ onCreated, onBack }) {
+  const haptic = useHaptic();
+  const works  = useWorks();
+  const [workId, setWorkId]   = useState('');
+  const [title, setTitle]     = useState('');
+  const [tz, setTz]           = useState('');
+  const [priority, setPriority] = useState('normal');
+  const [saving, setSaving]   = useState(false);
+  const [info, setInfo]       = useState('');
+  const [result, setResult]   = useState(null);
+
+  const priorityOpts = Object.entries(PRIORITY_MAP).map(([v, m]) => ({ value: v, label: m.label }));
+
+  const handleSubmit = async () => {
+    if (!workId || !title.trim() || !tz.trim()) return;
+    haptic.light();
+    setSaving(true); setInfo('AI анализирует техзадание, это может занять до минуты...');
+    try {
+      const createRes = await api.post('/api/procurement', { title: title.trim(), work_id: Number(workId), priority, notes: '' });
+      const newId = createRes?.item?.id || createRes?.id;
+      const aiRes = await api.post(`/api/procurement/${newId}/items/ai-parse`, { text: tz.trim() });
+      const count = aiRes?.count ?? 0;
+      if (count > 0) { haptic.success(); setResult({ count, id: newId }); }
+      else {
+        // AI ничего не нашёл — заявка создана пустой, предложим заполнить вручную
+        haptic.error();
+        setInfo(aiRes?.message || 'AI не нашёл позиций. Заявка создана — добавьте позиции вручную.');
+        setResult({ count: 0, id: newId, partial: true });
+      }
+    } catch {
+      haptic.error();
+      setInfo('AI недоступен. Попробуйте способ «Списком».');
+    } finally { setSaving(false); }
+  };
+
+  if (result) {
+    return (
+      <div className="flex flex-col items-center gap-4 pb-4 pt-2">
+        <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: result.partial ? 'rgba(255,193,7,0.12)' : 'rgba(16,185,129,0.12)' }}>
+          {result.partial ? <Sparkles size={32} style={{ color: 'var(--gold)' }} /> : <Check size={32} style={{ color: 'var(--green)' }} />}
+        </div>
+        <div className="text-center">
+          <p className="text-[16px] font-semibold c-primary">{result.partial ? 'Заявка создана' : 'AI разобрал ТЗ!'}</p>
+          <p className="text-[13px] c-secondary mt-1">{result.partial ? info : <>AI добавил позиций: <strong>{result.count}</strong></>}</p>
+        </div>
+        <button onClick={onCreated} className="btn-primary spring-tap w-full">Готово</button>
+      </div>
+    );
+  }
+
+  const valid = workId && title.trim() && tz.trim();
+  return (
+    <div className="flex flex-col gap-3 pb-4">
+      <div>
+        <label className="input-label">Работа *</label>
+        <AsgardSelect options={works} value={workId} onChange={setWorkId} placeholder="Выберите работу..." />
+      </div>
+      <div>
+        <label className="input-label">Название заявки *</label>
+        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Закупка по ТЗ..." className="input-field" />
+      </div>
+      <div>
+        <label className="input-label">Техзадание / описание работ *</label>
+        <textarea value={tz} onChange={(e) => setTz(e.target.value)} placeholder="Вставьте текст ТЗ — AI выделит материалы и оборудование для закупки..." rows={7} className="input-field resize-none text-[13px]" />
+        <p className="text-[11px] c-tertiary mt-1">AI выделит позиции (без цен). Цены подберёт закупщик.</p>
+      </div>
+      <div>
+        <label className="input-label">Приоритет</label>
+        <AsgardSelect options={priorityOpts} value={priority} onChange={setPriority} placeholder="Обычный" />
+      </div>
+      {saving && info && <p className="text-[12px] c-secondary text-center">{info}</p>}
+      <div className="flex gap-2 mt-1">
+        <button onClick={handleSubmit} disabled={!valid || saving} className="flex-1 btn-primary spring-tap">
+          {saving ? 'AI анализирует...' : '🤖 Разобрать ТЗ'}
+        </button>
+        <button onClick={onBack} className="spring-tap rounded-xl px-4 py-2.5 text-[14px] font-semibold c-secondary" style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}>Назад</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Форма «Из шаблона» ─────────────────────────────────────────────────────
+function CreateFromTemplateForm({ onCreated, onBack }) {
+  const haptic    = useHaptic();
+  const works     = useWorks();
+  const [templates, setTemplates]   = useState([]);
+  const [loadingTpl, setLoadingTpl] = useState(true);
+  const [selectedTpl, setSelectedTpl] = useState(null);
+  const [workId, setWorkId]         = useState('');
+  const [saving, setSaving]         = useState(false);
+
+  useEffect(() => {
+    setLoadingTpl(true);
+    api.get('/api/procurement/templates')
+      .then((res) => setTemplates(res?.items || api.extractRows(res) || []))
+      .catch(() => setTemplates([]))
+      .finally(() => setLoadingTpl(false));
+  }, []);
+
+  const handleCreate = async () => {
+    if (!selectedTpl || !workId) return;
+    haptic.light();
+    setSaving(true);
+    try {
+      await api.post(`/api/procurement/from-template/${selectedTpl.id}`, { work_id: Number(workId) });
+      haptic.success();
+      onCreated();
+    } catch {
+      haptic.error();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3 pb-4">
+      {loadingTpl ? (
+        <SkeletonList count={3} />
+      ) : templates.length === 0 ? (
+        <EmptyState
+          icon={Package}
+          iconColor="var(--gold)"
+          iconBg="rgba(255,193,7,0.1)"
+          title="Нет шаблонов"
+          description="Сохраните заявку как шаблон, чтобы быстро повторять"
+        />
+      ) : (
+        <>
+          <p className="text-[12px] c-secondary">Выберите шаблон:</p>
+          <div className="flex flex-col gap-1.5 max-h-56 overflow-y-auto">
+            {templates.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => { haptic.light(); setSelectedTpl(t); }}
+                className="w-full text-left rounded-xl px-3 py-2.5 spring-tap"
+                style={{
+                  background: selectedTpl?.id === t.id
+                    ? 'color-mix(in srgb, var(--gold) 12%, transparent)'
+                    : 'var(--bg-surface-alt)',
+                  border: `0.5px solid ${selectedTpl?.id === t.id ? 'var(--gold)' : 'var(--border-norse)'}`,
+                }}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-semibold c-primary truncate">{t.name}</p>
+                    <p className="text-[11px] c-tertiary mt-0.5">
+                      {t.items_count} поз.
+                      {t.usage_count > 0 && ` · использован ${t.usage_count}×`}
+                      {t.default_work_title && ` · ${t.default_work_title}`}
+                    </p>
+                  </div>
+                  {selectedTpl?.id === t.id && <Check size={16} style={{ color: 'var(--gold)', flexShrink: 0 }} />}
+                </div>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {selectedTpl && (
+        <div>
+          <label className="input-label">Работа *</label>
+          <AsgardSelect
+            options={works}
+            value={workId}
+            onChange={setWorkId}
+            placeholder="Выберите работу..."
+          />
+        </div>
+      )}
+
+      {selectedTpl && (
+        <div className="flex gap-2 mt-1">
+          <button
+            onClick={handleCreate}
+            disabled={!workId || saving}
+            className="flex-1 btn-primary spring-tap"
+          >
+            {saving ? 'Создаю...' : 'Создать из шаблона'}
+          </button>
+          <button
+            onClick={onBack}
+            className="spring-tap rounded-xl px-4 py-2.5 text-[14px] font-semibold c-secondary"
+            style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}
+          >
+            Назад
+          </button>
+        </div>
+      )}
+
+      {!selectedTpl && (
+        <button
+          onClick={onBack}
+          className="spring-tap rounded-xl px-4 py-2.5 text-[14px] font-semibold c-secondary w-full"
+          style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}
+        >
+          Назад
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ─── Форма «Вручную» ─────────────────────────────────────────────────────────
+function CreateManualForm({ onCreated, onBack }) {
+  const haptic  = useHaptic();
+  const works   = useWorks();
+  const [workId, setWorkId]   = useState('');
+  const [title, setTitle]     = useState('');
+  const [priority, setPriority] = useState('normal');
+  const [notes, setNotes]     = useState('');
+  const [saving, setSaving]   = useState(false);
+  const [created, setCreated] = useState(null); // { id }
+
+  const priorityOpts = Object.entries(PRIORITY_MAP).map(([v, m]) => ({ value: v, label: m.label }));
+
+  const handleCreate = async () => {
+    if (!workId || !title.trim()) return;
+    haptic.light();
+    setSaving(true);
+    try {
+      const res = await api.post('/api/procurement', {
+        title: title.trim(),
+        work_id: Number(workId),
+        priority,
+        notes: notes.trim() || null,
+      });
+      const newId = res?.item?.id || res?.id;
+      haptic.success();
+      setCreated({ id: newId });
+    } catch {
+      haptic.error();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (created) {
+    return (
+      <div className="flex flex-col items-center gap-4 pb-4 pt-2">
+        <div
+          className="w-16 h-16 rounded-full flex items-center justify-center"
+          style={{ background: 'rgba(16,185,129,0.12)' }}
+        >
+          <Check size={32} style={{ color: 'var(--green)' }} />
+        </div>
+        <div className="text-center">
+          <p className="text-[16px] font-semibold c-primary">Заявка создана!</p>
+          <p className="text-[13px] c-secondary mt-1">
+            Откройте её из списка, чтобы добавить позиции
+          </p>
+        </div>
+        <button onClick={onCreated} className="btn-primary spring-tap w-full">Готово</button>
+      </div>
+    );
+  }
+
+  const valid = workId && title.trim();
+  return (
+    <div className="flex flex-col gap-3 pb-4">
+      <div>
+        <label className="input-label">Работа *</label>
+        <AsgardSelect
+          options={works}
+          value={workId}
+          onChange={setWorkId}
+          placeholder="Выберите работу..."
+        />
+      </div>
+
+      <div>
+        <label className="input-label">Название заявки *</label>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Материалы для электромонтажа..."
+          className="input-field"
+        />
+      </div>
+
+      <div>
+        <label className="input-label">Приоритет</label>
+        <AsgardSelect
+          options={priorityOpts}
+          value={priority}
+          onChange={setPriority}
+          placeholder="Обычный"
+        />
+      </div>
+
+      <div>
+        <label className="input-label">Примечание</label>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Доп. комментарий для закупщика..."
+          rows={2}
+          className="input-field resize-none"
+        />
+      </div>
+
+      <div className="flex gap-2 mt-1">
+        <button
+          onClick={handleCreate}
+          disabled={!valid || saving}
+          className="flex-1 btn-primary spring-tap"
+        >
+          {saving ? 'Создаю...' : 'Создать заявку'}
+        </button>
+        <button
+          onClick={onBack}
+          className="spring-tap rounded-xl px-4 py-2.5 text-[14px] font-semibold c-secondary"
+          style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}
+        >
+          Назад
+        </button>
+      </div>
+    </div>
+  );
+}

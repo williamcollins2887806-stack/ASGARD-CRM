@@ -1,0 +1,2 @@
+-- Rollback V152
+DROP TABLE IF EXISTS products CASCADE;

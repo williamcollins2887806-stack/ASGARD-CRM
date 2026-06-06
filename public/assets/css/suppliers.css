@@ -1,0 +1,129 @@
+/* ASGARD CRM — Suppliers / Products / Price Records. Prefix: .sup-* */
+
+/* ─── Page shell ─── */
+.sup-page{padding:var(--sp-4)}
+
+/* ─── Tabs ─── */
+.sup-tabs{display:flex;gap:0;border-bottom:2px solid var(--brd);margin-bottom:var(--sp-4)}
+.sup-tab{padding:var(--sp-2) var(--sp-4);font-size:14px;font-weight:500;color:var(--t2);cursor:pointer;border:none;background:transparent;border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .2s,border-color .2s;white-space:nowrap}
+.sup-tab:hover{color:var(--t1)}
+.sup-tab--active{color:var(--blue);border-bottom-color:var(--blue);font-weight:600}
+
+/* ─── Toolbar ─── */
+.sup-toolbar{display:flex;gap:var(--sp-3);align-items:center;flex-wrap:wrap;margin-bottom:var(--sp-4);padding:var(--sp-3);background:var(--bg1);border-radius:var(--r-md);border:1px solid var(--brd)}
+.sup-toolbar input[type="text"]{padding:var(--sp-1) var(--sp-2);border:1px solid var(--brd);border-radius:var(--r-sm);background:var(--bg0);color:var(--t1);font-size:13px;min-width:200px}
+.sup-toolbar input[type="date"]{padding:var(--sp-1) var(--sp-2);border:1px solid var(--brd);border-radius:var(--r-sm);background:var(--bg0);color:var(--t1);font-size:13px}
+
+/* ─── Table (reuse proc style) ─── */
+.sup-table-wrap{overflow-x:auto;border-radius:var(--r-md);border:1px solid var(--brd)}
+.sup-table{width:100%;border-collapse:collapse;font-size:13px}
+.sup-table th{background:var(--bg2);padding:var(--sp-2);text-align:left;font-weight:500;color:var(--t2);border-bottom:1px solid var(--brd)}
+.sup-table td{padding:var(--sp-2);border-bottom:1px solid var(--brd);vertical-align:middle}
+.sup-table tr:hover{background:var(--bg1)}
+.sup-table tr[data-id]{cursor:pointer}
+
+/* ─── Stars rating ─── */
+.sup-stars{display:inline-flex;gap:1px;line-height:1}
+.sup-stars__star{font-size:14px;color:var(--brd)}
+.sup-stars__star--on{color:#f59e0b}
+.sup-stars__star--half{color:#f59e0b;opacity:.5}
+
+/* ─── Category badges ─── */
+.sup-cat{display:inline-flex;align-items:center;padding:2px var(--sp-2);border-radius:999px;font-size:11px;font-weight:500;white-space:nowrap}
+.sup-cat--materials{background:color-mix(in srgb,#2563eb 15%,transparent);color:#2563eb}
+.sup-cat--equipment_rental{background:color-mix(in srgb,#f59e0b 15%,transparent);color:#b45309}
+.sup-cat--services{background:color-mix(in srgb,#8b5cf6 15%,transparent);color:#7c3aed}
+.sup-cat--other{background:var(--bg3);color:var(--t3)}
+
+/* ─── Source badges ─── */
+.sup-src{display:inline-flex;align-items:center;padding:2px var(--sp-2);border-radius:999px;font-size:11px;font-weight:500;white-space:nowrap}
+.sup-src--manual{background:var(--bg3);color:var(--t2)}
+.sup-src--quote{background:color-mix(in srgb,#2563eb 15%,transparent);color:#2563eb}
+.sup-src--ai_search{background:color-mix(in srgb,#8b5cf6 15%,transparent);color:#7c3aed}
+.sup-src--market_monitoring{background:color-mix(in srgb,#10b981 15%,transparent);color:#059669}
+.sup-src--procurement{background:color-mix(in srgb,#f59e0b 15%,transparent);color:#b45309}
+
+/* ─── Active / inactive badge ─── */
+.sup-active{display:inline-flex;align-items:center;padding:2px var(--sp-2);border-radius:999px;font-size:11px;font-weight:500}
+.sup-active--yes{background:var(--ok-bg);color:var(--ok-t)}
+.sup-active--no{background:var(--bg3);color:var(--t3)}
+
+/* ─── Stat cards ─── */
+.sup-stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:var(--sp-3);margin-bottom:var(--sp-4)}
+.sup-stat-card{padding:var(--sp-3);border-radius:var(--r-md);border:1px solid var(--brd);background:var(--bg1)}
+.sup-stat-card__val{font-size:22px;font-weight:700;color:var(--t1)}
+.sup-stat-card__lbl{font-size:11px;color:var(--t2);margin-top:2px}
+
+/* ─── Price stats block (Каталог → товар) ─── */
+.sup-price-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--sp-2);margin-bottom:var(--sp-3)}
+.sup-price-stat{padding:var(--sp-2) var(--sp-3);border-radius:var(--r-md);border:1px solid var(--brd);background:var(--bg1);text-align:center}
+.sup-price-stat__val{font-size:16px;font-weight:700;color:var(--t1)}
+.sup-price-stat__lbl{font-size:11px;color:var(--t2);margin-top:2px}
+.sup-price-stat--min .sup-price-stat__val{color:#10b981}
+.sup-price-stat--max .sup-price-stat__val{color:var(--err)}
+.sup-price-stat--avg .sup-price-stat__val{color:#2563eb}
+.sup-price-stat--med .sup-price-stat__val{color:#f59e0b}
+
+/* ─── Catalog layout ─── */
+.sup-catalog-layout{display:grid;grid-template-columns:220px 1fr;gap:var(--sp-4)}
+.sup-cat-list{border:1px solid var(--brd);border-radius:var(--r-md);background:var(--bg1);overflow:hidden}
+.sup-cat-list__item{display:flex;justify-content:space-between;align-items:center;padding:var(--sp-2) var(--sp-3);cursor:pointer;border-bottom:1px solid var(--brd);font-size:13px;color:var(--t1);transition:background .15s}
+.sup-cat-list__item:last-child{border-bottom:none}
+.sup-cat-list__item:hover{background:var(--bg2)}
+.sup-cat-list__item--active{background:color-mix(in srgb,var(--blue) 10%,transparent);color:var(--blue);font-weight:600}
+.sup-cat-list__count{font-size:11px;color:var(--t3);background:var(--bg3);padding:1px 6px;border-radius:999px}
+.sup-cat-list__actions{padding:var(--sp-2) var(--sp-3);border-top:1px solid var(--brd)}
+
+/* ─── Detail modal ─── */
+.sup-detail{padding:var(--sp-4)}
+.sup-detail__header{display:flex;justify-content:space-between;align-items:start;margin-bottom:var(--sp-3);flex-wrap:wrap;gap:var(--sp-2)}
+.sup-detail__title{font-size:18px;font-weight:700;color:var(--t1);margin:0}
+.sup-detail__section{margin-bottom:var(--sp-4)}
+.sup-detail__section-title{font-size:14px;font-weight:600;color:var(--t1);margin-bottom:var(--sp-2);padding-bottom:var(--sp-1);border-bottom:1px solid var(--brd)}
+.sup-meta{display:grid;grid-template-columns:140px 1fr;gap:var(--sp-1) var(--sp-2);font-size:13px;margin-bottom:var(--sp-3)}
+.sup-meta dt{color:var(--t2);font-weight:500}
+.sup-meta dd{color:var(--t1);margin:0}
+
+/* ─── Form inside modal ─── */
+.sup-form{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3);padding:var(--sp-3)}
+.sup-form--single{grid-template-columns:1fr}
+.sup-form label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--t2)}
+.sup-form label.span2{grid-column:1/-1}
+.sup-form input,.sup-form select,.sup-form textarea{padding:var(--sp-2);border:1px solid var(--brd);border-radius:var(--r-sm);background:var(--bg0);color:var(--t1);font-size:14px}
+.sup-form input:focus,.sup-form select:focus,.sup-form textarea:focus{outline:none;border-color:var(--blue)}
+.sup-form__footer{grid-column:1/-1;display:flex;justify-content:flex-end;gap:var(--sp-2);padding-top:var(--sp-2);border-top:1px solid var(--brd)}
+
+/* ─── Contacts block ─── */
+.sup-contact-row{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-2);border-bottom:1px solid var(--brd);font-size:13px}
+.sup-contact-row:last-child{border-bottom:none}
+.sup-contact-row__name{font-weight:500;color:var(--t1);min-width:150px}
+.sup-contact-row__role{color:var(--t2);min-width:100px}
+.sup-contact-row__links{display:flex;gap:var(--sp-2);color:var(--t2);flex:1}
+.sup-contact-row__links a{color:var(--blue);text-decoration:none}
+.sup-contact-row__links a:hover{text-decoration:underline}
+.sup-contact-primary{display:inline-flex;align-items:center;font-size:13px;color:#f59e0b;cursor:pointer;padding:2px 4px;border-radius:var(--r-sm);transition:background .15s}
+.sup-contact-primary:hover{background:color-mix(in srgb,#f59e0b 15%,transparent)}
+
+/* ─── Top items list ─── */
+.sup-top-item{display:flex;justify-content:space-between;align-items:center;padding:var(--sp-1) var(--sp-2);border-bottom:1px solid var(--brd);font-size:13px}
+.sup-top-item:last-child{border-bottom:none}
+.sup-top-item__name{color:var(--t1)}
+.sup-top-item__meta{color:var(--t2);display:flex;gap:var(--sp-3)}
+
+/* ─── Empty state ─── */
+.sup-empty{padding:40px;text-align:center;color:var(--t2);font-size:14px}
+
+/* ─── Price history mini-table ─── */
+.sup-ph-table{width:100%;border-collapse:collapse;font-size:12px}
+.sup-ph-table th{background:var(--bg2);padding:var(--sp-1) var(--sp-2);text-align:left;font-weight:500;color:var(--t3);border-bottom:1px solid var(--brd)}
+.sup-ph-table td{padding:var(--sp-1) var(--sp-2);border-bottom:1px solid var(--brd);color:var(--t1)}
+.sup-ph-table tr:hover{background:var(--bg1)}
+
+/* ─── Responsive ─── */
+@media(max-width:700px){
+  .sup-catalog-layout{grid-template-columns:1fr}
+  .sup-price-stats{grid-template-columns:repeat(2,1fr)}
+  .sup-form{grid-template-columns:1fr}
+  .sup-form label.span2{grid-column:1}
+  .sup-form__footer{grid-column:1}
+}
