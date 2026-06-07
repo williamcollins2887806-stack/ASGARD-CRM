@@ -139,6 +139,8 @@ console.log('[ASGARD] Global period functions loaded');
     "/pm-calcs":"Сроки видны. Силы рассчитаны. Риск под контролем.",
     "/approvals":"Слово Ярла — закон. Счёт должен быть чист.",
     "/pm-works":"Клятва дана — доведи дело до конца.",
+    "/readiness":"Готов к походу — половина победы.",
+    "/readiness-board":"Видеть всё поле — значит управлять боем.",
     "/all-works":"Дело идёт по плану — пока цифры честны.",
     "/all-estimates":"Счёт точен. Решение крепко. Ошибки не проходят.",
     "/kpi-works":"Кто ведёт путь — тот отвечает за след.",
@@ -229,6 +231,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/approvals",l:"Согласование",d:"Решения Ярла",roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES],i:"approvals",p:"approvals",g:"works"},
     {r:"/bonus-approval",l:"Согласование премий",d:"Премии рабочим",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"approvals",p:"bonus_approval",g:"works"},
     {r:"/pm-works",l:"Мои работы (РП)",d:"Проекты РП",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"pmworks",p:"pm_works",g:"works"},
+    {r:"/readiness",l:"Готовность проектов",d:"Готовность к старту по этапам",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"pmworks",p:"pm_works",g:"works"},
     {r:"/all-works",l:"Свод Контрактов",d:"Все работы",roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES],i:"allworks",p:"all_works",g:"works"},
     {r:"/all-estimates",l:"Свод Расчётов",d:"Все просчёты",roles:["ADMIN","BUH","HEAD_PM",...DIRECTOR_ROLES],i:"allestimates",p:"all_estimates",g:"works"},
     {r:"/gantt-calcs",l:"Гантт: Просчёты",d:"Пересечения по срокам",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"ganttcalcs",p:"gantt",g:"works"},
@@ -313,6 +316,7 @@ console.log('[ASGARD] Global period functions loaded');
     // M15: Аналитика для руководителей отделов
     {r:"/to-analytics",l:"Хроники Тендерного Отдела",d:"KPI тендерных специалистов",roles:["ADMIN","HEAD_TO",...DIRECTOR_ROLES],i:"kpiworks",p:"to_analytics",g:"analytics"},
     {r:"/pm-analytics",l:"Хроники Руководителей Проектов",d:"KPI и загрузка РП",roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES],i:"kpiworks",p:"pm_analytics",g:"analytics"},
+    {r:"/readiness-board",l:"Готовность по РП",d:"Сводка готовности проектов всех РП",roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES],i:"kpiworks",p:"pm_analytics",g:"analytics"},
     {r:"/engineer-dashboard",l:"Кузница Инженера",d:"Склад, оборудование, ТО",roles:["ADMIN","CHIEF_ENGINEER"],i:"backup",p:"engineer_dashboard",g:"analytics"},
     {r:"/pm-prizes",l:"Призы рабочих",d:"Запросы на выдачу призов",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"kpiworks",p:"pm_prizes",g:"analytics"},
     {r:"/gamification-dashboard",l:"Геймификация",d:"Монеты, призы, квесты рабочих",roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES,"HR","HR_MANAGER"],i:"kpiworks",p:"gamification_dashboard",g:"analytics"},
@@ -577,7 +581,7 @@ try{
     // ═══════════════════════════════════════════════════════════════
     // MOBILE V2 (LEGACY) — полностью отдельный UI при ≤768px
     // ═══════════════════════════════════════════════════════════════
-    const mobileV2Routes = new Set(['/welcome','/login','/register','/home','/dashboard','/my-dashboard','/big-screen','/engineer-dashboard','/pre-tenders','/funnel','/tenders','/customers','/customer','/tkp','/calculator','/pm-calcs','/approvals','/bonus-approval','/pm-works','/all-works','/all-estimates','/gantt','/gantt-calcs','/gantt-works','/gantt-objects','/kanban','/tasks','/tasks-admin','/pm-consents','/finances','/invoices','/acts','/buh-registry','/office-expenses','/cash','/cash-admin','/payroll','/payroll-sheet','/payroll-grid','/self-employed','/one-time-pay','/pass-requests','/procurement','/assembly','/warehouse','/my-equipment','/correspondence','/contracts','/seals','/proxies','/personnel','/employee','/hr-requests','/collections','/permits','/permit-applications','/permit-application-form','/training','/office-schedule','/workers-schedule','/hr-rating','/travel','/birthdays','/messenger','/chat','/mail','/my-mail','/mailbox','/alerts','/meetings','/telegram','/telephony','/mail-settings','/integrations','/mango','/kpi-works','/kpi-money','/to-analytics','/pm-analytics','/object-map','/calendar','/settings','/backup','/sync','/diag','/system-panel','/more','/user-requests','/reminders','/inbox-applications','/mimir','/test','/test-table']);
+    const mobileV2Routes = new Set(['/welcome','/login','/register','/home','/dashboard','/my-dashboard','/big-screen','/engineer-dashboard','/pre-tenders','/funnel','/tenders','/customers','/customer','/tkp','/calculator','/pm-calcs','/approvals','/bonus-approval','/pm-works','/all-works','/all-estimates','/gantt','/gantt-calcs','/gantt-works','/gantt-objects','/kanban','/tasks','/tasks-admin','/pm-consents','/finances','/invoices','/acts','/buh-registry','/office-expenses','/cash','/cash-admin','/payroll','/payroll-sheet','/payroll-grid','/self-employed','/one-time-pay','/pass-requests','/procurement','/assembly','/warehouse','/my-equipment','/correspondence','/contracts','/seals','/proxies','/personnel','/employee','/hr-requests','/collections','/permits','/permit-applications','/permit-application-form','/training','/office-schedule','/workers-schedule','/hr-rating','/travel','/birthdays','/messenger','/chat','/mail','/my-mail','/mailbox','/alerts','/meetings','/telegram','/telephony','/mail-settings','/integrations','/mango','/kpi-works','/kpi-money','/to-analytics','/pm-analytics','/readiness','/readiness-board','/object-map','/calendar','/settings','/backup','/sync','/diag','/system-panel','/more','/user-requests','/reminders','/inbox-applications','/mimir','/test','/test-table']);
     if (MOBILE_V2_ENABLED && _isMobile && window.App && window.M && window.DS && mobileV2Routes.has(cur)) {
       try { if (window.AsgardSessionGuard) AsgardSessionGuard.destroy(); } catch(e) {}
       window.removeEventListener('hashchange', window.__ASG_MOBILE_HASH__);
@@ -2193,6 +2197,8 @@ AsgardRouter.add("/assembly", ()=>AsgardAssemblyPage.render({layout, title:"Сб
     // M15: Аналитика для руководителей отделов
     AsgardRouter.add("/to-analytics", ()=>AsgardTOAnalytics.render({layout, title:"Хроники Тендерного Отдела"}), {auth:true, roles:["ADMIN","HEAD_TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/pm-analytics", ()=>AsgardPMAnalytics.render({layout, title:"Хроники Руководителей Проектов"}), {auth:true, roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/readiness", ()=>AsgardReadiness.renderPM({layout, title:"Готовность проектов"}), {auth:true, roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/readiness-board", ()=>AsgardReadiness.renderDirector({layout, title:"Готовность по РП"}), {auth:true, roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES]});
     AsgardRouter.add("/engineer-dashboard", ()=>AsgardEngineerDashboard.render({layout, title:"Кузница Инженера"}), {auth:true, roles:["ADMIN","CHIEF_ENGINEER"]});
     AsgardRouter.add("/object-map", ()=>AsgardObjectMap.render({layout, title:"Карта объектов"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES]});
 
