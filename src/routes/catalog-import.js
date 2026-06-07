@@ -43,21 +43,9 @@ async function routes(fastify) {
     const sourceDoc = ['upd', 'invoice', 'quote', 'other'].includes(sd) ? sd : 'other';
     // Буферизуем один раз: поток нельзя читать дважды (ExcelJS + сохранение файла).
     let buf; try { buf = await data.toBuffer(); } catch (_) { return bad(reply, 'Не удалось прочитать файл'); }
-    const ExcelJS = require('exceljs'); const wb = new ExcelJS.Workbook();
-    try { await wb.xlsx.load(buf); } catch (_) { return bad(reply, 'Не удалось прочитать Excel'); }
-    const ws = wb.worksheets[0]; if (!ws) return bad(reply, 'Пустой файл');
-    // Эвристика: ищем колонки наименование/кол-во/ед/цена. Берём строки где есть текст в первой непустой колонке.
-    const items = [];
-    ws.eachRow((row, idx) => {
-      if (idx === 1) return; // заголовок
-      const vals = (row.values || []).map(v => (v && v.text) ? v.text : v);
-      const name = (vals.find(v => typeof v === 'string' && v.trim().length > 1) || '').toString().trim();
-      if (!name) return;
-      const nums = vals.filter(v => typeof v === 'number' || (typeof v === 'string' && /^\d/.test(v)));
-      const qty = parseFloat(nums[0]) || 1;
-      const price = parseFloat(nums[nums.length - 1]) || null;
-      items.push({ name, article: '', quantity: qty, unit: 'шт', unit_price: price });
-    });
+    const { parseProcurementExcel } = require('../utils/excel-parser');
+    let items;
+    try { items = await parseProcurementExcel(buf); } catch (_) { return bad(reply, 'Не удалось прочитать Excel'); }
     if (!items.length) return bad(reply, 'Не найдено позиций в таблице');
     // сохраним файл
     const dir = path.join(process.env.UPLOAD_DIR || './uploads', 'catalog-imports');

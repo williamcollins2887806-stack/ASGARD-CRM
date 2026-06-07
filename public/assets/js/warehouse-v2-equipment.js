@@ -7,6 +7,9 @@
 window.WH2Equipment = (function () {
   // Контекст из warehouse-v2.js: { user, api, esc, toast, fmt, UI }
   let api, esc, toast, fmt, UI, _user;
+  // Колбэки корзины из warehouse-v2.js (isInCart/addToCart/removeFromCart/getWarehouseId)
+  let _cartCb = null;
+  function setCartCallbacks(cb) { _cartCb = cb; }
 
   const S = {
     all: [], filtered: [], kits: [], stats: {},
@@ -212,8 +215,16 @@ window.WH2Equipment = (function () {
     if (S.all.length < S.total) html += `<button class="wh2-eq-loadmore" id="wh2-eq-more">Показать ещё (${S.all.length} из ${S.total})</button>`;
     el.innerHTML = html;
     el.querySelectorAll('[data-grp]').forEach(h => h.onclick = () => { const k = h.dataset.grp; if (S.collapsed.has(k)) S.collapsed.delete(k); else S.collapsed.add(k); renderContent(); });
-    el.querySelectorAll('[data-eqid]').forEach(c => c.onclick = ev => { if (ev.target.closest('[data-act]')) return; openCard(+c.dataset.eqid); });
+    el.querySelectorAll('[data-eqid]').forEach(c => c.onclick = ev => { if (ev.target.closest('[data-act]') || ev.target.closest('[data-cart-eqid]')) return; openCard(+c.dataset.eqid); });
     el.querySelectorAll('[data-act]').forEach(b => b.onclick = ev => { ev.stopPropagation(); handleAction(b.dataset.act, +b.dataset.id); });
+    // «+ в корзину» на карточке оборудования
+    if (_cartCb) el.querySelectorAll('[data-cart-eqid]').forEach(btn => btn.onclick = async ev => {
+      ev.stopPropagation();
+      const eqid = +btn.dataset.cartEqid;
+      if (_cartCb.isInCart(null, eqid)) { /* убрать из корзины — найдём cartItemId через sync */ await _cartCb.removeByEquipment ? _cartCb.removeByEquipment(eqid) : null; btn.classList.remove('wh2-cart-toggle--active'); btn.textContent = '+'; return; }
+      const ok = await _cartCb.addToCart({ warehouse_id: _cartCb.getWarehouseId && _cartCb.getWarehouseId(), items: [{ item_type: 'equipment', equipment_id: eqid, need_qty: 1, source: 'catalog' }] });
+      if (ok) { btn.classList.add('wh2-cart-toggle--active'); btn.textContent = '✓'; }
+    });
     const more = el.querySelector('#wh2-eq-more'); if (more) more.onclick = async () => { S.offset += S.PAGE; try { await loadData(true); } catch (e) { toast('Ошибка', e.message, 'err'); } };
   }
 
@@ -242,7 +253,8 @@ window.WH2Equipment = (function () {
     if (e.status === 'issued' && (isAdmin() || e.current_holder_id === _user.id)) acts.push(`<button class="wh2-eq-act wh2-eq-act--return" data-act="return" data-id="${e.id}">📥 Вернуть</button>`);
     if (e.status === 'issued' && isPM()) acts.push(`<button class="wh2-eq-act" data-act="transfer" data-id="${e.id}">🔄</button>`);
     if (isAdmin() && !['repair', 'written_off'].includes(e.status)) acts.push(`<button class="wh2-eq-act" data-act="repair" data-id="${e.id}">🔧</button>`);
-    return `<div class="wh2-eq-card" data-eqid="${e.id}">
+    const cartBtn = _cartCb ? `<button class="wh2-cart-toggle ${_cartCb.isInCart(null, e.id) ? 'wh2-cart-toggle--active' : ''}" data-cart-eqid="${e.id}" title="В корзину закупки">${_cartCb.isInCart(null, e.id) ? '✓' : '+'}</button>` : '';
+    return `<div class="wh2-eq-card" data-eqid="${e.id}" style="position:relative">${cartBtn}
       <div class="wh2-eq-card__row">${photo}
         <div style="flex:1;min-width:0"><div class="wh2-eq-card__name">${hl(e.name)}</div>
           <div class="wh2-eq-card__inv">${e.inventory_number ? '№ ' + hl(e.inventory_number) : ''}${e.category_name ? ' · ' + esc(e.category_name) : ''}</div></div>
@@ -654,5 +666,5 @@ window.WH2Equipment = (function () {
     document.getElementById('wh2ai-ok').onclick = () => { const v = val('wh2ai-val'); if (!v) { toast('Внимание', 'Заполните поле', 'warn'); return; } onOk(v); };
   }
 
-  return { render, openCard, openWorkEquipmentModal };
+  return { render, openCard, openWorkEquipmentModal, setCartCallbacks };
 })();

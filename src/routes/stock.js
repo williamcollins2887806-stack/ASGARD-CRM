@@ -69,6 +69,9 @@ async function routes(fastify) {
        m.reason || null, m.created_by]);
   }
 
+  // reserveStock / releaseReservation вынесены в src/utils/stock-ops.js (реюз в warehouse-cart.js)
+  const { reserveStock, releaseReservation } = require('../utils/stock-ops');
+
   // ═══ НАЛИЧИЕ ═══
 
   // Остатки (плоский список строк stock с именами)
@@ -301,6 +304,41 @@ async function routes(fastify) {
     } catch (e) {
       await client.query('ROLLBACK');
       if (e.code === 'INSUFFICIENT') return bad(reply, 'Недостаточно остатка для списания', 409);
+      throw e;
+    } finally { client.release(); }
+  });
+
+  // ── Резерв расходника (прямой, вне корзины). PM/HEAD_PM тоже могут резервировать под работу ──
+  fastify.post('/reserve', { preHandler: [fastify.requireRoles([...WMS_WRITE, 'PM', 'HEAD_PM'])] }, async (req, reply) => {
+    const { product_id, warehouse_id, location_id, qty, work_id, notes } = req.body;
+    const q = num(qty); if (!product_id || !q || q <= 0) return bad(reply, 'product_id и qty>0 обязательны');
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const wh = warehouse_id || await mainWarehouseId(client);
+      const r = await reserveStock(client, { product_id, warehouse_id: wh, location_id, qty: q, work_id, reserved_by: req.user.id, notes });
+      await client.query('COMMIT');
+      return { success: true, reservation_id: r.reservation_id, new_reserved: r.new_reserved };
+    } catch (e) {
+      await client.query('ROLLBACK');
+      if (e.code === 'RESERVED') return bad(reply, `Недостаточно свободного остатка. Доступно: ${e.available}`, 409);
+      throw e;
+    } finally { client.release(); }
+  });
+
+  // ── Снятие резерва (при демобилизации/отмене) ──
+  fastify.post('/reserve/:id/release', { preHandler: [fastify.requireRoles([...WMS_WRITE, 'PM', 'HEAD_PM'])] }, async (req, reply) => {
+    const id = parseInt(req.params.id); if (isNaN(id)) return bad(reply, 'Неверный ID');
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await releaseReservation(client, { reservation_id: id, released_by: req.user.id });
+      await client.query('COMMIT');
+      return { success: true };
+    } catch (e) {
+      await client.query('ROLLBACK');
+      if (e.code === 'NOT_FOUND') return bad(reply, 'Резерв не найден', 404);
+      if (e.code === 'ALREADY') return bad(reply, 'Резерв уже снят', 409);
       throw e;
     } finally { client.release(); }
   });

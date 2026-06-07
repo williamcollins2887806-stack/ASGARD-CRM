@@ -496,6 +496,7 @@ fastify.register(require('./routes/pre_tenders'), { prefix: '/api/pre-tenders' }
 fastify.register(require('./routes/tenders'), { prefix: '/api/tenders' });
 fastify.register(require('./routes/estimates'), { prefix: '/api/estimates' });
 fastify.register(require('./routes/works'), { prefix: '/api/works' });
+fastify.register(require('./routes/work-readiness'), { prefix: '/api/work-readiness' });
 fastify.register(require('./routes/customers'), { prefix: '/api/customers' });
 fastify.register(require('./routes/expenses'), { prefix: '/api/expenses' });
 fastify.register(require('./routes/incomes'), { prefix: '/api/incomes' });
@@ -539,6 +540,7 @@ fastify.register(require('./routes/assembly'), { prefix: '/api/assembly' });
 fastify.register(require('./routes/warehouse-locations'), { prefix: '/api/warehouse' }); // WMS: адресное хранение (ячейки) /warehouse/locations
 fastify.register(require('./routes/stock'), { prefix: '/api/stock' }); // WMS: количественный учёт расходников + движения + quick-каталог
 fastify.register(require('./routes/catalog-import'), { prefix: '/api/catalog-import' }); // импорт УПД/счёт/Excel → каталог/оборудование
+fastify.register(require('./routes/warehouse-cart'), { prefix: '/api/warehouse-cart' }); // маркетплейс-корзина склада → авто-разбивка резерв+закупка
 fastify.register(require('./routes/tmc_requests'), { prefix: '/api/tmc-requests' });
 fastify.register(require('./routes/sse'), { prefix: '/api/sse' });
 fastify.register(require('./routes/push'), { prefix: '/api/push' });
