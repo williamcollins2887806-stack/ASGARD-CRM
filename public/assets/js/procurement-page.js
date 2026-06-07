@@ -543,7 +543,10 @@ window.AsgardProcurementPage = (function() {
             <td style="padding:6px;text-align:right"><button class="btn ghost" data-rm="${esc(c.k)}" style="font-size:12px;padding:2px 8px">✕</button></td></tr>`; }).join('')}
         </table>
         <button class="btn primary" id="sc-submit" style="margin-top:12px;width:100%">Добавить в заявку (${cartArr.length})</button>
-      </div>` : '<div style="margin-top:12px;color:var(--t2);font-size:13px">Выберите позиции из каталога →</div>'}
+      </div>` : '<div style="margin-top:12px;color:var(--t2);font-size:13px">Отметьте товары из каталога кнопкой «+». Нет нужного — добавьте вручную в заявке.</div>'}
+      <div style="margin-top:10px;text-align:center">
+        <button class="btn ghost" id="sc-to-detail" style="font-size:13px">Открыть заявку (добавить вручную / текстом / Excel) →</button>
+      </div>
     </div>`;
     showModal({ title: '🛒 Каталог закупки', html: html });
     const qEl = document.getElementById('sc-q');
@@ -562,9 +565,12 @@ window.AsgardProcurementPage = (function() {
       if (r.error) { toast('Ошибка', r.error, 'err'); return; }
       toast('Добавлено', `${r.count} позиций`, 'ok'); Object.keys(_cart).forEach(k => delete _cart[k]); closeModal(); openDetail(procId);
     };
+    const toDetail = document.getElementById('sc-to-detail');
+    if (toDetail) toDetail.onclick = () => { closeModal(); openDetail(procId); };
   }
 
-  async function openCreateModal(workId) {
+  async function openCreateModal(workId, opts) {
+    const autoShowcase = !(opts && opts.autoShowcase === false); // по умолчанию открываем витрину после создания
     let workOpts = [{ value: '', label: '— без работы —' }];
     try {
       const wr = await apiFetch('/api/works?limit=200');
@@ -590,7 +596,7 @@ window.AsgardProcurementPage = (function() {
       <label>Ценовой сегмент<div id="pc-segment_w"></div></label>
       <label>Лимит бюджета, ₽ (необязательно)<input id="pc-budget" type="number" min="0" placeholder="—"></label>
       <label>Примечание<textarea id="pc-notes" rows="3"></textarea></label>
-      <button class="btn primary" id="pc-submit">Создать пустую заявку</button>
+      <button class="btn primary" id="pc-submit">${autoShowcase ? 'Создать и выбрать товары из каталога →' : 'Создать заявку'}</button>
     </div>`;
     showModal({ title: 'Новая заявка', html: html });
     if (templates.length) {
@@ -619,7 +625,9 @@ window.AsgardProcurementPage = (function() {
       };
       const r = await apiPost('/api/procurement', body);
       if (r.error) { toast('Ошибка', r.error, 'err'); return; }
-      toast('Создано', '', 'ok'); closeModal(); openDetail(r.item.id);
+      toast('Создано', '', 'ok'); closeModal();
+      // Витрина каталога сразу — чтобы пользователь видел, как добавлять товары.
+      if (autoShowcase) openShowcase(r.item.id); else openDetail(r.item.id);
     };
   }
 

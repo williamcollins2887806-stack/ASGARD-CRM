@@ -1151,10 +1151,15 @@ window.AsgardPmWorksPage=(function(){
             }
           });
 
+          // ─── Закупки (доступно весь срок работы, не только при закрытии) ───
+          if(user.role==="PM" || user.role==="HEAD_PM"){
+            actions.push({ section: 'Закупки' });
+            actions.push({ icon: '🛒', label: 'Закупки', desc: 'Заявки на закупку по работе', onClick: () => openProcurementForWork(w, user) });
+          }
+
           // ─── Завершение ───
           if(user.role==="PM" && String(w.work_status||"")===triggerStatus){
             actions.push('---');
-            actions.push({ icon: '🛒', label: 'Закупки', desc: 'Заявки на закупку по работе', onClick: () => openProcurementForWork(w, user) });
             actions.push({ icon: '📦', label: 'Склад', desc: 'Бронирование оборудования', onClick: () => openEquipmentForWork(w, user) });
             actions.push({ icon: '🏗️', label: 'Сбор', desc: 'Мобилизация / демобилизация', onClick: () => openAssemblyForWork(w, user) });
             actions.push({
