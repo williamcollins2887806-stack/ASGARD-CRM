@@ -3,11 +3,39 @@
  * Этап 40
  */
 window.AsgardCustomDashboard = (function(){
-  
+
+  // Стили виджетов готовности (однократно)
+  (function injectReadinessWidgetCSS(){
+    if(document.getElementById('dwr-widget-css')) return;
+    const st=document.createElement('style'); st.id='dwr-widget-css';
+    st.textContent=`
+      .dwr-wrap{ display:flex; flex-direction:column; gap:8px; }
+      .dwr-sec-title{ font-size:12px; font-weight:700; color:var(--t2); margin:2px 0; }
+      .dwr-card{ display:flex; align-items:center; gap:12px; padding:10px 12px; background:var(--bg3); border-radius:var(--r-sm,8px); border:1px solid var(--brd); }
+      .dwr-ring{ flex:0 0 auto; line-height:0; }
+      .dwr-body{ flex:1; min-width:0; }
+      .dwr-name{ font-weight:600; font-size:13px; color:var(--t1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .dwr-sub{ font-size:12px; color:var(--t3); margin-top:1px; }
+      .dwr-meta{ display:flex; flex-wrap:wrap; gap:8px; font-size:11px; color:var(--t3); margin-top:3px; align-items:center; }
+      .dwr-dl{ margin-left:auto; }
+      .dwr-blk{ color:var(--err-t,#e0524d); font-weight:600; }
+      .dwr-arow{ padding:9px 12px; background:var(--bg3); border-radius:var(--r-sm,8px); border:1px solid var(--brd); }
+      .dwr-stat{ display:flex; flex-wrap:wrap; gap:6px; margin-top:5px; }
+      .dwr-chip{ font-size:11px; background:var(--bg2); border:1px solid var(--brd); border-radius:999px; padding:2px 8px; color:var(--t2); }
+      .rdw-stage{ border:1px solid var(--brd); border-radius:10px; padding:10px 12px; margin-bottom:8px; background:var(--bg2); }
+      .rdw-stage-h{ display:flex; justify-content:space-between; font-weight:600; font-size:13px; color:var(--t1); }
+      .rdw-items{ margin:6px 0; display:flex; flex-direction:column; gap:3px; }
+      .rdw-item{ display:flex; justify-content:space-between; gap:10px; font-size:12px; color:var(--t2); }
+    `;
+    document.head.appendChild(st);
+  })();
+
   const WIDGET_TYPES = {
     welcome: { name: 'Приветствие', icon: '👋', size: 'normal', roles: ['*'], render: renderWelcome },
     notifications: { name: 'Уведомления', icon: '🔔', size: 'normal', roles: ['*'], render: renderNotifications },
     my_works: { name: 'Мои работы', icon: '🔧', size: 'normal', roles: ['PM','HEAD_PM'], render: renderMyWorks },
+    my_readiness: { name: 'Мои проекты', icon: '🎯', size: 'wide', roles: ['PM','HEAD_PM'], render: renderMyReadiness },
+    director_readiness: { name: 'Готовность по РП', icon: '🚦', size: 'wide', roles: ['ADMIN','HEAD_PM','DIRECTOR_*'], render: renderDirectorReadiness },
     tenders_funnel: { name: 'Воронка', icon: '📊', size: 'normal', roles: ['ADMIN','TO','HEAD_TO','PM','DIRECTOR_*'], render: renderFunnel },
     money_summary: { name: 'Финансы', icon: '💰', size: 'normal', roles: ['ADMIN','DIRECTOR_*'], render: renderMoney },
     equipment_value: { name: 'Стоимость ТМЦ', icon: '📦', size: 'normal', roles: ['ADMIN','CHIEF_ENGINEER','DIRECTOR_*'], render: renderEquipmentValue },
@@ -88,10 +116,10 @@ window.AsgardCustomDashboard = (function(){
 
   const DEFAULT_LAYOUTS = {
     ADMIN: ['welcome','academy','kpi_summary','pre_tenders','quick_actions','overdue_works','tenders_funnel','my_mail','notifications'],
-    PM: ['welcome','academy','quick_actions','my_works','my_cash_balance','gantt_mini','todo','my_mail','notifications','birthdays'],
+    PM: ['welcome','academy','quick_actions','my_readiness','my_works','my_cash_balance','gantt_mini','todo','my_mail','notifications','birthdays'],
     TO: ['welcome','academy','quick_actions','tenders_funnel','tender_dynamics','my_mail','notifications'],
     HEAD_TO: ['welcome','academy','pre_tenders','platform_alerts','tender_dynamics','tenders_funnel','my_mail','notifications'],
-    HEAD_PM: ['welcome','academy','team_workload','overdue_works','gantt_mini','my_mail','notifications'],
+    HEAD_PM: ['welcome','academy','director_readiness','team_workload','overdue_works','gantt_mini','my_mail','notifications'],
     CHIEF_ENGINEER: ['welcome','academy','equipment_value','equipment_alerts','my_mail','notifications'],
     HR: ['welcome','academy','permits_expiry','birthdays','my_mail','notifications','calendar'],
     HR_MANAGER: ['welcome','academy','permits_expiry','birthdays','team_workload','my_mail','notifications'],
@@ -333,6 +361,206 @@ window.AsgardCustomDashboard = (function(){
     const w = (await AsgardDB.getAll('works')||[]).filter(x=>x.pm_id===user.id&&!['Работы сдали','Закрыт'].includes(x.work_status)).slice(0,5);
     if (!w.length) { el.innerHTML = '<div class="help" style="text-align:center;padding:16px 0">Нет активных работ</div>'; return; }
     el.innerHTML = w.map(x=>'<div style="padding:10px 12px;margin-bottom:6px;background:var(--bg3);border-radius:var(--r-sm);border-left:3px solid var(--red)"><div style="font-weight:600;font-size:13px;color:var(--t1)">'+esc(x.work_title)+'</div><div style="font-size:12px;color:var(--t3);margin-top:2px">'+esc(x.customer_name)+' \u00B7 '+esc(x.work_status)+'</div></div>').join('');
+  }
+
+  // ── Helpers готовности/статуса работ для виджетов РП и директора ──────────
+  const _esc = (window.AsgardUI && AsgardUI.esc) ? AsgardUI.esc : (s => String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])));
+  const PREP_SET = new Set(['Новая','Подготовка','Мобилизация']);
+  const CLOSED_SET = new Set(['Работы сдали','Закрыт']);
+  // Признак «в подготовке» — ТОЛЬКО статус (start_in_work_date на проде почти не заполняется).
+  function _isPrep(w){ return PREP_SET.has(w.work_status||''); }
+  function _readyColor(p){ return p>=80?'var(--ok-t)':(p>=50?'var(--amber,#e0a500)':'var(--err-t)'); }
+
+  async function _authToken(){ try{ const a=await AsgardAuth.getAuth(); return a.token; }catch(e){ return localStorage.getItem('asgard_token')||localStorage.getItem('auth_token'); } }
+
+  async function _readinessSummary(ids){
+    if(!ids.length) return {};
+    try{
+      const tok = await _authToken();
+      const r = await fetch('/api/work-readiness/summary?ids='+ids.join(','), { headers:{ Authorization:'Bearer '+tok } });
+      return r.ok ? await r.json() : {};
+    }catch(e){ return {}; }
+  }
+  async function _finSummary(id){
+    try{
+      const tok = await _authToken();
+      const r = await fetch('/api/works/'+id+'/financial-summary', { headers:{ Authorization:'Bearer '+tok } });
+      return r.ok ? await r.json() : null;
+    }catch(e){ return null; }
+  }
+  function _daysLeft(dateStr){
+    if(!dateStr) return null;
+    const d = new Date(dateStr); if(isNaN(d)) return null;
+    return Math.round((d - new Date()) / 86400000);
+  }
+  function _miniRing(pct){
+    const p = Math.max(0, Math.min(100, Math.round(pct||0)));
+    const col = _readyColor(p);
+    return '<span class="dwr-ring" data-pct="'+p+'" data-col="'+_esc(col)+'"><canvas width="44" height="44"></canvas></span>';
+  }
+  function _drawRings(scope){
+    (scope||document).querySelectorAll('.dwr-ring canvas').forEach(cv=>{
+      const host = cv.parentElement; const p = Number(host.getAttribute('data-pct'))||0; const col = host.getAttribute('data-col');
+      try{
+        const dpr=window.devicePixelRatio||1, size=44; cv.width=size*dpr; cv.height=size*dpr; cv.style.width=size+'px'; cv.style.height=size+'px';
+        const ctx=cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0);
+        const cx=size/2,cy=size/2,r=17,lw=5,s=Math.max(0,Math.min(100,p));
+        ctx.clearRect(0,0,size,size); ctx.lineWidth=lw; ctx.lineCap='round';
+        ctx.strokeStyle='rgba(120,140,180,.22)'; ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke();
+        const c = col && col.indexOf('var(')<0 ? col : (s>=80?'#22c55e':s>=50?'#e0a500':'#ef4444');
+        ctx.strokeStyle=c; ctx.beginPath(); ctx.arc(cx,cy,r,-Math.PI/2,-Math.PI/2+(s/100)*Math.PI*2,false); ctx.stroke();
+        ctx.fillStyle=c; ctx.font='bold 12px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(s+'%',cx,cy+1);
+      }catch(e){}
+    });
+  }
+
+  // ── Виджет РП «Мои проекты»: 2 фазы (подготовка → готовность, в работе → статус) ──
+  async function renderMyReadiness(el, user){
+    const esc = AsgardUI.esc, money = AsgardUI.money;
+    const all = (await AsgardDB.getAll('works')||[]).filter(w => w.pm_id===user.id && !CLOSED_SET.has(w.work_status||''));
+    if(!all.length){ el.innerHTML = '<div class="help" style="text-align:center;padding:16px 0">Нет активных проектов</div>'; return; }
+    const prep = all.filter(_isPrep);
+    const active = all.filter(w => !_isPrep(w));
+    const summary = await _readinessSummary(prep.map(w=>w.id));
+
+    let html = '';
+    // Фаза подготовки — карточки готовности
+    if(prep.length){
+      html += '<div class="dwr-sec-title">🎯 В подготовке</div>';
+      html += prep.map(w=>{
+        const s = summary[w.id] || {};
+        const pct = s.overall_percent||0;
+        const dl = _daysLeft(s.start_plan || w.start_plan);
+        const dlTxt = dl==null ? '' : (dl<0 ? '<span style="color:var(--err-t)">старт просрочен '+Math.abs(dl)+' дн.</span>' : 'до старта '+dl+' дн.');
+        const blk = s.blocker_label ? '<span class="dwr-blk">⚠ '+esc(s.blocker_label)+'</span>' : '';
+        return '<div class="dwr-card" data-work="'+w.id+'">'+
+          _miniRing(pct)+
+          '<div class="dwr-body">'+
+            '<div class="dwr-name">'+esc(w.work_title||w.customer_name||('Работа #'+w.id))+'</div>'+
+            '<div class="dwr-sub">'+esc(w.customer_name||'')+' · '+esc(w.work_status||'')+'</div>'+
+            '<div class="dwr-meta"><span>'+(s.stages_done||0)+'/'+(s.stages_total||0)+' этапов</span>'+blk+'<span class="dwr-dl">'+dlTxt+'</span></div>'+
+          '</div>'+
+          '<button class="btn mini ghost dwr-open" data-work="'+w.id+'">Детали</button>'+
+        '</div>';
+      }).join('');
+    }
+    // Фаза в работе — статус (маржа/сроки/перерасход) — грузим финсводку
+    if(active.length){
+      html += '<div class="dwr-sec-title" style="margin-top:10px">⚙️ В работе</div>';
+      html += '<div id="dwr-active-'+user.id+'">'+active.map(w=>'<div class="dwr-arow" data-work="'+w.id+'"><div class="dwr-name">'+esc(w.work_title||('Работа #'+w.id))+'</div><div class="dwr-sub">загрузка статуса…</div></div>').join('')+'</div>';
+    }
+    el.innerHTML = '<div class="dwr-wrap">'+html+'</div>';
+    _drawRings(el);
+
+    // Догружаем статус активных работ (параллельно, без блокировки)
+    active.forEach(async w=>{
+      const fin = await _finSummary(w.id);
+      const row = el.querySelector('.dwr-arow[data-work="'+w.id+'"]'); if(!row) return;
+      if(!fin){ row.querySelector('.dwr-sub').textContent = 'нет данных'; return; }
+      const margin = fin.profit ? Number(fin.profit.margin||0) : null;
+      const mCol = margin==null ? 'var(--t3)' : (margin>=15?'var(--ok-t)':(margin>=0?'var(--amber,#e0a500)':'var(--err-t)'));
+      const cp = fin.work_meta ? Number(fin.work_meta.cost_plan||0) : 0;
+      const cf = fin.work_meta ? Number(fin.work_meta.cost_fact||0) : 0;
+      const over = cp>0 ? Math.round((cf-cp)/cp*100) : null;
+      const overTxt = over==null ? '' : (over>0 ? '<span style="color:var(--err-t)">перерасход +'+over+'%</span>' : '<span style="color:var(--ok-t)">в смете '+over+'%</span>');
+      const dl = fin.timeline ? _daysLeft(fin.timeline.end_plan) : _daysLeft(w.end_plan);
+      const dlTxt = dl==null ? '' : (dl<0 ? '<span style="color:var(--err-t)">просрочка '+Math.abs(dl)+' дн.</span>' : dl+' дн. до конца');
+      const pay = fin.payments ? Number(fin.payments.payment_pct||0) : 0;
+      row.innerHTML =
+        '<div class="dwr-name">'+esc(w.work_title||('Работа #'+w.id))+'</div>'+
+        '<div class="dwr-stat">'+
+          '<span class="dwr-chip">маржа <b style="color:'+mCol+'">'+(margin==null?'—':margin.toFixed(1)+'%')+'</b></span>'+
+          (overTxt?'<span class="dwr-chip">'+overTxt+'</span>':'')+
+          (dlTxt?'<span class="dwr-chip">'+dlTxt+'</span>':'')+
+          '<span class="dwr-chip">оплата '+pay+'%</span>'+
+        '</div>';
+    });
+
+    // Клик «Детали» → drawer этапов готовности + override
+    el.querySelectorAll('.dwr-open').forEach(b=> b.addEventListener('click', e=>{ e.stopPropagation(); openReadinessDrawer(Number(b.getAttribute('data-work')), user); }));
+  }
+
+  // ── Drawer: этапы готовности по работе + принудительное закрытие ───────────
+  async function openReadinessDrawer(workId, user){
+    const esc = AsgardUI.esc;
+    AsgardUI.showDrawer({ title:'Готовность проекта', width:'wide', html:'<div id="rdw-body">Загрузка…</div>', onMount: async ()=>{
+      const tok = await _authToken();
+      let data=null;
+      try{ const r=await fetch('/api/work-readiness/'+workId,{headers:{Authorization:'Bearer '+tok}}); if(r.ok) data=await r.json(); }catch(e){}
+      const body = document.getElementById('rdw-body'); if(!body) return;
+      if(!data){ body.innerHTML='<div class="help">Не удалось загрузить</div>'; return; }
+      const canOverride = ['PM','HEAD_PM','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV'].includes(user.role);
+      body.innerHTML =
+        '<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">'+_miniRing(data.overall_percent)+
+        '<div><div style="font-weight:700">'+esc(data.work_title||'')+'</div><div class="help">Общая готовность '+data.overall_percent+'% · '+data.stages_done+'/'+data.stages_total+' этапов</div></div></div>'+
+        data.stages.filter(s=>s.applicable).map(s=>{
+          const col=_readyColor(s.percent);
+          const items=(s.items||[]).map(it=>'<div class="rdw-item"><span>'+(it.ok?'✅':'⬜')+' '+esc(it.name)+'</span><span class="help">'+esc(it.detail||'')+'</span></div>').join('');
+          const ovBtn = canOverride ? '<button class="btn mini ghost rdw-ov" data-stage="'+s.stage+'" data-on="'+(s.forced?1:0)+'">'+(s.forced?'Снять закрытие':'Закрыть этап')+'</button>' : '';
+          return '<div class="rdw-stage">'+
+            '<div class="rdw-stage-h"><span>'+s.icon+' '+esc(s.label)+(s.forced?' <span class="dwr-blk">принудительно</span>':'')+'</span>'+
+            '<span style="color:'+col+';font-weight:700">'+s.percent+'%</span></div>'+
+            '<div class="rdw-items">'+items+'</div>'+ovBtn+
+          '</div>';
+        }).join('');
+      _drawRings(body);
+      body.querySelectorAll('.rdw-ov').forEach(b=> b.addEventListener('click', async ()=>{
+        const stage=b.getAttribute('data-stage'); const on=b.getAttribute('data-on')==='1';
+        b.disabled=true;
+        try{
+          if(on){ await fetch('/api/work-readiness/'+workId+'/override/'+stage,{method:'DELETE',headers:{Authorization:'Bearer '+tok}}); }
+          else { await fetch('/api/work-readiness/'+workId+'/override',{method:'POST',headers:{Authorization:'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify({stage,forced_done:true})}); }
+          openReadinessDrawer(workId, user); // перерисовать
+        }catch(e){ AsgardUI.toast('Ошибка', e.message, 'err'); b.disabled=false; }
+      }));
+    }});
+  }
+
+  // ── Виджет директора «Готовность по РП» ───────────────────────────────────
+  async function renderDirectorReadiness(el, user){
+    const esc = AsgardUI.esc, money = AsgardUI.money;
+    const works = (await AsgardDB.getAll('works')||[]).filter(w=>!CLOSED_SET.has(w.work_status||''));
+    const users = (await AsgardDB.getAll('users')||[]);
+    const userMap = new Map(users.map(u=>[u.id,u]));
+    const prep = works.filter(_isPrep);
+    const summary = await _readinessSummary(prep.map(w=>w.id));
+
+    // Группируем работы-в-подготовке по РП
+    const byPm = new Map();
+    prep.forEach(w=>{ if(!w.pm_id) return; if(!byPm.has(w.pm_id)) byPm.set(w.pm_id,[]); byPm.get(w.pm_id).push(w); });
+    if(!byPm.size){ el.innerHTML='<div class="help" style="text-align:center;padding:16px 0">Нет проектов в подготовке</div>'; return; }
+
+    const rows = [];
+    for(const [pmId, list] of byPm){
+      const pm = userMap.get(pmId);
+      let sum=0, cnt=0, hot=0;
+      list.forEach(w=>{ const s=summary[w.id]; if(s){ sum+=s.overall_percent||0; cnt++; const dl=_daysLeft(s.start_plan||w.start_plan); if((s.overall_percent||0)<60 && dl!=null && dl<=14) hot++; } });
+      const avg = cnt? Math.round(sum/cnt):0;
+      rows.push({ pmId, name: pm? (pm.name||pm.login||('РП #'+pmId)) : ('РП #'+pmId), works:list.length, avg, hot, list });
+    }
+    rows.sort((a,b)=> a.avg-b.avg); // самые проблемные сверху
+
+    el.innerHTML = '<div class="dwr-wrap">'+rows.map(r=>{
+      const light = r.hot>0 ? '🔴' : (r.avg<70 ? '🟡' : '🟢');
+      return '<div class="dwr-card dwr-pm" data-pm="'+r.pmId+'">'+
+        _miniRing(r.avg)+
+        '<div class="dwr-body">'+
+          '<div class="dwr-name">'+light+' '+esc(r.name)+'</div>'+
+          '<div class="dwr-meta"><span>'+r.works+' в подготовке</span>'+(r.hot?'<span class="dwr-blk">'+r.hot+' горящих</span>':'')+'</div>'+
+        '</div>'+
+        '<button class="btn mini ghost dwr-pm-open" data-pm="'+r.pmId+'">Работы →</button>'+
+      '</div>';
+    }).join('')+'</div>';
+    _drawRings(el);
+
+    el.querySelectorAll('.dwr-pm-open').forEach(b=> b.addEventListener('click', e=>{
+      e.stopPropagation();
+      const r = rows.find(x=>String(x.pmId)===b.getAttribute('data-pm')); if(!r) return;
+      AsgardUI.showDrawer({ title:'Проекты: '+r.name, width:'wide', html:
+        '<div class="dwr-wrap">'+r.list.map(w=>{ const s=summary[w.id]||{}; return '<div class="dwr-card" style="cursor:pointer" onclick="location.hash=\'#/pm-works\'">'+_miniRing(s.overall_percent||0)+'<div class="dwr-body"><div class="dwr-name">'+esc(w.work_title||('Работа #'+w.id))+'</div><div class="dwr-meta"><span>'+(s.stages_done||0)+'/'+(s.stages_total||0)+' этапов</span>'+(s.blocker_label?'<span class="dwr-blk">⚠ '+esc(s.blocker_label)+'</span>':'')+'</div></div></div>'; }).join('')+'</div>',
+        onMount: ()=> _drawRings(document)
+      });
+    }));
   }
 
   async function renderFunnel(el, user) {

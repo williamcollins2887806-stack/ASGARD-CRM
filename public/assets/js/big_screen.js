@@ -125,12 +125,22 @@ window.AsgardBigScreen = (function(){
         .c-blue{color:var(--info-t)} .c-gold{color:var(--gold-l)} .c-purple{color:var(--purple-l)}
         .c-cyan{color:var(--cyan-l)} .c-white{color:var(--t1)}
 
+        /* ── Подготовка проектов ── */
+        .bs-prep-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+        .bs-prep-card{background:var(--bg2);border:1px solid var(--brd);border-radius:14px;padding:18px 14px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:4px}
+        .bs-prep-name{font-size:15px;font-weight:700;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;margin-top:6px}
+        .bs-prep-sub{font-size:12px;color:var(--t3)}
+        .bs-prep-meta{font-size:12px;color:var(--t2);margin-top:4px}
+        .bs-prep-blk{color:var(--err-t);font-weight:700;margin-left:6px}
+        .bs-prep-dl{font-size:12px;color:var(--t3);margin-top:2px}
+
         @media (max-width:1200px){
           .bs-kpi{grid-template-columns:repeat(2,1fr)}
           .bs-cols{grid-template-columns:1fr}
           .bs-kpi-val{font-size:36px}
           .bs-hdr{padding:16px 24px}
           .bs-body{padding:16px 24px}
+          .bs-prep-grid{grid-template-columns:repeat(2,1fr)}
         }
       </style>
       <div class="bs" id="bsWrap">
@@ -255,6 +265,35 @@ window.AsgardBigScreen = (function(){
     document.querySelectorAll('.bs-dot').forEach((d, i) => d.classList.toggle('active', i === currentSlide));
     const pg = document.getElementById('bsPage');
     if (pg) pg.textContent = (currentSlide + 1) + ' / ' + slides.length;
+    // Отрисовать canvas-графики текущего слайда (декларативно по data-bschart)
+    requestAnimationFrame(() => drawSlideCharts(el));
+  }
+
+  // Рисует все canvas с атрибутом data-bschart на текущем слайде.
+  // Спецификация графика лежит в _chartSpecs[id], выставленном при сборке слайда
+  // (HTML-строки нельзя передать объект напрямую — храним по ключу).
+  function drawSlideCharts(scope) {
+    (scope || document).querySelectorAll('canvas[data-bschart]').forEach(cv => {
+      const key = cv.getAttribute('data-bschart');
+      const spec = _chartSpecs[key];
+      if (!spec || !window.AsgardCharts) return;
+      try {
+        if (spec.type === 'ring')      AsgardCharts.scoreRing(cv, spec.value, spec.opts || {});
+        else if (spec.type === 'line') AsgardCharts.lineArea(cv, spec.series, spec.opts || {});
+        else if (spec.type === 'stack')AsgardCharts.stackedBar(cv, spec.rows, spec.opts || {});
+        else if (spec.type === 'dial') AsgardCharts.dial(cv, spec.value, spec.opts || {});
+      } catch (e) { /* график необязателен */ }
+    });
+  }
+
+  // Реестр спецификаций графиков по ключу + генератор ключей
+  let _chartSpecs = {};
+  let _chartSeq = 0;
+  function _chart(spec) {
+    const key = 'bsc_' + (++_chartSeq);
+    _chartSpecs[key] = spec;
+    const h = spec.h || 200;
+    return '<canvas data-bschart="' + key + '" style="width:100%;height:' + h + 'px;display:block"></canvas>';
   }
 
   function renderDots() {
@@ -286,18 +325,32 @@ window.AsgardBigScreen = (function(){
     // API data (server-side)
     let preTenderStats = {};
     let equipmentStats = {};
+    let teamAnalytics = {};
+    let readiness = {};
     try {
       const auth = await AsgardAuth.getAuth();
       const headers = { 'Authorization': 'Bearer ' + auth.token };
-      const [ptRes, eqRes] = await Promise.all([
+      const [ptRes, eqRes, teamRes] = await Promise.all([
         fetch('/api/pre-tenders/stats', { headers }).then(r => r.json()).catch(() => ({})),
-        fetch('/api/equipment/balance-value', { headers }).then(r => r.json()).catch(() => ({}))
+        fetch('/api/equipment/balance-value', { headers }).then(r => r.json()).catch(() => ({})),
+        fetch('/api/works/analytics/team', { headers }).then(r => r.json()).catch(() => ({}))
       ]);
       if (ptRes.success) preTenderStats = ptRes;
       if (eqRes.success) equipmentStats = eqRes;
+      teamAnalytics = teamRes && teamRes.team ? teamRes : {};
+
+      // Готовность работ в подготовке (для нового слайда)
+      const prepWorks = works.filter(w => ['Новая','Подготовка','Мобилизация'].includes(w.work_status));
+      const prepIds = prepWorks.map(w => w.id).slice(0, 200);
+      if (prepIds.length) {
+        try {
+          const rr = await fetch('/api/work-readiness/summary?ids=' + prepIds.join(','), { headers });
+          if (rr.ok) readiness = await rr.json();
+        } catch(_) {}
+      }
     } catch(_) {}
 
-    cachedData = { tenders, works, users, employees, cash, permits, permitTypes, preTenderStats, equipmentStats, y, now };
+    cachedData = { tenders, works, users, employees, cash, permits, permitTypes, preTenderStats, equipmentStats, teamAnalytics, readiness, y, now };
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -307,16 +360,67 @@ window.AsgardBigScreen = (function(){
     const d = cachedData;
     if (!d.tenders) return ['<div style="text-align:center;color:var(--t3);font-size:20px">Загрузка данных...</div>'];
 
+    _chartSpecs = {}; _chartSeq = 0; // сброс реестра графиков перед пересборкой
     const result = [];
     result.push(slideKPI(d));
     result.push(slideFinance(d));
     result.push(slideFunnel(d));
+    result.push(slidePreparation(d)); // НОВЫЙ: готовность проектов к старту
     result.push(slidePM(d));
     result.push(slideActiveWorks(d));
     result.push(slideOverdue(d));
     result.push(slideTeamAndPermits(d));
     result.push(slidePreTendersAndEquipment(d));
     return result;
+  }
+
+  // ───────────────────────────────────────────────────────
+  //  SLIDE: Подготовка проектов (готовность к старту)
+  // ───────────────────────────────────────────────────────
+  function slidePreparation(d) {
+    const summary = d.readiness || {};
+    const prep = (d.works || [])
+      .filter(w => ['Новая','Подготовка','Мобилизация'].includes(w.work_status))
+      .map(w => ({ w, s: summary[w.id] }))
+      .filter(x => x.s) // только с рассчитанной готовностью
+      .sort((a, b) => (a.s.overall_percent || 0) - (b.s.overall_percent || 0)); // проблемные сверху
+
+    if (!prep.length) {
+      return `
+        <div class="bs-title"><h2>Подготовка проектов</h2><div class="bs-subtitle">Готовность работ к старту</div></div>
+        <div style="text-align:center;padding:80px 0;color:var(--t3)">
+          <div style="font-size:64px;margin-bottom:16px">🎉</div>
+          <div style="font-size:22px">Нет проектов в подготовке</div>
+        </div>`;
+    }
+
+    const userMap = new Map((d.users || []).map(u => [u.id, u]));
+    const avg = Math.round(prep.reduce((s, x) => s + (x.s.overall_percent || 0), 0) / prep.length);
+    const hot = prep.filter(x => {
+      const dl = x.s.start_plan ? Math.round((new Date(x.s.start_plan) - d.now) / 86400000) : null;
+      return (x.s.overall_percent || 0) < 60 && dl != null && dl <= 14;
+    }).length;
+
+    const cards = prep.slice(0, 8).map(({ w, s }) => {
+      const pct = s.overall_percent || 0;
+      const pm = userMap.get(w.pm_id);
+      const dl = s.start_plan ? Math.round((new Date(s.start_plan) - d.now) / 86400000) : null;
+      const dlTxt = dl == null ? '' : (dl < 0 ? `<span class="c-red">старт −${Math.abs(dl)}д</span>` : `до старта ${dl}д`);
+      const blk = s.blocker_label ? `<span class="bs-prep-blk">⚠ ${esc(s.blocker_label)}</span>` : '';
+      return `
+        <div class="bs-prep-card">
+          ${_chart({ type: 'ring', value: pct, h: 96, opts: { label: '', lineWidth: 9, height: 96 } })}
+          <div class="bs-prep-name" title="${esc(w.work_title || '')}">${esc(w.work_title || w.customer_name || ('Работа #' + w.id))}</div>
+          <div class="bs-prep-sub">${esc(pm ? (pm.name || pm.login || '') : '')}</div>
+          <div class="bs-prep-meta">${(s.stages_done || 0)}/${(s.stages_total || 0)} этапов ${blk}</div>
+          <div class="bs-prep-dl">${dlTxt}</div>
+        </div>`;
+    }).join('');
+
+    return `
+      <div class="bs-title"><h2>Подготовка проектов</h2><div class="bs-subtitle">Готовность ${prep.length} работ к старту · средняя ${avg}%${hot ? ` · <span class="c-red">${hot} горящих</span>` : ''}</div></div>
+      <div class="bs-prep-grid">${cards}</div>
+    `;
   }
 
   // ───────────────────────────────────────────────────────
@@ -378,9 +482,7 @@ window.AsgardBigScreen = (function(){
       <div class="bs-kpi" style="margin-top:20px">
         <div class="bs-kpi-card c-amber" style="grid-column:span 2"><div class="bs-kpi-lbl">Касса: выдано (не закрыто)</div><div class="bs-kpi-val c-amber">${_m(cashOut)}</div><div class="bs-kpi-sub">Ожидает выдачи: ${_m(cashPending)}</div></div>
         <div class="bs-kpi-card c-cyan" style="grid-column:span 2"><div class="bs-kpi-lbl">Собираемость</div>
-          <div style="margin-top:14px;background:var(--bg3);border-radius:8px;height:24px;overflow:hidden">
-            <div style="height:100%;width:${receivedPct}%;background:var(--grad-green, linear-gradient(90deg,var(--ok),var(--ok-t)));border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff">${receivedPct}%</div>
-          </div>
+          ${_chart({ type: 'ring', value: receivedPct, h: 120, opts: { label: 'собрано', lineWidth: 12, height: 120 } })}
           <div class="bs-kpi-sub" style="margin-top:10px">Получено ${_m(received)} из ${_m(contractTotal)}</div>
         </div>
       </div>
@@ -432,24 +534,10 @@ window.AsgardBigScreen = (function(){
         </div>
         <div>
           <div class="bs-col-title">Динамика (6 мес.)</div>
-          <div style="display:flex;align-items:flex-end;gap:10px;height:180px;padding-top:16px">
-            ${months.map(m => {
-              const h = Math.max(8, Math.round((m.total / mMax) * 140));
-              const wh = m.total > 0 ? Math.round((m.won / m.total) * h) : 0;
-              return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px">
-                <div style="font-size:12px;font-weight:700;color:var(--t2)">${m.total}</div>
-                <div style="width:100%;display:flex;flex-direction:column;justify-content:flex-end;height:${h}px;border-radius:6px;overflow:hidden">
-                  <div style="height:${h - wh}px;background:var(--info)"></div>
-                  <div style="height:${wh}px;background:var(--ok-t)"></div>
-                </div>
-                <div style="font-size:11px;color:var(--t3)">${esc(m.label)}</div>
-              </div>`;
-            }).join('')}
-          </div>
-          <div style="display:flex;gap:16px;margin-top:12px;justify-content:center;font-size:11px">
-            <span><span style="display:inline-block;width:10px;height:10px;background:var(--info);border-radius:2px;margin-right:4px"></span>Всего</span>
-            <span><span style="display:inline-block;width:10px;height:10px;background:var(--ok-t);border-radius:2px;margin-right:4px"></span>Выиграно</span>
-          </div>
+          ${_chart({ type: 'line', h: 200, series: [
+            { name: 'Всего', color: 'var(--info,#3b82f6)', points: months.map(m => ({ x: m.label, y: m.total })) },
+            { name: 'Выиграно', color: 'var(--ok-t,#22c55e)', points: months.map(m => ({ x: m.label, y: m.won })) }
+          ], opts: { legend: true, area: true, height: 200 } })}
         </div>
       </div>
     `;

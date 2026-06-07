@@ -359,11 +359,114 @@ window.AsgardCharts = (function(){
     ctx.stroke();
     ctx.restore();
     text(ctx, Math.round(s).toString(), cx, cy+8, {font:'bold 28px system-ui', fill:ink, align:'center'});
-    text(ctx, opts.label||'\u0431\u0430\u043b\u043b', cx, cy+26, {font:'11px system-ui', fill:muted, align:'center'});
+    const _lbl = (opts.label != null) ? opts.label : '\u0431\u0430\u043b\u043b';
+    if(_lbl) text(ctx, _lbl, cx, cy+26, {font:'11px system-ui', fill:muted, align:'center'});
     if(opts.subtitle){
       text(ctx, opts.subtitle, cx, cy-r-8, {font:'11px system-ui', fill:muted, align:'center'});
     }
   }
 
-  return { stackedBar, divergent, dial, scoreRing };
+  // lineArea: линейный график с заливкой под линией. Для динамики (готовность,
+  // выручка, победы по месяцам). Поддерживает несколько серий.
+  //  series: [{ name, color, points:[{x:label, y:number}] }]  (x — подписи общие по первой серии)
+  //  opts: { yMax, yFmt(v), height, legend:true, area:true }
+  function lineArea(canvas, series, opts={}){
+    const ink = themeVar("--text", "#e8eefc");
+    const muted = themeVar("--muted", "#a9b7d0");
+    if(!canvas.style.height) canvas.style.height = (opts.height||220) + 'px';
+    const ctx = hiDpi(canvas);
+    const W = canvas.clientWidth, H = canvas.clientHeight;
+    clear(ctx, W, H);
+    const list = (series||[]).filter(s => s && Array.isArray(s.points) && s.points.length);
+    if(!list.length){ text(ctx, 'Нет данных', W/2, H/2, {font:'13px system-ui', fill:muted, align:'center'}); return; }
+
+    const padL = 44, padR = 14, padT = 14, padB = 26;
+    const plotW = Math.max(1, W - padL - padR);
+    const plotH = Math.max(1, H - padT - padB);
+    const labels = list[0].points.map(p => p.x);
+    const n = labels.length;
+    let yMax = opts.yMax;
+    if(yMax == null){
+      yMax = 0;
+      list.forEach(s => s.points.forEach(p => { yMax = Math.max(yMax, Number(p.y)||0); }));
+      yMax = yMax > 0 ? yMax * 1.1 : 1;
+    }
+    const yFmt = opts.yFmt || (v => Math.round(v));
+    const xAt = i => padL + (n <= 1 ? plotW/2 : (i/(n-1))*plotW);
+    const yAt = v => padT + plotH - (clamp(Number(v)||0, 0, yMax)/yMax)*plotH;
+
+    // Сетка + ось Y (4 деления)
+    ctx.save();
+    ctx.strokeStyle = 'rgba(120,140,180,.18)';
+    ctx.lineWidth = 1;
+    ctx.fillStyle = muted; ctx.font = '10px system-ui'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    for(let g=0; g<=4; g++){
+      const val = yMax * (g/4);
+      const yy = yAt(val);
+      ctx.beginPath(); ctx.moveTo(padL, yy); ctx.lineTo(W-padR, yy); ctx.stroke();
+      ctx.fillText(yFmt(val), padL-6, yy);
+    }
+    // Подписи X (прорежаем если много)
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    const step = Math.ceil(n/8);
+    labels.forEach((lb, i) => {
+      if(i % step !== 0 && i !== n-1) return;
+      ctx.fillText(String(lb), xAt(i), H - padB + 6);
+    });
+    ctx.restore();
+
+    // Серии
+    list.forEach((s, si) => {
+      const color = resolveColor(s.color) || ['#3b82f6','#22c55e','#e0a500','#a855f7','#ef4444'][si % 5];
+      const pts = s.points.map((p,i) => ({ x: xAt(i), y: yAt(p.y) }));
+      if(opts.area !== false){
+        ctx.save();
+        const grad = ctx.createLinearGradient(0, padT, 0, padT+plotH);
+        grad.addColorStop(0, hexA(color, .28));
+        grad.addColorStop(1, hexA(color, .02));
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, padT+plotH);
+        pts.forEach(p => ctx.lineTo(p.x, p.y));
+        ctx.lineTo(pts[pts.length-1].x, padT+plotH);
+        ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
+      ctx.save();
+      ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.beginPath();
+      pts.forEach((p,i) => i ? ctx.lineTo(p.x,p.y) : ctx.moveTo(p.x,p.y));
+      ctx.stroke();
+      ctx.fillStyle = color;
+      pts.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 2.5, 0, Math.PI*2); ctx.fill(); });
+      ctx.restore();
+    });
+
+    // Легенда
+    if(opts.legend && list.length > 1){
+      let lx = padL;
+      ctx.save(); ctx.font = '11px system-ui'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+      list.forEach((s, si) => {
+        const color = resolveColor(s.color) || ['#3b82f6','#22c55e','#e0a500','#a855f7','#ef4444'][si % 5];
+        ctx.fillStyle = color; ctx.fillRect(lx, padT-8, 10, 10);
+        ctx.fillStyle = ink; ctx.fillText(s.name || ('Серия '+(si+1)), lx+14, padT-3);
+        lx += 14 + ctx.measureText(s.name || '').width + 24;
+      });
+      ctx.restore();
+    }
+  }
+
+  // hex/rgb + alpha → rgba-строка (для градиентной заливки lineArea)
+  function hexA(c, a){
+    c = resolveColor(c) || '#3b82f6';
+    if(/^#([0-9a-f]{6})$/i.test(c)){
+      const r=parseInt(c.slice(1,3),16), g=parseInt(c.slice(3,5),16), b=parseInt(c.slice(5,7),16);
+      return `rgba(${r},${g},${b},${a})`;
+    }
+    const m = c.match(/^rgba?\(([^)]+)\)$/);
+    if(m){ const p=m[1].split(',').map(s=>s.trim()); return `rgba(${p[0]},${p[1]},${p[2]},${a})`; }
+    return `rgba(59,130,246,${a})`;
+  }
+
+  return { stackedBar, divergent, dial, scoreRing, lineArea };
 })();

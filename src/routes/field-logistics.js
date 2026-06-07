@@ -260,6 +260,36 @@ async function routes(fastify, options) {
   });
 
   // ─────────────────────────────────────────────────────────────────────
+  // POST /:id/purchased — отметить «Куплено/Оплачено» (офис-менеджер)
+  // Делает этап готовности билетов/жилья честным: до отправки рабочему
+  // фиксируем факт покупки. status='purchased' (поверх pending/ready).
+  // ─────────────────────────────────────────────────────────────────────
+  fastify.post('/:id/purchased', crmAuth, async (req, reply) => {
+    try {
+      const logisticsId = parseInt(req.params.id);
+      const userId = req.user.id;
+      const { rows } = await db.query(
+        `SELECT id, status FROM field_logistics WHERE id = $1`, [logisticsId]
+      );
+      if (!rows.length) return reply.code(404).send({ error: 'Запись не найдена' });
+      // Не перетираем уже отправленное рабочему (sent — финальнее)
+      if (rows[0].status === 'sent') {
+        return { ok: true, status: 'sent', note: 'Уже отправлено рабочему' };
+      }
+      await db.query(
+        `UPDATE field_logistics
+         SET status = 'purchased', purchased_at = NOW(), purchased_by = $1, updated_at = NOW()
+         WHERE id = $2`,
+        [userId, logisticsId]
+      );
+      return { ok: true, status: 'purchased' };
+    } catch (err) {
+      fastify.log.error('[field-logistics] POST /:id/purchased error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
   // GET / — logistics matrix by project (CRM view)
   // ─────────────────────────────────────────────────────────────────────
   fastify.get('/', crmAuth, async (req, reply) => {

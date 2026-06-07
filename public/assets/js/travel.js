@@ -273,8 +273,8 @@ window.AsgardTravelPage = (function(){
               ${filtered.map(item => {
                 const emp  = empMap.get(item.employee_id);
                 const work = worksMap.get(item.work_id);
-                const stClass = item.status === 'sent' ? 'st-sent' : item.status === 'ready' ? 'st-ready' : 'st-pending';
-                const stLabel = item.status === 'sent' ? 'Отправлено' : item.status === 'ready' ? 'Готово' : 'Ожидает';
+                const stClass = item.status === 'sent' ? 'st-sent' : (item.status === 'purchased' || item.status === 'ready') ? 'st-ready' : 'st-pending';
+                const stLabel = item.status === 'sent' ? 'Отправлено' : item.status === 'purchased' ? 'Куплено' : item.status === 'ready' ? 'Готово' : 'Ожидает';
                 const fileUrl = item.download_url || null;
 
                 return `
@@ -295,6 +295,7 @@ window.AsgardTravelPage = (function(){
                       ${item.amount ? `<div class="tl-card-amount">${AsgardUI.money(item.amount)} ₽</div>` : ''}
                       ${item.vat_included ? `<div class="tl-card-vat">С НДС</div>` : ''}
                       <button class="tl-btn" data-upload="${item.id}">📎 Файл</button>
+                      ${(item.status !== 'purchased' && item.status !== 'sent') ? `<button class="tl-btn tl-btn-buy" data-buy="${item.id}">✅ Куплено</button>` : ''}
                       ${!item.sent_to_employee ? `<button class="tl-btn tl-btn-send" data-send="${item.id}">📨 Отправить</button>` : ''}
                       <button class="tl-btn" data-del="${item.id}">🗑</button>
                     </div>
@@ -336,6 +337,26 @@ window.AsgardTravelPage = (function(){
       // Загрузить файл
       $$('[data-upload]').forEach(btn => {
         btn.addEventListener('click', () => openUploadModal(Number(btn.dataset.upload)));
+      });
+
+      // Отметить «Куплено»
+      $$('[data-buy]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const id = Number(btn.dataset.buy);
+          btn.textContent = '⏳';
+          btn.disabled = true;
+          try {
+            await apiPost('/' + id + '/purchased', {});
+            toast('Готово', 'Отмечено как куплено');
+            const data = await apiGet('/');
+            items = Array.isArray(data.logistics) ? data.logistics : [];
+            renderPage();
+          } catch(e) {
+            toast('Ошибка', e.message, 'err');
+            btn.textContent = '✅ Куплено';
+            btn.disabled = false;
+          }
+        });
       });
 
       // Отправить уведомление
