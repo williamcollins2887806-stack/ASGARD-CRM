@@ -943,7 +943,6 @@ window.AsgardSuppliersPage = (function() {
     _pageEl.innerHTML = `
       <div class="sup-tabs">
         <button class="sup-tab sup-tab--active" data-tab="suppliers">Поставщики</button>
-        <button class="sup-tab" data-tab="catalog">Каталог товаров</button>
         <button class="sup-tab" data-tab="prices">База цен</button>
       </div>
       <div id="sup-tab-content"></div>`;

@@ -538,6 +538,7 @@ fastify.register(require('./routes/wa-webhook'), { prefix: '/api' }); // Green A
 fastify.register(require('./routes/assembly'), { prefix: '/api/assembly' });
 fastify.register(require('./routes/warehouse-locations'), { prefix: '/api/warehouse' }); // WMS: адресное хранение (ячейки) /warehouse/locations
 fastify.register(require('./routes/stock'), { prefix: '/api/stock' }); // WMS: количественный учёт расходников + движения + quick-каталог
+fastify.register(require('./routes/catalog-import'), { prefix: '/api/catalog-import' }); // импорт УПД/счёт/Excel → каталог/оборудование
 fastify.register(require('./routes/tmc_requests'), { prefix: '/api/tmc-requests' });
 fastify.register(require('./routes/sse'), { prefix: '/api/sse' });
 fastify.register(require('./routes/push'), { prefix: '/api/push' });

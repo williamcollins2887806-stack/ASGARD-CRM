@@ -254,8 +254,11 @@ console.log('[ASGARD] Global period functions loaded');
     // ── РЕСУРСЫ ──
     {r:"/tkp",l:"ТКП",d:"Коммерческие предложения",roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO",...DIRECTOR_ROLES],i:"tenders",p:"tkp",g:"resources"},
     {r:"/pass-requests",l:"Заявки на пропуск",d:"Оформление пропусков",roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"approvals",p:"pass_requests",g:"resources"},
-    {r:"/procurement",l:"Закупки",d:"Заявки на закупку материалов",
- roles:["ADMIN","PM","HEAD_PM","PROC","BUH","WAREHOUSE","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"],
+    {r:"/procurement",l:"Закупки",d:"Реестр заявок (закупщик)",
+ roles:["ADMIN","PROC","BUH","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"],
+ i:"approvals",p:"procurement",g:"resources"},
+    {r:"/my-procurement",l:"Мои заявки",d:"Мои заявки на закупку и их статусы",
+ roles:["PM","HEAD_PM","WAREHOUSE"],
  i:"approvals",p:"procurement",g:"resources"},
     {r:"/suppliers-catalog",l:"Поставщики и цены",d:"Справочник поставщиков, каталог товаров, база цен",
  roles:["ADMIN","PROC","PM","HEAD_PM","BUH","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"],
@@ -2113,7 +2116,8 @@ var _setupPinKeypad = null;
     AsgardRouter.add("/training-board", ()=>AsgardTrainingBoard.render({layout, title:"Обучение и допуски"}), {auth:true, roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/pm-balance", ()=>AsgardPmBalancePage.render({layout, title:"Баланс РП"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/pm-balance/:pm_id", ()=>AsgardPmBalancePage.renderDetail({layout, title:"Баланс РП"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
-    AsgardRouter.add("/procurement", ()=>AsgardProcurementPage.render({layout, title:"Закупки"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","PROC","BUH","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"]});
+    AsgardRouter.add("/procurement", ()=>AsgardProcurementPage.render({layout, title:"Закупки"}), {auth:true, roles:["ADMIN","PROC","BUH","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"]});
+    AsgardRouter.add("/my-procurement", ()=>AsgardProcurementPage.render({layout, title:"Мои заявки"}), {auth:true, roles:["PM","HEAD_PM","WAREHOUSE","ADMIN"]});
     AsgardRouter.add("/suppliers-catalog", ()=>AsgardSuppliersPage.render({layout, title:"Поставщики и цены"}), {auth:true, roles:["ADMIN","PROC","PM","HEAD_PM","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","BUH"]});
 AsgardRouter.add("/assembly", ()=>AsgardAssemblyPage.render({layout, title:"Сбор"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","WAREHOUSE","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"]});
     AsgardRouter.add("/training", () => { AsgardTrainingPage.render({layout, title:"Обучение"}); }, {auth:true});

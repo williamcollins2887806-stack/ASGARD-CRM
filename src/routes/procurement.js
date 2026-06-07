@@ -31,6 +31,23 @@ async function routes(fastify) {
     return {row:rows[0]};
   }
 
+  // Авто-наполнение каталога: позиция закупки → запись в products (если ещё нет).
+  // Возвращает product_id для проставления в procurement_items. Каталог растёт сам.
+  async function ensureCatalogProduct(c, { name, unit, article, category_id, userId }) {
+    const nm = (name||'').trim(); if (!nm) return null;
+    let r = await c.query('SELECT id FROM products WHERE lower(name)=lower($1) AND deleted_at IS NULL LIMIT 1', [nm]);
+    if (r.rows[0]) return r.rows[0].id;
+    try {
+      const ins = await c.query(
+        `INSERT INTO products(name,article,unit,category_id,created_from,created_by) VALUES($1,$2,$3,$4,'procurement',$5) RETURNING id`,
+        [nm, article||null, unit||'шт', category_id||null, userId||null]);
+      return ins.rows[0].id;
+    } catch (e) {
+      if (e.code === '23505') { const x = await c.query('SELECT id FROM products WHERE lower(name)=lower($1) AND deleted_at IS NULL LIMIT 1', [nm]); return x.rows[0]?.id || null; }
+      throw e;
+    }
+  }
+
   function canViewAll(role) { return READ_ALL_ROLES.includes(role); }
 
   async function getProcCheck(c, id, statuses) {
@@ -184,10 +201,11 @@ async function routes(fastify) {
   });
 
   fastify.post('/', {preHandler:[fastify.requireRoles([...PM_ROLES,...PROC_ROLES,...DIR_ROLES])]}, async(req)=>{
-    const{work_id,title,notes,priority,needed_by,delivery_address}=req.body;
-    const{rows}=await db.query(`INSERT INTO procurement_requests(work_id,title,notes,priority,needed_by,delivery_address,author_id,pm_id,status)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$7,'draft') RETURNING *`,
-      [work_id||null,(title||'Заявка на закупку').trim(),notes||null,priority||'normal',needed_by||null,delivery_address||null,req.user.id]);
+    const{work_id,title,notes,priority,needed_by,delivery_address,price_segment,budget_limit}=req.body;
+    const seg=['cheap','medium','premium'].includes(price_segment)?price_segment:null;
+    const{rows}=await db.query(`INSERT INTO procurement_requests(work_id,title,notes,priority,needed_by,delivery_address,price_segment,budget_limit,author_id,pm_id,status)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,'draft') RETURNING *`,
+      [work_id||null,(title||'Заявка на закупку').trim(),notes||null,priority||'normal',needed_by||null,delivery_address||null,seg,budget_limit||null,req.user.id]);
     await logHistory(db,rows[0].id,req.user.id,'created',null,'draft',null,null);
     return {item:rows[0]};
   });
@@ -195,7 +213,7 @@ async function routes(fastify) {
   fastify.put('/:id', {preHandler:[fastify.requireRoles([...PM_ROLES,...PROC_ROLES,...DIR_ROLES])]}, async(req,reply)=>{
     const id=parseInt(req.params.id); if(isNaN(id)) return reply.code(400).send({error:'Неверный ID'});
     const ck=await checkNotLocked(db,id); if(ck.error) return reply.code(ck.code).send({error:ck.error});
-    const allowed=['title','notes','priority','needed_by','delivery_address','delivery_deadline','deadline_type','deadline_days','proc_comment','pm_comment'];
+    const allowed=['title','notes','priority','needed_by','delivery_address','delivery_deadline','deadline_type','deadline_days','proc_comment','pm_comment','price_segment','budget_limit'];
     const upd=[],vals=[];let i=1;
     for(const k of allowed){if(req.body[k]!==undefined){upd.push(`${k}=$${i++}`);vals.push(req.body[k]);}}
     if(!upd.length) return reply.code(400).send({error:'Нет данных'});
@@ -226,12 +244,15 @@ async function routes(fastify) {
     let e=valNum(quantity,'quantity'); if(e) return reply.code(400).send({error:e});
     e=valNum(unit_price,'unit_price'); if(e) return reply.code(400).send({error:e});
     const q=parseFloat(quantity)||0, p=parseFloat(unit_price)||0;
+    // Авто-привязка к каталогу: если product_id не передан — найдём/создадим в products.
+    let pid = product_id || null;
+    if (!pid) { try { pid = await ensureCatalogProduct(db, { name, unit, article, category_id: product_category_id, userId: req.user.id }); } catch(_) { pid = null; } }
     const{rows}=await db.query(`INSERT INTO procurement_items(procurement_id,name,article,unit,quantity,supplier,supplier_link,unit_price,total_price,
       delivery_target,delivery_address,warehouse_id,estimated_delivery,notes,sort_order,product_id,supplier_id,product_category_id)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
       [procId,name.trim(),article||null,unit||'шт',q,supplier||null,supplier_link||null,p||null,q*p||null,
        tgt,delivery_address||null,warehouse_id||null,estimated_delivery||null,notes||null,sort_order||0,
-       product_id||null,supplier_id||null,product_category_id||null]);
+       pid,supplier_id||null,product_category_id||null]);
     await recalcTotal(db,procId);
     await logHistory(db,procId,req.user.id,'item_added',null,null,`Позиция: ${name}`,{item_id:rows[0].id});
     return {item:rows[0]};
@@ -282,12 +303,16 @@ async function routes(fastify) {
       await client.query('BEGIN');
       const valid=items.filter(it=>it.name&&it.name.trim());
       if(!valid.length){await client.query('ROLLBACK');return reply.code(400).send({error:'Нет валидных позиций'});}
-      const n=[],a=[],u=[],q=[],pr=[],t=[],no=[],o=[];
-      valid.forEach((it,idx)=>{const qq=parseFloat(it.quantity)||0,pp=parseFloat(it.unit_price)||0;
-        n.push(it.name.trim());a.push(it.article||null);u.push(it.unit||'шт');q.push(qq);pr.push(pp||null);t.push(qq*pp||null);no.push(it.notes||null);o.push(idx);});
-      const{rows}=await client.query(`INSERT INTO procurement_items(procurement_id,name,article,unit,quantity,unit_price,total_price,notes,sort_order)
-        SELECT $1,unnest($2::text[]),unnest($3::text[]),unnest($4::text[]),unnest($5::numeric[]),unnest($6::numeric[]),unnest($7::numeric[]),unnest($8::text[]),unnest($9::int[]) RETURNING *`,
-        [procId,n,a,u,q,pr,t,no,o]);
+      const n=[],a=[],u=[],q=[],pr=[],t=[],no=[],o=[],pid=[],dt=[];
+      for(let idx=0;idx<valid.length;idx++){const it=valid[idx];const qq=parseFloat(it.quantity)||0,pp=parseFloat(it.unit_price)||0;
+        n.push(it.name.trim());a.push(it.article||null);u.push(it.unit||'шт');q.push(qq);pr.push(pp||null);t.push(qq*pp||null);no.push(it.notes||null);o.push(idx);
+        dt.push(['warehouse','object'].includes(it.delivery_target)?it.delivery_target:'warehouse');
+        // product_id из витрины, либо авто-создание в каталоге
+        let p2=it.product_id||null; if(!p2){try{p2=await ensureCatalogProduct(client,{name:it.name,unit:it.unit,article:it.article,category_id:it.product_category_id,userId:req.user.id});}catch(_){p2=null;}}
+        pid.push(p2);}
+      const{rows}=await client.query(`INSERT INTO procurement_items(procurement_id,name,article,unit,quantity,unit_price,total_price,notes,sort_order,product_id,delivery_target)
+        SELECT $1,unnest($2::text[]),unnest($3::text[]),unnest($4::text[]),unnest($5::numeric[]),unnest($6::numeric[]),unnest($7::numeric[]),unnest($8::text[]),unnest($9::int[]),unnest($10::int[]),unnest($11::text[]) RETURNING *`,
+        [procId,n,a,u,q,pr,t,no,o,pid,dt]);
       await recalcTotal(client,procId);
       await logHistory(client,procId,req.user.id,'items_bulk_added',null,null,`Добавлено: ${rows.length}`,null);
       await client.query('COMMIT');return{items:rows,count:rows.length};

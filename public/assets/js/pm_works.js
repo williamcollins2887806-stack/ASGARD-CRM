@@ -1519,7 +1519,11 @@ window.AsgardPmWorksPage=(function(){
     html += `<div style="margin-top:12px"><button class="btn primary" id="pw-new-proc">+ Новая заявка</button></div></div>`;
 
     AsgardUI.showModal(html, { title: `Закупки — ${AsgardUI.esc(work.work_title || '#' + work.id)}`, width: '700px' });
-    document.getElementById('pw-new-proc').onclick = () => { AsgardUI.closeModal(); location.hash = '#/procurement'; };
+    document.getElementById('pw-new-proc').onclick = () => {
+      AsgardUI.closeModal();
+      if (window.AsgardProcurementPage && AsgardProcurementPage.openCreateModal) AsgardProcurementPage.openCreateModal(work.id);
+      else location.hash = '#/procurement';
+    };
   }
 
   // ═══ ОБОРУДОВАНИЕ ДЛЯ РАБОТЫ ═══

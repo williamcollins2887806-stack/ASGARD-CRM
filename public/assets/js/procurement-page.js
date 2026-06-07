@@ -130,6 +130,7 @@ window.AsgardProcurementPage = (function() {
       });
       html += `</tbody></table>`;
       if (canEditItems) html += `<div style="margin-top:var(--sp-2);display:flex;gap:var(--sp-2);flex-wrap:wrap">
+        <button class="btn primary" id="proc-showcase">🛒 Из каталога</button>
         <button class="btn ghost" id="proc-save-items">💾 Сохранить изменения</button>
         <button class="btn ghost" id="proc-add-item">+ Позиция</button>
         <button class="btn ghost" id="proc-add-text">📝 Текстом</button>
@@ -139,7 +140,8 @@ window.AsgardProcurementPage = (function() {
     } else {
       html += `<div style="color:var(--t2);padding:var(--sp-3)">Позиций нет</div>`;
       if (canEditItems) html += `<div style="margin-top:var(--sp-2);display:flex;gap:var(--sp-2);flex-wrap:wrap">
-        <button class="btn primary" id="proc-add-item">+ Позиция</button>
+        <button class="btn primary" id="proc-showcase">🛒 Из каталога</button>
+        <button class="btn ghost" id="proc-add-item">+ Позиция</button>
         <button class="btn ghost" id="proc-add-text">📝 Списком</button>
         <button class="btn ghost" id="proc-ai-parse">🤖 AI по ТЗ</button>
         <button class="btn ghost" id="proc-import-xl">📥 Импорт Excel</button>
@@ -213,6 +215,10 @@ window.AsgardProcurementPage = (function() {
       }
       toast('Сохранено', '', 'ok'); openDetail(p.id);
     };
+
+    // Витрина каталога — главный способ добавления позиций
+    const showcaseBtn = document.getElementById('proc-showcase');
+    if (showcaseBtn) showcaseBtn.onclick = () => openShowcase(p.id);
 
     // Add item — с подсказкой цены из базы
     const addBtn = document.getElementById('proc-add-item');
@@ -491,6 +497,73 @@ window.AsgardProcurementPage = (function() {
   }
 
   // -- Create modal --
+  // ═══ ВИТРИНА КАТАЛОГА: выбор позиций с остатком/ценой → корзина → bulk в заявку ═══
+  const _cart = {}; // product_id|name → {name,unit,article,product_id,available,last_price,need}
+  async function openShowcase(procId) {
+    let rows = [];
+    showModal({ title: '🛒 Каталог закупки', html: `<div style="padding:30px;text-align:center;color:var(--t2)">Загрузка каталога…</div>` });
+    try { const d = await apiFetch('/api/products/catalog-procurement?include_equipment=true&limit=400'); rows = d.items || []; }
+    catch (e) { toast('Ошибка', e.message, 'err'); return; }
+    drawShowcase(procId, rows, '');
+  }
+  function _cartKey(it) { return it.product_id ? 'p' + it.product_id : 'n:' + (it.name || '').toLowerCase(); }
+  function drawShowcase(procId, rows, search) {
+    const flt = search ? rows.filter(r => (r.name + ' ' + (r.article || '')).toLowerCase().includes(search.toLowerCase())) : rows;
+    const cartArr = Object.values(_cart);
+    const inCart = it => !!_cart[_cartKey(it)];
+    const money = v => (v == null || v === '') ? '—' : Number(v).toLocaleString('ru-RU') + ' ₽';
+    const num = v => Number(v || 0).toLocaleString('ru-RU');
+    const html = `<div style="min-width:560px;max-width:760px">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+        <input id="sc-q" placeholder="Поиск по каталогу…" value="${esc(search || '')}" style="flex:1;padding:9px 12px;border:1px solid var(--brd);border-radius:8px">
+        <span class="badge" style="background:var(--warn-bg,rgba(200,168,78,.15));padding:4px 10px;border-radius:14px">🛒 ${cartArr.length}</span>
+      </div>
+      <div style="max-height:320px;overflow:auto;border:1px solid var(--brd);border-radius:8px">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="position:sticky;top:0;background:var(--bg-card,#1a1f29)">
+            <th style="text-align:left;padding:8px 10px">Наименование</th><th style="padding:8px">В наличии</th>
+            <th style="padding:8px">Посл. цена</th><th style="padding:8px"></th></tr></thead>
+          <tbody>${!flt.length ? '<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--t2)">Ничего не найдено</td></tr>' :
+        flt.map(it => `<tr style="border-top:1px solid var(--brd)">
+            <td style="padding:7px 10px"><b>${esc(it.name)}</b>${it.article ? ' <span style="opacity:.5">' + esc(it.article) + '</span>' : ''}
+              <div style="font-size:11px;color:var(--t2)">${esc(it.category_name || '')}${it.source === 'equipment' ? ' · оборудование' : ''}</div></td>
+            <td style="padding:7px;text-align:center">${Number(it.available_qty) > 0 ? '<span style="color:var(--ok-t,#30d158)">' + num(it.available_qty) + ' ' + esc(it.unit || 'шт') + '</span>' : '<span style="opacity:.5">нет</span>'}</td>
+            <td style="padding:7px;text-align:center">${money(it.last_price)}${it.last_supplier ? '<div style="font-size:10px;color:var(--t2)">' + esc(it.last_supplier) + '</div>' : ''}</td>
+            <td style="padding:7px;text-align:right"><button class="btn ${inCart(it) ? 'ghost' : 'primary'}" data-add='${esc(JSON.stringify({ k: _cartKey(it), name: it.name, unit: it.unit, article: it.article, product_id: it.product_id, available: Number(it.available_qty) || 0, last_price: it.last_price }))}' style="font-size:12px;padding:4px 10px">${inCart(it) ? '✓' : '+'}</button></td>
+          </tr>`).join('')}</tbody></table>
+      </div>
+      ${cartArr.length ? `<div style="margin-top:14px;border-top:2px solid var(--brd);padding-top:12px">
+        <div style="font-weight:600;margin-bottom:8px">Корзина — укажите сколько нужно (показано: докупить)</div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          ${cartArr.map(c => { const toBuy = Math.max(0, (c.need || 1) - (c.available || 0)); return `<tr style="border-top:1px solid var(--brd)">
+            <td style="padding:6px 8px">${esc(c.name)}</td>
+            <td style="padding:6px"><input data-need="${esc(c.k)}" type="number" min="0" value="${c.need || 1}" style="width:70px;padding:4px;border:1px solid var(--brd);border-radius:6px"> ${esc(c.unit || 'шт')}</td>
+            <td style="padding:6px;text-align:center;color:var(--t2)">в наличии ${num(c.available || 0)}</td>
+            <td style="padding:6px;text-align:center"><b style="color:${toBuy > 0 ? 'var(--warn,#e0a800)' : 'var(--ok-t,#30d158)'}">докупить ${num(toBuy)}</b></td>
+            <td style="padding:6px;text-align:right"><button class="btn ghost" data-rm="${esc(c.k)}" style="font-size:12px;padding:2px 8px">✕</button></td></tr>`; }).join('')}
+        </table>
+        <button class="btn primary" id="sc-submit" style="margin-top:12px;width:100%">Добавить в заявку (${cartArr.length})</button>
+      </div>` : '<div style="margin-top:12px;color:var(--t2);font-size:13px">Выберите позиции из каталога →</div>'}
+    </div>`;
+    showModal({ title: '🛒 Каталог закупки', html: html });
+    const qEl = document.getElementById('sc-q');
+    if (qEl) { qEl.oninput = () => drawShowcase(procId, rows, qEl.value); setTimeout(() => { qEl.focus(); qEl.setSelectionRange(qEl.value.length, qEl.value.length); }, 30); }
+    document.querySelectorAll('[data-add]').forEach(b => b.onclick = () => { const it = JSON.parse(b.dataset.add); if (_cart[it.k]) delete _cart[it.k]; else _cart[it.k] = { ...it, need: (it.available || 0) + 1 }; drawShowcase(procId, rows, qEl ? qEl.value : ''); });
+    document.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { delete _cart[b.dataset.rm]; drawShowcase(procId, rows, qEl ? qEl.value : ''); });
+    document.querySelectorAll('[data-need]').forEach(inp => inp.oninput = () => { const c = _cart[inp.dataset.need]; if (c) { c.need = parseFloat(inp.value) || 0; drawShowcase(procId, rows, qEl ? qEl.value : ''); setTimeout(() => { const ni = document.querySelector('[data-need="' + inp.dataset.need + '"]'); if (ni) ni.focus(); }, 20); } });
+    const sub = document.getElementById('sc-submit');
+    if (sub) sub.onclick = async () => {
+      // Заказываем «докупить» = нужно − в наличии (что уже есть — не заказываем).
+      const items = Object.values(_cart)
+        .map(c => ({ name: c.name, unit: c.unit || 'шт', article: c.article || null, product_id: c.product_id || null, quantity: Math.max(0, (c.need || 0) - (c.available || 0)), unit_price: c.last_price || null }))
+        .filter(it => it.quantity > 0);
+      if (!items.length) { toast('Всё в наличии', 'Докупать нечего — увеличьте «нужно», если требуется заказать сверх остатка', 'warn'); return; }
+      const r = await apiPost(`/api/procurement/${procId}/items/bulk`, { items });
+      if (r.error) { toast('Ошибка', r.error, 'err'); return; }
+      toast('Добавлено', `${r.count} позиций`, 'ok'); Object.keys(_cart).forEach(k => delete _cart[k]); closeModal(); openDetail(procId);
+    };
+  }
+
   async function openCreateModal(workId) {
     let workOpts = [{ value: '', label: '— без работы —' }];
     try {
@@ -514,6 +587,8 @@ window.AsgardProcurementPage = (function() {
       <label>Название<input id="pc-title" value="Заявка на закупку" required></label>
       <label>Работа<div id="pc-work_w"></div></label>
       <label>Приоритет<div id="pc-priority_w"></div></label>
+      <label>Ценовой сегмент<div id="pc-segment_w"></div></label>
+      <label>Лимит бюджета, ₽ (необязательно)<input id="pc-budget" type="number" min="0" placeholder="—"></label>
       <label>Примечание<textarea id="pc-notes" rows="3"></textarea></label>
       <button class="btn primary" id="pc-submit">Создать пустую заявку</button>
     </div>`;
@@ -532,11 +607,14 @@ window.AsgardProcurementPage = (function() {
     }
     document.getElementById('pc-work_w')?.appendChild(CRSelect.create({ id: 'pc-work', options: workOpts, value: workId ? String(workId) : '', searchable: true, dropdownClass: 'z-modal' }));
     document.getElementById('pc-priority_w')?.appendChild(CRSelect.create({ id: 'pc-priority', options: [{ value: 'normal', label: 'Обычный' }, { value: 'high', label: 'Высокий' }, { value: 'urgent', label: 'Срочный' }], value: 'normal', dropdownClass: 'z-modal' }));
+    document.getElementById('pc-segment_w')?.appendChild(CRSelect.create({ id: 'pc-segment', options: [{ value: '', label: '— не указан —' }, { value: 'cheap', label: '💰 Подешевле' }, { value: 'medium', label: '⚖️ Средний' }, { value: 'premium', label: '⭐ Премиум' }], value: '', dropdownClass: 'z-modal' }));
     document.getElementById('pc-submit').onclick = async () => {
       const body = {
         title: document.getElementById('pc-title').value,
         work_id: CRSelect.getValue('pc-work') || null,
         priority: CRSelect.getValue('pc-priority') || 'normal',
+        price_segment: CRSelect.getValue('pc-segment') || null,
+        budget_limit: parseFloat(document.getElementById('pc-budget').value) || null,
         notes: document.getElementById('pc-notes').value || null
       };
       const r = await apiPost('/api/procurement', body);
@@ -575,5 +653,5 @@ window.AsgardProcurementPage = (function() {
     await refresh();
   }
 
-  return { render, openDetail, _attachInvoice, _deleteItem };
+  return { render, openDetail, openCreateModal, _attachInvoice, _deleteItem };
 })();

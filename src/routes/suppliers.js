@@ -243,6 +243,46 @@ async function routes(fastify) {
     return { items: rows };
   });
 
+  // Витрина-каталог для закупки: товар + остаток (доступно) + последняя цена/поставщик.
+  // Источники: products (каталог, авто-наполняется из закупок) + equipment (имеющееся оборудование
+  // для дозаказа, include_equipment=true). Фронт считает «докупить» = нужно − available.
+  fastify.get('/products/catalog-procurement', { preHandler: [fastify.authenticate] }, async (req) => {
+    const { search, category_id, only_available, include_equipment, limit = 300 } = req.query;
+    const params = []; let i = 1;
+    let where = `p.deleted_at IS NULL AND p.is_active=true AND p.is_draft IS NOT TRUE`;
+    if (category_id) { where += ` AND p.category_id=$${i++}`; params.push(category_id); }
+    if (search) { where += ` AND (p.name ILIKE $${i} OR p.article ILIKE $${i})`; params.push(`%${search}%`); i++; }
+    let sql = `
+      SELECT p.id, p.name, p.article, p.unit, p.category_id, c.name AS category_name,
+        p.is_consumable, 'catalog' AS source,
+        COALESCE((SELECT SUM(s.quantity - s.reserved_qty) FROM stock s WHERE s.product_id=p.id), 0) AS available_qty,
+        lp.unit_price AS last_price, lp.supplier_name AS last_supplier, lp.recorded_at AS price_date
+      FROM products p
+      LEFT JOIN product_categories c ON p.category_id=c.id
+      LEFT JOIN v_last_price_by_product lp ON lp.product_id=p.id
+      WHERE ${where}`;
+    if (only_available === 'true') sql += ` AND EXISTS (SELECT 1 FROM stock s WHERE s.product_id=p.id AND s.quantity>s.reserved_qty)`;
+    sql += ` ORDER BY p.name LIMIT $${i++}`;
+    params.push(Math.min(parseInt(limit), 1000));
+    const cat = await db.query(sql, params);
+    let equip = [];
+    if (include_equipment === 'true') {
+      // Имеющееся оборудование (поштучное) — для дозаказа такого же.
+      const eparams = []; let j = 1; let ew = `e.status != 'written_off'`;
+      if (search) { ew += ` AND e.name ILIKE $${j++}`; eparams.push(`%${search}%`); }
+      const eq = await db.query(`
+        SELECT MIN(e.id) AS id, e.name, NULL::text AS article, MIN(e.unit) AS unit, NULL::int AS category_id,
+          'Оборудование' AS category_name, false AS is_consumable, 'equipment' AS source,
+          COUNT(*) FILTER (WHERE e.status='on_warehouse') AS available_qty,
+          NULL::numeric AS last_price, NULL::text AS last_supplier, NULL AS price_date
+        FROM equipment e WHERE ${ew}
+          AND NOT EXISTS (SELECT 1 FROM products p WHERE lower(p.name)=lower(e.name) AND p.deleted_at IS NULL)
+        GROUP BY e.name ORDER BY e.name LIMIT 200`, eparams);
+      equip = eq.rows;
+    }
+    return { items: [...cat.rows, ...equip] };
+  });
+
   fastify.get('/products/:id', { preHandler: [fastify.authenticate] }, async (req, reply) => {
     const { rows } = await db.query(`SELECT p.*, c.name as category_name FROM products p
       LEFT JOIN product_categories c ON p.category_id=c.id WHERE p.id=$1 AND p.deleted_at IS NULL`, [req.params.id]);

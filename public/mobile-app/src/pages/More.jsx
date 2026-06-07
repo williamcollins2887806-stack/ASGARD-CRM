@@ -100,7 +100,7 @@ const GROUPS = [
       { path: '/meetings',       icon: Calendar,         label: 'Совещания',       section: 'dashboard' },
       { path: '/works',          icon: HardHat,          label: 'Работы',          section: 'works' },
       { path: '/warehouse',      icon: Warehouse,        label: 'Склад',           section: 'dashboard' },
-      { path: '/procurement',    icon: ShoppingCart,     label: 'Закупки',         section: 'works' },
+      { path: '/procurement',    icon: ShoppingCart,     label: 'Заявки на закупку', section: 'works' },
       { path: '/seals',          icon: Disc3,            label: 'Печати',          section: 'works' },
       { path: '/gantt',          icon: GanttChartSquare, label: 'Диаграмма Ганта', section: 'works' },
     ],

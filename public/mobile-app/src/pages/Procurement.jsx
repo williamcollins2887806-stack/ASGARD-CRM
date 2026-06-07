@@ -557,8 +557,12 @@ function AddItemForm({ procId, onDone, onCancel }) {
   const [qty, setQty]       = useState('');
   const [unit, setUnit]     = useState('шт');
   const [hint, setHint]     = useState(null);
+  const [catalog, setCatalog] = useState([]); // витрина: товары с остатком
+  const [productId, setProductId] = useState(null);
+  const [available, setAvailable] = useState(null);
   const [saving, setSaving] = useState(false);
   const debounceRef         = useRef(null);
+  const catRef              = useRef(null);
 
   const fetchHint = useCallback((val) => {
     clearTimeout(debounceRef.current);
@@ -566,15 +570,32 @@ function AddItemForm({ procId, onDone, onCancel }) {
     debounceRef.current = setTimeout(async () => {
       try {
         const res = await api.get(`/api/price-records/hint?name=${encodeURIComponent(val.trim())}`);
-        if (res?.last || res?.stats) setHint(res);
-        else setHint(null);
+        if (res?.last || res?.stats) setHint(res); else setHint(null);
       } catch { setHint(null); }
     }, 400);
   }, []);
 
+  // Витрина каталога: подсказки товаров с остатком при вводе
+  const fetchCatalog = useCallback((val) => {
+    clearTimeout(catRef.current);
+    if (!val.trim() || val.trim().length < 2) { setCatalog([]); return; }
+    catRef.current = setTimeout(async () => {
+      try {
+        const res = await api.get(`/api/products/catalog-procurement?search=${encodeURIComponent(val.trim())}&limit=8`);
+        setCatalog((res?.items || []).slice(0, 8));
+      } catch { setCatalog([]); }
+    }, 350);
+  }, []);
+
   const handleNameChange = (v) => {
-    setName(v);
-    fetchHint(v);
+    setName(v); setProductId(null); setAvailable(null);
+    fetchHint(v); fetchCatalog(v);
+  };
+
+  const pickCatalog = (it) => {
+    setName(it.name); setUnit(it.unit || 'шт'); setProductId(it.product_id || it.id || null);
+    setAvailable(Number(it.available_qty) || 0); setCatalog([]);
+    if (it.last_price) setHint({ last: { unit_price: it.last_price, supplier_name: it.last_supplier } });
   };
 
   const handleSubmit = async () => {
@@ -586,6 +607,7 @@ function AddItemForm({ procId, onDone, onCancel }) {
         name: name.trim(),
         quantity: Number(qty),
         unit: unit.trim() || 'шт',
+        ...(productId ? { product_id: productId } : {}),
       });
       haptic.success();
       onDone();
@@ -614,6 +636,28 @@ function AddItemForm({ procId, onDone, onCancel }) {
           className="input-field"
           autoFocus
         />
+        {/* Витрина каталога — выбор из имеющегося/покупавшегося */}
+        {catalog.length > 0 && (
+          <div className="mt-1 rounded-xl overflow-hidden" style={{ border: '0.5px solid var(--border-norse)', background: 'var(--bg-surface)' }}>
+            {catalog.map((it, i) => (
+              <button key={i} onClick={() => pickCatalog(it)}
+                className="w-full text-left px-2.5 py-2 flex items-center justify-between active:opacity-70"
+                style={{ borderTop: i ? '0.5px solid var(--border-norse)' : 'none' }}>
+                <span className="text-[13px] c-primary truncate">{it.name}</span>
+                <span className="text-[11px] flex-shrink-0 ml-2" style={{ color: Number(it.available_qty) > 0 ? 'var(--c-green,#30d158)' : 'var(--c-tertiary)' }}>
+                  {Number(it.available_qty) > 0 ? `${Number(it.available_qty)} ${it.unit || ''}` : 'нет'}{it.last_price ? ` · ${formatMoney(it.last_price)}` : ''}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+        {/* Наличие выбранной позиции + докупить */}
+        {available != null && (
+          <div className="mt-1 px-2.5 py-1.5 rounded-xl text-[11px]" style={{ background: 'rgba(48,209,88,0.08)' }}>
+            На складе: <b>{available}</b> {unit}
+            {qty && Number(qty) > available && <span className="c-gold"> · докупить {Math.max(0, Number(qty) - available)}</span>}
+          </div>
+        )}
         {/* Подсказка цены */}
         {hint && (
           <div

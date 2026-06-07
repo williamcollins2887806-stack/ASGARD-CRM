@@ -104,6 +104,8 @@ window.AsgardWarehouseV2 = (function () {
   async function renderConsumables(container, search) {
     container.innerHTML = `
       <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+        <button class="wh2-btn wh2-btn--primary" id="wh2-cons-buy">🛒 Заявка на закупку</button>
+        <button class="wh2-btn" id="wh2-cons-import">📄 Загрузить накладную/счёт</button>
         <button class="wh2-btn" data-cop="receipt">📥 Приход</button>
         <button class="wh2-btn" data-cop="issue">📤 Расход</button>
         <button class="wh2-btn" data-cop="transfer">🔄 Перемещение</button>
@@ -113,6 +115,14 @@ window.AsgardWarehouseV2 = (function () {
       </div>
       <div id="wh2-cons-body"></div>`;
     container.querySelectorAll('[data-cop]').forEach(b => b.onclick = () => openStockOp(b.dataset.cop));
+    const buyBtn = container.querySelector('#wh2-cons-buy');
+    if (buyBtn) buyBtn.onclick = () => {
+      // Заявка со склада (без работы) — открываем модалку создания закупки.
+      if (window.AsgardProcurementPage && AsgardProcurementPage.openCreateModal) AsgardProcurementPage.openCreateModal();
+      else toast('Закупки', 'Модуль закупок не загружен', 'err');
+    };
+    const importBtn = container.querySelector('#wh2-cons-import');
+    if (importBtn) importBtn.onclick = () => openCatalogImport();
     const tableBtn = container.querySelector('#wh2-cview-table');
     let tableMode = false;
     const draw = () => tableMode ? renderStock(container.querySelector('#wh2-cons-body'), search) : renderCatalog(container.querySelector('#wh2-cons-body'), search);
@@ -455,6 +465,164 @@ window.AsgardWarehouseV2 = (function () {
         <table class="wh2-table"><thead><tr><th>Позиция</th><th>Кол-во</th><th>Статус</th><th>Работа/объект</th><th>Срок</th><th>Закупщик</th></tr></thead><tbody>${wh.map(row).join('')}</tbody></table>` : ''}
       ${obj.length ? `<div style="font-weight:700;margin:18px 0 8px">📍 Напрямую на объект (мимо склада — для информации)</div>
         <table class="wh2-table"><thead><tr><th>Позиция</th><th>Кол-во</th><th>Статус</th><th>Работа/объект</th><th>Срок</th><th>Закупщик</th></tr></thead><tbody>${obj.map(row).join('')}</tbody></table>` : ''}`;
+  }
+
+  // ════════════════════ УПД/счёт/Excel/фото → КАТАЛОГ ════════════════════
+  // Загрузил документ мимо СРМ → распарсили → предпросмотр/редактирование → позиции
+  // в каталог (products) / оборудование (equipment) + цены (price_records) + поставщик.
+  function loadScript(src) {
+    return new Promise((res, rej) => {
+      if (document.querySelector('script[data-ci-lib="' + src + '"]')) return res();
+      const s = document.createElement('script'); s.src = src; s.async = true;
+      s.dataset.ciLib = src; s.onload = () => res(); s.onerror = () => rej(new Error('Не удалось загрузить ' + src));
+      document.head.appendChild(s);
+    });
+  }
+  // Извлечение текста из PDF (pdf.js) или изображения (Tesseract.js) — для AI-разбора.
+  async function extractDocText(file, onProgress) {
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    if (ext === 'pdf') {
+      onProgress && onProgress('Чтение PDF…');
+      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+      const pdfjs = window.pdfjsLib;
+      if (!pdfjs) throw new Error('PDF-движок недоступен');
+      pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      const buf = await file.arrayBuffer();
+      const doc = await pdfjs.getDocument({ data: buf }).promise;
+      let text = '';
+      for (let p = 1; p <= Math.min(doc.numPages, 15); p++) {
+        onProgress && onProgress('Страница ' + p + '/' + doc.numPages + '…');
+        const page = await doc.getPage(p);
+        const tc = await page.getTextContent();
+        text += tc.items.map(i => i.str).join(' ') + '\n';
+      }
+      // PDF без текстового слоя (скан) → попробуем OCR первой страницы как картинку.
+      if (text.replace(/\s/g, '').length < 30) throw new Error('PDF без текста (скан). Сфотографируйте или приложите Excel.');
+      return text;
+    }
+    // изображение → OCR
+    onProgress && onProgress('Загрузка OCR…');
+    await loadScript('https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.0/tesseract.min.js');
+    if (!window.Tesseract) throw new Error('OCR-движок недоступен');
+    onProgress && onProgress('Распознавание текста…');
+    const dataUrl = await new Promise((res, rej) => { const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = rej; r.readAsDataURL(file); });
+    const out = await window.Tesseract.recognize(dataUrl, 'rus+eng');
+    const text = (out && out.data && out.data.text) || '';
+    if (text.replace(/\s/g, '').length < 10) throw new Error('Не удалось распознать текст на фото');
+    return text;
+  }
+
+  let _ciItems = [], _ciImportId = null, _ciSupplier = '';
+  function openCatalogImport() {
+    UI.showModal && UI.showModal({
+      title: '📄 Загрузить накладную / счёт / УПД',
+      html: `<div style="display:flex;flex-direction:column;gap:14px" id="wh2-ci-root">
+        <div style="font-size:13px;color:var(--t2)">Excel — разбирается сразу. PDF / фото — через AI (текст распознаётся в браузере).</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <select id="wh2-ci-doctype" class="wh2-btn" style="text-align:left">
+            <option value="invoice">Счёт</option>
+            <option value="upd">УПД</option>
+            <option value="quote">КП</option>
+            <option value="other">Накладная / другое</option>
+          </select>
+          <label class="wh2-btn wh2-btn--primary" style="cursor:pointer;margin:0">
+            📎 Выбрать файл<input type="file" id="wh2-ci-file" accept=".xlsx,.xls,.pdf,image/*" style="display:none">
+          </label>
+          <span id="wh2-ci-fname" style="font-size:13px;color:var(--t2)"></span>
+        </div>
+        <div id="wh2-ci-status" style="font-size:13px;color:var(--gold)"></div>
+        <div id="wh2-ci-preview"></div>
+      </div>`
+    });
+    const fileInput = document.getElementById('wh2-ci-file');
+    const fnameEl = document.getElementById('wh2-ci-fname');
+    const statusEl = document.getElementById('wh2-ci-status');
+    const previewEl = document.getElementById('wh2-ci-preview');
+    _ciItems = []; _ciImportId = null; _ciSupplier = '';
+    const setStatus = (t) => { if (statusEl) statusEl.textContent = t || ''; };
+
+    fileInput.onchange = async () => {
+      const file = fileInput.files && fileInput.files[0]; if (!file) return;
+      fnameEl.textContent = file.name; previewEl.innerHTML = '';
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      const docType = document.getElementById('wh2-ci-doctype').value;
+      try {
+        if (ext === 'xlsx' || ext === 'xls') {
+          setStatus('Разбор Excel…');
+          const fd = new FormData(); fd.append('source_doc', docType); fd.append('file', file);
+          const t = localStorage.getItem('asgard_token') || localStorage.getItem('auth_token');
+          const r = await fetch('/api/catalog-import/excel', { method: 'POST', headers: { 'Authorization': 'Bearer ' + t }, body: fd });
+          const d = await r.json(); if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+          _ciImportId = d.import && d.import.id; _ciItems = d.items || []; _ciSupplier = (d.import && d.import.supplier_name) || '';
+        } else {
+          const text = await extractDocText(file, setStatus);
+          setStatus('AI разбирает документ…');
+          const d = await api('/api/catalog-import/ai', { method: 'POST', body: JSON.stringify({ text, source_doc: docType }) });
+          if (d.ai_unavailable) { setStatus(''); previewEl.innerHTML = `<div class="wh2-empty"><div class="wh2-empty__i">🤖</div>${esc(d.message || 'AI временно недоступен')}</div>`; return; }
+          _ciImportId = d.import && d.import.id; _ciItems = d.items || []; _ciSupplier = d.supplier || '';
+        }
+        setStatus('');
+        if (!_ciItems.length) { previewEl.innerHTML = `<div class="wh2-empty"><div class="wh2-empty__i">📭</div>Позиции не найдены. Попробуйте другой файл.</div>`; return; }
+        drawCiPreview(previewEl);
+      } catch (e) { setStatus(''); toast('Ошибка', e.message, 'err'); fileInput.value = ''; fnameEl.textContent = ''; }
+    };
+  }
+
+  function drawCiPreview(host) {
+    const rows = _ciItems.map((it, i) => `<tr data-i="${i}">
+      <td><input class="wh2-ci-in" data-f="name" style="width:100%;min-width:160px" value="${esc(it.name || '')}"></td>
+      <td><input class="wh2-ci-in" data-f="article" style="width:90px" value="${esc(it.article || '')}"></td>
+      <td><input class="wh2-ci-in" data-f="quantity" type="number" step="any" style="width:70px" value="${it.quantity != null ? it.quantity : 1}"></td>
+      <td><input class="wh2-ci-in" data-f="unit" style="width:60px" value="${esc(it.unit || 'шт')}"></td>
+      <td><input class="wh2-ci-in" data-f="unit_price" type="number" step="any" style="width:90px" value="${it.unit_price != null ? it.unit_price : ''}"></td>
+      <td style="text-align:center"><input type="checkbox" class="wh2-ci-eq" ${it.is_equipment ? 'checked' : ''}></td>
+      <td style="text-align:center"><button class="wh2-btn" data-del="${i}" style="padding:2px 8px">✕</button></td>
+    </tr>`).join('');
+    host.innerHTML = `
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+        <input id="wh2-ci-supplier" class="wh2-btn" style="text-align:left;flex:1;min-width:200px" placeholder="Поставщик (для цен)" value="${esc(_ciSupplier || '')}">
+        <span style="font-size:12px;color:var(--t2)">Позиций: ${_ciItems.length}</span>
+      </div>
+      <div style="max-height:340px;overflow:auto;border:1px solid var(--border,#262c38);border-radius:12px">
+      <table class="wh2-table" style="margin:0"><thead><tr>
+        <th>Наименование</th><th>Артикул</th><th>Кол-во</th><th>Ед.</th><th>Цена ₽</th><th title="Оборудование (поштучно в equipment)">Обор.</th><th></th>
+      </tr></thead><tbody id="wh2-ci-tbody">${rows}</tbody></table></div>
+      <div style="display:flex;gap:10px;margin-top:14px;justify-content:flex-end">
+        <button class="wh2-btn" id="wh2-ci-cancel">Отмена</button>
+        <button class="wh2-btn wh2-btn--primary" id="wh2-ci-apply">✅ Добавить в каталог</button>
+      </div>`;
+    // Синхронизация инпутов в _ciItems
+    const syncRow = (tr) => {
+      const i = parseInt(tr.dataset.i); const it = _ciItems[i]; if (!it) return;
+      tr.querySelectorAll('.wh2-ci-in').forEach(inp => {
+        const f = inp.dataset.f;
+        it[f] = (f === 'quantity' || f === 'unit_price') ? (inp.value === '' ? null : parseFloat(inp.value)) : inp.value;
+      });
+      it.is_equipment = tr.querySelector('.wh2-ci-eq').checked;
+    };
+    host.querySelectorAll('#wh2-ci-tbody tr').forEach(tr => {
+      tr.querySelectorAll('.wh2-ci-in, .wh2-ci-eq').forEach(inp => inp.onchange = () => syncRow(tr));
+    });
+    host.querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
+      host.querySelectorAll('#wh2-ci-tbody tr').forEach(syncRow);
+      _ciItems.splice(parseInt(b.dataset.del), 1);
+      drawCiPreview(host);
+    });
+    document.getElementById('wh2-ci-cancel').onclick = () => { UI.closeModal && UI.closeModal(); };
+    document.getElementById('wh2-ci-apply').onclick = async () => {
+      host.querySelectorAll('#wh2-ci-tbody tr').forEach(syncRow);
+      const items = _ciItems.filter(it => it.name && String(it.name).trim());
+      if (!items.length) { toast('Внимание', 'Нет позиций для добавления', 'warn'); return; }
+      const supplier = (document.getElementById('wh2-ci-supplier').value || '').trim();
+      const btn = document.getElementById('wh2-ci-apply'); btn.disabled = true; btn.textContent = 'Добавляю…';
+      try {
+        const d = await api('/api/catalog-import/' + _ciImportId + '/apply', {
+          method: 'POST', body: JSON.stringify({ items, supplier_name: supplier || null })
+        });
+        toast('Готово', `В каталог: ${d.to_catalog || 0} • в оборудование: ${d.to_equipment || 0} • цен: ${d.prices || 0}`, 'ok');
+        UI.closeModal && UI.closeModal(); refresh();
+      } catch (e) { btn.disabled = false; btn.textContent = '✅ Добавить в каталог'; toast('Ошибка', e.message, 'err'); }
+    };
   }
 
   async function render({ layout, title }) {
