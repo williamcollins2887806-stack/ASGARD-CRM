@@ -106,7 +106,8 @@ async function routes(fastify) {
       for (const it of items) {
         const type = ['consumable', 'equipment', 'new_position'].includes(it.item_type) ? it.item_type : null;
         if (!type) continue;
-        const needQty = num(it.need_qty) || 1;
+        // need_qty всегда > 0 (CHECK в БД); 0/отрицательное/мусор → 1
+        const nq = num(it.need_qty); const needQty = (nq && nq > 0) ? nq : 1;
         const seg = SEGMENTS.includes(it.price_segment) ? it.price_segment : null;
         const src = ['catalog', 'manual', 'excel'].includes(it.source) ? it.source : 'catalog';
         let snap = { available: null, price: null, supplier: null };
