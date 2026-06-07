@@ -66,6 +66,11 @@ window.AsgardWarehouseV2 = (function () {
       _cartSaveLS(); _updateCartBadge();
     } catch (e) { toast('Корзина', e.message, 'err'); }
   }
+  // убрать из корзины по equipment_id (для кнопки на карточке/строке оборудования)
+  async function removeByEquipment(equipmentId) {
+    const it = _cart.items.find(i => i.equipment_id === equipmentId);
+    if (it) await removeFromCart(it.id);
+  }
 
   // ── Стили (инжект один раз) ───────────────────────────────────────────────
   function injectCSS() {
@@ -381,7 +386,6 @@ window.AsgardWarehouseV2 = (function () {
   async function renderConsumables(container, search) {
     container.innerHTML = `
       <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-        <button class="wh2-btn wh2-btn--primary wh2-cart-open" id="wh2-cart-btn">🛒 Корзина<span class="wh2-cart-badge" id="wh2-cart-badge" style="display:none">0</span></button>
         <button class="wh2-btn" id="wh2-cons-import">📄 Загрузить накладную/счёт</button>
         <button class="wh2-btn" data-cop="receipt">📥 Приход</button>
         <button class="wh2-btn" data-cop="issue">📤 Расход</button>
@@ -390,12 +394,9 @@ window.AsgardWarehouseV2 = (function () {
         <span style="flex:1"></span>
         <button class="wh2-btn" id="wh2-cview-table">☰ Таблицей</button>
       </div>
-      <div style="font-size:12px;color:var(--t2);margin:-8px 0 12px">Отметьте нужные позиции кнопкой «+» на карточках → откройте корзину → отправьте одной заявкой (наличие зарезервируется, дефицит уйдёт в закупку).</div>
+      <div style="font-size:12px;color:var(--t2);margin:-8px 0 12px">Отметьте нужные позиции кнопкой «+» на карточках → откройте «🛒 Корзина закупки» (вверху справа) → отправьте одной заявкой (наличие зарезервируется, дефицит уйдёт в закупку).</div>
       <div id="wh2-cons-body"></div>`;
     container.querySelectorAll('[data-cop]').forEach(b => b.onclick = () => openStockOp(b.dataset.cop));
-    const cartBtn = container.querySelector('#wh2-cart-btn');
-    if (cartBtn) cartBtn.onclick = () => openCartModal();
-    _updateCartBadge();
     const importBtn = container.querySelector('#wh2-cons-import');
     if (importBtn) importBtn.onclick = () => openCatalogImport();
     const tableBtn = container.querySelector('#wh2-cview-table');
@@ -703,7 +704,7 @@ window.AsgardWarehouseV2 = (function () {
     if (_tab === 'equipment') {
       // Полноценный блок оборудования вынесен в warehouse-v2-equipment.js (window.WH2Equipment).
       if (window.WH2Equipment) {
-        if (WH2Equipment.setCartCallbacks) WH2Equipment.setCartCallbacks({ isInCart, addToCart, removeFromCart, getWarehouseId: () => _cart.warehouse_id });
+        if (WH2Equipment.setCartCallbacks) WH2Equipment.setCartCallbacks({ isInCart, addToCart, removeFromCart, removeByEquipment, getWarehouseId: () => _cart.warehouse_id });
         return window.WH2Equipment.render(body, { user: _user, api, esc, toast, fmt, UI, search: _searchVal });
       }
       body.innerHTML = `<div class="wh2-empty"><div class="wh2-empty__i">🛠️</div>Модуль оборудования не загружен.</div>`;
@@ -930,6 +931,8 @@ window.AsgardWarehouseV2 = (function () {
         <button class="wh2-tab" data-tab="incoming">🚚 Приёмка</button>
         <button class="wh2-tab" data-tab="locations">🗺️ Ячейки</button>
         <button class="wh2-tab" data-tab="movements">📜 Движения</button>
+        <span style="flex:1"></span>
+        <button class="wh2-btn wh2-btn--primary wh2-cart-open" id="wh2-cart-btn" style="margin-bottom:4px">🛒 Корзина закупки<span class="wh2-cart-badge" id="wh2-cart-badge" style="display:none">0</span></button>
       </div>
       <div class="wh2-toolbar" id="wh2-toolbar">
         <div class="wh2-search"><input id="wh2-q" placeholder="Поиск по наименованию или артикулу…"></div>
@@ -946,6 +949,10 @@ window.AsgardWarehouseV2 = (function () {
     let deb;
     _root.querySelector('#wh2-q').oninput = e => { clearTimeout(deb); _searchVal = e.target.value.trim(); deb = setTimeout(refresh, 280); };
     _root.querySelector('#wh2-add').onclick = () => { if (_tab === 'locations') openBulkModal(); else openQuickProduct(); };
+    // Кнопка корзины — на уровне страницы (видна на всех вкладках)
+    const pageCartBtn = _root.querySelector('#wh2-cart-btn');
+    if (pageCartBtn) pageCartBtn.onclick = () => openCartModal();
+    _updateCartBadge();
 
     refresh();
   }

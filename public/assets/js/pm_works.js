@@ -148,7 +148,33 @@ const WORK_STATUS_TRANSITIONS = {
 
 window.AsgardPmWorksPage=(function(){
   const { $, $$, esc, toast, showModal, formatDate, money } = AsgardUI;
-  const { dial } = AsgardCharts;
+  const { dial, scoreRing } = AsgardCharts;
+
+  // Статусы, при которых работа ещё в подготовке (показываем индикатор готовности)
+  const PREP_STATUSES_SET = new Set(['Новая', 'Подготовка', 'Мобилизация']);
+  // Признак «в подготовке» — ТОЛЬКО статус (start_in_work_date на проде почти не заполняется).
+  function isPrepWork(w){
+    return PREP_STATUSES_SET.has(w.work_status || '');
+  }
+
+  // Однократная инъекция стилей индикатора готовности
+  (function injectReadinessCSS(){
+    if(document.getElementById('pmw-readiness-css')) return;
+    const st = document.createElement('style');
+    st.id = 'pmw-readiness-css';
+    st.textContent = `
+      .pmw-ready{ display:inline-flex; align-items:center; gap:7px; margin-top:6px; }
+      .pmw-ready-ring{ display:inline-flex; line-height:0; }
+      .pmw-ready-meta{ display:inline-flex; flex-direction:column; line-height:1.15; font-size:11px; }
+      .pmw-ready-meta b{ font-size:12px; }
+      .pmw-ready-stages{ color:var(--t3,#8a97b0); }
+      .pmw-ready-blk{ color:var(--err-t,#e0524d); font-size:10px; font-weight:600; }
+      .pmw-ready-skel{ color:var(--t3,#8a97b0); font-size:11px; }
+      .m-wc-readiness{ display:flex; align-items:center; gap:8px; margin:8px 0; padding:8px 10px;
+        background:var(--bg3,rgba(120,140,180,.08)); border-radius:10px; }
+    `;
+    document.head.appendChild(st);
+  })();
   const { isoNow, ymNow, num, safeJson, toDate, diffDays, daysBetween, sortBy, audit, notify, notifyDirectors, calcProfit } = window.AsgardWorksShared || {};
 
   function workDate(value){ return value ? formatDate(value) : "\u2014"; }
@@ -712,9 +738,12 @@ window.AsgardPmWorksPage=(function(){
       const end = workDate(w.end_fact || w.end_plan || tender?.work_end_plan || "");
       const got = (Number(w.advance_received||0)+Number(w.balance_received||0))||0;
       const left = (w.contract_value||0) ? Math.max(0, Number(w.contract_value||0)-got) : 0;
+      const prepCell = isPrepWork(w)
+        ? `<div class="pmw-ready" data-readiness="${w.id}" title="Готовность к старту"><span class="pmw-ready-skel">…</span></div>`
+        : '';
       return `<tr data-id="${w.id}">
         <td><b>${esc(w.customer_name||tender?.customer_name||"")}</b><div class="help">${esc(w.work_title||tender?.tender_title||"")}</div></td>
-        <td><span class="pill" style="border-color:${esc(color)}">${esc(st)}</span></td>
+        <td><span class="pill" style="border-color:${esc(color)}">${esc(st)}</span>${prepCell}</td>
         <td><div>${esc(start)} → ${esc(end)}</div><div class="help">tender #${w.tender_id}</div></td>
         <td>
           <div><b>${money(w.contract_value)}</b> ₽</div>
@@ -743,11 +772,15 @@ window.AsgardPmWorksPage=(function(){
       // Progress bar
       const pct = contractVal > 0 ? Math.min(100, Math.round((got / contractVal) * 100)) : 0;
 
+      const prepLine = isPrepWork(w)
+        ? '<div class="m-wc-readiness" data-readiness="' + w.id + '"><span class="pmw-ready-skel">Готовность…</span></div>'
+        : '';
       return '<div class="m-work-card" data-id="' + w.id + '">' +
         '<div class="m-wc-header">' +
           '<div class="m-wc-customer">' + esc(w.customer_name || tender?.customer_name || '—') + '</div>' +
           '<span class="m-wc-status" style="border-color:' + esc(color) + ';color:' + esc(color) + '">' + esc(st) + '</span>' +
         '</div>' +
+        prepLine +
         '<div class="m-wc-title">' + esc(w.work_title || tender?.tender_title || '') + '</div>' +
         '<div class="m-wc-dates">' +
           '<span>📅 ' + esc(start) + ' → ' + esc(end) + '</span>' +
@@ -832,6 +865,63 @@ window.AsgardPmWorksPage=(function(){
         );
       };
       cnt.textContent = `Показано: ${list.length} из ${works.length}.`;
+      loadReadiness();
+    }
+
+    // ─── Индикатор готовности к старту (только для работ в подготовке) ─────────
+    let _readinessReq = 0;
+    async function loadReadiness(){
+      const slots = Array.from(document.querySelectorAll('[data-readiness]'));
+      if(!slots.length) return;
+      const ids = [...new Set(slots.map(s => s.getAttribute('data-readiness')))];
+      const myReq = ++_readinessReq;
+      let data = {};
+      try{
+        const tok = localStorage.getItem('asgard_token') || localStorage.getItem('auth_token');
+        const resp = await fetch('/api/work-readiness/summary?ids=' + ids.join(','),
+          { headers: { 'Authorization': 'Bearer ' + tok } });
+        if(resp.ok) data = await resp.json();
+      }catch(e){ /* тихо — индикатор необязателен */ }
+      if(myReq !== _readinessReq) return; // устаревший ответ (фильтр сменился)
+      for(const slot of slots){
+        const id = slot.getAttribute('data-readiness');
+        const r = data[id];
+        if(!r || !r.in_prep || r.stages_total === 0){ slot.innerHTML = ''; continue; }
+        const pct = Math.max(0, Math.min(100, r.overall_percent || 0));
+        const col = pct >= 80 ? 'var(--ok-t)' : (pct >= 50 ? 'var(--amber,#e0a500)' : 'var(--err-t)');
+        const blk = r.blocker_label ? ('<span class="pmw-ready-blk" title="Тормозит старт">⚠ ' + esc(r.blocker_label) + '</span>') : '';
+        slot.innerHTML =
+          '<span class="pmw-ready-ring"><canvas width="40" height="40"></canvas></span>' +
+          '<span class="pmw-ready-meta">' +
+            '<b style="color:' + col + '">' + pct + '%</b>' +
+            '<span class="pmw-ready-stages">' + (r.stages_done||0) + '/' + r.stages_total + ' этапов</span>' +
+            blk +
+          '</span>';
+        const cv = slot.querySelector('canvas');
+        try{ drawMiniRing(cv, pct); }catch(e){}
+      }
+    }
+
+    // Маленькое кольцо готовности (40px) — собственная отрисовка, без подписей внутри
+    function drawMiniRing(canvas, pct){
+      if(!canvas) return;
+      const dpr = window.devicePixelRatio || 1;
+      const size = 40;
+      canvas.width = size * dpr; canvas.height = size * dpr;
+      canvas.style.width = size + 'px'; canvas.style.height = size + 'px';
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+      const cx = size/2, cy = size/2, r = 15, lw = 5;
+      const s = Math.max(0, Math.min(100, Number(pct)||0));
+      ctx.clearRect(0,0,size,size);
+      ctx.lineWidth = lw; ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(120,140,180,.25)';
+      ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke();
+      const color = s >= 80 ? 'rgba(34,197,94,.95)' : s >= 50 ? 'rgba(224,165,0,.95)' : 'rgba(220,38,38,.95)';
+      ctx.strokeStyle = color;
+      ctx.beginPath(); ctx.arc(cx,cy,r,-Math.PI/2,-Math.PI/2 + (s/100)*Math.PI*2, false); ctx.stroke();
+      ctx.fillStyle = color; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(Math.round(s), cx, cy+1);
     }
 
     drawKpi();
@@ -1523,8 +1613,9 @@ window.AsgardPmWorksPage=(function(){
     }
     html += `<div style="margin-top:12px"><button class="btn primary" id="pw-new-proc">+ Новая заявка</button></div></div>`;
 
-    AsgardUI.showModal(html, { title: `Закупки — ${AsgardUI.esc(work.work_title || '#' + work.id)}`, width: '700px' });
-    document.getElementById('pw-new-proc').onclick = () => {
+    AsgardUI.showModal({ title: `Закупки — ${AsgardUI.esc(work.work_title || '#' + work.id)}`, html, wide: true });
+    const newBtn = document.getElementById('pw-new-proc');
+    if (newBtn) newBtn.onclick = () => {
       AsgardUI.closeModal();
       if (window.AsgardProcurementPage && AsgardProcurementPage.openCreateModal) AsgardProcurementPage.openCreateModal(work.id);
       else location.hash = '#/procurement';

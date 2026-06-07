@@ -221,7 +221,11 @@ window.WH2Equipment = (function () {
     if (_cartCb) el.querySelectorAll('[data-cart-eqid]').forEach(btn => btn.onclick = async ev => {
       ev.stopPropagation();
       const eqid = +btn.dataset.cartEqid;
-      if (_cartCb.isInCart(null, eqid)) { /* убрать из корзины — найдём cartItemId через sync */ await _cartCb.removeByEquipment ? _cartCb.removeByEquipment(eqid) : null; btn.classList.remove('wh2-cart-toggle--active'); btn.textContent = '+'; return; }
+      if (_cartCb.isInCart(null, eqid)) {
+        // убрать из корзины (по equipment_id находим cartItemId)
+        if (_cartCb.removeByEquipment) await _cartCb.removeByEquipment(eqid);
+        btn.classList.remove('wh2-cart-toggle--active'); btn.textContent = '+'; return;
+      }
       const ok = await _cartCb.addToCart({ warehouse_id: _cartCb.getWarehouseId && _cartCb.getWarehouseId(), items: [{ item_type: 'equipment', equipment_id: eqid, need_qty: 1, source: 'catalog' }] });
       if (ok) { btn.classList.add('wh2-cart-toggle--active'); btn.textContent = '✓'; }
     });
@@ -268,8 +272,11 @@ window.WH2Equipment = (function () {
   }
 
   function renderTable(items) {
-    return `<table class="wh2-table"><thead><tr><th></th><th>Наименование</th><th>Инв.№</th><th>Категория</th><th>Статус</th><th>Ответственный</th><th>Объект</th></tr></thead><tbody>
-      ${items.map(e => { const st = STATUS[e.status] || { l: e.status, c: '#8b93a3' }; return `<tr data-eqid="${e.id}" style="cursor:pointer">
+    const cartCol = _cartCb ? '<th title="В корзину закупки">🛒</th>' : '';
+    return `<table class="wh2-table"><thead><tr>${cartCol}<th></th><th>Наименование</th><th>Инв.№</th><th>Категория</th><th>Статус</th><th>Ответственный</th><th>Объект</th></tr></thead><tbody>
+      ${items.map(e => { const st = STATUS[e.status] || { l: e.status, c: '#8b93a3' };
+        const cartCell = _cartCb ? `<td><button class="wh2-cart-toggle ${_cartCb.isInCart(null, e.id) ? 'wh2-cart-toggle--active' : ''}" data-cart-eqid="${e.id}" style="position:static;width:26px;height:26px;font-size:15px" title="В корзину закупки">${_cartCb.isInCart(null, e.id) ? '✓' : '+'}</button></td>` : '';
+        return `<tr data-eqid="${e.id}" style="cursor:pointer">${cartCell}
         <td style="font-size:18px">${e.photo_url ? `<img src="${esc(e.photo_url)}" style="width:28px;height:28px;border-radius:6px;object-fit:cover">` : eqIcon(e)}</td>
         <td><b>${hl(e.name)}</b></td><td>${hl(e.inventory_number || '—')}</td><td>${esc(e.category_name || '—')}</td>
         <td><span class="wh2-chip" style="background:${st.c}22;color:${st.c}">${st.l}</span></td>

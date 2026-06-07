@@ -46,16 +46,16 @@ window.AsgardProcurementPage = (function() {
 
   // -- Filters --
   function renderFilters(el) {
+    // «+ Новая заявка» убрана намеренно: заявки создаются ТОЛЬКО из карточки работы или из
+    // корзины на складе. Закупщик заявки не создаёт — он их отрабатывает. Это реестр/просмотр.
     el.innerHTML = `<div class="proc-toolbar">
       <div id="pf-status_w" style="display:inline-block;min-width:150px"></div>
       <input type="text" id="pf-search" placeholder="Поиск..." style="min-width:200px">
-      <button class="btn primary" id="pf-create">+ Новая заявка</button>
       <button class="btn ghost" onclick="window.open('/api/procurement/export/excel')">📥 Excel</button>
       <button class="btn ghost" onclick="window.open('/api/procurement/template/excel')">📄 Шаблон</button>
     </div>`;
     el.querySelector('#pf-status_w')?.appendChild(CRSelect.create({ id: 'pf-status', options: [{ value: '', label: 'Все статусы' }, ...Object.entries(STATUSES).map(([k,v])=>({ value: k, label: v.l }))], value: currentFilters.status || '', onChange: v => { currentFilters.status = v; refresh(); } }));
     let tmr; el.querySelector('#pf-search').oninput = e => { clearTimeout(tmr); tmr = setTimeout(()=>{ currentFilters.search=e.target.value; refresh(); },300); };
-    el.querySelector('#pf-create').onclick = () => openCreateModal();
   }
 
   // -- Table --
