@@ -268,7 +268,7 @@ async function routes(fastify) {
     let equip = [];
     if (include_equipment === 'true') {
       // Имеющееся оборудование (поштучное) — для дозаказа такого же.
-      const eparams = []; let j = 1; let ew = `e.status != 'written_off'`;
+      const eparams = []; let j = 1; let ew = `e.status != 'written_off' AND e.deleted_at IS NULL`;
       if (search) { ew += ` AND e.name ILIKE $${j++}`; eparams.push(`%${search}%`); }
       const eq = await db.query(`
         SELECT MIN(e.id) AS id, e.name, NULL::text AS article, MIN(e.unit) AS unit, NULL::int AS category_id,

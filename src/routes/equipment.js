@@ -33,7 +33,7 @@ async function equipmentRoutes(fastify, options) {
   }, async (request) => {
     const result = await db.query(`
       SELECT c.*,
-        (SELECT COUNT(*) FROM equipment e WHERE e.category_id = c.id AND e.status != 'written_off') as equipment_count
+        (SELECT COUNT(*) FROM equipment e WHERE e.category_id = c.id AND e.status != 'written_off' AND e.deleted_at IS NULL) as equipment_count
       FROM equipment_categories c
       ORDER BY c.sort_order, c.name
     `);
@@ -89,6 +89,7 @@ async function equipmentRoutes(fastify, options) {
         COUNT(*) FILTER (WHERE status = 'issued') as issued,
         COUNT(*) FILTER (WHERE status = 'written_off') as written_off
       FROM equipment
+      WHERE deleted_at IS NULL
     `);
 
     return { success: true, ...result.rows[0] };
@@ -205,7 +206,7 @@ async function equipmentRoutes(fastify, options) {
       LEFT JOIN equipment_categories c ON e.category_id = c.id
       LEFT JOIN warehouses w ON e.warehouse_id = w.id
       LEFT JOIN objects o ON e.current_object_id = o.id
-      WHERE e.current_holder_id = $1 AND e.status != 'written_off'
+      WHERE e.current_holder_id = $1 AND e.status != 'written_off' AND e.deleted_at IS NULL
       ORDER BY e.name
     `, [holderId]);
 
@@ -231,7 +232,7 @@ async function equipmentRoutes(fastify, options) {
       LEFT JOIN equipment_categories c ON e.category_id = c.id
       LEFT JOIN users h ON e.current_holder_id = h.id
       LEFT JOIN warehouses w ON e.warehouse_id = w.id
-      WHERE e.status != 'written_off'
+      WHERE e.status != 'written_off' AND e.deleted_at IS NULL
         AND (
           (e.next_maintenance IS NOT NULL AND e.next_maintenance <= CURRENT_DATE + $1 * INTERVAL '1 day')
           OR (e.next_calibration IS NOT NULL AND e.next_calibration <= CURRENT_DATE + $1 * INTERVAL '1 day')
@@ -257,7 +258,7 @@ async function equipmentRoutes(fastify, options) {
       FROM equipment e
       LEFT JOIN equipment_categories c ON e.category_id = c.id
       LEFT JOIN warehouses w ON e.warehouse_id = w.id
-      WHERE e.status = 'on_warehouse'
+      WHERE e.status = 'on_warehouse' AND e.deleted_at IS NULL
     `;
     const params = [];
 
@@ -292,6 +293,7 @@ async function equipmentRoutes(fastify, options) {
         COUNT(*) FILTER (WHERE status = 'written_off') as written_off,
         COALESCE(SUM(purchase_price) FILTER (WHERE status != 'written_off'), 0) as total_value
       FROM equipment
+      WHERE deleted_at IS NULL
     `);
 
     const s = stats.rows[0];
@@ -358,10 +360,10 @@ async function equipmentRoutes(fastify, options) {
       LEFT JOIN warehouses w ON e.warehouse_id = w.id
       LEFT JOIN users h ON e.current_holder_id = h.id
       LEFT JOIN objects o ON e.current_object_id = o.id
-      WHERE 1=1
+      WHERE e.deleted_at IS NULL
     `;
 
-    let countSql = `SELECT COUNT(*) FROM equipment e WHERE 1=1`;
+    let countSql = `SELECT COUNT(*) FROM equipment e WHERE e.deleted_at IS NULL`;
     const params = [];
     const countParams = [];
 
@@ -422,6 +424,7 @@ async function equipmentRoutes(fastify, options) {
         COUNT(*) FILTER (WHERE status = 'broken') as broken,
         COUNT(*) FILTER (WHERE status = 'written_off') as written_off
       FROM equipment
+      WHERE deleted_at IS NULL
     `);
 
     return {
@@ -1252,7 +1255,7 @@ async function equipmentRoutes(fastify, options) {
       FROM equipment e
       LEFT JOIN equipment_categories c ON e.category_id = c.id
       LEFT JOIN warehouses w ON e.warehouse_id = w.id
-      WHERE e.status = 'on_warehouse'
+      WHERE e.status = 'on_warehouse' AND e.deleted_at IS NULL
         AND NOT EXISTS (SELECT 1 FROM equipment_reservations r WHERE r.equipment_id = e.id AND r.status = 'active')
         AND NOT EXISTS (SELECT 1 FROM equipment_requests rq WHERE rq.equipment_id = e.id AND rq.status = 'pending')`;
     if (category_id) { sql += ` AND e.category_id = $${i++}`; params.push(category_id); }
@@ -2310,7 +2313,7 @@ async function equipmentRoutes(fastify, options) {
        FROM equipment e
        LEFT JOIN equipment_categories c ON c.id = e.category_id
        LEFT JOIN warehouses w ON w.id = e.warehouse_id
-       WHERE e.current_holder_id = $1 AND e.status = 'issued'
+       WHERE e.current_holder_id = $1 AND e.status = 'issued' AND e.deleted_at IS NULL
        ORDER BY e.updated_at DESC`,
       [user.id]
     );
@@ -2357,6 +2360,7 @@ async function equipmentRoutes(fastify, options) {
         COALESCE(SUM(purchase_price) FILTER (WHERE status != 'written_off'), 0) as total_value,
         COALESCE(SUM(book_value) FILTER (WHERE status != 'written_off'), 0) as book_value
       FROM equipment
+      WHERE deleted_at IS NULL
     `);
 
     // Active reservations

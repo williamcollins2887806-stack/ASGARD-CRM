@@ -25,7 +25,7 @@ async function routes(fastify) {
     const { warehouse_id, kind, is_active, search, limit = 500, offset = 0 } = req.query;
     let sql = `SELECT l.*, w.name AS warehouse_name,
       (SELECT COUNT(*) FROM stock s WHERE s.location_id = l.id AND s.quantity > 0) AS stock_lines,
-      (SELECT COUNT(*) FROM equipment e WHERE e.location_id = l.id AND e.status != 'written_off') AS unit_count
+      (SELECT COUNT(*) FROM equipment e WHERE e.location_id = l.id AND e.status != 'written_off' AND e.deleted_at IS NULL) AS unit_count
       FROM warehouse_locations l
       LEFT JOIN warehouses w ON l.warehouse_id = w.id
       WHERE l.deleted_at IS NULL`;
