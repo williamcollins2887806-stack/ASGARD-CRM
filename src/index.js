@@ -496,7 +496,6 @@ fastify.register(require('./routes/pre_tenders'), { prefix: '/api/pre-tenders' }
 fastify.register(require('./routes/tenders'), { prefix: '/api/tenders' });
 fastify.register(require('./routes/estimates'), { prefix: '/api/estimates' });
 fastify.register(require('./routes/works'), { prefix: '/api/works' });
-fastify.register(require('./routes/work-readiness'), { prefix: '/api/work-readiness' });
 fastify.register(require('./routes/customers'), { prefix: '/api/customers' });
 fastify.register(require('./routes/expenses'), { prefix: '/api/expenses' });
 fastify.register(require('./routes/incomes'), { prefix: '/api/incomes' });
