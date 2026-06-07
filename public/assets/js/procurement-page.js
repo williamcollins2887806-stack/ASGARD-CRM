@@ -574,7 +574,7 @@ window.AsgardProcurementPage = (function() {
     let workOpts = [{ value: '', label: '— без работы —' }];
     try {
       const wr = await apiFetch('/api/works?limit=200');
-      (wr.items || wr.rows || []).forEach(w => {
+      (wr.works || wr.items || wr.rows || []).forEach(w => {
         workOpts.push({ value: String(w.id), label: w.work_title || '#' + w.id });
       });
     } catch(e) {}
@@ -591,7 +591,7 @@ window.AsgardProcurementPage = (function() {
       ${tplBlock}
       <div style="color:var(--t3);font-size:12px;margin-bottom:var(--sp-2)">${templates.length ? '— или создайте новую заявку вручную —' : ''}</div>
       <label>Название<input id="pc-title" value="Заявка на закупку" required></label>
-      <label>Работа<div id="pc-work_w"></div></label>
+      <label>Работа${workId ? ' <span style="font-size:11px;color:var(--ok-t,#30d158)">(определена автоматически)</span>' : ''}<div id="pc-work_w"></div></label>
       <label>Приоритет<div id="pc-priority_w"></div></label>
       <label>Ценовой сегмент<div id="pc-segment_w"></div></label>
       <label>Лимит бюджета, ₽ (необязательно)<input id="pc-budget" type="number" min="0" placeholder="—"></label>
@@ -605,19 +605,28 @@ window.AsgardProcurementPage = (function() {
       if (fromTplBtn) fromTplBtn.onclick = async () => {
         const tplId = CRSelect.getValue('pc-tpl');
         if (!tplId) { toast('Выберите шаблон', '', 'err'); return; }
-        const workId = CRSelect.getValue('pc-work') || null;
-        const r = await apiPost(`/api/procurement/from-template/${tplId}`, { work_id: workId });
+        const fw = document.getElementById('pc-work-fixed');
+        const wid = fw ? (fw.value || null) : (CRSelect.getValue('pc-work') || null);
+        const r = await apiPost(`/api/procurement/from-template/${tplId}`, { work_id: wid });
         if (r.error) { toast('Ошибка', r.error, 'err'); return; }
         toast('Создано из шаблона', '', 'ok'); closeModal(); openDetail(r.item.id);
       };
     }
-    document.getElementById('pc-work_w')?.appendChild(CRSelect.create({ id: 'pc-work', options: workOpts, value: workId ? String(workId) : '', searchable: true, dropdownClass: 'z-modal' }));
+    // Если работа задана из карточки работы — показываем её зафиксированной (не нужно выбирать).
+    if (workId) {
+      const w = workOpts.find(o => o.value === String(workId));
+      const wEl = document.getElementById('pc-work_w');
+      if (wEl) wEl.innerHTML = `<div style="padding:9px 12px;background:var(--bg2,rgba(48,209,88,.08));border:1px solid var(--ok-t,#30d158);border-radius:8px;font-weight:600">🔧 ${esc((w && w.label) || ('#' + workId))}</div><input type="hidden" id="pc-work-fixed" value="${workId}">`;
+    } else {
+      document.getElementById('pc-work_w')?.appendChild(CRSelect.create({ id: 'pc-work', options: workOpts, value: '', searchable: true, dropdownClass: 'z-modal' }));
+    }
     document.getElementById('pc-priority_w')?.appendChild(CRSelect.create({ id: 'pc-priority', options: [{ value: 'normal', label: 'Обычный' }, { value: 'high', label: 'Высокий' }, { value: 'urgent', label: 'Срочный' }], value: 'normal', dropdownClass: 'z-modal' }));
     document.getElementById('pc-segment_w')?.appendChild(CRSelect.create({ id: 'pc-segment', options: [{ value: '', label: '— не указан —' }, { value: 'cheap', label: '💰 Подешевле' }, { value: 'medium', label: '⚖️ Средний' }, { value: 'premium', label: '⭐ Премиум' }], value: '', dropdownClass: 'z-modal' }));
     document.getElementById('pc-submit').onclick = async () => {
+      const fixedWork = document.getElementById('pc-work-fixed');
       const body = {
         title: document.getElementById('pc-title').value,
-        work_id: CRSelect.getValue('pc-work') || null,
+        work_id: fixedWork ? (fixedWork.value || null) : (CRSelect.getValue('pc-work') || null),
         priority: CRSelect.getValue('pc-priority') || 'normal',
         price_segment: CRSelect.getValue('pc-segment') || null,
         budget_limit: parseFloat(document.getElementById('pc-budget').value) || null,

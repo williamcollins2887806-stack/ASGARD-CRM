@@ -47,9 +47,45 @@ window.AsgardWarehouseV2 = (function () {
     return _cart.items.some(i => (productId && i.product_id === productId) || (equipmentId && i.equipment_id === equipmentId));
   }
   function _updateCartBadge() {
-    const b = document.getElementById('wh2-cart-badge'); if (!b) return;
+    const b = document.getElementById('wh2-cart-badge'); if (b) { const n = _cart.items.length; b.textContent = n; b.style.display = n ? '' : 'none'; }
+    _updateFab();
+  }
+  // Обновить FAB (счётчик + разбивка резерв/закупка). Определён здесь, чтобы вызывался отовсюду.
+  function _updateFab() {
+    const fab = document.getElementById('wh2-cart-fab'); if (!fab) return;
+    const cnt = fab.querySelector('.wh2-fab__cnt');
+    const split = fab.querySelector('.wh2-fab__split');
     const n = _cart.items.length;
-    b.textContent = n; b.style.display = n ? '' : 'none';
+    if (cnt) {
+      const prev = cnt.textContent;
+      cnt.textContent = n; cnt.style.display = n ? '' : 'none';
+      if (n && prev !== String(n)) { cnt.classList.remove('wh2-fab__cnt--pop'); void cnt.offsetWidth; cnt.classList.add('wh2-fab__cnt--pop'); }
+    }
+    // разбивка: резерв = Σ min(need,available) по расходникам; закупка = остальное
+    let res = 0, buy = 0;
+    for (const it of _cart.items) {
+      const need = parseFloat(it.need_qty) || 0;
+      if (it.item_type === 'equipment') { res += need; continue; }
+      if (it.is_new_position) { buy += need; continue; }
+      const av = Math.max(0, parseFloat(it.available_qty) || 0);
+      const r = Math.min(need, av); res += r; buy += (need - r);
+    }
+    if (split) {
+      split.style.display = n ? '' : 'none';
+      split.innerHTML = `<span><b>${n}</b> поз.</span><span class="res">✅ <b>${fmt(res)}</b> резерв</span><span class="buy">🛒 <b>${fmt(buy)}</b> закупка</span>`;
+    }
+  }
+  // Анимация полёта в корзину
+  function _flyToCart(fromEl) {
+    try {
+      const fab = document.querySelector('.wh2-fab__btn'); if (!fab || !fromEl) return;
+      const a = fromEl.getBoundingClientRect(), b = fab.getBoundingClientRect();
+      const fly = document.createElement('div'); fly.className = 'wh2-fly'; fly.textContent = '🛒';
+      fly.style.left = a.left + a.width / 2 - 17 + 'px'; fly.style.top = a.top + a.height / 2 - 17 + 'px';
+      document.body.appendChild(fly);
+      requestAnimationFrame(() => { fly.style.left = b.left + b.width / 2 - 17 + 'px'; fly.style.top = b.top + b.height / 2 - 17 + 'px'; fly.style.opacity = '0.2'; fly.style.transform = 'scale(.4)'; });
+      setTimeout(() => fly.remove(), 650);
+    } catch (_) {}
   }
   async function addToCart(payload) {
     try {
@@ -70,6 +106,74 @@ window.AsgardWarehouseV2 = (function () {
   async function removeByEquipment(equipmentId) {
     const it = _cart.items.find(i => i.equipment_id === equipmentId);
     if (it) await removeFromCart(it.id);
+  }
+  // текущее кол-во позиции в корзине (0 если нет)
+  function qtyOf(productId, equipmentId) {
+    const it = _cart.items.find(i => (productId && i.product_id === productId) || (equipmentId && i.equipment_id === equipmentId));
+    return it ? (parseFloat(it.need_qty) || 0) : 0;
+  }
+  function _cartItemOf(productId, equipmentId) {
+    return _cart.items.find(i => (productId && i.product_id === productId) || (equipmentId && i.equipment_id === equipmentId));
+  }
+  async function updateQty(cartItemId, qty) {
+    try {
+      const d = await api('/api/warehouse-cart/items/' + cartItemId, { method: 'PUT', body: JSON.stringify({ need_qty: qty }) });
+      _cart.id = d.cart ? d.cart.id : null; _cart.items = d.items || [];
+      _cartSaveLS(); _updateCartBadge();
+    } catch (e) { toast('Корзина', e.message, 'err'); }
+  }
+
+  // ── Степпер (Ozon-стиль): «+ В корзину» ⇄ [−][N][+] ──
+  // kind: 'consumable'|'equipment'; id: product_id|equipment_id
+  function cartStepper(kind, id) {
+    const eq = kind === 'equipment';
+    const q = qtyOf(eq ? null : id, eq ? id : null);
+    const da = eq ? `data-step-eqid="${id}"` : `data-step-pid="${id}"`;
+    if (!q) return `<button class="wh2-stp wh2-stp--add" ${da} data-step-add="1" title="В корзину закупки">+ В корзину</button>`;
+    return `<span class="wh2-stp wh2-stp--qty" ${da}>
+      <button class="wh2-stp__b" data-step-dec="1" title="−">−</button>
+      <input class="wh2-stp__n" type="number" min="1" step="1" value="${q}" data-step-inp="1">
+      <button class="wh2-stp__b" data-step-inc="1" title="+">+</button>
+    </span>`;
+  }
+  // Перерисовать ОДИН степпер по месту (после изменения)
+  function _refreshStepper(el) {
+    const pid = el.getAttribute('data-step-pid'), eqid = el.getAttribute('data-step-eqid');
+    const wrap = document.createElement('div');
+    wrap.innerHTML = cartStepper(eqid ? 'equipment' : 'consumable', +(eqid || pid));
+    const fresh = wrap.firstElementChild;
+    el.replaceWith(fresh); _bindStepper(fresh);
+  }
+  // Навесить обработчики на один степпер-элемент
+  function _bindStepper(el) {
+    const pid = el.getAttribute('data-step-pid'); const eqid = el.getAttribute('data-step-eqid');
+    const isEq = !!eqid; const id = +(eqid || pid);
+    const stop = ev => ev.stopPropagation();
+    if (el.classList.contains('wh2-stp--add')) {
+      el.onclick = async ev => { stop(ev);
+        const ok = await addToCart({ warehouse_id: _cart.warehouse_id, items: [{ item_type: isEq ? 'equipment' : 'consumable', [isEq ? 'equipment_id' : 'product_id']: id, need_qty: 1, source: 'catalog' }] });
+        if (ok) { _flyToCart(el); navigator.vibrate && navigator.vibrate(8); _refreshStepper(el); }
+      };
+      return;
+    }
+    const item = _cartItemOf(isEq ? null : id, isEq ? id : null); if (!item) { _refreshStepper(el); return; }
+    el.querySelector('[data-step-dec]').onclick = async ev => { stop(ev);
+      const cur = qtyOf(isEq ? null : id, isEq ? id : null);
+      if (cur <= 1) { await removeFromCart(item.id); _refreshStepper(el); }
+      else { await updateQty(item.id, cur - 1); _refreshStepper(el); }
+    };
+    el.querySelector('[data-step-inc]').onclick = async ev => { stop(ev);
+      const cur = qtyOf(isEq ? null : id, isEq ? id : null);
+      if (isEq) { toast('Оборудование', 'Единица оборудования добавляется поштучно', 'warn'); return; }
+      await updateQty(item.id, cur + 1); _refreshStepper(el);
+    };
+    const inp = el.querySelector('[data-step-inp]');
+    inp.onclick = stop;
+    let t; inp.oninput = () => { clearTimeout(t); t = setTimeout(async () => {
+      const v = Math.max(1, Math.floor(parseFloat(inp.value) || 1));
+      if (isEq && v > 1) { inp.value = 1; toast('Оборудование', 'Поштучно', 'warn'); return; }
+      await updateQty(item.id, v); _updateFab();
+    }, 450); };
   }
 
   // ── Стили (инжект один раз) ───────────────────────────────────────────────
@@ -140,6 +244,93 @@ window.AsgardWarehouseV2 = (function () {
     .wh2-mv{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--border,#1e2430)}
     .wh2-mv__ic{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
     .wh2-loading{text-align:center;padding:50px;color:var(--t2)}
+
+    /* ═══════════ MARKETPLACE UI 2.0 ═══════════ */
+    /* Степпер «+ / −N+» (Ozon-стиль) */
+    .wh2-stp{display:inline-flex;align-items:center;gap:0;height:34px;border-radius:10px;overflow:hidden;user-select:none;flex-shrink:0}
+    .wh2-stp--add{padding:0 14px;background:linear-gradient(135deg,#e7bd54,#D4A843);color:#1a1408;font-weight:800;font-size:13px;cursor:pointer;border:none;transition:.16s;box-shadow:0 2px 8px rgba(212,168,67,.25);white-space:nowrap}
+    .wh2-stp--add:hover{filter:brightness(1.07);transform:translateY(-1px);box-shadow:0 4px 14px rgba(212,168,67,.35)}
+    .wh2-stp--add:active{transform:scale(.94)}
+    .wh2-stp--qty{border:1.5px solid var(--gold,#D4A843);background:var(--bg2,#0f1217)}
+    .wh2-stp__b{width:32px;height:100%;border:none;background:transparent;color:var(--gold,#D4A843);font-size:18px;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.12s;line-height:1}
+    .wh2-stp__b:hover{background:rgba(212,168,67,.16)}
+    .wh2-stp__b:active{transform:scale(.85)}
+    .wh2-stp__n{width:42px;height:100%;border:none;background:transparent;color:var(--t1,#e8eaed);font-size:14px;font-weight:800;text-align:center;outline:none;-moz-appearance:textfield}
+    .wh2-stp__n::-webkit-outer-spin-button,.wh2-stp__n::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+    .wh2-stp__n:focus{background:rgba(212,168,67,.10)}
+
+    /* FAB корзины (угол, вместо Мимира на складе) */
+    .wh2-fab{position:fixed;bottom:24px;right:24px;z-index:600;display:flex;flex-direction:column;align-items:flex-end;gap:10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+    .wh2-fab__btn{position:relative;width:64px;height:64px;border-radius:50%;border:none;cursor:pointer;background:linear-gradient(135deg,#e7bd54,#D4A843);color:#1a1408;font-size:28px;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 22px rgba(212,168,67,.4),0 2px 6px rgba(0,0,0,.3);transition:.2s}
+    .wh2-fab__btn:hover{transform:translateY(-3px) scale(1.05);box-shadow:0 10px 30px rgba(212,168,67,.5)}
+    .wh2-fab__btn:active{transform:scale(.92)}
+    .wh2-fab__cnt{position:absolute;top:-4px;right:-4px;min-width:24px;height:24px;padding:0 6px;border-radius:13px;background:#ff3b30;color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;border:2.5px solid var(--bg1,#0d0d0f);box-shadow:0 2px 6px rgba(0,0,0,.3)}
+    .wh2-fab__cnt--pop{animation:wh2pop .4s cubic-bezier(.34,1.56,.64,1)}
+    @keyframes wh2pop{0%{transform:scale(1)}40%{transform:scale(1.5)}100%{transform:scale(1)}}
+    .wh2-fab__split{background:var(--bg-card,#161a22);border:1px solid var(--border,#262c38);border-radius:13px;padding:9px 13px;font-size:12px;color:var(--t1,#e6e9ef);box-shadow:0 6px 20px rgba(0,0,0,.35);display:flex;gap:12px;white-space:nowrap;animation:wh2in .25s ease both}
+    .wh2-fab__split b{font-weight:800}
+    .wh2-fab__split .res{color:var(--ok-t,#30d158)}
+    .wh2-fab__split .buy{color:var(--warn,#e0a800)}
+
+    /* Drawer корзины (выезжает справа, blur-фон) */
+    .wh2-cart-ov{position:fixed;inset:0;z-index:700;background:rgba(8,10,14,.45);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);opacity:0;transition:opacity .26s ease}
+    .wh2-cart-ov--open{opacity:1}
+    .wh2-cart-dr{position:fixed;top:0;right:0;bottom:0;z-index:701;width:min(720px,66vw);background:var(--bg1,#0d0d0f);border-left:1px solid var(--border,#262c38);box-shadow:-12px 0 40px rgba(0,0,0,.4);display:flex;flex-direction:column;transform:translateX(100%);transition:transform .28s cubic-bezier(.4,0,.2,1)}
+    .wh2-cart-dr--open{transform:translateX(0)}
+    .wh2-cart-dr__hd{display:flex;align-items:center;gap:12px;padding:18px 22px;border-bottom:1px solid var(--border,#262c38)}
+    .wh2-cart-dr__hd h3{margin:0;font-size:19px;font-weight:800;flex:1}
+    .wh2-cart-dr__body{flex:1;overflow-y:auto;padding:8px 22px}
+    .wh2-cart-dr__ft{border-top:1px solid var(--border,#262c38);padding:16px 22px;background:var(--bg-card,#13161d)}
+    .wh2-cart-it{display:flex;gap:12px;align-items:center;padding:14px 0;border-bottom:1px solid var(--border,#1e2430)}
+    .wh2-cart-it--changed{background:rgba(224,168,0,.08);border-left:3px solid var(--warn,#e0a800);padding-left:10px;border-radius:8px}
+    .wh2-cart-it__nm{font-weight:700;font-size:14.5px}
+    .wh2-cart-it__sub{font-size:12px;color:var(--t2,#8b93a3);margin-top:2px}
+    .wh2-cart-x{width:30px;height:30px;border-radius:8px;border:1px solid var(--border,#262c38);background:transparent;color:var(--err-t,#ff5c5c);cursor:pointer;font-size:14px;flex-shrink:0;transition:.15s}
+    .wh2-cart-x:hover{background:rgba(255,92,92,.12);border-color:var(--err-t,#ff5c5c)}
+    .wh2-cart-tot{display:flex;gap:18px;margin-bottom:12px;flex-wrap:wrap}
+    .wh2-cart-tot__c{flex:1;min-width:120px;background:var(--bg2,#0f1217);border:1px solid var(--border,#262c38);border-radius:11px;padding:10px 13px}
+    .wh2-cart-tot__v{font-size:20px;font-weight:800;line-height:1}
+    .wh2-cart-tot__l{font-size:11px;color:var(--t2);margin-top:3px;text-transform:uppercase;letter-spacing:.3px}
+    .wh2-iconbtn{width:38px;height:38px;border-radius:10px;border:1px solid var(--border,#262c38);background:var(--bg-card,#161a22);color:var(--t1,#e6e9ef);cursor:pointer;font-size:16px;transition:.15s;display:flex;align-items:center;justify-content:center}
+    .wh2-iconbtn:hover{border-color:var(--gold,#D4A843);transform:rotate(-25deg)}
+    .wh2-iconbtn--x:hover{transform:none;color:var(--err-t,#ff5c5c)}
+
+    /* Скелетоны */
+    .wh2-skel{background:linear-gradient(90deg,rgba(255,255,255,.03) 25%,rgba(255,255,255,.08) 37%,rgba(255,255,255,.03) 63%);background-size:400% 100%;animation:wh2sh 1.3s ease infinite;border-radius:10px}
+    @keyframes wh2sh{0%{background-position:100% 0}100%{background-position:-100% 0}}
+    .wh2-skel-card{height:150px;border-radius:15px}
+
+    /* Фильтр-чипы */
+    .wh2-chips{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+    .wh2-fchip{padding:7px 14px;border-radius:20px;border:1px solid var(--border,#262c38);background:var(--bg-card,#161a22);color:var(--t2,#8b93a3);font-size:13px;font-weight:600;cursor:pointer;transition:.15s;white-space:nowrap}
+    .wh2-fchip:hover{border-color:var(--gold,#D4A843);color:var(--t1,#e6e9ef)}
+    .wh2-fchip--active{background:var(--gold,#D4A843);color:#1a1408;border-color:var(--gold,#D4A843)}
+
+    /* Поиск + автоподсказки */
+    .wh2-search input{padding-right:34px}
+    .wh2-search__clear{position:absolute;right:10px;top:50%;transform:translateY(-50%);width:20px;height:20px;border-radius:50%;border:none;background:var(--border,#262c38);color:var(--t1);cursor:pointer;font-size:12px;display:none;align-items:center;justify-content:center}
+    .wh2-ac{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:40;background:var(--bg-card,#161a22);border:1px solid var(--border,#262c38);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.4);max-height:320px;overflow-y:auto;animation:wh2in .15s ease both}
+    .wh2-ac__i{display:flex;gap:10px;align-items:center;padding:10px 13px;cursor:pointer;transition:.12s;border-bottom:1px solid var(--border,#1e2430)}
+    .wh2-ac__i:last-child{border-bottom:none}
+    .wh2-ac__i:hover{background:var(--bg-hover,#1c212b)}
+    .wh2-ac__nm{font-weight:600;font-size:13.5px}
+    .wh2-ac__meta{font-size:11.5px;color:var(--t2)}
+
+    /* fly-to-cart */
+    .wh2-fly{position:fixed;z-index:9999;width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#e7bd54,#D4A843);display:flex;align-items:center;justify-content:center;font-size:17px;pointer-events:none;box-shadow:0 4px 14px rgba(212,168,67,.5);transition:all .62s cubic-bezier(.3,.7,.4,1)}
+
+    /* Мобильно */
+    @media(max-width:768px){
+      .wh2{padding:12px}
+      .wh2-kpis{grid-template-columns:1fr 1fr;gap:10px}
+      .wh2-cart-dr{width:100vw}
+      .wh2-fab{bottom:16px;right:16px}
+      .wh2-fab__btn{width:58px;height:58px;font-size:25px}
+      .wh2-stp{height:38px}
+      .wh2-stp__b{width:36px;font-size:20px}
+      .wh2-cards{grid-template-columns:1fr}
+      .wh2-chips{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px}
+    }
     `;
     document.head.appendChild(s);
   }
@@ -164,79 +355,126 @@ window.AsgardWarehouseV2 = (function () {
   let _works = [];
   async function _loadWorks() {
     if (_works.length) return _works;
-    try { const w = await api('/api/works?limit=300'); _works = (w.items || w.rows || []).map(x => ({ id: x.id, title: x.work_title || ('#' + x.id) })); } catch (_) { _works = []; }
+    try { const w = await api('/api/works?limit=300'); _works = (w.works || w.items || w.rows || []).map(x => ({ id: x.id, title: x.work_title || ('#' + x.id) })); } catch (_) { _works = []; }
     return _works;
   }
   function _workOptions(sel) {
     return '<option value="">— без работы —</option>' + _works.map(w => `<option value="${w.id}" ${String(sel) === String(w.id) ? 'selected' : ''}>${esc(w.title)}</option>`).join('');
   }
   const _money = v => (v == null || v === '') ? '—' : Number(v).toLocaleString('ru-RU') + ' ₽';
-
-  async function openCartModal() {
-    await _loadWorks();
-    await _cartSync();
-    UI.showModal && UI.showModal({ title: '🛒 Корзина закупки', html: _cartHtml() });
-    _bindCart();
+  // скелетон-карточки на время загрузки
+  function _skelCards(n) { return `<div class="wh2-cards">${Array.from({ length: n || 8 }).map(() => '<div class="wh2-skel wh2-skel-card"></div>').join('')}</div>`; }
+  function _skelRows(n) { return `<div style="display:flex;flex-direction:column;gap:8px">${Array.from({ length: n || 6 }).map(() => '<div class="wh2-skel" style="height:46px"></div>').join('')}</div>`; }
+  // красивое пустое состояние с кнопкой действия
+  function _emptyState(icon, title, hint, btnLabel, btnId) {
+    return `<div class="wh2-empty"><div class="wh2-empty__i">${icon}</div>
+      <div style="font-size:16px;font-weight:700;color:var(--t1)">${esc(title)}</div>
+      ${hint ? `<div style="margin-top:6px;max-width:380px;margin-left:auto;margin-right:auto">${esc(hint)}</div>` : ''}
+      ${btnLabel ? `<button class="wh2-btn wh2-btn--primary" id="${btnId}" style="margin-top:14px">${esc(btnLabel)}</button>` : ''}</div>`;
   }
-  function _cartHtml() {
+
+  // ── DRAWER КОРЗИНЫ (выезжает справа, blur-фон) ──
+  async function openCartDrawer() {
+    await _loadWorks();
+    if (!document.getElementById('wh2-cart-drawer')) {
+      const ov = document.createElement('div'); ov.id = 'wh2-cart-overlay'; ov.className = 'wh2-cart-ov';
+      const dr = document.createElement('div'); dr.id = 'wh2-cart-drawer'; dr.className = 'wh2-cart-dr';
+      document.body.appendChild(ov); document.body.appendChild(dr);
+      ov.onclick = () => closeCartDrawer();
+    }
+    _renderDrawer();
+    requestAnimationFrame(() => {
+      document.getElementById('wh2-cart-overlay').classList.add('wh2-cart-ov--open');
+      document.getElementById('wh2-cart-drawer').classList.add('wh2-cart-dr--open');
+    });
+    _cartSync().then(() => { if (document.getElementById('wh2-cart-drawer')) _renderDrawer(); });
+  }
+  function closeCartDrawer() {
+    const ov = document.getElementById('wh2-cart-overlay'), dr = document.getElementById('wh2-cart-drawer');
+    if (ov) ov.classList.remove('wh2-cart-ov--open');
+    if (dr) dr.classList.remove('wh2-cart-dr--open');
+    setTimeout(() => { if (ov) ov.remove(); if (dr) dr.remove(); }, 300);
+  }
+  function _renderDrawer() {
+    const dr = document.getElementById('wh2-cart-drawer'); if (!dr) return;
     const items = _cart.items;
-    if (!items.length) {
-      return `<div style="min-width:420px"><div class="wh2-empty" style="padding:30px"><div class="wh2-empty__i">🛒</div>Корзина пуста. Отметьте позиции в каталоге/оборудовании кнопкой «+».</div>
-        <div style="display:flex;gap:8px;margin-top:8px;justify-content:center">
+    // итоги-разбивка
+    let res = 0, buy = 0;
+    items.forEach(it => { const need = parseFloat(it.need_qty) || 0;
+      if (it.item_type === 'equipment') { res += need; return; }
+      if (it.is_new_position) { buy += need; return; }
+      const av = Math.max(0, parseFloat(it.available_qty) || 0); const r = Math.min(need, av); res += r; buy += (need - r);
+    });
+    const body = !items.length
+      ? `<div class="wh2-empty"><div class="wh2-empty__i">🛒</div><div style="font-size:16px;font-weight:700;color:var(--t1)">Корзина пуста</div>
+         <div style="margin-top:6px">Отметьте позиции кнопкой «+ В корзину» в каталоге или оборудовании.</div></div>`
+      : items.map(it => {
+        const need = parseFloat(it.need_qty) || 1;
+        const avail = it.is_new_position ? null : (parseFloat(it.available_qty) || 0);
+        const toBuy = avail == null ? need : Math.max(0, need - avail);
+        const isEq = it.item_type === 'equipment';
+        const stepper = isEq
+          ? `<span class="wh2-stp wh2-stp--qty" style="border-color:var(--ok-t,#30d158)"><span class="wh2-stp__b" style="cursor:default;color:var(--ok-t,#30d158);width:auto;padding:0 10px;font-size:12px">1 ед.</span></span>`
+          : `<span class="wh2-stp wh2-stp--qty"><button class="wh2-stp__b" data-dr-dec="${it.id}">−</button><input class="wh2-stp__n" type="number" min="1" value="${need}" data-dr-need="${it.id}"><button class="wh2-stp__b" data-dr-inc="${it.id}">+</button></span>`;
+        return `<div class="wh2-cart-it" data-cid="${it.id}">
+          <div style="flex:1;min-width:0">
+            <div class="wh2-cart-it__nm">${esc(it.name)}${it.is_new_position ? ' <span class="wh2-chip" style="background:rgba(224,168,0,.2);color:#e0a800">🆕</span>' : ''}${isEq ? ' <span class="wh2-chip wh2-chip--ok">оборуд.</span>' : ''}</div>
+            <div class="wh2-cart-it__sub">${isEq ? 'единица оборудования' : ('На складе: <b style="color:var(--t1)">' + (avail != null ? fmt(avail) : '—') + '</b> · посл. цена ' + _money(it.is_new_position ? it.manual_price : it.last_price))}</div>
+            ${!isEq && !it.is_new_position ? `<div class="wh2-cart-it__sub" style="color:${toBuy > 0 ? 'var(--warn,#e0a800)' : 'var(--ok-t,#30d158)'}">${toBuy > 0 ? '🛒 докупить ' + fmt(toBuy) : '✅ есть в наличии — зарезервируется'}</div>` : ''}
+            <select data-dr-work="${it.id}" style="margin-top:6px;max-width:100%;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--bg2,#0f1217);color:inherit;font-size:12px">${_workOptions(it.work_id)}</select>
+            <div class="wh2-cart-change-alert" data-changed="${it.id}" style="display:none"></div>
+          </div>
+          ${stepper}
+          <button class="wh2-cart-x" data-dr-rm="${it.id}" title="Убрать">✕</button>
+        </div>`;
+      }).join('');
+    dr.innerHTML = `
+      <div class="wh2-cart-dr__hd">
+        <h3>🛒 Корзина закупки</h3>
+        <button class="wh2-iconbtn" id="wh2-dr-refresh" title="Обновить остатки">↻</button>
+        <button class="wh2-iconbtn wh2-iconbtn--x" id="wh2-dr-close" title="Закрыть">✕</button>
+      </div>
+      <div class="wh2-cart-dr__body">
+        ${body}
+        ${items.length ? `<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+          <button class="wh2-btn" id="wh2-cart-manual">＋ Добавить вручную</button>
+          <button class="wh2-btn" id="wh2-cart-excel">📎 Загрузить Excel</button>
+        </div>` : `<div style="display:flex;gap:8px;margin-top:14px;justify-content:center">
           <button class="wh2-btn" id="wh2-cart-manual">＋ Добавить вручную</button>
           <button class="wh2-btn" id="wh2-cart-excel">📎 Excel</button>
-        </div>
-        <div id="wh2-cart-sub"></div></div>`;
-    }
-    const rows = items.map(it => {
-      const need = parseFloat(it.need_qty) || 1;
-      const avail = it.is_new_position ? null : (parseFloat(it.available_qty) || 0);
-      const toBuy = avail == null ? need : Math.max(0, need - avail);
-      const isEq = it.item_type === 'equipment';
-      return `<div class="wh2-cart-row" data-cid="${it.id}">
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:600">${esc(it.name)}${it.is_new_position ? ' <span class="wh2-chip" style="background:rgba(224,168,0,.2);color:#e0a800">🆕 новая</span>' : ''}${isEq ? ' <span class="wh2-chip wh2-chip--ok">оборуд.</span>' : ''}</div>
-          <div style="font-size:12px;color:var(--t2)">${isEq ? 'единица оборудования' : ('На складе: ' + (avail != null ? fmt(avail) : '—') + ' · посл. цена ' + _money(it.is_new_position ? it.manual_price : it.last_price) + (it.last_supplier ? ' · ' + esc(it.last_supplier) : ''))}</div>
-          ${!isEq && !it.is_new_position ? `<div style="font-size:12px;color:${toBuy > 0 ? 'var(--warn,#e0a800)' : 'var(--ok-t,#30d158)'}">${toBuy > 0 ? 'докупить ' + fmt(toBuy) : '✓ есть в наличии (резерв)'}</div>` : ''}
-          <div class="wh2-cart-change-alert" data-changed="${it.id}" style="display:none"></div>
-        </div>
-        <input type="number" min="1" step="any" value="${need}" data-need="${it.id}" style="width:64px;padding:6px;border:1px solid var(--border);border-radius:7px;background:var(--bg2,#0f1217);color:inherit">
-        <select data-work="${it.id}" style="max-width:140px;padding:6px;border:1px solid var(--border);border-radius:7px;background:var(--bg2,#0f1217);color:inherit">${_workOptions(it.work_id)}</select>
-        <button class="wh2-btn" data-rm="${it.id}" style="padding:4px 9px">✕</button>
-      </div>`;
-    }).join('');
-    return `<div style="min-width:560px;max-width:760px">
-      <div style="max-height:340px;overflow:auto;border:1px solid var(--border);border-radius:10px">${rows}</div>
-      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
-        <button class="wh2-btn" id="wh2-cart-manual">＋ Добавить вручную</button>
-        <button class="wh2-btn" id="wh2-cart-excel">📎 Excel</button>
-        <span style="flex:1"></span>
-        <button class="wh2-btn" id="wh2-cart-preview">👁 Предпросмотр разбивки</button>
-        <button class="wh2-btn wh2-btn--primary" id="wh2-cart-submit">Отправить заявку →</button>
+        </div>`}
+        <div id="wh2-cart-sub" style="margin-top:12px"></div>
       </div>
-      <div id="wh2-cart-sub" style="margin-top:10px"></div></div>`;
+      ${items.length ? `<div class="wh2-cart-dr__ft">
+        <div class="wh2-cart-tot">
+          <div class="wh2-cart-tot__c"><div class="wh2-cart-tot__v">${items.length}</div><div class="wh2-cart-tot__l">позиций</div></div>
+          <div class="wh2-cart-tot__c"><div class="wh2-cart-tot__v" style="color:var(--ok-t,#30d158)">${fmt(res)}</div><div class="wh2-cart-tot__l">в резерв</div></div>
+          <div class="wh2-cart-tot__c"><div class="wh2-cart-tot__v" style="color:var(--warn,#e0a800)">${fmt(buy)}</div><div class="wh2-cart-tot__l">в закупку</div></div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="wh2-btn" id="wh2-cart-preview" style="flex:1">👁 Предпросмотр</button>
+          <button class="wh2-btn wh2-btn--primary" id="wh2-cart-submit" style="flex:2">Отправить заявку →</button>
+        </div>
+      </div>` : ''}`;
+    _bindDrawer();
   }
-  function _bindCart() {
-    document.querySelectorAll('[data-need]').forEach(inp => { let t; inp.oninput = () => { clearTimeout(t); t = setTimeout(async () => {
-      await api('/api/warehouse-cart/items/' + inp.dataset.need, { method: 'PUT', body: JSON.stringify({ need_qty: parseFloat(inp.value) || 1 }) }).catch(() => {});
-      await _cartSync(); _redrawCart();
-    }, 500); }; });
-    document.querySelectorAll('[data-work]').forEach(sel => sel.onchange = async () => {
-      await api('/api/warehouse-cart/items/' + sel.dataset.work, { method: 'PUT', body: JSON.stringify({ work_id: sel.value || null }) }).catch(() => {});
-    });
-    document.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => { await removeFromCart(+b.dataset.rm); _redrawCart(); });
-    const mb = document.getElementById('wh2-cart-manual'); if (mb) mb.onclick = () => _openManualPanel();
-    const xb = document.getElementById('wh2-cart-excel'); if (xb) xb.onclick = () => _openExcelPanel();
-    const pb = document.getElementById('wh2-cart-preview'); if (pb) pb.onclick = () => openSubmitPreview();
-    const sb = document.getElementById('wh2-cart-submit'); if (sb) sb.onclick = () => submitCart({});
+  function _bindDrawer() {
+    const $ = id => document.getElementById(id);
+    $('wh2-dr-close').onclick = () => closeCartDrawer();
+    $('wh2-dr-refresh').onclick = async () => { const b = $('wh2-dr-refresh'); b.style.transition = 'transform .5s'; b.style.transform = 'rotate(360deg)'; await _cartSync(); _renderDrawer(); toast('Обновлено', 'Актуальные остатки', 'ok'); };
+    document.querySelectorAll('[data-dr-dec]').forEach(b => b.onclick = async () => { const id = +b.dataset.drDec; const it = _cart.items.find(i => i.id === id); if (!it) return; const cur = parseFloat(it.need_qty) || 1; if (cur <= 1) await removeFromCart(id); else await updateQty(id, cur - 1); _renderDrawer(); });
+    document.querySelectorAll('[data-dr-inc]').forEach(b => b.onclick = async () => { const id = +b.dataset.drInc; const it = _cart.items.find(i => i.id === id); if (!it) return; await updateQty(id, (parseFloat(it.need_qty) || 1) + 1); _renderDrawer(); });
+    document.querySelectorAll('[data-dr-need]').forEach(inp => { let t; inp.oninput = () => { clearTimeout(t); t = setTimeout(async () => { await updateQty(+inp.dataset.drNeed, Math.max(1, Math.floor(parseFloat(inp.value) || 1))); _renderDrawer(); }, 450); }; });
+    document.querySelectorAll('[data-dr-work]').forEach(sel => sel.onchange = async () => { await api('/api/warehouse-cart/items/' + sel.dataset.drWork, { method: 'PUT', body: JSON.stringify({ work_id: sel.value || null }) }).catch(() => {}); });
+    document.querySelectorAll('[data-dr-rm]').forEach(b => b.onclick = async () => { await removeFromCart(+b.dataset.drRm); _renderDrawer(); });
+    const mb = $('wh2-cart-manual'); if (mb) mb.onclick = () => _openManualPanel();
+    const xb = $('wh2-cart-excel'); if (xb) xb.onclick = () => _openExcelPanel();
+    const pb = $('wh2-cart-preview'); if (pb) pb.onclick = () => openSubmitPreview();
+    const sb = $('wh2-cart-submit'); if (sb) sb.onclick = () => submitCart({});
   }
-  function _redrawCart() {
-    const host = document.querySelector('.asgard-modal__body, #modalBody, .modal-body');
-    // перерисуем содержимое модалки
-    if (host) { const wrap = host.querySelector('div'); if (wrap) { host.innerHTML = _cartHtml(); _bindCart(); return; } }
-    // fallback: переоткрыть
-    UI.closeModal && UI.closeModal(); openCartModal();
-  }
+  // совместимость: старые вызовы openCartModal/_redrawCart → drawer
+  function openCartModal() { return openCartDrawer(); }
+  function _redrawCart() { _renderDrawer(); }
 
   // ── Добавить вручную ──
   function _openManualPanel() {
@@ -347,8 +585,8 @@ window.AsgardWarehouseV2 = (function () {
         <button class="wh2-btn wh2-btn--primary" id="wh2-prev-submit">✓ Подтвердить и отправить</button>
       </div></div>`;
     UI.showModal && UI.showModal({ title: '👁 Предпросмотр разбивки', html });
-    document.getElementById('wh2-prev-back').onclick = () => { UI.closeModal && UI.closeModal(); openCartModal(); };
-    document.getElementById('wh2-prev-submit').onclick = () => submitCart({ global_work_id: document.getElementById('wh2-prev-work').value || null });
+    document.getElementById('wh2-prev-back').onclick = () => { UI.closeModal && UI.closeModal(); };
+    document.getElementById('wh2-prev-submit').onclick = () => submitCart({ global_work_id: document.getElementById('wh2-prev-work').value || null, fromPreview: true });
   }
 
   // ── Отправка корзины ──
@@ -358,11 +596,12 @@ window.AsgardWarehouseV2 = (function () {
     if (sb) { sb.disabled = true; sb.textContent = 'Отправка…'; }
     let res; try { res = await rawApi('/api/warehouse-cart/submit', { method: 'POST', body: JSON.stringify(body) }); } catch (e) { if (sb) { sb.disabled = false; } toast('Ошибка', e.message, 'err'); return; }
     if (res.status === 409 && res.data && res.data.error === 'stock_changed') {
-      // вернуться в корзину и подсветить
-      UI.closeModal && UI.closeModal(); await openCartModal();
+      // закрыть превью (если был) → обновить корзину → подсветить
+      if (opts && opts.fromPreview) UI.closeModal && UI.closeModal();
+      await _cartSync(); _renderDrawer();
       (res.data.changed || []).forEach(ch => {
-        const row = document.querySelector('.wh2-cart-row[data-cid="' + ch.cart_item_id + '"]');
-        if (row) { row.classList.add('wh2-cart-row--changed'); const al = row.querySelector('[data-changed="' + ch.cart_item_id + '"]'); if (al) { al.style.display = ''; al.textContent = `⚠️ Остаток изменился: было ${fmt(ch.snapshot_available)}, сейчас ${fmt(ch.new_available)}`; } }
+        const row = document.querySelector('.wh2-cart-it[data-cid="' + ch.cart_item_id + '"]');
+        if (row) { row.classList.add('wh2-cart-it--changed'); const al = row.querySelector('[data-changed="' + ch.cart_item_id + '"]'); if (al) { al.style.display = ''; al.textContent = `⚠️ Остаток изменился: было ${fmt(ch.snapshot_available)}, сейчас ${fmt(ch.new_available)}`; } }
       });
       toast('Остатки изменились', 'Проверьте выделенные позиции и скорректируйте количество', 'warn');
       return;
@@ -376,7 +615,8 @@ window.AsgardWarehouseV2 = (function () {
     _cart = { id: null, warehouse_id: _cart.warehouse_id, items: [] };
     try { localStorage.removeItem(_cartLSKey()); } catch (_) {}
     _updateCartBadge();
-    UI.closeModal && UI.closeModal();
+    if (opts && opts.fromPreview) UI.closeModal && UI.closeModal();
+    closeCartDrawer();
     const r = res.data;
     toast('Отправлено', `Зарезервировано: ${(r.reservations || []).length} · ${r.procurement_id ? 'Закупка #' + r.procurement_id : 'без закупки'}`, 'ok');
     refresh();
@@ -394,7 +634,7 @@ window.AsgardWarehouseV2 = (function () {
         <span style="flex:1"></span>
         <button class="wh2-btn" id="wh2-cview-table">☰ Таблицей</button>
       </div>
-      <div style="font-size:12px;color:var(--t2);margin:-8px 0 12px">Отметьте нужные позиции кнопкой «+» на карточках → откройте «🛒 Корзина закупки» (вверху справа) → отправьте одной заявкой (наличие зарезервируется, дефицит уйдёт в закупку).</div>
+      <div style="font-size:12px;color:var(--t2);margin:-8px 0 12px">Жмите «+ В корзину» на позициях → корзина 🛒 в углу справа-снизу → отправьте одной заявкой (наличие зарезервируется, дефицит уйдёт в закупку).</div>
       <div id="wh2-cons-body"></div>`;
     container.querySelectorAll('[data-cop]').forEach(b => b.onclick = () => openStockOp(b.dataset.cop));
     const importBtn = container.querySelector('#wh2-cons-import');
@@ -408,11 +648,17 @@ window.AsgardWarehouseV2 = (function () {
 
   // ════════════════════ КАТАЛОГ-КАРТОЧКИ (используется внутри «Расходники») ════════════════════
   async function renderCatalog(container, search) {
-    container.innerHTML = `<div class="wh2-loading">Загрузка каталога…</div>`;
+    container.innerHTML = _skelCards(8);
     let prods = [];
     try { const d = await api('/api/products?limit=200' + (search ? '&search=' + encodeURIComponent(search) : '')); prods = d.items || []; }
     catch (e) { container.innerHTML = `<div class="wh2-empty"><div class="wh2-empty__i">⚠️</div>${esc(e.message)}</div>`; return; }
-    if (!prods.length) { container.innerHTML = `<div class="wh2-empty"><div class="wh2-empty__i">📭</div>В каталоге пусто. Добавьте первую позицию.</div>`; return; }
+    if (!prods.length) {
+      container.innerHTML = search
+        ? _emptyState('🔍', 'Ничего не найдено', 'По запросу «' + search + '» позиций нет. Измените поиск или добавьте новую позицию.', null, null)
+        : _emptyState('📭', 'Каталог расходников пуст', 'Загрузите накладную/счёт или добавьте позиции вручную — каталог наполнится.', '📄 Загрузить накладную/счёт', 'wh2-empty-import');
+      const ib = document.getElementById('wh2-empty-import'); if (ib) ib.onclick = () => openCatalogImport();
+      return;
+    }
     const CAT_ICON = c => { c = (c || '').toLowerCase();
       if (c.includes('сиз') || c.includes('защит')) return '🦺';
       if (c.includes('хими') || c.includes('расходн')) return '🧪';
@@ -424,7 +670,6 @@ window.AsgardWarehouseV2 = (function () {
     const AV_COLORS = ['#D4A843', '#4A90D9', '#30d158', '#ff8c42', '#a56eff', '#5ac8d8'];
     container.innerHTML = `<div class="wh2-cards">${prods.map((p, idx) => `
       <div class="wh2-card" data-pid="${p.id}" style="animation-delay:${Math.min(idx * 0.03, 0.4)}s">
-        <button class="wh2-cart-toggle ${isInCart(p.id, null) ? 'wh2-cart-toggle--active' : ''}" data-cart-pid="${p.id}" title="В корзину закупки">${isInCart(p.id, null) ? '✓' : '+'}</button>
         <div class="wh2-card__top">
           <div style="display:flex;gap:11px;align-items:flex-start;flex:1;min-width:0">
             ${p.photo_url
@@ -441,17 +686,14 @@ window.AsgardWarehouseV2 = (function () {
           ${p.is_consumable ? '<span class="wh2-chip wh2-chip--cons">расходник</span>' : '<span class="wh2-chip wh2-chip--ok">учётная ед.</span>'}
           ${p.ean ? '<span style="opacity:.6">EAN ' + esc(p.ean) + '</span>' : ''}
         </div>
-        <div class="wh2-avail" data-avail="${p.id}"><span class="wh2-card__sub">наличие…</span></div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:auto;padding-top:8px;border-top:1px solid var(--border,#262c38)">
+          <div class="wh2-avail" data-avail="${p.id}" style="flex:1;border:none;padding:0;margin:0"><span class="wh2-card__sub">наличие…</span></div>
+          ${cartStepper('consumable', p.id)}
+        </div>
       </div>`).join('')}</div>`;
     container.querySelectorAll('.wh2-card[data-pid]').forEach(c => c.onclick = () => openProduct(+c.dataset.pid));
-    // кнопка «+ в корзину» на карточке (stopPropagation — иначе откроется карточка товара)
-    container.querySelectorAll('[data-cart-pid]').forEach(btn => btn.onclick = async (ev) => {
-      ev.stopPropagation();
-      const pid = +btn.dataset.cartPid;
-      if (isInCart(pid, null)) { const it = _cart.items.find(i => i.product_id === pid); if (it) { await removeFromCart(it.id); btn.classList.remove('wh2-cart-toggle--active'); btn.textContent = '+'; } return; }
-      const okAdd = await addToCart({ warehouse_id: _cart.warehouse_id, items: [{ item_type: 'consumable', product_id: pid, need_qty: 1, source: 'catalog' }] });
-      if (okAdd) { btn.classList.add('wh2-cart-toggle--active'); btn.textContent = '✓'; }
-    });
+    // степперы на карточках
+    container.querySelectorAll('.wh2-stp[data-step-pid]').forEach(el => _bindStepper(el));
     // подгрузка наличия по каждой позиции (лениво, параллельно)
     prods.forEach(async p => {
       try {
@@ -543,11 +785,11 @@ window.AsgardWarehouseV2 = (function () {
 
   // ════════════════════ ВКЛАДКА: НАЛИЧИЕ ════════════════════
   async function renderStock(container, search) {
-    container.innerHTML = `<div class="wh2-loading">Загрузка остатков…</div>`;
+    container.innerHTML = _skelRows(7);
     let rows = [];
     try { const d = await api('/api/stock?limit=500' + (search ? '&search=' + encodeURIComponent(search) : '')); rows = d.items || []; }
     catch (e) { container.innerHTML = `<div class="wh2-empty"><div class="wh2-empty__i">⚠️</div>${esc(e.message)}</div>`; return; }
-    if (!rows.length) { container.innerHTML = `<div class="wh2-empty"><div class="wh2-empty__i">📦</div>Нет остатков. Оприходуйте расходники.</div>`; return; }
+    if (!rows.length) { container.innerHTML = _emptyState(search ? '🔍' : '📦', search ? 'Ничего не найдено' : 'Нет остатков', search ? 'Измените поиск.' : 'Оприходуйте расходники через «📥 Приход».', null, null); return; }
     container.innerHTML = `<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
         <button class="wh2-btn" data-op="receipt">📥 Приход</button>
         <button class="wh2-btn" data-op="issue">📤 Расход</button>
@@ -555,7 +797,7 @@ window.AsgardWarehouseV2 = (function () {
         <button class="wh2-btn" data-op="writeoff">🗑️ Списание</button>
       </div>
       <table class="wh2-table"><thead><tr>
-      <th>Позиция</th><th>Склад</th><th>Ячейка</th><th>Остаток</th><th>Мин.</th><th></th></tr></thead><tbody>
+      <th>Позиция</th><th>Склад</th><th>Ячейка</th><th>Остаток</th><th>Мин.</th><th></th><th>🛒</th></tr></thead><tbody>
       ${rows.map(r => {
         const low = r.min_stock_level > 0 && Number(r.quantity) <= Number(r.min_stock_level);
         return `<tr>
@@ -564,9 +806,11 @@ window.AsgardWarehouseV2 = (function () {
           <td><b style="color:${low ? 'var(--err-t,#ff5c5c)' : 'var(--ok-t,#30d158)'}">${fmt(r.quantity)}</b> ${esc(r.unit)}</td>
           <td>${r.min_stock_level > 0 ? fmt(r.min_stock_level) : '—'}</td>
           <td>${low ? '<span class="wh2-chip wh2-chip--warn">низкий</span>' : ''}</td>
+          <td>${r.product_id ? cartStepper('consumable', r.product_id) : ''}</td>
         </tr>`;
       }).join('')}</tbody></table>`;
     container.querySelectorAll('[data-op]').forEach(b => b.onclick = () => openStockOp(b.dataset.op));
+    container.querySelectorAll('.wh2-stp[data-step-pid]').forEach(el => _bindStepper(el));
   }
 
   // Операция со складом (приход/расход/перемещение/списание) — drawer-форма
@@ -931,11 +1175,9 @@ window.AsgardWarehouseV2 = (function () {
         <button class="wh2-tab" data-tab="incoming">🚚 Приёмка</button>
         <button class="wh2-tab" data-tab="locations">🗺️ Ячейки</button>
         <button class="wh2-tab" data-tab="movements">📜 Движения</button>
-        <span style="flex:1"></span>
-        <button class="wh2-btn wh2-btn--primary wh2-cart-open" id="wh2-cart-btn" style="margin-bottom:4px">🛒 Корзина закупки<span class="wh2-cart-badge" id="wh2-cart-badge" style="display:none">0</span></button>
       </div>
       <div class="wh2-toolbar" id="wh2-toolbar">
-        <div class="wh2-search"><input id="wh2-q" placeholder="Поиск по наименованию или артикулу…"></div>
+        <div class="wh2-search"><input id="wh2-q" placeholder="Поиск по наименованию или артикулу…" autocomplete="off"><button class="wh2-search__clear" id="wh2-q-clear" title="Очистить">✕</button><div class="wh2-ac" id="wh2-ac" style="display:none"></div></div>
         <button class="wh2-btn wh2-btn--primary" id="wh2-add">➕ Позиция</button>
       </div>
       <div id="wh2-body"></div>`;
@@ -944,17 +1186,70 @@ window.AsgardWarehouseV2 = (function () {
     _root.querySelectorAll('.wh2-tab').forEach(t => t.onclick = () => {
       _root.querySelectorAll('.wh2-tab').forEach(x => x.classList.remove('wh2-tab--active'));
       t.classList.add('wh2-tab--active'); _tab = t.dataset.tab; _searchVal = '';
-      _root.querySelector('#wh2-q').value = ''; refresh();
+      const q = _root.querySelector('#wh2-q'); q.value = ''; _hideAc(); _root.querySelector('#wh2-q-clear').style.display = 'none'; refresh();
     });
     let deb;
-    _root.querySelector('#wh2-q').oninput = e => { clearTimeout(deb); _searchVal = e.target.value.trim(); deb = setTimeout(refresh, 280); };
+    const qEl = _root.querySelector('#wh2-q'); const clEl = _root.querySelector('#wh2-q-clear');
+    qEl.oninput = e => {
+      const v = e.target.value.trim(); _searchVal = v; clEl.style.display = v ? 'flex' : 'none';
+      clearTimeout(deb); deb = setTimeout(() => { refresh(); _searchAutocomplete(v); }, 280);
+    };
+    qEl.onblur = () => setTimeout(_hideAc, 180);
+    clEl.onclick = () => { qEl.value = ''; _searchVal = ''; clEl.style.display = 'none'; _hideAc(); refresh(); qEl.focus(); };
     _root.querySelector('#wh2-add').onclick = () => { if (_tab === 'locations') openBulkModal(); else openQuickProduct(); };
-    // Кнопка корзины — на уровне страницы (видна на всех вкладках)
-    const pageCartBtn = _root.querySelector('#wh2-cart-btn');
-    if (pageCartBtn) pageCartBtn.onclick = () => openCartModal();
-    _updateCartBadge();
 
+    _mountFab();        // FAB корзины в углу + скрыть Мимира на складе
+    _updateCartBadge();
     refresh();
+  }
+
+  // ── Поиск с автоподсказками ──
+  function _hideAc() { const ac = document.getElementById('wh2-ac'); if (ac) ac.style.display = 'none'; }
+  async function _searchAutocomplete(q) {
+    const ac = document.getElementById('wh2-ac'); if (!ac) return;
+    if (!q || q.length < 2 || !['consumables', 'equipment'].includes(_tab)) { _hideAc(); return; }
+    let items = [];
+    try {
+      if (_tab === 'equipment') {
+        const d = await api('/api/equipment?limit=6&search=' + encodeURIComponent(q));
+        items = (d.equipment || d.items || []).map(e => ({ name: e.name, meta: (e.inventory_number ? '№ ' + e.inventory_number : '') + (e.category_name ? ' · ' + e.category_name : ''), ic: '🛠️' }));
+      } else {
+        const d = await api('/api/products?limit=6&search=' + encodeURIComponent(q));
+        items = (d.items || []).map(p => ({ name: p.name, meta: (p.article ? p.article + ' · ' : '') + (p.category_name || ''), ic: '📦' }));
+      }
+    } catch (_) { _hideAc(); return; }
+    if (!items.length) { _hideAc(); return; }
+    ac.innerHTML = items.map(i => `<div class="wh2-ac__i" data-acname="${esc(i.name)}"><span style="font-size:16px">${i.ic}</span><div style="flex:1;min-width:0"><div class="wh2-ac__nm">${esc(i.name)}</div>${i.meta ? '<div class="wh2-ac__meta">' + esc(i.meta) + '</div>' : ''}</div></div>`).join('');
+    ac.style.display = '';
+    ac.querySelectorAll('[data-acname]').forEach(el => el.onmousedown = () => {
+      const q2 = el.getAttribute('data-acname'); const inp = document.getElementById('wh2-q');
+      inp.value = q2; _searchVal = q2; _hideAc(); document.getElementById('wh2-q-clear').style.display = 'flex'; refresh();
+    });
+  }
+
+  // ── FAB корзины (угол), замена Мимира на складе ──
+  let _fabHashHandler = null;
+  function _mountFab() {
+    if (document.getElementById('wh2-cart-fab')) return;
+    // прячем Мимир-виджет пока мы на складе
+    const mimir = document.getElementById('mimirWidget'); if (mimir) mimir.style.display = 'none';
+    const fab = document.createElement('div'); fab.id = 'wh2-cart-fab'; fab.className = 'wh2-fab';
+    fab.innerHTML = `<div class="wh2-fab__split" style="display:none"></div>
+      <button class="wh2-fab__btn" title="Корзина закупки">🛒<span class="wh2-fab__cnt" style="display:none">0</span></button>`;
+    document.body.appendChild(fab);
+    fab.querySelector('.wh2-fab__btn').onclick = () => openCartDrawer();
+    _updateFab();
+    // восстановить Мимира и убрать FAB при уходе со страницы склада
+    _fabHashHandler = () => {
+      if (!location.hash.includes('/warehouse')) {
+        const m = document.getElementById('mimirWidget'); if (m) m.style.display = '';
+        const f = document.getElementById('wh2-cart-fab'); if (f) f.remove();
+        const dr = document.getElementById('wh2-cart-overlay'); if (dr) dr.remove();
+        const d2 = document.getElementById('wh2-cart-drawer'); if (d2) d2.remove();
+        window.removeEventListener('hashchange', _fabHashHandler); _fabHashHandler = null;
+      }
+    };
+    window.addEventListener('hashchange', _fabHashHandler);
   }
 
   return { render };

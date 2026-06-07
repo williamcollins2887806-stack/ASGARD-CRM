@@ -7,9 +7,39 @@
 window.WH2Equipment = (function () {
   // Контекст из warehouse-v2.js: { user, api, esc, toast, fmt, UI }
   let api, esc, toast, fmt, UI, _user;
-  // Колбэки корзины из warehouse-v2.js (isInCart/addToCart/removeFromCart/getWarehouseId)
+  // Колбэки корзины из warehouse-v2.js (isInCart/addToCart/removeFromCart/removeByEquipment/qtyOf/getWarehouseId)
   let _cartCb = null;
   function setCartCallbacks(cb) { _cartCb = cb; }
+
+  // Степпер оборудования (поштучно): «+ В корзину» ⇄ [✓ в корзине] [✕]
+  function _eqStepper(eqid) {
+    if (!_cartCb) return '';
+    const inCart = _cartCb.isInCart(null, eqid);
+    if (!inCart) return `<button class="wh2-stp wh2-stp--add" data-eqstep="${eqid}" data-eqstep-add="1" title="В корзину закупки">+ В корзину</button>`;
+    return `<span class="wh2-stp wh2-stp--qty" data-eqstep="${eqid}" style="border-color:var(--ok-t,#30d158)">
+      <span class="wh2-stp__b" style="color:var(--ok-t,#30d158);cursor:default;width:auto;padding:0 8px;font-size:13px">✓ в корзине</span>
+      <button class="wh2-stp__b" data-eqstep-rm="1" style="color:var(--err-t,#ff5c5c)" title="Убрать">✕</button>
+    </span>`;
+  }
+  function _refreshEqStepper(el) {
+    const eqid = +el.getAttribute('data-eqstep');
+    const wrap = document.createElement('div'); wrap.innerHTML = _eqStepper(eqid);
+    const fresh = wrap.firstElementChild; if (fresh) { el.replaceWith(fresh); _bindEqStepper(fresh); }
+  }
+  function _bindEqStepper(el) {
+    if (!_cartCb) return;
+    const eqid = +el.getAttribute('data-eqstep');
+    const stop = ev => ev.stopPropagation();
+    if (el.classList.contains('wh2-stp--add')) {
+      el.onclick = async ev => { stop(ev);
+        const ok = await _cartCb.addToCart({ warehouse_id: _cartCb.getWarehouseId && _cartCb.getWarehouseId(), items: [{ item_type: 'equipment', equipment_id: eqid, need_qty: 1, source: 'catalog' }] });
+        if (ok) { navigator.vibrate && navigator.vibrate(8); _refreshEqStepper(el); }
+      };
+      return;
+    }
+    const rm = el.querySelector('[data-eqstep-rm]');
+    if (rm) rm.onclick = async ev => { stop(ev); if (_cartCb.removeByEquipment) await _cartCb.removeByEquipment(eqid); _refreshEqStepper(el); };
+  }
 
   const S = {
     all: [], filtered: [], kits: [], stats: {},
@@ -160,7 +190,7 @@ window.WH2Equipment = (function () {
       <div class="wh2-eq-filters" id="wh2-eq-filters"></div>
       <div class="wh2-eq-grp-btns" id="wh2-eq-grp"></div>
       <div id="wh2-eq-requests"></div>
-      <div id="wh2-eq-content"><div class="wh2-loading">Загрузка оборудования…</div></div>
+      <div id="wh2-eq-content"><div class="wh2-eq-grid">${Array.from({ length: 8 }).map(() => '<div class="wh2-skel" style="height:130px;border-radius:14px"></div>').join('')}</div></div>
       <div id="wh2-eq-kits"></div>`;
 
     container.querySelectorAll('[data-eq]').forEach(b => b.onclick = () => {
@@ -182,13 +212,17 @@ window.WH2Equipment = (function () {
 
   function renderFilters() {
     const el = S._container.querySelector('#wh2-eq-filters'); if (!el) return;
-    el.innerHTML = `
+    // Статусы — чипы (быстрый клик); категории/склады — компактные селекты
+    const statusChips = `<div class="wh2-chips" style="margin-bottom:8px">
+      <button class="wh2-fchip ${!S.filters.status ? 'wh2-fchip--active' : ''}" data-st="">Все</button>
+      ${Object.entries(STATUS).map(([k, v]) => `<button class="wh2-fchip ${S.filters.status === k ? 'wh2-fchip--active' : ''}" data-st="${k}">${v.i || ''} ${v.l}</button>`).join('')}
+    </div>`;
+    el.innerHTML = `${statusChips}<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <select class="wh2-btn" id="wh2-eqf-cat"><option value="">Все категории</option>${optHtml(S.refs.categories, 'id', 'name', S.filters.category_id)}</select>
-      <select class="wh2-btn" id="wh2-eqf-status"><option value="">Все статусы</option>${Object.entries(STATUS).map(([k, v]) => `<option value="${k}"${S.filters.status === k ? ' selected' : ''}>${v.l}</option>`).join('')}</select>
       <select class="wh2-btn" id="wh2-eqf-wh"><option value="">Все склады</option>${optHtml(S.refs.warehouses, 'id', 'name', S.filters.warehouse_id)}</select>
-      ${Object.keys(S.filters).length ? '<button class="wh2-btn" id="wh2-eqf-clear">✕ Сбросить</button>' : ''}`;
+      ${Object.keys(S.filters).length ? '<button class="wh2-btn" id="wh2-eqf-clear">✕ Сбросить</button>' : ''}</div>`;
+    el.querySelectorAll('[data-st]').forEach(b => b.onclick = () => setFilter('status', b.dataset.st));
     el.querySelector('#wh2-eqf-cat').onchange = e => setFilter('category_id', e.target.value);
-    el.querySelector('#wh2-eqf-status').onchange = e => setFilter('status', e.target.value);
     el.querySelector('#wh2-eqf-wh').onchange = e => setFilter('warehouse_id', e.target.value);
     const cl = el.querySelector('#wh2-eqf-clear'); if (cl) cl.onclick = () => { S.filters = {}; renderFilters(); loadData(false); };
   }
@@ -215,20 +249,10 @@ window.WH2Equipment = (function () {
     if (S.all.length < S.total) html += `<button class="wh2-eq-loadmore" id="wh2-eq-more">Показать ещё (${S.all.length} из ${S.total})</button>`;
     el.innerHTML = html;
     el.querySelectorAll('[data-grp]').forEach(h => h.onclick = () => { const k = h.dataset.grp; if (S.collapsed.has(k)) S.collapsed.delete(k); else S.collapsed.add(k); renderContent(); });
-    el.querySelectorAll('[data-eqid]').forEach(c => c.onclick = ev => { if (ev.target.closest('[data-act]') || ev.target.closest('[data-cart-eqid]')) return; openCard(+c.dataset.eqid); });
+    el.querySelectorAll('[data-eqid]').forEach(c => c.onclick = ev => { if (ev.target.closest('[data-act]') || ev.target.closest('[data-eqstep]')) return; openCard(+c.dataset.eqid); });
     el.querySelectorAll('[data-act]').forEach(b => b.onclick = ev => { ev.stopPropagation(); handleAction(b.dataset.act, +b.dataset.id); });
-    // «+ в корзину» на карточке оборудования
-    if (_cartCb) el.querySelectorAll('[data-cart-eqid]').forEach(btn => btn.onclick = async ev => {
-      ev.stopPropagation();
-      const eqid = +btn.dataset.cartEqid;
-      if (_cartCb.isInCart(null, eqid)) {
-        // убрать из корзины (по equipment_id находим cartItemId)
-        if (_cartCb.removeByEquipment) await _cartCb.removeByEquipment(eqid);
-        btn.classList.remove('wh2-cart-toggle--active'); btn.textContent = '+'; return;
-      }
-      const ok = await _cartCb.addToCart({ warehouse_id: _cartCb.getWarehouseId && _cartCb.getWarehouseId(), items: [{ item_type: 'equipment', equipment_id: eqid, need_qty: 1, source: 'catalog' }] });
-      if (ok) { btn.classList.add('wh2-cart-toggle--active'); btn.textContent = '✓'; }
-    });
+    // степперы корзины на оборудовании (карточки + таблица)
+    el.querySelectorAll('.wh2-stp[data-eqstep]').forEach(s => _bindEqStepper(s));
     const more = el.querySelector('#wh2-eq-more'); if (more) more.onclick = async () => { S.offset += S.PAGE; try { await loadData(true); } catch (e) { toast('Ошибка', e.message, 'err'); } };
   }
 
@@ -257,8 +281,7 @@ window.WH2Equipment = (function () {
     if (e.status === 'issued' && (isAdmin() || e.current_holder_id === _user.id)) acts.push(`<button class="wh2-eq-act wh2-eq-act--return" data-act="return" data-id="${e.id}">📥 Вернуть</button>`);
     if (e.status === 'issued' && isPM()) acts.push(`<button class="wh2-eq-act" data-act="transfer" data-id="${e.id}">🔄</button>`);
     if (isAdmin() && !['repair', 'written_off'].includes(e.status)) acts.push(`<button class="wh2-eq-act" data-act="repair" data-id="${e.id}">🔧</button>`);
-    const cartBtn = _cartCb ? `<button class="wh2-cart-toggle ${_cartCb.isInCart(null, e.id) ? 'wh2-cart-toggle--active' : ''}" data-cart-eqid="${e.id}" title="В корзину закупки">${_cartCb.isInCart(null, e.id) ? '✓' : '+'}</button>` : '';
-    return `<div class="wh2-eq-card" data-eqid="${e.id}" style="position:relative">${cartBtn}
+    return `<div class="wh2-eq-card" data-eqid="${e.id}" style="position:relative">
       <div class="wh2-eq-card__row">${photo}
         <div style="flex:1;min-width:0"><div class="wh2-eq-card__name">${hl(e.name)}</div>
           <div class="wh2-eq-card__inv">${e.inventory_number ? '№ ' + hl(e.inventory_number) : ''}${e.category_name ? ' · ' + esc(e.category_name) : ''}</div></div>
@@ -268,19 +291,20 @@ window.WH2Equipment = (function () {
         ${e.object_name ? `<span>📍 ${esc(e.object_name)}</span>` : (e.warehouse_name ? `<span>🏬 ${esc(e.warehouse_name)}</span>` : '')}
         ${e.location_label ? `<span>🗺️ ${esc(e.location_label)}</span>` : ''}
         ${cond ? `<span style="color:${cond.c}">● ${cond.l}</span>` : ''}</div>
-      ${acts.length ? `<div class="wh2-eq-card__foot">${acts.join('')}</div>` : ''}</div>`;
+      <div class="wh2-eq-card__foot" style="justify-content:space-between;align-items:center">
+        <span style="display:flex;gap:6px">${acts.join('')}</span>${_eqStepper(e.id)}</div></div>`;
   }
 
   function renderTable(items) {
     const cartCol = _cartCb ? '<th title="В корзину закупки">🛒</th>' : '';
-    return `<table class="wh2-table"><thead><tr>${cartCol}<th></th><th>Наименование</th><th>Инв.№</th><th>Категория</th><th>Статус</th><th>Ответственный</th><th>Объект</th></tr></thead><tbody>
+    return `<table class="wh2-table"><thead><tr><th></th><th>Наименование</th><th>Инв.№</th><th>Категория</th><th>Статус</th><th>Ответственный</th><th>Объект</th>${cartCol}</tr></thead><tbody>
       ${items.map(e => { const st = STATUS[e.status] || { l: e.status, c: '#8b93a3' };
-        const cartCell = _cartCb ? `<td><button class="wh2-cart-toggle ${_cartCb.isInCart(null, e.id) ? 'wh2-cart-toggle--active' : ''}" data-cart-eqid="${e.id}" style="position:static;width:26px;height:26px;font-size:15px" title="В корзину закупки">${_cartCb.isInCart(null, e.id) ? '✓' : '+'}</button></td>` : '';
-        return `<tr data-eqid="${e.id}" style="cursor:pointer">${cartCell}
+        const cartCell = _cartCb ? `<td>${_eqStepper(e.id)}</td>` : '';
+        return `<tr data-eqid="${e.id}" style="cursor:pointer">
         <td style="font-size:18px">${e.photo_url ? `<img src="${esc(e.photo_url)}" style="width:28px;height:28px;border-radius:6px;object-fit:cover">` : eqIcon(e)}</td>
         <td><b>${hl(e.name)}</b></td><td>${hl(e.inventory_number || '—')}</td><td>${esc(e.category_name || '—')}</td>
         <td><span class="wh2-chip" style="background:${st.c}22;color:${st.c}">${st.l}</span></td>
-        <td>${esc(e.holder_name || '—')}</td><td>${esc(e.object_name || e.warehouse_name || '—')}</td></tr>`; }).join('')}</tbody></table>`;
+        <td>${esc(e.holder_name || '—')}</td><td>${esc(e.object_name || e.warehouse_name || '—')}</td>${cartCell}</tr>`; }).join('')}</tbody></table>`;
   }
 
   function handleAction(act, id) {
