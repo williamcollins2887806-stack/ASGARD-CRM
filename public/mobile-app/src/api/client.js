@@ -64,6 +64,19 @@ class ApiClient {
     });
   }
 
+  // Загрузка файла (multipart) — НЕ ставим Content-Type, браузер задаёт boundary сам.
+  async postForm(endpoint, formData) {
+    const token = this.getToken();
+    const response = await fetch(`${BASE_URL}${endpoint}`, {
+      method: 'POST',
+      headers: { ...(token && { Authorization: `Bearer ${token}` }) },
+      body: formData,
+    });
+    if (response.status === 401 || response.status === 403) { this.clearToken(); window.location.href = '/welcome'; throw new Error('Session expired'); }
+    if (!response.ok) { const e = await response.json().catch(() => ({})); throw new Error(e.error || e.message || `HTTP ${response.status}`); }
+    return await response.json();
+  }
+
   put(endpoint, data) {
     return this.request(endpoint, {
       method: 'PUT',

@@ -75,6 +75,8 @@
 .proc-deliver-card__info{flex:1;min-width:0}
 .proc-deliver-card__name{font-size:14px;font-weight:600;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .proc-deliver-card__meta{font-size:12px;color:var(--t2);margin-top:2px;display:flex;gap:var(--sp-2)}
+.proc-deliver-card__cell{margin-top:6px;display:flex;align-items:center;gap:6px}
+.proc-deliver-card__loc{font-size:12px;padding:3px 8px;border-radius:8px;border:1px solid var(--brd);background:var(--bg2,#161616);color:var(--t1,#eee);max-width:200px}
 .proc-deliver-card__check{width:24px;height:24px;border-radius:50%;border:2px solid var(--brd);display:flex;align-items:center;justify-content:center;transition:all .3s;flex-shrink:0;font-size:14px;color:transparent}
 .proc-deliver-card__check.checked{background:#10b981;border-color:#10b981;color:#fff}
 

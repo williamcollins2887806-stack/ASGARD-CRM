@@ -33,17 +33,19 @@ async function routes(fastify) {
 
   // Авто-наполнение каталога: позиция закупки → запись в products (если ещё нет).
   // Возвращает product_id для проставления в procurement_items. Каталог растёт сам.
+  // Возвращает {id, category_id} каталожного продукта (найденного или созданного).
+  // category_id берётся из существующего продукта — чтобы автопроставить категорию позиции.
   async function ensureCatalogProduct(c, { name, unit, article, category_id, userId }) {
-    const nm = (name||'').trim(); if (!nm) return null;
-    let r = await c.query('SELECT id FROM products WHERE lower(name)=lower($1) AND deleted_at IS NULL LIMIT 1', [nm]);
-    if (r.rows[0]) return r.rows[0].id;
+    const nm = (name||'').trim(); if (!nm) return { id: null, category_id: null };
+    let r = await c.query('SELECT id, category_id FROM products WHERE lower(name)=lower($1) AND deleted_at IS NULL LIMIT 1', [nm]);
+    if (r.rows[0]) return { id: r.rows[0].id, category_id: r.rows[0].category_id || null };
     try {
       const ins = await c.query(
-        `INSERT INTO products(name,article,unit,category_id,created_from,created_by) VALUES($1,$2,$3,$4,'procurement',$5) RETURNING id`,
+        `INSERT INTO products(name,article,unit,category_id,created_from,created_by) VALUES($1,$2,$3,$4,'procurement',$5) RETURNING id, category_id`,
         [nm, article||null, unit||'шт', category_id||null, userId||null]);
-      return ins.rows[0].id;
+      return { id: ins.rows[0].id, category_id: ins.rows[0].category_id || null };
     } catch (e) {
-      if (e.code === '23505') { const x = await c.query('SELECT id FROM products WHERE lower(name)=lower($1) AND deleted_at IS NULL LIMIT 1', [nm]); return x.rows[0]?.id || null; }
+      if (e.code === '23505') { const x = await c.query('SELECT id, category_id FROM products WHERE lower(name)=lower($1) AND deleted_at IS NULL LIMIT 1', [nm]); return { id: x.rows[0]?.id || null, category_id: x.rows[0]?.category_id || null }; }
       throw e;
     }
   }
@@ -255,13 +257,16 @@ async function routes(fastify) {
     const q=parseFloat(quantity)||0, p=parseFloat(unit_price)||0;
     // Авто-привязка к каталогу: если product_id не передан — найдём/создадим в products.
     let pid = product_id || null;
-    if (!pid) { try { pid = await ensureCatalogProduct(db, { name, unit, article, category_id: product_category_id, userId: req.user.id }); } catch(_) { pid = null; } }
+    let catId = product_category_id || null;
+    if (!pid) { try { const cp = await ensureCatalogProduct(db, { name, unit, article, category_id: product_category_id, userId: req.user.id }); pid = cp.id; if (!catId) catId = cp.category_id; } catch(_) { pid = null; } }
+    // Автопроставление категории из каталога, если у позиции своя не задана
+    if (!catId && pid) { try { const pc = await db.query('SELECT category_id FROM products WHERE id=$1', [pid]); catId = pc.rows[0]?.category_id || null; } catch(_) {} }
     const{rows}=await db.query(`INSERT INTO procurement_items(procurement_id,name,article,unit,quantity,supplier,supplier_link,unit_price,total_price,
       delivery_target,delivery_address,warehouse_id,estimated_delivery,notes,sort_order,product_id,supplier_id,product_category_id)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
       [procId,name.trim(),article||null,unit||'шт',q,supplier||null,supplier_link||null,p||null,q*p||null,
        tgt,delivery_address||null,warehouse_id||null,estimated_delivery||null,notes||null,sort_order||0,
-       pid,supplier_id||null,product_category_id||null]);
+       pid,supplier_id||null,catId]);
     await recalcTotal(db,procId);
     await logHistory(db,procId,req.user.id,'item_added',null,null,`Позиция: ${name}`,{item_id:rows[0].id});
     return {item:rows[0]};
@@ -312,16 +317,18 @@ async function routes(fastify) {
       await client.query('BEGIN');
       const valid=items.filter(it=>it.name&&it.name.trim());
       if(!valid.length){await client.query('ROLLBACK');return reply.code(400).send({error:'Нет валидных позиций'});}
-      const n=[],a=[],u=[],q=[],pr=[],t=[],no=[],o=[],pid=[],dt=[];
+      const n=[],a=[],u=[],q=[],pr=[],t=[],no=[],o=[],pid=[],dt=[],cat=[];
       for(let idx=0;idx<valid.length;idx++){const it=valid[idx];const qq=parseFloat(it.quantity)||0,pp=parseFloat(it.unit_price)||0;
         n.push(it.name.trim());a.push(it.article||null);u.push(it.unit||'шт');q.push(qq);pr.push(pp||null);t.push(qq*pp||null);no.push(it.notes||null);o.push(idx);
         dt.push(['warehouse','object'].includes(it.delivery_target)?it.delivery_target:'warehouse');
-        // product_id из витрины, либо авто-создание в каталоге
-        let p2=it.product_id||null; if(!p2){try{p2=await ensureCatalogProduct(client,{name:it.name,unit:it.unit,article:it.article,category_id:it.product_category_id,userId:req.user.id});}catch(_){p2=null;}}
-        pid.push(p2);}
-      const{rows}=await client.query(`INSERT INTO procurement_items(procurement_id,name,article,unit,quantity,unit_price,total_price,notes,sort_order,product_id,delivery_target)
-        SELECT $1,unnest($2::text[]),unnest($3::text[]),unnest($4::text[]),unnest($5::numeric[]),unnest($6::numeric[]),unnest($7::numeric[]),unnest($8::text[]),unnest($9::int[]),unnest($10::int[]),unnest($11::text[]) RETURNING *`,
-        [procId,n,a,u,q,pr,t,no,o,pid,dt]);
+        // product_id из витрины, либо авто-создание в каталоге; категория — из каталога, если своя не задана
+        let p2=it.product_id||null,c2=it.product_category_id||null;
+        if(!p2){try{const cp=await ensureCatalogProduct(client,{name:it.name,unit:it.unit,article:it.article,category_id:it.product_category_id,userId:req.user.id});p2=cp.id;if(!c2)c2=cp.category_id;}catch(_){p2=null;}}
+        if(!c2&&p2){try{const pc=await client.query('SELECT category_id FROM products WHERE id=$1',[p2]);c2=pc.rows[0]?.category_id||null;}catch(_){}}
+        pid.push(p2);cat.push(c2);}
+      const{rows}=await client.query(`INSERT INTO procurement_items(procurement_id,name,article,unit,quantity,unit_price,total_price,notes,sort_order,product_id,delivery_target,product_category_id)
+        SELECT $1,unnest($2::text[]),unnest($3::text[]),unnest($4::text[]),unnest($5::numeric[]),unnest($6::numeric[]),unnest($7::numeric[]),unnest($8::text[]),unnest($9::int[]),unnest($10::int[]),unnest($11::text[]),unnest($12::int[]) RETURNING *`,
+        [procId,n,a,u,q,pr,t,no,o,pid,dt,cat]);
       await recalcTotal(client,procId);
       await logHistory(client,procId,req.user.id,'items_bulk_added',null,null,`Добавлено: ${rows.length}`,null);
       await client.query('COMMIT');return{items:rows,count:rows.length};
@@ -472,12 +479,15 @@ async function routes(fastify) {
       for(const r of rows){
         const itemId=parseInt(r.item_id); const price=parseFloat(r.unit_price); if(isNaN(itemId)||isNaN(price)||price<=0) continue;
         // позиция принадлежит этой заявке
-        const it=(await client.query('SELECT id,quantity FROM procurement_items WHERE id=$1 AND procurement_id=$2',[itemId,id])).rows[0];
+        const it=(await client.query('SELECT id,quantity,product_id,product_category_id FROM procurement_items WHERE id=$1 AND procurement_id=$2',[itemId,id])).rows[0];
         if(!it) continue;
         const qty=parseFloat(it.quantity)||0; const total=price*qty;
+        // Автопроставление категории из каталога, если у позиции её ещё нет
+        let catId=it.product_category_id||null;
+        if(!catId&&it.product_id){try{const pc=await client.query('SELECT category_id FROM products WHERE id=$1',[it.product_id]);catId=pc.rows[0]?.category_id||null;}catch(_){}}
         await client.query(`UPDATE procurement_items SET unit_price=$1,total_price=$2,supplier=COALESCE($3,supplier),supplier_id=COALESCE($4,supplier_id),
-          supplier_delivery_days=COALESCE($5,supplier_delivery_days),invoice_import_id=$6,updated_at=NOW() WHERE id=$7`,
-          [price,total,supName,supId,delDays,importId||null,itemId]);
+          supplier_delivery_days=COALESCE($5,supplier_delivery_days),invoice_import_id=$6,product_category_id=COALESCE(product_category_id,$8),updated_at=NOW() WHERE id=$7`,
+          [price,total,supName,supId,delDays,importId||null,itemId,catId]);
         applied++; totalSum+=total;
       }
       if(importId) await client.query('UPDATE procurement_invoice_imports SET matched_count=$1,total_sum=$2 WHERE id=$3',[applied,totalSum,importId]);
@@ -560,9 +570,19 @@ async function routes(fastify) {
         const s=await db.query(`SELECT COUNT(*)::int sample_count,ROUND(AVG(unit_price),2) avg_price,MIN(unit_price) min_price,MAX(unit_price) max_price
           FROM price_records WHERE product_id=$1 AND recorded_at>=NOW()-INTERVAL '90 days'`,[pid]);
         stats=s.rows[0]?.sample_count>0?s.rows[0]:null;
-      } else if(name){
-        const l=await db.query('SELECT item_name,unit_price,supplier_name,recorded_at FROM price_records WHERE item_name ILIKE $1 ORDER BY recorded_at DESC LIMIT 1',['%'+name+'%']);
-        last=l.rows[0]||null;
+      }
+      // Фолбэк по имени: если по product_id истории нет (новый каталожный товар),
+      // ищем последнюю цену/статистику по похожему наименованию.
+      if((!last||!stats)&&name){
+        if(!last){
+          const l=await db.query('SELECT item_name,unit_price,supplier_name,recorded_at FROM price_records WHERE item_name ILIKE $1 ORDER BY recorded_at DESC LIMIT 1',['%'+name+'%']);
+          last=l.rows[0]||null;
+        }
+        if(!stats){
+          const s=await db.query(`SELECT COUNT(*)::int sample_count,ROUND(AVG(unit_price),2) avg_price,MIN(unit_price) min_price,MAX(unit_price) max_price
+            FROM price_records WHERE item_name ILIKE $1 AND recorded_at>=NOW()-INTERVAL '90 days'`,['%'+name+'%']);
+          stats=s.rows[0]?.sample_count>0?s.rows[0]:null;
+        }
       }
       hints[it.key||(pid?'p'+pid:'n:'+name.toLowerCase())]={last,stats};
     }
@@ -704,22 +724,29 @@ async function routes(fastify) {
             if(pr.rows[0]){validProduct=true;isConsumable=!!pr.rows[0].is_consumable;}}catch(_){}
         }
         const qty=parseFloat(item.quantity)||0;
+        // Раскладка по ячейкам: кладовщик может указать ячейку приёмки (location_id).
+        // Валидируем, что ячейка принадлежит этому складу; иначе кладём без ячейки (NULL).
+        let locId=req.body&&req.body.location_id?parseInt(req.body.location_id):null;
+        if(locId&&!isNaN(locId)){
+          const lc=await client.query('SELECT id FROM warehouse_locations WHERE id=$1 AND warehouse_id=$2 AND (is_active IS NULL OR is_active=true)',[locId,whId]);
+          if(!lc.rows[0]) locId=null;
+        } else locId=null;
         // W3: расходник приходуем в stock только при положительном количестве и валидном каталоге.
         if(isConsumable && validProduct && qty>0){
-          // Надёжный upsert (location NULL): SELECT FOR UPDATE → UPDATE/INSERT.
-          const exSt=await client.query('SELECT id FROM stock WHERE product_id=$1 AND warehouse_id=$2 AND location_id IS NULL FOR UPDATE',[item.product_id,whId]);
+          // Надёжный upsert: SELECT FOR UPDATE → UPDATE/INSERT (с учётом ячейки).
+          const exSt=await client.query('SELECT id FROM stock WHERE product_id=$1 AND warehouse_id=$2 AND location_id IS NOT DISTINCT FROM $3 FOR UPDATE',[item.product_id,whId,locId]);
           if(exSt.rows[0]) await client.query('UPDATE stock SET quantity=quantity+$1, updated_at=NOW() WHERE id=$2',[qty,exSt.rows[0].id]);
-          else await client.query('INSERT INTO stock(product_id,warehouse_id,location_id,quantity,unit) VALUES($1,$2,NULL,$3,$4)',[item.product_id,whId,qty,item.unit||'шт']);
+          else await client.query('INSERT INTO stock(product_id,warehouse_id,location_id,quantity,unit) VALUES($1,$2,$3,$4,$5)',[item.product_id,whId,locId,qty,item.unit||'шт']);
           await client.query(
-            `INSERT INTO stock_movements(product_id,to_warehouse_id,qty,unit,movement_type,ref_type,ref_id,reason,created_by)
-             VALUES($1,$2,$3,$4,'receipt','procurement',$5,$6,$7)`,
-            [item.product_id,whId,qty,item.unit||'шт',procId,'Приёмка из закупки #'+procId,user.id]);
+            `INSERT INTO stock_movements(product_id,to_warehouse_id,to_location_id,qty,unit,movement_type,ref_type,ref_id,reason,created_by)
+             VALUES($1,$2,$3,$4,$5,'receipt','procurement',$6,$7,$8)`,
+            [item.product_id,whId,locId,qty,item.unit||'шт',procId,'Приёмка из закупки #'+procId,user.id]);
         }else{
           const qr=randomUUID();
           const invNum='INV-'+Date.now().toString(36).toUpperCase();
-          const eq=await client.query(`INSERT INTO equipment(name,inventory_number,category_id,quantity,unit,purchase_price,status,warehouse_id,qr_uuid,qr_code,product_id,notes)
-            VALUES($1,$2,NULL,$3,$4,$5,'on_warehouse',$6,$7,$8,$9,$10) RETURNING id`,
-            [item.name,invNum,item.quantity,item.unit,item.unit_price,whId,qr,qr,item.product_id||null,'Из закупки #'+procId]);
+          const eq=await client.query(`INSERT INTO equipment(name,inventory_number,category_id,quantity,unit,purchase_price,status,warehouse_id,location_id,qr_uuid,qr_code,product_id,notes)
+            VALUES($1,$2,NULL,$3,$4,$5,'on_warehouse',$6,$7,$8,$9,$10,$11) RETURNING id`,
+            [item.name,invNum,item.quantity,item.unit,item.unit_price,whId,locId,qr,qr,item.product_id||null,'Из закупки #'+procId]);
           await client.query('UPDATE procurement_items SET equipment_id=$1 WHERE id=$2',[eq.rows[0].id,itemId]);
           await client.query(`INSERT INTO equipment_movements(equipment_id,movement_type,to_warehouse_id,notes,created_by)VALUES($1,'procurement_receipt',$2,$3,$4)`,
             [eq.rows[0].id,whId,'Приёмка из закупки #'+procId,user.id]);

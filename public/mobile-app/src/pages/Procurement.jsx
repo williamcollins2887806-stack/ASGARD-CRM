@@ -46,6 +46,33 @@ const FILTERS = [
 const PM_ROLES = ['PM', 'HEAD_PM'];
 const CAN_ADD_ITEM_ROLES = ['PM', 'HEAD_PM', 'PROC', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 
+// Извлечение текста из PDF/фото счёта (CDN pdf.js / Tesseract). Excel шлём файлом напрямую.
+function loadScriptOnce(src) {
+  return new Promise((res, rej) => {
+    if (document.querySelector(`script[data-inv-lib="${src}"]`)) return res();
+    const s = document.createElement('script'); s.src = src; s.async = true; s.dataset.invLib = src;
+    s.onload = () => res(); s.onerror = () => rej(new Error('Не удалось загрузить ' + src));
+    document.head.appendChild(s);
+  });
+}
+async function extractInvoiceText(file) {
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  if (ext === 'pdf') {
+    await loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+    const pdfjs = window.pdfjsLib; if (!pdfjs) throw new Error('PDF-движок недоступен');
+    pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const buf = await file.arrayBuffer(); const doc = await pdfjs.getDocument({ data: buf }).promise; let text = '';
+    for (let p = 1; p <= Math.min(doc.numPages, 15); p++) { const page = await doc.getPage(p); const tc = await page.getTextContent(); text += tc.items.map((i) => i.str).join(' ') + '\n'; }
+    if (text.replace(/\s/g, '').length < 30) throw new Error('PDF без текста — сфотографируйте счёт');
+    return text;
+  }
+  await loadScriptOnce('https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.0/tesseract.min.js');
+  if (!window.Tesseract) throw new Error('OCR недоступен');
+  const dataUrl = await new Promise((res, rej) => { const r = new FileReader(); r.onload = (e) => res(e.target.result); r.onerror = rej; r.readAsDataURL(file); });
+  const out = await window.Tesseract.recognize(dataUrl, 'rus+eng');
+  return (out && out.data && out.data.text) || '';
+}
+
 // ─── Главный экран ──────────────────────────────────────────────────────────
 export default function Procurement() {
   const haptic = useHaptic();
@@ -233,6 +260,11 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
   const [showAddItem, setShowAddItem] = useState(false);
   const [tplName, setTplName] = useState('');
   const [showTplInput, setShowTplInput] = useState(false);
+  const [invoice, setInvoice] = useState(null); // {import_id,matches,unmatched,items_for_match,supplier_*} результат парса
+  const [invBusy, setInvBusy] = useState(false);
+  const [invSupName, setInvSupName] = useState('');
+  const [invDays, setInvDays] = useState('');
+  const invFileRef = useRef(null);
 
   useEffect(() => {
     if (!request) { setFull(null); return; }
@@ -289,6 +321,47 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
     const c = window.prompt(promptText || 'Комментарий:');
     if (c === null) return; // отмена
     doAction(endpoint, label, { comment: c });
+  };
+
+  // 🧾 Загрузка счёта с телефона: Excel — сразу; PDF/фото — текст распознаётся в браузере → AI.
+  const onInvoiceFile = async (e) => {
+    const file = e.target.files && e.target.files[0]; if (!file) return;
+    e.target.value = '';
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    setInvBusy(true); haptic.light();
+    try {
+      let res;
+      if (ext === 'xlsx' || ext === 'xls') {
+        const fd = new FormData();
+        if (invSupName.trim()) fd.append('supplier_name', invSupName.trim());
+        if (invDays) fd.append('delivery_days', invDays);
+        fd.append('file', file);
+        res = await api.postForm(`/procurement/${item.id}/invoice/parse`, fd);
+      } else {
+        const text = await extractInvoiceText(file);
+        res = await api.post(`/procurement/${item.id}/invoice/parse`, { text, supplier_name: invSupName.trim() || null, delivery_days: invDays || null });
+      }
+      if (res.ai_unavailable) { window.alert(res.message || 'AI недоступен'); setInvBusy(false); return; }
+      setInvoice({ ...res, rows: [...(res.matches || []).map((m) => ({ item_id: m.item_id, invoice_name: m.invoice_name, confidence: m.confidence, unit_price: m.unit_price })),
+        ...(res.unmatched || []).map((u) => ({ item_id: '', invoice_name: u.invoice_name, confidence: 0, unit_price: u.unit_price, isNew: true }))] });
+      haptic.success();
+    } catch (err) { haptic.error(); window.alert('Ошибка: ' + (err.message || err)); }
+    finally { setInvBusy(false); }
+  };
+  const applyInvoice = async () => {
+    if (!invoice) return;
+    const rows = invoice.rows.filter((r) => r.item_id && (parseFloat(r.unit_price) > 0)).map((r) => ({ item_id: +r.item_id, unit_price: parseFloat(r.unit_price) }));
+    if (!rows.length) { window.alert('Нет строк с привязкой и ценой'); return; }
+    setInvBusy(true);
+    try {
+      const res = await api.post(`/procurement/${item.id}/invoice/${invoice.import_id}/apply`, { rows, supplier_id: invoice.supplier_id, supplier_name: invoice.supplier_name || invSupName.trim() || null, delivery_days: invoice.delivery_days || invDays || null });
+      haptic.success(); setInvoice(null); setInvSupName(''); setInvDays('');
+      const r = await api.get(`/api/procurement/${item.id}`);
+      setFull(r?.item ? r : { item: r, items: r.items || [], history: r.history || [] });
+      onRefresh();
+      window.alert(`Цены проставлены: ${res.applied}`);
+    } catch (err) { haptic.error(); window.alert('Ошибка: ' + (err.message || err)); }
+    finally { setInvBusy(false); }
   };
 
   const doClone = async () => {
@@ -488,19 +561,65 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
             </div>
           )}
 
-          {/* ЗАКУПЩИК: ответить РП (цены проставляются на desktop/через счёт) */}
+          {/* ЗАКУПЩИК: загрузить счёт → авто-цены + ответить РП */}
           {canProcRespond && (
             <div className="flex flex-col gap-2">
               <p className="text-[11px] font-semibold uppercase tracking-wider c-tertiary">Закупщик</p>
+              {!invoice && (
+                <>
+                  <div className="flex gap-2">
+                    <input value={invSupName} onChange={(e) => setInvSupName(e.target.value)} placeholder="Поставщик (опц.)"
+                      className="flex-1 rounded-xl px-3 py-2 text-[13px]" style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)', color: 'var(--text-primary)' }} />
+                    <input value={invDays} onChange={(e) => setInvDays(e.target.value.replace(/\D/g, ''))} placeholder="срок,дн" inputMode="numeric"
+                      className="w-20 rounded-xl px-3 py-2 text-[13px]" style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)', color: 'var(--text-primary)' }} />
+                  </div>
+                  <input ref={invFileRef} type="file" accept=".xlsx,.xls,.pdf,image/*" capture="environment" onChange={onInvoiceFile} style={{ display: 'none' }} />
+                  <button onClick={() => invFileRef.current?.click()} disabled={invBusy}
+                    className="spring-tap flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[14px] font-semibold"
+                    style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)', color: 'var(--text-primary)' }}>
+                    <FileText size={16} /> {invBusy ? 'Разбираю счёт…' : '🧾 Загрузить счёт (фото/Excel)'}
+                  </button>
+                </>
+              )}
+              {invoice && (
+                <div className="rounded-xl p-2" style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}>
+                  <p className="text-[12px] font-semibold mb-1.5">Сопоставление ({(invoice.matches || []).length} авто, {(invoice.unmatched || []).length} вручную)</p>
+                  <div className="flex flex-col gap-1.5" style={{ maxHeight: 260, overflowY: 'auto' }}>
+                    {invoice.rows.map((row, i) => (
+                      <div key={i} className="rounded-lg p-2" style={{ background: row.isNew ? 'rgba(224,168,0,.08)' : 'var(--bg-surface)', border: '0.5px solid var(--border-norse)' }}>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[12px] font-medium truncate">{row.invoice_name}</span>
+                          <span className="text-[10px] flex-shrink-0" style={{ color: row.confidence >= 0.8 ? 'var(--green)' : row.confidence >= 0.5 ? 'var(--accent-gold)' : 'var(--text-tertiary)' }}>
+                            {row.confidence ? Math.round(row.confidence * 100) + '%' : 'не найдено'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <select value={row.item_id || ''} onChange={(e) => { const v = e.target.value; setInvoice((s) => ({ ...s, rows: s.rows.map((r, j) => j === i ? { ...r, item_id: v } : r) })); }}
+                            className="flex-1 rounded-lg px-2 py-1 text-[12px]" style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)', color: 'var(--text-primary)' }}>
+                            <option value="">— не привязывать —</option>
+                            {(invoice.items_for_match || []).map((it) => (<option key={it.id} value={it.id}>{it.name}{it.has_price ? ' ✓' : ''}</option>))}
+                          </select>
+                          <input type="number" value={row.unit_price != null ? row.unit_price : ''} placeholder="цена" inputMode="decimal"
+                            onChange={(e) => { const v = e.target.value; setInvoice((s) => ({ ...s, rows: s.rows.map((r, j) => j === i ? { ...r, unit_price: v } : r) })); }}
+                            className="w-20 rounded-lg px-2 py-1 text-[12px]" style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)', color: 'var(--text-primary)' }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2 mt-2">
+                    <button onClick={() => setInvoice(null)} className="flex-1 spring-tap rounded-xl px-3 py-2 text-[13px] font-semibold" style={{ background: 'var(--bg-surface)', color: 'var(--text-secondary)' }}>Отмена</button>
+                    <button onClick={applyInvoice} disabled={invBusy} className="btn-primary flex-1 spring-tap rounded-xl px-3 py-2 text-[13px] font-semibold">{invBusy ? '…' : '✅ Применить цены'}</button>
+                  </div>
+                </div>
+              )}
               <button
                 onClick={() => doAction('proc-respond', 'Ответить')}
                 disabled={acting === 'proc-respond'}
                 className="btn-primary spring-tap flex items-center justify-center gap-2"
               >
                 <Check size={16} />
-                {acting === 'proc-respond' ? 'Отправляю...' : 'Ответить РП (цены готовы)'}
+                {acting === 'proc-respond' ? 'Отправляю...' : 'Ответить РП'}
               </button>
-              <p className="text-[11px] c-tertiary">Проставить цены и загрузить счёт удобнее на компьютере. С телефона — подтвердите готовность.</p>
             </div>
           )}
 

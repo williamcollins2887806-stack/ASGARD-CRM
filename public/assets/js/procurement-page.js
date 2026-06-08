@@ -432,12 +432,18 @@ window.AsgardProcurementPage = (function() {
     const undelivered = allItems.filter(i => i.item_status !== 'delivered' && i.item_status !== 'cancelled');
     if (!undelivered.length) { toast('Всё доставлено', '', 'info'); return; }
 
+    // Раскладка по ячейкам: подгружаем активные ячейки склада (для позиций на склад).
+    let cells = [];
+    try { const lc = await apiFetch('/api/warehouse-locations/locations?is_active=true&limit=500'); cells = (lc.rows || lc.locations || lc || []); if (!Array.isArray(cells)) cells = []; } catch (_) { cells = []; }
+    const cellOpts = '<option value="">— без ячейки —</option>' + cells.map(c => `<option value="${c.id}">${esc(c.label || ('#' + c.id))}</option>`).join('');
+
     const selected = new Set(undelivered.map(i => i.id));
     let html = `<div class="proc-deliver">
       <div class="proc-deliver__title">📦 Приёмка позиций <span style="font-size:13px;font-weight:400;color:var(--t2)">${undelivered.length} из ${allItems.length}</span></div>
       <div class="proc-deliver__progress"><div class="proc-deliver__progress-bar" id="dlv-bar"></div></div>
       <div id="dlv-cards">`;
     undelivered.forEach(it => {
+      const toWarehouse = (it.delivery_target || 'warehouse') === 'warehouse';
       html += `<div class="proc-deliver-card" data-id="${it.id}">
         <div class="proc-deliver-card__icon">${_itemIcon(it.name)}</div>
         <div class="proc-deliver-card__info">
@@ -447,6 +453,7 @@ window.AsgardProcurementPage = (function() {
             ${it.unit_price ? '<span>'+Number(it.unit_price).toLocaleString('ru-RU')+' ₽</span>' : ''}
             ${it.supplier ? '<span>'+esc(it.supplier)+'</span>' : ''}
           </div>
+          ${toWarehouse && cells.length ? `<div class="proc-deliver-card__cell"><span style="font-size:11px;color:var(--t2)">📍 Ячейка:</span> <select class="proc-deliver-card__loc" data-loc="${it.id}">${cellOpts}</select></div>` : ''}
         </div>
         <div class="proc-deliver-card__check checked" data-check="${it.id}">✓</div>
       </div>`;
@@ -460,9 +467,12 @@ window.AsgardProcurementPage = (function() {
     showModal({ title: 'Приёмка заявки #' + procId, html: html });
 
     // Toggle selection
+    // Клик по select ячейки не должен переключать выбор карточки.
+    document.querySelectorAll('.proc-deliver-card__loc').forEach(sel => { sel.onclick = (e) => e.stopPropagation(); sel.onchange = (e) => e.stopPropagation(); });
     document.querySelectorAll('.proc-deliver-card').forEach(card => {
       card.onclick = (e) => {
         if (card.classList.contains('accepted')) return;
+        if (e.target && e.target.classList && e.target.classList.contains('proc-deliver-card__loc')) return;
         const id = +card.dataset.id;
         const ch = card.querySelector('.proc-deliver-card__check');
         if (selected.has(id)) { selected.delete(id); ch.classList.remove('checked'); ch.textContent = ''; }
@@ -482,7 +492,9 @@ window.AsgardProcurementPage = (function() {
       const total = ids.length;
 
       for (const itemId of ids) {
-        const r = await apiPut(`/api/procurement/${procId}/items/${itemId}/deliver`, {});
+        const locSel = document.querySelector(`.proc-deliver-card__loc[data-loc="${itemId}"]`);
+        const locId = locSel && locSel.value ? parseInt(locSel.value) : null;
+        const r = await apiPut(`/api/procurement/${procId}/items/${itemId}/deliver`, locId ? { location_id: locId } : {});
         done++;
         if (bar) bar.style.width = Math.round(done / total * 100) + '%';
 
