@@ -8,6 +8,8 @@ window.AsgardProcurementPage = (function() {
 
   let currentFilters = {};
   let _user = null;
+  let _viewMode = localStorage.getItem('proc_view') || 'kanban'; // 'kanban' | 'table'
+  let _groupMode = 'none'; // 'none' | 'category' | 'supplier' — группировка позиций в детали
 
   const STATUSES = {
     draft:{l:'Черновик',c:'proc-status--draft'},sent_to_proc:{l:'У закупщика',c:'proc-status--sent-to-proc'},
@@ -49,11 +51,22 @@ window.AsgardProcurementPage = (function() {
     // «+ Новая заявка» убрана намеренно: заявки создаются ТОЛЬКО из карточки работы или из
     // корзины на складе. Закупщик заявки не создаёт — он их отрабатывает. Это реестр/просмотр.
     el.innerHTML = `<div class="proc-toolbar">
-      <div id="pf-status_w" style="display:inline-block;min-width:150px"></div>
+      <div class="proc-viewtoggle">
+        <button class="proc-vt ${_viewMode==='kanban'?'proc-vt--on':''}" data-vm="kanban">🗂️ Канбан</button>
+        <button class="proc-vt ${_viewMode==='table'?'proc-vt--on':''}" data-vm="table">📋 Таблица</button>
+      </div>
+      <div id="pf-status_w" style="display:${_viewMode==='table'?'inline-block':'none'};min-width:150px"></div>
       <input type="text" id="pf-search" placeholder="Поиск..." style="min-width:200px">
+      <span style="flex:1"></span>
       <button class="btn ghost" onclick="window.open('/api/procurement/export/excel')">📥 Excel</button>
       <button class="btn ghost" onclick="window.open('/api/procurement/template/excel')">📄 Шаблон</button>
     </div>`;
+    el.querySelectorAll('[data-vm]').forEach(b => b.onclick = () => {
+      _viewMode = b.dataset.vm; localStorage.setItem('proc_view', _viewMode);
+      el.querySelectorAll('[data-vm]').forEach(x => x.classList.toggle('proc-vt--on', x.dataset.vm === _viewMode));
+      el.querySelector('#pf-status_w').style.display = _viewMode === 'table' ? 'inline-block' : 'none';
+      refresh();
+    });
     el.querySelector('#pf-status_w')?.appendChild(CRSelect.create({ id: 'pf-status', options: [{ value: '', label: 'Все статусы' }, ...Object.entries(STATUSES).map(([k,v])=>({ value: k, label: v.l }))], value: currentFilters.status || '', onChange: v => { currentFilters.status = v; refresh(); } }));
     let tmr; el.querySelector('#pf-search').oninput = e => { clearTimeout(tmr); tmr = setTimeout(()=>{ currentFilters.search=e.target.value; refresh(); },300); };
   }
@@ -74,7 +87,7 @@ window.AsgardProcurementPage = (function() {
   async function openDetail(id) {
     const d = await apiFetch(`/api/procurement/${id}`);
     if (!d.item) { toast('Ошибка','Не найдена','err'); return; }
-    const p = d.item, items = d.items||[], payments = d.payments||[], history = d.history||[];
+    const p = d.item, items = d.items||[], payments = d.payments||[], history = d.history||[], invoiceImports = d.invoice_imports||[];
     const actions = getActions(p);
     const isLocked = p.locked;
     const canEditItems = !isLocked && ['PM','HEAD_PM','PROC','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV'].includes(_user.role);
@@ -101,41 +114,67 @@ window.AsgardProcurementPage = (function() {
         <dt>Сумма</dt><dd><strong>${money(p.total_sum)}</strong></dd>
       </dl>`;
 
-    // Items
-    html += `<div class="proc-detail__section"><div class="proc-detail__section-title">Позиции (${items.length})</div>`;
-    if (items.length) {
-      html += `<table class="proc-items-table"><thead><tr><th>№</th><th>Наименование</th><th>Артикул</th><th>Ед.</th><th>Кол-во</th>
-        <th>Поставщик</th><th>Цена</th><th>Сумма</th><th>Статус</th><th>Счёт</th>${canEditItems?'<th></th>':''}</tr></thead><tbody>`;
-      items.forEach((it,idx) => {
-        html += `<tr>
-          <td>${idx+1}</td>
-          <td>${canEditItems?`<input class="proc-items-table__input" value="${esc(it.name)}" data-id="${it.id}" data-field="name">`:esc(it.name)}</td>
-          <td>${esc(it.article||'')}</td>
-          <td>${esc(it.unit)}</td>
-          <td>${canEditItems?`<input class="proc-items-table__input" type="number" value="${it.quantity}" data-id="${it.id}" data-field="quantity" style="width:70px">`:it.quantity}</td>
-          <td>${isPROC&&canEditItems?`<input class="proc-items-table__input" value="${esc(it.supplier||'')}" data-id="${it.id}" data-field="supplier">`:esc(it.supplier||'—')}</td>
-          <td>${isPROC&&canEditItems?`<input class="proc-items-table__input" type="number" value="${it.unit_price||''}" data-id="${it.id}" data-field="unit_price" style="width:90px">`:money(it.unit_price)}</td>
-          <td>${money(it.total_price)}</td>
-          <td>${it.item_status==='delivered'
-            ? (it.equipment_id
-              ? '<span class="proc-eq-badge proc-eq-badge--delivered" onclick="location.hash=\'#/equipment?id='+it.equipment_id+'\'">📦 #'+it.equipment_id+'</span>'
-              : '<span class="proc-eq-badge proc-eq-badge--delivered">✅ Принято</span>')
-            : it.item_status==='cancelled'
-              ? '<span class="proc-eq-badge proc-eq-badge--pending">✕ Отменена</span>'
-              : '<span class="proc-eq-badge proc-eq-badge--transit">⏳ Ожидает</span>'}</td>
-          <td>${it.invoice_file_name?`<span class="proc-invoice-badge"><a href="${esc(it.invoice_file_path)}" class="proc-invoice-badge__link" target="_blank">📎 ${esc(it.invoice_file_name)}</a></span>`
-            :(isPROC&&canEditItems?`<button class="btn ghost" style="font-size:11px;padding:2px 6px" onclick="AsgardProcurementPage._attachInvoice(${p.id},${it.id})">📎</button>`:'—')}</td>
-          ${canEditItems?`<td><button class="btn ghost" style="font-size:11px;padding:2px 6px;color:var(--err)" onclick="AsgardProcurementPage._deleteItem(${p.id},${it.id})">✕</button></td>`:''}
-        </tr>`;
-      });
-      html += `</tbody></table>`;
+    // Items — родители + дочерние (сплит), опц. группировка
+    const parents = items.filter(it => !it.parent_item_id);
+    const childrenOf = pid => items.filter(it => it.parent_item_id === pid);
+    const statusCell = it => it.item_status==='delivered'
+        ? (it.equipment_id
+          ? '<span class="proc-eq-badge proc-eq-badge--delivered" onclick="location.hash=\'#/equipment?id='+it.equipment_id+'\'">📦 #'+it.equipment_id+'</span>'
+          : '<span class="proc-eq-badge proc-eq-badge--delivered">✅ Принято</span>')
+        : it.item_status==='cancelled'
+          ? '<span class="proc-eq-badge proc-eq-badge--pending">✕ Отменена</span>'
+          : '<span class="proc-eq-badge proc-eq-badge--transit">⏳ Ожидает</span>';
+    const rowHtml = (it, idx, isChild) => {
+      const kids = isChild ? [] : childrenOf(it.id);
+      const isSplit = kids.length > 0;
+      return `<tr class="${isChild?'proc-row-child':''}" data-row-id="${it.id}">
+        <td>${isChild?'↳':(idx+1)}</td>
+        <td>${canEditItems&&!isSplit?`<input class="proc-items-table__input" value="${esc(it.name)}" data-id="${it.id}" data-field="name">`:esc(it.name)}${isSplit?' <span class="proc-kbadge">разбито</span>':''}</td>
+        <td>${esc(it.article||'')}</td>
+        <td>${esc(it.unit)}</td>
+        <td>${canEditItems&&!isSplit?`<input class="proc-items-table__input" type="number" value="${it.quantity}" data-id="${it.id}" data-field="quantity" style="width:64px">`:it.quantity}</td>
+        <td>${isPROC&&canEditItems&&!isSplit?`<input class="proc-items-table__input" value="${esc(it.supplier||'')}" data-id="${it.id}" data-field="supplier">`:esc(it.supplier||'—')}${it.supplier_delivery_days?` <span class="proc-kbadge">${it.supplier_delivery_days}д</span>`:''}</td>
+        <td>${isSplit?'—':(isPROC&&canEditItems?`<input class="proc-items-table__input" type="number" value="${it.unit_price||''}" data-id="${it.id}" data-field="unit_price" style="width:80px">`:money(it.unit_price))}<div class="proc-hint" data-hint-for="${it.id}"></div></td>
+        <td>${money(it.total_price)}</td>
+        <td>${statusCell(it)}</td>
+        <td>${it.invoice_file_name?`<span class="proc-invoice-badge"><a href="${esc(it.invoice_file_path)}" class="proc-invoice-badge__link" target="_blank">📎 ${esc(it.invoice_file_name)}</a></span>`
+          :(isPROC&&canEditItems&&!isSplit?`<button class="btn ghost" style="font-size:11px;padding:2px 6px" onclick="AsgardProcurementPage._attachInvoice(${p.id},${it.id})">📎</button>`:'—')}</td>
+        ${canEditItems?`<td style="white-space:nowrap">
+          ${!isChild&&!isSplit&&parseFloat(it.quantity)>=2?`<button class="btn ghost" style="font-size:11px;padding:2px 5px" data-split-id="${it.id}" title="Разбить по поставщикам">✂️</button>`:''}
+          ${isSplit?`<button class="btn ghost" style="font-size:11px;padding:2px 5px" data-unsplit-id="${it.id}" title="Схлопнуть">⇲</button>`:''}
+          ${!isChild?`<button class="btn ghost" style="font-size:11px;padding:2px 5px;color:var(--err)" onclick="AsgardProcurementPage._deleteItem(${p.id},${it.id})">✕</button>`:''}
+        </td>`:''}
+      </tr>`;
+    };
+    html += `<div class="proc-detail__section"><div class="proc-detail__section-title">Позиции (${parents.length})</div>`;
+    if (parents.length) {
+      const thead = `<thead><tr><th>№</th><th>Наименование</th><th>Артикул</th><th>Ед.</th><th>Кол-во</th>
+        <th>Поставщик</th><th>Цена</th><th>Сумма</th><th>Статус</th><th>Счёт</th>${canEditItems?'<th></th>':''}</tr></thead>`;
+      if (_groupMode && _groupMode !== 'none') {
+        // группировка по категории/поставщику
+        const keyOf = it => _groupMode==='supplier' ? (it.supplier||'Без поставщика') : (it.category_name||'Без категории');
+        const groups = {}; parents.forEach(it => { const k=keyOf(it); (groups[k]=groups[k]||[]).push(it); });
+        html += `<table class="proc-items-table">${thead}<tbody>`;
+        Object.keys(groups).sort().forEach(g => {
+          const sum = groups[g].reduce((s,x)=>s+(parseFloat(x.total_price)||0)+childrenOf(x.id).reduce((s2,c)=>s2+(parseFloat(c.total_price)||0),0),0);
+          html += `<tr class="proc-grp-row"><td colspan="7"><b>▸ ${esc(g)}</b> <span style="color:var(--t2)">(${groups[g].length})</span></td><td><b>${money(sum)}</b></td><td colspan="${canEditItems?3:2}"></td></tr>`;
+          groups[g].forEach((it,idx)=>{ html+=rowHtml(it,idx,false); childrenOf(it.id).forEach(c=>html+=rowHtml(c,0,true)); });
+        });
+        html += `</tbody></table>`;
+      } else {
+        html += `<table class="proc-items-table">${thead}<tbody>`;
+        parents.forEach((it,idx)=>{ html+=rowHtml(it,idx,false); childrenOf(it.id).forEach(c=>html+=rowHtml(c,0,true)); });
+        html += `</tbody></table>`;
+      }
       if (canEditItems) html += `<div style="margin-top:var(--sp-2);display:flex;gap:var(--sp-2);flex-wrap:wrap">
-        <button class="btn primary" id="proc-showcase">🛒 Из каталога</button>
-        <button class="btn ghost" id="proc-save-items">💾 Сохранить изменения</button>
+        ${isPROC?`<button class="btn primary" id="proc-invoice">🧾 Загрузить счёт</button>`:''}
+        <button class="btn ghost" id="proc-grp" title="Группировка">🗂️ Группировать</button>
+        <button class="btn ghost" id="proc-showcase">🛒 Из каталога</button>
+        <button class="btn ghost" id="proc-save-items">💾 Сохранить</button>
         <button class="btn ghost" id="proc-add-item">+ Позиция</button>
         <button class="btn ghost" id="proc-add-text">📝 Текстом</button>
         <button class="btn ghost" id="proc-ai-parse">🤖 AI по ТЗ</button>
-        <button class="btn ghost" id="proc-import-xl">📥 Импорт Excel</button>
+        <button class="btn ghost" onclick="window.open('/api/procurement/${p.id}/export/excel?group=supplier')">📥 Excel</button>
       </div>`;
     } else {
       html += `<div style="color:var(--t2);padding:var(--sp-3)">Позиций нет</div>`;
@@ -148,6 +187,22 @@ window.AsgardProcurementPage = (function() {
       </div>`;
     }
     html += `</div>`;
+
+    // Счета поставщиков (видны бухгалтеру при оплате + всем для контроля)
+    if (invoiceImports.length) {
+      html += `<div class="proc-detail__section"><div class="proc-detail__section-title">🧾 Счета поставщиков (${invoiceImports.length})</div>`;
+      invoiceImports.forEach(iv => {
+        html += `<div style="padding:var(--sp-2);border-bottom:1px solid var(--brd);font-size:13px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <b>${esc(iv.supplier_name||'Поставщик')}</b>
+          ${iv.total_sum?`<span>${money(iv.total_sum)}</span>`:''}
+          ${iv.delivery_days?`<span class="proc-kbadge">${iv.delivery_days}д</span>`:''}
+          <span style="color:var(--t2)">${iv.matched_count||0} поз.</span>
+          ${iv.file_path?`<a href="${esc(iv.file_path)}" target="_blank" class="proc-invoice-badge__link">📎 ${esc(iv.file_name||'файл')}</a>`:''}
+          <span style="color:var(--t3);margin-left:auto">${esc(iv.uploaded_by_name||'')} ${dtFull(iv.created_at)}</span>
+        </div>`;
+      });
+      html += `</div>`;
+    }
 
     // Payments
     if (payments.length) {
@@ -219,6 +274,21 @@ window.AsgardProcurementPage = (function() {
     // Витрина каталога — главный способ добавления позиций
     const showcaseBtn = document.getElementById('proc-showcase');
     if (showcaseBtn) showcaseBtn.onclick = () => openShowcase(p.id);
+
+    // 🧾 Загрузить счёт → авто-матчинг → массово проставить цены
+    const invBtn = document.getElementById('proc-invoice');
+    if (invBtn) invBtn.onclick = () => openInvoiceModal(p.id);
+    // 🗂️ Группировка
+    const grpBtn = document.getElementById('proc-grp');
+    if (grpBtn) grpBtn.onclick = () => _cycleGroup(p.id);
+    // подсказки цен в строке + кнопки сплита
+    _attachItemHints(p.id, items, isPROC);
+    document.querySelectorAll('[data-split-id]').forEach(b => b.onclick = () => openSplitForm(p.id, +b.dataset.splitId, items.find(x=>x.id===+b.dataset.splitId)));
+    document.querySelectorAll('[data-unsplit-id]').forEach(b => b.onclick = async () => {
+      if (!confirm('Схлопнуть разбивку позиции?')) return;
+      const r = await fetch(`/api/procurement/${p.id}/items/${b.dataset.unsplitId}/split`, { method:'DELETE', headers: hdr() });
+      if (r.ok) { toast('Готово','Сплит отменён','ok'); openDetail(p.id); } else toast('Ошибка','Не удалось','err');
+    });
 
     // Add item — с подсказкой цены из базы
     const addBtn = document.getElementById('proc-add-item');
@@ -643,10 +713,101 @@ window.AsgardProcurementPage = (function() {
   // -- Refresh --
   let _tableEl = null;
   async function refresh() {
+    if (!_tableEl) return;
+    _tableEl.innerHTML = '<div class="proc-skel">' + Array.from({length:4}).map(()=>'<div class="proc-skel-row"></div>').join('') + '</div>';
     const params = new URLSearchParams();
-    Object.entries(currentFilters).forEach(([k,v])=>{ if(v) params.append(k,v); });
-    const d = await apiFetch('/api/procurement?' + params.toString());
-    if (_tableEl) renderTable(d.items || [], _tableEl);
+    // в канбане статус-фильтр не применяем (показываем все колонки)
+    Object.entries(currentFilters).forEach(([k,v])=>{ if(v && !(k==='status' && _viewMode==='kanban')) params.append(k,v); });
+    params.append('limit', '400');
+    let d; try { d = await apiFetch('/api/procurement?' + params.toString()); } catch(e){ _tableEl.innerHTML = `<div class="proc-empty">⚠️ ${esc(e.message)}</div>`; return; }
+    const items = d.items || [];
+    if (_viewMode === 'kanban') renderKanban(items, _tableEl);
+    else renderTable(items, _tableEl);
+  }
+
+  // -- Kanban --
+  // Группы-колонки: объединяем «родственные» статусы в понятные этапы.
+  const KANBAN_COLS = [
+    { key: 'new',      label: '🆕 Новые',         statuses: ['sent_to_proc'],                 to: null },
+    { key: 'work',     label: '🛠️ В работе',       statuses: ['proc_responded'],               to: null },
+    { key: 'approve',  label: '⏳ Согласование',   statuses: ['pm_approved','dir_question','dir_rework'], to: null },
+    { key: 'paid',     label: '💳 Оплачено',       statuses: ['dir_approved','paid'],          to: null },
+    { key: 'delivery', label: '🚚 Доставка',       statuses: ['partially_delivered','delivered'], to: null },
+    { key: 'done',     label: '✅ Закрыто',        statuses: ['closed','dir_rejected'],        to: null },
+  ];
+  const _isUrgent = r => r.priority === 'urgent' || (r.delivery_deadline && new Date(r.delivery_deadline) < new Date(Date.now()+3*864e5));
+  function renderKanban(items, el) {
+    const byStatus = {};
+    items.forEach(r => { (byStatus[r.status] = byStatus[r.status] || []).push(r); });
+    const colCards = col => {
+      const cards = [];
+      col.statuses.forEach(s => (byStatus[s]||[]).forEach(r => cards.push(r)));
+      // горящие сверху
+      cards.sort((a,b) => (_isUrgent(b)?1:0) - (_isUrgent(a)?1:0));
+      return cards;
+    };
+    el.innerHTML = `<div class="proc-kanban">${KANBAN_COLS.map(col => {
+      const cards = colCards(col);
+      return `<div class="proc-kcol" data-col="${col.key}">
+        <div class="proc-kcol__h">${col.label}<span class="proc-kcol__cnt">${cards.length}</span></div>
+        <div class="proc-kcol__body" data-drop="${col.key}">
+          ${cards.length ? cards.map(r => _kCard(r)).join('') : '<div class="proc-kcol__empty">пусто</div>'}
+        </div></div>`;
+    }).join('')}</div>`;
+    // открытие карточки
+    el.querySelectorAll('.proc-kcard[data-id]').forEach(c => {
+      c.onclick = ev => { if (ev.target.closest('[data-nodrag]')) return; openDetail(+c.dataset.id); };
+      c.setAttribute('draggable', 'true');
+      c.ondragstart = ev => { ev.dataTransfer.setData('text/plain', c.dataset.id + ':' + c.dataset.status); c.classList.add('proc-kcard--drag'); };
+      c.ondragend = () => c.classList.remove('proc-kcard--drag');
+    });
+    // drop-зоны = попытка перехода
+    el.querySelectorAll('[data-drop]').forEach(zone => {
+      zone.ondragover = ev => { ev.preventDefault(); zone.classList.add('proc-kcol__body--over'); };
+      zone.ondragleave = () => zone.classList.remove('proc-kcol__body--over');
+      zone.ondrop = async ev => {
+        ev.preventDefault(); zone.classList.remove('proc-kcol__body--over');
+        const [id, fromStatus] = (ev.dataTransfer.getData('text/plain')||'').split(':');
+        const col = KANBAN_COLS.find(c => c.key === zone.dataset.drop);
+        await _kanbanMove(+id, fromStatus, col);
+      };
+    });
+  }
+  function _kCard(r) {
+    const unpriced = r.unpriced_count || 0;
+    return `<div class="proc-kcard ${_isUrgent(r)?'proc-kcard--urgent':''}" data-id="${r.id}" data-status="${r.status}">
+      <div class="proc-kcard__top"><b>#${r.id}</b> ${esc(r.title||'')}${_isUrgent(r)?' 🔥':''}</div>
+      <div class="proc-kcard__work">${esc(r.work_title||'без работы')}</div>
+      <div class="proc-kcard__meta">
+        <span>👤 ${esc(r.pm_name||'—')}</span>
+        <span>📦 ${r.items_count||0}</span>
+        <span>${money(r.items_total)}</span>
+      </div>
+      <div class="proc-kcard__badges">
+        ${badge(r.status)}
+        ${unpriced>0?`<span class="proc-kbadge proc-kbadge--warn">без цен: ${unpriced}</span>`:''}
+        ${r.delivery_deadline?`<span class="proc-kbadge ${new Date(r.delivery_deadline)<new Date()?'proc-kbadge--over':''}">⏱ ${dt(r.delivery_deadline)}</span>`:''}
+      </div>
+    </div>`;
+  }
+  // Перетаскивание карточки в колонку = соответствующий переход (только разрешённый роли/статусу).
+  async function _kanbanMove(id, fromStatus, col) {
+    if (!col || col.statuses.includes(fromStatus)) return; // та же колонка
+    const r = _user.role;
+    const PM = ['PM','HEAD_PM'].includes(r), PROC = ['PROC','ADMIN'].includes(r), DIR = ['DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','ADMIN'].includes(r), BUH = ['BUH','ADMIN'].includes(r);
+    let action = null;
+    // карта разрешённых drag-переходов (целевая колонка → действие, из соответствующего статуса)
+    if (col.key === 'work'    && fromStatus === 'sent_to_proc'   && PROC) action = 'proc-respond';
+    else if (col.key === 'approve' && fromStatus === 'proc_responded' && PM)   action = 'pm-approve';
+    else if (col.key === 'paid'    && fromStatus === 'pm_approved'    && DIR)  action = 'dir-approve';
+    else if (col.key === 'paid'    && fromStatus === 'dir_approved'   && BUH)  action = 'mark-paid';
+    else if (col.key === 'done'    && fromStatus === 'delivered'      && (PM||DIR)) action = 'close';
+    if (!action) { toast('Перемещение', 'Этот переход недоступен (роль/статус) — откройте заявку для действий', 'warn'); return; }
+    try {
+      await apiPut(`/api/procurement/${id}/${action}`, {});
+      toast('Готово', 'Статус изменён', 'ok');
+      refresh();
+    } catch (e) { toast('Ошибка', e.message, 'err'); refresh(); }
   }
 
   // -- Render --
@@ -668,6 +829,190 @@ window.AsgardProcurementPage = (function() {
     await renderDashboard(dashEl);
     renderFilters(filtEl);
     await refresh();
+  }
+
+  // ═══ ЗАКУПЩИК: счёт, группировка, подсказки, сплит ═══
+
+  // Цикл группировки: нет → категории → поставщики → нет
+  function _cycleGroup(procId) {
+    _groupMode = _groupMode === 'none' ? 'category' : _groupMode === 'category' ? 'supplier' : 'none';
+    openDetail(procId);
+  }
+
+  // Подсказки цен в строках (батч). Под ценой: «посл. 350₽ (ООО А) · ср.рынок 340₽».
+  async function _attachItemHints(procId, items, isPROC) {
+    const need = items.filter(it => !it.parent_item_id && (it.product_id || it.name));
+    if (!need.length) return;
+    let res; try { res = await apiPost(`/api/procurement/${procId}/price-hints`, { items: need.map(it => ({ key: 'i' + it.id, product_id: it.product_id || null, name: it.name })) }); } catch (_) { return; }
+    const hints = res.hints || {};
+    need.forEach(it => {
+      const h = hints['i' + it.id]; if (!h || (!h.last && !h.stats)) return;
+      const el = document.querySelector(`[data-hint-for="${it.id}"]`); if (!el) return;
+      const parts = [];
+      if (h.last) parts.push(`посл. ${money(h.last.unit_price)}${h.last.supplier_name ? ' (' + esc(h.last.supplier_name) + ')' : ''}`);
+      if (h.stats && h.stats.avg_price) parts.push(`ср.рынок ${money(h.stats.avg_price)}`);
+      el.innerHTML = parts.join(' · ') + (isPROC && h.last ? ` <a href="#" class="proc-hint__use" data-use="${it.id}" data-price="${h.last.unit_price}">подставить</a>` : '');
+    });
+    document.querySelectorAll('.proc-hint__use').forEach(a => a.onclick = (ev) => {
+      ev.preventDefault();
+      const inp = document.querySelector(`.proc-items-table__input[data-id="${a.dataset.use}"][data-field="unit_price"]`);
+      if (inp) { inp.value = a.dataset.price; inp.focus(); }
+    });
+  }
+
+  // Форма сплита позиции по поставщикам
+  async function openSplitForm(procId, itemId, item) {
+    if (!item) return;
+    const qty = parseFloat(item.quantity) || 0;
+    let suppliers = [];
+    try { const s = await apiFetch('/api/suppliers?limit=300'); suppliers = s.items || []; } catch (_) {}
+    const supOpts = '<option value="">— поставщик —</option>' + suppliers.map(s => `<option value="${s.id}" data-name="${esc(s.name)}">${esc(s.name)}</option>`).join('');
+    const partRow = (i) => `<div class="proc-split-row" data-pi="${i}">
+      <input type="number" min="0" step="any" class="ps-qty" placeholder="кол-во" style="width:80px">
+      <select class="ps-sup" style="flex:1;min-width:120px">${supOpts}</select>
+      <input type="number" min="0" step="any" class="ps-price" placeholder="цена" style="width:80px">
+      <input type="number" min="0" class="ps-days" placeholder="срок,дн" style="width:80px">
+      <button class="btn ghost ps-rm" style="padding:2px 8px">✕</button>
+    </div>`;
+    const html = `<div style="min-width:480px">
+      <div style="font-size:13px;color:var(--t2);margin-bottom:10px">Разбить «<b>${esc(item.name)}</b>» (всего ${qty} ${esc(item.unit)}) между поставщиками. Сумма частей должна равняться ${qty}.</div>
+      <div id="ps-rows">${partRow(0)}${partRow(1)}</div>
+      <button class="btn ghost" id="ps-add" style="margin-top:8px">+ Ещё часть</button>
+      <div id="ps-sum" style="margin-top:10px;font-size:13px"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button class="btn ghost" id="ps-cancel">Отмена</button>
+        <button class="btn primary" id="ps-submit">Разбить</button>
+      </div></div>`;
+    showModal({ title: '✂️ Разбить позицию', html });
+    let cnt = 2;
+    const recalc = () => {
+      let s = 0; document.querySelectorAll('.ps-qty').forEach(q => s += parseFloat(q.value) || 0);
+      const el = document.getElementById('ps-sum');
+      el.innerHTML = `Сумма частей: <b style="color:${Math.abs(s - qty) < 0.001 ? 'var(--ok-t,#30d158)' : 'var(--err)'}">${s}</b> / ${qty}`;
+    };
+    const bind = () => {
+      document.querySelectorAll('.ps-qty').forEach(q => q.oninput = recalc);
+      document.querySelectorAll('.ps-rm').forEach(b => b.onclick = () => { if (document.querySelectorAll('.proc-split-row').length > 2) { b.closest('.proc-split-row').remove(); recalc(); } });
+      recalc();
+    };
+    bind();
+    document.getElementById('ps-add').onclick = () => { document.getElementById('ps-rows').insertAdjacentHTML('beforeend', partRow(cnt++)); bind(); };
+    document.getElementById('ps-cancel').onclick = () => closeModal();
+    document.getElementById('ps-submit').onclick = async () => {
+      const parts = [];
+      document.querySelectorAll('.proc-split-row').forEach(row => {
+        const q = parseFloat(row.querySelector('.ps-qty').value) || 0; if (q <= 0) return;
+        const sel = row.querySelector('.ps-sup'); const sid = sel.value || null; const sname = sel.selectedOptions[0]?.dataset.name || null;
+        parts.push({ quantity: q, supplier_id: sid ? +sid : null, supplier_name: sname, unit_price: parseFloat(row.querySelector('.ps-price').value) || null, delivery_days: parseInt(row.querySelector('.ps-days').value) || null });
+      });
+      if (parts.length < 2) { toast('Внимание', 'Нужно минимум 2 части', 'warn'); return; }
+      const r = await fetch(`/api/procurement/${procId}/items/${itemId}/split`, { method: 'POST', headers: hdr(), body: JSON.stringify({ parts }) });
+      const d = await r.json();
+      if (!r.ok) { toast('Ошибка', d.error || 'Не удалось разбить', 'err'); return; }
+      toast('Готово', 'Позиция разбита', 'ok'); closeModal(); openDetail(procId);
+    };
+  }
+
+  // Модалка загрузки счёта → парс → авто-матчинг → массово проставить цены
+  async function openInvoiceModal(procId) {
+    let suppliers = [];
+    try { const s = await apiFetch('/api/suppliers?limit=300'); suppliers = s.items || []; } catch (_) {}
+    const supOpts = '<option value="">— выберите/впишите —</option>' + suppliers.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+    const html = `<div style="min-width:540px" id="inv-root">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:12px">
+        <label style="flex:1;min-width:180px">Поставщик<select id="inv-sup" style="width:100%;padding:8px;border:1px solid var(--brd);border-radius:8px">${supOpts}</select></label>
+        <label style="min-width:120px">или вписать<input id="inv-supname" placeholder="ООО ..." style="width:100%;padding:8px;border:1px solid var(--brd);border-radius:8px"></label>
+        <label style="width:110px">Срок, дней<input id="inv-days" type="number" min="0" placeholder="—" style="width:100%;padding:8px;border:1px solid var(--brd);border-radius:8px"></label>
+      </div>
+      <div style="font-size:12px;color:var(--t2);margin-bottom:8px">Excel — разбирается сразу. PDF/фото — текст распознаётся в браузере. Столбцы: наименование · артикул · количество · цена.</div>
+      <label class="btn primary" style="cursor:pointer;display:inline-block">📎 Выбрать файл счёта<input type="file" id="inv-file" accept=".xlsx,.xls,.pdf,image/*" style="display:none"></label>
+      <span id="inv-status" style="font-size:12px;color:var(--gold);margin-left:8px"></span>
+      <div id="inv-preview" style="margin-top:12px"></div>
+    </div>`;
+    showModal({ title: '🧾 Загрузить счёт поставщика', html });
+    const setStatus = t => { const s = document.getElementById('inv-status'); if (s) s.textContent = t || ''; };
+    document.getElementById('inv-file').onchange = async (ev) => {
+      const file = ev.target.files && ev.target.files[0]; if (!file) return;
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+      const supId = document.getElementById('inv-sup').value || '';
+      const supName = document.getElementById('inv-supname').value.trim() || (document.getElementById('inv-sup').selectedOptions[0]?.textContent !== '— выберите/впишите —' ? document.getElementById('inv-sup').selectedOptions[0]?.textContent : '') || '';
+      const days = document.getElementById('inv-days').value || '';
+      try {
+        let d;
+        if (ext === 'xlsx' || ext === 'xls') {
+          setStatus('Разбор Excel…');
+          const fd = new FormData(); if (supId) fd.append('supplier_id', supId); if (supName) fd.append('supplier_name', supName); if (days) fd.append('delivery_days', days); fd.append('file', file);
+          const r = await fetch(`/api/procurement/${procId}/invoice/parse`, { method: 'POST', headers: { Authorization: hdr().Authorization }, body: fd });
+          d = await r.json(); if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+        } else {
+          // PDF/фото → извлекаем текст в браузере (реюз warehouse extractDocText недоступен здесь — простая загрузка через FormData с конвертацией не делаем; шлём текст если есть)
+          setStatus('Распознавание…');
+          const text = await _extractText(file, setStatus);
+          d = await apiPost(`/api/procurement/${procId}/invoice/parse`, { text, supplier_id: supId || null, supplier_name: supName || null, delivery_days: days || null });
+        }
+        setStatus('');
+        if (d.ai_unavailable) { document.getElementById('inv-preview').innerHTML = `<div class="proc-empty">🤖 ${esc(d.message || 'AI недоступен')}</div>`; return; }
+        _drawInvoicePreview(procId, d);
+      } catch (e) { setStatus(''); toast('Ошибка', e.message, 'err'); }
+    };
+  }
+  // Извлечение текста из PDF/фото (CDN pdf.js/Tesseract — как на складе)
+  function _loadScript(src) { return new Promise((res, rej) => { if (document.querySelector('script[data-pi-lib="' + src + '"]')) return res(); const s = document.createElement('script'); s.src = src; s.async = true; s.dataset.piLib = src; s.onload = () => res(); s.onerror = () => rej(new Error('Не удалось загрузить ' + src)); document.head.appendChild(s); }); }
+  async function _extractText(file, onP) {
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    if (ext === 'pdf') {
+      await _loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+      const pdfjs = window.pdfjsLib; if (!pdfjs) throw new Error('PDF-движок недоступен');
+      pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      const buf = await file.arrayBuffer(); const doc = await pdfjs.getDocument({ data: buf }).promise; let text = '';
+      for (let pp = 1; pp <= Math.min(doc.numPages, 15); pp++) { onP && onP('Стр ' + pp + '…'); const page = await doc.getPage(pp); const tc = await page.getTextContent(); text += tc.items.map(i => i.str).join(' ') + '\n'; }
+      if (text.replace(/\s/g, '').length < 30) throw new Error('PDF без текста — сфотографируйте');
+      return text;
+    }
+    onP && onP('OCR…'); await _loadScript('https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.0/tesseract.min.js');
+    if (!window.Tesseract) throw new Error('OCR недоступен');
+    const dataUrl = await new Promise((res, rej) => { const r = new FileReader(); r.onload = e => res(e.target.result); r.onerror = rej; r.readAsDataURL(file); });
+    const out = await window.Tesseract.recognize(dataUrl, 'rus+eng');
+    return (out && out.data && out.data.text) || '';
+  }
+  function _drawInvoicePreview(procId, d) {
+    const host = document.getElementById('inv-preview'); if (!host) return;
+    const matches = d.matches || [], unmatched = d.unmatched || [];
+    const itemsOpts = (sel) => '<option value="">— не привязывать —</option>' + (d.items_for_match || []).map(it => `<option value="${it.id}" ${sel === it.id ? 'selected' : ''}>${esc(it.name)}${it.has_price ? ' ✓' : ''}</option>`).join('');
+    const confBadge = c => c >= 0.8 ? `<span class="proc-kbadge" style="background:rgba(48,209,88,.16);color:#30d158">${Math.round(c*100)}%</span>` : c >= 0.5 ? `<span class="proc-kbadge proc-kbadge--warn">${Math.round(c*100)}%</span>` : `<span class="proc-kbadge">${Math.round(c*100)}%</span>`;
+    let rows = matches.map((m, i) => `<tr data-inv-i="${i}" data-mid="${m.item_id}">
+      <td>${esc(m.invoice_name)}</td><td>${confBadge(m.confidence)}</td>
+      <td><select class="inv-link" data-i="${i}" style="min-width:160px;padding:4px;border:1px solid var(--brd);border-radius:6px">${itemsOpts(m.item_id)}</select></td>
+      <td><input type="number" class="inv-price" data-i="${i}" value="${m.unit_price != null ? m.unit_price : ''}" style="width:80px;padding:4px;border:1px solid var(--brd);border-radius:6px"></td>
+    </tr>`).join('');
+    // несопоставленные — закупщик может привязать вручную
+    rows += unmatched.map((u, i) => { const gi = matches.length + i; return `<tr data-inv-i="${gi}" data-mid="" class="proc-row-new">
+      <td>${esc(u.invoice_name)} <span class="proc-kbadge proc-kbadge--warn">не найдено</span></td><td>—</td>
+      <td><select class="inv-link" data-i="${gi}" style="min-width:160px;padding:4px;border:1px solid var(--brd);border-radius:6px">${itemsOpts(null)}</select></td>
+      <td><input type="number" class="inv-price" data-i="${gi}" value="${u.unit_price != null ? u.unit_price : ''}" style="width:80px;padding:4px;border:1px solid var(--brd);border-radius:6px"></td>
+    </tr>`; }).join('');
+    host.innerHTML = `
+      <div style="font-weight:600;margin-bottom:6px">Сопоставление (${matches.length} авто, ${unmatched.length} вручную)</div>
+      <div style="max-height:320px;overflow:auto;border:1px solid var(--brd);border-radius:8px">
+        <table class="proc-items-table" style="margin:0"><thead><tr><th>Строка счёта</th><th>%</th><th>Позиция заявки</th><th>Цена</th></tr></thead><tbody>${rows || '<tr><td colspan="4" style="padding:14px;text-align:center;color:var(--t2)">Нет строк</td></tr>'}</tbody></table>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:12px">
+        <button class="btn primary" id="inv-apply">✅ Применить цены</button>
+      </div>`;
+    document.getElementById('inv-apply').onclick = async () => {
+      const applyRows = [];
+      host.querySelectorAll('tbody tr').forEach(tr => {
+        const i = tr.dataset.invI;
+        const itemId = host.querySelector(`.inv-link[data-i="${i}"]`)?.value;
+        const price = parseFloat(host.querySelector(`.inv-price[data-i="${i}"]`)?.value);
+        if (itemId && price > 0) applyRows.push({ item_id: +itemId, unit_price: price });
+      });
+      if (!applyRows.length) { toast('Внимание', 'Нет строк с привязкой и ценой', 'warn'); return; }
+      const r = await fetch(`/api/procurement/${procId}/invoice/${d.import_id}/apply`, { method: 'POST', headers: hdr(), body: JSON.stringify({ rows: applyRows, supplier_id: d.supplier_id, supplier_name: d.supplier_name, delivery_days: d.delivery_days }) });
+      const res = await r.json();
+      if (!r.ok) { toast('Ошибка', res.error || 'Не удалось', 'err'); return; }
+      toast('Готово', `Цены проставлены: ${res.applied}`, 'ok'); closeModal(); openDetail(procId);
+    };
   }
 
   return { render, openDetail, openCreateModal, _attachInvoice, _deleteItem };

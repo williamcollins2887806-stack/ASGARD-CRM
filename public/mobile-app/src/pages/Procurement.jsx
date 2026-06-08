@@ -248,22 +248,33 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
   const item    = full?.item || request;
   const items   = full?.items || [];
   const history = full?.history || [];
+  const invoiceImports = full?.invoice_imports || [];
   const st      = STATUS_MAP[item.status] || STATUS_MAP.draft;
   const pr      = PRIORITY_MAP[item.priority];
 
+  const DIR_ROLES2 = ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'ADMIN'];
   const isPM         = PM_ROLES.includes(userRole);
+  const isPROC       = ['PROC', 'ADMIN'].includes(userRole);
+  const isDIR        = DIR_ROLES2.includes(userRole);
+  const isBUH        = ['BUH', 'ADMIN'].includes(userRole);
   const canAddItem   = CAN_ADD_ITEM_ROLES.includes(userRole) && item.status === 'draft';
   const hasItems     = items.length > 0;
 
   const canSend      = isPM && item.status === 'draft';
   const canApprove   = isPM && item.status === 'proc_responded';
   const canReturn    = isPM && item.status === 'proc_responded';
+  // закупщик: проставить цены + ответить РП
+  const canProcRespond = isPROC && item.status === 'sent_to_proc';
+  // директор: согласование с телефона (главное)
+  const canDirAct    = isDIR && item.status === 'pm_approved';
+  // бухгалтер: оплата
+  const canMarkPaid  = isBUH && item.status === 'dir_approved';
 
-  const doAction = async (endpoint, label) => {
+  const doAction = async (endpoint, label, body) => {
     haptic.light();
     setActing(endpoint);
     try {
-      await api.put(`/api/procurement/${item.id}/${endpoint}`, {});
+      await api.put(`/api/procurement/${item.id}/${endpoint}`, body || {});
       haptic.success();
       const res = await api.get(`/api/procurement/${item.id}`);
       setFull(res?.item ? res : { item: res, items: res.items || [], history: res.history || [] });
@@ -273,6 +284,11 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
     } finally {
       setActing(null);
     }
+  };
+  const doActionAsk = (endpoint, label, promptText) => {
+    const c = window.prompt(promptText || 'Комментарий:');
+    if (c === null) return; // отмена
+    doAction(endpoint, label, { comment: c });
   };
 
   const doClone = async () => {
@@ -472,6 +488,72 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
             </div>
           )}
 
+          {/* ЗАКУПЩИК: ответить РП (цены проставляются на desktop/через счёт) */}
+          {canProcRespond && (
+            <div className="flex flex-col gap-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wider c-tertiary">Закупщик</p>
+              <button
+                onClick={() => doAction('proc-respond', 'Ответить')}
+                disabled={acting === 'proc-respond'}
+                className="btn-primary spring-tap flex items-center justify-center gap-2"
+              >
+                <Check size={16} />
+                {acting === 'proc-respond' ? 'Отправляю...' : 'Ответить РП (цены готовы)'}
+              </button>
+              <p className="text-[11px] c-tertiary">Проставить цены и загрузить счёт удобнее на компьютере. С телефона — подтвердите готовность.</p>
+            </div>
+          )}
+
+          {/* ДИРЕКТОР: согласование с телефона */}
+          {canDirAct && (
+            <div className="flex flex-col gap-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wider c-tertiary">Согласование (директор)</p>
+              <button
+                onClick={() => doAction('dir-approve', 'Согласовать')}
+                disabled={!!acting}
+                className="btn-primary spring-tap flex items-center justify-center gap-2"
+                style={{ background: 'var(--green)', color: '#04210d' }}
+              >
+                <Check size={16} />
+                {acting === 'dir-approve' ? 'Согласовываю...' : '✓ Согласовать'}
+              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => doActionAsk('dir-rework', 'Доработка', 'Что доработать?')}
+                  disabled={!!acting}
+                  className="flex-1 spring-tap rounded-xl px-3 py-2.5 text-[13px] font-semibold"
+                  style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-secondary)' }}
+                >↩ Доработка</button>
+                <button
+                  onClick={() => doActionAsk('dir-question', 'Вопрос', 'Ваш вопрос:')}
+                  disabled={!!acting}
+                  className="flex-1 spring-tap rounded-xl px-3 py-2.5 text-[13px] font-semibold"
+                  style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-secondary)' }}
+                >❓ Вопрос</button>
+              </div>
+              <button
+                onClick={() => doActionAsk('dir-reject', 'Отклонить', 'Причина отклонения:')}
+                disabled={!!acting}
+                className="spring-tap rounded-xl px-3 py-2.5 text-[13px] font-semibold"
+                style={{ background: 'rgba(255,92,92,.14)', color: 'var(--red)' }}
+              >✕ Отклонить</button>
+            </div>
+          )}
+
+          {/* БУХГАЛТЕР: оплата */}
+          {canMarkPaid && (
+            <div className="flex flex-col gap-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wider c-tertiary">Бухгалтерия</p>
+              <button
+                onClick={() => doAction('mark-paid', 'Оплачено')}
+                disabled={acting === 'mark-paid'}
+                className="btn-primary spring-tap flex items-center justify-center gap-2"
+              >
+                💳 {acting === 'mark-paid' ? 'Отмечаю...' : 'Отметить оплаченным'}
+              </button>
+            </div>
+          )}
+
           {/* Утилиты: повторить / в шаблон */}
           {hasItems && (
             <div className="flex gap-2">
@@ -513,6 +595,30 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
                   </button>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Счета поставщиков (для директора при согласовании + бухгалтера при оплате) */}
+          {invoiceImports.length > 0 && (
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider mb-2 c-tertiary">
+                🧾 Счета поставщиков ({invoiceImports.length})
+              </p>
+              <div className="flex flex-col gap-1.5">
+                {invoiceImports.map((iv, i) => (
+                  <div key={i} className="rounded-xl px-3 py-2" style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[13px] font-semibold c-primary">{iv.supplier_name || 'Поставщик'}</p>
+                      {iv.total_sum != null && <span className="text-[12px] c-secondary">{Number(iv.total_sum).toLocaleString('ru-RU')} ₽</span>}
+                    </div>
+                    <div className="flex items-center gap-2 mt-1 text-[11px] c-tertiary flex-wrap">
+                      {iv.delivery_days ? <span>срок {iv.delivery_days} дн</span> : null}
+                      <span>{iv.matched_count || 0} поз.</span>
+                      {iv.file_path && <a href={iv.file_path} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-gold)' }}>📎 {iv.file_name || 'файл'}</a>}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

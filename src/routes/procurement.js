@@ -164,8 +164,11 @@ async function routes(fastify) {
     const{status,pm_id,work_id,proc_id,date_from,date_to,search,limit=50,offset=0}=req.query;
     const user=req.user;
     let sql=`SELECT pr.*,u.name as pm_name,w.work_title,pc.name as proc_name,
-      (SELECT COUNT(*) FROM procurement_items pi WHERE pi.procurement_id=pr.id) as items_count,
-      (SELECT COALESCE(SUM(pi.total_price),0) FROM procurement_items pi WHERE pi.procurement_id=pr.id) as items_total
+      (SELECT COUNT(*) FROM procurement_items pi WHERE pi.procurement_id=pr.id AND pi.parent_item_id IS NULL) as items_count,
+      (SELECT COALESCE(SUM(pi.total_price),0) FROM procurement_items pi WHERE pi.procurement_id=pr.id) as items_total,
+      (SELECT COUNT(*) FROM procurement_items pi WHERE pi.procurement_id=pr.id AND pi.parent_item_id IS NULL
+         AND (pi.unit_price IS NULL OR pi.unit_price=0)
+         AND NOT EXISTS(SELECT 1 FROM procurement_items ch WHERE ch.parent_item_id=pi.id)) as unpriced_count
       FROM procurement_requests pr LEFT JOIN users u ON pr.pm_id=u.id LEFT JOIN works w ON pr.work_id=w.id
       LEFT JOIN users pc ON pr.proc_id=pc.id WHERE 1=1`;
     const p=[];let i=1;
@@ -177,7 +180,7 @@ async function routes(fastify) {
     if(date_from){sql+=` AND pr.created_at>=$${i++}`;p.push(date_from);}
     if(date_to){sql+=` AND pr.created_at<=$${i++}`;p.push(date_to+'T23:59:59');}
     if(search){sql+=` AND (pr.title ILIKE $${i} OR pr.notes ILIKE $${i} OR w.work_title ILIKE $${i})`;p.push(`%${search}%`);i++;}
-    sql+=` ORDER BY pr.id DESC LIMIT $${i++} OFFSET $${i++}`;p.push(Math.min(parseInt(limit),200),parseInt(offset));
+    sql+=` ORDER BY pr.id DESC LIMIT $${i++} OFFSET $${i++}`;p.push(Math.min(parseInt(limit),400),parseInt(offset));
     const{rows}=await db.query(sql,p); return {items:rows};
   });
 
@@ -189,15 +192,21 @@ async function routes(fastify) {
       LEFT JOIN users pc ON pr.proc_id=pc.id LEFT JOIN users da ON pr.dir_approved_by=da.id WHERE pr.id=$1`,[id]);
     if(!rows[0]) return reply.code(404).send({error:'Не найдена'});
     if(!canViewAll(user.role)&&rows[0].pm_id!==user.id) return reply.code(403).send({error:'Нет доступа'});
-    const items=await db.query(`SELECT pi.*,d.download_url as invoice_file_path,d.original_name as invoice_file_name
-      FROM procurement_items pi LEFT JOIN documents d ON pi.invoice_doc_id=d.id WHERE pi.procurement_id=$1 ORDER BY pi.sort_order,pi.id`,[id]);
+    const items=await db.query(`SELECT pi.*,d.download_url as invoice_file_path,d.original_name as invoice_file_name,pc.name as category_name
+      FROM procurement_items pi LEFT JOIN documents d ON pi.invoice_doc_id=d.id LEFT JOIN product_categories pc ON pi.product_category_id=pc.id
+      WHERE pi.procurement_id=$1 ORDER BY pi.sort_order,pi.id`,[id]);
     const payments=await db.query(`SELECT pp.*,d.download_url,d.original_name,u.name as uploader_name
       FROM procurement_payments pp LEFT JOIN documents d ON pp.document_id=d.id LEFT JOIN users u ON pp.uploaded_by=u.id
       WHERE pp.procurement_id=$1 ORDER BY pp.created_at DESC`,[id]);
     const hLim=parseInt(req.query.history_limit)||100, hOff=parseInt(req.query.history_offset)||0;
     const history=await db.query(`SELECT ph.*,u.name as actor_name FROM procurement_history ph LEFT JOIN users u ON ph.actor_id=u.id
       WHERE ph.procurement_id=$1 ORDER BY ph.created_at DESC LIMIT $2 OFFSET $3`,[id,hLim,hOff]);
-    return {item:rows[0],items:items.rows,payments:payments.rows,history:history.rows};
+    // Загруженные счета поставщиков (для бухгалтера на этапе оплаты + трассировки)
+    const invoices=await db.query(`SELECT ii.id,ii.supplier_id,ii.supplier_name,ii.delivery_days,ii.file_path,ii.file_name,
+      ii.total_sum,ii.matched_count,ii.created_at,u.name as uploaded_by_name
+      FROM procurement_invoice_imports ii LEFT JOIN users u ON ii.created_by=u.id
+      WHERE ii.procurement_id=$1 ORDER BY ii.created_at DESC`,[id]);
+    return {item:rows[0],items:items.rows,payments:payments.rows,history:history.rows,invoice_imports:invoices.rows};
   });
 
   fastify.post('/', {preHandler:[fastify.requireRoles([...PM_ROLES,...PROC_ROLES,...DIR_ROLES])]}, async(req)=>{
@@ -341,20 +350,223 @@ async function routes(fastify) {
     }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
   });
 
+  // Экспорт заявки в Excel. group=category|supplier|none — разбивка с подытогами.
   fastify.get('/:id/export/excel', {preHandler:[fastify.authenticate]}, async(req,reply)=>{
     const id=parseInt(req.params.id);const ExcelJS=require('exceljs');
+    const group=['category','supplier'].includes(req.query.group)?req.query.group:null;
     const proc=await db.query('SELECT pr.*,w.work_title FROM procurement_requests pr LEFT JOIN works w ON pr.work_id=w.id WHERE pr.id=$1',[id]);
     if(!proc.rows[0]) return reply.code(404).send({error:'Не найдена'});
-    const items=await db.query('SELECT * FROM procurement_items WHERE procurement_id=$1 ORDER BY sort_order,id',[id]);
+    const items=await db.query(`SELECT pi.*,c.name as category_name FROM procurement_items pi
+      LEFT JOIN product_categories c ON pi.product_category_id=c.id WHERE pi.procurement_id=$1 ORDER BY pi.sort_order,pi.id`,[id]);
     const wb=new ExcelJS.Workbook();const ws=wb.addWorksheet('Заявка #'+id);
     ws.mergeCells('A1:H1');ws.getCell('A1').value=`ООО «АСГАРД СЕРВИС» — Заявка #${id}`;ws.getCell('A1').font={bold:true,size:14};
     ws.getCell('A3').value='Работа:';ws.getCell('B3').value=proc.rows[0].work_title||'—';
-    ws.getRow(5).values=['№','Наименование','Артикул','Ед.','Кол-во','Поставщик','Цена','Сумма'];ws.getRow(5).font={bold:true};
-    items.rows.forEach((it,idx)=>ws.addRow([idx+1,it.name,it.article,it.unit,it.quantity,it.supplier,it.unit_price,it.total_price]));
+    const hdr=['№','Наименование','Артикул','Ед.','Кол-во','Поставщик','Цена','Сумма'];
+    let row=5;
+    const writeRows=(rows)=>{rows.forEach((it,idx)=>{ws.getRow(row++).values=[idx+1,it.name,it.article,it.unit,it.quantity,it.supplier,it.unit_price,it.total_price];});};
+    if(group){
+      ws.getRow(row).values=hdr;ws.getRow(row).font={bold:true};row++;
+      const key=group==='category'?'category_name':'supplier';
+      const groups={};items.rows.forEach(it=>{const g=it[key]||(group==='category'?'Без категории':'Без поставщика');(groups[g]=groups[g]||[]).push(it);});
+      for(const g of Object.keys(groups).sort()){
+        const gr=ws.getRow(row++);gr.getCell(2).value='▸ '+g;gr.getCell(2).font={bold:true,color:{argb:'FFD4A843'}};
+        writeRows(groups[g]);
+        const sum=groups[g].reduce((s,x)=>s+(parseFloat(x.total_price)||0),0);
+        const sr=ws.getRow(row++);sr.getCell(7).value='Итого:';sr.getCell(8).value=sum;sr.font={bold:true};row++;
+      }
+    } else {
+      ws.getRow(row).values=hdr;ws.getRow(row).font={bold:true};row++;
+      writeRows(items.rows);
+    }
     const buf=await wb.xlsx.writeBuffer();
     reply.header('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    reply.header('Content-Disposition',`attachment; filename="procurement_${id}.xlsx"`);
+    reply.header('Content-Disposition',`attachment; filename="procurement_${id}${group?'_'+group:''}.xlsx"`);
     return reply.send(Buffer.from(buf));
+  });
+
+  // ═══ ЗАКУПЩИК: СЧЁТ → АВТО-ЦЕНЫ, СПЛИТ, ПОДСКАЗКИ ═══
+
+  // POST /:id/invoice/parse — распарсить счёт (Excel — сразу; PDF/фото — текст с клиента) и
+  // авто-сопоставить строки с позициями заявки БЕЗ цены (article → точное имя → trigram-похожесть).
+  fastify.post('/:id/invoice/parse', {preHandler:[fastify.requireRoles([...PROC_ROLES,...PM_ROLES])]}, async(req,reply)=>{
+    const id=parseInt(req.params.id); if(isNaN(id)) return reply.code(400).send({error:'Неверный ID'});
+    const ck=await checkNotLocked(db,id); if(ck.error) return reply.code(ck.code).send({error:ck.error});
+    // multipart (Excel) ИЛИ json {text, supplier_id, supplier_name, delivery_days} (PDF/фото→AI)
+    let parsedItems=[], supplierName=null, supplierId=null, deliveryDays=null, filePath=null, fileName=null;
+    const ct=req.headers['content-type']||'';
+    if(ct.includes('multipart')){
+      const data=await req.file(); if(!data) return reply.code(400).send({error:'Файл не загружен'});
+      const fields=data.fields||{};
+      supplierId=fields.supplier_id?.value?parseInt(fields.supplier_id.value):null;
+      supplierName=fields.supplier_name?.value||null;
+      deliveryDays=fields.delivery_days?.value?parseInt(fields.delivery_days.value):null;
+      let buf; try{buf=await data.toBuffer();}catch(_){return reply.code(400).send({error:'Не удалось прочитать файл'});}
+      const {parseProcurementExcel}=require('../utils/excel-parser');
+      try{parsedItems=await parseProcurementExcel(buf);}catch(_){return reply.code(400).send({error:'Не удалось прочитать Excel'});}
+      // сохраним файл
+      try{const path=require('path');const fsp=require('fs').promises;const {randomUUID}=require('crypto');
+        const dir=path.join(process.env.UPLOAD_DIR||'./uploads','proc-invoices');await fsp.mkdir(dir,{recursive:true});
+        fileName=(data.filename||'invoice.xlsx');const fn='inv_'+randomUUID()+'_'+fileName.replace(/[^\w.-]/g,'_');
+        await fsp.writeFile(path.join(dir,fn),buf);filePath='/uploads/proc-invoices/'+fn;
+      }catch(_){}
+    } else {
+      const b=req.body||{};
+      supplierId=b.supplier_id||null;supplierName=b.supplier_name||null;deliveryDays=b.delivery_days||null;
+      if(b.items&&Array.isArray(b.items)){ parsedItems=b.items; }       // клиент уже распарсил (AI на фронте)
+      else if(b.text){
+        const aiProvider=require('../services/ai-provider');
+        try{const r=await aiProvider.complete({system:'Извлеки из текста счёта список позиций. Верни СТРОГО JSON {"supplier":"","items":[{"name":"","article":"","quantity":1,"unit":"шт","unit_price":0}]} без markdown.',
+          messages:[{role:'user',content:'Счёт:\n\n'+String(b.text).slice(0,14000)}],maxTokens:4000,temperature:0.1});
+          const m=(r&&r.text||'').match(/\{[\s\S]*\}/); const j=m?JSON.parse(m[0]):null;
+          parsedItems=j&&Array.isArray(j.items)?j.items:[]; if(!supplierName&&j&&j.supplier)supplierName=j.supplier;
+        }catch(e){ return reply.send({matches:[],unmatched:[],ai_unavailable:true,message:'AI временно недоступен'}); }
+      } else return reply.code(400).send({error:'Нужен файл, items или text'});
+    }
+    parsedItems=(parsedItems||[]).filter(x=>x&&x.name&&String(x.name).trim());
+    if(!parsedItems.length) return reply.send({matches:[],unmatched:[],message:'В счёте не найдено позиций'});
+    // позиции заявки (не сплит-родители; приоритет тем, у кого ещё нет цены)
+    const reqItems=(await db.query(`SELECT id,name,article,unit_price,quantity FROM procurement_items
+      WHERE procurement_id=$1 AND parent_item_id IS NULL ORDER BY id`,[id])).rows;
+    const used=new Set();
+    const matches=[], unmatched=[];
+    for(const inv of parsedItems){
+      const nm=String(inv.name).trim(), art=(inv.article||'').toString().trim();
+      let best=null, conf=0;
+      // 1) точный артикул
+      if(art){ const e=reqItems.find(r=>r.article&&r.article.toLowerCase()===art.toLowerCase()&&!used.has(r.id)); if(e){best=e;conf=1;} }
+      // 2) точное имя
+      if(!best){ const e=reqItems.find(r=>r.name.toLowerCase()===nm.toLowerCase()&&!used.has(r.id)); if(e){best=e;conf=0.95;} }
+      // 3) trigram-похожесть в БД
+      if(!best){
+        const sim=await db.query(`SELECT id,similarity(lower(name),lower($2)) AS s FROM procurement_items
+          WHERE procurement_id=$1 AND parent_item_id IS NULL ORDER BY s DESC LIMIT 1`,[id,nm]);
+        if(sim.rows[0]&&sim.rows[0].s>=0.4&&!used.has(sim.rows[0].id)){ best=reqItems.find(r=>r.id===sim.rows[0].id); conf=parseFloat(sim.rows[0].s.toFixed(2)); }
+      }
+      const price=parseFloat(inv.unit_price)||null;
+      if(best){ used.add(best.id); matches.push({item_id:best.id,item_name:best.name,invoice_name:nm,article:art,quantity:inv.quantity||best.quantity,unit_price:price,confidence:conf}); }
+      else unmatched.push({invoice_name:nm,article:art,quantity:inv.quantity||1,unit_price:price});
+    }
+    // сохраним import-лог
+    let importId=null;
+    try{ const ins=await db.query(`INSERT INTO procurement_invoice_imports(procurement_id,supplier_id,supplier_name,delivery_days,file_path,file_name,parsed_json,created_by)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,[id,supplierId,supplierName,deliveryDays,filePath,fileName,JSON.stringify(parsedItems),req.user.id]);
+      importId=ins.rows[0].id; }catch(e){ fastify.log.warn('[procurement] invoice import log: '+e.message); }
+    return { import_id:importId, supplier_id:supplierId, supplier_name:supplierName, delivery_days:deliveryDays,
+      matches, unmatched, items_for_match:reqItems.map(r=>({id:r.id,name:r.name,article:r.article,has_price:r.unit_price!=null})) };
+  });
+
+  // POST /:id/invoice/:importId/apply — массово проставить цены/поставщика/срок по сматченным строкам.
+  fastify.post('/:id/invoice/:importId/apply', {preHandler:[fastify.requireRoles([...PROC_ROLES,...PM_ROLES])]}, async(req,reply)=>{
+    const id=parseInt(req.params.id), importId=parseInt(req.params.importId);
+    const ck=await checkNotLocked(db,id); if(ck.error) return reply.code(ck.code).send({error:ck.error});
+    const rows=(req.body&&req.body.rows)||[];
+    if(!Array.isArray(rows)||!rows.length) return reply.code(400).send({error:'Нет строк для применения'});
+    const imp=(await db.query('SELECT * FROM procurement_invoice_imports WHERE id=$1 AND procurement_id=$2',[importId,id])).rows[0];
+    const supId=req.body.supplier_id||imp?.supplier_id||null;
+    const supName=req.body.supplier_name||imp?.supplier_name||null;
+    const delDays=req.body.delivery_days!=null?req.body.delivery_days:(imp?.delivery_days||null);
+    const client=await db.pool.connect();
+    let applied=0, totalSum=0;
+    try{
+      await client.query('BEGIN');
+      for(const r of rows){
+        const itemId=parseInt(r.item_id); const price=parseFloat(r.unit_price); if(isNaN(itemId)||isNaN(price)||price<=0) continue;
+        // позиция принадлежит этой заявке
+        const it=(await client.query('SELECT id,quantity FROM procurement_items WHERE id=$1 AND procurement_id=$2',[itemId,id])).rows[0];
+        if(!it) continue;
+        const qty=parseFloat(it.quantity)||0; const total=price*qty;
+        await client.query(`UPDATE procurement_items SET unit_price=$1,total_price=$2,supplier=COALESCE($3,supplier),supplier_id=COALESCE($4,supplier_id),
+          supplier_delivery_days=COALESCE($5,supplier_delivery_days),invoice_import_id=$6,updated_at=NOW() WHERE id=$7`,
+          [price,total,supName,supId,delDays,importId||null,itemId]);
+        applied++; totalSum+=total;
+      }
+      if(importId) await client.query('UPDATE procurement_invoice_imports SET matched_count=$1,total_sum=$2 WHERE id=$3',[applied,totalSum,importId]);
+      await recalcTotal(client,id);
+      await logHistory(client,id,req.user.id,'invoice_applied',null,null,`Счёт${supName?' '+supName:''}: цены проставлены (${applied} поз.)`,null);
+      await client.query('COMMIT');
+      return { success:true, applied, total_sum:totalSum };
+    }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+  });
+
+  // POST /:id/items/:itemId/split — разбить позицию на части по поставщикам.
+  // body: { parts:[{quantity, supplier_id?, supplier_name?, unit_price?, delivery_days?}] }
+  fastify.post('/:id/items/:itemId/split', {preHandler:[fastify.requireRoles([...PROC_ROLES,...PM_ROLES])]}, async(req,reply)=>{
+    const id=parseInt(req.params.id), itemId=parseInt(req.params.itemId);
+    if(isNaN(id)||isNaN(itemId)) return reply.code(400).send({error:'Неверный ID'});
+    const ck=await checkNotLocked(db,id); if(ck.error) return reply.code(ck.code).send({error:ck.error});
+    const parts=(req.body&&req.body.parts)||[];
+    if(!Array.isArray(parts)||parts.length<2) return reply.code(400).send({error:'Нужно минимум 2 части'});
+    const client=await db.pool.connect();
+    try{
+      await client.query('BEGIN');
+      const parent=(await client.query('SELECT * FROM procurement_items WHERE id=$1 AND procurement_id=$2 FOR UPDATE',[itemId,id])).rows[0];
+      if(!parent){await client.query('ROLLBACK');return reply.code(404).send({error:'Позиция не найдена'});}
+      if(parent.parent_item_id){await client.query('ROLLBACK');return reply.code(400).send({error:'Это уже дочерняя позиция'});}
+      const already=(await client.query('SELECT COUNT(*)::int n FROM procurement_items WHERE parent_item_id=$1',[itemId])).rows[0].n;
+      if(already>0){await client.query('ROLLBACK');return reply.code(400).send({error:'Позиция уже разбита'});}
+      const sumQty=parts.reduce((s,p)=>s+(parseFloat(p.quantity)||0),0);
+      const pQty=parseFloat(parent.quantity)||0;
+      if(Math.abs(sumQty-pQty)>0.001){await client.query('ROLLBACK');return reply.code(400).send({error:`Сумма частей (${sumQty}) ≠ количеству позиции (${pQty})`});}
+      // дочерние строки
+      let ord=0;
+      for(const p of parts){
+        const q=parseFloat(p.quantity)||0; if(q<=0) continue;
+        const price=parseFloat(p.unit_price)||parent.unit_price||null;
+        await client.query(`INSERT INTO procurement_items(procurement_id,parent_item_id,name,article,unit,quantity,
+          supplier,supplier_id,unit_price,total_price,supplier_delivery_days,product_id,product_category_id,delivery_target,sort_order)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+          [id,itemId,parent.name,parent.article,parent.unit,q,
+           p.supplier_name||null,p.supplier_id||null,price,price?price*q:null,p.delivery_days||null,
+           parent.product_id,parent.product_category_id,parent.delivery_target,(parent.sort_order||0)*100+(ord++)]);
+      }
+      // родитель помечается как «контейнер» (qty/цена обнуляются для recalc — считаем по детям)
+      await client.query('UPDATE procurement_items SET unit_price=NULL,total_price=NULL,updated_at=NOW() WHERE id=$1',[itemId]);
+      await recalcTotal(client,id);
+      await logHistory(client,id,req.user.id,'item_split',null,null,`Позиция «${parent.name}» разбита на ${parts.length} ч.`,null);
+      await client.query('COMMIT');
+      return {success:true,parts:parts.length};
+    }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+  });
+
+  // DELETE /:id/items/:itemId/split — схлопнуть сплит обратно.
+  fastify.delete('/:id/items/:itemId/split', {preHandler:[fastify.requireRoles([...PROC_ROLES,...PM_ROLES])]}, async(req,reply)=>{
+    const id=parseInt(req.params.id), itemId=parseInt(req.params.itemId);
+    if(isNaN(id)||isNaN(itemId)) return reply.code(400).send({error:'Неверный ID'});
+    const ck=await checkNotLocked(db,id); if(ck.error) return reply.code(ck.code).send({error:ck.error});
+    const client=await db.pool.connect();
+    try{
+      await client.query('BEGIN');
+      const children=(await client.query('SELECT id FROM procurement_items WHERE parent_item_id=$1',[itemId])).rows;
+      if(!children.length){await client.query('ROLLBACK');return reply.code(400).send({error:'Позиция не разбита'});}
+      await client.query('DELETE FROM procurement_items WHERE parent_item_id=$1',[itemId]);
+      await recalcTotal(client,id);
+      await logHistory(client,id,req.user.id,'item_split_undo',null,null,'Сплит позиции отменён',null);
+      await client.query('COMMIT');
+      return {success:true};
+    }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+  });
+
+  // POST /price-hints — батч-подсказки цен по позициям (last + market stats).
+  fastify.post('/:id/price-hints', {preHandler:[fastify.requireRoles([...PROC_ROLES,...PM_ROLES,...DIR_ROLES])]}, async(req,reply)=>{
+    const items=(req.body&&req.body.items)||[];
+    if(!Array.isArray(items)||!items.length) return {hints:{}};
+    const hints={};
+    for(const it of items){
+      const pid=it.product_id?parseInt(it.product_id):null; const name=(it.name||'').trim();
+      let last=null,stats=null;
+      if(pid){
+        const l=await db.query('SELECT unit_price,supplier_name,recorded_at FROM v_last_price_by_product WHERE product_id=$1',[pid]);
+        last=l.rows[0]||null;
+        const s=await db.query(`SELECT COUNT(*)::int sample_count,ROUND(AVG(unit_price),2) avg_price,MIN(unit_price) min_price,MAX(unit_price) max_price
+          FROM price_records WHERE product_id=$1 AND recorded_at>=NOW()-INTERVAL '90 days'`,[pid]);
+        stats=s.rows[0]?.sample_count>0?s.rows[0]:null;
+      } else if(name){
+        const l=await db.query('SELECT item_name,unit_price,supplier_name,recorded_at FROM price_records WHERE item_name ILIKE $1 ORDER BY recorded_at DESC LIMIT 1',['%'+name+'%']);
+        last=l.rows[0]||null;
+      }
+      hints[it.key||(pid?'p'+pid:'n:'+name.toLowerCase())]={last,stats};
+    }
+    return {hints};
   });
 
   // ═══ ЦЕПОЧКА СОГЛАСОВАНИЯ ═══
