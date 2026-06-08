@@ -434,7 +434,7 @@ window.AsgardProcurementPage = (function() {
 
     // Раскладка по ячейкам: подгружаем активные ячейки склада (для позиций на склад).
     let cells = [];
-    try { const lc = await apiFetch('/api/warehouse-locations/locations?is_active=true&limit=500'); cells = (lc.rows || lc.locations || lc || []); if (!Array.isArray(cells)) cells = []; } catch (_) { cells = []; }
+    try { const lc = await apiFetch('/api/warehouse/locations?is_active=true&limit=500'); cells = (lc.items || lc.rows || lc.locations || (Array.isArray(lc) ? lc : []) || []); if (!Array.isArray(cells)) cells = []; } catch (_) { cells = []; }
     const cellOpts = '<option value="">— без ячейки —</option>' + cells.map(c => `<option value="${c.id}">${esc(c.label || ('#' + c.id))}</option>`).join('');
 
     const selected = new Set(undelivered.map(i => i.id));
