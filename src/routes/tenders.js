@@ -67,6 +67,7 @@ async function routes(fastify, options) {
   const db = fastify.db;
   const { createNotification } = require('../services/notify');
   const { sendToUser, broadcast } = require('./sse');
+  const { ensureSiteByPlace } = require('../helpers/site-geocode');
 
   // ─────────────────────────────────────────────────────────────────────────────
   // GET /api/tenders - List all tenders
@@ -1317,16 +1318,24 @@ async function routes(fastify, options) {
     const contractValue = tender.submission_price || tender.tender_price || estimate?.price_tkp || null;
     const costPlan = estimate?.cost_plan || null;
 
+    // Привязка к объекту: если у тендера уже есть site_id — наследуем; иначе пробуем найти/создать
+    // объект по региону (населённый пункт) с геокодированием. Координаты сами подтянутся → работа на карте.
+    let siteId = tender.site_id || null;
+    if (!siteId && tender.tender_region) {
+      try { siteId = await ensureSiteByPlace(db, tender.tender_region, tender.customer_name, user.id); }
+      catch (geoErr) { fastify.log.warn('[tender->work] geocode site failed: ' + geoErr.message); }
+    }
+
     const { rows: [work] } = await db.query(`
       INSERT INTO works (
         tender_id, pm_id, customer_name, work_title, work_status,
-        start_in_work_date, end_plan, contract_value, cost_plan, comment,
+        start_in_work_date, end_plan, contract_value, cost_plan, comment, site_id,
         created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, 'Подготовка', $5, $6, $7, $8, $9, NOW(), NOW())
+      ) VALUES ($1, $2, $3, $4, 'Подготовка', $5, $6, $7, $8, $9, $10, NOW(), NOW())
       RETURNING id
     `, [id, pm_id, tender.customer_name, tender.tender_title,
         tender.work_start_plan || null, tender.work_end_plan || null,
-        contractValue, costPlan, work_comment || null]);
+        contractValue, costPlan, work_comment || null, siteId]);
 
     // Фиксируем что работа назначена — для блокировки повторного назначения
     await db.query(`

@@ -21,6 +21,7 @@ const { Readable } = require('stream');
 const aiProvider = require('../services/ai-provider');
 const mimirData = require('../services/mimir-data');
 const mimirSchema = require('../services/mimir-schema');
+const { notClosedSql } = require('../helpers/work-status');
 const mimirJobs = require('../services/mimir-jobs'); // persistent storage для просчётов
 
 async function mimirRoutes(fastify, options) {
@@ -781,7 +782,7 @@ async function mimirRoutes(fastify, options) {
 
         const staleRes = await db.query(
           `SELECT COUNT(*) as cnt FROM works
-           WHERE deleted_at IS NULL AND pm_id = $1 AND work_status NOT IN ('Работы сдали', 'Отменено') AND updated_at < NOW() - INTERVAL '14 days'`,
+           WHERE deleted_at IS NULL AND pm_id = $1 AND ${notClosedSql('work_status')} AND updated_at < NOW() - INTERVAL '14 days'`,
           [user.id]
         );
         const stale = parseInt(staleRes.rows[0]?.cnt || 0);
@@ -911,7 +912,7 @@ async function mimirRoutes(fastify, options) {
         FROM works
         ${whereClause || 'WHERE 1=1'}
           AND end_plan IS NOT NULL
-          AND work_status NOT IN ('Работы сдали', 'Отменено')
+          AND ${notClosedSql('work_status')}
         ORDER BY end_plan ASC
         LIMIT 5
       `, params);
@@ -3158,7 +3159,7 @@ ${history && history.length > 0 ? `\nКОНТЕКСТ ДИАЛОГА:\n${history
       params.push(user.id);
     }
     sql += ` ORDER BY
-      CASE WHEN work_status IN ('в работе', 'мобилизация') THEN 0 ELSE 1 END,
+      CASE WHEN btrim(lower(work_status)) IN ('в работе', 'мобилизация') THEN 0 ELSE 1 END,
       updated_at DESC NULLS LAST
       LIMIT 50`;
 

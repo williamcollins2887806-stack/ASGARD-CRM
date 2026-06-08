@@ -43,17 +43,18 @@ function filterData(data) {
   for (const [k, v] of Object.entries(data)) {
     const canonical = COL_ALIASES[k] || k;
     if (ALLOWED_COLS.has(canonical) && v !== undefined) {
-      // Каноничное значение имеет приоритет — не перезаписываем если уже есть
-      if (!filtered[canonical]) filtered[canonical] = v;
+      // Каноничное значение имеет приоритет — не перезаписываем если ключ уже задан.
+      // ВАЖНО: используем 'не определён', а не falsy — иначе явный 0/false/'' терялся.
+      if (!(canonical in filtered)) filtered[canonical] = v;
     }
   }
   return filtered;
 }
 
-// B6: Валидация дат
+// B6: Валидация дат (start_date и addendum_signed_date раньше пропускались мимо валидации)
 const DATE_FIELDS = new Set([
-  'start_in_work_date', 'end_plan', 'end_fact', 'start_plan', 'start_fact',
-  'advance_date_fact', 'payment_date_fact', 'act_signed_date_fact'
+  'start_date', 'start_in_work_date', 'end_plan', 'end_fact', 'start_plan', 'start_fact',
+  'advance_date_fact', 'payment_date_fact', 'act_signed_date_fact', 'addendum_signed_date'
 ]);
 
 function validateDates(data) {
@@ -88,6 +89,7 @@ function isValidTransition(from, to) {
 async function routes(fastify, options) {
   const db = fastify.db;
   const { createNotification } = require('../services/notify');
+  const { ensureSiteByPlace } = require('../helpers/site-geocode');
 
   fastify.get('/', { preHandler: [fastify.authenticate] }, async (request) => {
     const { tender_id, pm_id, status, kind, limit = 100, offset = 0, include_deleted } = request.query;
@@ -125,6 +127,7 @@ async function routes(fastify, options) {
   });
 
   fastify.get('/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const user = request.user;
     const result = await db.query(`
       SELECT w.*,
              pw.work_title  AS parent_work_title,
@@ -136,8 +139,22 @@ async function routes(fastify, options) {
       WHERE w.id = $1 AND w.deleted_at IS NULL
     `, [request.params.id]);
     if (!result.rows[0]) return reply.code(404).send({ error: 'Работа не найдена' });
+    const work = result.rows[0];
+
+    // B2 (как в списке): PM видит только свои работы
+    if (user.role === 'PM' && work.pm_id && work.pm_id !== user.id) {
+      return reply.code(403).send({ error: 'Нет доступа к чужой работе' });
+    }
+    // B2 (как в списке): ограниченным ролям прячем финансы и в детали тоже
+    const FINANCE_HIDDEN_ROLES = new Set(['TO', 'HEAD_TO', 'WAREHOUSE', 'OFFICE_MANAGER']);
+    if (FINANCE_HIDDEN_ROLES.has(user.role)) {
+      ['contract_value', 'cost_plan', 'cost_fact', 'advance_received', 'balance_received',
+        'advance_pct', 'advance_date_fact', 'payment_date_fact', 'vat_pct', 'parent_contract_value']
+        .forEach(f => delete work[f]);
+    }
+
     const expenses = await db.query('SELECT * FROM work_expenses WHERE work_id = $1', [request.params.id]);
-    return { work: result.rows[0], expenses: expenses.rows };
+    return { work, expenses: expenses.rows };
   });
 
   // SECURITY: SQL injection fix + B3 role check + try/catch
@@ -150,6 +167,13 @@ async function routes(fastify, options) {
       // Truncate overly long title
       if (body.work_title && body.work_title.length > 1000) {
         body.work_title = body.work_title.substring(0, 1000);
+      }
+      // Объект по населённому пункту: если передан object_place и нет site_id — найдём/создадим объект (геокод)
+      if (!body.site_id && (body.object_place || '').trim()) {
+        try {
+          body.site_id = await ensureSiteByPlace(db, body.object_place, body.customer_name, request.user.id);
+          if (!body.object_name) body.object_name = String(body.object_place).trim();
+        } catch (e) { fastify.log.warn('[works POST] ensureSiteByPlace: ' + e.message); }
       }
       const data = filterData({ ...body, created_by: request.user.id, created_at: new Date().toISOString() });
       // B6: Валидация дат
@@ -205,7 +229,28 @@ async function routes(fastify, options) {
     const { id } = request.params;
     const oldWork = await db.query('SELECT * FROM works WHERE id = $1 AND deleted_at IS NULL', [id]);
     if (!oldWork.rows[0]) return reply.code(404).send({ error: 'Работа не найдена' });
-    const data = filterData(request.body);
+
+    // B2: PM может редактировать ТОЛЬКО свою работу и не вправе передать её другому РП
+    if (request.user.role === 'PM') {
+      if (oldWork.rows[0].pm_id && oldWork.rows[0].pm_id !== request.user.id) {
+        return reply.code(403).send({ error: 'Нет доступа: это работа другого РП' });
+      }
+      const reqPm = request.body && (request.body.pm_id ?? request.body.responsible_pm_id);
+      if (reqPm != null && Number(reqPm) !== request.user.id) {
+        return reply.code(403).send({ error: 'РП не может переназначить работу другому пользователю' });
+      }
+    }
+
+    // Объект по населённому пункту: object_place → найти/создать site → проставить site_id
+    const _body = { ...request.body };
+    if (!_body.site_id && (_body.object_place || '').trim()) {
+      try {
+        _body.site_id = await ensureSiteByPlace(db, _body.object_place, _body.customer_name || oldWork.rows[0].customer_name, request.user.id);
+        if (!_body.object_name) _body.object_name = String(_body.object_place).trim();
+      } catch (e) { fastify.log.warn('[works PUT] ensureSiteByPlace: ' + e.message); }
+    }
+
+    const data = filterData(_body);
 
     // B6: Валидация дат
     const dateError = validateDates(data);
@@ -735,6 +780,9 @@ async function routes(fastify, options) {
           completed_at: work.completed_at,
           cost_plan: parseFloat(work.cost_plan) || 0,
           cost_fact: parseFloat(work.cost_fact) || 0,
+          // флаги «значение задано» — чтобы UI отличал реальный 0 от «план не заполнен»
+          cost_plan_set: work.cost_plan != null && work.cost_plan !== '',
+          cost_fact_set: work.cost_fact != null && work.cost_fact !== '',
         },
 
         crew,

@@ -1029,6 +1029,8 @@ window.AsgardPmWorksPage=(function(){
           <div><label>Начало работ</label><input type="date" id="w_start" value="${esc(String(w.start_in_work_date||t?.work_start_plan||"").slice(0,10))}"/></div>
           <div><label>Окончание план</label><input type="date" id="w_end_plan" value="${esc(String(w.end_plan||t?.work_end_plan||"").slice(0,10))}"/></div>
           <div><label>Окончание факт</label><input type="date" id="w_end_fact" value="${esc(String(w.end_fact||"").slice(0,10))}"/></div>
+          <div style="grid-column:1/-1"><label>📍 Объект / населённый пункт</label>
+            <input id="w_place" value="${esc(w.object_name||w.city||t?.tender_region||"")}" placeholder="Напр.: Усинск / Астрахань, АГПЗ — координаты для карты подтянутся сами"/></div>
         </div>
 
         <div class="cr-f-section"><span class="cr-f-section__icon" style="color:var(--gold)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span><span>Финансы</span></div>
@@ -1481,6 +1483,8 @@ window.AsgardPmWorksPage=(function(){
         w.start_in_work_date = $("#w_start").value.trim()||null;
         w.end_plan = $("#w_end_plan").value.trim()||null;
         w.end_fact = $("#w_end_fact").value.trim()||null;
+        // объект/населённый пункт → бэкенд найдёт/создаст объект и подтянет координаты (site_id)
+        { const _pl = ($("#w_place")?.value||"").trim(); if(_pl){ w.object_place = _pl; w.object_name = _pl; } }
 
         w.contract_value = num($("#w_value").value);
         w.advance_pct = num($("#w_adv_pct").value) ?? 30;

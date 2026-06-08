@@ -2,6 +2,8 @@
  * Staff Routes (employees, schedule, rating)
  */
 
+const { closedSql, notClosedSql } = require('../helpers/work-status');
+
 // SECURITY: Allowlist of columns
 const EMPLOYEE_COLS = new Set([
   'fio', 'role_tag', 'phone', 'position', 'passport_number',
@@ -111,7 +113,7 @@ async function routes(fastify, options) {
         w.work_title,
         COALESCE(w.start_in_work_date, w.start_plan) as start_date,
         CASE
-          WHEN w.work_status IN ('Завершена', 'Закрыт') THEN COALESCE(w.end_fact, w.end_plan)
+          WHEN ${closedSql('w.work_status')} THEN COALESCE(w.end_fact, w.end_plan)
           ELSE GREATEST(COALESCE(w.end_plan, CURRENT_DATE), COALESCE(w.end_fact, CURRENT_DATE), CURRENT_DATE)
         END as end_date,
         w.work_status
@@ -120,10 +122,10 @@ async function routes(fastify, options) {
       WHERE ea.employee_id = ANY($1::int[])
         AND ea.work_id != $2
         AND COALESCE(ea.is_active, true) = true
-        AND w.work_status NOT IN ('Завершена', 'Закрыт')
+        AND ${notClosedSql('w.work_status')}
         AND COALESCE(w.start_in_work_date, w.start_plan) <= $4
         AND CASE
-              WHEN w.work_status IN ('Завершена', 'Закрыт') THEN COALESCE(w.end_fact, w.end_plan)
+              WHEN ${closedSql('w.work_status')} THEN COALESCE(w.end_fact, w.end_plan)
               ELSE GREATEST(COALESCE(w.end_plan, CURRENT_DATE), COALESCE(w.end_fact, CURRENT_DATE), CURRENT_DATE)
             END >= $3
     `, [empIds, parseInt(work_id), targetStart, targetEnd]);

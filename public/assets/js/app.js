@@ -215,6 +215,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/dashboard",l:"Дашборд руководителя",d:"Сводная аналитика",roles:["ADMIN",...DIRECTOR_ROLES],i:"dashboard",p:"dashboard",g:"home"},
     {r:"/my-dashboard",l:"Мой дашборд",d:"Настраиваемые виджеты",roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES,...HEAD_ROLES],i:"dashboard",p:"my_dashboard",g:"home"},
     {r:"/big-screen",l:"Большой Экран",d:"Авто-ротация KPI для монитора",roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES],i:"dashboard",p:"big_screen",g:"home"},
+    {r:"/command-map",l:"Живая карта",d:"Объекты, вахта, рейсы по датам",roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES],i:"dashboard",p:"command_map",g:"home"},
     {r:"/calendar",l:"Календарь встреч",d:"Совещания и события",roles:ALL_ROLES,i:"schedule",p:"calendar",g:"home"},
     {r:"/birthdays",l:"Дни рождения",d:"Офисный календарь ДР",roles:ALL_ROLES,i:"birthdays",p:"birthdays",g:"home"},
     {r:"/tasks",l:"Мои задачи",d:"Задачи и Todo-список",roles:ALL_ROLES,i:"approvals",p:"tasks",g:"home"},
@@ -1519,6 +1520,8 @@ var _setupPinKeypad = null;
     await new Promise(function(resolve){ setTimeout(resolve, 600); }); /* perf fix: was 2500ms */
     var ov = document.getElementById('asgard-loading-overlay');
     if (ov) ov.remove();
+    // ГЕЙТ присутствия: офисный сотрудник должен отметить «где я сегодня», иначе СРМ заблокирован
+    try { await showPresenceGate(); } catch(e) { console.warn("[PresenceGate] error:", e); }
     // Deep link: вернуть на сохранённый URL после логина
     var returnUrl = sessionStorage.getItem('asgard_return_url');
     if (returnUrl) {
@@ -1536,6 +1539,111 @@ var _setupPinKeypad = null;
     try { if (window.AsgardPush) AsgardPush.init(); } catch(e) {}
     try { if (window.AsgardWebAuthn) AsgardWebAuthn.showRegistrationPrompt(); } catch(e) {}
     try { if (window.AsgardSessionGuard) AsgardSessionGuard.init(); } catch(e) { console.warn("[SessionGuard] init error:", e); }
+  }
+
+  // ─── ГЕЙТ присутствия «где я сегодня» (блокирующая модалка для офиса) ───
+  async function showPresenceGate(){
+    var auth = (window.AsgardAuth && AsgardAuth.getAuth) ? AsgardAuth.getAuth() : null;
+    if (!auth || !auth.token) return;
+    var todayKey = 'presence_done_' + new Date().toISOString().slice(0,10);
+    if (localStorage.getItem(todayKey) === '1') return;  // уже отметился в этой сессии
+
+    var info;
+    try {
+      var r = await fetch('/api/daily-presence/today', { headers: { 'Authorization': 'Bearer ' + auth.token } });
+      info = await r.json();
+    } catch(e) { return; }                 // сеть упала — не блокируем (fail-open)
+    if (!info || !info.required) { localStorage.setItem(todayKey, '1'); return; }
+
+    // подгрузим объекты для статуса «на объекте»
+    var sites = [];
+    try {
+      var sr = await fetch('/api/sites', { headers: { 'Authorization': 'Bearer ' + auth.token } });
+      var sd = await sr.json();
+      sites = Array.isArray(sd) ? sd : (sd.sites || []);
+    } catch(e) {}
+
+    var userName = (auth.user && auth.user.name) ? auth.user.name : '';
+    var OPTS = [
+      { k:'office',   t:'🏢 Офис' },
+      { k:'remote',   t:'🏠 Удалёнка' },
+      { k:'object',   t:'🚌 На объекте' },
+      { k:'trip',     t:'🛒 Командировка' },
+      { k:'vacation', t:'🌴 Отпуск' },
+      { k:'sick',     t:'🤒 Больничный' }
+    ];
+
+    return new Promise(function(resolve){
+      var ov = document.createElement('div');
+      ov.id = 'asgard-presence-gate';
+      ov.setAttribute('style',
+        'position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;'+
+        'background:rgba(6,9,16,0.94);backdrop-filter:blur(6px);');
+      var siteOpts = sites.map(function(s){ return '<option value="'+s.id+'">'+(s.name||('Объект #'+s.id))+'</option>'; }).join('');
+      ov.innerHTML =
+        '<div style="width:min(440px,92vw);background:#0e1422;border:1px solid #2a3550;border-radius:18px;'+
+        'padding:26px 24px;box-shadow:0 20px 60px #000a;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#e9eff8">'+
+          '<div style="font-size:20px;font-weight:800;margin-bottom:4px">Где вы сегодня'+(userName?(', '+userName.split(' ')[0]):'')+'?</div>'+
+          '<div style="font-size:13px;opacity:.65;margin-bottom:18px">Отметьте присутствие, чтобы продолжить работу в СРМ. Без отметки доступ закрыт.</div>'+
+          '<div id="pg-opts" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"></div>'+
+          '<div id="pg-site-wrap" style="display:none;margin-top:14px">'+
+            '<label style="font-size:12px;opacity:.7">Объект</label>'+
+            '<select id="pg-site" style="width:100%;margin-top:5px;padding:10px;border-radius:10px;background:#111726;color:#e9eff8;border:1px solid #2a3550">'+siteOpts+'</select>'+
+          '</div>'+
+          '<div id="pg-err" style="color:#f85149;font-size:12px;margin-top:10px;min-height:16px"></div>'+
+          '<button id="pg-save" style="width:100%;margin-top:8px;padding:13px;border:none;border-radius:11px;cursor:pointer;'+
+            'background:linear-gradient(135deg,#1f6fff,#7a3aff);color:#fff;font-size:15px;font-weight:800">Отметиться и войти</button>'+
+        '</div>';
+      document.body.appendChild(ov);
+
+      var chosen = null;
+      var optsBox = ov.querySelector('#pg-opts');
+      OPTS.forEach(function(o){
+        var b = document.createElement('button');
+        b.textContent = o.t;
+        b.setAttribute('data-k', o.k);
+        b.setAttribute('style','padding:13px 10px;border-radius:11px;cursor:pointer;font-size:14px;font-weight:700;'+
+          'background:#111726;border:1.5px solid #243049;color:#cdd9ec;transition:.15s');
+        b.addEventListener('click', function(){
+          chosen = o.k;
+          Array.prototype.forEach.call(optsBox.children, function(x){
+            x.style.borderColor = '#243049'; x.style.background = '#111726'; x.style.color = '#cdd9ec';
+          });
+          b.style.borderColor = '#1f6fff'; b.style.background = '#16203a'; b.style.color = '#fff';
+          ov.querySelector('#pg-site-wrap').style.display = (o.k === 'object') ? 'block' : 'none';
+        });
+        optsBox.appendChild(b);
+      });
+
+      // блокируем Esc/клик-вне — модалку нельзя закрыть без выбора
+      ov.addEventListener('click', function(e){ if (e.target === ov) e.stopPropagation(); });
+
+      ov.querySelector('#pg-save').addEventListener('click', async function(){
+        var errEl = ov.querySelector('#pg-err');
+        if (!chosen) { errEl.textContent = 'Выберите, где вы сегодня'; return; }
+        var siteId = null;
+        if (chosen === 'object') {
+          siteId = parseInt(ov.querySelector('#pg-site') && ov.querySelector('#pg-site').value, 10) || null;
+          if (!siteId) { errEl.textContent = 'Выберите объект'; return; }
+        }
+        var btn = ov.querySelector('#pg-save');
+        btn.disabled = true; btn.textContent = 'Сохранение...';
+        try {
+          var resp = await fetch('/api/daily-presence', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + auth.token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: chosen, site_id: siteId })
+          });
+          if (!resp.ok) throw new Error('save failed');
+          localStorage.setItem(todayKey, '1');
+          ov.remove();
+          resolve();
+        } catch(e) {
+          errEl.textContent = 'Не удалось сохранить. Повторите.';
+          btn.disabled = false; btn.textContent = 'Отметиться и войти';
+        }
+      });
+    });
   }
 
   async function backupModal(){
@@ -2197,6 +2305,7 @@ AsgardRouter.add("/assembly", ()=>AsgardAssemblyPage.render({layout, title:"Сб
     // M15: Аналитика для руководителей отделов
     AsgardRouter.add("/to-analytics", ()=>AsgardTOAnalytics.render({layout, title:"Хроники Тендерного Отдела"}), {auth:true, roles:["ADMIN","HEAD_TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/pm-analytics", ()=>AsgardPMAnalytics.render({layout, title:"Хроники Руководителей Проектов"}), {auth:true, roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/command-map", ()=>AsgardCommandMap.render({layout, title:"Живая карта"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES]});
     AsgardRouter.add("/readiness", ()=>AsgardReadiness.renderPM({layout, title:"Готовность проектов"}), {auth:true, roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES]});
     AsgardRouter.add("/readiness-board", ()=>AsgardReadiness.renderDirector({layout, title:"Готовность по РП"}), {auth:true, roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES]});
     AsgardRouter.add("/engineer-dashboard", ()=>AsgardEngineerDashboard.render({layout, title:"Кузница Инженера"}), {auth:true, roles:["ADMIN","CHIEF_ENGINEER"]});

@@ -447,8 +447,10 @@ function WorkDetailSheet({ work, onClose }) {
 
 function CreateWorkSheet({ open, onClose, onCreated }) {
   const haptic = useHaptic();
+  const user   = useAuthStore((s) => s.user);
   const [title,       setTitle]       = useState('');
   const [customer,    setCustomer]    = useState('');
+  const [place,       setPlace]       = useState('');
   const [budget,      setBudget]      = useState('');
   const [status,      setStatus]      = useState('Новая');
   const [startDate,   setStartDate]   = useState('');
@@ -457,7 +459,7 @@ function CreateWorkSheet({ open, onClose, onCreated }) {
   const [saving,      setSaving]      = useState(false);
 
   const reset = () => {
-    setTitle(''); setCustomer(''); setBudget('');
+    setTitle(''); setCustomer(''); setPlace(''); setBudget('');
     setStatus('Новая'); setStartDate(''); setEndDate('');
     setDescription('');
   };
@@ -472,16 +474,26 @@ function CreateWorkSheet({ open, onClose, onCreated }) {
         customer_name: customer.trim() || null,
         contract_value: budget ? Number(budget) : null,
         work_status:   status,
-        start_date:    startDate || null,
+        // FIX: бэкенд НЕ знает поля start_date — каноническое имя start_in_work_date (иначе дата терялась)
+        start_in_work_date: startDate || null,
         end_plan:      endDate || null,
         description:   description.trim() || null,
+        // Объект/населённый пункт — бэкенд сам найдёт/создаст объект и подтянет координаты
+        object_place:  place.trim() || null,
+        // FIX: назначаем работу текущему РП, иначе работа создавалась без pm_id
+        pm_id:         user && user.id ? user.id : undefined,
       });
       haptic.success();
       reset();
       onClose();
       onCreated();
-    } catch {}
-    setSaving(false);
+    } catch (err) {
+      // FIX: раньше ошибка POST молча проглатывалась — теперь показываем пользователю
+      haptic.error();
+      window.alert('Не удалось создать работу: ' + (err && (err.message || err)));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -501,6 +513,17 @@ function CreateWorkSheet({ open, onClose, onCreated }) {
             placeholder="Наименование заказчика..."
             className="input-field"
           />
+        </FormField>
+
+        <FormField label="Объект / населённый пункт">
+          <input
+            type="text" value={place} onChange={(e) => setPlace(e.target.value)}
+            placeholder="Напр.: Усинск / Астрахань, АГПЗ"
+            className="input-field"
+          />
+          <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
+            Координаты для карты подтянутся автоматически — вводить их не нужно
+          </div>
         </FormField>
 
         <div className="grid grid-cols-2 gap-2">

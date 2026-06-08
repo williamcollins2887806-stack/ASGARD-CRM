@@ -7,6 +7,9 @@
  * ADMIN видит всё
  */
 
+const { notClosedSql } = require('../helpers/work-status');
+const NOT_CLOSED = notClosedSql('work_status');   // толерантно: исключает все варианты закрытых/отменённых
+
 const MONTH_NAMES = ['', 'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
   'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 
@@ -30,8 +33,8 @@ async function routes(fastify) {
     // Активные проекты
     const { rows: works } = await db.query(
       isAdmin
-        ? `SELECT id, work_title, city, work_status FROM works WHERE deleted_at IS NULL AND work_status NOT IN ('Закрыта', 'Отменена') ORDER BY created_at DESC LIMIT 20`
-        : `SELECT id, work_title, city, work_status FROM works WHERE pm_id = $1 AND deleted_at IS NULL AND work_status NOT IN ('Закрыта', 'Отменена') ORDER BY created_at DESC LIMIT 20`,
+        ? `SELECT id, work_title, city, work_status FROM works WHERE deleted_at IS NULL AND ${NOT_CLOSED} ORDER BY created_at DESC LIMIT 20`
+        : `SELECT id, work_title, city, work_status FROM works WHERE pm_id = $1 AND deleted_at IS NULL AND ${NOT_CLOSED} ORDER BY created_at DESC LIMIT 20`,
       workParam
     );
     const workIds = works.map(w => w.id);
@@ -142,8 +145,8 @@ async function routes(fastify) {
     } else {
       const { rows } = await db.query(
         isAdmin
-          ? `SELECT id FROM works WHERE deleted_at IS NULL AND work_status NOT IN ('Закрыта','Отменена')`
-          : `SELECT id FROM works WHERE pm_id = $1 AND deleted_at IS NULL AND work_status NOT IN ('Закрыта','Отменена')`,
+          ? `SELECT id FROM works WHERE deleted_at IS NULL AND ${NOT_CLOSED}`
+          : `SELECT id FROM works WHERE pm_id = $1 AND deleted_at IS NULL AND ${NOT_CLOSED}`,
         isAdmin ? [] : [userId]
       );
       workIds = rows.map(r => r.id);
@@ -631,8 +634,8 @@ async function routes(fastify) {
       // work_ids для PM
       const { rows: works } = await db.query(
         isAdmin
-          ? `SELECT id FROM works WHERE deleted_at IS NULL AND work_status NOT IN ('Закрыта','Отменена')`
-          : `SELECT id FROM works WHERE pm_id=$1 AND deleted_at IS NULL AND work_status NOT IN ('Закрыта','Отменена')`,
+          ? `SELECT id FROM works WHERE deleted_at IS NULL AND ${NOT_CLOSED}`
+          : `SELECT id FROM works WHERE pm_id=$1 AND deleted_at IS NULL AND ${NOT_CLOSED}`,
         workParam
       );
       const workIds = works.map(w => w.id);

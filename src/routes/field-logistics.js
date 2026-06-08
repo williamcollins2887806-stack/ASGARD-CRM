@@ -41,19 +41,25 @@ async function routes(fastify, options) {
   fastify.post('/', crmAuth, async (req, reply) => {
     try {
       const userId = req.user.id;
-      const {
+      let {
         work_id, employee_id, item_type, title, description, details,
-        date_from, date_to, amount, vat_included, item_subtype
+        date_from, date_to, amount, vat_included, item_subtype,
+        departure_at, arrival_at, transport_no
       } = req.body || {};
 
       if (!employee_id || !item_type || !title) {
         return reply.code(400).send({ error: 'Укажите employee_id, item_type и title' });
       }
 
+      // если переданы дата+время вылета/прилёта — автозаполняем date_from/date_to датой (совместимость)
+      if (departure_at && !date_from) date_from = String(departure_at).slice(0, 10);
+      if (arrival_at && !date_to) date_to = String(arrival_at).slice(0, 10);
+
       const { rows: inserted } = await db.query(`
         INSERT INTO field_logistics (work_id, employee_id, item_type, item_subtype, title, description,
-          details, date_from, date_to, amount, vat_included, status, created_by)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending', $12)
+          details, date_from, date_to, amount, vat_included, departure_at, arrival_at, transport_no,
+          status, created_by)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'pending', $15)
         RETURNING id, created_at
       `, [
         work_id || null, employee_id, item_type, item_subtype || null, title,
@@ -61,6 +67,7 @@ async function routes(fastify, options) {
         date_from || null, date_to || null,
         amount ? parseFloat(amount) : null,
         vat_included === true || vat_included === 'true',
+        departure_at || null, arrival_at || null, transport_no || null,
         userId
       ]);
 
@@ -128,6 +135,46 @@ async function routes(fastify, options) {
       return { logistics_id: logisticsId, created_at: inserted[0].created_at };
     } catch (err) {
       fastify.log.error('[field-logistics] POST / error:', err);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // PUT /:id — править рейс (время вылета/прилёта, №, даты, название, сумма)
+  // ─────────────────────────────────────────────────────────────────────
+  fastify.put('/:id', crmAuth, async (req, reply) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (!id) return reply.code(400).send({ error: 'Bad id' });
+      const { rows: ex } = await db.query('SELECT id FROM field_logistics WHERE id = $1', [id]);
+      if (!ex.length) return reply.code(404).send({ error: 'Запись не найдена' });
+
+      const allow = {
+        title: 'title', description: 'description', date_from: 'date_from', date_to: 'date_to',
+        amount: 'amount', transport_no: 'transport_no', departure_at: 'departure_at',
+        arrival_at: 'arrival_at', item_subtype: 'item_subtype', status: 'status'
+      };
+      const sets = [], vals = [];
+      let i = 1;
+      const body = req.body || {};
+      // авто date_from/date_to из времени, если только время передано
+      if (body.departure_at && body.date_from == null) body.date_from = String(body.departure_at).slice(0, 10);
+      if (body.arrival_at && body.date_to == null) body.date_to = String(body.arrival_at).slice(0, 10);
+      for (const [k, col] of Object.entries(allow)) {
+        if (body[k] !== undefined) {
+          sets.push(`${col} = $${i++}`);
+          vals.push(k === 'amount' ? (body[k] == null ? null : parseFloat(body[k])) : (body[k] || null));
+        }
+      }
+      if (!sets.length) return reply.code(400).send({ error: 'Нет полей для обновления' });
+      vals.push(id);
+      const { rows } = await db.query(
+        `UPDATE field_logistics SET ${sets.join(', ')}, updated_at = NOW() WHERE id = $${i} RETURNING id, departure_at, arrival_at, transport_no, date_from, date_to`,
+        vals
+      );
+      return { ok: true, logistics: rows[0] };
+    } catch (err) {
+      fastify.log.error('[field-logistics] PUT /:id error:', err);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });

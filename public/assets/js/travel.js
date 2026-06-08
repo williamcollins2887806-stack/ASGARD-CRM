@@ -423,6 +423,15 @@ window.AsgardTravelPage = (function(){
             <input id="ti_desc" class="field" placeholder="Рейс SU-1234, № брони, инструктаж..."/>
           </div>
         </div>
+        <div class="formrow" id="ti_transport_row">
+          <div><label>🛫 Вылет (дата и время)</label><input type="datetime-local" id="ti_dep" class="field"/></div>
+          <div><label>🛬 Прилёт (дата и время)</label><input type="datetime-local" id="ti_arr" class="field"/></div>
+        </div>
+        <div class="formrow" id="ti_transportno_row">
+          <div style="grid-column:1/-1"><label>№ рейса / поезда</label>
+            <input id="ti_transno" class="field" placeholder="SU-1402 / поезд 092Э"/>
+          </div>
+        </div>
         <div class="formrow">
           <div><label>Дата (с)</label><input type="date" id="ti_from" class="field" value="${today()}"/></div>
           <div><label>Дата (по)</label><input type="date" id="ti_to" class="field"/></div>
@@ -455,17 +464,35 @@ window.AsgardTravelPage = (function(){
 
       showModal('Новая запись', html);
 
+      // показывать поля времени/№ рейса только для транспортных типов
+      const TRANSPORT_TYPES = ['ticket_to','ticket_back','flight','train','transfer'];
+      function toggleTransportFields() {
+        const t = $('#ti_type')?.value;
+        const show = TRANSPORT_TYPES.includes(t);
+        const r1 = $('#ti_transport_row'), r2 = $('#ti_transportno_row');
+        if (r1) r1.style.display = show ? '' : 'none';
+        if (r2) r2.style.display = show ? '' : 'none';
+      }
+      $('#ti_type')?.addEventListener('change', toggleTransportFields);
+      toggleTransportFields();
+
       $('#btnSaveTi')?.addEventListener('click', async () => {
         const type    = $('#ti_type')?.value;
         const empId   = parseInt($('#ti_emp')?.value);
         const title   = $('#ti_title')?.value?.trim();
         const desc    = $('#ti_desc')?.value?.trim();
-        const from    = $('#ti_from')?.value;
-        const to      = $('#ti_to')?.value;
+        const dep      = $('#ti_dep')?.value;    // datetime-local "YYYY-MM-DDTHH:mm"
+        const arr      = $('#ti_arr')?.value;
+        const transNo  = $('#ti_transno')?.value?.trim();
+        let from    = $('#ti_from')?.value;
+        let to      = $('#ti_to')?.value;
         const amount  = parseFloat($('#ti_amount')?.value) || 0;
         const vat     = $('#ti_vat')?.checked;
         const workId  = parseInt($('#ti_work')?.value) || null;
         const file    = $('#ti_file')?.files?.[0];
+        // если задано время вылета/прилёта — заполняем даты автоматически
+        if (dep && !from) from = dep.slice(0,10);
+        if (arr && !to)   to   = arr.slice(0,10);
 
         if (!type || !empId || !title) {
           toast('Ошибка', 'Заполните тип, сотрудника и название', 'err');
@@ -484,6 +511,9 @@ window.AsgardTravelPage = (function(){
             description: desc || null,
             date_from: from || null,
             date_to:   to   || null,
+            departure_at: dep ? new Date(dep).toISOString() : null,
+            arrival_at:   arr ? new Date(arr).toISOString() : null,
+            transport_no: transNo || null,
             amount:    amount || null,
             vat_included: vat,
             work_id:   workId,
