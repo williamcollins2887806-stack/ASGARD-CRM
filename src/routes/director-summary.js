@@ -44,15 +44,16 @@ module.exports = async function (fastify, options) {
     const costFact = Number(wf.cost_fact || 0);
     const gross = revenue - costFact;
 
-    // ── Деньги: invoices (получено/дебиторка/просрочка) ──
+    // ── Деньги: invoices (получено/дебиторка/просрочка) ЗА ГОД ──
+    // Дебиторка/просрочка — всегда «как сейчас» (открытые счета), а received фильтруем по году счёта.
     const { rows: [inv] } = await db.query(`
       SELECT
-        COALESCE(SUM(paid_amount), 0) AS received,
-        COALESCE(SUM(total_amount) - SUM(paid_amount), 0) AS receivable,
+        COALESCE(SUM(paid_amount) FILTER (WHERE EXTRACT(YEAR FROM COALESCE(invoice_date, created_at)) = $1), 0) AS received,
+        COALESCE(SUM(CASE WHEN status NOT IN ('paid','cancelled') THEN total_amount - paid_amount ELSE 0 END), 0) AS receivable,
         COALESCE(SUM(CASE WHEN status NOT IN ('paid','cancelled') AND due_date < CURRENT_DATE
                           THEN total_amount - paid_amount ELSE 0 END), 0) AS overdue
       FROM invoices
-    `).catch(() => ({ rows: [{}] }));
+    `, [year]).catch(() => ({ rows: [{}] }));
 
     // ── Самозанятые ──
     const yearLimitPer = await getSetting('self_employed_yearly_limit', 2400000);

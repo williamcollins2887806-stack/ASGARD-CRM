@@ -12,7 +12,9 @@
 async function geocode(place) {
   const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(place)}&limit=1&accept-language=ru`;
   try {
-    const resp = await fetch(url, { headers: { 'User-Agent': 'AsgardCRM/1.0 (crm@asgard-service.com)' } });
+    // таймаут 5с — чтобы медленный/недоступный Nominatim не держал соединение и не выедал пул БД
+    const signal = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(5000) : undefined;
+    const resp = await fetch(url, { headers: { 'User-Agent': 'AsgardCRM/1.0 (crm@asgard-service.com)' }, signal });
     const data = await resp.json();
     if (Array.isArray(data) && data.length) {
       const lat = parseFloat(data[0].lat), lng = parseFloat(data[0].lon);
@@ -32,28 +34,55 @@ async function geocode(place) {
 async function ensureSiteByPlace(db, place, customerName, createdByUserId) {
   const name = String(place || '').trim();
   if (!name) return null;
+  const key = name.toLowerCase();
 
-  // 1) уже есть объект с таким именем (или коротким именем/регионом)?
-  const { rows: found } = await db.query(
-    `SELECT id FROM sites
-      WHERE btrim(lower(name)) = btrim(lower($1))
-         OR btrim(lower(short_name)) = btrim(lower($1))
-         OR btrim(lower(region)) = btrim(lower($1))
-      ORDER BY id LIMIT 1`,
-    [name]
-  );
-  if (found.length) return found[0].id;
+  // быстрый путь: объект уже есть (по имени/короткому имени — без широкого match по региону)
+  const findByName = async () => {
+    const { rows } = await db.query(
+      `SELECT id FROM sites
+        WHERE btrim(lower(name)) = $1 OR btrim(lower(short_name)) = $1
+        ORDER BY id LIMIT 1`, [key]
+    );
+    return rows.length ? rows[0].id : null;
+  };
+  const existing = await findByName();
+  if (existing) return existing;
 
-  // 2) геокодируем и создаём новый объект
+  // геокод вне транзакции (внешний вызов не держит лок)
   const geo = await geocode(name);
-  const { rows: [site] } = await db.query(
-    `INSERT INTO sites (name, region, lat, lng, customer_name, site_type, geocode_status, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, 'object', $6, NOW(), NOW())
-     RETURNING id`,
-    [name, geo?.region || null, geo?.lat ?? null, geo?.lng ?? null,
-     customerName || null, geo ? 'geocoded' : 'pending']
-  );
-  return site.id;
+
+  // создаём под advisory-локом по хэшу имени — чтобы параллельные вызовы не наплодили дубли
+  const client = db.pool ? await db.pool.connect() : null;
+  try {
+    const q = client ? client.query.bind(client) : db.query.bind(db);
+    if (client) await q('BEGIN');
+    // лок на время транзакции по hashtext(имя)
+    await q('SELECT pg_advisory_xact_lock(hashtext($1))', [key]).catch(() => {});
+    // повторная проверка под локом
+    const reAgain = await q(
+      `SELECT id FROM sites WHERE btrim(lower(name)) = $1 OR btrim(lower(short_name)) = $1 ORDER BY id LIMIT 1`,
+      [key]
+    );
+    if (reAgain.rows.length) {
+      if (client) await q('COMMIT');
+      return reAgain.rows[0].id;
+    }
+    const ins = await q(
+      `INSERT INTO sites (name, region, lat, lng, customer_name, site_type, geocode_status, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, 'object', $6, NOW(), NOW()) RETURNING id`,
+      [name, geo?.region || null, geo?.lat ?? null, geo?.lng ?? null,
+       customerName || null, geo ? 'geocoded' : 'pending']
+    );
+    if (client) await q('COMMIT');
+    return ins.rows[0].id;
+  } catch (e) {
+    if (client) { try { await client.query('ROLLBACK'); } catch (_) {} }
+    // фолбэк: ещё раз поискать (вдруг параллельный создал) или вернуть null
+    const fb = await findByName();
+    return fb;
+  } finally {
+    if (client) client.release();
+  }
 }
 
 module.exports = { geocode, ensureSiteByPlace };
