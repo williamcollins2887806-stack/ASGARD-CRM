@@ -2562,6 +2562,14 @@ AsgardRouter.add("/assembly", ()=>AsgardAssemblyPage.render({layout, title:"Сб
         if (!AsgardAuth.getAuth() || !AsgardAuth.getAuth().user) {
           setTimeout(hideSplashScreen, 500);
         }
+        /* ГЕЙТ присутствия для УЖЕ залогиненных (открыл СРМ с сохранённой сессией —
+           путь логина с showLoadingScreen не проходится, поэтому вызываем гейт здесь). */
+        try {
+          var _ga = AsgardAuth.getAuth();
+          if (_ga && _ga.user && typeof showPresenceGate === 'function') {
+            showPresenceGate().catch(function(e){ console.warn('[PresenceGate] boot:', e); });
+          }
+        } catch(e) {}
         AsgardRouter.start();
         /* Session Guard — инициализация для уже залогиненных */
         try {
