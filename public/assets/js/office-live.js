@@ -24,8 +24,8 @@ window.AsgardOfficeLive = (function () {
     DIRECTOR_COMM:'Коммерческий директор', DIRECTOR_DEV:'Директор по развитию',
     WAREHOUSE:'Кладовщик', CHIEF_ENGINEER:'Главный инженер', HR:'Кадры', HR_MANAGER:'HR-менеджер', ADMIN:'Администратор'
   };
-  // presence status_code → act аватара
-  const STATUS_ACT = { 'оф':'work','уд':'remote','об':'transit','км':'transit','пг':'phone','уч':'work','ск':'work','бн':'home','сс':'home','вх':'home' };
+  // presence status_code → act аватара (только ключи из ACT движка!)
+  const STATUS_ACT = { 'оф':'work','уд':'remote','об':'remote','км':'remote','пг':'phone','уч':'work','ск':'work','бн':'home','сс':'home','вх':'home' };
   // work_status → фаза для объекта
   function _phase(ws){ return ws || '—'; }
 
@@ -1096,7 +1096,7 @@ window.AsgardOfficeLive = (function () {
       this.hold = 8+Math.random()*10;            // минимум секунд в активности (инерция)
       this.setAct((d.who && d.who._act) || 'work');
     }
-    setAct(a){ this.act=a; const def=ACT[a]; this.bic.text=def.e;
+    setAct(a){ if(!ACT[a]) a='work'; this.act=a; const def=ACT[a]; this.bic.text=def.e;
       this.bbg.clear(); this.bbg.beginFill(def.c,.95); this.bbg.drawRoundedRect(-13,-12,26,21,7); this.bbg.endFill();
       this.bbg.beginFill(def.c,.95); this.bbg.moveTo(-4,9);this.bbg.lineTo(4,9);this.bbg.lineTo(0,14);this.bbg.closePath(); this.bbg.endFill();
       this.c.alpha = (a==='home')?0.25:1; }
