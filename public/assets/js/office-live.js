@@ -26,6 +26,8 @@ window.AsgardOfficeLive = (function () {
   };
   // presence status_code → act аватара (только ключи из ACT движка!)
   const STATUS_ACT = { 'оф':'work','уд':'remote','об':'remote','км':'remote','пг':'phone','уч':'work','ск':'work','бн':'home','сс':'home','вх':'home' };
+  // валидные действия движка (ACT в office-live-demo) — фолбэк-защита
+  const ACT_KEYS = new Set(['work','invoice','tender','estimate','phone','approve','mimir','coffee','smoke','lunch','remote','home']);
   // work_status → фаза для объекта
   function _phase(ws){ return ws || '—'; }
 
@@ -42,14 +44,38 @@ window.AsgardOfficeLive = (function () {
     const people = (liveData && liveData.people) || [];
     const flights = (flightsData && flightsData.flights) || [];
 
-    // STAFF — офисные сотрудники (исключаем полевых). Сортируем: онлайн+отмеченные сверху для столов.
-    const staff = people.map(p => ({
-      user_id: p.user_id, name: p.name, role: p.role, rus: ROLE_RUS[p.role] || p.role,
-      female: /(а|я)\s*$/.test((p.name||'').split(' ')[0]) || false,
-      online: !!p.online, on_call: !!p.on_call, status_code: p.status_code, work: p.work,
-      _act: p.on_call ? 'phone' : (p.online ? (STATUS_ACT[p.status_code] || 'work') : 'home'),
-      doing: p.doing
-    }));
+    // STAFF — офисные сотрудники. Для КАЖДОГО считаем ЗОНУ размещения (_zone) и действие (_act).
+    //   _zone: 'object' (отмечен «на объекте» об + есть работа) → фигура НА объекте;
+    //          'remote' (удалёнка уд, или онлайн+уд) → зона УДАЛЁНКА;
+    //          'home'   (офлайн / выходной вх / больничный бн / отпуск сс / НЕ отмечен и не в сети) → зона ДОМ/ОФЛАЙН;
+    //          'desk'   (онлайн в офисе / на звонке / просто онлайн без статуса) → стол в опенспейсе.
+    const HOMEISH = new Set(['вх','бн','сс']);     // выходной/больничный/за свой счёт
+    function _zoneOf(p){
+      const sc = p.status_code;
+      if (sc === 'об' && p.work) return 'object';      // офисный отметился «на объекте» → к объекту
+      if (sc === 'уд') return 'remote';                // удалёнка
+      if (HOMEISH.has(sc)) return 'home';              // выходной/больничный/отпуск → дом
+      if (!p.online && !sc) return 'home';             // НЕ в сети и НЕ отметился → «не на связи» (зона ДОМ)
+      if (!p.online && sc) return 'home';              // офлайн, но есть статус дня → дом (статус покажем)
+      return 'desk';                                   // онлайн (оф/на звонке/idle/без статуса) → стол
+    }
+    const staff = people.map(p => {
+      const zone = _zoneOf(p);
+      const female = /(а|я)s*$/.test((p.name||'').split(' ')[0]) || false;
+      let act;
+      if (p.on_call) act = 'phone';
+      else if (zone === 'remote') act = 'remote';
+      else if (zone === 'home') act = 'home';
+      else if (p.online) act = (STATUS_ACT[p.status_code] || 'work');
+      else act = 'work';
+      if (!ACT_KEYS.has(act)) act = 'work';            // защита: только валидные действия движка
+      return {
+        user_id: p.user_id, name: p.name || ('Сотрудник #'+p.user_id), role: p.role, rus: ROLE_RUS[p.role] || p.role,
+        female, online: !!p.online, on_call: !!p.on_call, status_code: p.status_code || null,
+        status_label: p.status_label || null, work: p.work, idle: !!p.idle, self_act: p.self_act || null,
+        _zone: zone, _act: act, doing: p.doing
+      };
+    });
 
     // лёгкий worker-объект под движок (поля: wid,name,master,status,spec,permits,shift,checkin...)
     let _wid = 1;
@@ -477,6 +503,7 @@ window.AsgardOfficeLive = (function () {
   let _wid=1;
   function mkWorker(name, isMaster, opts){
     opts=opts||{};
+    name = (name==null||name==='') ? 'Сотрудник' : String(name);
     const seed = name.length + (name.charCodeAt(0)||0);
     const spec = isMaster ? 'Бригадир / мастер СМР' : SPEC[seed % SPEC.length];
     const nperm = isMaster?4:(2+seed%3);
@@ -1028,12 +1055,16 @@ window.AsgardOfficeLive = (function () {
   // ======================= ДЕТАЛЬНЫЕ РАБОЧИЕ МЕСТА =======================
   const desks=[];
   (function(){
+    const deskStaff = STAFF.filter(s => (s._zone||'desk')==='desk');
+    const N = deskStaff.length;
+    const cols = Math.max(1, Math.min(6, Math.ceil(Math.sqrt(N))));   // до 6 в ряд
+    const colW = Math.max(190, Math.min(270, (HALL.w-220)/cols));
     let di=0;
-    for(let row=0; row<4 && di<STAFF.length; row++)
-      for(let col=0; col<4 && di<STAFF.length; col++){
-        const x=HALL.x+150+col*270, y=HALL.y+150+row*180;
-        desks.push({ x, y, who:STAFF[di] }); di++;
-      }
+    for(let i=0;i<N;i++){
+      const col=i%cols, row=Math.floor(i/cols);
+      const x=HALL.x+150+col*colW, y=HALL.y+150+row*180;
+      desks.push({ x, y, who:deskStaff[i] }); di++;
+    }
     desks.forEach(d=>{
       const g=new PIXI.Graphics(); g.zIndex=d.y-40;
       // ковровый коврик
@@ -1198,21 +1229,38 @@ window.AsgardOfficeLive = (function () {
   const workers=[];
   // transit-рабочие НЕ роумят боксом — они летят/едут в бортах (см. ЛОГИСТИКА ниже)
   SITES.forEach(s=>{ (s.crew||[]).forEach(d=>{ if(d.status!=='transit') workers.push(new Worker(s,d)); }); });
-  // рабочие дома (ждут) и в архиве — тоже полноценные досье
-  const HOME_CREW=['Турид','Аслак','Бенгт','Орм','Видар','Сёрен'];
-  const ARCH_CREW=['Гейр','Хьёрт','Рунар','Эгиль'];
-  HOME_CREW.forEach(n=>{ const d=mkWorker(n,false,{status:'home'}); d.atHome=true;
-    workers.push(new Worker(null,d,HOME)); });
-  ARCH_CREW.forEach(n=>{ const d=mkWorker(n,false,{status:'archive'}); d.archived=true;
-    const w=new Worker(null,d,ARCH); w.c.alpha=.4; workers.push(w); });
-  // пара на удалёнке (офисные роли) — отдельные фигуры-викинги
+  // ── РЕАЛЬНОЕ размещение офисных по зонам: ДОМ/ОФЛАЙН, УДАЛЁНКА, НА ОБЪЕКТЕ (вместо фейк-викингов демо) ──
   const remotes=[];
-  [STAFF.find(s=>s.role==='HEAD_PM'), STAFF.find(s=>s.role==='TO')].forEach((s,i)=>{
-    if(!s) return; const c=drawViking(s,0.85);
-    c.x=REMOTE.x+200+i*260; c.y=REMOTE.y+REMOTE.h/2+2; c.zIndex=c.y;
-    const tg=label(s.name.split(' ')[0]+' 💻',11,0xbcd0e6,'700'); tg.anchor.set(.5,0); tg.y=30; c.addChild(tg);
-    c.eventMode='static'; c.cursor='pointer'; c.on('pointertap',()=>{ if(!drag.moved) openDrawer(s,'remote'); });
-    world.addChild(c); remotes.push(c); s._remote=true;
+  // викинг-фигура офисного сотрудника в произвольной зоне (клик → его досье)
+  function _placeStaffFig(s, x, y, suffix, alpha){
+    const c=drawViking(s, 0.85); c.x=x; c.y=y; c.zIndex=c.y; if(alpha!=null) c.alpha=alpha;
+    const nm0=(s.name||'').split(' ')[0]||s.name||'—';
+    const tg=label(nm0+(suffix||''),11,0xbcd0e6,'700'); tg.anchor.set(.5,0); tg.y=30; c.addChild(tg);
+    c.eventMode='static'; c.cursor='pointer'; c.on('pointertap',()=>{ if(!drag.moved) openDrawer(s, s._act||'work'); });
+    world.addChild(c); s._fig=c; return c;
+  }
+  // УДАЛЁНКА — все, кто _zone==="remote"
+  STAFF.filter(s=>s._zone==='remote').forEach((s,i)=>{
+    const perRow=Math.max(1,Math.floor((REMOTE.w-120)/150));
+    const col=i%perRow, row=Math.floor(i/perRow);
+    _placeStaffFig(s, REMOTE.x+90+col*150, REMOTE.y+REMOTE.h/2+2+row*40, ' 💻'); s._remote=true;
+  });
+  // ДОМ/ОФЛАЙН — все, кто _zone==="home" (офлайн, выходной, больничный, НЕ отметился)
+  STAFF.filter(s=>s._zone==='home').forEach((s,i)=>{
+    const perRow=Math.max(1,Math.floor((HOME.w-60)/110));
+    const col=i%perRow, row=Math.floor(i/perRow);
+    const suff = s.status_label ? (' · '+s.status_label) : (s.online?'':' · не в сети');
+    _placeStaffFig(s, HOME.x+50+col*110, HOME.y+HOME.h/2+row*36, suff, 0.55);
+  });
+  // НА ОБЪЕКТЕ — офисные, отметившиеся «на объекте» (_zone==="object"): фигура у их объекта
+  STAFF.filter(s=>s._zone==='object').forEach((s)=>{
+    const sid = s.work && s.work.id;
+    // ищем объект, к которому привязана работа сотрудника (по work.id среди jobs)
+    let site=null;
+    SITES.forEach(si=>{ if((si.jobs||[]).some(j=>String(j.id)===String((s.work&&s.work.title)||s.work&&s.work.id))) site=si; });
+    if(!site && SITES.length) site=SITES[0];
+    if(site){ _placeStaffFig(s, site.x+site.w*0.5+(Math.random()*40-20), site.y+site.h*0.32, " 🛠 (РП)"); }
+    else { _placeStaffFig(s, HOME.x+40, HOME.y+HOME.h/2, " · на объекте", 0.7); }
   });
 
   // ======================= ЛОГИСТИКА В ДВИЖЕНИИ =======================
@@ -1472,13 +1520,11 @@ window.AsgardOfficeLive = (function () {
     ROUTES.forEach(r=>{
       const cap = r.kind==='ship'?5 : r.kind==='heli'?3 : r.kind==='plane'?8 : 5;
       let pax = transitBySite[r.site.key] ? transitBySite[r.site.key].splice(0, cap) : [];
-      // если transit-крю не хватило — дополняем «дежурной» вахтой (реальные имена), борт НЕ пустой
-      const need = (r.kind==='heli'?3:r.kind==='ship'?4:Math.min(cap,5)) - pax.length;
-      for(let i=0;i<need;i++){ const d=mkWorker(nm(), i===0&&pax.length===0, {status:'transit'});
-        d._extra=true; pax.push(d); }
+      // фейк-пассажиров НЕ добавляем — только реальный transit-крю (борт может быть пустым, тогда не летит)
       const _rf = (_DATA.flights||[]).find(fl => fl.site && String(fl.site.id)===String(r.site.key));
       if(_rf){ r._real = { departAt:_rf.departAt, arriveAt:_rf.arriveAt, dir:_rf.dir }; }
-      const v=new Vehicle(r, _rf ? (_rf.dir==='home'?'home':'to') : (Math.random()<0.5?'to':'home'), pax);
+      if(!_rf && !pax.length) return;   // нет реального рейса и некого везти — пропускаем
+      const v=new Vehicle(r, _rf ? (_rf.dir==='home'?'home':'to') : 'to', pax);
       // проставляем пассажирам даты рейса + медосмотр перед вылетом (как field_logistics + field_trip_stages)
       pax.forEach(p=>{ p.flight={ kind:r.kind, departAt:v.departAt, arriveAt:v.arriveAt, site:r.site, dir:v.dir };
         p.medAt = v.departAt - (1+Math.floor(Math.random()*2))*DAY;   // медосмотр за 1-2 дня до вылета
@@ -1652,15 +1698,18 @@ window.AsgardOfficeLive = (function () {
 
   // ======================= СТАТИСТИКА =======================
   function updateStats(){
-    document.getElementById('st-office').textContent = heroes.filter(h=>h.act!=='home').length;
-    document.getElementById('st-field').textContent =
-      SITES.reduce((a,s)=>a+(s.crew||[]).filter(c=>c.status==='site').length,0);
-    // «в пути» — реально летящие сейчас (борта в воздухе/в дороге) × пассажиры
+    const $=(id)=>document.getElementById(id);
+    const inOffice = STAFF.filter(s=>s._zone==='desk').length;
+    const onRemote = STAFF.filter(s=>s._zone==='remote').length;
+    const atHome   = STAFF.filter(s=>s._zone==='home').length;
+    const onObject = STAFF.filter(s=>s._zone==='object').length;
+    const onField  = SITES.reduce((a,s)=>a+(s.crew||[]).filter(c=>c.status==='site').length,0) + onObject;
+    if($('st-office')) $('st-office').textContent = inOffice;
+    if($('st-field'))  $('st-field').textContent  = onField;
     const inAir = vehicles.filter(v=>v.c.visible).reduce((a,v)=>a+v.pax.length,0);
-    const tr=document.getElementById('st-transit'); if(tr) tr.textContent = inAir;
-    document.getElementById('st-home').textContent = remotes.length + HOME_CREW.length;
-    // часы показывают СИМ-дату/время (демо-календарь)
-    document.getElementById('clock').textContent = simFmt(simNow());
+    if($('st-transit')) $('st-transit').textContent = inAir;
+    if($('st-home')) $('st-home').textContent = onRemote + atHome;
+    if($('clock')){ const d=new Date(); $('clock').textContent = String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
   }
   // легенда
   (function(){ const L=document.getElementById('legend');
