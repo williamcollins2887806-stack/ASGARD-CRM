@@ -210,10 +210,12 @@ module.exports = async function (fastify, options) {
       const workIds = works.map(w => w.id);
       if (!workIds.length) return { site_id: siteId, crew: [] };
 
-      // активные назначения (ещё не убывшие) + сотрудник
+      // активные назначения (ещё не убывшие) + сотрудник (с РЕАЛЬНЫМ досье)
       const { rows: assigns } = await db.query(`
-        SELECT ea.employee_id, ea.work_id, ea.field_role,
-               e.fio, e.full_name
+        SELECT ea.employee_id, ea.work_id, ea.field_role, ea.shift_type, ea.date_from, ea.date_to,
+               e.fio, e.full_name, e.position, e.qualification_name, e.qualification_grade,
+               e.is_self_employed, e.day_rate, e.naks_number, e.naks_expiry,
+               e.permits, e.gender, e.phone, e.city
         FROM employee_assignments ea
         JOIN employees e ON e.id = ea.employee_id
         WHERE ea.work_id = ANY($1::int[])
@@ -247,7 +249,7 @@ module.exports = async function (fastify, options) {
         else if (!cur && (t.includes('transit') || t.includes('travel') || t.includes('доро') || t.includes('переезд'))) stageByEmp[s.employee_id] = 'transit';
       });
 
-      // собрать: один человек = одна фигура (берём первое назначение)
+      // собрать: один человек = одна фигура (берём первое назначение) — с РЕАЛЬНЫМ досье
       const seen = new Set();
       const crew = [];
       assigns.forEach(a => {
@@ -256,11 +258,26 @@ module.exports = async function (fastify, options) {
         const master = ['shift_master', 'senior_master'].includes(a.field_role);
         let status = stageByEmp[a.employee_id]
           || (onShift.has(a.employee_id) ? 'site' : 'rest');
+        // допуска — из e.permits (массив/строка) либо НАКС
+        let permits = [];
+        if (Array.isArray(a.permits)) permits = a.permits.filter(Boolean);
+        else if (typeof a.permits === 'string' && a.permits.trim()) permits = a.permits.split(/[;,]/).map(s => s.trim()).filter(Boolean);
+        if (a.naks_number) permits.unshift('НАКС ' + a.naks_number);
         crew.push({
           employee_id: a.employee_id,
           name: a.full_name || a.fio || ('Раб. #' + a.employee_id),
           master,
-          status
+          status,
+          // РЕАЛЬНОЕ досье (нет генерации):
+          spec: a.qualification_name || a.position || (master ? 'Бригадир / мастер' : 'Рабочий'),
+          grade: a.qualification_grade || null,
+          employ: a.is_self_employed ? 'Самозанятый' : 'Штат',
+          rate: a.day_rate != null ? Number(a.day_rate) : null,
+          permits: permits.slice(0, 8),
+          shift: a.shift_type || null,
+          city: a.city || null,
+          phone: a.phone || null,
+          date_from: a.date_from, date_to: a.date_to
         });
       });
 
@@ -269,6 +286,53 @@ module.exports = async function (fastify, options) {
       request.log.error(e);
       reply.code(500);
       return { error: 'site_crew_failed', message: e.message };
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // GET /api/command-map/readiness — дружина «дома»: кто ГОТОВ / НЕ ГОТОВ к выезду (field-рабочие).
+  //   archive НЕ показываем. Только реальные сотрудники (без тестовых).
+  // ─────────────────────────────────────────────────────────────────
+  fastify.get('/readiness', { preHandler: [fastify.requireRoles(MAP_ROLES)] }, async (request, reply) => {
+    try {
+      const { rows } = await db.query(`
+        SELECT e.id, COALESCE(e.full_name, e.fio) AS name,
+               e.readiness_status, e.readiness_reason, e.is_self_employed,
+               e.qualification_name, e.position, e.city
+        FROM employees e
+        WHERE e.is_active = true
+          AND COALESCE(e.readiness_status,'unknown') IN ('ready','not_ready','unknown')
+          AND lower(COALESCE(e.fio,'')) NOT LIKE '%тест%'
+          AND lower(COALESCE(e.fio,'')) NOT LIKE '%test%'
+          -- не на активном объекте (тех, кто на объекте, рисуем у объекта, не «дома»)
+          AND NOT EXISTS (
+            SELECT 1 FROM employee_assignments ea
+            WHERE ea.employee_id = e.id AND ea.is_active = true
+              AND (ea.departure_date IS NULL OR ea.departure_date > CURRENT_DATE)
+          )
+        ORDER BY e.readiness_status, name
+        LIMIT 200
+      `);
+      const people = rows.map(r => ({
+        id: r.id, name: r.name,
+        ready: r.readiness_status === 'ready',
+        not_ready: r.readiness_status === 'not_ready',
+        status: r.readiness_status || 'unknown',
+        reason: r.readiness_reason || null,
+        employ: r.is_self_employed ? 'Самозанятый' : 'Штат',
+        spec: r.qualification_name || r.position || 'Рабочий',
+        city: r.city || null
+      }));
+      const summary = {
+        ready: people.filter(p => p.ready).length,
+        not_ready: people.filter(p => p.not_ready).length,
+        unknown: people.filter(p => p.status === 'unknown').length
+      };
+      return { people, summary };
+    } catch (e) {
+      request.log.error(e);
+      reply.code(500);
+      return { error: 'readiness_failed', message: e.message };
     }
   });
 
@@ -299,7 +363,9 @@ module.exports = async function (fastify, options) {
         LEFT JOIN works w ON w.id = sp.work_id
         WHERE u.is_active = true
           AND u.role NOT IN ('FIELD_WORKER','BOT')
-          AND COALESCE(u.login,'') NOT LIKE 'test_%'
+          AND lower(COALESCE(u.login,'')) NOT LIKE 'test%'
+          AND lower(COALESCE(u.name,'')) NOT LIKE '%тест%'
+          AND lower(COALESCE(u.name,'')) NOT LIKE '%test%'
         ORDER BY u.name
       `);
 

@@ -77,34 +77,39 @@ window.AsgardOfficeLive = (function () {
       };
     });
 
-    // лёгкий worker-объект под движок (поля: wid,name,master,status,spec,permits,shift,checkin...)
+    // worker-объект под движок из РЕАЛЬНОГО досье (никакой генерации!)
     let _wid = 1;
-    function _mkCrew(name, master, status){
-      const seed = (name||'').length + ((name||'X').charCodeAt(0)||0);
+    function _mkCrew(c){
       return {
-        wid: _wid++, name: name || ('Раб. #'+_wid), master: !!master, status: status || 'site',
-        spec: master ? 'Бригадир / мастер СМР' : 'Монтажник',
-        permits: [], shift: (seed%2)?'day':'night',
-        employ: 'Штат', rate: master?6200:4200, daysOn: 8, daysLeft: 12,
-        medOk: status!=='medical', medDate: null, docOk: true,
-        checkin: status==='site' ? 'сегодня' : null
+        wid: _wid++, name: c.name || ('Раб. #'+_wid), master: !!c.master, status: c.status || 'site',
+        spec: c.spec || (c.master ? 'Бригадир / мастер' : 'Рабочий'),
+        grade: c.grade || null,
+        permits: Array.isArray(c.permits) ? c.permits : [],
+        shift: c.shift || null,
+        employ: c.employ || 'Штат',
+        rate: (c.rate!=null) ? c.rate : null,
+        city: c.city || null, phone: c.phone || null,
+        date_from: c.date_from || null, date_to: c.date_to || null,
+        medOk: c.status!=='medical', checkin: c.status==='site' ? 'сегодня' : null
       };
     }
 
-    // SITE_META + WORKS из реальных sites. Раскладываем объекты по сетке (нет ручных биомов).
+    // SITE_META + WORKS из реальных sites. Координаты — по lat/lng на карте (репроекция в движке).
     const siteMeta = {}; const works = [];
-    // крю по объектам — параллельно (Фаза 2: реальные фигуры рабочих по статусам)
     const crewResults = await Promise.all(sites.map(s => _api('/api/command-map/site/' + s.id + '/crew')));
+    let hasPlatform = false;
     sites.forEach((s, i) => {
       const key = String(s.id);
-      const col = i % 3, rowi = Math.floor(i / 3);
-      const sx = 2750 + col * 700, sy = 240 + rowi * 620;
       const typeMap = { platform:'platform', plant:'plant', gas:'gas', object:'plant' };
+      const type = typeMap[s.site_type] || 'plant';
+      if (type === 'platform') hasPlatform = true;
       const realCrew = (crewResults[i] && crewResults[i].crew) || [];
-      const crew = realCrew.map(c => _mkCrew(c.name, c.master, c.status));
+      const crew = realCrew.map(_mkCrew);
       siteMeta[key] = {
-        name: s.name || ('Объект #' + s.id), type: typeMap[s.site_type] || 'plant',
-        x: sx, y: sy, w: 620, h: 440,
+        name: s.name || ('Объект #' + s.id), type,
+        lat: s.lat, lng: s.lng,                 // для проекции на карту
+        x: 2750 + (i%3)*560, y: 280 + Math.floor(i/3)*460,  // временно (репроекция geoToScreen в движке)
+        w: 360, h: 280,
         pm: (s.works && s.works[0] && s.works[0].pm_name) || '',
         lodging: 'общежитие', lodgeName: 'Вахтовый посёлок',
         customer: s.customer_name || '', site_id: s.id,
@@ -117,6 +122,23 @@ window.AsgardOfficeLive = (function () {
       }));
     });
 
+    // ПЛАТФОРМА всегда видна (даже без работ) — добавляем синтетический морской объект, если в БД нет platform.
+    if (!hasPlatform) {
+      const pk = 'platform0';
+      siteMeta[pk] = {
+        name: 'МЛСП (шельф)', type: 'platform',
+        lat: 69.25, lng: 57.30,               // Печорское море (Приразломная ~)
+        x: 3300, y: 360, w: 360, h: 280,
+        pm: '', lodging: 'судно', lodgeName: 'Судно-отель',
+        customer: '', site_id: null, crew: [], _placeholder: true
+      };
+      works.push({ id:'platform0_idle', t:'Платформа на дежурстве', object: pk,
+        phase:'Без активных работ', ready:100, daysLeft:null, margin:null, profit:null, workers:0, on_shift:0 });
+    }
+
+    // дружина дома: готовность (ready/not_ready) — реальные field-рабочие (без архива/тестов)
+    const readiness = (await _api('/api/command-map/readiness')) || { people: [], summary: {} };
+
     // ROUTES из рейсов: один маршрут на объект назначения, вид транспорта по item_type.
     const routeByKey = {};
     flights.forEach(f => {
@@ -128,7 +150,7 @@ window.AsgardOfficeLive = (function () {
     });
     const routes = Object.values(routeByKey);
 
-    return { staff, siteMeta, works, routes, flights, summary, sites };
+    return { staff, siteMeta, works, routes, flights, summary, sites, readiness };
   }
 
   let _destroy = null;
@@ -260,13 +282,30 @@ window.AsgardOfficeLive = (function () {
   const TOTAL_W = 4200, TOTAL_H = 2700;
 
   // --- ШТАБ слева ---
-  const HALL = { x:470, y:760, w:1180, h:760 };
-  const REMOTE = { x:HALL.x, y:HALL.y-150, w:HALL.w, h:118 };
-  const WARE   = { x:80,  y:HALL.y+30, w:350, h:560 };
-  const HOME   = { x:HALL.x,       y:HALL.y+HALL.h+24, w:HALL.w*0.52-14, h:150 };
-  const ARCH   = { x:HALL.x+HALL.w*0.52+10, y:HALL.y+HALL.h+24, w:HALL.w*0.48-10, h:150 };
+  // размеры зон считаем из реальных счётчиков (растягиваются, чтобы все влезли)
+  const _deskN   = (_DATA.staff||[]).filter(s=>(s._zone||'desk')==='desk').length;
+  const _remoteN = (_DATA.staff||[]).filter(s=>s._zone==='remote').length;
+  const _homeN   = (_DATA.staff||[]).filter(s=>s._zone==='home').length;
+  const _readyN  = ((_DATA.readiness&&_DATA.readiness.people)||[]).length;
+  // ОФИС (HALL): сетка столов до 6 в ряд, высота под число рядов
+  const _deskCols = Math.max(1, Math.min(6, Math.ceil(Math.sqrt(Math.max(1,_deskN)))));
+  const _deskRows = Math.max(1, Math.ceil(_deskN/_deskCols));
+  const HALL = { x:470, y:760, w: Math.max(1180, 150+ _deskCols*270 +90), h: Math.max(300, 150+ _deskRows*180 +60) };
+  // УДАЛЁНКА над офисом — высота под ряды (по ~7 в ряд)
+  const _remCols = Math.max(1, Math.floor((HALL.w-120)/150));
+  const _remRows = Math.max(1, Math.ceil(_remoteN/_remCols));
+  const REMOTE = { x:HALL.x, y:0, w:HALL.w, h: Math.max(90, 30+_remRows*42) };
+  REMOTE.y = HALL.y - REMOTE.h - 24;
+  const WARE   = { x:80, y:HALL.y+30, w:350, h: Math.min(HALL.h-60, 560) };
+  // ДОМ (слева снизу) и ДРУЖИНА (справа снизу) — высота под число фигур
+  const _homeCols = Math.max(1, Math.floor((HALL.w*0.52-60)/110));
+  const _homeRows = Math.max(1, Math.ceil(_homeN/_homeCols));
+  const HOME   = { x:HALL.x, y:HALL.y+HALL.h+24, w:HALL.w*0.52-14, h: Math.max(120, 50+_homeRows*36) };
+  const _arCols = Math.max(3, Math.floor((HALL.w*0.48-40)/46));
+  const _arRows = Math.max(1, Math.ceil(_readyN/_arCols));
+  const ARCH   = { x:HALL.x+HALL.w*0.52+10, y:HALL.y+HALL.h+24, w:HALL.w*0.48-10, h: Math.max(120, 50+_arRows*44) };
   // --- ХАБ ВАХТЫ (аэропорт-вокзал) — точка отправки/возврата, под штабом ---
-  const HUB = { x:HALL.x+HALL.w*0.5-230, y:HALL.y+HALL.h+210, w:460, h:170 };
+  const HUB = { x:HALL.x+HALL.w*0.5-230, y: Math.max(HOME.y+HOME.h, ARCH.y+ARCH.h)+40, w:460, h:170 };
   // --- МЕДЦЕНТР (медосмотр перед вылетом, Москва/Саратов) — координаты заранее (нужны в areaForStatus) ---
   const MEDHUB = { city:'Москва', x:HUB.x+HUB.w+34, y:HUB.y, w:230, h:HUB.h };
 
@@ -291,98 +330,44 @@ window.AsgardOfficeLive = (function () {
     return g;
   }
 
-  // ======================= БИОМЫ (плавные градиентные регионы) =======================
-  // rngSeed — детерминированный «случайный», чтобы расстановка деталей была стабильной
-  let _seed=12345; function rnd(){ _seed=(_seed*1103515245+12345)&0x7fffffff; return _seed/0x7fffffff; }
-  const seaShips=[];   // дрейфующие суда в море (анимируются)
+  // ===== РИСОВАНАЯ КАРТА РОССИИ (подложка) + проекция lat/lng → экран =====
+  // нормализованный контур РФ (грубый, узнаваемый силуэт) в координатах 0..1 (x=запад→восток, y=север→юг)
+  const RU_OUTLINE = [
+    [0.02,0.42],[0.06,0.30],[0.10,0.33],[0.14,0.26],[0.20,0.30],[0.24,0.22],[0.30,0.26],
+    [0.34,0.18],[0.42,0.20],[0.46,0.12],[0.52,0.16],[0.58,0.10],[0.64,0.14],[0.70,0.09],
+    [0.78,0.13],[0.84,0.08],[0.90,0.12],[0.96,0.10],[0.99,0.18],[0.95,0.24],[0.98,0.30],
+    [0.93,0.34],[0.97,0.40],[0.90,0.44],[0.93,0.52],[0.86,0.55],[0.88,0.62],[0.80,0.60],
+    [0.78,0.68],[0.70,0.64],[0.66,0.72],[0.58,0.66],[0.52,0.74],[0.46,0.68],[0.40,0.76],
+    [0.34,0.70],[0.28,0.78],[0.22,0.72],[0.18,0.80],[0.12,0.72],[0.08,0.62],[0.04,0.54],[0.02,0.42]
+  ];
+  // прямоугольник карты в мире (правее штаба)
+  const MAP = { x: 2350, y: 180, w: 1700, h: 1300 };
+  // гео-границы РФ (прибл.): запад 19°E … восток 180°E ; север 78°N … юг 41°N
+  const GEO = { lonW: 19, lonE: 179, latN: 78, latS: 41 };
+  function geoToScreen(lat, lng){
+    if (lat==null || lng==null) return null;
+    const fx = Math.max(0, Math.min(1, (lng - GEO.lonW)/(GEO.lonE - GEO.lonW)));
+    const fy = Math.max(0, Math.min(1, (GEO.latN - lat)/(GEO.latN - GEO.latS)));
+    return { x: MAP.x + fx*MAP.w, y: MAP.y + fy*MAP.h };
+  }
   (function(){
-    const big=new PIXI.Graphics(); big.zIndex=-1000;
-    // базовый «океан карты» — лёгкий вертикальный градиент полосами
-    for(let y=-200;y<TOTAL_H+200;y+=40){ const t=(y+200)/(TOTAL_H+400);
-      big.beginFill(mix(0x070b12, 0x0a1018, t)); big.drawRect(-200,y,TOTAL_W+400,42); big.endFill(); }
-
-    BIOMES.forEach(R=>{
-      const cx=R.x+R.w/2, cy=R.y+R.h/2, rad=Math.max(R.w,R.h)*0.62;
-      // ПЛАВНЫЙ переход: много концентрических эллипсов с затуханием прозрачности к краю
-      for(let i=12;i>=0;i--){ const f=i/12;            // 1 в центре → 0 на краю
-        const col=mix(R.c2, R.c1, 1-f);
-        big.beginFill(col, 0.16 + 0.62*(1-f));          // плотнее к центру, прозрачнее к краю
-        big.drawEllipse(cx, cy, R.w*0.5*(0.55+0.55*f), R.h*0.5*(0.55+0.55*f));
-        big.endFill();
-      }
-      // ядро региона — плотная заливка
-      big.beginFill(R.c1,.9); big.drawEllipse(cx,cy,R.w*0.42,R.h*0.42); big.endFill();
-
-      // ---- текстуры + ПОПУТНЫЕ ДЕТАЛИ (оживляют пустоты) ----
-      if(R.key==='sea'){
-        big.lineStyle(2,0x2a5a7a,.30);
-        for(let y=R.y+30;y<R.y+R.h;y+=46){ big.moveTo(R.x,y);
-          for(let x=R.x;x<R.x+R.w;x+=34) big.lineTo(x+17,y-6),big.lineTo(x+34,y); }
-        big.lineStyle(0);
-        big.beginFill(0xeaf2fb,.05); for(let i=0;i<60;i++){ big.drawCircle(R.x+rnd()*R.w,R.y+rnd()*R.h,1+rnd()*2);} big.endFill();
-        // буровые платформы-вышки вдали (силуэты)
-        for(let i=0;i<3;i++){ const x=R.x+120+rnd()*(R.w-240), y=R.y+120+rnd()*(R.h-240);
-          big.lineStyle(2,0x3a5570,.5); big.moveTo(x-14,y);big.lineTo(x,y-34);big.lineTo(x+14,y);
-          big.moveTo(x-9,y-16);big.lineTo(x+9,y-16); big.lineStyle(0);
-          big.beginFill(0x2a3f55,.6); big.drawRect(x-16,y,32,8); big.endFill(); }
-        // караван судов (анимируемые точки)
-        for(let i=0;i<4;i++){ const sh=new PIXI.Graphics();
-          sh.beginFill(0x35506a); sh.moveTo(-14,0);sh.lineTo(13,0);sh.lineTo(9,7);sh.lineTo(-9,7);sh.closePath(); sh.endFill();
-          sh.beginFill(0xb8c4d0); sh.drawRect(-3,-7,9,7); sh.endFill();
-          sh.beginFill(0xeaf2fb,.15); sh.drawEllipse(0,9,16,3); sh.endFill();
-          sh.x=R.x+200+rnd()*(R.w-400); sh.y=R.y+200+rnd()*(R.h-400); sh.zIndex=-960;
-          sh._spd=6+rnd()*8; sh._dir=rnd()<.5?1:-1; sh.scale.x=sh._dir;
-          world.addChild(sh); seaShips.push(sh); }
-      } else if(R.key==='taiga'){
-        // плотный лес ёлок
-        for(let i=0;i<140;i++){ const x=R.x+24+rnd()*(R.w-48),y=R.y+24+rnd()*(R.h-48), sc=0.7+rnd()*0.8;
-          big.beginFill(mix(0x14361f,0x0e2616,rnd()),.85);
-          big.moveTo(x-7*sc,y+8*sc);big.lineTo(x,y-13*sc);big.lineTo(x+7*sc,y+8*sc);big.closePath(); big.endFill();
-          big.beginFill(0x0c2012); big.drawRect(x-1.5,y+8*sc,3,4); big.endFill(); }
-        // ЛЭП через тайгу (опоры + провода)
-        const py=R.y+R.h*0.5;
-        big.lineStyle(2,0x4a5260,.55);
-        let prev=null; for(let x=R.x+40;x<R.x+R.w;x+=120){ // опоры
-          big.moveTo(x-10,py+22);big.lineTo(x,py-26);big.lineTo(x+10,py+22); big.moveTo(x-12,py-10);big.lineTo(x+12,py-10);
-          if(prev!=null){ big.moveTo(prev,py-22); big.quadraticCurveTo((prev+x)/2,py-8,x,py-22); }
-          prev=x; }
-        big.lineStyle(0);
-        // лесовозная дорога-просека
-        big.beginFill(0x2a2a1c,.4); big.drawRoundedRect(R.x+30,R.y+R.h*0.72,R.w-60,18,8); big.endFill();
-      } else if(R.key==='tundra'){
-        big.beginFill(0xeef3f8,.12); for(let i=0;i<30;i++){ big.drawEllipse(R.x+rnd()*R.w,R.y+rnd()*R.h,34+rnd()*70,11+rnd()*18);} big.endFill();
-        // вешки зимника + сам зимник (пунктирная дорога через тундру)
-        big.beginFill(0x1a2330,.5); big.drawRoundedRect(R.x+40,R.y+R.h*0.5-12,R.w-80,24,12); big.endFill();
-        big.lineStyle(2.5,0xcfe0f2,.4); for(let x=R.x+50;x<R.x+R.w-40;x+=40){ big.moveTo(x,R.y+R.h*0.5);big.lineTo(x+18,R.y+R.h*0.5);} big.lineStyle(0);
-        big.lineStyle(1.5,0x4a5a6a,.45); for(let i=0;i<40;i++){ const x=R.x+rnd()*R.w,y=R.y+rnd()*R.h; big.moveTo(x,y);big.lineTo(x,y-11);} big.lineStyle(0);
-        // редкие чумы/балки
-        for(let i=0;i<5;i++){ const x=R.x+80+rnd()*(R.w-160),y=R.y+80+rnd()*(R.h-160);
-          big.beginFill(0x6a5a44,.7); big.moveTo(x-12,y+8);big.lineTo(x,y-12);big.lineTo(x+12,y+8);big.closePath(); big.endFill(); }
-      } else if(R.key==='steppe'){
-        big.beginFill(0x3a3520,.5); for(let i=0;i<80;i++){ big.drawCircle(R.x+rnd()*R.w,R.y+rnd()*R.h,1.5+rnd()*2);} big.endFill();
-        // Каспий снизу — тоже мягким градиентом
-        const ksx=R.x+R.w*0.5, ksy=R.y+R.h*0.78;
-        for(let i=8;i>=0;i--){ const f=i/8; big.beginFill(mix(0x16384f,0x0e2436,1-f), .14+.5*(1-f));
-          big.drawEllipse(ksx,ksy,R.w*0.3*(0.6+0.5*f),R.h*0.18*(0.6+0.5*f)); big.endFill(); }
-        // станки-качалки (нефтекачалки) — степной колорит
-        for(let i=0;i<6;i++){ const x=R.x+80+rnd()*(R.w*0.55),y=R.y+80+rnd()*(R.h-160);
-          big.lineStyle(2,0x5a5240,.6); big.moveTo(x,y);big.lineTo(x,y-18); big.moveTo(x-12,y-16);big.lineTo(x+14,y-20); big.lineStyle(0);
-          big.beginFill(0x4a4636,.7); big.drawRect(x-4,y,8,8); big.endFill(); }
-        // элеватор/зернохранилища-силосы
-        for(let i=0;i<4;i++){ const x=R.x+R.w*0.62+i*22, y=R.y+R.h*0.34;
-          big.beginFill(0x6a6450,.6); big.drawRoundedRect(x,y,16,46,6); big.endFill(); }
-      }
-      // подпись региона (крупно, бледно)
-      const t=label(R.name.toUpperCase(),30,0xffffff,'800'); t.alpha=.085; t.anchor.set(.5,.5);
-      t.x=cx; t.y=R.y+40; t.zIndex=-990; t._regionLabel=true; world.addChild(t);
-    });
-    world.addChild(big);
-    // виньетка: тёмные углы
-    const vg=new PIXI.Graphics(); vg.zIndex=-980;
-    [[0,0],[TOTAL_W,0],[0,TOTAL_H],[TOTAL_W,TOTAL_H]].forEach(([vx,vy])=>{
-      for(let r=700;r>0;r-=60){ vg.beginFill(0x05070b,.035); vg.drawCircle(vx,vy,r); vg.endFill(); } });
-    world.addChild(vg);
+    const g=new PIXI.Graphics(); g.zIndex=-1000;
+    // фон-океан вокруг
+    g.beginFill(0x070d16); g.drawRect(MAP.x-200, MAP.y-160, MAP.w+400, MAP.h+360); g.endFill();
+    // суша РФ — заливка по контуру
+    const pts = RU_OUTLINE.map(p=>({x:MAP.x+p[0]*MAP.w, y:MAP.y+p[1]*MAP.h}));
+    g.lineStyle(2.5, 0x35506e, .85); g.beginFill(0x16202e, 1);
+    g.moveTo(pts[0].x, pts[0].y); pts.forEach(p=>g.lineTo(p.x,p.y)); g.closePath(); g.endFill(); g.lineStyle(0);
+    // лёгкая внутренняя штриховка-«рельеф»
+    g.lineStyle(1, 0x223247, .35);
+    for(let i=0;i<26;i++){ const yy=MAP.y+20+i*((MAP.h-40)/26); g.moveTo(MAP.x+30,yy); g.lineTo(MAP.x+MAP.w-30,yy); }
+    g.lineStyle(0);
+    // надпись
+    const tt=new PIXI.Text('РОССИЯ',{fontFamily:FONT,fontSize:30,fill:0x24364c,fontWeight:'900',letterSpacing:8});
+    tt.anchor.set(.5); tt.x=MAP.x+MAP.w*0.5; tt.y=MAP.y+MAP.h*0.5; tt.alpha=.5; tt.zIndex=-990;
+    world.addChild(g); world.addChild(tt);
   })();
+  const seaShips=[];   // (совместимость: тикер ниже обращается к массиву)
 
   // ======================= ФОН ЗОН =======================
   // чертог-офис: тёплый деревянный пол + ковровые дорожки
@@ -436,7 +421,7 @@ window.AsgardOfficeLive = (function () {
   }
   zone(REMOTE,'УДАЛЁНКА', 0x101a2e, COL.blue, '💻');
   zone(HOME,  'ДОМ · ожидают работу', 0x161320, 0x6b5b3a, '🏠');
-  zone(ARCH,  'АРХИВ', 0x12161e, 0x3a4452, '🗄');
+  zone(ARCH, 'ДРУЖИНА · готовность к выезду', 0x101c14, 0x2e7d4f, '⚔');
 
   // ======================= СКЛАД (слева, детальный) =======================
   (function(){
@@ -551,6 +536,15 @@ window.AsgardOfficeLive = (function () {
     });
   }
   const SITES = buildSitesFromWorks(WORKS, SITE_META);
+  (function(){
+    let noGeoIdx=0;
+    SITES.forEach(s=>{
+      const p = geoToScreen(s.lat, s.lng);
+      if(p){ s.x = p.x - s.w/2; s.y = p.y - s.h/2; }
+      else { s.x = MAP.x + MAP.w + 60; s.y = MAP.y + 40 + (noGeoIdx++)*(s.h+40); }  // без гео — колонкой справа
+      s.cx = s.x + s.w/2; s.cy = s.y + s.h/2;
+    });
+  })();
 
   // зона размещения (общежитие/судно) — справа от объекта, БЕЗ наложений (объекты разнесены)
   SITES.forEach(s=>{ s.lodge = { x:s.x+s.w+30, y:s.y+s.h*0.16, w:170, h:s.h*0.62 }; });
