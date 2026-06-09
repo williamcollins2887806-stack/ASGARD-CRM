@@ -194,4 +194,65 @@ module.exports = async function (fastify, options) {
       return { error: 'medical_failed', message: e.message };
     }
   });
+
+  // ─────────────────────────────────────────────────────────────────
+  // GET /api/command-map/live — живой офис: кто где сегодня (staff_plan) + онлайн (SSE) + на звонке
+  // ─────────────────────────────────────────────────────────────────
+  const PRESENCE_LABELS = {
+    'оф':'В офисе','уд':'Удалёнка','об':'На объекте','км':'Командировка','пг':'Встреча',
+    'уч':'Учёба','ск':'Склад','бн':'Больничный','сс':'За свой счёт','вх':'Выходной'
+  };
+  fastify.get('/live', { preHandler: [fastify.requireRoles(MAP_ROLES)] }, async (request, reply) => {
+    try {
+      // онлайн прямо сейчас (из SSE-реестра)
+      let onlineIds = [];
+      try { onlineIds = require('./sse').getOnlineUserIds() || []; } catch (_) {}
+      const onlineSet = new Set(onlineIds.map(Number));
+
+      // отметки за сегодня (staff_plan) + кто на звонке (active_calls)
+      const { rows } = await db.query(`
+        SELECT u.id AS user_id, u.name, u.role,
+               sp.status_code, sp.work_id, w.work_title,
+               (SELECT 1 FROM active_calls ac WHERE ac.assigned_user_id = u.id
+                  AND ac.call_state = 'connected' LIMIT 1) AS on_call
+        FROM users u
+        LEFT JOIN staff s ON s.user_id = u.id
+        LEFT JOIN staff_plan sp ON sp.staff_id = s.id AND sp.date = CURRENT_DATE
+          AND sp.status_code IS NOT NULL AND sp.status_code <> ''
+        LEFT JOIN works w ON w.id = sp.work_id
+        WHERE u.is_active = true
+          AND u.role NOT IN ('FIELD_WORKER','BOT')
+          AND COALESCE(u.login,'') NOT LIKE 'test_%'
+        ORDER BY u.name
+      `);
+
+      const people = rows.map(r => {
+        const online = onlineSet.has(Number(r.user_id));
+        return {
+          user_id: r.user_id, name: r.name, role: r.role,
+          online,
+          on_call: !!r.on_call,
+          status_code: r.status_code || null,
+          status_label: r.status_code ? (PRESENCE_LABELS[r.status_code] || r.status_code) : null,
+          work: r.work_id ? { id: r.work_id, title: r.work_title } : null,
+          // что делает сейчас (приоритет: на звонке → онлайн+статус → статус дня → не отмечен)
+          doing: r.on_call ? 'на звонке'
+               : (online ? (r.status_code ? (PRESENCE_LABELS[r.status_code] || r.status_code) : 'онлайн')
+                         : (r.status_code ? (PRESENCE_LABELS[r.status_code] || r.status_code) : null))
+        };
+      });
+
+      const summary = {
+        total: people.length,
+        online: people.filter(p => p.online).length,
+        on_call: people.filter(p => p.on_call).length,
+        marked: people.filter(p => p.status_code).length
+      };
+      return { people, summary, server_ts: Date.now() };
+    } catch (e) {
+      request.log.error(e);
+      reply.code(500);
+      return { error: 'live_failed', message: e.message };
+    }
+  });
 };

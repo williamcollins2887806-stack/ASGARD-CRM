@@ -7,6 +7,7 @@ import { TabBar } from '@/components/layout/TabBar';
 import { useSSE } from '@/hooks/useSSE';
 import { useChatStore } from '@/stores/chatStore';
 import { features } from '@/config/features';
+import PresenceGateMobile from '@/components/PresenceGateMobile';
 import FieldLayout from '@/layouts/FieldLayout';
 import FieldWelcome from '@/pages/field/FieldWelcome';
 import FieldLogin from '@/pages/field/FieldLogin';
@@ -163,8 +164,16 @@ function AppLayout() {
     location.pathname.startsWith('/field') ||
     location.pathname.startsWith('/pm');
 
+  // Гейт присутствия — только в офисном разделе (не на field/pm/логине). Сам себя гейтит по роли.
+  const showPresenceGate = !(
+    ['/login', '/pin', '/welcome'].includes(location.pathname) ||
+    location.pathname.startsWith('/field') ||
+    location.pathname.startsWith('/pm')
+  );
+
   return (
     <div className="h-full relative" style={{ backgroundColor: 'var(--bg-primary)' }}>
+      {showPresenceGate && <PresenceGateMobile />}
       <div
         key={location.pathname}
         style={{

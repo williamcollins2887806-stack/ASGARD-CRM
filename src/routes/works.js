@@ -534,6 +534,23 @@ async function routes(fastify, options) {
       // работа закрыта — сбросить кэш готовности
       try { require('../helpers/readiness-cache').invalidate(id); } catch (_) {}
 
+      // Работа закрыта → её бригаде сбросить готовность в 'unknown' (кто был 'on_site'),
+      // чтобы рабочих снова спросили «готов на следующий объект?». Назначения деактивируем.
+      try {
+        await db.query(
+          `UPDATE employees SET readiness_status = 'unknown', readiness_updated_at = NOW()
+           WHERE COALESCE(readiness_status,'') IN ('on_site','')
+             AND id IN (SELECT employee_id FROM employee_assignments WHERE work_id = $1 AND is_active = true)`,
+          [id]
+        );
+        await db.query(
+          `UPDATE employee_assignments SET is_active = false,
+             departure_date = COALESCE(departure_date, CURRENT_DATE), updated_at = NOW()
+           WHERE work_id = $1 AND is_active = true`,
+          [id]
+        );
+      } catch (rErr) { fastify.log.warn('[closeout] readiness/crew reset: ' + rErr.message); }
+
       // Сохранить оценки сотрудников
       if (Array.isArray(employee_ratings)) {
         for (const r of employee_ratings) {
@@ -558,7 +575,7 @@ async function routes(fastify, options) {
       const directors = await db.query(
         "SELECT id FROM users WHERE role IN ('DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV') AND is_active = true"
       );
-      const profit = Number(contract_value) - Number(cost_fact);
+      const profit = Number(contract_value) - Number(costFactComputed);
       for (const d of directors.rows) {
         createNotification(db, {
           user_id: d.id,

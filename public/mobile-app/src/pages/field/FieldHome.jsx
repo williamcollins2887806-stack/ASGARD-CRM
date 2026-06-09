@@ -128,6 +128,7 @@ export default function FieldHome() {
   const [showPushPrompt, setShowPushPrompt] = useState(false);
   const [showIOSHint, setShowIOSHint] = useState(false);
   const [showReadinessPrompt, setShowReadinessPrompt] = useState(false);
+  const [readinessStatus, setReadinessStatus] = useState(null); // ready|not_ready|on_site|unknown|archive
   const push = usePushSubscription();
   const timerRef = useRef(null);
   const touchStartY = useRef(0);
@@ -172,14 +173,15 @@ export default function FieldHome() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Check readiness status — show prompt if no active project and status is unknown/on_site
+  // Загрузить статус готовности всегда (для постоянного баннера) + показать промпт когда нужно
   useEffect(() => {
     if (loading || !data) return;
     const hasProject = data.project && data.project.is_active !== false && !data.project.departure_date;
-    if (hasProject) return;
     fieldApi.get('/readiness').then(res => {
-      const st = res?.readiness?.readiness_status;
-      if (!st || st === 'unknown' || st === 'on_site') {
+      const st = res?.readiness?.readiness_status || 'unknown';
+      setReadinessStatus(st);
+      // Промпт «готов на объект?» — только если НЕ на активном проекте и статус не определён/снят
+      if (!hasProject && (st === 'unknown' || st === 'on_site')) {
         setShowReadinessPrompt(true);
       }
     }).catch(() => {});
@@ -609,6 +611,32 @@ export default function FieldHome() {
           <p className="text-sm mt-1" style={{ color: 'var(--text-tertiary)' }}>Отдыхай, воин!</p>
         </div>
       )}
+
+      {/* Постоянный баннер готовности — рабочий всегда видит свой статус и может сменить */}
+      {readinessStatus && (() => {
+        const RS = {
+          ready:     { ic: '⚔️', label: 'Готов к походу',      sub: 'Жду нового объекта',        col: '#22C55E' },
+          not_ready: { ic: '🛏', label: 'Пока отдыхаю',        sub: 'Не готов к выезду',          col: '#F59E0B' },
+          on_site:   { ic: '🚧', label: 'На объекте',          sub: 'В строю на работе',          col: '#3B82F6' },
+          archive:   { ic: '🗄', label: 'В архиве',            sub: '',                           col: '#6B7280' },
+          unknown:   { ic: '❔', label: 'Готов на объект?',    sub: 'Отметь свою готовность',     col: '#EF4444' },
+        };
+        const r = RS[readinessStatus] || RS.unknown;
+        return (
+          <button onClick={() => { haptic.light(); navigate('/field/readiness'); }}
+            className="w-full rounded-xl p-4 mb-4 flex items-center gap-3 text-left"
+            style={{ backgroundColor: 'var(--bg-elevated)', border: `2px solid ${r.col}` }}>
+            <span style={{ fontSize: 26 }}>{r.ic}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p className="font-semibold" style={{ color: r.col }}>{r.label}</p>
+              {r.sub && <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>{r.sub}</p>}
+            </div>
+            <span className="text-xs px-2 py-1 rounded-lg" style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-secondary)', border: '1px solid var(--border-norse)' }}>
+              {readinessStatus === 'unknown' ? 'Отметить' : 'Изменить'}
+            </span>
+          </button>
+        );
+      })()}
 
       {/* Current trip stage card */}
       {currentStage && currentStage.stage_type && currentStage.stage_type !== 'object' && (

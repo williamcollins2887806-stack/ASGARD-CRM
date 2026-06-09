@@ -252,6 +252,10 @@ window.AsgardCommandMap = (function () {
           <div class="cmap-stage" id="cmapStage"><div class="cmap-hint">Загрузка карты…</div></div>
         </div>
         <div class="panel">
+          <div class="cmap-sec" id="cmapLiveSec">🟢 Офис сейчас</div>
+          <div id="cmapLive">Загрузка…</div>
+        </div>
+        <div class="panel">
           <div class="cmap-sec">🛫 Рейсы вахты (ближайшие)</div>
           <div class="cmap-flights" id="cmapFlights">Загрузка…</div>
         </div>
@@ -271,6 +275,48 @@ window.AsgardCommandMap = (function () {
     ]);
     const sites = (mapData && mapData.sites) || [];
     const flights = (flightsData && flightsData.flights) || [];
+
+    // ── Живой офис: кто онлайн / где / на звонке (обновляется по SSE + поллу) ──
+    const liveEl = document.getElementById('cmapLive');
+    const liveSec = document.getElementById('cmapLiveSec');
+    async function renderLive() {
+      const d = await api('/api/command-map/live');
+      if (!d || !d.people) { liveEl.innerHTML = '<div style="opacity:.6">Нет данных</div>'; return; }
+      const s = d.summary || {};
+      if (liveSec) liveSec.innerHTML = '🟢 Офис сейчас · онлайн ' + (s.online||0) + ' из ' + (s.total||0) +
+        (s.on_call ? (' · на звонке ' + s.on_call) : '');
+      // онлайн сверху, потом отметившиеся, потом остальные
+      const people = d.people.slice().sort((a,b)=> (b.online-a.online) || (!!b.status_code - !!a.status_code) || a.name.localeCompare(b.name));
+      liveEl.innerHTML = '<div style="display:flex;flex-direction:column;gap:6px;max-height:340px;overflow:auto">' +
+        people.map(function(p){
+          const dot = p.on_call ? '#e0a500' : (p.online ? '#22C55E' : '#5a6675');
+          const doing = p.on_call ? '📞 на звонке' : (p.status_label || (p.online ? 'онлайн' : '—'));
+          const work = p.work ? (' · ' + esc(p.work.title)) : '';
+          return '<div class="cmap-frow" style="cursor:default;display:flex;align-items:center;gap:9px">' +
+            '<span style="width:9px;height:9px;border-radius:50%;background:'+dot+';flex:0 0 auto"></span>' +
+            '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><b>'+esc(p.name)+'</b> <span style="opacity:.5;font-size:11px">'+esc(p.role||'')+'</span></span>' +
+            '<span style="font-size:12px;opacity:.8;white-space:nowrap">'+esc(doing)+esc(work)+'</span></div>';
+        }).join('') + '</div>';
+    }
+    renderLive();
+    // SSE: presence:online/offline → мгновенное обновление
+    let _liveSSE = null, _livePoll = null;
+    try {
+      const tk = token();
+      _liveSSE = new EventSource('/api/sse/stream?token=' + encodeURIComponent(tk));
+      const refresh = function(){ clearTimeout(window._liveDeb); window._liveDeb = setTimeout(renderLive, 800); };
+      _liveSSE.addEventListener('presence:online', refresh);
+      _liveSSE.addEventListener('presence:offline', refresh);
+    } catch(e) {}
+    _livePoll = setInterval(renderLive, 45000); // фолбэк-полл
+    // очистка при уходе со страницы
+    window.addEventListener('hashchange', function cleanup(){
+      if (location.hash.indexOf('command-map') === -1) {
+        try { _liveSSE && _liveSSE.close(); } catch(e){}
+        clearInterval(_livePoll);
+        window.removeEventListener('hashchange', cleanup);
+      }
+    });
 
     // карта
     const stage = document.getElementById('cmapStage');

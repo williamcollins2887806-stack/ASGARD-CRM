@@ -1190,6 +1190,17 @@ async function routes(fastify, options) {
 
       if (!rowCount) return reply.code(404).send({ error: 'Назначение не найдено или уже отмечен отъезд' });
 
+      // Снят с объекта → сбросить готовность в 'unknown' (если был 'on_site'),
+      // чтобы рабочему снова показался вопрос «готов на объект?». Не трогаем явные ready/not_ready/archive.
+      try {
+        await db.query(
+          `UPDATE employees
+             SET readiness_status = 'unknown', readiness_updated_at = NOW()
+           WHERE id = $1 AND COALESCE(readiness_status,'') IN ('on_site','')`,
+          [empId]
+        );
+      } catch (rErr) { fastify.log.warn('[departure] readiness reset: ' + rErr.message); }
+
       // Get employee name for notification
       const { rows: empRows } = await db.query(`SELECT fio FROM employees WHERE id = $1`, [empId]);
       const { rows: workRows } = await db.query(`SELECT work_title FROM works WHERE id = $1`, [workId]);
@@ -1228,6 +1239,15 @@ async function routes(fastify, options) {
       `, [workId, empId]);
 
       if (!rowCount) return reply.code(404).send({ error: 'Назначение не найдено или работник уже активен' });
+
+      // Вернулся на объект → снова «на объекте» (если не было явного ready/not_ready)
+      try {
+        await db.query(
+          `UPDATE employees SET readiness_status = 'on_site', last_work_id = $2, readiness_updated_at = NOW()
+           WHERE id = $1 AND COALESCE(readiness_status,'') IN ('unknown','ready','')`,
+          [empId, workId]
+        );
+      } catch (rErr) { fastify.log.warn('[return] readiness set: ' + rErr.message); }
 
       const { rows: empRows } = await db.query(`SELECT fio FROM employees WHERE id = $1`, [empId]);
       fastify.log.info(`[return] ${empRows[0]?.fio || empId} returned to work #${workId}`);

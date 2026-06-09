@@ -101,9 +101,13 @@ async function sseRoutes(fastify) {
     raw._sseRole = userRole;
     raw._sseUserId = userId;
 
-    // Добавляем в хранилище
+    // Добавляем в хранилище. Если это ПЕРВОЕ соединение пользователя — он стал онлайн.
+    const wasOffline = !clients.has(userId) || clients.get(userId).size === 0;
     if (!clients.has(userId)) clients.set(userId, new Set());
     clients.get(userId).add(raw);
+    if (wasOffline) {
+      try { broadcast('presence:online', { user_id: userId, ts: Date.now() }); } catch (_) {}
+    }
 
     // Heartbeat каждые 30 сек (чтобы соединение не рвалось)
     const heartbeat = setInterval(() => {
@@ -118,6 +122,8 @@ async function sseRoutes(fastify) {
         conns.delete(raw);
         if (conns.size === 0) {
           clients.delete(userId);
+          // Пользователь ушёл в офлайн — сообщаем всем (для живой карты офиса)
+          try { broadcast('presence:offline', { user_id: userId, ts: Date.now() }); } catch (_) {}
           // Auto-cleanup: если у пользователя нет активных SSE-соединений,
           // сбрасываем is_call_dispatcher через 60 секунд (даёт время на reconnect)
           setTimeout(async () => {
