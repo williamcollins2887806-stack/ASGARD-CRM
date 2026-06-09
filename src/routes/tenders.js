@@ -1317,6 +1317,12 @@ async function routes(fastify, options) {
 
     const contractValue = tender.submission_price || tender.tender_price || estimate?.price_tkp || null;
     const costPlan = estimate?.cost_plan || null;
+    // Предупреждение: у работы не определилась сумма договора — closeout потребует contract_value>0,
+    // поэтому такую работу нельзя будет закрыть, пока РП не проставит сумму вручную.
+    const contractMissing = (contractValue == null || Number(contractValue) <= 0);
+    if (contractMissing) {
+      fastify.log.warn(`[tender->work] tender #${id}: contract_value не определён (нет submission_price/tender_price/price_tkp) — работа создаётся без суммы`);
+    }
 
     // Привязка к объекту: если у тендера уже есть site_id — наследуем; иначе пробуем найти/создать
     // объект по региону (населённый пункт) с геокодированием. Координаты сами подтянутся → работа на карте.
@@ -1383,7 +1389,12 @@ async function routes(fastify, options) {
     });
 
     broadcast('tender:updated', { id, work_assigned_pm_id: pm_id });
-    return { success: true, work_id: work.id };
+    return {
+      success: true,
+      work_id: work.id,
+      contract_value_missing: contractMissing,
+      ...(contractMissing ? { warning: 'Сумма договора не определена — проставьте её в работе, иначе закрытие будет недоступно' } : {})
+    };
   });
 
   // GET /win-pending — тендеры со статусом «Выиграли» БЕЗ назначенной работы

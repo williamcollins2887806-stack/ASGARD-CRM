@@ -40,9 +40,10 @@ const ROLES_RW = ['PM', 'HEAD_PM', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DI
 async function routes(fastify, options) {
   const db = fastify.db;
 
-  // Простой in-memory кэш для батч-summary (списки РП/директора), TTL 60с
-  const summaryCache = new Map(); // workId -> { at, data }
-  const TTL = 60 * 1000;
+  // Общий кэш батч-summary (TTL 60с). Вынесен в helpers, чтобы works.js мог инвалидировать
+  // запись при смене статуса/назначений работы.
+  const summaryCache = require('../helpers/readiness-cache');
+  const TTL = summaryCache.TTL;
 
   // ─── helpers по этапам ────────────────────────────────────────────────────
 
@@ -277,11 +278,10 @@ async function routes(fastify, options) {
       const ids = idsRaw.split(',').map(s => parseInt(s.trim(), 10)).filter(Boolean).slice(0, 200);
       if (!ids.length) return {};
       const out = {};
-      const now = Date.now();
       const toCompute = [];
       for (const id of ids) {
-        const c = summaryCache.get(id);
-        if (c && (now - c.at) < TTL) out[id] = c.data;
+        const cached = summaryCache.get(id);
+        if (cached) out[id] = cached;
         else toCompute.push(id);
       }
       for (const id of toCompute) {
@@ -297,7 +297,7 @@ async function routes(fastify, options) {
           stages_total: full.stages_total,
           start_plan: full.start_plan,
         };
-        summaryCache.set(id, { at: now, data: slim });
+        summaryCache.set(id, slim);
         out[id] = slim;
       }
       return out;
@@ -329,7 +329,7 @@ async function routes(fastify, options) {
         DO UPDATE SET forced_done = EXCLUDED.forced_done, note = EXCLUDED.note,
                       created_by = EXCLUDED.created_by, created_at = NOW()
       `, [workId, stage, forced_done === true || forced_done === 'true', note || null, request.user.id]);
-      summaryCache.delete(workId);
+      summaryCache.invalidate(workId);
       return { ok: true };
     } catch (err) {
       fastify.log.error('[work-readiness] POST override:', err);
@@ -349,7 +349,7 @@ async function routes(fastify, options) {
         return reply.code(403).send({ error: 'Можно менять только свои работы' });
       }
       await db.query('DELETE FROM project_readiness_overrides WHERE work_id = $1 AND stage = $2', [workId, stage]);
-      summaryCache.delete(workId);
+      summaryCache.invalidate(workId);
       return { ok: true };
     } catch (err) {
       fastify.log.error('[work-readiness] DELETE override:', err);

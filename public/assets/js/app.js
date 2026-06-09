@@ -1545,14 +1545,16 @@ var _setupPinKeypad = null;
   async function showPresenceGate(){
     var auth = (window.AsgardAuth && AsgardAuth.getAuth) ? AsgardAuth.getAuth() : null;
     if (!auth || !auth.token) return;
-    var todayKey = 'presence_done_' + new Date().toISOString().slice(0,10);
-    if (localStorage.getItem(todayKey) === '1') return;  // уже отметился в этой сессии
 
     var info;
     try {
       var r = await fetch('/api/daily-presence/today', { headers: { 'Authorization': 'Bearer ' + auth.token } });
       info = await r.json();
     } catch(e) { return; }                 // сеть упала — не блокируем (fail-open)
+    // LS-флаг ключуем по ДАТЕ СЕРВЕРА (а не локальной UTC) — иначе в полночь рассинхрон TZ
+    var serverDate = (info && info.server_date) ? info.server_date : new Date().toISOString().slice(0,10);
+    var todayKey = 'presence_done_' + serverDate;
+    if (localStorage.getItem(todayKey) === '1') return;  // уже отметился сегодня
     if (!info || !info.required) { localStorage.setItem(todayKey, '1'); return; }
 
     // подгрузим объекты для статуса «на объекте»

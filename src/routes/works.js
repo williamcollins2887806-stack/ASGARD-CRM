@@ -304,6 +304,8 @@ async function routes(fastify, options) {
     const result = await db.query(sql, values);
     if (!result.rows[0]) return reply.code(404).send({ error: 'Не найдена' });
     const updated = result.rows[0];
+    // Сбросить кэш готовности — статус/назначения могли измениться (иначе list показывал бы stale in_prep)
+    try { require('../helpers/readiness-cache').invalidate(id); } catch (_) {}
     // Notify PM on status change
     if (data.work_status && oldWork.rows[0] && data.work_status !== oldWork.rows[0].work_status && updated.pm_id && updated.pm_id !== request.user.id) {
       createNotification(db, {
@@ -529,6 +531,8 @@ async function routes(fastify, options) {
         body.advance_date_fact, body.payment_date_fact, body.act_signed_date_fact,
         request.user.id, id
       ]);
+      // работа закрыта — сбросить кэш готовности
+      try { require('../helpers/readiness-cache').invalidate(id); } catch (_) {}
 
       // Сохранить оценки сотрудников
       if (Array.isArray(employee_ratings)) {

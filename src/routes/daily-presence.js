@@ -28,13 +28,22 @@ module.exports = async function (fastify, options) {
       if (!userId) { reply.code(401); return { error: 'no_user' }; }
 
       const { rows: [pr] } = await db.query(
-        `SELECT status, site_id, note FROM daily_presence WHERE user_id = $1 AND date = CURRENT_DATE`,
+        `SELECT status, site_id, note, to_char(CURRENT_DATE, 'YYYY-MM-DD') AS server_date
+         FROM daily_presence WHERE user_id = $1 AND date = CURRENT_DATE`,
         [userId]
       );
+      // server_date нужен всегда (даже если записи нет) — фронт ключует LS-флаг по дате сервера,
+      // чтобы не было рассинхрона UTC/локального времени в полночь
+      let serverDate = pr && pr.server_date;
+      if (!serverDate) {
+        const { rows: [d] } = await db.query(`SELECT to_char(CURRENT_DATE, 'YYYY-MM-DD') AS d`);
+        serverDate = d.d;
+      }
       const isOffice = OFFICE_ROLES.includes(role);
       return {
         required: isOffice && !pr,
-        presence: pr || null,
+        presence: pr ? { status: pr.status, site_id: pr.site_id, note: pr.note } : null,
+        server_date: serverDate,
         statuses: STATUSES
       };
     } catch (e) {
