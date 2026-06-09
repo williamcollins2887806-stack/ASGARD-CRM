@@ -55,7 +55,14 @@ window.AsgardDashboardPage = (function(){
     // === Статусы ===
     const WON_STATUSES = ['Выиграли'];
     const LOST_STATUSES = ['Проиграли'];
-    const DONE_STATUSES = ['Работы сдали', 'Закрыт'];
+    // Завершённые/закрытые/отменённые — ЗЕРКАЛО src/helpers/work-status.js (толерантно к вариантам).
+    const _DONE_SET = new Set([
+      'Закрыт','Закрыта','Закрыто','Работы сдали',
+      'Завершена','Завершено','Завершен','Завершён',
+      'Сдан','Сдана','Сдано',
+      'Отменена','Отменено','Отменён','Отменен','Отмена'
+    ].map(s => s.trim().toLowerCase()));
+    const DONE_STATUSES = { includes: (ws) => _DONE_SET.has(String(ws||'').trim().toLowerCase()) };
 
     const tenderMatchesYear = (t) => {
       if (Number(t.year) === currentYear) return true;

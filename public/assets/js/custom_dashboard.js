@@ -358,7 +358,7 @@ window.AsgardCustomDashboard = (function(){
   }
 
   async function renderMyWorks(el, user) {
-    const w = (await AsgardDB.getAll('works')||[]).filter(x=>x.pm_id===user.id&&!['Работы сдали','Закрыт'].includes(x.work_status)).slice(0,5);
+    const w = (await AsgardDB.getAll('works')||[]).filter(x=>x.pm_id===user.id&&!_isClosedWork(x.work_status)).slice(0,5);
     if (!w.length) { el.innerHTML = '<div class="help" style="text-align:center;padding:16px 0">Нет активных работ</div>'; return; }
     el.innerHTML = w.map(x=>'<div style="padding:10px 12px;margin-bottom:6px;background:var(--bg3);border-radius:var(--r-sm);border-left:3px solid var(--red)"><div style="font-weight:600;font-size:13px;color:var(--t1)">'+esc(x.work_title)+'</div><div style="font-size:12px;color:var(--t3);margin-top:2px">'+esc(x.customer_name)+' \u00B7 '+esc(x.work_status)+'</div></div>').join('');
   }
@@ -366,7 +366,19 @@ window.AsgardCustomDashboard = (function(){
   // ── Helpers готовности/статуса работ для виджетов РП и директора ──────────
   const _esc = (window.AsgardUI && AsgardUI.esc) ? AsgardUI.esc : (s => String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])));
   const PREP_SET = new Set(['Новая','Подготовка','Мобилизация']);
-  const CLOSED_SET = new Set(['Работы сдали','Закрыт']);
+  // Закрытые/завершённые + отменённые — ЗЕРКАЛО src/helpers/work-status.js (CLOSED+CANCELLED).
+  // На проде work_status — свободный текст: «Завершена», «Закрыта», «Сдан», «Отменена» и т.п.
+  // Старый список ['Работы сдали','Закрыт'] пропускал «Завершена» → закрытые+оплаченные работы
+  // ложно висели как «просроченные». Сравнение толерантное (trim+lower).
+  const _CLOSED_RAW = [
+    'Закрыт','Закрыта','Закрыто','Работы сдали',
+    'Завершена','Завершено','Завершен','Завершён',
+    'Сдан','Сдана','Сдано',
+    'Отменена','Отменено','Отменён','Отменен','Отмена'
+  ];
+  const CLOSED_SET = new Set(_CLOSED_RAW.map(s => s.trim().toLowerCase()));
+  // Толерантная проверка «работа закрыта/завершена/отменена» — едина для всех виджетов.
+  function _isClosedWork(ws){ return CLOSED_SET.has(String(ws||'').trim().toLowerCase()); }
   // Признак «в подготовке» — ТОЛЬКО статус (start_in_work_date на проде почти не заполняется).
   function _isPrep(w){ return PREP_SET.has(w.work_status||''); }
   function _readyColor(p){ return p>=80?'var(--ok-t)':(p>=50?'var(--amber,#e0a500)':'var(--err-t)'); }
@@ -417,7 +429,7 @@ window.AsgardCustomDashboard = (function(){
   // ── Виджет РП «Мои проекты»: 2 фазы (подготовка → готовность, в работе → статус) ──
   async function renderMyReadiness(el, user){
     const esc = AsgardUI.esc, money = AsgardUI.money;
-    const all = (await AsgardDB.getAll('works')||[]).filter(w => w.pm_id===user.id && !CLOSED_SET.has(w.work_status||''));
+    const all = (await AsgardDB.getAll('works')||[]).filter(w => w.pm_id===user.id && !_isClosedWork(w.work_status));
     if(!all.length){ el.innerHTML = '<div class="help" style="text-align:center;padding:16px 0">Нет активных проектов</div>'; return; }
     const prep = all.filter(_isPrep);
     const active = all.filter(w => !_isPrep(w));
@@ -519,7 +531,7 @@ window.AsgardCustomDashboard = (function(){
   // ── Виджет директора «Готовность по РП» ───────────────────────────────────
   async function renderDirectorReadiness(el, user){
     const esc = AsgardUI.esc, money = AsgardUI.money;
-    const works = (await AsgardDB.getAll('works')||[]).filter(w=>!CLOSED_SET.has(w.work_status||''));
+    const works = (await AsgardDB.getAll('works')||[]).filter(w=>!_isClosedWork(w.work_status));
     const users = (await AsgardDB.getAll('users')||[]);
     const userMap = new Map(users.map(u=>[u.id,u]));
     const prep = works.filter(_isPrep);
@@ -821,7 +833,7 @@ window.AsgardCustomDashboard = (function(){
     const now = new Date();
     const overdue = works.filter(w => {
       if (!w.end_plan) return false;
-      if (['Работы сдали','Закрыт'].includes(w.work_status)) return false;
+      if (_isClosedWork(w.work_status)) return false;
       return new Date(w.end_plan) < now;
     }).sort((a,b) => new Date(a.end_plan) - new Date(b.end_plan)).slice(0, 8);
 
@@ -952,7 +964,7 @@ window.AsgardCustomDashboard = (function(){
 
     const data = pmIds.map(pmId => {
       const pmWorks = works.filter(w => w.pm_id === pmId);
-      const completed = pmWorks.filter(w => ['\u0420\u0430\u0431\u043e\u0442\u044b \u0441\u0434\u0430\u043b\u0438','\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0430','\u0417\u0430\u043a\u0440\u044b\u0442'].includes(w.work_status)).length;
+      const completed = pmWorks.filter(w => _isClosedWork(w.work_status)).length;
       const active = pmWorks.length - completed;
       var name = userMap.get(pmId) || '';
       if (!name) { for (var [uid, fn] of empMap) { if (uid === pmId) { name = fn; break; } } }
@@ -1036,7 +1048,7 @@ window.AsgardCustomDashboard = (function(){
     const won = yTenders.filter(t => t.tender_status === 'Выиграли').length;
     const conv = yTenders.length > 0 ? Math.round((won / yTenders.length) * 100) : 0;
     const revenue = yWorks.reduce((s, w) => s + (Number(w.contract_value) || 0), 0);
-    const done = yWorks.filter(w => ['Работы сдали','Закрыт'].includes(w.work_status)).length;
+    const done = yWorks.filter(w => _isClosedWork(w.work_status)).length;
 
     el.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
       '<div style="text-align:center;padding:14px 18px;background:var(--bg3);border-radius:var(--r-md);border:1px solid var(--brd)"><div style="font-size:10px;color:var(--t3);text-transform:uppercase;font-weight:800;letter-spacing:0.05em">Тендеров</div><div style="font-size:24px;font-weight:900;color:var(--red)">' + yTenders.length + '</div></div>' +
@@ -1051,7 +1063,7 @@ window.AsgardCustomDashboard = (function(){
     const now = new Date();
     const soon = works.filter(w => {
       if (!w.end_plan) return false;
-      if (['Работы сдали','Закрыт'].includes(w.work_status)) return false;
+      if (_isClosedWork(w.work_status)) return false;
       const d = new Date(w.end_plan);
       const days = Math.round((d - now) / 86400000);
       return days >= 0 && days <= 30;

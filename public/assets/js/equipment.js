@@ -80,6 +80,15 @@ window.AsgardEquipment = (function () {
     return safe.replace(re, '<mark class="fk-hl">$1</mark>');
   }
 
+  // Закрытые/завершённые/отменённые работы — ЗЕРКАЛО src/helpers/work-status.js (толерантно).
+  const _CLOSED_WORK = new Set([
+    'Закрыт','Закрыта','Закрыто','Работы сдали',
+    'Завершена','Завершено','Завершен','Завершён',
+    'Сдан','Сдана','Сдано',
+    'Отменена','Отменено','Отменён','Отменен','Отмена'
+  ].map(s => s.trim().toLowerCase()));
+  const _isClosedWork = ws => _CLOSED_WORK.has(String(ws||'').trim().toLowerCase());
+
   /* --- A13: Deduplicated option helpers --- */
   function optionsHtml(list, valueFn, labelFn, selectedVal) {
     return list.map(i => {
@@ -92,7 +101,7 @@ window.AsgardEquipment = (function () {
   const objOpts = (sel) => optionsHtml(objects, o=>o.id, o=>o.name, sel);
   const whOpts  = (sel) => optionsHtml(warehouses, w=>w.id, w=>w.name, sel);
   const pmOpts  = (sel) => optionsHtml(pmList, p=>p.id, p=>p.name, sel);
-  const workOpts = (sel) => optionsHtml(worksList.filter(w=>!['Работы сдали','Закрыт'].includes(w.work_status)), w=>w.id, w=>(w.work_number||'')+' — '+(w.work_title||w.customer_name||''), sel);
+  const workOpts = (sel) => optionsHtml(worksList.filter(w=>!_isClosedWork(w.work_status)), w=>w.id, w=>(w.work_number||'')+' — '+(w.work_title||w.customer_name||''), sel);
   const statusFilterOpts = () => Object.entries(STATUS).filter(([k])=>k!=='written_off').map(([k,v])=>'<option value="'+k+'">'+v.i+' '+v.l+'</option>').join('');
   const condOpts = (sel) => Object.entries(COND).map(([k,v])=>'<option value="'+k+'"'+(sel===k?' selected':'')+'>'+v.l+'</option>').join('');
 
@@ -101,7 +110,7 @@ window.AsgardEquipment = (function () {
   const _objArr = () => objects.map(o => ({ value: String(o.id), label: o.name }));
   const _whArr  = () => warehouses.map(w => ({ value: String(w.id), label: w.name }));
   const _pmArr  = () => pmList.map(p => ({ value: String(p.id), label: p.name }));
-  const _workArr = () => worksList.filter(w=>!['Работы сдали','Закрыт'].includes(w.work_status)).map(w => ({ value: String(w.id), label: (w.work_number||'')+' — '+(w.work_title||w.customer_name||'') }));
+  const _workArr = () => worksList.filter(w=>!_isClosedWork(w.work_status)).map(w => ({ value: String(w.id), label: (w.work_number||'')+' — '+(w.work_title||w.customer_name||'') }));
   const _condArr = () => Object.entries(COND).map(([k,v]) => ({ value: k, label: v.l }));
   const _unitArr = () => ['шт','м','кг','л','компл'].map(u => ({ value: u, label: u }));
   const _statusFilterArr = () => Object.entries(STATUS).filter(([k])=>k!=='written_off').map(([k,v]) => ({ value: k, label: v.i + ' ' + v.l }));

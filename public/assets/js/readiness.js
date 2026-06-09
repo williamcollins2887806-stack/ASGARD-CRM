@@ -9,7 +9,15 @@ window.AsgardReadiness = (function(){
     : (s => String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])));
 
   const PREP = new Set(['Новая','Подготовка','Мобилизация']);
-  const CLOSED = new Set(['Работы сдали','Закрыт']);
+  // Закрытые/завершённые/отменённые — ЗЕРКАЛО src/helpers/work-status.js (толерантно).
+  const _CLOSED_RAW = [
+    'Закрыт','Закрыта','Закрыто','Работы сдали',
+    'Завершена','Завершено','Завершен','Завершён',
+    'Сдан','Сдана','Сдано',
+    'Отменена','Отменено','Отменён','Отменен','Отмена'
+  ];
+  const _CLOSED_N = new Set(_CLOSED_RAW.map(s => s.trim().toLowerCase()));
+  const CLOSED = { has: (ws) => _CLOSED_N.has(String(ws||'').trim().toLowerCase()) };
   const isPrep = w => PREP.has(w.work_status||'');
   const readyColor = p => p>=80 ? 'var(--ok-t)' : (p>=50 ? 'var(--amber,#e0a500)' : 'var(--err-t)');
 

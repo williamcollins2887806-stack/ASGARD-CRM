@@ -15,6 +15,17 @@ window.AsgardBigScreen = (function(){
   const SLIDE_INTERVAL = 60000; // 60 секунд
   const DATA_REFRESH   = 300000; // обновление данных каждые 5 мин
 
+  // Закрытые/завершённые/отменённые работы — ЗЕРКАЛО src/helpers/work-status.js.
+  // Старый список ['Работы сдали','Закрыт'] пропускал «Завершена»/«Закрыта»/«Отменена» →
+  // закрытые+оплаченные работы ложно считались активными и «просроченными».
+  const _CLOSED_WORK = new Set([
+    'Закрыт','Закрыта','Закрыто','Работы сдали',
+    'Завершена','Завершено','Завершен','Завершён',
+    'Сдан','Сдана','Сдано',
+    'Отменена','Отменено','Отменён','Отменен','Отмена'
+  ].map(s => s.trim().toLowerCase()));
+  function _isClosedWork(ws){ return _CLOSED_WORK.has(String(ws||'').trim().toLowerCase()); }
+
   function _m(n) { return AsgardUI.money(n) + ' ₽'; }
   function _short(x) {
     const n = Number(x) || 0;
@@ -431,9 +442,9 @@ window.AsgardBigScreen = (function(){
     const won = yT.filter(t => t.tender_status === 'Выиграли').length;
     const yW = d.works.filter(w => { const dt = w.start_fact || w.start_plan || w.start_in_work_date || w.created_at; return dt && new Date(dt).getFullYear() === d.y; });
     const revenue = yW.reduce((s, w) => s + (Number(w.contract_value) || 0), 0);
-    const done = yW.filter(w => ['Работы сдали','Закрыт'].includes(w.work_status)).length;
-    const active = yW.filter(w => !['Работы сдали','Закрыт'].includes(w.work_status)).length;
-    const overdue = yW.filter(w => w.end_plan && !['Работы сдали','Закрыт'].includes(w.work_status) && new Date(w.end_plan) < d.now).length;
+    const done = yW.filter(w => _isClosedWork(w.work_status)).length;
+    const active = yW.filter(w => !_isClosedWork(w.work_status)).length;
+    const overdue = yW.filter(w => w.end_plan && !_isClosedWork(w.work_status) && new Date(w.end_plan) < d.now).length;
     const teamActive = d.users.filter(u => u.is_active).length;
     const conv = _pct(won, yT.length);
 
@@ -552,9 +563,9 @@ window.AsgardBigScreen = (function(){
     const pms = d.users.filter(u => u.is_active && (pmRoles.has(u.role) || pmIds.has(u.id)));
     const rows = pms.map(pm => {
       const pw = d.works.filter(w => w.pm_id === pm.id);
-      const active = pw.filter(w => !['Работы сдали','Закрыт'].includes(w.work_status)).length;
-      const completed = pw.filter(w => ['Работы сдали','Закрыт'].includes(w.work_status)).length;
-      const overdue = pw.filter(w => w.end_plan && !['Работы сдали','Закрыт'].includes(w.work_status) && new Date(w.end_plan) < d.now).length;
+      const active = pw.filter(w => !_isClosedWork(w.work_status)).length;
+      const completed = pw.filter(w => _isClosedWork(w.work_status)).length;
+      const overdue = pw.filter(w => w.end_plan && !_isClosedWork(w.work_status) && new Date(w.end_plan) < d.now).length;
       const contract = pw.reduce((s,w) => s + (Number(w.contract_value) || 0), 0);
       return { name: pm.name, active, completed, overdue, total: pw.length, contract };
     }).sort((a,b) => b.contract - a.contract).slice(0, 10);
@@ -583,7 +594,7 @@ window.AsgardBigScreen = (function(){
   // ───────────────────────────────────────────────────────
   function slideActiveWorks(d) {
     const byPm = new Map(d.users.map(u => [u.id, u.name]));
-    const activeW = d.works.filter(w => !['Работы сдали','Закрыт'].includes(w.work_status))
+    const activeW = d.works.filter(w => !_isClosedWork(w.work_status))
       .sort((a,b) => (Number(b.contract_value)||0) - (Number(a.contract_value)||0))
       .slice(0, 10);
 
@@ -616,7 +627,7 @@ window.AsgardBigScreen = (function(){
   // ───────────────────────────────────────────────────────
   function slideOverdue(d) {
     const byPm = new Map(d.users.map(u => [u.id, u.name]));
-    const overdue = d.works.filter(w => w.end_plan && !['Работы сдали','Закрыт'].includes(w.work_status) && new Date(w.end_plan) < d.now)
+    const overdue = d.works.filter(w => w.end_plan && !_isClosedWork(w.work_status) && new Date(w.end_plan) < d.now)
       .sort((a,b) => new Date(a.end_plan) - new Date(b.end_plan)).slice(0, 10);
 
     if (!overdue.length) {

@@ -2,6 +2,8 @@
  * Works Routes
  */
 
+const { notClosedSql, closedSql } = require('../helpers/work-status');
+
 // SECURITY: Allowlist of columns for works
 const ALLOWED_COLS = new Set([
   'tender_id', 'pm_id', 'work_number', 'work_title', 'work_status',
@@ -396,9 +398,9 @@ async function routes(fastify, options) {
         u.role,
         u.employment_date,
         COUNT(w.id) as total_works,
-        COUNT(w.id) FILTER (WHERE w.work_status NOT IN ('Работы сдали', 'Закрыт')) as active,
-        COUNT(w.id) FILTER (WHERE w.work_status = 'Работы сдали') as completed,
-        COUNT(w.id) FILTER (WHERE w.end_plan < NOW() AND w.work_status NOT IN ('Работы сдали', 'Закрыт')) as overdue,
+        COUNT(w.id) FILTER (WHERE ${notClosedSql('w.work_status')}) as active,
+        COUNT(w.id) FILTER (WHERE ${closedSql('w.work_status')}) as completed,
+        COUNT(w.id) FILTER (WHERE w.end_plan < NOW() AND ${notClosedSql('w.work_status')}) as overdue,
         COALESCE(SUM(w.contract_value), 0) as total_contract,
         COALESCE(SUM(w.cost_plan), 0) as total_cost_plan,
         COALESCE(SUM(w.cost_fact), 0) as total_cost_fact,
@@ -424,9 +426,9 @@ async function routes(fastify, options) {
     const deptTotal = await db.query(`
       SELECT
         COUNT(*) as total,
-        COUNT(*) FILTER (WHERE work_status NOT IN ('Работы сдали', 'Закрыт')) as active,
-        COUNT(*) FILTER (WHERE work_status = 'Работы сдали') as completed,
-        COUNT(*) FILTER (WHERE end_plan < NOW() AND work_status NOT IN ('Работы сдали', 'Закрыт')) as overdue,
+        COUNT(*) FILTER (WHERE ${notClosedSql('work_status')}) as active,
+        COUNT(*) FILTER (WHERE ${closedSql('work_status')}) as completed,
+        COUNT(*) FILTER (WHERE end_plan < NOW() AND ${notClosedSql('work_status')}) as overdue,
         COALESCE(SUM(contract_value), 0) as total_contract,
         COALESCE(SUM(contract_value), 0) - COALESCE(SUM(cost_fact), 0) as total_profit
       FROM works
