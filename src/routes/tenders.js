@@ -1301,7 +1301,7 @@ async function routes(fastify, options) {
     const { rows: [pm] } = await db.query('SELECT id, name FROM users WHERE id = $1 AND is_active = true', [pm_id]);
     if (!pm) return reply.code(400).send({ error: 'РП не найден или неактивен' });
 
-    // Идемпотентность: если работа по этому тендеру уже создана — не дублировать
+    // Быстрая проверка (без гонки — окончательная защита ниже под advisory-локом)
     const { rows: existing } = await db.query('SELECT id FROM works WHERE tender_id = $1', [id]);
     if (existing.length > 0) {
       return reply.code(409).send({ error: `Работа по этому тендеру уже создана (id=${existing[0].id})` });
@@ -1326,16 +1326,37 @@ async function routes(fastify, options) {
       catch (geoErr) { fastify.log.warn('[tender->work] geocode site failed: ' + geoErr.message); }
     }
 
-    const { rows: [work] } = await db.query(`
-      INSERT INTO works (
-        tender_id, pm_id, customer_name, work_title, work_status,
-        start_in_work_date, end_plan, contract_value, cost_plan, comment, site_id,
-        created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, 'Подготовка', $5, $6, $7, $8, $9, $10, NOW(), NOW())
-      RETURNING id
-    `, [id, pm_id, tender.customer_name, tender.tender_title,
-        tender.work_start_plan || null, tender.work_end_plan || null,
-        contractValue, costPlan, work_comment || null, siteId]);
+    // Атомарное создание под advisory-локом на выделенном соединении — иначе в READ COMMITTED
+    // два параллельных запроса не видят незакоммиченную строку друг друга и создают дубль.
+    let work;
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock($1, $2)', [101, parseInt(id)]); // namespace 101 = tender->work
+      const { rows: re } = await client.query('SELECT id FROM works WHERE tender_id = $1 ORDER BY id LIMIT 1', [id]);
+      if (re.length) {
+        await client.query('ROLLBACK');
+        return reply.code(409).send({ error: `Работа по этому тендеру уже создана (id=${re[0].id})` });
+      }
+      const { rows: insRows } = await client.query(`
+        INSERT INTO works (
+          tender_id, pm_id, customer_name, work_title, work_status, work_kind,
+          start_in_work_date, end_plan, contract_value, cost_plan, comment, site_id,
+          created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, 'Подготовка', 'main', $5, $6, $7, $8, $9, $10, NOW(), NOW())
+        RETURNING id
+      `, [id, pm_id, tender.customer_name, tender.tender_title,
+          tender.work_start_plan || null, tender.work_end_plan || null,
+          contractValue, costPlan, work_comment || null, siteId]);
+      await client.query('COMMIT');
+      work = insRows[0];
+    } catch (txErr) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+      fastify.log.error('[tender->work] tx error:', txErr);
+      return reply.code(500).send({ error: 'Ошибка создания работы' });
+    } finally {
+      client.release();
+    }
 
     // Фиксируем что работа назначена — для блокировки повторного назначения
     await db.query(`

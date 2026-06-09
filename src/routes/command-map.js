@@ -25,6 +25,7 @@ module.exports = async function (fastify, options) {
                s.customer_name, s.address
         FROM sites s
         ORDER BY s.name
+        LIMIT 500
       `);
       if (!sites.length) return { sites: [] };
 

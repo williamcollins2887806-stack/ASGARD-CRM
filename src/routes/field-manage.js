@@ -1212,6 +1212,14 @@ async function routes(fastify, options) {
       const workId = parseInt(req.params.work_id);
       const empId  = parseInt(req.params.employee_id);
 
+      // Нельзя «вернуть» работника на закрытую/удалённую работу
+      const { rows: [wk] } = await db.query('SELECT work_status, deleted_at FROM works WHERE id = $1', [workId]);
+      if (!wk || wk.deleted_at) return reply.code(404).send({ error: 'Работа не найдена' });
+      { const { isClosedOrCancelled } = require('../helpers/work-status');
+        if (isClosedOrCancelled(wk.work_status || '')) {
+          return reply.code(409).send({ error: `Работа в статусе «${wk.work_status}» — вернуть работника нельзя` });
+        } }
+
       const { rowCount } = await db.query(`
         UPDATE employee_assignments
         SET departure_date = NULL, departure_reason = NULL, is_active = true, updated_at = NOW()

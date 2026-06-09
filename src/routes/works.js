@@ -168,6 +168,22 @@ async function routes(fastify, options) {
       if (body.work_title && body.work_title.length > 1000) {
         body.work_title = body.work_title.substring(0, 1000);
       }
+      // Если задан tender_id — тендер должен существовать и быть выигран (защита от orphan/обхода воронки).
+      // И не даём создать вторую основную работу по уже отработанному тендеру.
+      if (body.tender_id) {
+        const { rows: [tnd] } = await db.query('SELECT tender_status FROM tenders WHERE id = $1', [body.tender_id]);
+        if (!tnd) return reply.code(400).send({ error: 'Тендер не найден' });
+        if (tnd.tender_status !== 'Выиграли') {
+          return reply.code(400).send({ error: 'Работу можно привязать только к выигранному тендеру' });
+        }
+        const { rows: dup } = await db.query(
+          `SELECT id FROM works WHERE tender_id = $1 AND COALESCE(work_kind,'main') = 'main' AND deleted_at IS NULL`,
+          [body.tender_id]
+        );
+        if (dup.length) return reply.code(409).send({ error: `Основная работа по тендеру уже есть (id=${dup[0].id})` });
+      }
+      // work_kind по умолчанию — main (нужно для аддендумов; раньше оставался NULL)
+      if (!body.work_kind) body.work_kind = 'main';
       // Объект по населённому пункту: если передан object_place и нет site_id — найдём/создадим объект (геокод)
       if (!body.site_id && (body.object_place || '').trim()) {
         try {
@@ -461,15 +477,19 @@ async function routes(fastify, options) {
         });
       }
 
-      // Валидировать обязательные поля
-      const { end_fact, cost_fact, contract_value } = body;
+      // Валидировать обязательные поля.
+      // cost_fact — АВТОРИТЕТ: сумма work_expenses (триггер V070). Closeout его НЕ перезаписывает,
+      // а лишь синхронизирует из work_expenses, чтобы значение не расходилось с расходами.
+      const { end_fact, contract_value } = body;
       if (!end_fact) return reply.code(400).send({ error: 'Обязательное поле: end_fact' });
-      if (cost_fact == null || isNaN(Number(cost_fact)) || Number(cost_fact) <= 0) {
-        return reply.code(400).send({ error: 'Обязательное поле: cost_fact (> 0)' });
-      }
       if (contract_value == null || isNaN(Number(contract_value)) || Number(contract_value) <= 0) {
         return reply.code(400).send({ error: 'Обязательное поле: contract_value (> 0)' });
       }
+      // фактическая себестоимость = сумма расходов работы (источник истины)
+      const { rows: [costRow] } = await db.query(
+        'SELECT COALESCE(SUM(amount), 0) AS cf FROM work_expenses WHERE work_id = $1', [id]
+      );
+      const costFactComputed = Number(costRow.cf) || 0;
 
       // Валидировать оценки сотрудников
       const { employee_ratings, customer_rating } = body;
@@ -491,7 +511,7 @@ async function routes(fastify, options) {
         UPDATE works SET
           work_status = 'Работы сдали',
           end_fact = $1,
-          cost_fact = $2,
+          cost_fact = $2,                       -- синхронизируем с суммой work_expenses (источник истины)
           contract_value = $3,
           advance_received = COALESCE($4, advance_received),
           balance_received = COALESCE($5, balance_received),
@@ -504,7 +524,7 @@ async function routes(fastify, options) {
           updated_at = NOW()
         WHERE id = $10 AND deleted_at IS NULL RETURNING *
       `, [
-        end_fact, cost_fact, contract_value,
+        end_fact, costFactComputed, contract_value,
         body.advance_received, body.balance_received,
         body.advance_date_fact, body.payment_date_fact, body.act_signed_date_fact,
         request.user.id, id
@@ -889,8 +909,9 @@ module.exports = async function worksWithAddendum(fastify, options) {
     if (!parent) {
       return reply.code(404).send({ error: 'Родительская работа не найдена' });
     }
-    if (parent.work_kind !== 'main') {
-      return reply.code(400).send({ error: 'Нельзя создать ДС на ДС — родительская работа должна быть main' });
+    // Родитель не должен быть сам аддендумом. NULL/'main' — валидный родитель (legacy/обычные работы).
+    if (parent.work_kind === 'addendum' || parent.parent_work_id) {
+      return reply.code(400).send({ error: 'Нельзя создать ДС на ДС — родительская работа должна быть основной' });
     }
 
     // Нумерация ДС-1, ДС-2…

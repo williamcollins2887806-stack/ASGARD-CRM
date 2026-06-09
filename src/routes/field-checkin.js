@@ -7,6 +7,8 @@
  * GET  /today    — today's checkins for project (master/PM)
  */
 
+const { closedSql } = require('../helpers/work-status');
+
 const FIELD_QUOTES_SHIFT_START = [
   'Slavnoj smeny, voin! Valhalla gorditsya toboj',
   'V boj! Pust etot den budet legendoj',
@@ -98,15 +100,27 @@ async function routes(fastify, options) {
         return reply.code(400).send({ error: 'Укажите work_id' });
       }
 
-      // Check assignment exists and is active
+      // Check assignment exists and is active + работа открыта (не закрыта/сдана/удалена)
       const { rows: assignments } = await db.query(`
-        SELECT id, field_role, shift_type FROM employee_assignments
-        WHERE employee_id = $1 AND work_id = $2 AND is_active = true
+        SELECT ea.id, ea.field_role, ea.shift_type,
+               w.work_status, (w.deleted_at IS NOT NULL) AS work_deleted
+        FROM employee_assignments ea
+        JOIN works w ON w.id = ea.work_id
+        WHERE ea.employee_id = $1 AND ea.work_id = $2 AND ea.is_active = true
         LIMIT 1
       `, [empId, work_id]);
 
       if (assignments.length === 0) {
         return reply.code(403).send({ error: 'Нет активного назначения на этот проект' });
+      }
+      if (assignments[0].work_deleted) {
+        return reply.code(409).send({ error: 'Работа удалена — отметка на смене невозможна' });
+      }
+      // работа закрыта/сдана/отменена → нельзя отмечаться (иначе расходы на финализированную работу)
+      const _ws = assignments[0].work_status || '';
+      const { isClosedOrCancelled } = require('../helpers/work-status');
+      if (isClosedOrCancelled(_ws)) {
+        return reply.code(409).send({ error: `Работа в статусе «${_ws}» — отметка на смене невозможна` });
       }
 
       const assignmentId = assignments[0].id;
@@ -476,15 +490,24 @@ async function routes(fastify, options) {
         return reply.code(403).send({ error: 'Только мастер может отмечать вручную' });
       }
 
-      // Check worker has assignment
+      // Check worker has assignment + работа открыта
       const { rows: workerAssign } = await db.query(
-        `SELECT id FROM employee_assignments WHERE employee_id = $1 AND work_id = $2 AND is_active = true LIMIT 1`,
+        `SELECT ea.id, w.work_status, (w.deleted_at IS NOT NULL) AS work_deleted
+         FROM employee_assignments ea JOIN works w ON w.id = ea.work_id
+         WHERE ea.employee_id = $1 AND ea.work_id = $2 AND ea.is_active = true LIMIT 1`,
         [employee_id, work_id]
       );
 
       if (workerAssign.length === 0) {
         return reply.code(400).send({ error: 'Сотрудник не назначен на этот проект' });
       }
+      if (workerAssign[0].work_deleted) {
+        return reply.code(409).send({ error: 'Работа удалена — отметка невозможна' });
+      }
+      { const { isClosedOrCancelled } = require('../helpers/work-status');
+        if (isClosedOrCancelled(workerAssign[0].work_status || '')) {
+          return reply.code(409).send({ error: `Работа в статусе «${workerAssign[0].work_status}» — отметка невозможна` });
+        } }
 
       const checkinDate = date || new Date().toISOString().split('T')[0];
       const checkinTime = checkin_at || new Date().toISOString();
