@@ -14,9 +14,31 @@
  */
 
 const { notClosedSql } = require('../helpers/work-status');
+const activity = require('../services/presence-activity');
 
 module.exports = async function (fastify, options) {
   const db = fastify.db;
+
+  // ─────────────────────────────────────────────────────────────────
+  // POST /api/daily-presence/heartbeat — пульс активности для «живого офиса» (Фаза 3)
+  //   body: { page?:string, act?:'coffee'|'smoke'|'lunch'|null }. Эфемерно (in-memory).
+  // ─────────────────────────────────────────────────────────────────
+  fastify.post('/heartbeat', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const userId = request.user && request.user.id;
+    if (!userId) { reply.code(401); return { error: 'no_user' }; }
+    const b = request.body || {};
+    activity.beat(userId, b.page, b.act);
+    return { ok: true };
+  });
+
+  // POST /api/daily-presence/self-act — самоотметка ☕/💨/🍖 (или снять: act=null)
+  fastify.post('/self-act', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const userId = request.user && request.user.id;
+    if (!userId) { reply.code(401); return { error: 'no_user' }; }
+    const act = (request.body || {}).act || null;
+    activity.setSelfAct(userId, act);
+    return { ok: true, act };
+  });
 
   // офисные роли, которым ОБЯЗАТЕЛЬНО отмечаться.
   // ADMIN намеренно исключён: это техническая/системная учётка (единственный админ в СРМ,

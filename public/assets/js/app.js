@@ -215,7 +215,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/dashboard",l:"Дашборд руководителя",d:"Сводная аналитика",roles:["ADMIN",...DIRECTOR_ROLES],i:"dashboard",p:"dashboard",g:"home"},
     {r:"/my-dashboard",l:"Мой дашборд",d:"Настраиваемые виджеты",roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES,...HEAD_ROLES],i:"dashboard",p:"my_dashboard",g:"home"},
     {r:"/big-screen",l:"Большой Экран",d:"Авто-ротация KPI для монитора",roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES],i:"dashboard",p:"big_screen",g:"home"},
-    {r:"/command-map",l:"Живая карта",d:"Объекты, вахта, рейсы по датам",roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES],i:"dashboard",p:"command_map",g:"home"},
+    {r:"/command-map",l:"Командный экран",d:"Живой офис: люди, объекты, вахта, рейсы",roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES],i:"dashboard",p:"command_map",g:"home"},
     {r:"/calendar",l:"Календарь встреч",d:"Совещания и события",roles:ALL_ROLES,i:"schedule",p:"calendar",g:"home"},
     {r:"/birthdays",l:"Дни рождения",d:"Офисный календарь ДР",roles:ALL_ROLES,i:"birthdays",p:"birthdays",g:"home"},
     {r:"/tasks",l:"Мои задачи",d:"Задачи и Todo-список",roles:ALL_ROLES,i:"approvals",p:"tasks",g:"home"},
@@ -2312,7 +2312,8 @@ AsgardRouter.add("/assembly", ()=>AsgardAssemblyPage.render({layout, title:"Сб
     // M15: Аналитика для руководителей отделов
     AsgardRouter.add("/to-analytics", ()=>AsgardTOAnalytics.render({layout, title:"Хроники Тендерного Отдела"}), {auth:true, roles:["ADMIN","HEAD_TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/pm-analytics", ()=>AsgardPMAnalytics.render({layout, title:"Хроники Руководителей Проектов"}), {auth:true, roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES]});
-    AsgardRouter.add("/command-map", ()=>AsgardCommandMap.render({layout, title:"Живая карта"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES]});
+    AsgardRouter.add("/command-map", ()=>AsgardOfficeLive.render({layout, title:"Командный экран"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES]});
+    AsgardRouter.add("/command-map-flat", ()=>AsgardCommandMap.render({layout, title:"Гео-карта"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES]});
     AsgardRouter.add("/readiness", ()=>AsgardReadiness.renderPM({layout, title:"Готовность проектов"}), {auth:true, roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES]});
     AsgardRouter.add("/readiness-board", ()=>AsgardReadiness.renderDirector({layout, title:"Готовность по РП"}), {auth:true, roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES]});
     AsgardRouter.add("/engineer-dashboard", ()=>AsgardEngineerDashboard.render({layout, title:"Кузница Инженера"}), {auth:true, roles:["ADMIN","CHIEF_ENGINEER"]});
@@ -2576,6 +2577,24 @@ AsgardRouter.add("/assembly", ()=>AsgardAssemblyPage.render({layout, title:"Сб
           }
         } catch(e) {}
         AsgardRouter.start();
+        /* Пульс активности для «живого офиса» (#/command-map): шлём текущую страницу каждые ~30с.
+           idle-детект и текущая страница вычисляются на бэке (in-memory). Только для залогиненных. */
+        try {
+          if (!window.__asgPresenceHB) {
+            window.__asgPresenceHB = setInterval(function(){
+              try {
+                var a = AsgardAuth.getAuth();
+                if (!a || !a.token || !a.user) return;
+                if (document.hidden) return; // вкладка в фоне — не «активен»
+                fetch('/api/daily-presence/heartbeat', {
+                  method:'POST',
+                  headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+a.token },
+                  body: JSON.stringify({ page: (location.hash||'').replace(/^#\//,'').split('?')[0] || 'home' })
+                }).catch(function(){});
+              } catch(e){}
+            }, 30000);
+          }
+        } catch(e) {}
         /* Session Guard — инициализация для уже залогиненных */
         try {
           if (window.AsgardSessionGuard) {

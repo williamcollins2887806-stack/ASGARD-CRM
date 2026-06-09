@@ -196,6 +196,83 @@ module.exports = async function (fastify, options) {
   });
 
   // ─────────────────────────────────────────────────────────────────
+  // GET /api/command-map/site/:id/crew — экипаж объекта ПОИМЁННО, со статусом (для фигур на карте)
+  //   status: 'medical' (медосмотр) → 'transit' (в пути) → 'site' (на смене сегодня) → 'rest' (на объекте, не на смене)
+  // ─────────────────────────────────────────────────────────────────
+  fastify.get('/site/:id/crew', { preHandler: [fastify.requireRoles(MAP_ROLES)] }, async (request, reply) => {
+    try {
+      const siteId = parseInt(request.params.id, 10);
+      if (!siteId) { reply.code(400); return { error: 'bad_site_id' }; }
+
+      // работы этого объекта
+      const { rows: works } = await db.query(
+        `SELECT id FROM works WHERE site_id = $1 AND deleted_at IS NULL`, [siteId]);
+      const workIds = works.map(w => w.id);
+      if (!workIds.length) return { site_id: siteId, crew: [] };
+
+      // активные назначения (ещё не убывшие) + сотрудник
+      const { rows: assigns } = await db.query(`
+        SELECT ea.employee_id, ea.work_id, ea.field_role,
+               e.fio, e.full_name
+        FROM employee_assignments ea
+        JOIN employees e ON e.id = ea.employee_id
+        WHERE ea.work_id = ANY($1::int[])
+          AND ea.is_active = true
+          AND (ea.departure_date IS NULL OR ea.departure_date > CURRENT_DATE)
+      `, [workIds]);
+      if (!assigns.length) return { site_id: siteId, crew: [] };
+
+      const empIds = [...new Set(assigns.map(a => a.employee_id))];
+
+      // на смене сегодня (field_checkins активные)
+      const { rows: cks } = await db.query(`
+        SELECT DISTINCT employee_id FROM field_checkins
+        WHERE work_id = ANY($1::int[]) AND date = CURRENT_DATE AND status = 'active'
+      `, [workIds]);
+      const onShift = new Set(cks.map(r => r.employee_id));
+
+      // активные этапы поездки (медосмотр / транзит) по сотруднику
+      const { rows: stages } = await db.query(`
+        SELECT employee_id, stage_type FROM field_trip_stages
+        WHERE work_id = ANY($1::int[])
+          AND COALESCE(status,'') NOT IN ('done','completed','closed','cancelled')
+          AND COALESCE(date_to, CURRENT_DATE) >= CURRENT_DATE
+      `, [workIds]);
+      const stageByEmp = {};
+      stages.forEach(s => {
+        const t = String(s.stage_type || '').toLowerCase();
+        // приоритет medical > transit
+        const cur = stageByEmp[s.employee_id];
+        if (t.includes('medical') || t.includes('медос')) stageByEmp[s.employee_id] = 'medical';
+        else if (!cur && (t.includes('transit') || t.includes('travel') || t.includes('доро') || t.includes('переезд'))) stageByEmp[s.employee_id] = 'transit';
+      });
+
+      // собрать: один человек = одна фигура (берём первое назначение)
+      const seen = new Set();
+      const crew = [];
+      assigns.forEach(a => {
+        if (seen.has(a.employee_id)) return;
+        seen.add(a.employee_id);
+        const master = ['shift_master', 'senior_master'].includes(a.field_role);
+        let status = stageByEmp[a.employee_id]
+          || (onShift.has(a.employee_id) ? 'site' : 'rest');
+        crew.push({
+          employee_id: a.employee_id,
+          name: a.full_name || a.fio || ('Раб. #' + a.employee_id),
+          master,
+          status
+        });
+      });
+
+      return { site_id: siteId, crew };
+    } catch (e) {
+      request.log.error(e);
+      reply.code(500);
+      return { error: 'site_crew_failed', message: e.message };
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────
   // GET /api/command-map/live — живой офис: кто где сегодня (staff_plan) + онлайн (SSE) + на звонке
   // ─────────────────────────────────────────────────────────────────
   const PRESENCE_LABELS = {
@@ -226,19 +303,34 @@ module.exports = async function (fastify, options) {
         ORDER BY u.name
       `);
 
+      // активность (Фаза 3): idle / текущая страница / самоотметка ☕💨🍖 (in-memory)
+      let act = {};
+      try { act = require('../services/presence-activity').snapshot(rows.map(r => r.user_id)); } catch (_) {}
+      const SELF_ACT_LABEL = { coffee: 'кофе-пауза', smoke: 'перекур', lunch: 'обед' };
+
       const people = rows.map(r => {
         const online = onlineSet.has(Number(r.user_id));
+        const a = act[r.user_id] || {};
+        const selfAct = a.selfAct || null;        // coffee/smoke/lunch
+        const idle = online && a.idle && !r.on_call && !selfAct;
+        // что делает (приоритет: самоотметка → на звонке → idle(отошёл) → онлайн+статус → статус дня → офлайн)
+        let doing;
+        if (selfAct) doing = SELF_ACT_LABEL[selfAct] || selfAct;
+        else if (r.on_call) doing = 'на звонке';
+        else if (idle) doing = 'отошёл';
+        else if (online) doing = r.status_code ? (PRESENCE_LABELS[r.status_code] || r.status_code) : 'в СРМ';
+        else doing = r.status_code ? (PRESENCE_LABELS[r.status_code] || r.status_code) : null;
         return {
           user_id: r.user_id, name: r.name, role: r.role,
           online,
           on_call: !!r.on_call,
+          idle: !!idle,
+          self_act: selfAct,
+          page: a.page || null,
           status_code: r.status_code || null,
           status_label: r.status_code ? (PRESENCE_LABELS[r.status_code] || r.status_code) : null,
           work: r.work_id ? { id: r.work_id, title: r.work_title } : null,
-          // что делает сейчас (приоритет: на звонке → онлайн+статус → статус дня → не отмечен)
-          doing: r.on_call ? 'на звонке'
-               : (online ? (r.status_code ? (PRESENCE_LABELS[r.status_code] || r.status_code) : 'онлайн')
-                         : (r.status_code ? (PRESENCE_LABELS[r.status_code] || r.status_code) : null))
+          doing
         };
       });
 
@@ -246,6 +338,8 @@ module.exports = async function (fastify, options) {
         total: people.length,
         online: people.filter(p => p.online).length,
         on_call: people.filter(p => p.on_call).length,
+        idle: people.filter(p => p.idle).length,
+        coffee: people.filter(p => p.self_act).length,
         marked: people.filter(p => p.status_code).length
       };
       return { people, summary, server_ts: Date.now() };
