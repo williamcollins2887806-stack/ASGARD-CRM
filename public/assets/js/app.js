@@ -1541,7 +1541,8 @@ var _setupPinKeypad = null;
     try { if (window.AsgardSessionGuard) AsgardSessionGuard.init(); } catch(e) { console.warn("[SessionGuard] init error:", e); }
   }
 
-  // ─── ГЕЙТ присутствия «где я сегодня» (блокирующая модалка для офиса) ───
+  // ─── ГЕЙТ присутствия «отметка в дружину» (блокирующая модалка для офиса) ───
+  // Источник = staff_plan (тот же, что у «Графика офиса»). Отметка сразу видна в графике.
   async function showPresenceGate(){
     var auth = (window.AsgardAuth && AsgardAuth.getAuth) ? AsgardAuth.getAuth() : null;
     if (!auth || !auth.token) return;
@@ -1557,23 +1558,18 @@ var _setupPinKeypad = null;
     if (localStorage.getItem(todayKey) === '1') return;  // уже отметился сегодня
     if (!info || !info.required) { localStorage.setItem(todayKey, '1'); return; }
 
-    // подгрузим объекты для статуса «на объекте»
-    var sites = [];
-    try {
-      var sr = await fetch('/api/sites', { headers: { 'Authorization': 'Bearer ' + auth.token } });
-      var sd = await sr.json();
-      sites = Array.isArray(sd) ? sd : (sd.sites || []);
-    } catch(e) {}
-
-    var userName = (auth.user && auth.user.name) ? auth.user.name : '';
-    var OPTS = [
-      { k:'office',   t:'🏢 Офис' },
-      { k:'remote',   t:'🏠 Удалёнка' },
-      { k:'object',   t:'🚌 На объекте' },
-      { k:'trip',     t:'🛒 Командировка' },
-      { k:'vacation', t:'🌴 Отпуск' },
-      { k:'sick',     t:'🤒 Больничный' }
+    var statuses = (info.statuses && info.statuses.length) ? info.statuses : [
+      {code:'оф',label:'В офисе',emoji:'🏢'},{code:'уд',label:'Удалёнка',emoji:'🏠'},
+      {code:'км',label:'Командировка',emoji:'🚗'},{code:'бн',label:'Больничный',emoji:'🤒'},
+      {code:'сс',label:'За свой счёт',emoji:'🌴'},{code:'вх',label:'Выходной',emoji:'🛌'}
     ];
+    var works = info.works || [];   // ТОЛЬКО мои активные работы (для «На объекте»)
+
+    function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+    var userName = (auth.user && auth.user.name) ? auth.user.name : '';
+    var firstName = userName ? userName.trim().split(/\s+/).slice(-1)[0] : '';   // имя из ФИО (последнее слово)
+    // викинг-приветствие, без фамильярного обращения по фамилии
+    var greet = firstName ? ('Привет, ' + esc(firstName) + '!') : 'Доброго дня, воин!';
 
     return new Promise(function(resolve){
       var ov = document.createElement('div');
@@ -1581,52 +1577,61 @@ var _setupPinKeypad = null;
       ov.setAttribute('style',
         'position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;'+
         'background:rgba(6,9,16,0.94);backdrop-filter:blur(6px);');
-      var siteOpts = sites.map(function(s){ return '<option value="'+s.id+'">'+(s.name||('Объект #'+s.id))+'</option>'; }).join('');
+      var workOpts = works.map(function(w){
+        var place = w.place ? (' · ' + esc(w.place)) : '';
+        return '<option value="'+w.id+'">'+esc(w.title)+place+'</option>';
+      }).join('');
       ov.innerHTML =
-        '<div style="width:min(440px,92vw);background:#0e1422;border:1px solid #2a3550;border-radius:18px;'+
-        'padding:26px 24px;box-shadow:0 20px 60px #000a;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#e9eff8">'+
-          '<div style="font-size:20px;font-weight:800;margin-bottom:4px">Где вы сегодня'+(userName?(', '+userName.split(' ')[0]):'')+'?</div>'+
-          '<div style="font-size:13px;opacity:.65;margin-bottom:18px">Отметьте присутствие, чтобы продолжить работу в СРМ. Без отметки доступ закрыт.</div>'+
-          '<div id="pg-opts" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"></div>'+
-          '<div id="pg-site-wrap" style="display:none;margin-top:14px">'+
-            '<label style="font-size:12px;opacity:.7">Объект</label>'+
-            '<select id="pg-site" style="width:100%;margin-top:5px;padding:10px;border-radius:10px;background:#111726;color:#e9eff8;border:1px solid #2a3550">'+siteOpts+'</select>'+
+        '<div style="width:min(460px,93vw);background:linear-gradient(160deg,#10182b,#161019);border:1px solid #2a3550;border-radius:18px;'+
+        'padding:26px 24px;box-shadow:0 20px 60px #000a, inset 0 0 0 1px #d8b15a22;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#e9eff8">'+
+          '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'+
+            '<span style="font-size:24px">🛡️</span>'+
+            '<div style="font-size:20px;font-weight:900;letter-spacing:.3px;'+
+              'background:linear-gradient(90deg,#6aa6ff,#ffd36a);-webkit-background-clip:text;background-clip:text;color:transparent">'+greet+'</div>'+
+          '</div>'+
+          '<div style="font-size:13.5px;opacity:.75;margin-bottom:4px">Отметься в дружину — где ты сегодня держишь строй?</div>'+
+          '<div style="font-size:11.5px;opacity:.5;margin-bottom:16px">Без отметки чертог закрыт. Запись попадёт в «График офиса».</div>'+
+          '<div id="pg-opts" style="display:grid;grid-template-columns:1fr 1fr;gap:9px"></div>'+
+          '<div id="pg-work-wrap" style="display:none;margin-top:14px">'+
+            '<label style="font-size:12px;opacity:.7">Твоя работа</label>'+
+            '<select id="pg-work" style="width:100%;margin-top:5px;padding:10px;border-radius:10px;background:#111726;color:#e9eff8;border:1px solid #2a3550">'+workOpts+'</select>'+
           '</div>'+
           '<div id="pg-err" style="color:#f85149;font-size:12px;margin-top:10px;min-height:16px"></div>'+
           '<button id="pg-save" style="width:100%;margin-top:8px;padding:13px;border:none;border-radius:11px;cursor:pointer;'+
-            'background:linear-gradient(135deg,#1f6fff,#7a3aff);color:#fff;font-size:15px;font-weight:800">Отметиться и войти</button>'+
+            'background:linear-gradient(135deg,#1f6fff,#7a3aff);color:#fff;font-size:15px;font-weight:800">⚔ В строй</button>'+
         '</div>';
       document.body.appendChild(ov);
 
       var chosen = null;
       var optsBox = ov.querySelector('#pg-opts');
-      OPTS.forEach(function(o){
+      statuses.forEach(function(o){
         var b = document.createElement('button');
-        b.textContent = o.t;
-        b.setAttribute('data-k', o.k);
-        b.setAttribute('style','padding:13px 10px;border-radius:11px;cursor:pointer;font-size:14px;font-weight:700;'+
-          'background:#111726;border:1.5px solid #243049;color:#cdd9ec;transition:.15s');
+        b.textContent = (o.emoji?o.emoji+' ':'') + o.label;
+        b.setAttribute('data-k', o.code);
+        b.setAttribute('style','padding:12px 10px;border-radius:11px;cursor:pointer;font-size:13.5px;font-weight:700;'+
+          'background:#111726;border:1.5px solid #243049;color:#cdd9ec;transition:.15s;text-align:left');
         b.addEventListener('click', function(){
-          chosen = o.k;
+          chosen = o.code;
           Array.prototype.forEach.call(optsBox.children, function(x){
             x.style.borderColor = '#243049'; x.style.background = '#111726'; x.style.color = '#cdd9ec';
           });
-          b.style.borderColor = '#1f6fff'; b.style.background = '#16203a'; b.style.color = '#fff';
-          ov.querySelector('#pg-site-wrap').style.display = (o.k === 'object') ? 'block' : 'none';
+          b.style.borderColor = '#d8b15a'; b.style.background = '#1a2236'; b.style.color = '#fff';
+          ov.querySelector('#pg-work-wrap').style.display = (o.code === 'об') ? 'block' : 'none';
+          ov.querySelector('#pg-err').textContent = '';
         });
         optsBox.appendChild(b);
       });
 
-      // блокируем Esc/клик-вне — модалку нельзя закрыть без выбора
+      // блокируем клик-вне — модалку нельзя закрыть без выбора
       ov.addEventListener('click', function(e){ if (e.target === ov) e.stopPropagation(); });
 
       ov.querySelector('#pg-save').addEventListener('click', async function(){
         var errEl = ov.querySelector('#pg-err');
-        if (!chosen) { errEl.textContent = 'Выберите, где вы сегодня'; return; }
-        var siteId = null;
-        if (chosen === 'object') {
-          siteId = parseInt(ov.querySelector('#pg-site') && ov.querySelector('#pg-site').value, 10) || null;
-          if (!siteId) { errEl.textContent = 'Выберите объект'; return; }
+        if (!chosen) { errEl.textContent = 'Выбери, где ты сегодня'; return; }
+        var workId = null;
+        if (chosen === 'об') {
+          workId = parseInt(ov.querySelector('#pg-work') && ov.querySelector('#pg-work').value, 10) || null;
+          if (!workId) { errEl.textContent = 'Выбери работу'; return; }
         }
         var btn = ov.querySelector('#pg-save');
         btn.disabled = true; btn.textContent = 'Сохранение...';
@@ -1634,15 +1639,15 @@ var _setupPinKeypad = null;
           var resp = await fetch('/api/daily-presence', {
             method: 'POST',
             headers: { 'Authorization': 'Bearer ' + auth.token, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: chosen, site_id: siteId })
+            body: JSON.stringify({ status_code: chosen, work_id: workId })
           });
           if (!resp.ok) throw new Error('save failed');
           localStorage.setItem(todayKey, '1');
           ov.remove();
           resolve();
         } catch(e) {
-          errEl.textContent = 'Не удалось сохранить. Повторите.';
-          btn.disabled = false; btn.textContent = 'Отметиться и войти';
+          errEl.textContent = 'Не удалось сохранить. Повтори.';
+          btn.disabled = false; btn.textContent = '⚔ В строй';
         }
       });
     });
