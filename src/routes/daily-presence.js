@@ -18,10 +18,13 @@ const { notClosedSql } = require('../helpers/work-status');
 module.exports = async function (fastify, options) {
   const db = fastify.db;
 
-  // офисные роли, которым ОБЯЗАТЕЛЬНО отмечаться
+  // офисные роли, которым ОБЯЗАТЕЛЬНО отмечаться.
+  // ADMIN намеренно исключён: это техническая/системная учётка (единственный админ в СРМ,
+  // у неё стоит ФИО владельца) — она не «ходит в офис» как сотрудник и не должна плодить
+  // фантомную отметку в «Графике офиса» параллельно рабочему аккаунту человека.
   const OFFICE_ROLES = [
     'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'PROC', 'BUH', 'OFFICE_MANAGER', 'CHIEF_ENGINEER',
-    'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'ADMIN'
+    'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'
   ];
   const BOARD_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HR', 'HR_MANAGER', 'HEAD_PM', 'HEAD_TO'];
 
