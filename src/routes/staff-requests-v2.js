@@ -584,7 +584,15 @@ async function routes(fastify, options) {
       WHERE request_id = $1 AND status = 'approved'
     `, [id]);
 
+    // Название объекта для уведомления рабочему
+    let workTitle = `#${req.work_id}`;
+    try {
+      const { rows: [w] } = await db.query('SELECT work_title FROM works WHERE id = $1', [req.work_id]);
+      if (w && w.work_title) workTitle = w.work_title;
+    } catch (e) { /* не критично */ }
+
     let added = 0;
+    const notified = [];
     for (const a of assignments) {
       await db.query(`
         INSERT INTO employee_assignments (employee_id, work_id, is_active, created_at)
@@ -603,6 +611,14 @@ async function routes(fastify, options) {
       `, [request.user.id, req.work_id, a.employee_id]);
 
       added++;
+
+      // Уведомление рабочему: push (если есть user-аккаунт) + MAX → SMS fallback
+      try {
+        const ok = await notifyWorkerAddedToCrew(a.employee_id, req.work_id, workTitle);
+        if (ok) notified.push(a.employee_id);
+      } catch (e) {
+        fastify.log.error('[staff-requests] notify add-to-crew error: ' + e.message);
+      }
     }
 
     await db.query(`
@@ -610,8 +626,64 @@ async function routes(fastify, options) {
       WHERE id = $1
     `, [id]);
 
-    return { ok: true, added };
+    return { ok: true, added, notified: notified.length };
   });
+
+  // Уведомить рабочего о добавлении в бригаду: push + MAX → SMS fallback.
+  // Возвращает true, если хотя бы один канал сработал.
+  async function notifyWorkerAddedToCrew(employeeId, workId, workTitle) {
+    const { rows: [emp] } = await db.query(
+      'SELECT user_id, phone, fio FROM employees WHERE id = $1', [employeeId]
+    );
+    if (!emp) return false;
+
+    const title = '⚔️ Вы добавлены в бригаду';
+    const msg = `Вы назначены на объект «${workTitle}». Подготовьтесь к выезду.`;
+    let delivered = false;
+
+    // 1. In-app push / SSE / Telegram (если рабочий привязан к users)
+    if (emp.user_id) {
+      try {
+        const { createNotification } = require('../services/notify');
+        createNotification(db, {
+          user_id: emp.user_id, title, message: msg, type: 'crew', link: '#/field'
+        });
+        delivered = true;
+      } catch (e) { fastify.log.error('[staff-requests] push notify error: ' + e.message); }
+    }
+
+    // 2. MAX-мессенджер (личный max_user_id из активного назначения)
+    let maxOk = false;
+    try {
+      const maxMessenger = require('../services/max-messenger');
+      if (maxMessenger.isEnabled()) {
+        const { rows: [ea] } = await db.query(
+          `SELECT max_user_id FROM employee_assignments
+           WHERE employee_id = $1 AND work_id = $2 AND max_user_id IS NOT NULL
+           ORDER BY is_active DESC, created_at DESC LIMIT 1`,
+          [employeeId, workId]
+        );
+        if (ea && ea.max_user_id) {
+          await maxMessenger.sendMessage(ea.max_user_id, `${title}\n${msg}`);
+          maxOk = true; delivered = true;
+        }
+      }
+    } catch (e) { fastify.log.error('[staff-requests] MAX notify error: ' + e.message); }
+
+    // 3. SMS fallback (если MAX не доставлен и есть телефон)
+    if (!maxOk && emp.phone) {
+      try {
+        const { getMangoService } = require('../services/mango');
+        const mango = getMangoService();
+        if (mango && mango.isConfigured()) {
+          await mango.sendSms(null, emp.phone, `${title}. ${msg}`);
+          delivered = true;
+        }
+      } catch (e) { fastify.log.error('[staff-requests] SMS notify error: ' + e.message); }
+    }
+
+    return delivered;
+  }
 
   // ─── GET /:id/available-workers ───────────────────────────────────────────
   fastify.get('/:id/available-workers', { preHandler: [fastify.requireRoles(HR_ROLES)] }, async (request, reply) => {
