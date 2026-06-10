@@ -363,9 +363,11 @@ module.exports = async function (fastify, options) {
         LEFT JOIN works w ON w.id = sp.work_id
         WHERE u.is_active = true
           AND u.role NOT IN ('FIELD_WORKER','BOT')
-          AND lower(COALESCE(u.login,'')) NOT LIKE 'test%'
+          -- тестовые/демо аккаунты на карту НЕ показываем (по логину и по имени)
+          AND lower(COALESCE(u.login,'')) !~ '^(test|demo|temp|qa|проба|пробн)'
           AND lower(COALESCE(u.name,'')) NOT LIKE '%тест%'
           AND lower(COALESCE(u.name,'')) NOT LIKE '%test%'
+          AND lower(COALESCE(u.name,'')) NOT LIKE '%demo%'
         ORDER BY u.name
       `);
 
