@@ -5,6 +5,7 @@ window.AsgardOfficeSchedulePage=(function(){
   const STATUS = [
     {code:"оф", label:"В офисе",             color:"var(--blue-l)"},
     {code:"уд", label:"Удалёнка",           color:"#0ea5e9"},
+    {code:"об", label:"На объекте",         color:"#22C55E"},
     {code:"бн", label:"На больничном",      color:"var(--err-t)"},
     {code:"сс", label:"За свой счёт",       color:"var(--amber)"},
     {code:"км", label:"Командировка",       color:"var(--purple)"},
