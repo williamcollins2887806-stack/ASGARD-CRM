@@ -101,12 +101,26 @@ async function routes(fastify, options) {
       if (!approvedByEmp[a.employee_id]) approvedByEmp[a.employee_id] = a;
     }
 
-    // Документы — просрочка / скоро истекут
+    // Документы — просрочка / скоро истекут.
+    // Просроченный допуск НЕ считается проблемой, если у рабочего есть другой
+    // действующий допуск того же типа (свежая замена скрывает старый дубль).
     const { rows: permits } = await db.query(`
       SELECT
         ep.employee_id,
-        COUNT(*) FILTER (WHERE ep.expiry_date IS NOT NULL AND ep.expiry_date < CURRENT_DATE)                                            AS expired,
-        COUNT(*) FILTER (WHERE ep.expiry_date IS NOT NULL AND ep.expiry_date >= CURRENT_DATE AND ep.expiry_date < CURRENT_DATE + INTERVAL '30 days') AS expiring
+        COUNT(*) FILTER (
+          WHERE ep.expiry_date IS NOT NULL AND ep.expiry_date < CURRENT_DATE
+          AND NOT EXISTS (
+            SELECT 1 FROM employee_permits fresh
+            WHERE fresh.employee_id = ep.employee_id
+              AND COALESCE(fresh.is_active, true) = true
+              AND fresh.id <> ep.id
+              AND COALESCE(fresh.type_id::text, lower(fresh.permit_type)) = COALESCE(ep.type_id::text, lower(ep.permit_type))
+              AND (fresh.expiry_date IS NULL OR fresh.expiry_date >= CURRENT_DATE)
+          )
+        ) AS expired,
+        COUNT(*) FILTER (
+          WHERE ep.expiry_date IS NOT NULL AND ep.expiry_date >= CURRENT_DATE AND ep.expiry_date < CURRENT_DATE + INTERVAL '30 days'
+        ) AS expiring
       FROM employee_permits ep
       WHERE ep.employee_id = ANY($1::int[])
         AND COALESCE(ep.is_active, true) = true

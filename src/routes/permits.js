@@ -313,7 +313,26 @@ module.exports = async function(fastify) {
         notes || null, request.user.id
       ]);
 
-      return { permit: result.rows[0] };
+      const newPermit = result.rows[0];
+
+      // Дубли документов: если добавлен новый действующий допуск того же типа —
+      // старые ПРОСРОЧЕННЫЕ допуски того же типа авто-архивируются (is_active=false),
+      // чтобы красная метка не горела при наличии свежей замены.
+      let archivedDupes = 0;
+      const newIsValid = !expiry_date || new Date(expiry_date) >= new Date(new Date().toDateString());
+      if (newIsValid && type_id) {
+        const arch = await db.query(`
+          UPDATE employee_permits
+          SET is_active = false, updated_at = NOW()
+          WHERE employee_id = $1 AND type_id = $2 AND id <> $3
+            AND COALESCE(is_active, true) = true
+            AND expiry_date IS NOT NULL AND expiry_date < CURRENT_DATE
+          RETURNING id
+        `, [employee_id, type_id, newPermit.id]);
+        archivedDupes = arch.rows.length;
+      }
+
+      return { permit: newPermit, archived_dupes: archivedDupes };
     } catch (err) {
       if (err.code === '23503') return reply.code(400).send({ error: 'Связанная запись не найдена (FK violation)', detail: err.message });
       if (err.code === '23505') return reply.code(409).send({ error: 'Допуск уже существует', detail: err.message });
