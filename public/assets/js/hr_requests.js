@@ -424,6 +424,20 @@ window.AsgardHrRequestsPage = (function () {
               ${marker ? `<button class="btn mini ghost" data-delmarker="${marker.id}">Отменить «не требуются»</button>`
                        : `<button class="btn mini ghost" data-noreq="${b.key}">Не требуются</button>`}
             </div>
+            <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center">
+              <input data-custname="${b.key}" placeholder="Свой допуск (нет в списке)…" style="font-size:12px;min-width:200px;padding:3px 6px;border:1px solid var(--bd);border-radius:var(--r-sm);background:var(--bg2);color:var(--t1)">
+              <select data-custcat="${b.key}" style="font-size:12px">
+                <option value="special">Спецработы</option>
+                <option value="safety">Безопасность</option>
+                <option value="electric">Электрика</option>
+                <option value="gas">Газоопасные</option>
+                <option value="medical">Медицина</option>
+                <option value="attest">Аттестация</option>
+                <option value="offshore">Шельф / Морские</option>
+                <option value="transport">Транспорт</option>
+              </select>
+              <button class="btn mini ghost" data-addcust="${b.key}">+ Своё</button>
+            </div>
           </div>`;
       }).join('');
       box.innerHTML = inner;
@@ -443,6 +457,19 @@ window.AsgardHrRequestsPage = (function () {
         const rk = btn.getAttribute('data-noreq');
         try {
           await apiPost(`/api/permits/work/${wId}/requirements`, { no_permits_required: true, role_key: rk || null }, token);
+          await renderPermitsBlock(wId);
+        } catch (e) { toast('Ошибка', e.message, 'err'); }
+      }));
+      box.querySelectorAll('[data-addcust]').forEach(btn => btn.addEventListener('click', async () => {
+        const rk = btn.getAttribute('data-addcust');
+        const nameEl = box.querySelector(`[data-custname="${rk}"]`);
+        const catEl = box.querySelector(`[data-custcat="${rk}"]`);
+        const name = nameEl && nameEl.value.trim();
+        if (!name || name.length < 3) { toast('Допуск', 'Введите название (от 3 символов)', 'err'); return; }
+        try {
+          await apiPost(`/api/permits/work/${wId}/requirements/custom`,
+            { name, category: (catEl && catEl.value) || 'special', role_key: rk || null, is_mandatory: true }, token);
+          permitTypesCache = null; // сбросить кэш — новый тип появился в справочнике
           await renderPermitsBlock(wId);
         } catch (e) { toast('Ошибка', e.message, 'err'); }
       }));

@@ -549,6 +549,59 @@ module.exports = async function(fastify) {
     return { requirement: result.rows[0] || null };
   });
 
+  // POST /api/permits/work/:workId/requirements/custom — РП пишет допуск вручную
+  // Создаёт новый permit_type (которого нет в справочнике) и сразу делает его
+  // требованием работы. Доступно тем же ролям, что и обычные требования.
+  fastify.post('/work/:workId/requirements/custom', {
+    preHandler: [fastify.requirePermission('permits', 'write')]
+  }, async (request, reply) => {
+    const workId = parseInt(request.params.workId);
+    if (isNaN(workId)) return reply.code(400).send({ error: 'Invalid workId' });
+
+    const { name, category, role_key, is_mandatory } = request.body || {};
+    if (!name || String(name).trim().length < 3) {
+      return reply.code(400).send({ error: 'Название допуска — не менее 3 символов' });
+    }
+    const cat = category || 'special';
+
+    try {
+      // 1) Ищем уже существующий тип с таким названием (без дублей)
+      const { rows: found } = await db.query(
+        `SELECT id FROM permit_types WHERE lower(name) = lower($1) LIMIT 1`,
+        [String(name).trim()]
+      );
+      let permitTypeId;
+      if (found.length) {
+        permitTypeId = found[0].id;
+      } else {
+        // 2) Создаём кастомный тип (is_system=false, помечаем кто создал)
+        const code = 'custom_' + Date.now();
+        const { rows: ord } = await db.query(
+          'SELECT COALESCE(MAX(sort_order), 0) + 10 AS next_order FROM permit_types'
+        );
+        const { rows: created } = await db.query(`
+          INSERT INTO permit_types (code, name, category, sort_order, is_system, is_active, created_by, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, false, true, $5, NOW(), NOW())
+          RETURNING id
+        `, [code, String(name).trim(), cat, ord[0].next_order, request.user.id]);
+        permitTypeId = created[0].id;
+      }
+
+      // 3) Привязываем к работе как требование (без дублей)
+      const { rows: reqRows } = await db.query(`
+        INSERT INTO work_permit_requirements (work_id, permit_type_id, is_mandatory, notes, role_key, no_permits_required, created_at)
+        VALUES ($1, $2, $3, NULL, $4, false, NOW())
+        ON CONFLICT (work_id, COALESCE(role_key, ''), permit_type_id) DO NOTHING
+        RETURNING *
+      `, [workId, permitTypeId, is_mandatory !== false, role_key || null]);
+
+      return { requirement: reqRows[0] || null, permit_type_id: permitTypeId, created: !found.length };
+    } catch (e) {
+      fastify.log.error('[permits] custom requirement error: ' + e.message);
+      return reply.code(500).send({ error: e.message });
+    }
+  });
+
   // DELETE /api/permits/work/:workId/requirements/:id — Удалить требование
   fastify.delete('/work/:workId/requirements/:id', {
     preHandler: [fastify.requirePermission('permits', 'write')]

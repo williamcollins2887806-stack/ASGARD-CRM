@@ -76,6 +76,64 @@ export default function StaffRequests() {
   const [formRoles, setFormRoles] = useState({});
   const [formSaving, setFormSaving] = useState(false);
 
+  // Допуски (требования к объекту по должностям)
+  const [permitTypes, setPermitTypes] = useState([]);
+  const [workReqs, setWorkReqs] = useState([]);        // work_permit_requirements
+  const [missingRoles, setMissingRoles] = useState([]); // подсветка из 409
+  const [customName, setCustomName] = useState({});     // role_key -> name
+  const [selType, setSelType] = useState({});           // role_key -> permit_type_id
+
+  const loadWorkReqs = useCallback(async (wId) => {
+    if (!wId) { setWorkReqs([]); return; }
+    try {
+      const r = await api.get(`/permits/work/${wId}/requirements`);
+      setWorkReqs(r?.requirements || api.extractRows(r) || []);
+    } catch { setWorkReqs([]); }
+  }, []);
+
+  const addReq = async (roleKey, permitTypeId) => {
+    if (!formWorkId || !permitTypeId) return;
+    haptic.medium();
+    try {
+      await api.post(`/permits/work/${formWorkId}/requirements`,
+        { permit_type_id: Number(permitTypeId), role_key: roleKey || null, is_mandatory: true });
+      setSelType(prev => ({ ...prev, [roleKey || '']: '' }));
+      await loadWorkReqs(formWorkId);
+    } catch (e) { haptic.error(); setFormError(e.message); }
+  };
+
+  const addNoReq = async (roleKey) => {
+    if (!formWorkId) return;
+    haptic.medium();
+    try {
+      await api.post(`/permits/work/${formWorkId}/requirements`,
+        { no_permits_required: true, role_key: roleKey || null });
+      await loadWorkReqs(formWorkId);
+    } catch (e) { haptic.error(); setFormError(e.message); }
+  };
+
+  const addCustomReq = async (roleKey) => {
+    const name = (customName[roleKey || ''] || '').trim();
+    if (!formWorkId || name.length < 3) { setFormError('Название допуска — от 3 символов'); return; }
+    haptic.medium();
+    try {
+      await api.post(`/permits/work/${formWorkId}/requirements/custom`,
+        { name, category: 'special', role_key: roleKey || null, is_mandatory: true });
+      setCustomName(prev => ({ ...prev, [roleKey || '']: '' }));
+      const t = await api.get('/permits/types'); setPermitTypes(t?.types || api.extractRows(t) || []);
+      await loadWorkReqs(formWorkId);
+    } catch (e) { haptic.error(); setFormError(e.message); }
+  };
+
+  const delReq = async (id) => {
+    if (!formWorkId) return;
+    haptic.light();
+    try {
+      await api.delete(`/permits/work/${formWorkId}/requirements/${id}`);
+      await loadWorkReqs(formWorkId);
+    } catch (e) { haptic.error(); setFormError(e.message); }
+  };
+
   const fetchRequests = useCallback(async () => {
     setLoading(true);
     try {
@@ -97,8 +155,19 @@ export default function StaffRequests() {
       const res = await api.get('/works?status=active&limit=100');
       setWorks(api.extractRows(res) || []);
     } catch { setWorks([]); }
+    try {
+      const t = await api.get('/permits/types');
+      setPermitTypes(t?.types || api.extractRows(t) || []);
+    } catch { setPermitTypes([]); }
+    setMissingRoles([]);
+    if (formWorkId) loadWorkReqs(formWorkId);
     setShowCreate(true);
   };
+
+  // Перезагружать требования при смене объекта
+  useEffect(() => {
+    if (showCreate) { setMissingRoles([]); loadWorkReqs(formWorkId); }
+  }, [formWorkId, showCreate, loadWorkReqs]);
 
   const [formError, setFormError] = useState(null);
 
@@ -143,7 +212,21 @@ export default function StaffRequests() {
       const created = await api.post('/staff-requests', buildBody());
       const draftId = created?.id || created?.request?.id;
       if (draftId) {
-        await api.put(`/staff-requests/${draftId}/submit`);
+        try {
+          await api.put(`/staff-requests/${draftId}/submit`);
+        } catch (e) {
+          // 409 — не заданы требуемые допуска для должностей
+          if (e.status === 409 && e.body && e.body.missing_roles) {
+            setMissingRoles(e.body.missing_roles);
+            setFormError(e.body.error || 'Заполните требуемые допуска для должностей');
+            await loadWorkReqs(formWorkId);
+            haptic.error();
+            setFormSaving(false);
+            await fetchRequests(); // черновик уже создан — обновим список
+            return;
+          }
+          throw e;
+        }
       }
       haptic.success();
       setShowCreate(false);
@@ -219,6 +302,7 @@ export default function StaffRequests() {
     setFormWorkId(''); setFormDateFrom(''); setFormDescription('');
     setFormFood('ration'); setFormHousing('wagon'); setFormRotation('45/15');
     setFormRoles({});
+    setWorkReqs([]); setMissingRoles([]); setCustomName({}); setSelType({});
   };
 
   const updateRoleCount = (key, delta) => {
@@ -465,6 +549,81 @@ export default function StaffRequests() {
             </div>
           </div>
 
+          {/* Требуемые допуска по должностям */}
+          {formWorkId && (
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider mb-2 c-tertiary">Требуемые допуска</p>
+              {(() => {
+                const activeRoles = ROLES.filter(r => (formRoles[r.key] || 0) > 0);
+                const blocks = [{ key: '', label: 'Для всех должностей' }]
+                  .concat(activeRoles.map(r => ({ key: r.key, label: r.label })));
+                if (!activeRoles.length) {
+                  return <p className="text-[11px] c-tertiary">Укажите количество по ролям выше, затем задайте допуска.</p>;
+                }
+                const byRole = {};
+                workReqs.forEach(w => { const k = w.role_key || ''; (byRole[k] = byRole[k] || []).push(w); });
+                return blocks.map(b => {
+                  const list = byRole[b.key] || [];
+                  const marker = list.find(x => x.no_permits_required);
+                  const perms = list.filter(x => !x.no_permits_required && x.permit_type_id);
+                  const isMissing = missingRoles.includes(b.key);
+                  return (
+                    <div key={b.key || '_all'} className="mb-2 px-3 py-2 rounded-lg"
+                      style={{ backgroundColor: 'var(--bg-primary)',
+                        border: `1px solid ${isMissing ? 'var(--err-t)' : 'var(--border-norse)'}` }}>
+                      <p className="text-xs font-semibold mb-1 c-primary">
+                        {b.label}{isMissing && <span style={{ color: 'var(--err-t)' }}> — заполните</span>}
+                      </p>
+                      {marker ? (
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] c-tertiary">Допуска не требуются</span>
+                          <button onClick={() => delReq(marker.id)} className="text-[11px]" style={{ color: 'var(--err-t)' }}>отменить</button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5 mb-1.5">
+                          {perms.length ? perms.map(p => (
+                            <span key={p.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px]"
+                              style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)' }}>
+                              {p.type_name || `#${p.permit_type_id}`}
+                              <button onClick={() => delReq(p.id)} style={{ color: 'var(--err-t)' }}>✕</button>
+                            </span>
+                          )) : <span className="text-[11px] c-tertiary">—</span>}
+                        </div>
+                      )}
+                      {!marker && (
+                        <>
+                          <div className="flex gap-1.5 mb-1.5">
+                            <select value={selType[b.key] || ''} onChange={e => setSelType(prev => ({ ...prev, [b.key]: e.target.value }))}
+                              className="flex-1 px-2 py-1.5 rounded-lg text-xs"
+                              style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }}>
+                              <option value="">+ из списка…</option>
+                              {permitTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                            </select>
+                            <button onClick={() => addReq(b.key, selType[b.key])}
+                              className="px-3 py-1.5 rounded-lg text-xs font-semibold spring-tap"
+                              style={{ background: 'color-mix(in srgb, var(--blue) 20%, transparent)', color: 'var(--blue)' }}>Добавить</button>
+                          </div>
+                          <div className="flex gap-1.5">
+                            <input value={customName[b.key] || ''} onChange={e => setCustomName(prev => ({ ...prev, [b.key]: e.target.value }))}
+                              placeholder="Свой допуск (нет в списке)…"
+                              className="flex-1 px-2 py-1.5 rounded-lg text-xs"
+                              style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }} />
+                            <button onClick={() => addCustomReq(b.key)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-semibold spring-tap"
+                              style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--text-secondary)' }}>+ Своё</button>
+                          </div>
+                          <button onClick={() => addNoReq(b.key)} className="mt-1.5 text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
+                            Допуска не требуются
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          )}
+
           {/* Conditions */}
           <div className="flex gap-2">
             <div className="flex-1">
@@ -492,6 +651,14 @@ export default function StaffRequests() {
               rows={2} className="w-full px-3 py-2 rounded-lg text-sm resize-none"
               style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }} />
           </div>
+
+          {formError && (
+            <div className="px-3 py-2 rounded-lg text-xs" style={{
+              background: 'color-mix(in srgb, var(--err-t) 12%, transparent)',
+              color: 'var(--err-t)', border: '1px solid var(--err-t)' }}>
+              {formError}
+            </div>
+          )}
 
           {/* Buttons */}
           <div className="flex gap-2">
