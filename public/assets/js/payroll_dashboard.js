@@ -25,6 +25,8 @@ window.AsgardPayrollDashboard=(function(){
     if(!(ALLOWED.includes(user.role) || isDirRole(user.role))){
       toast("Доступ","Недостаточно прав","err"); location.hash="#/home"; return;
     }
+    // Менять лимиты может только ADMIN/DIRECTOR_GEN (как в backend admin-system.js)
+    const canEditLimits = user.role === "ADMIN" || user.role === "DIRECTOR_GEN";
 
     const now = new Date();
     let curYear = now.getFullYear(), curMonth = now.getMonth()+1;
@@ -59,7 +61,10 @@ window.AsgardPayrollDashboard=(function(){
           <div id="pd_transfers_totals" style="padding:8px 12px;background:var(--bg2);border-radius:0 0 var(--r-md) var(--r-md);display:flex;gap:20px;font-size:13px;color:var(--t2)"></div>
         </div>
 
-        <h3 style="color:var(--t1);margin-bottom:12px">Годовые лимиты самозанятых</h3>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <h3 style="color:var(--t1);margin:0">Годовые лимиты самозанятых</h3>
+          ${canEditLimits ? '<button class="btn ghost" id="pd_edit_limits">⚙️ Изменить лимиты</button>' : ''}
+        </div>
         <div class="tablewrap">
           <table class="asg" id="pd_limits_table">
             <thead><tr>
@@ -103,8 +108,12 @@ window.AsgardPayrollDashboard=(function(){
       }
       return resp.json();
     }
-    async function apiPut(url){
-      const resp = await fetch(url, {method:'PUT', headers:{'Authorization':'Bearer '+token}});
+    async function apiPut(url, body){
+      const resp = await fetch(url, {
+        method:'PUT',
+        headers:{'Authorization':'Bearer '+token, ...(body!==undefined?{'Content-Type':'application/json'}:{})},
+        ...(body!==undefined?{body:JSON.stringify(body)}:{})
+      });
       if(!resp.ok){
         const err = await resp.json().catch(()=>({}));
         throw new Error(err.error||'Ошибка');
@@ -287,6 +296,46 @@ window.AsgardPayrollDashboard=(function(){
         toast("Ошибка","Не удалось загрузить данные","err");
       }
     });
+
+    // Редактирование финансовых лимитов СЗ (ADMIN/DIRECTOR_GEN)
+    if(canEditLimits){
+      const editBtn = $('#pd_edit_limits');
+      if(editBtn) editBtn.addEventListener('click', async ()=>{
+        let cur = { monthly: 350000, yearly: 2400000 };
+        try{ cur = await apiFetch('/api/admin/system/settings/finance-limits'); }catch(e){ /* дефолты */ }
+        const body = `
+          <div class="formrow">
+            <div>
+              <label>Месячный лимит на самозанятого (₽)</label>
+              <input id="fl_monthly" type="number" min="0" step="1000" value="${Number(cur.monthly)||350000}"/>
+            </div>
+            <div>
+              <label>Годовой лимит на самозанятого (₽)</label>
+              <input id="fl_yearly" type="number" min="0" step="10000" value="${Number(cur.yearly)||2400000}"/>
+            </div>
+          </div>
+          <div style="font-size:12px;color:var(--t3);margin-top:8px">Применяется ко всем самозанятым при расчёте остатка лимита.</div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+            <button class="btn ghost" id="fl_cancel">Отмена</button>
+            <button class="btn primary" id="fl_save">Сохранить</button>
+          </div>
+        `;
+        showModal('Финансовые лимиты самозанятых', body);
+        $('#fl_cancel').addEventListener('click', ()=>closeModal());
+        $('#fl_save').addEventListener('click', async ()=>{
+          const monthly = Number($('#fl_monthly').value);
+          const yearly  = Number($('#fl_yearly').value);
+          if(!Number.isFinite(monthly) || monthly < 0){ toast("Проверка","Месячный лимит — число ≥ 0","err"); return; }
+          if(!Number.isFinite(yearly) || yearly < 0){ toast("Проверка","Годовой лимит — число ≥ 0","err"); return; }
+          try{
+            await apiPut('/api/admin/system/settings/finance-limits', { monthly, yearly });
+            closeModal();
+            toast("Готово","Лимиты сохранены","ok");
+            await loadLimits();
+          }catch(e){ toast("Ошибка", e.message, "err"); }
+        });
+      });
+    }
 
     async function refreshAll(){
       updatePeriod();

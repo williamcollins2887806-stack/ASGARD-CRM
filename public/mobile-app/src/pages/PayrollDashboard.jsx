@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useHaptic } from '@/hooks/useHaptic';
 import { api } from '@/api/client';
+import { useAuthStore } from '@/stores/authStore';
 import { PageShell } from '@/components/layout/PageShell';
 import { BottomSheet } from '@/components/shared/BottomSheet';
 import { EmptyState } from '@/components/shared/EmptyState';
@@ -45,6 +46,45 @@ export default function PayrollDashboard() {
   const [confirmingId, setConfirmingId] = useState(null);
 
   const [seLimits, setSeLimits] = useState([]);
+
+  // Редактирование финансовых лимитов (ADMIN/DIRECTOR_GEN)
+  const user = useAuthStore((s) => s.user);
+  const canEditLimits = user?.role === 'ADMIN' || user?.role === 'DIRECTOR_GEN';
+  const [showLimits, setShowLimits] = useState(false);
+  const [limMonthly, setLimMonthly] = useState('');
+  const [limYearly, setLimYearly] = useState('');
+  const [limSaving, setLimSaving] = useState(false);
+
+  const openLimitsEdit = async () => {
+    haptic.medium();
+    setError(null);
+    let cur = { monthly: 350000, yearly: 2400000 };
+    try { cur = await api.get('/admin/system/settings/finance-limits'); } catch { /* дефолты */ }
+    setLimMonthly(String(Number(cur.monthly) || 350000));
+    setLimYearly(String(Number(cur.yearly) || 2400000));
+    setShowLimits(true);
+  };
+
+  const handleSaveLimits = async () => {
+    const monthly = Number(limMonthly);
+    const yearly = Number(limYearly);
+    if (!Number.isFinite(monthly) || monthly < 0) { setError('Месячный лимит — число ≥ 0'); return; }
+    if (!Number.isFinite(yearly) || yearly < 0) { setError('Годовой лимит — число ≥ 0'); return; }
+    haptic.medium();
+    setLimSaving(true);
+    setError(null);
+    try {
+      await api.put('/admin/system/settings/finance-limits', { monthly, yearly });
+      haptic.success();
+      setShowLimits(false);
+      await fetchData();
+    } catch (e) {
+      setError(e.message || 'Ошибка сохранения');
+      haptic.error();
+    } finally {
+      setLimSaving(false);
+    }
+  };
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -243,11 +283,20 @@ export default function PayrollDashboard() {
             </div>
 
             {/* Yearly limits */}
-            {seLimits.length > 0 && (
+            {(seLimits.length > 0 || canEditLimits) && (
               <div style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) 400ms both' }}>
-                <p className="text-xs font-semibold uppercase tracking-wider mb-2 c-tertiary">
-                  Годовые лимиты самозанятых
-                </p>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold uppercase tracking-wider c-tertiary">
+                    Годовые лимиты самозанятых
+                  </p>
+                  {canEditLimits && (
+                    <button onClick={openLimitsEdit}
+                      className="text-[11px] font-semibold px-2 py-1 rounded-lg"
+                      style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-secondary)' }}>
+                      ⚙️ Лимиты
+                    </button>
+                  )}
+                </div>
                 <div className="flex flex-col gap-1.5">
                   {seLimits.map((l, i) => {
                     const yearlyLimit = Number(summary?.yearly_limit) || 2400000;
@@ -324,6 +373,33 @@ export default function PayrollDashboard() {
             className="w-full py-3 rounded-xl font-semibold text-sm disabled:opacity-50"
             style={{ background: 'linear-gradient(135deg, var(--blue), var(--info))', color: '#fff' }}>
             {formSaving ? 'Создаю...' : '📨 Создать перевод'}
+          </button>
+        </div>
+      </BottomSheet>
+
+      {/* Edit finance limits BottomSheet (ADMIN/DIRECTOR_GEN) */}
+      <BottomSheet open={showLimits} onClose={() => setShowLimits(false)} title="Финансовые лимиты самозанятых">
+        <div className="flex flex-col gap-3 pb-4">
+          {error && showLimits && (
+            <div className="text-[12px] px-3 py-2 rounded-lg" style={{ backgroundColor: 'var(--err-bg)', color: 'var(--err-t)' }}>{error}</div>
+          )}
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wider mb-1 c-tertiary">Месячный лимит на самозанятого (₽)</p>
+            <input type="number" min="0" step="1000" value={limMonthly} onChange={e => setLimMonthly(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-lg text-sm"
+              style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }} />
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wider mb-1 c-tertiary">Годовой лимит на самозанятого (₽)</p>
+            <input type="number" min="0" step="10000" value={limYearly} onChange={e => setLimYearly(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-lg text-sm"
+              style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }} />
+          </div>
+          <p className="text-[10px] c-tertiary">Применяется ко всем самозанятым при расчёте остатка лимита.</p>
+          <button onClick={handleSaveLimits} disabled={limSaving}
+            className="w-full py-3 rounded-xl font-semibold text-sm disabled:opacity-50"
+            style={{ background: 'linear-gradient(135deg, var(--green), var(--blue))', color: '#fff' }}>
+            {limSaving ? 'Сохраняю...' : '💾 Сохранить'}
           </button>
         </div>
       </BottomSheet>
