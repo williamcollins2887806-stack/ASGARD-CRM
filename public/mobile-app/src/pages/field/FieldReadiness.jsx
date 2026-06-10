@@ -16,6 +16,8 @@ const REASONS = [
   { key: 'personal',   label: 'Личные дела' },
   { key: 'legal',      label: 'Юридические вопросы' },
   { key: 'injury',     label: 'Травма на производстве' },
+  { key: 'no_contact', label: 'Не выходит на связь' },
+  { key: 'refused',    label: 'Отказ без причины' },
   { key: 'other',      label: 'Другое' },
 ];
 
