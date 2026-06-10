@@ -448,28 +448,42 @@ window.AsgardOfficeLive = (function () {
     world.addChild(hit);
   })();
 
-  // ======================= МИМИР + КОЛОДЕЦ =======================
-  const wellX=HALL.x+HALL.w/2, wellY=HALL.y+HALL.h-90;
+  // ===== МИМИР · ИИ-панель (компактный голо-экран на стойке) =====
+  const wellX=HALL.x+HALL.w/2, wellY=HALL.y+HALL.h-70;
   const well=new PIXI.Container(); well.x=wellX; well.y=wellY; well.zIndex=wellY-1; world.addChild(well);
   (function(){
     const g=new PIXI.Graphics();
-    g.beginFill(0x2c333d); g.drawEllipse(0,0,78,46); g.endFill();
-    g.beginFill(0x18222e); g.drawEllipse(0,-4,60,33); g.endFill();
-    g.beginFill(0x2bd4c9,.55); g.drawEllipse(0,-4,50,26); g.endFill();
-    g.beginFill(0x6ef0e6,.32); g.drawEllipse(0,-6,32,16); g.endFill();
-    g.lineStyle(2,COL.gold,.8);
-    for(let a=0;a<Math.PI*2;a+=Math.PI/5){ const rx=Math.cos(a)*70,ry=Math.sin(a)*40; g.moveTo(rx,ry-3);g.lineTo(rx,ry+3);}
-    g.lineStyle(0); well.addChild(g); well.glow=g;
+    // тень
+    g.beginFill(0x000000,.28); g.drawEllipse(0,18,40,8); g.endFill();
+    // стойка/основание
+    g.beginFill(0x1a2230); g.drawRoundedRect(-7,4,14,16,3); g.endFill();
+    g.beginFill(0x232f40); g.drawRoundedRect(-22,16,44,6,3); g.endFill();
+    // рамка экрана (наклонный планшет)
+    g.lineStyle(2,0x2bd4c9,.55);
+    g.beginFill(0x0c1620); g.drawRoundedRect(-46,-44,92,52,8); g.endFill();
+    g.lineStyle(0);
+    // голо-заливка экрана (бирюзовый градиент полосами)
+    for(let i=0;i<9;i++){ const t=i/9; g.beginFill(mix(0x0c2330,0x123a44,t),.85); g.drawRect(-43,-41+i*5.4,86,5.4); }
+    g.endFill();
+    // «нейросеть» — узлы и связи
+    g.lineStyle(1,0x4fe6da,.5);
+    const nodes=[[-30,-30],[-10,-20],[8,-32],[26,-22],[-18,-8],[14,-10],[0,-26]];
+    nodes.forEach((n,i)=>{ const m=nodes[(i+2)%nodes.length]; g.moveTo(n[0],n[1]); g.lineTo(m[0],m[1]); });
+    g.lineStyle(0); g.beginFill(0x6ef0e6,.9); nodes.forEach(n=>g.drawCircle(n[0],n[1],1.8)); g.endFill();
+    // блик стекла
+    g.beginFill(0xffffff,.07); g.drawPolygon([-43,-41, -20,-41, -34,8, -43,8]); g.endFill();
+    well.addChild(g); well.glow=g;
   })();
-  const wlbl=label('🌳 КОЛОДЕЦ МУДРОСТИ · МИМИР (ИИ)',13,0x6ef0e6,'800');
-  wlbl.anchor.set(.5,0); wlbl.x=wellX; wlbl.y=wellY+32; wlbl.zIndex=9000; world.addChild(wlbl);
-  const mimir=new PIXI.Container(); mimir.x=wellX; mimir.y=wellY-40; mimir.zIndex=wellY; world.addChild(mimir);
+  const wlbl=label('🧠 МИМИР · ИИ-аналитик',12,0x6ef0e6,'800');
+  wlbl.anchor.set(.5,0); wlbl.x=wellX; wlbl.y=wellY+24; wlbl.zIndex=9000; world.addChild(wlbl);
+  // mimir-аватар = парящий «глаз»-дрон ИИ перед экраном (компактный)
+  const mimir=new PIXI.Container(); mimir.x=wellX; mimir.y=wellY-22; mimir.zIndex=wellY; world.addChild(mimir);
   (function(){
     const g=new PIXI.Graphics();
-    g.beginFill(0x5a4a38); g.drawCircle(0,0,17); g.endFill();
-    g.beginFill(0xcfc0a8); g.drawCircle(0,-3,12); g.endFill();
-    g.beginFill(0xe8e8e8); g.drawRoundedRect(-13,4,26,16,6); g.endFill();
-    g.beginFill(0x2bd4c9); g.drawCircle(-4,-4,2.2); g.drawCircle(4,-4,2.2); g.endFill();
+    g.lineStyle(1.5,0x2bd4c9,.8); g.beginFill(0x10202a); g.drawCircle(0,0,9); g.endFill(); g.lineStyle(0);
+    g.beginFill(0x2bd4c9,.9); g.drawCircle(0,0,4.5); g.endFill();
+    g.beginFill(0xeafff9); g.drawCircle(-1.2,-1.2,1.8); g.endFill();
+    g.beginFill(0x6ef0e6,.25); g.drawCircle(0,0,13); g.endFill();
     mimir.addChild(g);
   })();
 
@@ -733,7 +747,8 @@ window.AsgardOfficeLive = (function () {
     hit.on('pointertap',()=>{ if(!drag.moved) openSiteDrawer(s); }); world.addChild(hit);
 
     // подпись с тёмной плашкой-подложкой (читаемо на любом фоне)
-    const lbl=label(s.name, s.big?19:16, 0xeaf3ff,'800'); lbl.anchor.set(.5,0);
+    const _icn0 = s.type==='platform'?'🛢 ':(s.type==='gas'?'⛽ ':(s.type==='plant'?'🏭 ':'🏗 '));
+    const lbl=label(_icn0+s.name, s.big?19:16, 0xeaf3ff,'800'); lbl.anchor.set(.5,0);
     const lpad=12, lbg=new PIXI.Graphics();
     lbg.beginFill(0x0a0e18,.72); lbg.drawRoundedRect(s.x+s.w/2-lbl.width/2-lpad, s.y+5, lbl.width+lpad*2, lbl.height+6, 9); lbg.endFill();
     lbg.lineStyle(1.5,COL.gold,.5); lbg.drawRoundedRect(s.x+s.w/2-lbl.width/2-lpad, s.y+5, lbl.width+lpad*2, lbl.height+6, 9); lbg.lineStyle(0);
@@ -743,6 +758,7 @@ window.AsgardOfficeLive = (function () {
     const nSite=s.crew.filter(c=>c.status==='site').length;
     const badge=label('👷 '+nW+' раб · 🪖 '+nM+' маст · 🟢 '+nSite+' на смене', 13, 0xffe39a,'800');
     badge.anchor.set(.5,0); badge.x=s.x+s.w/2; badge.y=s.y+(s.big?30:28); badge.zIndex=9000; world.addChild(badge);
+    if(s.customer){ const cu=label(s.customer.replace(/«|»/g,''), 11, 0x9fb6cf,'700'); cu.anchor.set(.5,0); cu.x=s.x+s.w/2; cu.y=s.y+(s.big?48:44); cu.zIndex=9000; cu.alpha=.85; world.addChild(cu); }
     s.cx=s.x+s.w/2; s.cy=s.y+s.h/2;
 
     // --- зона размещения (общежитие / судно) ---
@@ -902,92 +918,64 @@ window.AsgardOfficeLive = (function () {
     scale = scale||1;
     const c=new PIXI.Container();
     const body=new PIXI.Graphics();
-    const tunic = ROLE_COL[s.role] || 0x4a5566;
-    const tunicD = mix(tunic, 0x000000, .35);
-    const skin = s.female?SKIN_F:SKIN, skinSh = mix(skin,0x000000,.18);
-    const isDir = s.role==='DIRECTOR_GEN' || s.director;
-
-    // мягкая тень-подложка
-    body.beginFill(0x000000,.30); body.drawEllipse(0,30,18,6); body.endFill();
-    // плащ директора (за спиной)
-    if(isDir){ body.lineStyle(1.4,OUT,.6); body.beginFill(0x7a1320);
-      body.moveTo(-15,-6); body.quadraticCurveTo(-26,16,-16,30); body.lineTo(16,30);
-      body.quadraticCurveTo(26,16,15,-6); body.closePath(); body.endFill(); body.lineStyle(0); }
-
-    // НОГИ + ботинки
-    body.lineStyle(1.3,OUT,.85);
-    body.beginFill(0x3a3026); body.drawRoundedRect(-9,12,7,18,3); body.drawRoundedRect(2,12,7,18,3); body.endFill();
-    body.beginFill(0x241c14); body.drawRoundedRect(-10,27,9,6,3); body.drawRoundedRect(1,27,9,6,3); body.endFill(); // ботинки
+    const shirt = ROLE_COL[s.role] || 0x49586b;
+    const shirtD = mix(shirt, 0x000000, .32);
+    const skin = s.female?SKIN_F:SKIN, skinSh = mix(skin,0x000000,.16);
+    const isDir = s.role==='DIRECTOR_GEN' || s.role==='DIRECTOR_COMM' || s.role==='DIRECTOR_DEV' || s.director;
+    // тень
+    body.beginFill(0x000000,.28); body.drawEllipse(0,29,16,5); body.endFill();
+    // НОГИ — брюки (тёмные)
+    body.lineStyle(1.2,OUT,.85);
+    body.beginFill(0x2b3340); body.drawRoundedRect(-8,12,7,17,3); body.drawRoundedRect(1,12,7,17,3); body.endFill();
+    body.beginFill(0x14181f); body.drawRoundedRect(-9,26,8,5,2); body.drawRoundedRect(1,26,8,5,2); body.endFill(); // туфли
     body.lineStyle(0);
-
-    // ТОРС-туника
-    body.lineStyle(1.4,OUT,.9);
-    body.beginFill(tunic); body.drawRoundedRect(-15,-8,30,24,8); body.endFill();
-    body.lineStyle(0);
-    body.beginFill(0xffffff,.12); body.drawRoundedRect(-15,-8,30,7,6); body.endFill();   // рим-лайт сверху
-    body.beginFill(tunicD,.5); body.drawRoundedRect(-15,9,30,7,6); body.endFill();        // тень снизу
-    // вырез-горловина
-    body.beginFill(tunicD); body.moveTo(-6,-8); body.lineTo(0,-2); body.lineTo(6,-8); body.closePath(); body.endFill();
-    // пояс с пряжкой
-    body.beginFill(0x3a2c1c); body.drawRect(-15,9,30,5); body.endFill();
-    body.beginFill(COL.gold); body.drawRoundedRect(-4,8.5,8,6,2); body.endFill();
-    body.beginFill(0x8a6a2a); body.drawRect(-1.5,9.5,3,4); body.endFill();
-    // наплечники
-    body.lineStyle(1.3,OUT,.8); body.beginFill(mix(tunic,0xffffff,.18));
-    body.drawRoundedRect(-17,-8,8,8,4); body.drawRoundedRect(9,-8,8,8,4); body.endFill(); body.lineStyle(0);
-
+    // ТОРС — рубашка/пиджак по роли
+    body.lineStyle(1.3,OUT,.9);
+    body.beginFill(shirt); body.drawRoundedRect(-14,-8,28,22,8); body.endFill(); body.lineStyle(0);
+    body.beginFill(0xffffff,.12); body.drawRoundedRect(-14,-8,28,6,6); body.endFill();   // рим-лайт
+    body.beginFill(shirtD,.5); body.drawRoundedRect(-14,8,28,6,6); body.endFill();        // тень снизу
+    // воротник-рубашка (светлый V)
+    body.beginFill(0xeef2f8); body.moveTo(-6,-8); body.lineTo(0,0); body.lineTo(6,-8); body.lineTo(3,-8); body.lineTo(0,-3); body.lineTo(-3,-8); body.closePath(); body.endFill();
+    // директор — галстук/платок акцентом
+    if(isDir){ body.beginFill(0xc8a84e); body.drawRoundedRect(-1.6,-4,3.2,12,1); body.endFill(); }
+    // плечи (чуть светлее)
+    body.lineStyle(1.2,OUT,.7); body.beginFill(mix(shirt,0xffffff,.14));
+    body.drawRoundedRect(-16,-8,7,7,3); body.drawRoundedRect(9,-8,7,7,3); body.endFill(); body.lineStyle(0);
     // РУКИ + кисти
-    body.lineStyle(1.3,OUT,.8);
-    body.beginFill(tunic); body.drawRoundedRect(-19,-4,6,16,3); body.drawRoundedRect(13,-4,6,16,3); body.endFill();
-    body.beginFill(skin); body.drawCircle(-16,13,3.4); body.drawCircle(16,13,3.4); body.endFill();
+    body.lineStyle(1.2,OUT,.8);
+    body.beginFill(shirt); body.drawRoundedRect(-18,-4,5,15,3); body.drawRoundedRect(13,-4,5,15,3); body.endFill();
+    body.beginFill(skin); body.drawCircle(-15.5,12,3.2); body.drawCircle(15.5,12,3.2); body.endFill();
     body.lineStyle(0);
-
+    // БЕЙДЖ-ЛАНЬЯРД (шнурок + карточка) — офисный признак
+    body.lineStyle(1.4,0x2a3340,.8); body.moveTo(-5,-6); body.lineTo(-2,4); body.moveTo(5,-6); body.lineTo(2,4); body.lineStyle(0);
+    body.beginFill(0xf2f5fa); body.drawRoundedRect(-4,3,8,6,1.5); body.endFill();
+    body.beginFill(shirt,.7); body.drawRect(-3,4,6,1.6); body.endFill();
     // ШЕЯ
-    body.beginFill(skinSh); body.drawRoundedRect(-4,-14,8,7,2); body.endFill();
-    // ГОЛОВА (ВСЕГДА)
-    body.lineStyle(1.4,OUT,.85);
-    body.beginFill(skin); body.drawCircle(0,-30,12); body.endFill();
-    body.lineStyle(0);
-    body.beginFill(skin,1); body.drawEllipse(0,-22,9,5); body.endFill();                  // подбородок
-    body.beginFill(0xffffff,.14); body.drawEllipse(-4,-33,4,5); body.endFill();           // блик щеки
-    // уши
-    body.beginFill(skinSh); body.drawCircle(-12,-30,2.4); body.drawCircle(12,-30,2.4); body.endFill();
-    // причёска
-    const hair = HAIR_COL[s.beard] || (s.female?0x8a5a38:0x6a4a2a);
+    body.beginFill(skinSh); body.drawRoundedRect(-3.5,-13,7,6,2); body.endFill();
+    // ГОЛОВА
+    body.lineStyle(1.3,OUT,.85);
+    body.beginFill(skin); body.drawCircle(0,-28,11); body.endFill(); body.lineStyle(0);
+    body.beginFill(skin); body.drawEllipse(0,-21,8,4); body.endFill();                 // подбородок
+    body.beginFill(0xffffff,.13); body.drawEllipse(-3.5,-31,3.5,4.5); body.endFill();   // блик
+    body.beginFill(skinSh); body.drawCircle(-11,-28,2.2); body.drawCircle(11,-28,2.2); body.endFill(); // уши
+    // ПРИЧЁСКА (аккуратная), цвет по полу
+    const hair = s.female?0x6a4a32:0x3a3026;
     if(s.female){
-      body.lineStyle(1.2,OUT,.6); body.beginFill(hair);
-      body.arc(0,-30,13,Math.PI*0.96,Math.PI*2.04); body.endFill();
-      body.drawRoundedRect(-13,-32,4,20,2); body.drawRoundedRect(9,-32,4,20,2); body.endFill(); // косы
+      body.lineStyle(1.1,OUT,.5); body.beginFill(hair);
+      body.arc(0,-28,12,Math.PI*0.92,Math.PI*2.08); body.endFill();
+      body.drawRoundedRect(-12,-30,3.5,16,2); body.drawRoundedRect(8.5,-30,3.5,16,2); body.endFill(); // волосы по бокам
       body.lineStyle(0);
-      // ободок
-      body.beginFill(COL.gold,.8); body.drawRect(-11,-38,22,2.5); body.endFill();
-    } else if(!s.helm){
-      body.beginFill(hair); body.arc(0,-30,12.5,Math.PI,0); body.drawRect(-12.5,-30,25,3); body.endFill();
-    }
-    // ЛИЦО: брови, глаза, нос
-    body.beginFill(mix(hair,0x000000,.2)); body.drawRect(-7,-34,5,1.6); body.drawRect(2,-34,5,1.6); body.endFill();
-    body.beginFill(0xffffff); body.drawEllipse(-4,-31,2.2,2.6); body.drawEllipse(4,-31,2.2,2.6); body.endFill();
-    body.beginFill(0x1a1a22); body.drawCircle(-3.6,-31,1.3); body.drawCircle(4.4,-31,1.3); body.endFill();
-    body.beginFill(skinSh); body.drawRoundedRect(-1,-30,2.4,5,1); body.endFill();          // нос
-    // БОРОДА
-    if(s.beard && !s.female){
-      const bc=BEARD_COL[s.beard]||0x6a4a2a;
-      body.lineStyle(1.1,mix(bc,0x000000,.3),.6); body.beginFill(bc);
-      body.moveTo(-9,-28); body.quadraticCurveTo(-10,-14,0,-12); body.quadraticCurveTo(10,-14,9,-28);
-      body.quadraticCurveTo(0,-22,-9,-28); body.closePath(); body.endFill(); body.lineStyle(0);
-      // усы
-      body.beginFill(bc); body.drawEllipse(-3,-26,2.4,1.4); body.drawEllipse(3,-26,2.4,1.4); body.endFill();
-    } else if(!s.female){
-      body.beginFill(skinSh); body.drawEllipse(0,-23,5,2); body.endFill();                  // рот-намёк
     } else {
-      body.beginFill(0xc66a6a,.7); body.drawEllipse(0,-24,2.5,1.3); body.endFill();          // губы
+      body.beginFill(hair); body.arc(0,-28,11.5,Math.PI*1.05,Math.PI*1.95); body.endFill();
+      body.beginFill(hair); body.drawRoundedRect(-11,-30,22,4,2); body.endFill();
     }
-    // ШЛЕМ
-    if(s.helm) drawHelmet(body, s.helm);
-    // знак директора — золотая гривна
-    if(isDir){ body.beginFill(COL.gold); body.drawRoundedRect(-7,-16,14,3,2); body.endFill();
-      body.beginFill(0xe23a3a); body.drawCircle(0,-13,2); body.endFill(); }
-
+    // ЛИЦО: брови, глаза, нос, рот
+    body.beginFill(mix(hair,0x000000,.2)); body.drawRect(-6.5,-31,4.5,1.4); body.drawRect(2,-31,4.5,1.4); body.endFill();
+    body.beginFill(0xffffff); body.drawEllipse(-3.6,-29,2,2.4); body.drawEllipse(3.6,-29,2,2.4); body.endFill();
+    body.beginFill(0x1a1a22); body.drawCircle(-3.2,-29,1.2); body.drawCircle(4,-29,1.2); body.endFill();
+    body.beginFill(skinSh); body.drawRoundedRect(-1,-28,2.2,4.5,1); body.endFill();    // нос
+    if(s.female){ body.beginFill(0xc66a6a,.7); body.drawEllipse(0,-22,2.4,1.2); body.endFill(); }
+    else { body.beginFill(skinSh); body.drawEllipse(0,-22,4,1.6); body.endFill(); }
     c.addChild(body); c._body=body; c.scale.set(scale);
     return c;
   }
