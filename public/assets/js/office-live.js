@@ -532,21 +532,7 @@ window.AsgardOfficeLive = (function () {
     };
   }
 
-  // ---- массовая генерация бригады по раскладке статусов ----
-  const NAMES_POOL = ['Магнус','Хаки','Олег','Свен','Ульф','Грим','Аки','Бьорг','Туре','Эрик','Коль','Рут',
-    'Сигурд','Сван','Ярл','Бер','Снур','Гест','Торд','Гуни','Хальф','Регин','Вёлунд','Аск','Эмбла','Скёль',
-    'Фроди','Ингвар','Сёльви','Хравн','Колль','Стейн','Хьюки','Дан','Орвар','Бьярки','Лейв','Кетиль','Снорри',
-    'Хёгни','Вест','Гаут','Ринг','Тости','Фарман','Эйстен','Сигват','Тьодольв','Бранд','Хольти'];
-  let _nameI=0;
-  function nm(){ const n=NAMES_POOL[_nameI%NAMES_POOL.length]+' '+
-    String.fromCharCode(1040+(_nameI*7)%32)+'.'; _nameI++; return n; }
-  // dist: {site,rest,sleep,transit,medical}; masters — сколько мастеров (на смене)
-  function genCrew(dist, masters){
-    const crew=[]; masters=masters||0;
-    for(let m=0;m<masters;m++) crew.push(mkWorker(nm(),1,{status:'site'}));
-    Object.entries(dist).forEach(([st,n])=>{ for(let i=0;i<n;i++) crew.push(mkWorker(nm(),0,{status:st})); });
-    return crew;
-  }
+  // (демо-генерация фейк-бригады удалена — крю только из реальных данных /api/command-map/site/:id/crew)
 
   // ОБЪЕКТЫ/РАБОТЫ — из реальных данных (data.sites уже сгруппированы по работам на бэке).
   const SITE_META = _DATA.siteMeta;   // {key:{name,type,x,y,w,h,pm,lodging,lodgeName,crew:[]}}
@@ -842,7 +828,16 @@ window.AsgardOfficeLive = (function () {
   ];
 
   // ↓↓↓ РЕАЛЬНЫЕ ДАННЫЕ (перебивают демо-значения выше) ↓↓↓
-  (function(){ const D=_DATA.summary; if(!D) return;
+  (function(){ const D=_DATA.summary;
+    // СНАЧАЛА безусловно гасим ВСЕ демо-числа (если API не ответил — будут 0/—, а НЕ фейк 611млн).
+    Object.assign(YEAR,{ projects:0,projectsActive:0,projectsClosed:0,projectsPrep:0,
+      revenue:0,costPlan:0,costFact:0,backlog:0,sgna:0,tax:0,received:0,ar:0,arOverdue:0,advances:0,ap:0,cash:0,
+      szPeople:0,szUsed:0,szLimit:0,szLeft:0,szUtilPct:0,szAvg:0,szNearLimit:0,szOverRisk:0,szTop:[],
+      tnSubmitted:0,tnWon:0,tnLost:0,tnActive:0,tnWonSum:0,tnPipeline:0,tnConv:0,
+      headcount:0,staffPerm:0,staffSelfEmp:0,staffField:0,staffOffice:0,onShift:0,lti:0,nearMiss:0,permitsValid:0,mobDays:0,
+      gross:0,grossPct:0,ebitda:0,ebitdaPct:0,net:0,netPct:0,profitFact:0,toReceive:0,costSave:0,
+      revMonth:[0,0,0,0,0,0,0,0,0,0,0,0],costMonth:[0,0,0,0,0,0,0,0,0,0,0,0],topProjects:[],lossProjects:[] });
+    if(!D) return;
     YEAR.year = D.year || YEAR.year;
     if(D.pnl){ const p=D.pnl;
       YEAR.projects = p.projects||0;
