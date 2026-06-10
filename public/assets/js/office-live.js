@@ -49,15 +49,12 @@ window.AsgardOfficeLive = (function () {
     //          'remote' (удалёнка уд, или онлайн+уд) → зона УДАЛЁНКА;
     //          'home'   (офлайн / выходной вх / больничный бн / отпуск сс / НЕ отмечен и не в сети) → зона ДОМ/ОФЛАЙН;
     //          'desk'   (онлайн в офисе / на звонке / просто онлайн без статуса) → стол в опенспейсе.
-    const HOMEISH = new Set(['вх','бн','сс']);     // выходной/больничный/за свой счёт
+    // НОВАЯ модель: ВСЕ офисные сотрудники сидят за столами в офисе (online — ярко, offline — приглушённо).
+    //   Исключение: отметился «на объекте» (об) → фигура у объекта. Удалёнка (уд) → бейдж 💻 за столом.
+    //   Зоны «дома/готовность» — ТОЛЬКО для полевых рабочих (из _DATA.readiness), офисных там НЕТ.
     function _zoneOf(p){
-      const sc = p.status_code;
-      if (sc === 'об' && p.work) return 'object';      // офисный отметился «на объекте» → к объекту
-      if (sc === 'уд') return 'remote';                // удалёнка
-      if (HOMEISH.has(sc)) return 'home';              // выходной/больничный/отпуск → дом
-      if (!p.online && !sc) return 'home';             // НЕ в сети и НЕ отметился → «не на связи» (зона ДОМ)
-      if (!p.online && sc) return 'home';              // офлайн, но есть статус дня → дом (статус покажем)
-      return 'desk';                                   // онлайн (оф/на звонке/idle/без статуса) → стол
+      if (p.status_code === 'об' && p.work) return 'object';
+      return 'desk';   // все офисные — за столами (offline приглушаем в _placeStaffFig)
     }
     const staff = people.map(p => {
       const zone = _zoneOf(p);
@@ -283,27 +280,21 @@ window.AsgardOfficeLive = (function () {
 
   // --- ШТАБ слева ---
   // размеры зон считаем из реальных счётчиков (растягиваются, чтобы все влезли)
-  const _deskN   = (_DATA.staff||[]).filter(s=>(s._zone||'desk')==='desk').length;
-  const _remoteN = (_DATA.staff||[]).filter(s=>s._zone==='remote').length;
-  const _homeN   = (_DATA.staff||[]).filter(s=>s._zone==='home').length;
-  const _readyN  = ((_DATA.readiness&&_DATA.readiness.people)||[]).length;
-  // ОФИС (HALL): сетка столов до 6 в ряд, высота под число рядов
-  const _deskCols = Math.max(1, Math.min(6, Math.ceil(Math.sqrt(Math.max(1,_deskN)))));
-  const _deskRows = Math.max(1, Math.ceil(_deskN/_deskCols));
+  const _officeN = (_DATA.staff||[]).filter(s=>(s._zone||'desk')==='desk').length;   // ВСЕ офисные за столами
+  const _rdyPpl  = (_DATA.readiness&&_DATA.readiness.people)||[];
+  const _readyN    = _rdyPpl.filter(p=>p.ready).length;
+  const _notReadyN = _rdyPpl.length - _readyN;
+  // ОФИС (HALL): сетка столов до 6 в ряд, высота под число рядов (все офисные, online+offline)
+  const _deskCols = Math.max(1, Math.min(6, Math.ceil(Math.sqrt(Math.max(1,_officeN)))));
+  const _deskRows = Math.max(1, Math.ceil(_officeN/_deskCols));
   const HALL = { x:470, y:760, w: Math.max(1180, 150+ _deskCols*270 +90), h: Math.max(300, 150+ _deskRows*180 +60) };
-  // УДАЛЁНКА над офисом — высота под ряды (по ~7 в ряд)
-  const _remCols = Math.max(1, Math.floor((HALL.w-120)/150));
-  const _remRows = Math.max(1, Math.ceil(_remoteN/_remCols));
-  const REMOTE = { x:HALL.x, y:0, w:HALL.w, h: Math.max(90, 30+_remRows*42) };
-  REMOTE.y = HALL.y - REMOTE.h - 24;
+  const REMOTE = { x:HALL.x, y:HALL.y-2, w:0, h:0 };   // не используется (оставлено для совместимости)
   const WARE   = { x:80, y:HALL.y+30, w:350, h: Math.min(HALL.h-60, 560) };
-  // ДОМ (слева снизу) и ДРУЖИНА (справа снизу) — высота под число фигур
-  const _homeCols = Math.max(1, Math.floor((HALL.w*0.52-60)/110));
-  const _homeRows = Math.max(1, Math.ceil(_homeN/_homeCols));
-  const HOME   = { x:HALL.x, y:HALL.y+HALL.h+24, w:HALL.w*0.52-14, h: Math.max(120, 50+_homeRows*36) };
-  const _arCols = Math.max(3, Math.floor((HALL.w*0.48-40)/46));
-  const _arRows = Math.max(1, Math.ceil(_readyN/_arCols));
-  const ARCH   = { x:HALL.x+HALL.w*0.52+10, y:HALL.y+HALL.h+24, w:HALL.w*0.48-10, h: Math.max(120, 50+_arRows*44) };
+  // ДРУЖИНА: слева ГОТОВЫ (по _readyN), справа НЕ ГОТОВЫ (по _notReadyN). Высота под число с учётом сжатия фигур.
+  function _zoneH(n, w){ const cols=Math.max(3, Math.floor((w-30)/Math.max(22,Math.min(46,Math.sqrt((w-30)*180/Math.max(1,n)))))); const rows=Math.ceil(Math.max(1,n)/cols); return Math.max(120, 50+rows*Math.min(42,Math.max(22,((w-30)/cols)))); }
+  const _homeW = HALL.w*0.52-14, _arW = HALL.w*0.48-10;
+  const HOME   = { x:HALL.x, y:HALL.y+HALL.h+24, w:_homeW, h: _zoneH(_readyN, _homeW) };
+  const ARCH   = { x:HALL.x+HALL.w*0.52+10, y:HALL.y+HALL.h+24, w:_arW, h: _zoneH(_notReadyN, _arW) };
   // --- ХАБ ВАХТЫ (аэропорт-вокзал) — точка отправки/возврата, под штабом ---
   const HUB = { x:HALL.x+HALL.w*0.5-230, y: Math.max(HOME.y+HOME.h, ARCH.y+ARCH.h)+40, w:460, h:170 };
   // --- МЕДЦЕНТР (медосмотр перед вылетом, Москва/Саратов) — координаты заранее (нужны в areaForStatus) ---
@@ -419,9 +410,9 @@ window.AsgardOfficeLive = (function () {
     t.x=R.x+R.w/2; t.y=R.y+8; t.zIndex=-150; world.addChild(t);
     return g;
   }
-  zone(REMOTE,'УДАЛЁНКА', 0x101a2e, COL.blue, '💻');
-  zone(HOME,  'ДОМ · ожидают работу', 0x161320, 0x6b5b3a, '🏠');
-  zone(ARCH, 'ДРУЖИНА · готовность к выезду', 0x101c14, 0x2e7d4f, '⚔');
+  // зона УДАЛЁНКА убрана — удалёнщики сидят за столом с бейджем 💻
+  zone(HOME, 'ДРУЖИНА · ГОТОВЫ к выезду', 0x0e1c12, 0x2e7d4f, '✅');
+  zone(ARCH, 'ДРУЖИНА · НЕ ГОТОВЫ', 0x1c160e, 0x7d5e2e, '⏳');
 
   // ======================= СКЛАД (слева, детальный) =======================
   (function(){
@@ -761,47 +752,8 @@ window.AsgardOfficeLive = (function () {
     if(s.customer){ const cu=label(s.customer.replace(/«|»/g,''), 11, 0x9fb6cf,'700'); cu.anchor.set(.5,0); cu.x=s.x+s.w/2; cu.y=s.y+(s.big?48:44); cu.zIndex=9000; cu.alpha=.85; world.addChild(cu); }
     s.cx=s.x+s.w/2; s.cy=s.y+s.h/2;
 
-    // --- зона размещения (общежитие / судно) ---
-    const L=s.lodge, isShip=s.lodging==='судно';
-    const lg=new PIXI.Graphics(); lg.zIndex=L.y;
-    lg.beginFill(isShip?0x122637:0x1d1a14); lg.drawRoundedRect(L.x,L.y,L.w,L.h,12); lg.endFill();
-    lg.lineStyle(2,isShip?0x3a6f9a:0x6b5b3a,.85); lg.drawRoundedRect(L.x,L.y,L.w,L.h,12); lg.lineStyle(0);
-    if(isShip){
-      // корпус судна-отеля
-      const sy=L.y+L.h*0.5;
-      lg.beginFill(0x24435f); lg.moveTo(L.x+14,sy); lg.lineTo(L.x+L.w-14,sy);
-      lg.lineTo(L.x+L.w-26,sy+34); lg.lineTo(L.x+26,sy+34); lg.closePath(); lg.endFill();
-      lg.beginFill(0xc9d4de); lg.drawRect(L.x+30,sy-30,L.w-60,30); lg.endFill();   // надстройка
-      lg.beginFill(0xffd86a,.6); for(let i=0;i<4;i++) lg.drawRect(L.x+36+i*((L.w-72)/4),sy-22,8,8); lg.endFill();
-      lg.beginFill(0xb05a46); lg.drawRect(L.x+L.w/2-3,sy-46,6,16); lg.endFill();   // труба
-      lg.beginFill(0x2bd4c9,.18); lg.drawEllipse(L.x+L.w/2,sy+44,L.w*0.42,8); lg.endFill();
-    } else {
-      // блок-модули общежития
-      for(let i=0;i<3;i++){ const my=L.y+34+i*((L.h-50)/3);
-        lg.beginFill(i%2?0x6a5a3a:0x7a6a45); lg.drawRoundedRect(L.x+16,my,L.w-32,((L.h-50)/3)-8,5); lg.endFill();
-        lg.beginFill(0xffd86a,.5); lg.drawRect(L.x+24,my+6,10,8); lg.drawRect(L.x+L.w-46,my+6,10,8); lg.endFill();
-        lg.beginFill(0x3a2c1c); lg.drawRect(L.x+L.w/2-6,my+6,12,((L.h-50)/3)-14); lg.endFill(); }
-    }
-    world.addChild(lg);
-    const llbl=label((isShip?'🚢 ':'🏨 ')+(isShip?'СУДНО-ОТЕЛЬ':'ОБЩЕЖИТИЕ'),11,isShip?0x8fd0ff:0xe0c79a,'800');
-    llbl.anchor.set(.5,0); llbl.x=L.x+L.w/2; llbl.y=L.y+6; llbl.zIndex=9000; world.addChild(llbl);
-    const lz=label('💤 спят: '+s.crew.filter(c=>c.status==='sleep').length,10,0x9fb0c4,'700');
-    lz.anchor.set(.5,0); lz.x=L.x+L.w/2; lz.y=L.y+L.h-16; lz.zIndex=9000; world.addChild(lz);
-
-    // --- комната отдыха (примыкает снизу к объекту) ---
-    const RR={x:s.x+10, y:s.y+s.h+8, w:Math.min(220,s.w-20), h:64};
-    const rr=new PIXI.Graphics(); rr.zIndex=RR.y;
-    rr.beginFill(0x1a1422); rr.drawRoundedRect(RR.x,RR.y,RR.w,RR.h,10); rr.endFill();
-    rr.lineStyle(2,0x6b4f7a,.8); rr.drawRoundedRect(RR.x,RR.y,RR.w,RR.h,10); rr.lineStyle(0);
-    // диван + столик
-    rr.beginFill(0x3a2e44); rr.drawRoundedRect(RR.x+12,RR.y+24,70,24,7); rr.endFill();
-    rr.beginFill(0x4a3a55); rr.drawRoundedRect(RR.x+12,RR.y+14,70,12,6); rr.endFill();
-    rr.beginFill(0x5a4a2a); rr.drawRoundedRect(RR.x+96,RR.y+30,40,16,5); rr.endFill();
-    rr.beginFill(0xff8a2a,.5); rr.drawCircle(RR.x+116,RR.y+38,6); rr.endFill();      // чайник/самовар
-    rr.beginFill(0x2bd4c9,.4); rr.drawRoundedRect(RR.x+RR.w-56,RR.y+18,44,28,4); rr.endFill(); // ТВ
-    world.addChild(rr); s._restRoom=RR;
-    const rl=label('🛋 КОМНАТА ОТДЫХА · 😴 '+s.crew.filter(c=>c.status==='rest').length,11,0xd4b0e6,'800');
-    rl.anchor.set(0,0); rl.x=RR.x+8; rl.y=RR.y+4; rl.zIndex=9000; world.addChild(rl);
+    // зона размещения и комната отдыха НЕ рисуются (компактная карта) — крю внутри объекта.
+    s._restRoom = { x:s.x+10, y:s.y+s.h-30, w:Math.min(120,s.w-20), h:24 };
     // transit (в дороге) и medical (медосмотр) теперь НЕ у объекта:
     //  — летящие показаны в бортах (ЛОГИСТИКА), медосмотр — в медцентре Москва/Саратов (MEDHUB).
   });
@@ -1164,12 +1116,13 @@ window.AsgardOfficeLive = (function () {
   // счётчик «участков» на каждом объекте — чтобы 80 чел на смене не сбивались в кашу
   const _sitePlot={};
   function plotFor(site){
-    // сетка участков по рабочей зоне объекта (нижние 60% площадки)
-    const cols=Math.max(3, Math.round(Math.sqrt((site.crew||[]).filter(c=>c.status==='site').length)));
-    const rows=Math.max(2, Math.ceil((site.crew||[]).filter(c=>c.status==='site').length/cols));
+    // все, кто физически НА объекте (site+rest+sleep) — в сетку в нижних ~58% площадки объекта
+    const onSite=(site.crew||[]).filter(c=>c.status==='site'||c.status==='rest'||c.status==='sleep').length;
+    const cols=Math.max(3, Math.ceil(Math.sqrt(Math.max(1,onSite))));
+    const rows=Math.max(1, Math.ceil(Math.max(1,onSite)/cols));
     const i=(_sitePlot[site.key]=(_sitePlot[site.key]||0)+1)-1;
     const gx=i%cols, gy=Math.floor(i/cols)%rows;
-    const zx=site.x+18, zy=site.y+site.h*0.42, zw=site.w-36, zh=site.h*0.5;
+    const zx=site.x+14, zy=site.y+site.h*0.44, zw=site.w-28, zh=site.h*0.52;
     const cw=zw/cols, ch=zh/rows;
     return { x:zx+gx*cw, y:zy+gy*ch, w:cw, h:ch, _plot:true };
   }
@@ -1178,8 +1131,7 @@ window.AsgardOfficeLive = (function () {
     // медосмотр — ВСЕГДА в медцентре (Москва/Саратов), ДО объекта, не на объекте
     if(st==='medical') return { x:MEDHUB.x+14, y:MEDHUB.y+44, w:MEDHUB.w-28, h:MEDHUB.h-62 };
     if(!site) return null;
-    if(st==='sleep') return site.lodge;
-    if(st==='rest')  return site._restRoom;
+    if(st==='sleep'||st==='rest') return plotFor(site);   // спят/отдыхают — внутри объекта, не во внешних боксах
     if(st==='transit') return { x:Math.max(HALL.x+HALL.w+8,site.x-120), y:site.y+site.h*0.4, w:104, h:site.h*0.3 };
     return plotFor(site); // site — индивидуальный участок (без каши)
   }
@@ -1221,29 +1173,44 @@ window.AsgardOfficeLive = (function () {
     c.eventMode='static'; c.cursor='pointer'; c.on('pointertap',()=>{ if(!drag.moved) openDrawer(s, s._act||'work'); });
     world.addChild(c); s._fig=c; return c;
   }
-  // УДАЛЁНКА — все, кто _zone==="remote"
-  STAFF.filter(s=>s._zone==='remote').forEach((s,i)=>{
-    const perRow=Math.max(1,Math.floor((REMOTE.w-120)/150));
-    const col=i%perRow, row=Math.floor(i/perRow);
-    _placeStaffFig(s, REMOTE.x+90+col*150, REMOTE.y+REMOTE.h/2+2+row*40, ' 💻'); s._remote=true;
-  });
-  // ДОМ/ОФЛАЙН — все, кто _zone==="home" (офлайн, выходной, больничный, НЕ отметился)
-  STAFF.filter(s=>s._zone==='home').forEach((s,i)=>{
-    const perRow=Math.max(1,Math.floor((HOME.w-60)/110));
-    const col=i%perRow, row=Math.floor(i/perRow);
-    const suff = s.status_label ? (' · '+s.status_label) : (s.online?'':' · не в сети');
-    _placeStaffFig(s, HOME.x+50+col*110, HOME.y+HOME.h/2+row*36, suff, 0.55);
-  });
   // НА ОБЪЕКТЕ — офисные, отметившиеся «на объекте» (_zone==="object"): фигура у их объекта
   STAFF.filter(s=>s._zone==='object').forEach((s)=>{
-    const sid = s.work && s.work.id;
-    // ищем объект, к которому привязана работа сотрудника (по work.id среди jobs)
     let site=null;
-    SITES.forEach(si=>{ if((si.jobs||[]).some(j=>String(j.id)===String((s.work&&s.work.title)||s.work&&s.work.id))) site=si; });
+    SITES.forEach(si=>{ if((si.jobs||[]).some(j=>String(j.id)===String((s.work&&s.work.title)||(s.work&&s.work.id)))) site=si; });
     if(!site && SITES.length) site=SITES[0];
-    if(site){ _placeStaffFig(s, site.x+site.w*0.5+(Math.random()*40-20), site.y+site.h*0.32, " 🛠 (РП)"); }
-    else { _placeStaffFig(s, HOME.x+40, HOME.y+HOME.h/2, " · на объекте", 0.7); }
+    if(site){ _placeStaffFig(s, site.cx+(Math.random()*40-20), site.cy+10, " 🛠 (РП)"); }
   });
+  // ── ДРУЖИНА (полевые рабочие) по готовности: СЛЕВА готовы (READY), СПРАВА не готовы (NOTREADY) ──
+  // фигуры в сетку, размер подгоняется чтобы ВСЕ влезли (30/100+).
+  function _fillReadiness(zone, list, ringCol){
+    const n=list.length; if(!n) return;
+    const innerW=zone.w-30, innerH=zone.h-44;
+    // подбираем колонки так, чтобы все поместились в зону; шаг уменьшаем при большом n
+    let cols=Math.max(3, Math.ceil(Math.sqrt(n*innerW/Math.max(1,innerH))));
+    let step=Math.min(46, Math.max(20, innerW/cols));
+    cols=Math.max(1, Math.floor(innerW/step));
+    let rows=Math.ceil(n/cols);
+    let stepY=Math.min(42, Math.max(20, innerH/rows));
+    const fscale=Math.max(0.36, Math.min(0.6, step/52));
+    list.forEach((r,i)=>{
+      const col=i%cols, row=Math.floor(i/cols);
+      const x=zone.x+18+col*step+step/2, y=zone.y+40+row*stepY+stepY/2;
+      const c=drawWorker(r.name, false, fscale); c.x=x; c.y=y; c.zIndex=c.y;
+      const ring=new PIXI.Graphics(); ring.lineStyle(2.2,ringCol,.95); ring.drawCircle(0,2,15); c.addChildAt(ring,0);
+      const fig={ name:r.name, master:false, status:r.ready?"ready":"not_ready", spec:r.spec, employ:r.employ, permits:[], rate:null, city:r.city, _readiness:r.status, _reason:r.reason };
+      c.eventMode='static'; c.cursor='pointer'; c.on('pointertap',()=>{ if(!drag.moved) openWorkerDrawer(fig, null); });
+      world.addChild(c);
+    });
+  }
+  (function(){
+    const ppl=(_DATA.readiness && _DATA.readiness.people)||[];
+    const ready=ppl.filter(p=>p.ready);
+    const notReady=ppl.filter(p=>!p.ready);   // not_ready + unknown
+    _fillReadiness(HOME, ready, 0x22C55E);     // СЛЕВА — готовы (зелёные)
+    _fillReadiness(ARCH, notReady, 0xe0a000);  // СПРАВА — не готовы / не определились (оранжевые)
+    const l1=label('✅ ГОТОВЫ к выезду · '+ready.length,12,0x8ff0b0,'800'); l1.anchor.set(.5,0); l1.x=HOME.x+HOME.w/2; l1.y=HOME.y+20; l1.zIndex=9000; world.addChild(l1);
+    const l2=label('⏳ НЕ ГОТОВЫ · '+notReady.length,12,0xffd98a,'800'); l2.anchor.set(.5,0); l2.x=ARCH.x+ARCH.w/2; l2.y=ARCH.y+20; l2.zIndex=9000; world.addChild(l2);
+  })();
 
   // ======================= ЛОГИСТИКА В ДВИЖЕНИИ =======================
   // ХАБ ВАХТЫ (аэропорт-вокзал) — точка отправки/возврата вахты домой и на объекты.
