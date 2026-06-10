@@ -7,11 +7,12 @@
  * GET  /global/:year/:month/export  — Excel-ссылка (заглушка, формат данных)
  * PUT  /global/entry                — добавить/изменить отметку
  *
- * Просмотр: ADMIN, DIRECTOR_*, TO, HEAD_TO, WAREHOUSE
+ * Просмотр: ADMIN, DIRECTOR_*, TO, HEAD_TO, WAREHOUSE, HR, HR_MANAGER
  * Редактирование: ADMIN/DIRECTOR — всё; TO/HEAD_TO — только 'medical'; WAREHOUSE — только 'warehouse'.
+ * HR/HR_MANAGER — только просмотр (редактирование запрещено в PUT /global/entry).
  */
 
-const VIEW_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'TO', 'HEAD_TO', 'WAREHOUSE'];
+const VIEW_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'TO', 'HEAD_TO', 'WAREHOUSE', 'HR', 'HR_MANAGER'];
 
 function daysInMonth(year, month) {
   return new Date(year, month, 0).getDate();
