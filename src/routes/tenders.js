@@ -99,6 +99,7 @@ async function routes(fastify, options) {
       FROM tenders t
       LEFT JOIN users u ON t.responsible_pm_id = u.id
       WHERE 1=1
+        AND t.deleted_at IS NULL
     `;
     const params = [];
     let idx = 1;
@@ -143,7 +144,7 @@ async function routes(fastify, options) {
     const result = await db.query(sql, params);
     
     // Get total count (с теми же фильтрами что и основной запрос)
-    let countSql = 'SELECT COUNT(*) FROM tenders t WHERE 1=1';
+    let countSql = 'SELECT COUNT(*) FROM tenders t WHERE 1=1 AND t.deleted_at IS NULL';
     const countParams = [];
     let countIdx = 1;
 

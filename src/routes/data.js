@@ -366,6 +366,16 @@ async function dataRoutes(fastify, options) {
       const params = [];
       let whereParts = [];
 
+      // SOFT-DELETE: если у таблицы есть колонка deleted_at — НЕ отдаём удалённые записи.
+      // Это чинит «призраков» (удалённые тендеры/др. остаются у пользователей в локальном кэше,
+      // потому что API их всё ещё возвращал). Теперь удалённое исчезает у всех автоматически.
+      try {
+        const _cols = await getTableColumns(dbTable);
+        if (_cols && _cols.has('deleted_at')) {
+          whereParts.push('deleted_at IS NULL');
+        }
+      } catch (_) {}
+
       // WHERE условие (простое)
       if (where) {
         try {
@@ -376,10 +386,12 @@ async function dataRoutes(fastify, options) {
               params.push(value);
             }
           });
-          if (whereParts.length > 0) {
-            query += ' WHERE ' + whereParts.join(' AND ');
-          }
         } catch(e) {}
+      }
+
+      // Применяем WHERE (включая soft-delete deleted_at IS NULL + пользовательские условия)
+      if (whereParts.length > 0) {
+        query += ' WHERE ' + whereParts.join(' AND ');
       }
 
       // ORDER BY
@@ -840,8 +852,11 @@ async function dataRoutes(fastify, options) {
     const dbTable = resolveTable(table);
 
     try {
+      // soft-delete: не отдаём удалённые записи (если у таблицы есть deleted_at)
+      let softDel = '';
+      try { const _c = await getTableColumns(dbTable); if (_c && _c.has('deleted_at')) softDel = ' AND deleted_at IS NULL'; } catch (_) {}
       const result = await db.query(
-        `SELECT * FROM ${dbTable} WHERE ${index} = $1 ORDER BY ${getDefaultOrder(table)}`,
+        `SELECT * FROM ${dbTable} WHERE ${index} = $1${softDel} ORDER BY ${getDefaultOrder(table)}`,
         [value]
       );
 
