@@ -1252,8 +1252,8 @@ window.AsgardOfficeLive = (function () {
       const x=zone.x+18+col*step+step/2, y=zone.y+40+row*stepY+stepY/2;
       const c=drawWorker(r.name, false, fscale); c.x=x; c.y=y; c.zIndex=c.y;
       const ring=new PIXI.Graphics(); ring.lineStyle(2.2,ringCol,.95); ring.drawCircle(0,2,15); c.addChildAt(ring,0);
-      const fig={ name:r.name, master:false, status:r.ready?"ready":"not_ready", spec:r.spec, employ:r.employ, permits:[], rate:null, city:r.city, _readiness:r.status, _reason:r.reason };
-      c.eventMode='static'; c.cursor='pointer'; c.on('pointertap',()=>{ if(!drag.moved) openWorkerDrawer(fig, null); });
+      const fig={ id:r.id, name:r.name, spec:r.spec, employ:r.employ, city:r.city, ready:r.ready, not_ready:r.not_ready, status:r.status, reason:r.reason };
+      c.eventMode='static'; c.cursor='pointer'; c.on('pointertap',()=>{ if(!drag.moved) openReadinessDrawer(fig); });
       world.addChild(c);
     });
   }
@@ -1900,6 +1900,31 @@ window.AsgardOfficeLive = (function () {
       const w=s.crew.find(c=>c.wid==el.dataset.wid); if(w) openWorkerDrawer(w,s); });
   }
 
+  function openReadinessDrawer(r){
+    const esc=(s)=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const ready = !!r.ready;
+    const col = ready?'#22C55E':(r.status==='not_ready'?'#e0a000':'#6b7686');
+    const lbl = ready?'✅ Готов к выезду':(r.status==='not_ready'?'⏳ Не готов':'❔ Не определился');
+    document.getElementById('d-ava').textContent = '👷';
+    document.getElementById("d-name").textContent = r.name || "—";
+    document.getElementById('d-role').textContent = (r.spec||'Рабочий') + (r.city?(' · '+r.city):'');
+    document.getElementById('d-pres').innerHTML = '<span style="color:'+col+'">● '+lbl+'</span>';
+    let h='<div class="kpis">'+
+      '<div class="kpi"><div class="v" style="font-size:15px;color:'+col+'">'+(ready?'✅':(r.status==='not_ready'?'⏳':'❔'))+'</div><div class="k">'+lbl.replace(/^[^ ]+ /,'')+'</div></div>'+
+      '<div class="kpi"><div class="v" style="font-size:13px">'+(r.employ||'—')+'</div><div class="k">оформление</div></div>'+
+      '<div class="kpi"><div class="v" style="font-size:13px">'+(r.spec||'—')+'</div><div class="k">специальность</div></div>'+
+      '</div>';
+    h+='<h3>Готовность к выезду</h3><div class="wrow"><div class="meta">'+
+      '<span style="color:'+col+'"><b>'+lbl+'</b></span>'+
+      (r.reason?('<span class="warn">причина: '+esc(r.reason)+'</span>'):'')+
+      (r.status==='unknown'?'<span class="warn">сотрудник ещё не отметил готовность</span>':'')+'</div></div>';
+    h+='<h3>Сотрудник</h3><div class="wrow"><div class="meta">'+
+      '<span>'+(r.spec||'Рабочий')+'</span>'+
+      '<span class="pill" style="background:'+(r.employ==='Самозанятый'?'#3a2d1a':'#1d2636')+'">'+(r.employ||'—')+'</span>'+
+      (r.city?('<span>📍 '+esc(r.city)+'</span>'):'')+'</div></div>';
+    h+='<div class="meta" style="margin-top:8px;opacity:.6;font-size:11px">Данные дружины — из карточки сотрудника (employees) и отметки готовности в приложении рабочего.</div>';
+    document.getElementById('d-body').innerHTML=h; drawer.classList.add('open');
+  }
   function openWorkerDrawer(w, site){
     const v=VST[w.status]||VST.site;
     document.getElementById('d-ava').textContent = w.master?'🪖':'👷';
@@ -1918,7 +1943,7 @@ window.AsgardOfficeLive = (function () {
       (site?('<div class="meta" style="margin-top:6px"><span>размещение: '+(site.lodging==='судно'?'🚢 ':'🏨 ')+site.lodgeName+'</span></div>'):'')+'</div>';
     h+='<h3>Специальность и оформление</h3><div class="wrow"><div class="meta">'+
       '<span>'+w.spec+'</span><span class="pill" style="background:'+(w.employ==='Самозанятый'?'#3a2d1a':'#1d2636')+'">'+w.employ+'</span>'+
-      '<span>ставка <b>'+w.rate.toLocaleString('ru')+' ₽/смена</b></span></div></div>';
+      (w.rate!=null?('<span>ставка <b>'+Number(w.rate).toLocaleString('ru')+' ₽/смена</b></span>'):'')+'</div></div>';
     // рейс / перелёт (если есть данные о билете)
     if(w.flight){ const f=w.flight, toObj=f.dir==='to';
       h+='<h3>🛫 Командировка · билет (field_logistics)</h3><div class="wrow"><div class="meta">'+
@@ -1928,7 +1953,7 @@ window.AsgardOfficeLive = (function () {
         '<span>вылет: <b>'+simFmt(f.departAt)+'</b></span>'+
         '<span>прилёт: <b>'+simFmt(f.arriveAt)+'</b></span></div></div>'; }
     h+='<h3>Допуски / аттестации</h3><div class="wrow"><div class="meta">'+
-      w.permits.map(p=>'<span class="pill" style="background:#16263a">✔ '+p+'</span>').join(' ')+'</div></div>';
+      (w.permits||[]).map(p=>'<span class="pill" style="background:#16263a">✔ '+p+'</span>').join(' ')+'</div></div>';
     h+='<h3>🩺 Медосмотр и документы</h3><div class="wrow"><div class="meta">'+
       (w.medAt?('<span class="good">🩺 медосмотр: <b>'+simDateShort(w.medAt)+'</b> · '+(w.medPlace||'Москва')+'</span>'):
         '<span class="'+(w.medOk?'good':'bad')+'">'+(w.medOk?'✅ медосмотр пройден ('+w.medDate+')':'⛔ медосмотр не пройден')+'</span>')+
