@@ -52,10 +52,17 @@ window.AsgardOfficeLive = (function () {
     // НОВАЯ модель: ВСЕ офисные сотрудники сидят за столами в офисе (online — ярко, offline — приглушённо).
     //   Исключение: отметился «на объекте» (об) → фигура у объекта. Удалёнка (уд) → бейдж 💻 за столом.
     //   Зоны «дома/готовность» — ТОЛЬКО для полевых рабочих (из _DATA.readiness), офисных там НЕТ.
+    // Отметка «где я сегодня» (staff_plan) ОПРЕДЕЛЯЕТ ЗОНУ на карте:
+    const _HOMEISH = new Set(['вх','бн','сс']);   // выходной/больничный/за свой счёт → ДОМ
     function _zoneOf(p){
-      if (p.status_code === 'об' && p.work) return 'object';
-      if (p.role === 'WAREHOUSE') return 'warehouse';   // кладовщик — НА СКЛАДЕ, не за столом (иначе дубль-фигура)
-      return 'desk';   // все офисные — за столами (offline приглушаем в _placeStaffFig)
+      const sc = p.status_code;
+      if (sc === 'об' && p.work) return 'object';          // на объекте → к объекту
+      if (sc === 'км') return 'object';                    // командировка → к объекту/в путь
+      if (sc === 'уд') return 'oremote';                   // удалёнка → зона УДАЛЁНКА (офисная)
+      if (_HOMEISH.has(sc)) return 'ohome';                // выходной/больничный/отпуск → зона ДОМ (офисная)
+      if (p.role === 'WAREHOUSE') return 'warehouse';      // кладовщик → на складе
+      // нет «домашней» отметки: в офисе (оф) / онлайн / без статуса → за стол
+      return 'desk';
     }
     const staff = people.map(p => {
       const zone = _zoneOf(p);
@@ -281,17 +288,26 @@ window.AsgardOfficeLive = (function () {
 
   // --- ШТАБ слева ---
   // размеры зон считаем из реальных счётчиков (растягиваются, чтобы все влезли)
-  const _officeN = (_DATA.staff||[]).filter(s=>(s._zone||'desk')==='desk').length;   // ВСЕ офисные за столами
+  const _officeN  = (_DATA.staff||[]).filter(s=>(s._zone||'desk')==='desk').length;   // только «в офисе» за столами
+  const _oremoteN = (_DATA.staff||[]).filter(s=>s._zone==='oremote').length;          // офисные на удалёнке
+  const _ohomeN   = (_DATA.staff||[]).filter(s=>s._zone==='ohome').length;            // офисные дома (выходной/больн./отпуск)
   const _rdyPpl  = (_DATA.readiness&&_DATA.readiness.people)||[];
   const _readyN    = _rdyPpl.filter(p=>p.ready).length;
   const _notReadyN = _rdyPpl.length - _readyN;
-  // ОФИС (HALL): сетка столов до 6 в ряд, высота под число рядов (все офисные, online+offline)
+  // ОФИС (HALL): сетка столов до 6 в ряд, высота под число рядов
   const _deskCols = Math.max(1, Math.min(6, Math.ceil(Math.sqrt(Math.max(1,_officeN)))));
-  const _deskRows = Math.max(1, Math.ceil(_officeN/_deskCols));
+  const _deskRows = Math.max(1, Math.ceil(Math.max(1,_officeN)/_deskCols));
   const HALL = { x:470, y:760, w: Math.max(1180, 150+ _deskCols*270 +90), h: Math.max(300, 150+ _deskRows*180 +60) };
-  const REMOTE = { x:HALL.x, y:HALL.y-2, w:0, h:0 };   // не используется (оставлено для совместимости)
+  // высота офисной зоны под число фигур (по ~110px на фигуру в ряд)
+  function _ozoneH(n, w){ const cols=Math.max(1,Math.floor((w-40)/96)); const rows=Math.ceil(Math.max(1,n)/cols); return Math.max(96, 44+rows*72); }
+  // УДАЛЁНКА и ДОМ (офисные) — две полосы НАД офисом
+  const OREMOTE = { x:HALL.x, y:0, w:HALL.w*0.5-8, h:_ozoneH(_oremoteN, HALL.w*0.5-8) };
+  const OHOME   = { x:HALL.x+HALL.w*0.5+8, y:0, w:HALL.w*0.5-8, h:_ozoneH(_ohomeN, HALL.w*0.5-8) };
+  const _topH = Math.max(OREMOTE.h, OHOME.h);
+  OREMOTE.y = HALL.y - _topH - 26; OHOME.y = OREMOTE.y;
+  const REMOTE = { x:HALL.x, y:HALL.y-2, w:0, h:0 };   // legacy (не используется)
   const WARE   = { x:80, y:HALL.y+30, w:350, h: Math.min(HALL.h-60, 560) };
-  // ДРУЖИНА: слева ГОТОВЫ (по _readyN), справа НЕ ГОТОВЫ (по _notReadyN). Высота под число с учётом сжатия фигур.
+  // ДРУЖИНА (полевые): слева ГОТОВЫ, справа НЕ ГОТОВЫ. Высота под число с учётом сжатия фигур.
   function _zoneH(n, w){ const cols=Math.max(3, Math.floor((w-30)/Math.max(22,Math.min(46,Math.sqrt((w-30)*180/Math.max(1,n)))))); const rows=Math.ceil(Math.max(1,n)/cols); return Math.max(120, 50+rows*Math.min(42,Math.max(22,((w-30)/cols)))); }
   const _homeW = HALL.w*0.52-14, _arW = HALL.w*0.48-10;
   const HOME   = { x:HALL.x, y:HALL.y+HALL.h+24, w:_homeW, h: _zoneH(_readyN, _homeW) };
@@ -411,7 +427,9 @@ window.AsgardOfficeLive = (function () {
     t.x=R.x+R.w/2; t.y=R.y+8; t.zIndex=-150; world.addChild(t);
     return g;
   }
-  // зона УДАЛЁНКА убрана — удалёнщики сидят за столом с бейджем 💻
+  // офисные зоны по отметке: УДАЛЁНКА (уд) и ДОМ (выходной/больничный/отпуск) — НАД офисом
+  if(OREMOTE.h>0) zone(OREMOTE,'УДАЛЁНКА', 0x101a2e, 0x2e6bd6, '💻');
+  if(OHOME.h>0) zone(OHOME,'ДОМ · не работают сегодня', 0x1a1420, 0x6b5b3a, '🏠');
   zone(HOME, 'ДРУЖИНА · ГОТОВЫ к выезду', 0x0e1c12, 0x2e7d4f, '✅');
   zone(ARCH, 'ДРУЖИНА · НЕ ГОТОВЫ', 0x1c160e, 0x7d5e2e, '⏳');
 
@@ -1182,6 +1200,15 @@ window.AsgardOfficeLive = (function () {
     if(!site && SITES.length) site=SITES[0];
     if(site){ _placeStaffFig(s, site.cx+(Math.random()*40-20), site.cy+10, " 🛠 (РП)"); }
   });
+  // ── УДАЛЁНКА (отметка «уд») → OREMOTE; ДОМ (выходной/больничный/отпуск) → OHOME ──
+  function _fillOfficeZone(zone, list, fixedSuffix){
+    const cols=Math.max(1, Math.floor((zone.w-40)/96));
+    list.forEach((s,i)=>{ const col=i%cols, row=Math.floor(i/cols);
+      const suf = fixedSuffix!=null ? fixedSuffix : (s.status_label?(' · '+s.status_label):'');
+      _placeStaffFig(s, zone.x+50+col*96, zone.y+46+row*72, suf, s.online?1:0.6); });
+  }
+  _fillOfficeZone(OREMOTE, STAFF.filter(s=>s._zone==='oremote'), ' 💻');
+  _fillOfficeZone(OHOME,   STAFF.filter(s=>s._zone==='ohome'), null);
   // ── ДРУЖИНА (полевые рабочие) по готовности: СЛЕВА готовы (READY), СПРАВА не готовы (NOTREADY) ──
   // фигуры в сетку, размер подгоняется чтобы ВСЕ влезли (30/100+).
   function _fillReadiness(zone, list, ringCol){
@@ -1651,8 +1678,8 @@ window.AsgardOfficeLive = (function () {
   function updateStats(){
     const $=(id)=>document.getElementById(id);
     const inOffice = STAFF.filter(s=>s._zone==='desk').length;
-    const onRemote = STAFF.filter(s=>s._zone==='remote').length;
-    const atHome   = STAFF.filter(s=>s._zone==='home').length;
+    const onRemote = STAFF.filter(s=>s._zone==='oremote').length;
+    const atHome   = STAFF.filter(s=>s._zone==='ohome').length;
     const onObject = STAFF.filter(s=>s._zone==='object').length;
     const onField  = SITES.reduce((a,s)=>a+(s.crew||[]).filter(c=>c.status==='site').length,0) + onObject;
     if($('st-office')) $('st-office').textContent = inOffice;
