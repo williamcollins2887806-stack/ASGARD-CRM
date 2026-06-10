@@ -376,15 +376,21 @@ module.exports = async function (fastify, options) {
       try { act = require('../services/presence-activity').snapshot(rows.map(r => r.user_id)); } catch (_) {}
       const SELF_ACT_LABEL = { coffee: 'кофе-пауза', smoke: 'перекур', lunch: 'обед' };
 
+      // idle (отошёл от стола) ИМЕЕТ СМЫСЛ только для тех, кто В ОФИСЕ (статус 'оф' или без статуса).
+      // Если человек отметился «на объекте»/«удалёнка»/«командировка»/«выходной»/«больничный» —
+      // он НЕ «отошёл от стола», и idle не должен перебивать его реальный статус.
+      const OFFICE_PRESENT = new Set(['оф', '', null, undefined]);
       const people = rows.map(r => {
         const online = onlineSet.has(Number(r.user_id));
         const a = act[r.user_id] || {};
         const selfAct = a.selfAct || null;        // coffee/smoke/lunch
-        const idle = online && a.idle && !r.on_call && !selfAct;
-        // что делает (приоритет: самоотметка → на звонке → idle(отошёл) → онлайн+статус → статус дня → офлайн)
+        const idleEligible = OFFICE_PRESENT.has(r.status_code);   // только офисное присутствие
+        const idle = online && a.idle && idleEligible && !r.on_call && !selfAct;
+        // что делает (приоритет: самоотметка → на звонке → реальный статус дня (об/уд/км/...) → idle → онлайн → офлайн)
         let doing;
         if (selfAct) doing = SELF_ACT_LABEL[selfAct] || selfAct;
         else if (r.on_call) doing = 'на звонке';
+        else if (r.status_code && r.status_code !== 'оф') doing = (PRESENCE_LABELS[r.status_code] || r.status_code); // об/уд/км/вх/бн/сс — показываем как есть
         else if (idle) doing = 'отошёл';
         else if (online) doing = r.status_code ? (PRESENCE_LABELS[r.status_code] || r.status_code) : 'в СРМ';
         else doing = r.status_code ? (PRESENCE_LABELS[r.status_code] || r.status_code) : null;

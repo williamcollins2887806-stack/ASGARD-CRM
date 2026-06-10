@@ -841,6 +841,45 @@ window.AsgardOfficeLive = (function () {
     {n:'Ремонт трубопровода «Усинск»', rev:34.0, margin:-3.2, why:'перерасход ФОТ + простой'},
   ];
 
+  // ↓↓↓ РЕАЛЬНЫЕ ДАННЫЕ (перебивают демо-значения выше) ↓↓↓
+  (function(){ const D=_DATA.summary; if(!D) return;
+    YEAR.year = D.year || YEAR.year;
+    if(D.pnl){ const p=D.pnl;
+      YEAR.projects = p.projects||0;
+      YEAR.revenue  = +(p.revenue||0);
+      YEAR.costPlan = +(p.costPlan||0);
+      YEAR.costFact = +(p.costFact||0);
+      YEAR.gross    = (p.gross!=null)? +p.gross : +(YEAR.revenue-YEAR.costFact).toFixed(1);
+      YEAR.grossPct = (p.grossPct!=null)? +p.grossPct : (YEAR.revenue? +(YEAR.gross/YEAR.revenue*100).toFixed(1):0);
+      YEAR.costSave = (p.costSave!=null)? +p.costSave : +(YEAR.costPlan-YEAR.costFact).toFixed(1);
+      // нет в API — обнуляем демо, чтобы не вводить в заблуждение
+      YEAR.sgna=0; YEAR.tax=0; YEAR.backlog=0;
+      YEAR.ebitda=YEAR.gross; YEAR.ebitdaPct=YEAR.grossPct; YEAR.net=YEAR.gross; YEAR.netPct=YEAR.grossPct;
+    }
+    if(D.cash){ const cs=D.cash;
+      YEAR.received=+(cs.received||0); YEAR.ar=+(cs.receivable||0); YEAR.arOverdue=+(cs.overdue||0); YEAR.advances=+(cs.advances||0);
+      YEAR.toReceive=+(YEAR.revenue-YEAR.received).toFixed(1); YEAR.profitFact=+(YEAR.received-YEAR.costFact).toFixed(1);
+    }
+    if(D.selfEmployed){ const sz=D.selfEmployed;
+      YEAR.szPeople=sz.count||0; YEAR.szPerLimit=+(sz.perLimit||2.4); YEAR.szUsed=+(sz.used||0);
+      YEAR.szLimit=+(sz.yearLimit!=null?sz.yearLimit:(YEAR.szPeople*YEAR.szPerLimit)).toFixed(1);
+      YEAR.szLeft=+((sz.left!=null?sz.left:(YEAR.szLimit-YEAR.szUsed))).toFixed(1);
+      YEAR.szUtilPct=sz.utilPct!=null?sz.utilPct:(YEAR.szLimit?Math.round(YEAR.szUsed/YEAR.szLimit*100):0);
+      YEAR.szAvg=+(YEAR.szPeople?YEAR.szUsed/YEAR.szPeople:0).toFixed(2);
+      YEAR.szTop=(sz.top||[]).map(t=>({n:t.fio||t.n||'—', used:+(t.used||0), inn:''}));
+    }
+    if(D.tenders){ const tn=D.tenders;
+      YEAR.tnSubmitted=tn.submitted||0; YEAR.tnWon=tn.won||0; YEAR.tnLost=tn.lost||0; YEAR.tnActive=tn.active||0;
+      YEAR.tnWonSum=+(tn.wonSum||0); YEAR.tnPipeline=+(tn.pipeline||0);
+      YEAR.tnConv=(YEAR.tnWon+YEAR.tnLost)?Math.round(YEAR.tnWon/(YEAR.tnWon+YEAR.tnLost)*100):0;
+    }
+    if(D.people){ const pp=D.people;
+      YEAR.headcount=pp.headcount||pp.total||0; YEAR.staffSelfEmp=pp.selfEmp||YEAR.szPeople||0; YEAR.onShift=pp.onShift||0;
+    }
+    // помесячные графики API не даёт — гасим демо-ряды (пусто, без фейка)
+    YEAR.revMonth=[0,0,0,0,0,0,0,0,0,0,0,0]; YEAR.costMonth=[0,0,0,0,0,0,0,0,0,0,0,0];
+    YEAR.topProjects=[]; YEAR.lossProjects=[];
+  })();
   const STAFF = _DATA.staff;   // [{name,role,rus,female?,helm?,beard?, ...досье}]
 
   // ======================= ВЕКТОРНЫЙ ВИКИНГ (детальный, читаемый) =======================
@@ -1121,15 +1160,7 @@ window.AsgardOfficeLive = (function () {
     c.eventMode='static'; c.cursor='pointer';
     c.on('pointertap',()=>{ if(!drag.moved) openDrawer(wm); });
     world.addChild(c); wm._fig=c;
-    // лёгкое покачивание + перемещение между стеллажами
-    let tgt=null, wait=2;
-    app.ticker.add(()=>{ if(paused) return; const dt=Math.min(app.ticker.deltaMS/1000,.05);
-      c._body.y=Math.sin(performance.now()/500)*0.6;
-      if(!tgt){ wait-=dt; if(wait<=0){ tgt={x:WARE.x+40+Math.random()*(WARE.w-80), y:WARE.y+120+Math.random()*(WARE.h-200)}; } return; }
-      const dx=tgt.x-c.x, dy=tgt.y-c.y, dist=Math.hypot(dx,dy), sp=13*dt;
-      if(dist<sp){ c.x=tgt.x; c.y=tgt.y; tgt=null; wait=3+Math.random()*5; c._body.rotation=0; }
-      else { c.x+=dx/dist*sp; c.y+=dy/dist*sp; c.zIndex=c.y; c._body.rotation=Math.sin(performance.now()/100)*0.05; }
-    });
+    // кладовщик стоит на месте (без демо-беготни)
   })();
 
   // ======================= РАБОЧИЕ / ДРУЖИНА =======================
@@ -1161,7 +1192,7 @@ window.AsgardOfficeLive = (function () {
       this.status = data.status || 'site';
       this.area = area || areaForStatus(site, this.status) || {x:0,y:0,w:60,h:60};
       this.c=drawWorker(data.name, data.master, 0.8); this.dir='down'; this.t=Math.random()*5; this.target=null;
-      this.state = (this.status==='sleep')?'still':'roam';   // медосмотр — мельтешат у клиники
+      this.state = 'still';   // рабочие стоят на местах (без демо-роуминга)
       this.reposition(); this.c.zIndex=this.c.y;
       // спящие — лёгкая прозрачность + «Z»
       if(this.status==='sleep'){ this.c.alpha=.55; }
@@ -1521,22 +1552,19 @@ window.AsgardOfficeLive = (function () {
   function pickDeskAct(h){ const arr=DESK_ACTS[h.s.role]||DESK_ACTS.default; return arr[Math.floor(Math.random()*arr.length)]; }
 
   function tick(){
+    // Демо-поведение отключено — карта работает на реальных данных.
+    // Лёгкая микро-смена занятия ТОЛЬКО для реально-онлайн за столом (косметика «печатает/думает»).
     if(paused) return;
-    const now=performance.now()/1000;
     heroes.forEach(h=>{
-      if(h.state==='walking') return;
-      if(h._realBreak || (h._real && (h._real.on_call || h._real.idle || h._real.self_act || h._real.online===false))) return; // реальный режим важнее случайного
-      if(h.t < h.hold) return;                    // инерция: рано менять
-      h.t=0; h.hold=8+Math.random()*10;
-      const r=Math.random();
-      if(r<0.12){ doBreak(h); }                   // редкий перекур/кофе/обед
-      else if(r<0.18){ h.setAct(pickDeskAct(h)); } // редкая смена занятия за столом
-      // иначе — продолжает текущее (спокойно сидит)
+      if(h.state==="walking") return;
+      const r = h._real;
+      if(!r || !r.online) return;                       // офлайн — не двигается вообще
+      if(r.on_call || r.idle || r.self_act) return;     // реальный режим важнее
+      if((r.status_code && r.status_code!=='оф')) return; // на объекте/удалёнке/выходном — не за столом
+      if(h.t < h.hold) return;
+      h.t=0; h.hold=10+Math.random()*12;
+      h.setAct(pickDeskAct(h));                          // только смена занятия за СВОИМ столом, без прогулок
     });
-    // согласование (двое идут навстречу) — не чаще раза в ~35с
-    if(now-lastApprove>35 && Math.random()<0.5){ lastApprove=now; doApproval(); }
-    // визит к Мимиру — не чаще раза в ~45с
-    if(now-lastMimir>45 && Math.random()<0.5){ lastMimir=now; doMimir(); }
   }
 
   function doBreak(h){
@@ -1568,46 +1596,26 @@ window.AsgardOfficeLive = (function () {
   heroes.forEach(h=>{ if(h.s && h.s.user_id!=null) _heroByUser[h.s.user_id]=h; });
   const _liveState = {}; // user_id → последний применённый «реальный» режим (чтобы не дёргать зря)
 
-  // увести героя на перерыв конкретного вида (coffee/smoke/lunch) и держать пока режим активен
-  function _heroBreak(h, kind){
-    if(h._realBreak===kind) return;        // уже на этом перерыве
-    h._realBreak=kind; if(h.state==='walking') return;
-    const sx = HALL.x+60+Math.random()*40, sy = HALL.y+HALL.h-150+Math.random()*60;
-    h.setAct(kind); h.state='walking';
-    h.walkTo(sx,sy,()=>{ h.setAct(kind); });
-  }
-  // вернуть героя за стол
-  function _heroDesk(h, act){
-    h._realBreak=null;
-    if(h.state==='walking') return;
-    if(Math.hypot(h.c.x-h.home.x, h.c.y-(h.home.y-6))>6){
-      h.setAct(act||'work'); h.walkTo(h.home.x,h.home.y-6,()=>{ h.setAct(act||pickDeskAct(h)); });
-    } else h.setAct(act||pickDeskAct(h));
-  }
-
-  // применить снимок /live к аватарам. people: [{user_id,online,on_call,idle,self_act,status_code}]
+  // БЕЗ ТЕАТРА: аватары не ходят. Меняем ТОЛЬКО иконку-действие НА МЕСТЕ по реальному статусу.
   function _applyLive(people){
     (people||[]).forEach(p=>{
       const h=_heroByUser[p.user_id]; if(!h) return;
-      h._real = p; // храним для drawer/«что делает»
-      let mode;
-      if(p.self_act) mode = p.self_act;                 // coffee/smoke/lunch
-      else if(p.on_call) mode = 'phone';
-      else if(p.idle) mode = 'coffee';                  // отошёл → кофе-зона
-      else if(!p.online) mode = 'home';
-      else if(p.status_code==='уд') mode = 'remote';
-      else mode = 'work';
-      if(_liveState[p.user_id]===mode) return;          // без изменений
-      _liveState[p.user_id]=mode;
-      if(mode==='coffee'||mode==='smoke'||mode==='lunch') _heroBreak(h, mode);
-      else if(mode==='phone'){ h._realBreak=null; if(h.state!=='walking') h.setAct('phone'); }
-      else if(mode==='remote'){ h._realBreak=null; if(h.state!=='walking') h.setAct('remote'); }
-      else if(mode==='home'){ h._realBreak=null; h.setAct('home'); }   // alpha .25 (см. setAct)
-      else _heroDesk(h, pickDeskAct(h));
+      h._real = p;
+      let act;
+      if(p.self_act) act = p.self_act;                 // coffee/smoke/lunch — бабл, без хождения
+      else if(p.on_call) act = 'phone';
+      else if(!p.online) act = 'home';                 // офлайн → приглушён (alpha .25)
+      else if(p.status_code==='уд') act = 'remote';
+      else if(p.idle) act = 'coffee';                  // отошёл → бабл кофе НА МЕСТЕ
+      else act = pickDeskAct(h);
+      h._realBreak=null;
+      if(_liveState[p.user_id]===act) return;
+      _liveState[p.user_id]=act;
+      if(h.state!=='walking') h.setAct(act);
     });
   }
   window.__oflApplyLive = _applyLive;
-  setInterval(tick, 1500);
+  // setInterval(tick) УБРАН — без демо-движения
 
   // ======================= ТИКЕР =======================
   let paused=false;
