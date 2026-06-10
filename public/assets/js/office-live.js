@@ -1596,22 +1596,42 @@ window.AsgardOfficeLive = (function () {
   heroes.forEach(h=>{ if(h.s && h.s.user_id!=null) _heroByUser[h.s.user_id]=h; });
   const _liveState = {}; // user_id → последний применённый «реальный» режим (чтобы не дёргать зря)
 
-  // БЕЗ ТЕАТРА: аватары не ходят. Меняем ТОЛЬКО иконку-действие НА МЕСТЕ по реальному статусу.
+  // Движение ТОЛЬКО по РЕАЛЬНЫМ сигналам (не случайный таймер-театр):
+  //   реальный idle (нет heartbeat 5 мин) ИЛИ самоотметка ☕/💨/🍖 → герой ИДЁТ в зону отдыха;
+  //   снова активен → возвращается за свой стол.
+  function _heroBreak(h, kind){
+    if(h._realBreak===kind) return;
+    h._realBreak=kind; if(h.state==='walking') return;
+    const uid=(h.s&&h.s.user_id)||0;
+    const sx = HALL.x+60+(uid?uid*13%50:Math.random()*40), sy = HALL.y+HALL.h-150+(uid?uid*7%50:Math.random()*50);
+    h.setAct(kind); h.state='walking';
+    h.walkTo(sx,sy,()=>{ h.setAct(kind); });
+  }
+  function _heroDesk(h, act){
+    h._realBreak=null;
+    if(h.state==='walking') return;
+    if(Math.hypot(h.c.x-h.home.x, h.c.y-(h.home.y-6))>6){
+      h.setAct(act||'work'); h.walkTo(h.home.x,h.home.y-6,()=>{ h.setAct(act||pickDeskAct(h)); });
+    } else h.setAct(act||pickDeskAct(h));
+  }
   function _applyLive(people){
     (people||[]).forEach(p=>{
       const h=_heroByUser[p.user_id]; if(!h) return;
       h._real = p;
-      let act;
-      if(p.self_act) act = p.self_act;                 // coffee/smoke/lunch — бабл, без хождения
-      else if(p.on_call) act = 'phone';
-      else if(!p.online) act = 'home';                 // офлайн → приглушён (alpha .25)
-      else if(p.status_code==='уд') act = 'remote';
-      else if(p.idle) act = 'coffee';                  // отошёл → бабл кофе НА МЕСТЕ
-      else act = pickDeskAct(h);
-      h._realBreak=null;
-      if(_liveState[p.user_id]===act) return;
-      _liveState[p.user_id]=act;
-      if(h.state!=='walking') h.setAct(act);
+      let mode;
+      if(p.self_act) mode = p.self_act;                 // самоотметка ☕/💨/🍖 → идёт в зону отдыха
+      else if(p.on_call) mode = 'phone';
+      else if(!p.online) mode = 'home';                 // офлайн → приглушён, стоит
+      else if(p.status_code==='уд') mode = 'remote';
+      else if(p.idle) mode = 'coffee';                  // РЕАЛЬНО отошёл (нет heartbeat 5 мин) → идёт за кофе
+      else mode = 'work';
+      if(_liveState[p.user_id]===mode) return;
+      _liveState[p.user_id]=mode;
+      if(mode==='coffee'||mode==='smoke'||mode==='lunch') _heroBreak(h, mode);   // ИДЁТ в зону отдыха
+      else if(mode==='phone'){ h._realBreak=null; if(h.state!=='walking') h.setAct('phone'); }
+      else if(mode==='remote'){ h._realBreak=null; if(h.state!=='walking') h.setAct('remote'); }
+      else if(mode==='home'){ h._realBreak=null; if(h.state!=='walking') h.setAct('home'); }
+      else _heroDesk(h, pickDeskAct(h));                 // снова активен → возвращается за стол
     });
   }
   window.__oflApplyLive = _applyLive;
