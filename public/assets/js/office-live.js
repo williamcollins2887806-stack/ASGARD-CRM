@@ -54,6 +54,7 @@ window.AsgardOfficeLive = (function () {
     //   Зоны «дома/готовность» — ТОЛЬКО для полевых рабочих (из _DATA.readiness), офисных там НЕТ.
     function _zoneOf(p){
       if (p.status_code === 'об' && p.work) return 'object';
+      if (p.role === 'WAREHOUSE') return 'warehouse';   // кладовщик — НА СКЛАДЕ, не за столом (иначе дубль-фигура)
       return 'desk';   // все офисные — за столами (offline приглушаем в _placeStaffFig)
     }
     const staff = people.map(p => {
@@ -1092,12 +1093,13 @@ window.AsgardOfficeLive = (function () {
     const wm = STAFF.find(x=>x.role==='WAREHOUSE'); if(!wm) return;
     const c = drawViking(wm, 0.95);
     c.x = WARE.x + WARE.w/2; c.y = WARE.y + WARE.h - 70; c.zIndex = c.y;
+    if(!wm.online) c.alpha = 0.4;   // офлайн-кладовщик — приглушён
     const tg = label(wm.name.split(' ')[0]+' · кладовщик',11,0xe6eef8,'700'); tg.anchor.set(.5,0); tg.y=34; c.addChild(tg);
     // бабл «работает на складе»
     const bub=new PIXI.Container(); bub.y=-58; c.addChild(bub);
-    const bbg=new PIXI.Graphics(); bbg.beginFill(0x3fb950,.95); bbg.drawRoundedRect(-13,-12,26,21,7);
+    const bbg=new PIXI.Graphics(); bbg.beginFill(wm.online?0x3fb950:0x5a6675,.95); bbg.drawRoundedRect(-13,-12,26,21,7);
     bbg.moveTo(-4,9);bbg.lineTo(4,9);bbg.lineTo(0,14);bbg.closePath(); bbg.endFill(); bub.addChild(bbg);
-    const bic=new PIXI.Text('📦',{fontFamily:FONT,fontSize:13}); bic.anchor.set(.5); bub.addChild(bic);
+    const bic=new PIXI.Text(wm.online?'📦':'🌙',{fontFamily:FONT,fontSize:13}); bic.anchor.set(.5); bub.addChild(bic);
     c.eventMode='static'; c.cursor='pointer';
     c.on('pointertap',()=>{ if(!drag.moved) openDrawer(wm); });
     world.addChild(c); wm._fig=c;

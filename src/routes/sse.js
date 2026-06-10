@@ -109,9 +109,29 @@ async function sseRoutes(fastify) {
       try { broadcast('presence:online', { user_id: userId, ts: Date.now() }); } catch (_) {}
     }
 
-    // Heartbeat каждые 30 сек (чтобы соединение не рвалось)
+    // Heartbeat каждые 30 сек (чтобы соединение не рвалось).
+    // ВАЖНО: если запись упала ИЛИ сокет уже не пишется (мёртвое соединение — закрытая вкладка,
+    // спящий телефон, оборванный TCP без события 'close') — УДАЛЯЕМ соединение из реестра,
+    // иначе пользователь вечно «онлайн» на командной карте (ложный online).
     const heartbeat = setInterval(() => {
-      try { raw.write(`: heartbeat ${Date.now()}\n\n`); } catch (_) { clearInterval(heartbeat); }
+      const dead = raw.writableEnded || raw.destroyed || !raw.writable;
+      let ok = !dead;
+      if (!dead) {
+        try { raw.write(`: heartbeat ${Date.now()}\n\n`); }
+        catch (_) { ok = false; }
+      }
+      if (!ok) {
+        clearInterval(heartbeat);
+        const conns = clients.get(userId);
+        if (conns) {
+          conns.delete(raw);
+          if (conns.size === 0) {
+            clients.delete(userId);
+            try { broadcast('presence:offline', { user_id: userId, ts: Date.now() }); } catch (_) {}
+          }
+        }
+        try { raw.end(); } catch (_) {}
+      }
     }, 30000);
 
     // Cleanup при закрытии соединения
