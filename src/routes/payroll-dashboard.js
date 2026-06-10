@@ -404,6 +404,99 @@ async function routes(fastify, options) {
     return { year, month, items: rows };
   });
 
+  // ─── GET /cash-calc/:year/:month — расчёт кассы по каждому рабочему ────────
+  // Возвращает строки для экрана «Расчёт кассы» (4 вкладки на фронте):
+  // pay_type = self_employed | official | cash, earned/transfer/cash_return/cash_payout.
+  fastify.get('/cash-calc/:year/:month', { preHandler: [fastify.requireRoles(ACCESS_ROLES)] }, async (request, reply) => {
+    const year  = parseInt(request.params.year, 10);
+    const month = parseInt(request.params.month, 10);
+    if (!Number.isFinite(year) || !Number.isFinite(month)) return reply.code(400).send({ error: 'Bad year/month' });
+
+    const monthlyLimit = await getSettingNumber(db, 'self_employed_monthly_limit', 350000);
+    const yearlyLimit  = await getSettingNumber(db, 'self_employed_yearly_limit', 2400000);
+
+    const periodStart = `${year}-${String(month).padStart(2, '0')}-01`;
+    const periodEnd   = `${year}-${String(month).padStart(2, '0')}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`;
+
+    const { rows: ciSum } = await db.query(`
+      SELECT fc.employee_id, COALESCE(SUM(fc.amount_earned), 0) AS earned
+      FROM field_checkins fc
+      WHERE fc.date BETWEEN $1 AND $2 AND COALESCE(fc.status, 'active') != 'cancelled'
+      GROUP BY fc.employee_id
+    `, [periodStart, periodEnd]);
+    const { rows: stSum } = await db.query(`
+      SELECT fts.employee_id, COALESCE(SUM(fts.amount_earned), 0) AS earned
+      FROM field_trip_stages fts
+      WHERE fts.date_from <= $2 AND COALESCE(fts.date_to, fts.date_from) >= $1
+        AND COALESCE(fts.status, 'active') != 'rejected'
+      GROUP BY fts.employee_id
+    `, [periodStart, periodEnd]);
+
+    const earnedByEmp = {};
+    for (const r of ciSum) earnedByEmp[r.employee_id] = Number(r.earned || 0);
+    for (const r of stSum) earnedByEmp[r.employee_id] = (earnedByEmp[r.employee_id] || 0) + Number(r.earned || 0);
+
+    const empIds = Object.keys(earnedByEmp).map(x => parseInt(x, 10));
+    if (!empIds.length) {
+      return { year, month, monthly_limit: monthlyLimit, yearly_limit: yearlyLimit, items: [],
+        totals: { earned: 0, transfer: 0, cash_return: 0, cash_payout: 0, net_cash: 0 } };
+    }
+
+    const { rows: emps } = await db.query(`
+      SELECT id, fio, is_self_employed, is_officially_employed, can_exceed_limit,
+             official_salary, official_status
+      FROM employees WHERE id = ANY($1::int[])
+    `, [empIds]);
+
+    const { rows: yearlySum } = await db.query(`
+      SELECT employee_id, COALESCE(SUM(transfer_amount), 0) AS yr_sum
+      FROM se_transfers
+      WHERE employee_id = ANY($1::int[]) AND year = $2 AND status != 'cancelled'
+      GROUP BY employee_id
+    `, [empIds, year]);
+    const yearlyByEmp = {};
+    for (const r of yearlySum) yearlyByEmp[r.employee_id] = Number(r.yr_sum || 0);
+
+    const items = [];
+    const totals = { earned: 0, transfer: 0, cash_return: 0, cash_payout: 0, net_cash: 0 };
+
+    for (const emp of emps) {
+      const earned = earnedByEmp[emp.id] || 0;
+      let pay_type, transfer = 0, cash_return = 0, cash_payout = 0;
+
+      if (emp.is_self_employed) {
+        pay_type = 'self_employed';
+        const yrRemain = Math.max(0, yearlyLimit - (yearlyByEmp[emp.id] || 0));
+        transfer = monthlyLimit;
+        if (emp.can_exceed_limit && earned > monthlyLimit) transfer = earned;
+        transfer = Math.min(transfer, yrRemain);
+        cash_return = Math.max(0, transfer - earned);
+        cash_payout = Math.max(0, earned - transfer);
+      } else if (emp.is_officially_employed) {
+        pay_type = 'official';
+        const salary = Number(emp.official_salary || 0);
+        transfer = emp.official_status === 'unpaid_leave' ? 0 : salary;
+        cash_payout = Math.max(0, earned - salary);
+      } else {
+        pay_type = 'cash';
+        cash_payout = earned;
+      }
+
+      // Рабочий без заработка и без операций не участвует в расчёте
+      if (earned <= 0 && transfer <= 0) continue;
+
+      items.push({ employee_id: emp.id, fio: emp.fio, pay_type, earned, transfer, cash_return, cash_payout });
+      totals.earned += earned;
+      totals.transfer += transfer;
+      totals.cash_return += cash_return;
+      totals.cash_payout += cash_payout;
+    }
+    totals.net_cash = totals.cash_return - totals.cash_payout;
+    items.sort((a, b) => (a.fio || '').localeCompare(b.fio || '', 'ru'));
+
+    return { year, month, monthly_limit: monthlyLimit, yearly_limit: yearlyLimit, items, totals };
+  });
+
   // ─── GET /pm-balance — баланс всех РП ────────────────────────────────────
   fastify.get('/pm-balance', { preHandler: [fastify.requireRoles(ACCESS_ROLES)] }, async (request, reply) => {
     try {

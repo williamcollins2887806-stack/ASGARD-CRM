@@ -44,6 +44,23 @@ window.AsgardPayrollDashboard=(function(){
 
         <div id="pd_cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:20px"></div>
 
+        <h3 style="color:var(--t1);margin:0 0 12px">Расчёт кассы</h3>
+        <div id="pd_cc_tabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+          <button class="btn ghost cc-tab" data-cctab="all">Все</button>
+          <button class="btn ghost cc-tab" data-cctab="self_employed">Самозанятые</button>
+          <button class="btn ghost cc-tab" data-cctab="official">Официальные</button>
+          <button class="btn ghost cc-tab" data-cctab="cash">Наличка</button>
+        </div>
+        <div class="tablewrap" style="margin-bottom:20px">
+          <table class="asg" id="pd_cc_table">
+            <thead><tr>
+              <th>Рабочий</th><th>Тип оплаты</th><th>Заработал</th><th>Переводим</th><th>Возврат в кассу</th><th>Из кассы</th>
+            </tr></thead>
+            <tbody id="pd_cc_body"></tbody>
+            <tfoot id="pd_cc_foot"></tfoot>
+          </table>
+        </div>
+
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
           <h3 style="color:var(--t1);margin:0">Операции с самозанятыми</h3>
           <div style="display:flex;gap:8px">
@@ -146,6 +163,80 @@ window.AsgardPayrollDashboard=(function(){
         toast("Ошибка","Не удалось загрузить сводку","err");
       }
     }
+
+    // ─── Расчёт кассы (4 вкладки) ───────────────────────────────
+    const PAY_TYPE_LABEL = {
+      self_employed: {label:'Самозанятый', bg:'var(--info-bg)', color:'var(--info-t)'},
+      official:      {label:'Официальный', bg:'var(--gold-bg)', color:'var(--gold)'},
+      cash:          {label:'Наличка',     bg:'var(--ok-bg)',   color:'var(--ok-t)'}
+    };
+    let ccTab = 'all';
+    let ccData = null;
+
+    async function loadCashCalc(){
+      try{
+        ccData = await apiFetch(`/api/payroll-dashboard/cash-calc/${curYear}/${curMonth}`);
+      }catch(e){
+        ccData = null;
+        toast("Ошибка","Не удалось загрузить расчёт кассы","err");
+      }
+      renderCashCalc();
+    }
+
+    function renderCashCalc(){
+      // подсветка активной вкладки
+      $$('.cc-tab').forEach(b=>{
+        const active = b.dataset.cctab===ccTab;
+        b.classList.toggle('primary', active);
+        b.classList.toggle('ghost', !active);
+      });
+      const tbody = $('#pd_cc_body'), tfoot = $('#pd_cc_foot');
+      if(!tbody) return;
+      const items = (ccData && ccData.items) ? ccData.items : [];
+      const list = ccTab==='all' ? items : items.filter(i=>i.pay_type===ccTab);
+      if(!list.length){
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--t3);padding:20px">Нет данных за период</td></tr>';
+        if(tfoot) tfoot.innerHTML = '';
+        return;
+      }
+      tbody.innerHTML = list.map(i=>{
+        const pt = PAY_TYPE_LABEL[i.pay_type] || {label:i.pay_type,bg:'var(--bg3)',color:'var(--t2)'};
+        return `<tr>
+          <td><b>${esc(i.fio||'—')}</b></td>
+          <td><span style="padding:3px 8px;border-radius:var(--r-sm);background:${pt.bg};color:${pt.color};font-size:12px;font-weight:600">${pt.label}</span></td>
+          <td>${fmtR(i.earned||0)}</td>
+          <td style="font-weight:600">${fmtR(i.transfer||0)}</td>
+          <td style="color:var(--gold)">${i.cash_return?fmtR(i.cash_return):'—'}</td>
+          <td style="color:var(--warn-t);font-weight:600">${i.cash_payout?fmtR(i.cash_payout):'—'}</td>
+        </tr>`;
+      }).join('');
+      // ИТОГО по текущей вкладке
+      const sum = list.reduce((a,i)=>({
+        earned:a.earned+(i.earned||0), transfer:a.transfer+(i.transfer||0),
+        cash_return:a.cash_return+(i.cash_return||0), cash_payout:a.cash_payout+(i.cash_payout||0)
+      }), {earned:0,transfer:0,cash_return:0,cash_payout:0});
+      const netCash = sum.cash_return - sum.cash_payout;
+      const netColor = netCash>=0 ? 'var(--ok-t)' : 'var(--err-t)';
+      if(tfoot){
+        tfoot.innerHTML = `
+          <tr style="background:var(--bg2);font-weight:700">
+            <td colspan="2">ИТОГО</td>
+            <td>${fmtR(sum.earned)}</td>
+            <td>${fmtR(sum.transfer)}</td>
+            <td style="color:var(--gold)">${fmtR(sum.cash_return)}</td>
+            <td style="color:var(--warn-t)">${fmtR(sum.cash_payout)}</td>
+          </tr>
+          <tr style="background:var(--bg2)">
+            <td colspan="6" style="color:${netColor};font-weight:700;font-size:14px">
+              ИТОГО В КАССЕ (возврат − выдача): ${fmtR(netCash)}
+            </td>
+          </tr>`;
+      }
+    }
+
+    $$('.cc-tab').forEach(b=>{
+      b.addEventListener('click', ()=>{ ccTab = b.dataset.cctab; renderCashCalc(); });
+    });
 
     async function loadTransfers(){
       try{
@@ -339,7 +430,7 @@ window.AsgardPayrollDashboard=(function(){
 
     async function refreshAll(){
       updatePeriod();
-      await Promise.all([loadSummary(), loadTransfers(), loadLimits()]);
+      await Promise.all([loadSummary(), loadCashCalc(), loadTransfers(), loadLimits()]);
     }
 
     // Navigation

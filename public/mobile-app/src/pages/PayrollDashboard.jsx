@@ -26,6 +26,15 @@ const STATUS_COLORS = {
   returned: 'var(--green)', completed: 'var(--green)', cancelled: 'var(--err-t)',
 };
 
+const PAY_TYPE_LABELS = { self_employed: 'Самозанятый', official: 'Официальный', cash: 'Наличка' };
+const PAY_TYPE_COLORS = { self_employed: 'var(--blue)', official: 'var(--gold)', cash: 'var(--warn-t)' };
+const CC_TABS = [
+  { key: 'all', label: 'Все' },
+  { key: 'self_employed', label: 'Самозанятые' },
+  { key: 'official', label: 'Официальные' },
+  { key: 'cash', label: 'Наличка' },
+];
+
 export default function PayrollDashboard() {
   const haptic = useHaptic();
   const now = new Date();
@@ -46,6 +55,10 @@ export default function PayrollDashboard() {
   const [confirmingId, setConfirmingId] = useState(null);
 
   const [seLimits, setSeLimits] = useState([]);
+
+  // Расчёт кассы (4 вкладки)
+  const [cashCalc, setCashCalc] = useState(null);
+  const [ccTab, setCcTab] = useState('all');
 
   // Редактирование финансовых лимитов (ADMIN/DIRECTOR_GEN)
   const user = useAuthStore((s) => s.user);
@@ -90,18 +103,21 @@ export default function PayrollDashboard() {
     setLoading(true);
     setError(null);
     try {
-      const [sum, tr, lim] = await Promise.all([
+      const [sum, tr, lim, cc] = await Promise.all([
         api.get(`/payroll-dashboard/summary/${year}/${month}`),
         api.get(`/payroll-dashboard/se-transfers/${year}/${month}`),
         api.get('/payroll-dashboard/self-employed-limits'),
+        api.get(`/payroll-dashboard/cash-calc/${year}/${month}`).catch(() => null),
       ]);
       setSummary(sum);
       setTransfers(api.extractRows(tr) || []);
       setSeLimits(api.extractRows(lim) || []);
+      setCashCalc(cc);
     } catch (e) {
       setSummary(null);
       setTransfers([]);
       setSeLimits([]);
+      setCashCalc(null);
       setError(e.message || 'Ошибка загрузки');
     } finally {
       setLoading(false);
@@ -220,6 +236,72 @@ export default function PayrollDashboard() {
                 </div>
               </div>
             )}
+
+            {/* Расчёт кассы (4 вкладки) */}
+            {(() => {
+              const items = (cashCalc && cashCalc.items) ? cashCalc.items : [];
+              const list = ccTab === 'all' ? items : items.filter(i => i.pay_type === ccTab);
+              const sum = list.reduce((a, i) => ({
+                earned: a.earned + (i.earned || 0), transfer: a.transfer + (i.transfer || 0),
+                cash_return: a.cash_return + (i.cash_return || 0), cash_payout: a.cash_payout + (i.cash_payout || 0),
+              }), { earned: 0, transfer: 0, cash_return: 0, cash_payout: 0 });
+              const netCash = sum.cash_return - sum.cash_payout;
+              return (
+                <div className="mb-3" style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) 260ms both' }}>
+                  <p className="text-xs font-semibold uppercase tracking-wider c-tertiary mb-2">Расчёт кассы</p>
+                  <div className="flex gap-1.5 mb-2 overflow-x-auto no-scrollbar">
+                    {CC_TABS.map(t => (
+                      <button key={t.key} onClick={() => { haptic.light(); setCcTab(t.key); }}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap spring-tap"
+                        style={ccTab === t.key
+                          ? { background: 'var(--blue)', color: '#fff' }
+                          : { backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-secondary)' }}>
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                  {list.length === 0 ? (
+                    <div className="card-glass p-4 text-center">
+                      <p className="text-sm c-secondary">Нет данных за этот месяц</p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex flex-col gap-1.5">
+                        {list.map((i, idx) => (
+                          <div key={i.employee_id || idx} className="card-glass px-4 py-3">
+                            <div className="flex items-center justify-between mb-1">
+                              <p className="text-[13px] font-semibold c-primary">{i.fio || '—'}</p>
+                              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+                                style={{
+                                  background: `color-mix(in srgb, ${PAY_TYPE_COLORS[i.pay_type] || 'var(--text-tertiary)'} 15%, transparent)`,
+                                  color: PAY_TYPE_COLORS[i.pay_type] || 'var(--text-tertiary)',
+                                }}>
+                                {PAY_TYPE_LABELS[i.pay_type] || i.pay_type}
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] c-secondary">
+                              <span>Заработал: <b className="c-primary">{fmtMoney(i.earned)}</b></span>
+                              <span>Переводим: <b className="c-primary">{fmtMoney(i.transfer)}</b></span>
+                              {i.cash_return > 0 && <span>Возврат: <b className="c-green">{fmtMoney(i.cash_return)}</b></span>}
+                              {i.cash_payout > 0 && <span>Из кассы: <b style={{ color: 'var(--warn-t)' }}>{fmtMoney(i.cash_payout)}</b></span>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="card-glass px-4 py-3 mt-1.5" style={{ background: 'color-mix(in srgb, var(--blue) 8%, transparent)' }}>
+                        <div className="flex items-center justify-between">
+                          <p className="text-[12px] font-semibold c-primary">ИТОГО В КАССЕ</p>
+                          <p className="text-[15px] font-bold" style={{ color: netCash >= 0 ? 'var(--green)' : 'var(--err-t)' }}>
+                            {fmtMoney(netCash)}
+                          </p>
+                        </div>
+                        <p className="text-[10px] c-tertiary mt-0.5">возврат {fmtMoney(sum.cash_return)} − выдача {fmtMoney(sum.cash_payout)}</p>
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* SE Transfers */}
             <div className="mb-3" style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) 300ms both' }}>
