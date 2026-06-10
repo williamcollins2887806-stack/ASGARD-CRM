@@ -2194,6 +2194,7 @@ window.AsgardOfficeLive = (function () {
   // отладочный хук (для авто-смоука; на UX не влияет)
   window.__officeLiveDbg = { SITES, STAFF, WORKS, vehicles, ROUTES, BIOMES, vehiclesPax:()=>vehicles.map(v=>v.pax.length),
     openSiteDrawer, openWorkerDrawer, openDrawer, openFlightDrawer, buildSummary, flyTo, fitAll, introSequence, stopIntro };
+  window.__oflOpenReadiness = openReadinessDrawer;
 
     // вернуть функцию очистки: снять window-листенеры + остановить интро + уничтожить PIXI-приложение
     return function destroy(){
