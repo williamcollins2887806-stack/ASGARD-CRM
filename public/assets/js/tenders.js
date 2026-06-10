@@ -1645,7 +1645,11 @@ window.AsgardTendersPage = (function(){
     async function openTenderEditor(tenderId){
       const t = tenderId ? await AsgardDB.get("tenders", tenderId) : null;
       const rights = canEditTender(user, t||{handoff_at:null});
-      const isNew = !t;
+      // ⚠️ isNew/currentTenderId — МУТАБЕЛЬНЫЕ: после первого сохранения (черновик/аплоад файла)
+      // тендер уже создан, поэтому повторные saveTender() должны ОБНОВЛЯТЬ его, а не плодить дубли.
+      // Без этого: «черновик → отправить на просчёт» = два тендера (баг дублирования).
+      let isNew = !t;
+      let currentTenderId = tenderId || null;
 
       // Авто-восстановление Мимира: если в этом тендере идёт/готов просчёт —
       // открыть модалку автоматически (например после перезагрузки страницы).
@@ -1948,7 +1952,7 @@ window.AsgardTendersPage = (function(){
           onUpload: async (files) => {
             const file = files[files.length - 1];
             if (!file) return;
-            let uploadId = tenderId;
+            let uploadId = currentTenderId || tenderId;
             if (!uploadId) {
               uploadId = await saveTender(true);
               if (!uploadId) return;
@@ -2941,7 +2945,7 @@ window.AsgardTendersPage = (function(){
           const file = fileInput.files[0];
           if(!file){ toast("Документ","Выберите файл","err"); return; }
 
-          let uploadId = tenderId;
+          let uploadId = currentTenderId || tenderId;
           if(!uploadId){
             uploadId = await saveTender(true);
             if(!uploadId) return;
@@ -3001,7 +3005,7 @@ window.AsgardTendersPage = (function(){
           const files = e.dataTransfer.files;
           if (!files.length) return;
 
-          let uploadId = tenderId;
+          let uploadId = currentTenderId || tenderId;
           if (!uploadId) {
             uploadId = await saveTender(true);
             if (!uploadId) return;
@@ -3055,7 +3059,7 @@ window.AsgardTendersPage = (function(){
           const url=document.getElementById("d_url").value.trim();
           if(!url){ toast("Документ","Укажите ссылку","err"); return; }
 
-          let uploadId = tenderId;
+          let uploadId = currentTenderId || tenderId;
           if(!uploadId){
             uploadId = await saveTender(true);
             if(!uploadId) return;
@@ -3394,6 +3398,9 @@ window.AsgardTendersPage = (function(){
         const cto=""; // deprecated — comments in tender_comments table
         const rejectEl=document.getElementById("e_reject"); const reject=rejectEl ? rejectEl.value||null : null;
 
+        // Если тендер уже создан в этой сессии редактора (черновик/аплоад) — идём в ветку ОБНОВЛЕНИЯ.
+        if (currentTenderId) { isNew = false; }
+
         // Draft mode: skip strict validation, save with 'Черновик' status
         if (forceDraft && isNew) {
           const obj={
@@ -3412,6 +3419,8 @@ window.AsgardTendersPage = (function(){
             dedup_key: url || (`local:${period||ymNow()}:${customer_inn||customer||'draft'}:${title||'draft'}`.toLowerCase())
           };
           const id = await AsgardDB.add("tenders", obj);
+          // ВАЖНО: запоминаем созданный id — следующий вызов saveTender обновит этот тендер, а не создаст новый.
+          currentTenderId = id; isNew = false;
           await audit(user.id,"tender",id,"create",{draft:true});
           clearDraft();
           toast("Черновик","Тендер сохранён как черновик");
@@ -3479,12 +3488,14 @@ window.AsgardTendersPage = (function(){
             }
           }
           const id = await AsgardDB.add("tenders", obj);
+          currentTenderId = id; isNew = false;   // фиксируем — дальнейшие сохранения = update, не дубль
           await audit(user.id,"tender",id,"create",{period,customer,title,pmId});
           clearDraft(); // Clear draft after successful save
           toast("Тендер","Создан");
           return id;
         }else{
-          const cur = await AsgardDB.get("tenders", tenderId);
+          const cur = await AsgardDB.get("tenders", currentTenderId || tenderId);
+          if(!cur){ toast("Тендер","Не найден для обновления","err"); return null; }
           const rights2 = canEditTender(user, cur);
           if(rights2.full){
             cur.period=period; cur.year=Number(period.slice(0,4));
@@ -3507,20 +3518,20 @@ window.AsgardTendersPage = (function(){
             return null;
           }
           await AsgardDB.put("tenders", cur);
-          
+
           // TKP Follow-up: активируем если "Прямой запрос" + "КП отправлено"
           if(status === "КП отправлено" && window.AsgardTkpFollowup){
             try { await AsgardTkpFollowup.activateFollowup(cur); } catch(e){ console.warn('TKP Followup error:', e); }
           }
-          
+
           // Customer directory validation (no auto-create)
           if(rights2.full && customer_inn && (customer_inn.length===10 || customer_inn.length===12)){
             const exists = await AsgardDB.get("customers", customer_inn);
             if(!exists){ toast("Контрагент","ИНН не найден в базе. Создайте карточку контрагента.","err",7000); return null; }
           }
-          await audit(user.id,"tender",tenderId,"update",{mode:rights2.limited?"limited":"full"});
+          await audit(user.id,"tender",(currentTenderId||tenderId),"update",{mode:rights2.limited?"limited":"full"});
           toast("Тендер","Сохранено");
-          return tenderId;
+          return (currentTenderId||tenderId);
         }
       }
 
