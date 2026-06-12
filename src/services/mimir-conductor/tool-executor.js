@@ -95,22 +95,27 @@ async function callAgent(agentName, input, runId, callerAgentRunId = null) {
 
       const durationMs = Date.now() - startedAt;
       // Получаем накопленный usage от всех aiProvider-вызовов агента и считаем стоимость
-      const u = usageTracker.getUsage() || { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+      const u = usageTracker.getUsage() || { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, calls: 0 };
       let costRub = 0;
       try {
         const usdRub = await modelsConfig.getUsdToRub();
         costRub = modelsConfig.calculateCostRub(spec.model_default, u, usdRub);
       } catch (_) { /* noop — стоимость 0 если model_default неизвестен */ }
+      // Префиксируем summary меткой stub, чтобы РП в War Room видел почему 0 токенов
+      const stubSummary = (u.calls === 0 && artifact.summary)
+        ? `[stub: AI не вызывался] ${artifact.summary}`
+        : artifact.summary;
       await cr.finishAgentRun(agentRunId, {
         status: 'SUCCESS',
         outputArtifactId: artifactId,
-        outputSummary: artifact.summary || null,
+        outputSummary: stubSummary || null,
         inputTokens: u.inputTokens,
         outputTokens: u.outputTokens,
         cacheReadTokens: u.cacheReadTokens,
         cacheWriteTokens: u.cacheWriteTokens,
         costRub,
-        durationMs
+        durationMs,
+        aiCalls: u.calls || 0
       });
       // Аккумулируем в total run
       try {
@@ -131,7 +136,7 @@ async function callAgent(agentName, input, runId, callerAgentRunId = null) {
         cost_rub: costRub
       };
     } catch (err) {
-      const u = usageTracker.getUsage() || { inputTokens: 0, outputTokens: 0 };
+      const u = usageTracker.getUsage() || { inputTokens: 0, outputTokens: 0, calls: 0 };
       let costRub = 0;
       try {
         const usdRub = await modelsConfig.getUsdToRub();
@@ -143,7 +148,8 @@ async function callAgent(agentName, input, runId, callerAgentRunId = null) {
         inputTokens: u.inputTokens,
         outputTokens: u.outputTokens,
         costRub,
-        durationMs: Date.now() - startedAt
+        durationMs: Date.now() - startedAt,
+        aiCalls: u.calls || 0
       });
       try {
         await cr.bumpRunMetrics(runId, {

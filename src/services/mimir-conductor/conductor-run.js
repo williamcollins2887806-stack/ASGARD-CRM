@@ -155,16 +155,28 @@ async function startAgentRun(runId, { agentName, model, promptHash, agentVersion
   return res.rows[0].id;
 }
 
-/** Завершить пробег агента (успех/ошибка) с метриками. */
-async function finishAgentRun(agentRunId, { status = 'SUCCESS', outputArtifactId = null, outputSummary = null, errorText = null, errorCode = null, inputTokens = 0, outputTokens = 0, cacheReadTokens = 0, cacheWriteTokens = 0, costRub = 0, durationMs = 0, iterations = 0 } = {}) {
+/**
+ * Завершить пробег агента (успех/ошибка) с метриками.
+ * aiCalls — сколько раз агент вызывал AI (0 = stub-режим, n > 0 = live).
+ * Сохраняется в input_extra.ai_calls + input_extra.mode для прозрачности учёта.
+ */
+async function finishAgentRun(agentRunId, { status = 'SUCCESS', outputArtifactId = null, outputSummary = null, errorText = null, errorCode = null, inputTokens = 0, outputTokens = 0, cacheReadTokens = 0, cacheWriteTokens = 0, costRub = 0, durationMs = 0, iterations = 0, aiCalls = 0 } = {}) {
+  const mode = aiCalls > 0 ? 'live' : 'stub';
+  // jsonb_set: добавляет/обновляет ai_calls и mode в input_extra (NULL → {})
   await db.query(
     `UPDATE mimir_agent_runs
        SET status=$2, output_artifact_id=$3, output_summary=$4, error_text=$5, error_code=$6,
            input_tokens=$7, output_tokens=$8, cache_read_tokens=$9, cache_write_tokens=$10,
-           cost_rub=$11, duration_ms=$12, iterations=$13, completed_at=NOW()
+           cost_rub=$11, duration_ms=$12, iterations=$13,
+           input_extra = jsonb_set(
+             jsonb_set(COALESCE(input_extra, '{}'::jsonb), '{ai_calls}', to_jsonb($14::int), true),
+             '{mode}', to_jsonb($15::text), true
+           ),
+           completed_at=NOW()
      WHERE id=$1`,
     [agentRunId, status, outputArtifactId, outputSummary, errorText, errorCode,
-     inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, costRub, durationMs, iterations]
+     inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, costRub, durationMs, iterations,
+     aiCalls, mode]
   );
 }
 

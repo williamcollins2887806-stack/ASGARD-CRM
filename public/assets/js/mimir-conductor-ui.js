@@ -154,6 +154,12 @@
       a.cost_rub = ar.cost_rub;
       a.duration_ms = ar.duration_ms;
       a.artifact_id = ar.output_artifact_id || a.artifact_id;
+      // Точный учёт: ai_calls и mode из input_extra (stub/live)
+      const ie = ar.input_extra || {};
+      a.ai_calls = ie.ai_calls != null ? Number(ie.ai_calls) : null;
+      a.mode = ie.mode || null;
+      a.input_tokens = ar.input_tokens || 0;
+      a.output_tokens = ar.output_tokens || 0;
     }
     for (const c of (state.run.clarifications || [])) {
       if (c.status === 'OPEN') state.clarifications.push(c);
@@ -279,6 +285,27 @@
     const pct = Math.min(100, Math.round((done / total) * 100));
     const fill = $('mc-progress-fill'); if (fill) fill.style.width = `${pct}%`;
     const txt = $('mc-progress-text'); if (txt) txt.textContent = `${pct}%`;
+
+    // Сводка точного учёта: сколько агентов реально звонили AI vs stub
+    const live = agents.filter((a) => a.mode === 'live' && (a.ai_calls || 0) > 0).length;
+    const stub = agents.filter((a) => a.mode === 'stub' || ((a.ai_calls || 0) === 0 && (a.input_tokens || 0) === 0 && a.status === 'SUCCESS')).length;
+    const totalTokIn = agents.reduce((s, a) => s + (a.input_tokens || 0), 0);
+    const totalTokOut = agents.reduce((s, a) => s + (a.output_tokens || 0), 0);
+    const totalCalls = agents.reduce((s, a) => s + (a.ai_calls || 0), 0);
+    const summaryEl = $('mc-mode-summary');
+    if (summaryEl) {
+      summaryEl.innerHTML = `🤖 ${live} live · 💤 ${stub} stub · ${totalCalls} AI-вызов${totalCalls === 1 ? '' : (totalCalls < 5 ? 'а' : 'ов')} · ${totalTokIn.toLocaleString('ru-RU')}→${totalTokOut.toLocaleString('ru-RU')} tok`;
+    } else {
+      // если контейнера в HTML нет — создаём рядом с прогресс-баром
+      const par = ($('mc-progress-fill') || {}).parentElement;
+      if (par && !par.querySelector('#mc-mode-summary')) {
+        const div = document.createElement('div');
+        div.id = 'mc-mode-summary';
+        div.style.cssText = 'font-size:11.5px;opacity:.75;margin-top:6px';
+        div.innerHTML = `🤖 ${live} live · 💤 ${stub} stub · ${totalCalls} AI-вызов${totalCalls === 1 ? '' : (totalCalls < 5 ? 'а' : 'ов')} · ${totalTokIn.toLocaleString('ru-RU')}→${totalTokOut.toLocaleString('ru-RU')} tok`;
+        par.appendChild(div);
+      }
+    }
   }
 
   // ─────────── Рендер: список агентов ───────────
@@ -304,7 +331,16 @@
     }
     const icon = STATUS_ICON[a.status] || '⚪';
     const isActive = state.activeAgentName === name;
-    const meta = [a.model, fmtDur(a.duration_ms), fmtCost(a.cost_rub)].filter(Boolean).join(' · ');
+    // Mode-индикатор: 🤖 N (live с N вызовами AI) / 💤 stub / без иконки если ещё работает
+    let modeTag = '';
+    if (a.status === 'SUCCESS' || a.status === 'ERROR') {
+      if (a.mode === 'live' && a.ai_calls > 0) modeTag = `🤖 ${a.ai_calls}`;
+      else if (a.mode === 'stub' || (a.ai_calls === 0 && a.input_tokens === 0)) modeTag = '💤 stub';
+    }
+    const tokensTag = (a.input_tokens || a.output_tokens)
+      ? `${a.input_tokens||0}→${a.output_tokens||0} tok`
+      : '';
+    const meta = [a.model, fmtDur(a.duration_ms), modeTag, tokensTag, fmtCost(a.cost_rub)].filter(Boolean).join(' · ');
     return `
       <div class="mc-agent ${isActive ? 'mc-agent-active' : ''} ${a.status === 'RUNNING' ? 'mc-agent-running' : ''}" data-agent="${esc(name)}">
         <span class="mc-agent-expand">${isActive ? '▼' : '▶'}</span>
