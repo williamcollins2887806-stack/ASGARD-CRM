@@ -118,6 +118,83 @@ async function routes(fastify, options) {
         tenderId || null, workId || null, estimateId || null, correspondenceId || null, tripId || null,
         request.user.id, `/api/files/download/${filename}`]);
 
+    // Auto-trigger Conductor: если загруженный документ привязан к tender/work с
+    // активным BLOCKED-просчётом — проверить блокеры (документные уточнения часто
+    // содержат категорию которая закрывается фактом наличия файла). Делаем
+    // best-effort, не блокируем ответ uploader-у.
+    try {
+      const linkConds = [];
+      const linkParams = [];
+      let idx = 1;
+      if (tenderId) { linkConds.push(`tender_id = $${idx++}`); linkParams.push(Number(tenderId)); }
+      if (workId)   { linkConds.push(`work_id = $${idx++}`); linkParams.push(Number(workId)); }
+      if (linkConds.length) {
+        const blockedRuns = await db.query(
+          `SELECT id FROM mimir_conductor_runs
+            WHERE status IN ('BLOCKED_BY_CUSTOMER','BLOCKED_BY_PM')
+              AND (${linkConds.join(' OR ')})`,
+          linkParams
+        );
+        for (const r of blockedRuns.rows) {
+          // Закроем blocking-уточнения категории «документ» через ANSWERED-stamp.
+          // Простая эвристика: если в question_ru есть слова «документ», «чертёж», «ВОР»,
+          // «спецификация», «ТЗ», «комплект» — считаем что новая загрузка их закрывает.
+          await db.query(
+            `UPDATE mimir_clarifications
+                SET status='ANSWERED', answer_text = COALESCE(answer_text,'') ||
+                    E'\n[Документ загружен: ' || $2 || E']',
+                    answered_by = $3, answered_at = NOW(),
+                    answer_source = 'document_upload', updated_at = NOW()
+              WHERE conductor_run_id = $1 AND status = 'OPEN' AND blocking = true
+                AND (
+                  lower(COALESCE(question_ru,'')) ~ '(документ|чертёж|чертеж|ведомост|спецификац|тз|техническ.{0,3}задани|комплект|приложени|реестр|раб.{0,3}документ)'
+                )`,
+            [r.id, file.filename.substring(0, 100), request.user.id]
+          );
+          // Событие в War Room
+          try {
+            await db.query(
+              `INSERT INTO mimir_agent_events (conductor_run_id, agent_run_id, event_type, payload)
+               VALUES ($1, NULL, 'documents_uploaded', $2::jsonb)`,
+              [r.id, JSON.stringify({
+                document_id: result.rows[0].id,
+                file_name: file.filename, mime_type: file.mimetype,
+                uploaded_by: request.user.id
+              })]
+            );
+          } catch (_) {}
+          // Пытаемся резумнуть если все блокеры закрылись
+          try {
+            // Прямой запрос к helper не сделать — это другой файл; повторим логику
+            const stillBlocking = await db.query(
+              `SELECT COUNT(*)::int AS n FROM mimir_clarifications
+                WHERE conductor_run_id=$1 AND status='OPEN' AND blocking=true`, [r.id]);
+            if ((stillBlocking.rows[0].n || 0) === 0) {
+              await db.query(
+                `UPDATE mimir_conductor_runs SET status='RUNNING', blocked_reason=NULL, updated_at=NOW() WHERE id=$1`,
+                [r.id]
+              );
+              setImmediate(() => {
+                try {
+                  const { runConductorResume } = require('../services/mimir-conductor/apply-answers');
+                  runConductorResume(r.id, {}).catch((err) => {
+                    fastify.log.warn(`[files/upload auto-resume] run ${r.id}: ${err.message}`);
+                  });
+                } catch (e) {
+                  fastify.log.warn(`[files/upload auto-resume] init: ${e.message}`);
+                }
+              });
+              fastify.log.info(`[files/upload] auto-resumed Conductor run ${r.id} after document upload`);
+            }
+          } catch (e) {
+            fastify.log.warn(`[files/upload auto-resume check] ${e.message}`);
+          }
+        }
+      }
+    } catch (e) {
+      fastify.log.warn(`[files/upload conductor-hook] ${e.message}`);
+    }
+
     return { success: true, file: result.rows[0], download_url: `/api/files/download/${filename}` };
   });
 

@@ -456,6 +456,215 @@ async function mimirConductorRoutes(fastify, options) {
     }
   });
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // POST /conductor/clarification/:id/answer — универсальный ответ на уточнение
+  // Принимает один из: answer_text (текст), document_ids[] (привязать файлы как ответ),
+  // accept_assumption=true (принять default_assumption). После применения автоматически
+  // проверяет блокеры и резумит Conductor если все blocking-вопросы закрыты.
+  // ═══════════════════════════════════════════════════════════════════════════
+  fastify.post('/conductor/clarification/:id/answer', {
+    preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
+  }, async (request, reply) => {
+    const clarId = Number(request.params.id);
+    if (!clarId) return reply.code(400).send({ error: 'bad clarification id' });
+    const body = request.body || {};
+    const answerText = body.answer_text != null ? String(body.answer_text).trim() : null;
+    const docIds = Array.isArray(body.document_ids) ? body.document_ids.filter((x) => Number.isInteger(Number(x))).map(Number) : [];
+    const acceptAssumption = !!body.accept_assumption;
+
+    const db = fastify.db;
+    try {
+      // Получаем уточнение + проверяем что run видимо текущему пользователю
+      const { rows } = await db.query(
+        `SELECT c.id, c.conductor_run_id, c.status, c.channel, c.blocking, c.default_assumption,
+                r.tender_id, r.work_id, r.initiated_by
+           FROM mimir_clarifications c
+           JOIN mimir_conductor_runs r ON r.id = c.conductor_run_id
+          WHERE c.id = $1`,
+        [clarId]
+      );
+      const cl = rows[0];
+      if (!cl) return reply.code(404).send({ error: 'Уточнение не найдено' });
+      if (cl.status !== 'OPEN') return reply.code(409).send({ error: `Уточнение уже ${cl.status}` });
+
+      // RBAC: PM может отвечать только в своих run, директор/админ — везде.
+      if (request.user.role === 'PM' && cl.initiated_by && cl.initiated_by !== request.user.id) {
+        return reply.code(403).send({ error: 'Нет доступа к чужому просчёту' });
+      }
+
+      // Собираем итоговый текст ответа
+      let finalAnswer = '';
+      let answerSource = 'manual';
+
+      if (acceptAssumption && cl.default_assumption) {
+        const asp = typeof cl.default_assumption === 'string' ? cl.default_assumption : JSON.stringify(cl.default_assumption);
+        finalAnswer = `[Принято допущение по умолчанию] ${asp}`;
+        answerSource = 'default_assumption';
+      }
+      if (answerText) {
+        finalAnswer = (finalAnswer ? finalAnswer + '\n\n' : '') + answerText;
+        answerSource = answerSource === 'default_assumption' ? 'mixed' : 'manual';
+      }
+      if (docIds.length) {
+        const { rows: docs } = await db.query(
+          'SELECT id, original_name, mime_type, ROUND(size/1024.0, 1) AS kb FROM documents WHERE id = ANY($1)',
+          [docIds]
+        );
+        const docList = docs.map((d) => `#${d.id} ${d.original_name} (${d.mime_type}, ${d.kb} КБ)`).join('; ');
+        finalAnswer = (finalAnswer ? finalAnswer + '\n\n' : '') + `[Приложены файлы] ${docList}`;
+        answerSource = answerSource === 'manual' ? 'document_upload' : 'mixed';
+      }
+
+      if (!finalAnswer) {
+        return reply.code(400).send({ error: 'Нужен либо answer_text, либо document_ids[], либо accept_assumption' });
+      }
+
+      // UPDATE clarification
+      await db.query(
+        `UPDATE mimir_clarifications
+            SET status = 'ANSWERED', answer_text = $1, answered_by = $2,
+                answered_at = NOW(), answer_source = $3, updated_at = NOW()
+          WHERE id = $4`,
+        [finalAnswer, request.user.id, answerSource, clarId]
+      );
+
+      // Событие в War Room
+      try {
+        await db.query(
+          `INSERT INTO mimir_agent_events (conductor_run_id, agent_run_id, event_type, payload)
+           VALUES ($1, NULL, 'clarification_answered', $2::jsonb)`,
+          [cl.conductor_run_id, JSON.stringify({
+            clarification_id: clarId, channel: cl.channel,
+            answered_by_user_id: request.user.id, source: answerSource,
+            docs_count: docIds.length
+          })]
+        );
+      } catch (_) { /* noop */ }
+
+      // Авто-resume если все блокеры закрыты
+      const resumeResult = await _tryResumeRun(fastify, cl.conductor_run_id);
+
+      return {
+        ok: true,
+        clarification_id: clarId,
+        run_id: cl.conductor_run_id,
+        resumed: !!resumeResult.resumed,
+        remaining_blockers: resumeResult.remaining || 0
+      };
+    } catch (e) {
+      request.log.error(`[clarification/answer] ${e.message}`);
+      return reply.code(500).send({ error: e.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // POST /conductor/run/:id/recheck-blockers — пересмотр блокеров (когда РП
+  // загрузил документы через UI работы/тендера, без явного «ответа на вопрос»).
+  // Если у run все blocking-clarifications закрыты ИЛИ появились новые документы
+  // покрывающие категорию документного вопроса — пометить ANSWERED + resume.
+  // ═══════════════════════════════════════════════════════════════════════════
+  fastify.post('/conductor/run/:id/recheck-blockers', {
+    preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
+  }, async (request, reply) => {
+    const runId = Number(request.params.id);
+    if (!runId) return reply.code(400).send({ error: 'bad run id' });
+    const db = fastify.db;
+    try {
+      const { rows } = await db.query(
+        `SELECT id, status, tender_id, work_id, initiated_by FROM mimir_conductor_runs WHERE id = $1`,
+        [runId]
+      );
+      const run = rows[0];
+      if (!run) return reply.code(404).send({ error: 'Просчёт не найден' });
+      if (request.user.role === 'PM' && run.initiated_by !== request.user.id) {
+        return reply.code(403).send({ error: 'Нет доступа' });
+      }
+      // Подсчитаем новые документы тендера/работы, не учтённые в parsed_documents
+      const docCount = await _countAttachableDocuments(db, run);
+      const result = await _tryResumeRun(fastify, runId);
+      return {
+        ok: true,
+        run_id: runId,
+        documents_available: docCount,
+        resumed: !!result.resumed,
+        remaining_blockers: result.remaining || 0,
+        reason: result.reason
+      };
+    } catch (e) {
+      request.log.error(`[recheck-blockers] ${e.message}`);
+      return reply.code(500).send({ error: e.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // POST /conductor/run/:id/recompute-with-feedback — пересчёт по правке РП.
+  // Принимает {feedback_text}. Сохраняет правку как pm_feedback-артефакт,
+  // переводит run в RUNNING, инициирует runConductorResume — следующая итерация
+  // Conductor учтёт обратную связь.
+  // ═══════════════════════════════════════════════════════════════════════════
+  fastify.post('/conductor/run/:id/recompute-with-feedback', {
+    preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
+  }, async (request, reply) => {
+    const runId = Number(request.params.id);
+    const feedback = String((request.body && request.body.feedback_text) || '').trim();
+    if (!runId) return reply.code(400).send({ error: 'bad run id' });
+    if (!feedback) return reply.code(400).send({ error: 'feedback_text обязателен' });
+
+    const db = fastify.db;
+    try {
+      const { rows } = await db.query(
+        `SELECT id, status, initiated_by FROM mimir_conductor_runs WHERE id = $1`,
+        [runId]
+      );
+      const run = rows[0];
+      if (!run) return reply.code(404).send({ error: 'Просчёт не найден' });
+      if (request.user.role === 'PM' && run.initiated_by !== request.user.id) {
+        return reply.code(403).send({ error: 'Нет доступа' });
+      }
+      // Сохраняем feedback как артефакт типа pm_feedback (Conductor его учтёт)
+      const cr = require('../services/mimir-conductor/conductor-run');
+      const artifact = {
+        summary: 'Обратная связь РП к финальной смете',
+        feedback_text: feedback,
+        author_user_id: request.user.id,
+        created_at: new Date().toISOString()
+      };
+      try {
+        await cr.addArtifact(runId, null, 'pm_feedback', artifact);
+      } catch (_) { /* схема может ругаться на тип — не критично */ }
+
+      // Перевод run в RUNNING
+      await db.query(
+        `UPDATE mimir_conductor_runs SET status = 'RUNNING', blocked_reason = NULL, updated_at = NOW() WHERE id = $1`,
+        [runId]
+      );
+      try {
+        await db.query(
+          `INSERT INTO mimir_agent_events (conductor_run_id, agent_run_id, event_type, payload)
+           VALUES ($1, NULL, 'recompute_requested', $2::jsonb)`,
+          [runId, JSON.stringify({ feedback: feedback.substring(0, 500), requested_by: request.user.id })]
+        );
+      } catch (_) {}
+
+      // Фоновый resume
+      setImmediate(() => {
+        try {
+          const { runConductorResume } = require('../services/mimir-conductor/apply-answers');
+          runConductorResume(runId, { resumed_from_letter: null, pm_feedback: feedback }).catch((err) => {
+            request.log.warn(`[recompute] resume failed: ${err.message}`);
+          });
+        } catch (e) {
+          request.log.warn(`[recompute] start failed: ${e.message}`);
+        }
+      });
+
+      return { ok: true, run_id: runId, status: 'RUNNING', message: 'Conductor учтёт правку в следующей итерации' };
+    } catch (e) {
+      request.log.error(`[recompute-with-feedback] ${e.message}`);
+      return reply.code(500).send({ error: e.message });
+    }
+  });
+
   // GET /conductor/awaiting-customer — просчёты в ожидании заказчика для PM
   fastify.get('/conductor/awaiting-customer', {
     preHandler: [fastify.authenticate]
@@ -486,6 +695,77 @@ async function mimirConductorRoutes(fastify, options) {
     });
     return { items };
   });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HELPERS (внутри файла, не экспортируются)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Попробовать резумнуть run если все blocking-clarifications закрыты.
+ * Возвращает { resumed, remaining, reason }.
+ */
+async function _tryResumeRun(fastify, runId) {
+  const db = fastify.db;
+  const { rows: rRows } = await db.query(
+    `SELECT status FROM mimir_conductor_runs WHERE id = $1`, [runId]
+  );
+  const run = rRows[0];
+  if (!run) return { resumed: false, reason: 'run_not_found', remaining: 0 };
+  if (run.status !== 'BLOCKED_BY_CUSTOMER' && run.status !== 'BLOCKED_BY_PM') {
+    return { resumed: false, reason: `run_status=${run.status}`, remaining: 0 };
+  }
+  const { rows: bRows } = await db.query(
+    `SELECT COUNT(*)::int AS n FROM mimir_clarifications
+      WHERE conductor_run_id = $1 AND status = 'OPEN' AND blocking = true`,
+    [runId]
+  );
+  const remaining = bRows[0].n;
+  if (remaining > 0) {
+    return { resumed: false, reason: 'has_blocking_open', remaining };
+  }
+
+  // Снимаем блок и запускаем resume
+  await db.query(
+    `UPDATE mimir_conductor_runs SET status='RUNNING', blocked_reason=NULL, updated_at=NOW() WHERE id=$1`,
+    [runId]
+  );
+  try {
+    await db.query(
+      `INSERT INTO mimir_agent_events (conductor_run_id, agent_run_id, event_type, payload)
+       VALUES ($1, NULL, 'status_change', $2::jsonb)`,
+      [runId, JSON.stringify({ from: run.status, to: 'RUNNING', reason: 'auto-resume: все блокеры закрыты' })]
+    );
+  } catch (_) {}
+
+  setImmediate(() => {
+    try {
+      const { runConductorResume } = require('../services/mimir-conductor/apply-answers');
+      runConductorResume(runId, {}).catch((err) => {
+        fastify.log.warn(`[_tryResumeRun] resume failed: ${err.message}`);
+      });
+    } catch (e) {
+      fastify.log.warn(`[_tryResumeRun] start failed: ${e.message}`);
+    }
+  });
+
+  return { resumed: true, reason: 'all_blockers_closed', remaining: 0 };
+}
+
+/** Подсчёт документов работы/тендера, которые можно подцепить к Conductor. */
+async function _countAttachableDocuments(db, run) {
+  const conds = [];
+  const params = [];
+  let idx = 1;
+  if (run.work_id) { conds.push(`work_id = $${idx++}`); params.push(run.work_id); }
+  if (run.tender_id) { conds.push(`tender_id = $${idx++}`); params.push(run.tender_id); }
+  if (!conds.length) return 0;
+  const sql = `SELECT COUNT(*)::int AS n FROM documents
+                WHERE (${conds.join(' OR ')})
+                  AND lower(COALESCE(type,'')) NOT IN
+                      ('logistics','паспорт','полис до мсу','полис','счёт','счет','билеты','билет','медполис')`;
+  const { rows } = await db.query(sql, params);
+  return rows[0].n;
 }
 
 module.exports = mimirConductorRoutes;

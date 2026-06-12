@@ -410,32 +410,196 @@
   }
 
   // ─────────── Уточнения (низ) ───────────
+  // Эвристика: вопрос «документного» типа, если содержит признаки документации
+  const _DOC_KEYWORDS = /документ|чертёж|чертеж|ведомост|спецификац|тз|техническ.{0,3}задани|комплект|приложени|реестр|раб.{0,3}документ|сметы|схема/i;
+  function isDocumentQuestion(c) {
+    return _DOC_KEYWORDS.test(String(c.question_ru || ''));
+  }
+
   function renderClarifications() {
     const bar = $('mc-clarifications-bar');
     if (!bar) return;
     const open = state.clarifications.filter((c) => (c.status || 'OPEN') === 'OPEN');
-    if (!open.length) { bar.innerHTML = ''; bar.classList.remove('mc-bottom-active'); return; }
+    const closed = state.clarifications.filter((c) => (c.status || 'OPEN') !== 'OPEN').length;
+    const total = state.clarifications.length;
+    if (!open.length) {
+      if (total > 0) {
+        bar.innerHTML = `<div class="mc-clar-title">✅ Все ${total} уточнен${total === 1 ? 'ие' : 'ий'} закрыты</div>`;
+        bar.classList.add('mc-bottom-active');
+      } else {
+        bar.innerHTML = '';
+        bar.classList.remove('mc-bottom-active');
+      }
+      return;
+    }
     bar.classList.add('mc-bottom-active');
-    const cards = open.map((c) => `
-      <div class="mc-clar mc-clar-${(c.channel || 'PM').toLowerCase()}">
-        <div class="mc-clar-head">
-          <span class="mc-clar-channel">${c.channel === 'CUSTOMER' ? '👤 ЗАКАЗЧИК' : '📋 РП'}</span>
-          ${c.impact_rub ? `<span class="mc-clar-impact">≈${fmtRub(c.impact_rub)}</span>` : ''}
-        </div>
-        <div class="mc-clar-q">${esc(c.question_ru || '')}</div>
-        ${c.why_we_ask ? `<div class="mc-clar-why">Зачем: ${esc(c.why_we_ask)}</div>` : ''}
-      </div>`).join('');
+    const blockingCount = open.filter((c) => c.blocking).length;
+    const cards = open.map((c) => {
+      const channelLbl = c.channel === 'CUSTOMER' ? '👤 ЗАКАЗЧИК' : '📋 РП';
+      const blockTag = c.blocking ? '<span class="mc-clar-block">⛔ блокер</span>' : '';
+      const impactTag = c.impact_rub ? `<span class="mc-clar-impact">≈${fmtRub(c.impact_rub)}</span>` : '';
+      const isDocQ = isDocumentQuestion(c);
+      const docIcon = isDocQ ? '📎 ' : '';
+      // Default assumption — если есть, показываем как принимаемый текст
+      let assumptionBlock = '';
+      if (c.default_assumption) {
+        const asp = typeof c.default_assumption === 'string'
+          ? c.default_assumption
+          : JSON.stringify(c.default_assumption);
+        assumptionBlock = `
+          <div class="mc-clar-assumption">
+            <b>Допущение по умолчанию:</b> ${esc(asp.substring(0, 200))}
+            <button class="mc-btn mc-btn-sm mc-accept-assumption" data-cid="${c.id}">✓ Принять</button>
+          </div>`;
+      }
+      const consequenceBlock = c.consequence ? `<div class="mc-clar-conseq">⚠ ${esc(c.consequence)}</div>` : '';
+      return `
+        <div class="mc-clar mc-clar-${(c.channel || 'PM').toLowerCase()}" data-cid="${c.id}">
+          <div class="mc-clar-head">
+            <span class="mc-clar-channel">${docIcon}${channelLbl}</span>
+            ${blockTag}
+            ${impactTag}
+          </div>
+          <div class="mc-clar-q">${esc(c.question_ru || '')}</div>
+          ${c.why_we_ask ? `<div class="mc-clar-why">Зачем: ${esc(c.why_we_ask)}</div>` : ''}
+          ${consequenceBlock}
+          ${assumptionBlock}
+          <div class="mc-clar-actions">
+            ${isDocQ ? `<button class="mc-btn mc-btn-sm mc-upload-doc" data-cid="${c.id}">📎 Прикрепить файл</button>` : ''}
+            <button class="mc-btn mc-btn-sm mc-answer-text" data-cid="${c.id}">✍ Ответить текстом</button>
+          </div>
+        </div>`;
+    }).join('');
 
-    // Кнопка формирования письма, если есть открытые вопросы к ЗАКАЗЧИКУ.
+    // Сводка + кнопка письма
     const customerOpen = open.filter((c) => c.channel === 'CUSTOMER');
     const letterBtn = customerOpen.length
-      ? `<button id="mc-gen-letter" class="mc-btn mc-btn-primary" style="margin-left:8px;">📄 Сформировать письмо заказчику (${customerOpen.length})</button>`
+      ? `<button id="mc-gen-letter" class="mc-btn mc-btn-primary" style="margin-left:8px;">📄 Письмо заказчику (${customerOpen.length})</button>`
       : '';
+    const progress = total > 0 ? ` · ${closed}/${total} закрыто` : '';
 
-    bar.innerHTML = `<div class="mc-clar-title">🟣 ${open.length} уточнени${open.length === 1 ? 'е' : 'й'}${letterBtn}</div><div class="mc-clar-list">${cards}</div>`;
+    bar.innerHTML = `
+      <div class="mc-clar-title">🟣 ${open.length} уточнен${open.length === 1 ? 'ие' : 'ий'}${blockingCount ? ` (⛔ ${blockingCount} блокер${blockingCount === 1 ? '' : 'ов'})` : ''}${progress}${letterBtn}</div>
+      <div class="mc-clar-list">${cards}</div>`;
 
+    // Обработчики
     const gb = $('mc-gen-letter');
     if (gb) gb.addEventListener('click', () => generateLetter(customerOpen.map((c) => c.id)));
+
+    document.querySelectorAll('.mc-upload-doc').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const cid = Number(btn.dataset.cid);
+        openDocumentUpload(cid);
+      });
+    });
+    document.querySelectorAll('.mc-answer-text').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const cid = Number(btn.dataset.cid);
+        openTextAnswer(cid);
+      });
+    });
+    document.querySelectorAll('.mc-accept-assumption').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const cid = Number(btn.dataset.cid);
+        await postAnswer(cid, { accept_assumption: true });
+      });
+    });
+  }
+
+  // ─────────── Действия с уточнениями ───────────
+  async function postAnswer(clarId, body) {
+    try {
+      const resp = await authFetch(`${API}/clarification/${clarId}/answer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+      // Локально пометить ANSWERED, перерисовать
+      const c = state.clarifications.find((x) => Number(x.id) === Number(clarId));
+      if (c) c.status = 'ANSWERED';
+      renderClarifications();
+      if (data.resumed) {
+        toast('Conductor продолжает', 'Все блокеры закрыты — просчёт возобновлён', 'ok');
+      } else {
+        toast('Ответ сохранён', `Осталось блокеров: ${data.remaining_blockers || 0}`, 'info');
+      }
+    } catch (e) {
+      toast('Ошибка ответа', e.message, 'err');
+    }
+  }
+
+  function openTextAnswer(clarId) {
+    const c = state.clarifications.find((x) => Number(x.id) === Number(clarId));
+    if (!c) return;
+    const overlay = document.createElement('div');
+    overlay.className = 'mc-modal-overlay';
+    overlay.innerHTML = `
+      <div class="mc-modal">
+        <div class="mc-modal-head">✍ Ответ на уточнение #${clarId}</div>
+        <div class="mc-modal-q">${esc(c.question_ru || '')}</div>
+        <textarea id="mc-answer-ta" rows="6" placeholder="Введите ответ..." style="width:100%"></textarea>
+        <div class="mc-modal-actions">
+          <button class="mc-btn" id="mc-answer-cancel">Отмена</button>
+          <button class="mc-btn mc-btn-primary" id="mc-answer-save">Сохранить ответ</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('mc-answer-cancel').onclick = () => overlay.remove();
+    document.getElementById('mc-answer-save').onclick = async () => {
+      const txt = (document.getElementById('mc-answer-ta').value || '').trim();
+      if (!txt) { toast('Пустой ответ', 'Введите текст', 'warn'); return; }
+      overlay.remove();
+      await postAnswer(clarId, { answer_text: txt });
+    };
+    setTimeout(() => document.getElementById('mc-answer-ta').focus(), 50);
+  }
+
+  function openDocumentUpload(clarId) {
+    const c = state.clarifications.find((x) => Number(x.id) === Number(clarId));
+    if (!c) return;
+    const tenderId = (state.run && state.run.tender_id) || (state.run && state.run.run && state.run.run.tender_id) || null;
+    const workId = (state.run && state.run.work_id) || (state.run && state.run.run && state.run.run.work_id) || null;
+
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.multiple = true;
+    inp.style.display = 'none';
+    document.body.appendChild(inp);
+    inp.onchange = async () => {
+      const files = Array.from(inp.files || []);
+      inp.remove();
+      if (!files.length) return;
+      toast('Загрузка', `Файлов: ${files.length}…`, 'info');
+      const uploadedIds = [];
+      for (const f of files) {
+        try {
+          const fd = new FormData();
+          fd.append('file', f);
+          if (tenderId) fd.append('tender_id', tenderId);
+          if (workId) fd.append('work_id', workId);
+          fd.append('type', 'Документ');
+          const r = await authFetch('/api/files/upload', { method: 'POST', body: fd });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+          if (d.file && d.file.id) uploadedIds.push(d.file.id);
+        } catch (err) {
+          toast('Ошибка загрузки', `${f.name}: ${err.message}`, 'err');
+        }
+      }
+      if (uploadedIds.length) {
+        // /files/upload уже автоматически закрывает blocking-уточнения и резумит run.
+        // Дополнительно явно отвечаем на ЭТО уточнение (если не закрыто uploader-ом)
+        try {
+          await postAnswer(clarId, { document_ids: uploadedIds });
+        } catch (_) { /* /files/upload мог его закрыть */ }
+      }
+    };
+    inp.click();
   }
 
   // Сформировать письмо заказчику из открытых CUSTOMER-уточнений War Room.
@@ -467,17 +631,135 @@
     if (panel) {
       const rec = esc(data.recommendation || 'THINK');
       const recClass = esc((data.recommendation || 'THINK').toLowerCase());
+      // Ключевые цифры если есть в data.ssr
+      const ssr = data.ssr || {};
+      const totalsBlock = (ssr.total_with_vat || ssr.total_with_margin) ? `
+        <div class="mc-final-totals">
+          ${ssr.subtotal_fot != null ? `<div><span>ФОТ:</span><b>${fmtRub(ssr.subtotal_fot)}</b></div>` : ''}
+          ${ssr.total_with_margin != null ? `<div><span>С маржей:</span><b>${fmtRub(ssr.total_with_margin)}</b></div>` : ''}
+          ${ssr.total_with_vat != null ? `<div><span>С НДС:</span><b>${fmtRub(ssr.total_with_vat)}</b></div>` : ''}
+        </div>` : '';
       panel.innerHTML = `
         <div class="mc-artifact-head"><span class="mc-artifact-type">🏁 Финальная смета</span></div>
         <div class="mc-final">
           <div class="mc-final-rec mc-final-rec-${recClass}">${rec}</div>
+          ${totalsBlock}
           <div class="mc-final-block"><b>Резюме</b><p>${esc(data.summary || '—')}</p></div>
           <div class="mc-final-block"><b>Обоснование</b><p>${esc(data.decision_reasoning || '—')}</p></div>
           ${assumptionsHtml(data.key_assumptions)}
+          <div class="mc-final-actions">
+            <button class="mc-btn mc-btn-primary" id="mc-recompute">🔄 Пересчитать с правкой</button>
+            <button class="mc-btn" id="mc-edit-estimate">✏ Редактировать вручную</button>
+          </div>
         </div>`;
+      // Handlers
+      const rc = $('mc-recompute');
+      if (rc) rc.onclick = openRecomputeModal;
+      const ee = $('mc-edit-estimate');
+      if (ee) ee.onclick = openManualEditor;
     }
     const btn = $('mc-final-report');
     if (btn) btn.disabled = false;
+  }
+
+  // ─── Пересчёт с правкой ───
+  function openRecomputeModal() {
+    const overlay = document.createElement('div');
+    overlay.className = 'mc-modal-overlay';
+    overlay.innerHTML = `
+      <div class="mc-modal">
+        <div class="mc-modal-head">🔄 Попросить Conductor пересчитать</div>
+        <p style="margin:8px 0;font-size:13px;opacity:.8">
+          Опиши что нужно изменить — Conductor учтёт правку и пересчитает смету.
+          Примеры: «увеличить бригаду до 12 человек», «убрать командировочные»,
+          «учесть скидку поставщика 10%», «работаем в две смены вместо одной».
+        </p>
+        <textarea id="mc-recompute-ta" rows="6" placeholder="Что не так / что изменить..." style="width:100%"></textarea>
+        <div class="mc-modal-actions">
+          <button class="mc-btn" id="mc-recompute-cancel">Отмена</button>
+          <button class="mc-btn mc-btn-primary" id="mc-recompute-save">Запустить пересчёт</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('mc-recompute-cancel').onclick = () => overlay.remove();
+    document.getElementById('mc-recompute-save').onclick = async () => {
+      const txt = (document.getElementById('mc-recompute-ta').value || '').trim();
+      if (!txt) { toast('Пустая правка', 'Введите что изменить', 'warn'); return; }
+      overlay.remove();
+      try {
+        const r = await authFetch(`${API}/run/${state.runId}/recompute-with-feedback`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ feedback_text: txt })
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        toast('Пересчёт', 'Conductor учтёт правку и продолжит', 'ok');
+        // Сбросим terminal-флаг чтобы SSE снова заработал
+        state.finished = false;
+        connectEventStream();
+      } catch (e) {
+        toast('Ошибка', e.message, 'err');
+      }
+    };
+    setTimeout(() => document.getElementById('mc-recompute-ta').focus(), 50);
+  }
+
+  // ─── Ручной редактор сметы (упрощённый JSON-режим для MVP) ───
+  async function openManualEditor() {
+    // Подгружаем актуальный final_estimate
+    let finalContent = null;
+    try {
+      const r = await authFetch(`${API}/run/${state.runId}`);
+      const d = await r.json();
+      const arts = (d.artifacts || []).filter((a) => a.artifact_type === 'final_estimate');
+      if (arts.length) finalContent = arts[arts.length - 1].content;
+    } catch (_) { /* noop */ }
+    if (!finalContent) { toast('Нет данных', 'Не нашёл final_estimate', 'warn'); return; }
+
+    const overlay = document.createElement('div');
+    overlay.className = 'mc-modal-overlay';
+    overlay.innerHTML = `
+      <div class="mc-modal mc-modal-wide">
+        <div class="mc-modal-head">✏ Ручное редактирование сметы</div>
+        <p style="margin:6px 0;font-size:12px;opacity:.7">
+          Прямая правка JSON. После сохранения создаётся новая версия артефакта
+          (старая помечается superseded), оригинал виден в истории.
+        </p>
+        <textarea id="mc-edit-ta" rows="20" style="width:100%;font-family:monospace;font-size:12px"></textarea>
+        <div class="mc-modal-actions">
+          <button class="mc-btn" id="mc-edit-cancel">Отмена</button>
+          <button class="mc-btn mc-btn-primary" id="mc-edit-save">Сохранить</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('mc-edit-ta').value = JSON.stringify(finalContent, null, 2);
+    document.getElementById('mc-edit-cancel').onclick = () => overlay.remove();
+    document.getElementById('mc-edit-save').onclick = async () => {
+      const raw = document.getElementById('mc-edit-ta').value;
+      let parsed;
+      try { parsed = JSON.parse(raw); }
+      catch (e) { toast('JSON-ошибка', e.message, 'err'); return; }
+      overlay.remove();
+      try {
+        // Используем тот же recompute-with-feedback для трейс-аудита (PM не часто
+        // правит руками, и Conductor должен знать что состояние изменилось).
+        const r = await authFetch(`${API}/run/${state.runId}/recompute-with-feedback`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            feedback_text: '[MANUAL EDIT] РП отредактировал смету руками. См. артефакт pm_feedback с JSON-патчем.',
+            manual_estimate: parsed
+          })
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        toast('Сохранено', 'Правка применена, Conductor пересчитает', 'ok');
+        renderFinalEstimate(parsed);
+      } catch (e) {
+        toast('Ошибка', e.message, 'err');
+      }
+    };
   }
 
   function onRunComplete(status) {
