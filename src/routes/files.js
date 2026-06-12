@@ -136,22 +136,22 @@ async function routes(fastify, options) {
           linkParams
         );
         for (const r of blockedRuns.rows) {
-          // Закроем ВСЕ blocking-уточнения CUSTOMER-канала: РП загрузил данные,
-          // Conductor через document_parser autopickup сам пересмотрит и поднимет
-          // только реально-актуальные вопросы (если новый файл не содержит ответа
-          // на адрес/режим — следующая итерация поднимет это снова). PM-вопросы
-          // оставляем — их закрывает только сам PM через UI.
+          // Закроем ВСЕ blocking-уточнения (и CUSTOMER, и PM): РП загрузил данные —
+          // он принял участие, акт ответа на вопросы. Conductor через document_parser
+          // autopickup сам пересмотрит, и если реально что-то не дозакрыто (например,
+          // адрес объекта не в файле) — поднимет уточнение снова в следующей итерации.
+          // Это правильнее чем оставлять PM-блокеры открытыми: РП может не открыть
+          // War Room и просто загрузить через UI работы — без этого хука run застрянет.
           await db.query(
             `UPDATE mimir_clarifications
                 SET status='ANSWERED', answer_text = COALESCE(answer_text,'') ||
                     E'\n[РП загрузил новый документ: ' || $2 || ']. Conductor должен пересмотреть с учётом нового файла.',
                     answered_by = $3, answered_at = NOW(),
                     answer_source = 'document_upload', updated_at = NOW()
-              WHERE conductor_run_id = $1 AND status = 'OPEN' AND blocking = true
-                AND channel = 'CUSTOMER'`,
+              WHERE conductor_run_id = $1 AND status = 'OPEN' AND blocking = true`,
             [r.id, file.filename.substring(0, 100), request.user.id]
           );
-          fastify.log.warn(`[files/upload hook] run ${r.id}: попытка закрыть CUSTOMER-блокеры новым файлом ${file.filename}`);
+          fastify.log.warn(`[files/upload hook] run ${r.id}: закрыты ВСЕ blocking-уточнения (CUSTOMER+PM) новым файлом ${file.filename}`);
           // Событие в War Room
           try {
             await db.query(

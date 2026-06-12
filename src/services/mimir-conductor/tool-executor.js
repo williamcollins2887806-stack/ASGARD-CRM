@@ -97,25 +97,45 @@ async function callAgent(agentName, input, runId, callerAgentRunId = null) {
       // Получаем накопленный usage от всех aiProvider-вызовов агента и считаем стоимость
       const u = usageTracker.getUsage() || { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, calls: 0 };
       let costRub = 0;
-      try {
-        const usdRub = await modelsConfig.getUsdToRub();
-        costRub = modelsConfig.calculateCostRub(spec.model_default, u, usdRub);
-      } catch (_) { /* noop — стоимость 0 если model_default неизвестен */ }
-      // Префиксируем summary меткой stub, чтобы РП в War Room видел почему 0 токенов
-      const stubSummary = (u.calls === 0 && artifact.summary)
-        ? `[stub: AI не вызывался] ${artifact.summary}`
-        : artifact.summary;
+      let stubEstimated = false;
+      let usageForDb = { inputTokens: u.inputTokens, outputTokens: u.outputTokens };
+
+      // СИНТЕТИЧЕСКИЙ УЧЁТ для stub-агентов (calls=0, реально AI не звонил).
+      // Считаем псевдо-токены из размера обрабатываемого контекста — чтобы в UI
+      // была видна «работа» агента, даже если она не AI. cost_rub остаётся 0
+      // (реально баланс не тратился), input_extra.stub_estimated=true для прозрачности.
+      if (u.calls === 0) {
+        try {
+          const inText = JSON.stringify(requiredArtifacts || {}) + JSON.stringify(input || {});
+          const outText = JSON.stringify(artifact || {});
+          usageForDb = {
+            inputTokens: Math.ceil(inText.length / 4),
+            outputTokens: Math.ceil(outText.length / 4)
+          };
+          stubEstimated = true;
+        } catch (_) { /* noop — оставим u как есть */ }
+      } else {
+        try {
+          const usdRub = await modelsConfig.getUsdToRub();
+          costRub = modelsConfig.calculateCostRub(spec.model_default, u, usdRub);
+        } catch (_) { /* noop */ }
+      }
+      // Префиксируем summary меткой для прозрачности
+      let finalSummary = artifact.summary || null;
+      if (u.calls === 0 && finalSummary) finalSummary = `[stub: AI не вызывался, оценка по размеру артефакта] ${finalSummary}`;
+
       await cr.finishAgentRun(agentRunId, {
         status: 'SUCCESS',
         outputArtifactId: artifactId,
-        outputSummary: stubSummary || null,
-        inputTokens: u.inputTokens,
-        outputTokens: u.outputTokens,
+        outputSummary: finalSummary,
+        inputTokens: usageForDb.inputTokens,
+        outputTokens: usageForDb.outputTokens,
         cacheReadTokens: u.cacheReadTokens,
         cacheWriteTokens: u.cacheWriteTokens,
         costRub,
         durationMs,
-        aiCalls: u.calls || 0
+        aiCalls: u.calls || 0,
+        stubEstimated
       });
       // Аккумулируем в total run
       try {

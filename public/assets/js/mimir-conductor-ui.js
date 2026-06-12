@@ -154,10 +154,11 @@
       a.cost_rub = ar.cost_rub;
       a.duration_ms = ar.duration_ms;
       a.artifact_id = ar.output_artifact_id || a.artifact_id;
-      // Точный учёт: ai_calls и mode из input_extra (stub/live)
+      // Точный учёт: ai_calls и mode из input_extra (stub/live + stub_estimated флаг)
       const ie = ar.input_extra || {};
       a.ai_calls = ie.ai_calls != null ? Number(ie.ai_calls) : null;
       a.mode = ie.mode || null;
+      a.stub_estimated = !!ie.stub_estimated;
       a.input_tokens = ar.input_tokens || 0;
       a.output_tokens = ar.output_tokens || 0;
     }
@@ -337,8 +338,10 @@
       if (a.mode === 'live' && a.ai_calls > 0) modeTag = `🤖 ${a.ai_calls}`;
       else if (a.mode === 'stub' || (a.ai_calls === 0 && a.input_tokens === 0)) modeTag = '💤 stub';
     }
+    // Префикс ~ если токены оценены (не точные от провайдера, а наша эвристика)
+    const tildePrefix = a.stub_estimated ? '~' : '';
     const tokensTag = (a.input_tokens || a.output_tokens)
-      ? `${a.input_tokens||0}→${a.output_tokens||0} tok`
+      ? `${tildePrefix}${a.input_tokens||0}→${a.output_tokens||0} tok`
       : '';
     const meta = [a.model, fmtDur(a.duration_ms), modeTag, tokensTag, fmtCost(a.cost_rub)].filter(Boolean).join(' · ');
     return `
