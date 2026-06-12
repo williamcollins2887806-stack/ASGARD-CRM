@@ -20,11 +20,48 @@ const db = require('../../db');
 const { parseDocumentContent } = require('../../estimateChat');
 const { sha256 } = require('./_util');
 
-async function run({ input, onThought }) {
-  const docIds = Array.isArray(input.documents) ? input.documents.filter((x) => Number.isInteger(Number(x))) : [];
+async function run({ input, onThought, runId }) {
+  let docIds = Array.isArray(input.documents) ? input.documents.filter((x) => Number.isInteger(Number(x))) : [];
+
+  // Если документы явно не переданы — автоподтяг из работы/тендера прогона.
+  // Раньше РП должен был указывать document_ids руками, иначе Conductor работал
+  // вхолостую («Нет документов для парсинга») и tz_analyst падал в stub.
+  if (docIds.length === 0 && runId) {
+    onThought('document_ids не переданы — автоподтяг файлов работы/тендера');
+    try {
+      const r = await db.query(
+        `SELECT id, tender_id, work_id, estimate_id FROM mimir_conductor_runs WHERE id = $1`,
+        [runId]
+      );
+      const run = r.rows[0];
+      if (run) {
+        const conds = [];
+        const params = [];
+        let idx = 1;
+        if (run.work_id) { conds.push(`work_id = $${idx++}`); params.push(run.work_id); }
+        if (run.tender_id) { conds.push(`tender_id = $${idx++}`); params.push(run.tender_id); }
+        if (conds.length) {
+          // Тянем только потенциально-просчётную документацию.
+          // НЕ берём: logistics (билеты), паспорт, полис, счёт, инвойс — они для других флоу.
+          const sql = `SELECT id, original_name, type
+                         FROM documents
+                        WHERE (${conds.join(' OR ')})
+                          AND lower(COALESCE(type,'')) NOT IN ('logistics','паспорт','полис до мсу','полис','счёт','счет','билеты','билет','медполис')
+                        ORDER BY id`;
+          const docsR = await db.query(sql, params);
+          if (docsR.rows.length) {
+            docIds = docsR.rows.map(r => r.id);
+            onThought(`Найдено ${docIds.length} документ(ов) проекта: ${docsR.rows.slice(0,5).map(r => r.original_name).join(', ')}${docIds.length>5?'…':''}`);
+          }
+        }
+      }
+    } catch (e) {
+      onThought(`Не удалось автоподтянуть документы: ${e.message}`);
+    }
+  }
 
   if (docIds.length === 0) {
-    onThought('Документов к работе не привязано — парсить нечего.');
+    onThought('Документов к работе/тендеру не привязано — парсить нечего.');
     return {
       summary: 'Документы не приложены — анализ по стартовому контексту работы.',
       key_findings: ['Нет документов для парсинга'],
