@@ -81,7 +81,7 @@ const models = {
   },
   'haiku-4-5': {
     provider: 'routerai',
-    api_id: 'gemini-2.5-flash',                   // tokenator: быстрая/дешёвая (×1.5, контекст 1M)
+    api_id: 'gpt-5.5',                            // ранее gemini-2.5-flash, переведено 13.06.2026 в 17:00 MSK — у токенатора Gemini временно 403 «Request error»                   // tokenator: быстрая/дешёвая (×1.5, контекст 1M)
     anthropic_api_id: 'claude-haiku-4-5-20251001',
     price_usd_per_1m_input: 0.15,
     price_usd_per_1m_output: 0.60,
@@ -110,7 +110,7 @@ const models = {
   // либо валидирует и активирует если отключено через настройки ключа).
   'sonar-opus': {
     provider: 'routerai',
-    api_id: 'gemini-2.5-flash',                   // быстрый веб-поиск через gemini + web plugin
+    api_id: 'gpt-5.5',                            // ранее gemini-2.5-flash, переведено 13.06.2026 в 17:00 MSK — у токенатора Gemini временно 403 «Request error»                   // быстрый веб-поиск через gemini + web plugin
     price_usd_per_1m_input: 0.15,
     price_usd_per_1m_output: 0.60,
     supports_extended_thinking: false,
@@ -120,7 +120,7 @@ const models = {
   },
   'web-search-fast': {
     provider: 'routerai',
-    api_id: 'gemini-2.5-flash',
+    api_id: 'gpt-5.5',                            // ранее gemini-2.5-flash, переведено 13.06.2026 в 17:00 MSK — у токенатора Gemini временно 403 «Request error»
     price_usd_per_1m_input: 0.15,
     price_usd_per_1m_output: 0.60,
     supports_extended_thinking: false,

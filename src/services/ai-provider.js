@@ -947,7 +947,7 @@ async function _completeYandexOpenAI(options) {
 // Подтверждено тестом 25.05.2026: gemini-2.5-flash (1.8с, 601 chars), gpt-4.1-mini,
 // qwen3-235b реально выполняют plugin 'web' и возвращают текст.
 // Выбран gemini-2.5-flash — самая быстрая и дешёвая.
-const WEB_SEARCH_MODEL = process.env.WEB_SEARCH_MODEL || 'gemini-2.5-flash';
+const WEB_SEARCH_MODEL = process.env.WEB_SEARCH_MODEL || 'gpt-5.5';
 
 async function executeWebSearch(query, opts = {}) {
   await _loadKeysFromDB();
