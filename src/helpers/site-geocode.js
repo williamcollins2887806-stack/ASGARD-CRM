@@ -8,6 +8,18 @@
  * Используется при конверсии тендер→работа и при создании/редактировании работы.
  */
 
+// Нормализация имени населённого пункта для поиска дубликатов в sites.
+// «г. Усинск» / «Г.Усинск» / «  Усинск  » → один и тот же ключ "усинск".
+// Срезаем общие приставки (г./с./пгт/д./дер./пос./с-ц/г-к), нижний регистр, схлоп пробелов.
+function normalizePlaceKey(s) {
+  return String(s || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^(г|с|пгт|д|дер|пос|с-ц|г-к|г\.о|городской округ|поселок|поселок городского типа|село|деревня|город)(\.\s*|\s+)/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 // мягкий геокодер (как в src/routes/sites.js POST /geocode)
 async function geocode(place) {
   const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(place)}&limit=1&accept-language=ru`;
@@ -34,15 +46,18 @@ async function geocode(place) {
 async function ensureSiteByPlace(db, place, customerName, createdByUserId) {
   const name = String(place || '').trim();
   if (!name) return null;
-  const key = name.toLowerCase();
+  const key = normalizePlaceKey(name);
+  // тот же regex что и в JS — применяется на name/short_name в БД для устранения дублей.
+  // ВНИМАНИЕ: PostgreSQL regexp_replace не нативно case-insensitive — используем флаг 'i'.
+  const NORM_SQL = `regexp_replace(btrim(lower($COL)), '^(г|с|пгт|д|дер|пос|с-ц|г-к|г\\.о|городской округ|поселок|поселок городского типа|село|деревня|город)\\.?\\s+', '', 'i')`;
 
-  // быстрый путь: объект уже есть (по имени/короткому имени — без широкого match по региону)
+  // быстрый путь: объект уже есть (нормализованный поиск, чтобы «Усинск» = «г. Усинск»)
   const findByName = async () => {
-    const { rows } = await db.query(
-      `SELECT id FROM sites
-        WHERE btrim(lower(name)) = $1 OR btrim(lower(short_name)) = $1
-        ORDER BY id LIMIT 1`, [key]
-    );
+    const sql = `SELECT id FROM sites
+        WHERE ${NORM_SQL.replace('$COL', 'name')} = $1
+           OR ${NORM_SQL.replace('$COL', 'COALESCE(short_name, \'\')')} = $1
+        ORDER BY id LIMIT 1`;
+    const { rows } = await db.query(sql, [key]);
     return rows.length ? rows[0].id : null;
   };
   const existing = await findByName();
@@ -56,13 +71,14 @@ async function ensureSiteByPlace(db, place, customerName, createdByUserId) {
   try {
     const q = client ? client.query.bind(client) : db.query.bind(db);
     if (client) await q('BEGIN');
-    // лок на время транзакции по hashtext(имя)
+    // лок на время транзакции по hashtext(НОРМАЛИЗОВАННЫЙ ключ) — параллельные «Усинск» и «г.Усинск» залочатся вместе
     await q('SELECT pg_advisory_xact_lock(hashtext($1))', [key]).catch(() => {});
     // повторная проверка под локом
-    const reAgain = await q(
-      `SELECT id FROM sites WHERE btrim(lower(name)) = $1 OR btrim(lower(short_name)) = $1 ORDER BY id LIMIT 1`,
-      [key]
-    );
+    const reSql = `SELECT id FROM sites
+        WHERE ${NORM_SQL.replace('$COL', 'name')} = $1
+           OR ${NORM_SQL.replace('$COL', 'COALESCE(short_name, \'\')')} = $1
+        ORDER BY id LIMIT 1`;
+    const reAgain = await q(reSql, [key]);
     if (reAgain.rows.length) {
       if (client) await q('COMMIT');
       return reAgain.rows[0].id;
@@ -85,4 +101,4 @@ async function ensureSiteByPlace(db, place, customerName, createdByUserId) {
   }
 }
 
-module.exports = { geocode, ensureSiteByPlace };
+module.exports = { geocode, ensureSiteByPlace, normalizePlaceKey };

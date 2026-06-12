@@ -1018,8 +1018,19 @@ window.AsgardPmWorksPage=(function(){
         barColor:stColor
       });
 
+      const orphanBanner = (!w.site_id) ? `
+        <div id="pmw-orphan-banner" style="background:linear-gradient(90deg,#3a1a1a,#1f1318);border:1px solid #e23a3a55;border-radius:10px;padding:11px 14px;margin:8px 0 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-size:18px">📍</span>
+          <div style="flex:1;min-width:200px;font-size:13px">
+            <b style="color:#ffb36a">Работа не привязана к месту</b>
+            <div style="font-size:11.5px;opacity:.8;margin-top:2px">Без места работа не отображается в командном экране директора. Введите населённый пункт — координаты подтянутся автоматически.</div>
+          </div>
+          <input id="pmw-attach-place" placeholder="Напр.: Усинск" value="${esc(w.object_name||w.city||t?.tender_region||'')}" style="padding:6px 10px;border:1px solid #3a4f7a;background:#0e1626;color:#e6eef8;border-radius:6px;min-width:160px"/>
+          <button id="pmw-attach-btn" style="background:linear-gradient(135deg,#1f6fff,#7a3aff);border:0;color:#fff;border-radius:6px;padding:7px 14px;font-weight:700;cursor:pointer">📍 Привязать</button>
+        </div>` : '';
       const html = `
         <div class="cr-f-section"><span class="cr-f-section__icon" style="color:var(--gold)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span><span>${esc(w.customer_name||t?.customer_name||"")} · ${esc(w.work_title||t?.tender_title||"")}</span></div>
+        ${orphanBanner}
         ${ganttMini}
         <hr class="hr"/>
 
@@ -1029,8 +1040,11 @@ window.AsgardPmWorksPage=(function(){
           <div><label>Начало работ</label><input type="date" id="w_start" value="${esc(String(w.start_in_work_date||t?.work_start_plan||"").slice(0,10))}"/></div>
           <div><label>Окончание план</label><input type="date" id="w_end_plan" value="${esc(String(w.end_plan||t?.work_end_plan||"").slice(0,10))}"/></div>
           <div><label>Окончание факт</label><input type="date" id="w_end_fact" value="${esc(String(w.end_fact||"").slice(0,10))}"/></div>
-          <div style="grid-column:1/-1"><label>📍 Объект / населённый пункт</label>
-            <input id="w_place" value="${esc(w.object_name||w.city||t?.tender_region||"")}" placeholder="Напр.: Усинск / Астрахань, АГПЗ — координаты для карты подтянутся сами"/></div>
+          <div style="grid-column:1/-1">
+            <label>📍 Объект / населённый пункт <span style="color:#e23a3a">*</span></label>
+            <input id="w_place" required value="${esc(w.object_name||w.city||t?.tender_region||"")}" placeholder="Напр.: Усинск / Астрахань, АГПЗ — координаты для карты подтянутся сами" style="${(!w.site_id && !(w.object_name||w.city||t?.tender_region))?'border-color:#e23a3a;background:#2a1414':''}"/>
+            <div style="font-size:11px;opacity:.7;margin-top:4px;color:${(!w.site_id)?'#e0a000':'#9fb0c4'}">${(!w.site_id)?'⚠ Работа не привязана к карте — заполните место, чтобы она появилась в командном экране директора':'Без места работа не появится на карте директора — обязательное поле'}</div>
+          </div>
         </div>
 
         <div class="cr-f-section"><span class="cr-f-section__icon" style="color:var(--gold)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span><span>Финансы</span></div>
@@ -1077,6 +1091,37 @@ window.AsgardPmWorksPage=(function(){
       `;
 
       showModal({ title: `Работа #${w.id}`, html, icon: '🏗', subtitle: `${esc(w.customer_name||'')} · ${esc(w.work_status||'')}` });
+
+      // ─── Привязка работы-сироты к месту (баннер сверху, только если w.site_id IS NULL) ───
+      const _attachBtn = document.getElementById('pmw-attach-btn');
+      if (_attachBtn) {
+        _attachBtn.addEventListener('click', async ()=>{
+          const inp = document.getElementById('pmw-attach-place');
+          const place = String((inp&&inp.value)||'').trim();
+          if (!place) { toast('Привязка','Введите название места','err'); inp&&inp.focus(); return; }
+          _attachBtn.disabled = true; _attachBtn.textContent = '…';
+          try {
+            const resp = await fetch('/api/works/'+w.id+'/attach-place', {
+              method:'POST',
+              headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+(localStorage.getItem('asgard_token')||localStorage.getItem('auth_token')) },
+              body: JSON.stringify({ place })
+            });
+            const data = await resp.json().catch(()=>({}));
+            if (!resp.ok) throw new Error(data.error || ('HTTP '+resp.status));
+            toast('Привязка','✅ '+(data.message||'Готово'),'ok');
+            // обновим локально, скроем баннер, синхронизируем поле формы
+            w.site_id = data.site_id;
+            const banner = document.getElementById('pmw-orphan-banner');
+            if (banner) banner.remove();
+            const pl = document.getElementById('w_place');
+            if (pl) { pl.value = place; pl.style.borderColor = ''; pl.style.background = ''; }
+          } catch (err) {
+            toast('Привязка', String(err.message||err), 'err');
+            _attachBtn.disabled = false; _attachBtn.textContent = '📍 Привязать';
+          }
+        });
+      }
+
       const _curWorkStatus = w.work_status || '';
       const _isAdminOrDir = user.role === 'ADMIN' || user.role === 'DIRECTOR_GEN';
       const _workStatusOpts = _isAdminOrDir ? (refs.work_statuses||[]) : [...new Set((WORK_STATUS_TRANSITIONS[_curWorkStatus] || []).concat([_curWorkStatus]))];
@@ -1483,8 +1528,16 @@ window.AsgardPmWorksPage=(function(){
         w.start_in_work_date = $("#w_start").value.trim()||null;
         w.end_plan = $("#w_end_plan").value.trim()||null;
         w.end_fact = $("#w_end_fact").value.trim()||null;
-        // объект/населённый пункт → бэкенд найдёт/создаст объект и подтянет координаты (site_id)
-        { const _pl = ($("#w_place")?.value||"").trim(); if(_pl){ w.object_place = _pl; w.object_name = _pl; } }
+        // объект/населённый пункт → бэкенд найдёт/создаст объект и подтянет координаты (site_id).
+        // ОБЯЗАТЕЛЬНОЕ ПОЛЕ — без него работа не появится на карте директора.
+        { const _pl = ($("#w_place")?.value||"").trim();
+          if(!_pl && !w.site_id){
+            toast("Валидация","📍 Укажите место работы — без него работа не появится на карте директора","err");
+            const el = $("#w_place"); if(el){ el.focus(); el.style.borderColor='#e23a3a'; el.scrollIntoView({behavior:'smooth',block:'center'}); }
+            return;
+          }
+          if(_pl){ w.object_place = _pl; w.object_name = _pl; }
+        }
 
         w.contract_value = num($("#w_value").value);
         w.advance_pct = num($("#w_adv_pct").value) ?? 30;

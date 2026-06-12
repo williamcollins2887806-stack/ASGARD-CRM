@@ -91,10 +91,15 @@ module.exports = async function (fastify, options) {
         const workers = jobs.reduce((a, j) => a + j.workers, 0);
         const masters = jobs.reduce((a, j) => a + j.masters, 0);
         const onShift = jobs.reduce((a, j) => a + j.on_shift, 0);
+        // Гард 0/0: ручные INSERT'ы могли проставить lat=0, lng=0 (Гвинейский залив).
+        // Считаем такие координаты невалидными → отдаём null, чтобы фронт повесил site в правую колонку, а не в океан.
+        const latN = s.lat != null ? Number(s.lat) : null;
+        const lngN = s.lng != null ? Number(s.lng) : null;
+        const validCoords = (latN != null && lngN != null && !(Math.abs(latN) < 0.0001 && Math.abs(lngN) < 0.0001));
         return {
           id: s.id, name: s.name, short_name: s.short_name,
-          lat: s.lat != null ? Number(s.lat) : null,
-          lng: s.lng != null ? Number(s.lng) : null,
+          lat: validCoords ? latN : null,
+          lng: validCoords ? lngN : null,
           region: s.region, site_type: s.site_type,
           customer_name: s.customer_name, address: s.address,
           works: jobs,

@@ -186,12 +186,49 @@ async function routes(fastify, options) {
       }
       // work_kind по умолчанию — main (нужно для аддендумов; раньше оставался NULL)
       if (!body.work_kind) body.work_kind = 'main';
-      // Объект по населённому пункту: если передан object_place и нет site_id — найдём/создадим объект (геокод)
-      if (!body.site_id && (body.object_place || '').trim()) {
+
+      // Объект по населённому пункту: если передан object_place и нет site_id — найдём/создадим объект (геокод).
+      // Если object_place пустой — пробуем подтянуть от тендера (tender_region) или от родителя (parent.site_id).
+      const placeStr = String(body.object_place || '').trim();
+      if (!body.site_id && placeStr) {
         try {
-          body.site_id = await ensureSiteByPlace(db, body.object_place, body.customer_name, request.user.id);
-          if (!body.object_name) body.object_name = String(body.object_place).trim();
+          body.site_id = await ensureSiteByPlace(db, placeStr, body.customer_name, request.user.id);
+          if (!body.object_name) body.object_name = placeStr;
         } catch (e) { fastify.log.warn('[works POST] ensureSiteByPlace: ' + e.message); }
+      }
+      // 1) Если из тендера — наследуем site_id (или регион → геокодируем)
+      if (!body.site_id && body.tender_id) {
+        const { rows: [tnd2] } = await db.query(
+          'SELECT site_id, tender_region, customer_name FROM tenders WHERE id = $1', [body.tender_id]);
+        if (tnd2) {
+          if (tnd2.site_id) body.site_id = tnd2.site_id;
+          else if (tnd2.tender_region) {
+            try {
+              body.site_id = await ensureSiteByPlace(db, tnd2.tender_region, tnd2.customer_name || body.customer_name, request.user.id);
+              if (!body.object_name) body.object_name = tnd2.tender_region;
+              if (!body.object_place) body.object_place = tnd2.tender_region;
+            } catch (e) { fastify.log.warn('[works POST] tender geocode: ' + e.message); }
+          }
+        }
+      }
+      // 2) Если это аддендум (parent_work_id) — наследуем site_id от родителя
+      if (!body.site_id && body.parent_work_id) {
+        const { rows: [pw2] } = await db.query(
+          'SELECT site_id, object_place, object_name FROM works WHERE id = $1', [body.parent_work_id]);
+        if (pw2 && pw2.site_id) {
+          body.site_id = pw2.site_id;
+          if (!body.object_place) body.object_place = pw2.object_place;
+          if (!body.object_name) body.object_name = pw2.object_name;
+        }
+      }
+      // 3) ЖЁСТКАЯ ЗАЩИТА: без site_id и без места работа невидима на карте → 400.
+      //    Просим РП указать населённый пункт явно.
+      if (!body.site_id) {
+        return reply.code(400).send({
+          error: 'Укажите место работы',
+          detail: 'Поле «Место / населённый пункт» обязательно — без него работа не появится на карте директора. Заполните «📍 Объект / населённый пункт» (напр., «Усинск» или «Астрахань, АГПЗ»).',
+          field: 'object_place'
+        });
       }
       const data = filterData({ ...body, created_by: request.user.id, created_at: new Date().toISOString() });
       // B6: Валидация дат
@@ -367,6 +404,55 @@ async function routes(fastify, options) {
     } catch (err) {
       request.log.error(err, 'works delete error');
       return reply.code(500).send({ error: 'Не удалось удалить работу', detail: err.message });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // POST /:id/attach-place — привязка работы-сироты к объекту на карте.
+  // Для существующих работ без site_id (создавали раньше, когда поле было
+  // необязательным). РП вводит «Усинск» — endpoint геокодирует, создаёт/
+  // находит объект, UPDATE works SET site_id, object_place, object_name.
+  // RBAC: PM (только своя работа), HEAD_PM/ADMIN/DIRECTOR.
+  // ─────────────────────────────────────────────────────────────────
+  fastify.post('/:id/attach-place', {
+    preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])]
+  }, async (request, reply) => {
+    try {
+      const workId = parseInt(request.params.id, 10);
+      if (!workId) return reply.code(400).send({ error: 'bad_id' });
+      const place = String((request.body && request.body.place) || '').trim();
+      if (!place) return reply.code(400).send({ error: 'Введите название места' });
+
+      const { rows: wRows } = await db.query(
+        'SELECT id, pm_id, site_id, customer_name FROM works WHERE id = $1 AND deleted_at IS NULL',
+        [workId]
+      );
+      const w = wRows[0];
+      if (!w) return reply.code(404).send({ error: 'Работа не найдена' });
+      // PM может править только свою работу
+      if (request.user.role === 'PM' && w.pm_id && w.pm_id !== request.user.id) {
+        return reply.code(403).send({ error: 'Нет доступа: чужая работа' });
+      }
+
+      const siteId = await ensureSiteByPlace(db, place, w.customer_name, request.user.id);
+      if (!siteId) return reply.code(502).send({ error: 'Не удалось создать объект (геокодер недоступен)' });
+
+      await db.query(
+        'UPDATE works SET site_id = $1, object_place = $2, object_name = COALESCE(object_name, $2), updated_at = NOW() WHERE id = $3',
+        [siteId, place, workId]
+      );
+      const { rows: sRows } = await db.query(
+        'SELECT id, name, lat, lng FROM sites WHERE id = $1', [siteId]
+      );
+      return {
+        ok: true,
+        site_id: siteId,
+        site: sRows[0] || null,
+        message: 'Работа привязана к месту «' + place + '»'
+      };
+    } catch (err) {
+      request.log.error(err, 'attach-place error');
+      return reply.code(500).send({ error: 'Ошибка привязки', detail: err.message });
     }
   });
 
