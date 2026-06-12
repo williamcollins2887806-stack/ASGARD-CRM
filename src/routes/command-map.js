@@ -176,6 +176,7 @@ module.exports = async function (fastify, options) {
         LEFT JOIN works w ON w.id = ts.work_id
         LEFT JOIN sites s ON s.id = w.site_id
         WHERE ts.stage_type = 'medical'
+          AND COALESCE(ts.status, '') NOT IN ('done','completed','closed','cancelled')
           AND COALESCE(ts.date_to, ts.date_from, CURRENT_DATE) >= CURRENT_DATE - INTERVAL '14 days'
         ORDER BY ts.date_from DESC NULLS LAST
         LIMIT 200
@@ -210,16 +211,20 @@ module.exports = async function (fastify, options) {
       const workIds = works.map(w => w.id);
       if (!workIds.length) return { site_id: siteId, crew: [] };
 
-      // активные назначения (ещё не убывшие) + сотрудник (с РЕАЛЬНЫМ досье)
+      // активные назначения (ещё не убывшие) + сотрудник (с РЕАЛЬНЫМ досье).
+      // Фильтр тест-аккаунтов: не пускаем «тест/test» на боевую карту директора.
       const { rows: assigns } = await db.query(`
         SELECT ea.employee_id, ea.work_id, ea.field_role, ea.shift_type, ea.date_from, ea.date_to,
                e.fio, e.full_name, e.position, e.qualification_name, e.qualification_grade,
                e.is_self_employed, e.day_rate, e.naks_number, e.naks_expiry,
-               e.permits, e.gender, e.phone, e.city
+               e.permits, e.gender, e.phone, e.city, e.rating_avg
         FROM employee_assignments ea
         JOIN employees e ON e.id = ea.employee_id
         WHERE ea.work_id = ANY($1::int[])
           AND ea.is_active = true
+          AND COALESCE(e.is_active, true) = true
+          AND lower(COALESCE(e.fio,'')) NOT LIKE '%тест%'
+          AND lower(COALESCE(e.fio,'')) NOT LIKE '%test%'
           AND (ea.departure_date IS NULL OR ea.departure_date > CURRENT_DATE)
       `, [workIds]);
       if (!assigns.length) return { site_id: siteId, crew: [] };
@@ -241,12 +246,22 @@ module.exports = async function (fastify, options) {
           AND COALESCE(date_to, CURRENT_DATE) >= CURRENT_DATE
       `, [workIds]);
       const stageByEmp = {};
+      // V063 stage_type: medical | travel | waiting | warehouse | day_off | object
+      // приоритет: medical > waiting > transit > warehouse > home (day_off) > site (object)
       stages.forEach(s => {
         const t = String(s.stage_type || '').toLowerCase();
-        // приоритет medical > transit
         const cur = stageByEmp[s.employee_id];
-        if (t.includes('medical') || t.includes('медос')) stageByEmp[s.employee_id] = 'medical';
-        else if (!cur && (t.includes('transit') || t.includes('travel') || t.includes('доро') || t.includes('переезд'))) stageByEmp[s.employee_id] = 'transit';
+        let mapped = null;
+        if (t === 'medical' || t.includes('медос')) mapped = 'medical';
+        else if (t === 'waiting' || t.includes('ожида')) mapped = 'waiting';
+        else if (t === 'travel' || t === 'transit' || t.includes('доро') || t.includes('переезд') || t.includes('тран')) mapped = 'transit';
+        else if (t === 'warehouse' || t.includes('склад')) mapped = 'warehouse';
+        else if (t === 'day_off' || t.includes('выход')) mapped = 'home';
+        else if (t === 'object' || t.includes('объект')) mapped = 'site';
+        if (!mapped) return;
+        // приоритет: medical > waiting > transit > warehouse > home > site
+        const PRIO = { medical: 6, waiting: 5, transit: 4, warehouse: 3, home: 2, site: 1 };
+        if (!cur || (PRIO[mapped] || 0) > (PRIO[cur] || 0)) stageByEmp[s.employee_id] = mapped;
       });
 
       // собрать: один человек = одна фигура (берём первое назначение) — с РЕАЛЬНЫМ досье
@@ -277,6 +292,8 @@ module.exports = async function (fastify, options) {
           shift: a.shift_type || null,
           city: a.city || null,
           phone: a.phone || null,
+          rating: a.rating_avg != null ? Number(a.rating_avg) : null,
+          on_shift_today: onShift.has(a.employee_id),
           date_from: a.date_from, date_to: a.date_to
         });
       });
@@ -421,6 +438,383 @@ module.exports = async function (fastify, options) {
       request.log.error(e);
       reply.code(500);
       return { error: 'live_failed', message: e.message };
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // GET /api/command-map/worker/:id — ПОЛНАЯ карточка рабочего для drawer.
+  // Реальные данные: контакты, рейтинг, специальность, оформление, ставка,
+  // последняя/текущая работа, история чекинов (часы/смены/зарплата),
+  // активный этап поездки, последний рейс, ожидание (дни без работы).
+  // ─────────────────────────────────────────────────────────────────
+  fastify.get('/worker/:id', { preHandler: [fastify.requireRoles(MAP_ROLES)] }, async (request, reply) => {
+    try {
+      const empId = parseInt(request.params.id, 10);
+      if (!empId) { reply.code(400); return { error: 'bad_id' }; }
+
+      const { rows: empRows } = await db.query(`
+        SELECT e.id, COALESCE(e.full_name, e.fio) AS name, e.fio, e.full_name,
+               e.phone, e.email, e.position, e.qualification_name, e.qualification_grade,
+               e.is_self_employed, e.day_rate, e.naks_number, e.naks_expiry,
+               e.city, e.gender, e.rating_avg, e.is_active,
+               e.readiness_status, e.readiness_reason, e.readiness_updated_at,
+               e.last_work_id, e.last_pm_id,
+               e.permits, e.created_at
+        FROM employees e
+        WHERE e.id = $1
+      `, [empId]);
+      if (!empRows.length) { reply.code(404); return { error: 'not_found' }; }
+      const e = empRows[0];
+
+      // ТЕКУЩЕЕ активное назначение (если есть) — где работает прямо сейчас
+      const { rows: curAssign } = await db.query(`
+        SELECT ea.work_id, ea.field_role, ea.shift_type, ea.date_from, ea.date_to,
+               w.work_title, w.work_status, s.name AS site_name, s.id AS site_id,
+               u.name AS pm_name
+        FROM employee_assignments ea
+        LEFT JOIN works w ON w.id = ea.work_id
+        LEFT JOIN sites s ON s.id = w.site_id
+        LEFT JOIN users u ON u.id = w.pm_id
+        WHERE ea.employee_id = $1
+          AND ea.is_active = true
+          AND (ea.departure_date IS NULL OR ea.departure_date > CURRENT_DATE)
+        ORDER BY ea.date_from DESC NULLS LAST
+        LIMIT 1
+      `, [empId]);
+
+      // ПОСЛЕДНИЕ 5 работ из назначений (включая текущую) — для истории
+      const { rows: assignHist } = await db.query(`
+        SELECT ea.work_id, ea.field_role, ea.shift_type, ea.date_from, ea.date_to,
+               ea.departure_date, ea.is_active,
+               w.work_title, w.work_status, s.name AS site_name, s.short_name AS site_short
+        FROM employee_assignments ea
+        LEFT JOIN works w ON w.id = ea.work_id
+        LEFT JOIN sites s ON s.id = w.site_id
+        WHERE ea.employee_id = $1
+        ORDER BY ea.date_from DESC NULLS LAST
+        LIMIT 5
+      `, [empId]);
+
+      // ПОСЛЕДНИЙ чекин и агрегаты по чекинам (всего часов, всего смен, последняя дата)
+      const { rows: ckLast } = await db.query(`
+        SELECT fc.date, fc.shift, fc.status, fc.hours_worked, fc.hours_paid,
+               fc.amount_earned, fc.day_rate, fc.checkin_at, fc.checkout_at,
+               w.work_title, s.name AS site_name
+        FROM field_checkins fc
+        LEFT JOIN works w ON w.id = fc.work_id
+        LEFT JOIN sites s ON s.id = w.site_id
+        WHERE fc.employee_id = $1
+        ORDER BY fc.date DESC, fc.checkin_at DESC NULLS LAST
+        LIMIT 1
+      `, [empId]);
+      const { rows: ckAgg } = await db.query(`
+        SELECT COUNT(*)::int AS shifts,
+               COALESCE(SUM(hours_worked), 0)::float AS hours,
+               COALESCE(SUM(amount_earned), 0)::float AS earned,
+               MAX(date) AS last_date
+        FROM field_checkins
+        WHERE employee_id = $1 AND status = 'active'
+      `, [empId]);
+
+      // АКТИВНЫЙ этап поездки (медосмотр/дорога/ожидание/склад/выходной)
+      const { rows: stages } = await db.query(`
+        SELECT stage_type, status, date_from, date_to,
+               (SELECT s.name FROM works w LEFT JOIN sites s ON s.id=w.site_id WHERE w.id=fts.work_id LIMIT 1) AS site_name
+        FROM field_trip_stages fts
+        WHERE employee_id = $1
+          AND COALESCE(status,'') NOT IN ('done','completed','closed','cancelled')
+          AND COALESCE(date_to, CURRENT_DATE) >= CURRENT_DATE
+        ORDER BY date_from DESC NULLS LAST
+        LIMIT 3
+      `, [empId]);
+
+      // ПОСЛЕДНИЙ рейс (билет туда/обратно) — если есть
+      const { rows: flightRows } = await db.query(`
+        SELECT fl.item_type, fl.transport_no, fl.title, fl.status,
+               fl.departure_at, fl.arrival_at, fl.date_from, fl.date_to,
+               s.name AS site_name
+        FROM field_logistics fl
+        LEFT JOIN works w ON w.id = fl.work_id
+        LEFT JOIN sites s ON s.id = w.site_id
+        WHERE fl.employee_id = $1
+          AND fl.item_type = ANY($2)
+        ORDER BY COALESCE(fl.departure_at, fl.date_from::timestamptz) DESC NULLS LAST
+        LIMIT 1
+      `, [empId, ['ticket_to','ticket_back','flight','train','transfer']]);
+
+      // ИМЯ последнего РП (если в employees.last_pm_id есть)
+      let lastPm = null;
+      if (e.last_pm_id) {
+        const { rows: pmRows } = await db.query(
+          `SELECT id, name FROM users WHERE id = $1`, [e.last_pm_id]);
+        if (pmRows.length) lastPm = pmRows[0];
+      }
+
+      // АДЁЖИ (допуска) — массив | строка
+      let permits = [];
+      if (Array.isArray(e.permits)) permits = e.permits.filter(Boolean);
+      else if (typeof e.permits === 'string' && e.permits.trim()) {
+        permits = e.permits.split(/[;,]/).map(s => s.trim()).filter(Boolean);
+      }
+      if (e.naks_number) permits.unshift('НАКС ' + e.naks_number);
+
+      // Ожидание: если нет активного назначения и были прошлые работы —
+      // считаем дни от последней `date_to` или последнего чекина
+      const cur = curAssign[0] || null;
+      const agg = ckAgg[0] || { shifts: 0, hours: 0, earned: 0, last_date: null };
+      const lastFinish = cur ? null
+        : (agg.last_date || (assignHist[0] && (assignHist[0].departure_date || assignHist[0].date_to)) || null);
+      let waitingDays = null;
+      if (!cur && lastFinish) {
+        const ms = Date.now() - new Date(lastFinish).getTime();
+        waitingDays = Math.max(0, Math.floor(ms / 86400000));
+      }
+
+      // Длительность ТЕКУЩЕЙ вахты: дни от date_from
+      let onShiftDays = null;
+      if (cur && cur.date_from) {
+        const ms = Date.now() - new Date(cur.date_from).getTime();
+        onShiftDays = Math.max(0, Math.floor(ms / 86400000));
+      }
+
+      return {
+        worker: {
+          id: e.id,
+          name: e.name || ('Раб. #' + e.id),
+          phone: e.phone || null,
+          email: e.email || null,
+          city: e.city || null,
+          spec: e.qualification_name || e.position || 'Рабочий',
+          grade: e.qualification_grade || null,
+          employ: e.is_self_employed ? 'Самозанятый' : 'Штат',
+          rate: e.day_rate != null ? Number(e.day_rate) : null,
+          rating: e.rating_avg != null ? Number(e.rating_avg) : null,
+          gender: e.gender || null,
+          is_active: e.is_active === true,
+          permits: permits.slice(0, 10),
+          naks_expiry: e.naks_expiry || null,
+          readiness: {
+            status: e.readiness_status || 'unknown',
+            reason: e.readiness_reason || null,
+            updated_at: e.readiness_updated_at || null
+          },
+          created_at: e.created_at
+        },
+        current: cur ? {
+          work_id: cur.work_id, work_title: cur.work_title, work_status: cur.work_status,
+          site_id: cur.site_id, site_name: cur.site_name,
+          pm_name: cur.pm_name, role: cur.field_role,
+          shift: cur.shift_type, date_from: cur.date_from, date_to: cur.date_to,
+          days_on_shift: onShiftDays
+        } : null,
+        history: assignHist.map(h => ({
+          work_id: h.work_id, work_title: h.work_title, work_status: h.work_status,
+          site_name: h.site_name || h.site_short, role: h.field_role, shift: h.shift_type,
+          date_from: h.date_from, date_to: h.date_to,
+          departure_date: h.departure_date, is_active: h.is_active
+        })),
+        last_checkin: ckLast[0] || null,
+        stats: {
+          total_shifts: agg.shifts || 0,
+          total_hours: agg.hours || 0,
+          total_earned: agg.earned || 0,
+          last_shift_date: agg.last_date || null
+        },
+        stages: stages.map(s => ({
+          stage_type: s.stage_type, status: s.status,
+          date_from: s.date_from, date_to: s.date_to,
+          site_name: s.site_name
+        })),
+        last_flight: flightRows[0] || null,
+        last_pm: lastPm,
+        waiting_days: waitingDays
+      };
+    } catch (err) {
+      request.log.error(err);
+      reply.code(500);
+      return { error: 'worker_failed', message: err.message };
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // GET /api/command-map/office-user/:id — ПОЛНАЯ карточка офисного сотрудника.
+  // Реальные данные: контакты, last_login_at, активность в CRM,
+  // что отметил сегодня (staff_plan), последние действия (audit_log),
+  // role-specific KPI (PM/PROC/BUH/DIR/WAREHOUSE/HEAD_PM).
+  // ─────────────────────────────────────────────────────────────────
+  fastify.get('/office-user/:id', { preHandler: [fastify.requireRoles(MAP_ROLES)] }, async (request, reply) => {
+    try {
+      const uid = parseInt(request.params.id, 10);
+      if (!uid) { reply.code(400); return { error: 'bad_id' }; }
+
+      const { rows: uRows } = await db.query(`
+        SELECT u.id, u.login, u.name, u.role, u.email, u.phone,
+               u.is_active, u.last_login_at, u.employment_date, u.created_at,
+               u.birth_date, u.patronymic, u.telegram_chat_id
+        FROM users u
+        WHERE u.id = $1
+      `, [uid]);
+      if (!uRows.length) { reply.code(404); return { error: 'not_found' }; }
+      const u = uRows[0];
+
+      // staff (должность/отдел из staff если есть)
+      const { rows: sRows } = await db.query(`
+        SELECT position, department FROM staff WHERE user_id = $1 LIMIT 1
+      `, [uid]);
+      const s = sRows[0] || {};
+
+      // отметка за сегодня (staff_plan)
+      const { rows: planRows } = await db.query(`
+        SELECT sp.status_code, sp.work_id, w.work_title, s2.name AS site_name
+        FROM staff_plan sp
+        LEFT JOIN staff st ON st.id = sp.staff_id
+        LEFT JOIN works w ON w.id = sp.work_id
+        LEFT JOIN sites s2 ON s2.id = w.site_id
+        WHERE st.user_id = $1 AND sp.date = CURRENT_DATE
+        ORDER BY sp.id DESC
+        LIMIT 1
+      `, [uid]);
+
+      // последние действия в CRM (audit_log)
+      const { rows: actions } = await db.query(`
+        SELECT entity_type, entity_id, action, details, created_at
+        FROM audit_log
+        WHERE actor_user_id = $1
+        ORDER BY id DESC
+        LIMIT 8
+      `, [uid]);
+
+      // снимок presence-activity (idle, текущая страница, самоотметка)
+      let act = {};
+      try { act = require('../services/presence-activity').snapshot([uid]); } catch (_) {}
+      const pa = act[uid] || { idle: false, page: null, selfAct: null, lastSeen: null };
+
+      // онлайн (SSE)
+      let onlineSet = new Set();
+      try {
+        const ids = require('./sse').getOnlineUserIds() || [];
+        onlineSet = new Set(ids.map(Number));
+      } catch (_) {}
+
+      // непрочитанные уведомления
+      const { rows: nUnreadRows } = await db.query(`
+        SELECT COUNT(*)::int AS n FROM notifications WHERE user_id = $1 AND is_read = false
+      `, [uid]);
+      const unread = (nUnreadRows[0] && nUnreadRows[0].n) || 0;
+
+      // ─── role-specific KPI ───
+      const role = String(u.role || '').toUpperCase();
+      const kpi = {};
+
+      // PM / HEAD_PM — мои работы
+      if (role === 'PM' || role === 'HEAD_PM') {
+        const { rows } = await db.query(`
+          SELECT
+            COUNT(*) FILTER (WHERE work_status = 'В работе')::int  AS in_work,
+            COUNT(*) FILTER (WHERE work_status = 'Подготовка')::int AS prep,
+            COUNT(*) FILTER (WHERE work_status = 'Мобилизация')::int AS mob,
+            COUNT(*) FILTER (WHERE work_status = 'Подписание акта')::int AS signing,
+            COUNT(*) FILTER (WHERE work_status = 'На паузе')::int AS paused
+          FROM works WHERE pm_id = $1 AND deleted_at IS NULL
+        `, [uid]);
+        kpi.pm_works = rows[0] || {};
+        const { rows: near } = await db.query(`
+          SELECT id, work_title, work_status, end_date
+          FROM works
+          WHERE pm_id = $1 AND deleted_at IS NULL
+            AND work_status IN ('В работе','Мобилизация','Подготовка')
+            AND end_date IS NOT NULL
+          ORDER BY end_date ASC NULLS LAST
+          LIMIT 3
+        `, [uid]);
+        kpi.near_deadlines = near;
+      }
+
+      // PROC — открытые заявки закупки
+      if (role === 'PROC') {
+        const { rows } = await db.query(`
+          SELECT status, COUNT(*)::int AS n
+          FROM procurement_requests
+          WHERE status NOT IN ('closed','dir_rejected','cancelled')
+          GROUP BY status
+          ORDER BY n DESC
+        `);
+        kpi.procurement_by_status = rows;
+      }
+
+      // BUH — открытые счета/акты
+      if (role === 'BUH') {
+        try {
+          const { rows: inv } = await db.query(`
+            SELECT COUNT(*) FILTER (WHERE status IN ('pending','sent'))::int AS pending
+            FROM invoices WHERE deleted_at IS NULL
+          `);
+          kpi.invoices = inv[0] || { pending: 0 };
+        } catch (_) {}
+      }
+
+      // DIRECTOR — pending согласования из notifications
+      if (role.startsWith('DIRECTOR')) {
+        try {
+          const { rows } = await db.query(`
+            SELECT type, COUNT(*)::int AS n
+            FROM notifications
+            WHERE user_id = $1 AND is_read = false
+              AND type IN ('procurement_dir_approve','estimate_approve','tender_approve','contract_approve')
+            GROUP BY type
+          `, [uid]);
+          kpi.pending_approvals = rows;
+        } catch (_) {}
+      }
+
+      // WAREHOUSE — входящие/исходящие
+      if (role === 'WAREHOUSE') {
+        try {
+          const { rows: inc } = await db.query(`
+            SELECT COUNT(*)::int AS pending
+            FROM procurement_requests
+            WHERE status IN ('paid','partially_delivered')
+          `);
+          kpi.incoming_pending = (inc[0] && inc[0].pending) || 0;
+        } catch (_) {}
+      }
+
+      return {
+        user: {
+          id: u.id, name: u.name, login: u.login, role: u.role,
+          email: u.email || null, phone: u.phone || null,
+          is_active: u.is_active === true,
+          last_login_at: u.last_login_at,
+          employment_date: u.employment_date,
+          position: s.position || null,
+          department: s.department || null,
+          telegram: !!u.telegram_chat_id
+        },
+        presence: {
+          online: onlineSet.has(uid),
+          idle: !!pa.idle,
+          self_act: pa.selfAct || null,
+          current_page: pa.page || null,
+          last_heartbeat: pa.lastSeen ? new Date(pa.lastSeen).toISOString() : null
+        },
+        today: planRows[0] ? {
+          status_code: planRows[0].status_code,
+          work: planRows[0].work_id ? {
+            id: planRows[0].work_id, title: planRows[0].work_title, site: planRows[0].site_name
+          } : null
+        } : null,
+        unread_notifications: unread,
+        recent_actions: actions.map(a => ({
+          entity_type: a.entity_type, entity_id: a.entity_id,
+          action: a.action, details: a.details,
+          at: a.created_at
+        })),
+        kpi
+      };
+    } catch (err) {
+      request.log.error(err);
+      reply.code(500);
+      return { error: 'office_user_failed', message: err.message };
     }
   });
 };

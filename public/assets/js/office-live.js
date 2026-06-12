@@ -82,11 +82,13 @@ window.AsgardOfficeLive = (function () {
       };
     });
 
-    // worker-объект под движок из РЕАЛЬНОГО досье (никакой генерации!)
+    // worker-объект под движок из РЕАЛЬНОГО досье (никакой генерации!).
+    // employee_id ОБЯЗАТЕЛЬНО — карточка делает lazy-load /worker/:id по нему.
     let _wid = 1;
     function _mkCrew(c){
       return {
-        wid: _wid++, name: c.name || ('Раб. #'+_wid), master: !!c.master, status: c.status || 'site',
+        wid: _wid++, employee_id: c.employee_id || null,
+        name: c.name || ('Раб. #'+_wid), master: !!c.master, status: c.status || 'site',
         spec: c.spec || (c.master ? 'Бригадир / мастер' : 'Рабочий'),
         grade: c.grade || null,
         permits: Array.isArray(c.permits) ? c.permits : [],
@@ -94,6 +96,8 @@ window.AsgardOfficeLive = (function () {
         employ: c.employ || 'Штат',
         rate: (c.rate!=null) ? c.rate : null,
         city: c.city || null, phone: c.phone || null,
+        rating: (c.rating!=null) ? c.rating : null,
+        on_shift_today: !!c.on_shift_today,
         date_from: c.date_from || null, date_to: c.date_to || null,
         medOk: c.status!=='medical', checkin: c.status==='site' ? 'сегодня' : null
       };
@@ -1743,74 +1747,142 @@ window.AsgardOfficeLive = (function () {
   function bar(v,col){ return '<div class="bar"><i style="width:'+Math.max(0,Math.min(100,v))+'%;background:'+col+'"></i></div>'; }
 
   function openDrawer(s, act){
+    const esc=(z)=>String(z==null?'':z).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     document.getElementById('d-ava').textContent = s.female?'🧝‍♀️':'🧔';
-    document.getElementById('d-name').textContent = s.name;
-    document.getElementById('d-role').textContent = s.rus;
-    const a = s._remote?'на удалёнке':(act?ACT[act].l:'в офисе');
-    document.getElementById('d-pres').textContent = '● '+a;
-    const B=document.getElementById('d-body'); let h='';
-
-    if(s.role==='PM'||s.role==='HEAD_PM'){
-      const works=s.works||[];
-      h+='<div class="kpis">'+
-        '<div class="kpi"><div class="v">'+works.length+'</div><div class="k">работ в ведении</div></div>'+
-        '<div class="kpi"><div class="v">'+works.reduce((a,w)=>a+(w.workers||0),0)+'</div><div class="k">рабочих сейчас</div></div>'+
-       '</div>';
-      h+='<h3>Работы</h3>';
-      works.forEach(w=>{
-        const prep = w.phase==='Подготовка'||w.phase==='Мобилизация';
-        const mcol = w.margin<0?'#f85149':(w.margin<10?'#d29922':'#3fb950');
-        h+='<div class="wrow"><div class="t">'+w.t+'</div>'+
-          '<div class="meta"><span class="pill">'+w.phase+'</span>'+
-          (prep?('<span>готовность '+w.ready+'%</span>'):('<span>⏳ '+(w.daysLeft!=null?w.daysLeft+' дн.':'—')+'</span>'))+
-          '<span>👷 '+w.workers+'</span></div>'+
-          (prep? bar(w.ready,'linear-gradient(90deg,#1f6fff,#2bd4c9)') :
-                 ('<div class="meta" style="margin-top:8px"><span>маржа <b style="color:'+mcol+'">'+pct(w.margin)+'</b></span>'+
-                  '<span>прибыль сегодня <b style="color:'+mcol+'">'+money(w.profit)+'</b></span></div>'))+
-          '</div>';
-      });
-    } else if(s.role==='TO'){
-      const t=s.to; h+='<div class="kpis">'+
-        '<div class="kpi"><div class="v">'+t.month+'</div><div class="k">тендеров за месяц</div></div>'+
-        '<div class="kpi"><div class="v">'+t.conv+'%</div><div class="k">конверсия</div></div>'+
-        '<div class="kpi"><div class="v good">'+t.won+'</div><div class="k">выиграно</div></div>'+
-        '<div class="kpi"><div class="v bad">'+t.lost+'</div><div class="k">проиграно</div></div></div>'+
-        '<h3>Активные</h3><div class="wrow"><div class="t">В работе: '+t.active+' тендеров</div>'+
-        '<div class="meta"><span>сумма выигранных: <b>'+money(t.wonSum)+'</b></span></div></div>';
-    } else if(s.role==='PROC'){
-      const p=s.proc; h+='<div class="kpis">'+
-        '<div class="kpi"><div class="v">'+p.inWork+'</div><div class="k">закупок в работе</div></div>'+
-        '<div class="kpi"><div class="v">'+p.positions+'</div><div class="k">позиций</div></div>'+
-        '<div class="kpi"><div class="v warn">'+p.waiting+'</div><div class="k">ждут согласования</div></div>'+
-        '<div class="kpi"><div class="v bad">'+p.overdue+'</div><div class="k">просрочены</div></div></div>'+
-        '<h3>Оплаты</h3><div class="wrow"><div class="t">Оплачено: '+p.paid+'</div></div>';
-    } else if(s.role==='BUH'){
-      const b=s.buh; h+='<div class="kpis">'+
-        '<div class="kpi"><div class="v">'+b.invoicesMonth+'</div><div class="k">счетов за месяц</div></div>'+
-        '<div class="kpi"><div class="v good">'+money(b.paidSum)+'</div><div class="k">оплачено</div></div>'+
-        '<div class="kpi"><div class="v warn">'+b.pending+'</div><div class="k">в ожидании</div></div></div>';
-    } else if(s.role==='OFFICE_MANAGER'){
-      const o=s.office; h+='<div class="kpis">'+
-        '<div class="kpi"><div class="v">'+o.corr+'</div><div class="k">корреспонденция</div></div>'+
-        '<div class="kpi"><div class="v">'+o.contracts+'</div><div class="k">договоров</div></div>'+
-        '<div class="kpi"><div class="v">'+o.seals+'</div><div class="k">печатей</div></div>'+
-        '<div class="kpi"><div class="v">'+o.proxies+'</div><div class="k">доверенностей</div></div></div>';
-    } else if(s.role==='WAREHOUSE'){
-      const w=s.wh; h+='<div class="kpis">'+
-        '<div class="kpi"><div class="v">'+w.incoming+'</div><div class="k">приёмка</div></div>'+
-        '<div class="kpi"><div class="v">'+w.requests+'</div><div class="k">заявки на выдачу</div></div>'+
-        '<div class="kpi"><div class="v">'+w.issued+'</div><div class="k">выдано</div></div>'+
-        '<div class="kpi"><div class="v bad">'+w.lowStock+'</div><div class="k">низкий остаток</div></div></div>';
-    } else if(s.role==='CHIEF_ENGINEER'){
-      const e=s.eng; h+='<div class="kpis">'+
-        '<div class="kpi"><div class="v bad">'+e.equipAlerts+'</div><div class="k">аварии оборуд.</div></div>'+
-        '<div class="kpi"><div class="v">'+e.permits+'</div><div class="k">допусков</div></div>'+
-        '<div class="kpi"><div class="v">'+e.maintenance+'</div><div class="k">ТО запланировано</div></div></div>';
-    } else if(s.role==='DIRECTOR_GEN'){
-      h+=yearBlock();
-    }
-    B.innerHTML=h; drawer.classList.add('open');
+    document.getElementById('d-name').textContent = s.name||'—';
+    document.getElementById('d-role').textContent = s.rus||s.role||'—';
+    const liveAct = s._remote?'на удалёнке':(s.on_call?'на звонке':(s.idle?'отошёл от стола':(act&&ACT[act]?ACT[act].l:(s.doing||'в офисе'))));
+    document.getElementById('d-pres').textContent = '● '+liveAct;
+    const B=document.getElementById('d-body');
+    B.innerHTML='<div class="meta" style="opacity:.6;font-size:11px;margin-bottom:10px">подгружаем актуальные данные…</div>';
+    drawer.classList.add('open');
     document.getElementById('summary').style.display='none';
+    if(!s.user_id){
+      B.innerHTML='<div class="wrow"><div class="t">'+esc(s.name||'—')+'</div><div class="meta"><span>'+esc(s.rus||s.role||'—')+'</span><span class="pill">'+esc(liveAct)+'</span></div></div>'+
+        '<div class="meta" style="margin-top:8px;opacity:.55;font-size:11px">Нет связи с user_id (синтетический сотрудник).</div>';
+      return;
+    }
+    _api('/api/command-map/office-user/'+encodeInt(s.user_id)).then(d=>{
+      if(!d||!d.user){ B.innerHTML='<div class="wrow"><div class="meta">Не удалось загрузить детали.</div></div>'; return; }
+      const u=d.user, pr=d.presence||{}, today=d.today, recent=d.recent_actions||[], kpi=d.kpi||{};
+      const lastSeen = pr.last_heartbeat?new Date(pr.last_heartbeat):(u.last_login_at?new Date(u.last_login_at):null);
+      const lastSeenLbl = lastSeen?formatAgo(lastSeen):'не заходил';
+      const statusDot = pr.online?(pr.idle?'🟡 отошёл':(pr.self_act?({coffee:'☕ кофе',smoke:'💨 перекур',lunch:'🍖 обед'}[pr.self_act]||pr.self_act):'🟢 онлайн')):'⚪ офлайн';
+      let h='<div class="kpis">'+
+        '<div class="kpi"><div class="v" style="font-size:14px">'+esc(statusDot)+'</div><div class="k">сейчас в CRM</div></div>'+
+        '<div class="kpi"><div class="v" style="font-size:13px">'+esc(lastSeenLbl)+'</div><div class="k">последний раз</div></div>'+
+        (d.unread_notifications>0?'<div class="kpi"><div class="v warn">'+d.unread_notifications+'</div><div class="k">непрочитанных</div></div>':'')+
+        (u.telegram?'<div class="kpi"><div class="v good">✅</div><div class="k">Telegram бот</div></div>':'')+
+        '</div>';
+      // СЕГОДНЯ
+      if(today){
+        const planLbl = ({оф:'В офисе',уд:'Удалёнка',об:'На объекте',км:'Командировка',пг:'Встреча',уч:'Учёба',ск:'Склад',бн:'Больничный',сс:'За свой счёт',вх:'Выходной'})[today.status_code]||today.status_code;
+        h+='<h3>Сегодня отметился</h3><div class="wrow"><div class="meta"><span><b>'+esc(planLbl)+'</b></span>';
+        if(today.work) h+='<span>📍 '+esc(today.work.title||('Работа #'+today.work.id))+(today.work.site?(' · '+esc(today.work.site)):'')+'</span>';
+        h+='</div></div>';
+      }
+      // ПРЯМО СЕЙЧАС
+      if(pr.current_page||pr.self_act||pr.idle){
+        h+='<h3>Сейчас в CRM</h3><div class="wrow"><div class="meta">'+
+          (pr.current_page?'<span>📄 страница: <b>'+esc(pr.current_page)+'</b></span>':'')+
+          (pr.idle?'<span class="warn">⏸ отошёл от стола</span>':'')+
+          (pr.self_act?'<span class="pill">'+esc({coffee:'☕ кофе-пауза',smoke:'💨 перекур',lunch:'🍖 обед'}[pr.self_act]||pr.self_act)+'</span>':'')+
+          '</div></div>';
+      }
+      // КОНТАКТЫ
+      h+='<h3>Контакты</h3><div class="wrow"><div class="meta">'+
+        '<span>📞 <b>'+esc(u.phone||'—')+'</b></span>'+
+        (u.email?'<span>✉ '+esc(u.email)+'</span>':'')+
+        (u.position?'<span class="pill">'+esc(u.position)+'</span>':'')+
+        (u.department?'<span class="pill">'+esc(u.department)+'</span>':'')+
+        '</div>'+
+        (u.employment_date?'<div class="meta" style="margin-top:6px"><span>в компании с <b>'+esc(String(u.employment_date).slice(0,10))+'</b></span></div>':'')+
+        '</div>';
+      // ROLE-SPECIFIC KPI
+      const role=String(u.role||'').toUpperCase();
+      if((role==='PM'||role==='HEAD_PM') && kpi.pm_works){
+        const w=kpi.pm_works;
+        h+='<h3>Мои работы</h3><div class="kpis">'+
+          '<div class="kpi"><div class="v">'+(w.in_work||0)+'</div><div class="k">в работе</div></div>'+
+          '<div class="kpi"><div class="v">'+(w.prep||0)+'</div><div class="k">подготовка</div></div>'+
+          '<div class="kpi"><div class="v">'+(w.mob||0)+'</div><div class="k">мобилизация</div></div>'+
+          '<div class="kpi"><div class="v">'+(w.signing||0)+'</div><div class="k">подписание</div></div>'+
+          (w.paused?'<div class="kpi"><div class="v warn">'+w.paused+'</div><div class="k">на паузе</div></div>':'')+
+          '</div>';
+        if(kpi.near_deadlines && kpi.near_deadlines.length){
+          h+='<h3>Ближайшие дедлайны</h3>';
+          kpi.near_deadlines.forEach(w=>{
+            const dl=w.end_date?String(w.end_date).slice(0,10):'—';
+            const days=w.end_date?Math.ceil((new Date(w.end_date)-Date.now())/86400000):null;
+            const cls=days!=null?(days<0?'bad':(days<7?'warn':'good')):'';
+            h+='<div class="wrow"><div class="t">'+esc(w.work_title||('Работа #'+w.id))+'</div><div class="meta">'+
+              '<span class="pill">'+esc(w.work_status||'')+'</span>'+
+              '<span class="'+cls+'">до <b>'+esc(dl)+'</b>'+(days!=null?(' · '+(days<0?(-days)+' дн. просрочено':days+' дн.')):'')+'</span>'+
+              '</div></div>';
+          });
+        }
+      } else if(role==='PROC' && kpi.procurement_by_status){
+        h+='<h3>Заявки на закупку</h3>';
+        const STATUS_RU={sent_to_proc:'У закупщика',proc_responded:'РП согласовывает',pm_approved:'У директора',dir_approved:'Оплачено/в работе',paid:'Оплачено',partially_delivered:'Частично',delivered:'Доставлено',cancelled:'Отменено',dir_rejected:'Отклонено'};
+        h+='<div class="kpis">';
+        kpi.procurement_by_status.forEach(r=>{
+          h+='<div class="kpi"><div class="v">'+r.n+'</div><div class="k">'+esc(STATUS_RU[r.status]||r.status)+'</div></div>';
+        });
+        h+='</div>';
+      } else if(role==='BUH' && kpi.invoices){
+        h+='<h3>Бухгалтерия</h3><div class="kpis">'+
+          '<div class="kpi"><div class="v warn">'+(kpi.invoices.pending||0)+'</div><div class="k">счетов в ожидании</div></div>'+
+          '</div>';
+      } else if(role.indexOf('DIRECTOR')===0 && kpi.pending_approvals){
+        h+='<h3>Согласования</h3>';
+        if(kpi.pending_approvals.length){
+          const TYPE_RU={procurement_dir_approve:'Закупки',estimate_approve:'Сметы',tender_approve:'Тендеры',contract_approve:'Договоры'};
+          h+='<div class="kpis">';
+          kpi.pending_approvals.forEach(r=>{
+            h+='<div class="kpi"><div class="v warn">'+r.n+'</div><div class="k">'+esc(TYPE_RU[r.type]||r.type)+'</div></div>';
+          });
+          h+='</div>';
+        } else {
+          h+='<div class="wrow"><div class="meta good">✓ нет ожидающих согласований</div></div>';
+        }
+      } else if(role==='WAREHOUSE'){
+        h+='<h3>Склад</h3><div class="kpis">'+
+          '<div class="kpi"><div class="v">'+(kpi.incoming_pending||0)+'</div><div class="k">ожидаем поступления</div></div>'+
+          '</div>';
+      }
+      // ПОСЛЕДНИЕ ДЕЙСТВИЯ В CRM (audit_log)
+      if(recent.length){
+        const ENT_RU={tender:'Тендер',work:'Работа',estimate:'Смета',invoice:'Счёт',act:'Акт',contract:'Договор',procurement:'Закупка',user:'Пользователь',employee:'Сотрудник'};
+        const ACT_RU={create:'создал',update:'обновил',delete:'удалил',approve:'согласовал',reject:'отклонил',sign:'подписал',pay:'оплатил',status_change:'сменил статус',assign:'назначил'};
+        h+='<h3>Последние действия в CRM</h3>';
+        recent.slice(0,6).forEach(r=>{
+          const at=r.at?formatAgo(new Date(r.at)):'';
+          const act=ACT_RU[r.action]||r.action||'—';
+          const ent=ENT_RU[r.entity_type]||r.entity_type||'—';
+          h+='<div class="wrow"><div class="meta">'+
+            '<span><b>'+esc(act)+'</b> '+esc(ent)+(r.entity_id?(' #'+r.entity_id):'')+'</span>'+
+            '<span style="opacity:.65">'+esc(at)+'</span>'+
+            '</div>'+
+            (r.details?('<div class="meta" style="margin-top:4px;opacity:.7;font-size:11px"><span>'+esc(String(r.details).slice(0,120))+'</span></div>'):'')+
+            '</div>';
+        });
+      } else {
+        h+='<div class="meta" style="margin-top:8px;opacity:.55;font-size:11px">Действий в CRM пока нет (audit_log пуст).</div>';
+      }
+      h+='<div class="meta" style="margin-top:8px;opacity:.5;font-size:10.5px">Источники: users · staff_plan · audit_log · presence-activity · SSE-онлайн · role-specific KPI</div>';
+      B.innerHTML=h;
+    }).catch(()=>{ B.innerHTML='<div class="wrow"><div class="meta">Ошибка загрузки.</div></div>'; });
+  }
+  function encodeInt(v){ const n=parseInt(v,10); return isFinite(n)?String(n):'0'; }
+  function formatAgo(d){
+    if(!d) return '—';
+    const diff=Date.now()-d.getTime();
+    if(diff<60000) return 'только что';
+    if(diff<3600000) return Math.floor(diff/60000)+' мин назад';
+    if(diff<86400000) return Math.floor(diff/3600000)+' ч назад';
+    const days=Math.floor(diff/86400000);
+    if(days<7) return days+' дн назад';
+    return d.toLocaleDateString('ru');
   }
 
   function yearBlock(){
@@ -1855,18 +1927,21 @@ window.AsgardOfficeLive = (function () {
 
   // карта статусов вахты для досье/объекта
   const VST = {
-    site:    {e:'🟢',l:'на смене (на объекте)',c:'#3fb950'},
-    rest:    {e:'🛋',l:'отдых (комната отдыха)',c:'#d4b0e6'},
+    site:    {e:'⚙',l:'на смене',c:'#7fd0ff'},
+    rest:    {e:'🛋',l:'отдыхает (не на смене)',c:'#bcd0e6'},
     sleep:   {e:'💤',l:'спит (вне смены)',c:'#9fb0c4'},
     transit: {e:'🚐',l:'в дороге на объект',c:'#9fd0ff'},
     medical: {e:'🩺',l:'медосмотр',c:'#8fe6c0'},
+    waiting: {e:'⏳',l:'ожидание (Москва/база)',c:'#e6c97a'},
+    warehouse:{e:'📦',l:'на складе',c:'#c9a76b'},
     home:    {e:'🏠',l:'дома · ожидает работу',c:'#c9b07a'},
     archive: {e:'🗄',l:'в архиве',c:'#8b97a6'},
   };
 
+  function _siteEsc(z){return String(z==null?'':z).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
   function openSiteDrawer(s){
     document.getElementById('d-ava').textContent = s.type==='platform'?'🛢':(s.type==='plant'?'🏭':(s.type==='gas'?'⛽':'❄'));
-    document.getElementById('d-name').textContent = s.name;
+    document.getElementById('d-name').textContent = s.name||'—';
     document.getElementById('d-role').textContent = 'Объект · РП '+s.pm;
     const nW=s.crew.filter(c=>!c.master).length, nM=s.crew.filter(c=>c.master).length;
     const by={}; s.crew.forEach(c=>{ by[c.status]=(by[c.status]||0)+1; });
@@ -1882,13 +1957,13 @@ window.AsgardOfficeLive = (function () {
       '</div><div class="meta" style="margin-top:6px"><span>'+(s.lodging==='судно'?'🚢 ':'🏨 ')+s.lodgeName+'</span></div></div>';
     h+='<h3>Работы</h3>';
     s.jobs.forEach(j=>{ const prep=j.phase==='Подготовка'||j.phase==='Мобилизация';
-      h+='<div class="wrow"><div class="t">'+j.t+'</div><div class="meta"><span class="pill">'+j.phase+'</span>'+
+      h+='<div class="wrow"><div class="t">'+_siteEsc(j.t)+'</div><div class="meta"><span class="pill">'+j.phase+'</span>'+
         (prep?('<span>готовность '+j.ready+'%</span>'):('<span>⏳ '+(j.daysLeft!=null?j.daysLeft+' дн.':'—')+'</span>'))+'</div>'+
         (prep?bar(j.ready,'linear-gradient(90deg,#1f6fff,#2bd4c9)'):'')+'</div>'; });
     if(s.crew.length){ h+='<h3>Состав вахты · клик по имени → досье</h3>';
       s.crew.forEach(c=>{ const v=VST[c.status]||VST.site;
         h+='<div class="wrow wclick" data-wid="'+c.wid+'" style="cursor:pointer">'+
-          '<div class="t">'+(c.master?'🪖 ':'👷 ')+c.name+' <span class="pill" style="background:#1d2636;font-weight:600">'+c.spec+'</span></div>'+
+          '<div class="t">'+(c.master?'🪖 ':'👷 ')+_siteEsc(c.name)+' <span class="pill" style="background:#1d2636;font-weight:600">'+_siteEsc(c.spec)+'</span></div>'+
           '<div class="meta"><span style="color:'+v.c+'">'+v.e+' '+v.l+'</span>'+
           '<span>'+(c.shift==='day'?'☀ дневная':'🌙 ночная')+'</span>'+
           '<span class="pill">'+c.employ+'</span></div></div>'; });
@@ -1922,45 +1997,196 @@ window.AsgardOfficeLive = (function () {
       '<span>'+(r.spec||'Рабочий')+'</span>'+
       '<span class="pill" style="background:'+(r.employ==='Самозанятый'?'#3a2d1a':'#1d2636')+'">'+(r.employ||'—')+'</span>'+
       (r.city?('<span>📍 '+esc(r.city)+'</span>'):'')+'</div></div>';
-    h+='<div class="meta" style="margin-top:8px;opacity:.6;font-size:11px">Данные дружины — из карточки сотрудника (employees) и отметки готовности в приложении рабочего.</div>';
+    h+='<div id="rdy-extra" class="meta" style="margin-top:8px;opacity:.6;font-size:11px">подгружаем историю работ…</div>';
     document.getElementById('d-body').innerHTML=h; drawer.classList.add('open');
+    if(!r.id) return;
+    _api('/api/command-map/worker/'+r.id).then(d=>{
+      const ex=document.getElementById('rdy-extra'); if(!ex) return;
+      if(!d||!d.worker){ ex.textContent='Не удалось загрузить детали.'; return; }
+      const wk=d.worker, hist=d.history||[], stats=d.stats||{}, lc=d.last_checkin;
+      let extra='';
+      const ratingStars = wk.rating!=null ? '⭐'.repeat(Math.round(wk.rating))+' '+wk.rating.toFixed(1) : '—';
+      extra+='<h3>Контакты и рейтинг</h3><div class="wrow"><div class="meta">'+
+        '<span>📞 <b>'+esc(wk.phone||'—')+'</b></span>'+
+        '<span>⭐ '+esc(ratingStars)+'</span>'+
+        (wk.rate!=null?('<span>ставка <b>'+Number(wk.rate).toLocaleString('ru')+' ₽/смена</b></span>'):'')+
+        '</div></div>';
+      if(d.waiting_days!=null){
+        extra+='<div class="wrow" style="background:#1d1f15;border-color:#3a2d1a"><div class="t">⏳ Ждёт работу <b>'+d.waiting_days+'</b> дн.</div>'+
+          (stats.last_shift_date?('<div class="meta"><span>последняя смена: <b>'+esc(String(stats.last_shift_date).slice(0,10))+'</b></span></div>'):'')+
+          '</div>';
+      }
+      if(stats.total_shifts>0){
+        extra+='<h3>Всего отработано</h3><div class="kpis">'+
+          '<div class="kpi"><div class="v">'+stats.total_shifts+'</div><div class="k">смен</div></div>'+
+          '<div class="kpi"><div class="v">'+Math.round(stats.total_hours||0)+'</div><div class="k">часов</div></div>'+
+          '<div class="kpi"><div class="v">'+(stats.total_earned?Math.round(stats.total_earned).toLocaleString('ru'):'0')+' ₽</div><div class="k">заработано</div></div>'+
+          '</div>';
+      }
+      if(hist && hist.length){
+        extra+='<h3>Последние работы</h3>';
+        hist.slice(0,3).forEach(rec=>{
+          const d1=rec.date_from?String(rec.date_from).slice(0,10):'';
+          const d2=rec.departure_date?String(rec.departure_date).slice(0,10):(rec.date_to?String(rec.date_to).slice(0,10):'');
+          extra+='<div class="wrow"><div class="t">'+esc(rec.work_title||('Работа #'+rec.work_id))+'</div>'+
+            '<div class="meta">'+
+            (rec.site_name?'<span>📍 '+esc(rec.site_name)+'</span>':'')+
+            (rec.work_status?'<span class="pill">'+esc(rec.work_status)+'</span>':'')+
+            (d1?'<span>с '+esc(d1)+(d2?' по '+esc(d2):'')+'</span>':'')+
+            '</div></div>';
+        });
+      }
+      if(wk.permits && wk.permits.length){
+        extra+='<h3>Допуска</h3><div class="wrow"><div class="meta">'+
+          wk.permits.map(p=>'<span class="pill" style="background:#16263a">✔ '+esc(p)+'</span>').join(' ')+
+          '</div></div>';
+      }
+      ex.outerHTML=extra+'<div class="meta" style="margin-top:8px;opacity:.5;font-size:10.5px">Источники: employees · employee_assignments · field_checkins · field_logistics</div>';
+    }).catch(()=>{});
   }
   function openWorkerDrawer(w, site){
+    const esc=(s)=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const v=VST[w.status]||VST.site;
     document.getElementById('d-ava').textContent = w.master?'🪖':'👷';
-    document.getElementById('d-name').textContent = w.name;
-    document.getElementById('d-role').textContent = w.spec+(site?(' · '+site.name):'');
+    document.getElementById('d-name').textContent = w.name||'—';
+    document.getElementById('d-role').textContent = (w.spec||(w.master?'Мастер':'Рабочий'))+(site?(' · '+(site.name||'')):'');
     document.getElementById('d-pres').textContent = '● '+v.e+' '+v.l;
-    let h='<div class="kpis">'+
-      '<div class="kpi"><div class="v" style="font-size:15px;color:'+v.c+'">'+v.e+'</div><div class="k">'+v.l+'</div></div>'+
-      '<div class="kpi"><div class="v">'+(w.shift==='day'?'☀':'🌙')+'</div><div class="k">'+(w.shift==='day'?'дневная смена':'ночная смена')+'</div></div>'+
-      '<div class="kpi"><div class="v">'+w.daysOn+'</div><div class="k">дней на вахте</div></div>'+
-      '<div class="kpi"><div class="v">'+w.daysLeft+'</div><div class="k">дней до пересменки</div></div>'+
-      '</div>';
-    h+='<h3>Статус смены</h3><div class="wrow"><div class="meta">'+
-      '<span style="color:'+v.c+'"><b>'+v.e+' '+v.l+'</b></span>'+
-      (w.checkin?('<span>✅ отметился: '+w.checkin+'</span>'):'<span class="warn">⛔ не отметился на смене</span>')+'</div>'+
-      (site?('<div class="meta" style="margin-top:6px"><span>размещение: '+(site.lodging==='судно'?'🚢 ':'🏨 ')+site.lodgeName+'</span></div>'):'')+'</div>';
-    h+='<h3>Специальность и оформление</h3><div class="wrow"><div class="meta">'+
-      '<span>'+w.spec+'</span><span class="pill" style="background:'+(w.employ==='Самозанятый'?'#3a2d1a':'#1d2636')+'">'+w.employ+'</span>'+
-      (w.rate!=null?('<span>ставка <b>'+Number(w.rate).toLocaleString('ru')+' ₽/смена</b></span>'):'')+'</div></div>';
-    // рейс / перелёт (если есть данные о билете)
-    if(w.flight){ const f=w.flight, toObj=f.dir==='to';
-      h+='<h3>🛫 Командировка · билет (field_logistics)</h3><div class="wrow"><div class="meta">'+
-        '<span>'+(VKIND[f.kind]?VKIND[f.kind].e:'✈')+' '+(VKIND[f.kind]?VKIND[f.kind].l:'рейс')+'</span>'+
-        '<span class="pill">'+(toObj?'→ на объект':'← домой')+'</span></div>'+
-        '<div class="meta" style="margin-top:6px">'+
-        '<span>вылет: <b>'+simFmt(f.departAt)+'</b></span>'+
-        '<span>прилёт: <b>'+simFmt(f.arriveAt)+'</b></span></div></div>'; }
-    h+='<h3>Допуски / аттестации</h3><div class="wrow"><div class="meta">'+
-      (w.permits||[]).map(p=>'<span class="pill" style="background:#16263a">✔ '+p+'</span>').join(' ')+'</div></div>';
-    h+='<h3>🩺 Медосмотр и документы</h3><div class="wrow"><div class="meta">'+
-      (w.medAt?('<span class="good">🩺 медосмотр: <b>'+simDateShort(w.medAt)+'</b> · '+(w.medPlace||'Москва')+'</span>'):
-        '<span class="'+(w.medOk?'good':'bad')+'">'+(w.medOk?'✅ медосмотр пройден ('+w.medDate+')':'⛔ медосмотр не пройден')+'</span>')+
-      '<span class="'+(w.docOk?'good':'warn')+'">'+(w.docOk?'✅ документы в порядке':'⚠ документы на проверке')+'</span></div>'+
-      '<div class="meta" style="margin-top:6px"><span style="opacity:.6;font-size:11px">медосмотр проходят в медцентре (Москва/Саратов) ПЕРЕД вылетом</span></div></div>';
-    document.getElementById('d-body').innerHTML=h; drawer.classList.add('open');
+    const B=document.getElementById('d-body');
+    // СКЕЛЕТ — пока тянем детали с /worker/:id
+    B.innerHTML='<div class="kpis">'+
+      '<div class="kpi"><div class="v" style="font-size:15px;color:'+v.c+'">'+v.e+'</div><div class="k">'+esc(v.l)+'</div></div>'+
+      '<div class="kpi"><div class="v">'+(w.shift==='day'?'☀':(w.shift==='night'?'🌙':(w.shift==='road'?'🚐':(w.shift==='medical'?'🩺':(w.shift==='warehouse'?'📦':(w.shift==='waiting'?'⏳':'—'))))))+'</div><div class="k">смена</div></div>'+
+      (w.employ?('<div class="kpi"><div class="v" style="font-size:13px">'+esc(w.employ)+'</div><div class="k">оформление</div></div>'):'')+
+      (w.rate!=null?('<div class="kpi"><div class="v" style="font-size:13px">'+Number(w.rate).toLocaleString('ru')+' ₽</div><div class="k">ставка/смена</div></div>'):'')+
+      '</div>'+
+      '<div class="meta" style="opacity:.6;font-size:11px;margin:6px 0 10px">подгружаем актуальные данные…</div>';
+    drawer.classList.add('open');
     document.getElementById('summary').style.display='none';
+    if(!w.employee_id){ return; }
+    _api('/api/command-map/worker/'+encodeInt(w.employee_id)).then(d=>{
+      if(!d||!d.worker){ B.querySelector('.meta').textContent='Не удалось загрузить детали.'; return; }
+      const wk=d.worker, cur=d.current, hist=d.history||[], lc=d.last_checkin, stats=d.stats||{}, stages=d.stages||[], lf=d.last_flight, lp=d.last_pm;
+      // живой статус «сейчас»
+      const liveStatus = stages[0]
+        ? ({medical:'🩺 на медосмотре',waiting:'⏳ ожидание',travel:'🚐 в дороге',transit:'🚐 в дороге',warehouse:'📦 на складе',day_off:'🏠 выходной',object:'⚙️ на объекте'}[stages[0].stage_type]||stages[0].stage_type)
+        : (cur ? (w.on_shift_today?'🟢 на смене сегодня':'🔵 на работе (не на смене сегодня)') : (wk.readiness && wk.readiness.status==='ready'?'✅ дома · готов к выезду':(wk.readiness && wk.readiness.status==='not_ready'?'⏳ дома · не готов':'🏠 дома')));
+      document.getElementById('d-pres').textContent = '● '+liveStatus;
+      const ratingStars = wk.rating!=null ? '⭐'.repeat(Math.round(wk.rating))+' '+wk.rating.toFixed(1) : '—';
+      let h='<div class="kpis">';
+      h+='<div class="kpi"><div class="v" style="font-size:14px;color:#ffd36a">'+esc(ratingStars)+'</div><div class="k">рейтинг</div></div>';
+      h+='<div class="kpi"><div class="v" style="font-size:13px">'+esc(wk.employ||'—')+'</div><div class="k">оформление</div></div>';
+      h+='<div class="kpi"><div class="v" style="font-size:13px">'+(wk.rate!=null?Number(wk.rate).toLocaleString('ru')+' ₽':'—')+'</div><div class="k">ставка/смена</div></div>';
+      h+='<div class="kpi"><div class="v" style="font-size:13px">'+esc(wk.city||'—')+'</div><div class="k">город</div></div>';
+      h+='</div>';
+      // СЕЙЧАС
+      h+='<h3>Сейчас</h3><div class="wrow">';
+      if(cur){
+        h+='<div class="t">'+esc(cur.work_title||'Работа #'+cur.work_id)+'</div>';
+        h+='<div class="meta">';
+        h+='<span>📍 '+esc(cur.site_name||'—')+'</span>';
+        if(cur.pm_name) h+='<span>РП: <b>'+esc(cur.pm_name)+'</b></span>';
+        if(cur.role) h+='<span class="pill">'+esc(cur.role==='shift_master'||cur.role==='senior_master'?'мастер':'рабочий')+'</span>';
+        if(cur.shift) h+='<span class="pill">'+esc(cur.shift==='day'?'☀ дневная':(cur.shift==='night'?'🌙 ночная':cur.shift))+'</span>';
+        if(cur.days_on_shift!=null) h+='<span>📅 <b>'+cur.days_on_shift+'</b> дн. на вахте</span>';
+        h+='</div>';
+      } else {
+        const wd=d.waiting_days;
+        h+='<div class="t">🏠 Дома · '+ (wd!=null?('ждёт работу <b>'+wd+'</b> дн.'):'ожидает назначения')+'</div>';
+        h+='<div class="meta">';
+        if(wk.readiness && wk.readiness.reason) h+='<span class="warn">причина: '+esc(wk.readiness.reason)+'</span>';
+        if(stats.last_shift_date) h+='<span>последняя смена: '+esc(String(stats.last_shift_date).slice(0,10))+'</span>';
+        h+='</div>';
+      }
+      h+='</div>';
+      // АКТИВНЫЕ ЭТАПЫ ПОЕЗДКИ
+      if(stages.length){
+        h+='<h3>Этапы поездки сейчас</h3>';
+        stages.forEach(st=>{
+          const lbl={medical:'🩺 медосмотр',waiting:'⏳ ожидание',travel:'🚐 дорога',transit:'🚐 дорога',warehouse:'📦 склад',day_off:'🏠 выходной',object:'⚙️ объект'}[st.stage_type]||st.stage_type;
+          h+='<div class="wrow"><div class="meta"><span><b>'+esc(lbl)+'</b></span>'+
+            (st.site_name?'<span>'+esc(st.site_name)+'</span>':'')+
+            (st.date_from?'<span>с '+esc(String(st.date_from).slice(0,10))+'</span>':'')+
+            (st.date_to?'<span>по '+esc(String(st.date_to).slice(0,10))+'</span>':'')+
+            (st.status?'<span class="pill">'+esc(st.status)+'</span>':'')+
+            '</div></div>';
+        });
+      }
+      // ПОСЛЕДНИЙ РЕЙС
+      if(lf){
+        const kindLbl = ({flight:'✈ самолёт',ticket_to:'✈ → на объект',ticket_back:'✈ ← домой',train:'🚂 поезд',transfer:'🚐 трансфер'}[lf.item_type])||(lf.item_type);
+        h+='<h3>Последний рейс</h3><div class="wrow"><div class="meta">'+
+          '<span>'+esc(kindLbl)+'</span>'+
+          (lf.transport_no?'<span class="pill">№ '+esc(lf.transport_no)+'</span>':'')+
+          (lf.status?'<span class="pill">'+esc(lf.status)+'</span>':'')+
+          '</div><div class="meta" style="margin-top:6px">'+
+          (lf.departure_at?'<span>вылет: <b>'+esc(new Date(lf.departure_at).toLocaleString('ru'))+'</b></span>':(lf.date_from?'<span>с '+esc(String(lf.date_from).slice(0,10))+'</span>':''))+
+          (lf.arrival_at?'<span>прилёт: <b>'+esc(new Date(lf.arrival_at).toLocaleString('ru'))+'</b></span>':(lf.date_to?'<span>по '+esc(String(lf.date_to).slice(0,10))+'</span>':''))+
+          (lf.site_name?'<span>📍 '+esc(lf.site_name)+'</span>':'')+
+          '</div></div>';
+      }
+      // КОНТАКТЫ
+      h+='<h3>Контакты</h3><div class="wrow"><div class="meta">'+
+        '<span>📞 <b>'+esc(wk.phone||'—')+'</b></span>'+
+        (wk.email?'<span>✉ '+esc(wk.email)+'</span>':'')+
+        '</div></div>';
+      // СПЕЦИАЛЬНОСТЬ / КВАЛИФИКАЦИЯ
+      h+='<h3>Специальность</h3><div class="wrow"><div class="meta">'+
+        '<span>'+esc(wk.spec||'Рабочий')+'</span>'+
+        (wk.grade?'<span class="pill">разряд '+esc(wk.grade)+'</span>':'')+
+        '<span class="pill" style="background:'+(wk.employ==='Самозанятый'?'#3a2d1a':'#1d2636')+'">'+esc(wk.employ||'—')+'</span>'+
+        (wk.naks_expiry?'<span>НАКС до '+esc(String(wk.naks_expiry).slice(0,10))+'</span>':'')+
+        '</div></div>';
+      // ДОПУСКА
+      if(wk.permits && wk.permits.length){
+        h+='<h3>Допуска и аттестации</h3><div class="wrow"><div class="meta">'+
+          wk.permits.map(p=>'<span class="pill" style="background:#16263a">✔ '+esc(p)+'</span>').join(' ')+
+          '</div></div>';
+      }
+      // СТАТИСТИКА ЧЕКИНОВ
+      if(stats.total_shifts>0){
+        h+='<h3>Статистика смен (всего)</h3><div class="kpis">'+
+          '<div class="kpi"><div class="v">'+stats.total_shifts+'</div><div class="k">смен отработано</div></div>'+
+          '<div class="kpi"><div class="v">'+Math.round(stats.total_hours||0)+'</div><div class="k">часов</div></div>'+
+          '<div class="kpi"><div class="v">'+(stats.total_earned?Math.round(stats.total_earned).toLocaleString('ru'):'0')+' ₽</div><div class="k">заработано</div></div>'+
+          (stats.last_shift_date?'<div class="kpi"><div class="v" style="font-size:13px">'+esc(String(stats.last_shift_date).slice(0,10))+'</div><div class="k">последняя смена</div></div>':'')+
+          '</div>';
+      }
+      // ПОСЛЕДНИЙ ЧЕКИН (если есть)
+      if(lc){
+        h+='<h3>Последний чекин</h3><div class="wrow"><div class="meta">'+
+          '<span>'+esc(String(lc.date).slice(0,10))+'</span>'+
+          (lc.shift?'<span class="pill">'+esc(lc.shift==='day'?'☀ дневная':(lc.shift==='night'?'🌙 ночная':lc.shift))+'</span>':'')+
+          (lc.hours_worked!=null?'<span>часов: <b>'+lc.hours_worked+'</b></span>':'')+
+          (lc.amount_earned!=null?'<span>заработал: <b>'+Math.round(lc.amount_earned).toLocaleString('ru')+' ₽</b></span>':'')+
+          (lc.work_title?'<span>📍 '+esc(lc.work_title)+'</span>':'')+
+          '</div></div>';
+      }
+      // ИСТОРИЯ РАБОТ
+      if(hist && hist.length){
+        h+='<h3>История работ</h3>';
+        hist.forEach(rec=>{
+          if(rec.is_active && cur && rec.work_id===cur.work_id) return; // текущая уже выше
+          const d1=rec.date_from?String(rec.date_from).slice(0,10):'';
+          const d2=rec.departure_date?String(rec.departure_date).slice(0,10):(rec.date_to?String(rec.date_to).slice(0,10):'');
+          let durDays=null;
+          if(d1 && d2){ const dd=Math.floor((new Date(d2)-new Date(d1))/86400000); durDays=Math.max(0,dd); }
+          h+='<div class="wrow"><div class="t">'+esc(rec.work_title||('Работа #'+rec.work_id))+'</div>'+
+            '<div class="meta">'+
+            (rec.site_name?'<span>📍 '+esc(rec.site_name)+'</span>':'')+
+            (rec.work_status?'<span class="pill">'+esc(rec.work_status)+'</span>':'')+
+            (d1?'<span>с '+esc(d1)+(d2?' по '+esc(d2):'')+'</span>':'')+
+            (durDays!=null?'<span>·  <b>'+durDays+'</b> дн.</span>':'')+
+            (rec.is_active?'<span class="pill" style="background:#0e2a1e;color:#7ee29a">сейчас</span>':'')+
+            '</div></div>';
+        });
+      }
+      // ПОСЛЕДНИЙ РП (если есть в employees.last_pm_id)
+      if(lp && !cur){
+        h+='<div class="meta" style="margin-top:8px;opacity:.65;font-size:11.5px">Последний РП: <b>'+esc(lp.name)+'</b></div>';
+      }
+      h+='<div class="meta" style="margin-top:8px;opacity:.5;font-size:10.5px">Источники: employees · employee_assignments · field_checkins · field_trip_stages · field_logistics</div>';
+      B.innerHTML=h;
+    }).catch(()=>{ B.innerHTML='<div class="wrow"><div class="meta">Ошибка загрузки.</div></div>'; });
   }
 
   // ======================= ДОСЬЕ РЕЙСА / БОРТА =======================
@@ -2195,6 +2421,8 @@ window.AsgardOfficeLive = (function () {
   window.__officeLiveDbg = { SITES, STAFF, WORKS, vehicles, ROUTES, BIOMES, vehiclesPax:()=>vehicles.map(v=>v.pax.length),
     openSiteDrawer, openWorkerDrawer, openDrawer, openFlightDrawer, buildSummary, flyTo, fitAll, introSequence, stopIntro };
   window.__oflOpenReadiness = openReadinessDrawer;
+  window.__oflOpenWorker = openWorkerDrawer;
+  window.__oflOpenOffice = openDrawer;
 
     // вернуть функцию очистки: снять window-листенеры + остановить интро + уничтожить PIXI-приложение
     return function destroy(){
