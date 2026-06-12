@@ -136,21 +136,22 @@ async function routes(fastify, options) {
           linkParams
         );
         for (const r of blockedRuns.rows) {
-          // Закроем blocking-уточнения категории «документ» через ANSWERED-stamp.
-          // Простая эвристика: если в question_ru есть слова «документ», «чертёж», «ВОР»,
-          // «спецификация», «ТЗ», «комплект» — считаем что новая загрузка их закрывает.
+          // Закроем ВСЕ blocking-уточнения CUSTOMER-канала: РП загрузил данные,
+          // Conductor через document_parser autopickup сам пересмотрит и поднимет
+          // только реально-актуальные вопросы (если новый файл не содержит ответа
+          // на адрес/режим — следующая итерация поднимет это снова). PM-вопросы
+          // оставляем — их закрывает только сам PM через UI.
           await db.query(
             `UPDATE mimir_clarifications
                 SET status='ANSWERED', answer_text = COALESCE(answer_text,'') ||
-                    E'\n[Документ загружен: ' || $2 || E']',
+                    E'\n[РП загрузил новый документ: ' || $2 || ']. Conductor должен пересмотреть с учётом нового файла.',
                     answered_by = $3, answered_at = NOW(),
                     answer_source = 'document_upload', updated_at = NOW()
               WHERE conductor_run_id = $1 AND status = 'OPEN' AND blocking = true
-                AND (
-                  lower(COALESCE(question_ru,'')) ~ '(документ|чертёж|чертеж|ведомост|спецификац|тз|техническ.{0,3}задани|комплект|приложени|реестр|раб.{0,3}документ)'
-                )`,
+                AND channel = 'CUSTOMER'`,
             [r.id, file.filename.substring(0, 100), request.user.id]
           );
+          fastify.log.warn(`[files/upload hook] run ${r.id}: попытка закрыть CUSTOMER-блокеры новым файлом ${file.filename}`);
           // Событие в War Room
           try {
             await db.query(
