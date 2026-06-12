@@ -93,7 +93,10 @@ async function generateLesson(trackInfo, monthNumber) {
     const result = await aiProvider.complete({
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
-      maxTokens: 16000,
+      // Sonnet 4.6: output до 64K. Берём 48K — урок Академии короче чем
+      // Чертоги (8-10 вопросов вместо 12), но всё равно нужен запас на
+      // 14-18 блоков + fact_card. JSON repair страхует.
+      maxTokens: 48000,
     });
 
     let text = (result.content || result.text || '').trim();

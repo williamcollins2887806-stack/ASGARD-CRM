@@ -550,7 +550,10 @@ async function generateWeeklyLesson() {
       { role: 'user', content: `Создай Руну для недели ${nextWeek}.\n\n${topicInfo}` }
     ],
     temperature: 0.7,
-    maxTokens: 32000,
+    // Sonnet 4.6 поддерживает до 64K output. Берём максимум — лекция с 12-18
+    // блоками по 5-9 предложений + 12 вопросами с объяснениями свободно
+    // дотягивает до 40K токенов на русском. JSON repair страхует если упрёмся.
+    maxTokens: 64000,
   });
 
   let text = (response.text || '').trim();
