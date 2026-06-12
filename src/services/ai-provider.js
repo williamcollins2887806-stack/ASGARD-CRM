@@ -305,11 +305,48 @@ async function callAnthropic({ system, messages, maxTokens, temperature, stream 
 }
 
 /**
+ * Резолв символического ключа модели (например 'opus-4-7', 'sonnet-4-6',
+ * 'yandex-pro') в реальный api_id для запроса к провайдеру.
+ * Conductor-агенты передают символические ключи (mimir-conductor/models-config.js),
+ * а провайдеру нужен конкретный имя модели. Если переданное имя — не ключ
+ * из models-config (например уже 'gpt-5.5' или 'gemini-2.5-flash'), возвращаем как есть.
+ *
+ * Возвращает:
+ *   - api_id если ключ найден и НЕ disabled
+ *   - null если ключ найден и помечен disabled (вызывающий должен сам решить)
+ *   - оригинальную строку если ключ не найден в models-config
+ */
+function _resolveModelKey(model) {
+  if (!model || typeof model !== 'string') return model;
+  try {
+    const mc = require('./mimir-conductor/models-config');
+    const m = mc.getModel(model);
+    if (!m) return model;                          // не наш ключ — пас
+    if (m.disabled || m.api_id == null) return null; // явно отключён (например embeddings)
+    return m.api_id;
+  } catch (_) { return model; }
+}
+
+/**
  * Вызов OpenAI API
  */
 async function callOpenAI({ system, messages, maxTokens, temperature, stream = false, model = null, tools = null, plugins = null, verbosity = null, responseFormat = null }) {
   if (!OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY not configured');
+  }
+
+  // Резолв символического ключа Conductor-модели → реальный api_id провайдера.
+  // Если ключ помечен disabled (например voyage-3 embeddings offline) — бросаем
+  // понятную ошибку, вызывающий код Conductor поймает try/catch и пойдёт fallback.
+  if (model) {
+    const resolved = _resolveModelKey(model);
+    if (resolved === null) {
+      throw new AIProviderError({
+        code: 'model_disabled', status: 0,
+        providerMessage: `Модель «${model}» помечена disabled в models-config (провайдер offline)`
+      });
+    }
+    if (resolved !== model) model = resolved;
   }
 
   // OpenAI использует system message внутри массива messages
@@ -906,7 +943,7 @@ async function _completeYandexOpenAI(options) {
 // Подтверждено тестом 25.05.2026: gemini-2.5-flash (1.8с, 601 chars), gpt-4.1-mini,
 // qwen3-235b реально выполняют plugin 'web' и возвращают текст.
 // Выбран gemini-2.5-flash — самая быстрая и дешёвая.
-const WEB_SEARCH_MODEL = process.env.WEB_SEARCH_MODEL || 'google/gemini-2.5-flash';
+const WEB_SEARCH_MODEL = process.env.WEB_SEARCH_MODEL || 'gemini-2.5-flash';
 
 async function executeWebSearch(query, opts = {}) {
   await _loadKeysFromDB();

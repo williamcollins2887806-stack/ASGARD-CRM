@@ -129,16 +129,21 @@ const models = {
     role: 'Быстрый web search в agent loop (фактический исполнитель plugin web)'
   },
 
-  // ─── Нормативы РФ (ГЭСН/ФЕР) — БЕЗ ИЗМЕНЕНИЙ ──────────────────────────
+  // ─── Нормативы РФ (ГЭСН/ФЕР) ──────────────────────────────────────────
+  // YandexGPT ключ возвращает 403 Permission denied (баланс/права закончились).
+  // Заменено на gpt-5.5 — знает нормативы РФ по обучающим данным, контекст 1.1M
+  // позволяет загружать большие фрагменты СТО/ТЗ заказчика. Когда у Yandex
+  // восстановится доступ — вернуть provider:'yandex' + api_id:'yandexgpt/latest'.
   'yandex-pro': {
-    provider: 'yandex',                           // отдельный путь (YANDEX_GPT_API_KEY + FOLDER_ID)
-    api_id: 'yandexgpt/latest',
-    price_usd_per_1m_input: 0.0,
-    price_usd_per_1m_output: 0.0,
+    provider: 'routerai',                         // через токенатор (унифицированный путь)
+    api_id: 'gpt-5.5',                            // gpt-5.5 (вместо YandexGPT)
+    yandex_api_id: 'yandexgpt/latest',            // кэш — вернётся когда у Yandex будут деньги
+    price_usd_per_1m_input: 2.5,
+    price_usd_per_1m_output: 10.0,
     supports_extended_thinking: false,
-    supports_tool_use: false,
-    max_context: 32000,
-    role: 'Нормативы РФ (ГЭСН/ФЕР) — YandexGPT, отдельная инфра'
+    supports_tool_use: true,
+    max_context: 1100000,
+    role: 'Нормативы РФ (ГЭСН/ФЕР) — gpt-5.5 (Yandex GPT 403 на 13.06.2026)'
   },
 
   // ─── Embeddings для RAG — ВРЕМЕННО DISABLED ────────────────────────────
