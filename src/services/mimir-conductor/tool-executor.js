@@ -22,6 +22,7 @@ const cr = require('./conductor-run');
 const { REGISTRY } = require('./agents-registry');
 const { getAgentImpl } = require('./agents');
 const modelsConfig = require('./models-config');
+const usageTracker = require('./usage-tracker');
 
 /**
  * Запустить агента.
@@ -44,76 +45,116 @@ async function callAgent(agentName, input, runId, callerAgentRunId = null) {
   cr.addEvent(runId, agentRunId, 'agent_started', { agent_name: agentName });
 
   const startedAt = Date.now();
-  try {
-    // Подгружаем требуемые артефакты
-    const requiredArtifacts = {};
-    for (const at of spec.requires_artifacts || []) {
-      const art = await cr.getArtifact(runId, at);
-      if (!art) {
-        throw new Error(`Агент ${agentName} требует артефакт «${at}», которого ещё нет`);
+  // Оборачиваем весь жизненный цикл агента в usage-tracker контекст. Все
+  // aiProvider.complete() вызовы внутри impl.run() (и его подзвонок) автоматически
+  // инкрементируют ctx — потом мы прочитаем итог и запишем в agent_run.
+  return await usageTracker.runInContext({}, async () => {
+    try {
+      // Подгружаем требуемые артефакты
+      const requiredArtifacts = {};
+      for (const at of spec.requires_artifacts || []) {
+        const art = await cr.getArtifact(runId, at);
+        if (!art) {
+          throw new Error(`Агент ${agentName} требует артефакт «${at}», которого ещё нет`);
+        }
+        requiredArtifacts[at] = art.content;
       }
-      requiredArtifacts[at] = art.content;
+
+      // Вызываем реализацию агента (Сессия 2 — мок)
+      const impl = getAgentImpl(agentName);
+      const artifact = await impl.run({
+        input: input || {},
+        requiredArtifacts,
+        runId,
+        agentRunId,
+        agentName,
+        onThought: (text) => cr.addEvent(runId, agentRunId, 'thought', { text }),
+        onToolCall: (tool, inp) => cr.addEvent(runId, agentRunId, 'tool_call', { tool, input: inp }),
+        onToolResult: (tool, out) => cr.addEvent(runId, agentRunId, 'tool_result', { tool, output_summary: out })
+      });
+
+      // Сохраняем артефакт (с дедупом по хешу)
+      const { artifactId, deduped } = await cr.addArtifact(runId, agentRunId, spec.output_artifact_type, artifact);
+
+      // Сигнал War Room: артефакт произведён (Сессия 3 UI его слушает)
+      cr.addEvent(runId, agentRunId, 'artifact_emitted', {
+        agent_name: agentName,
+        artifact_id: artifactId,
+        artifact_type: spec.output_artifact_type,
+        deduped: !!deduped,
+        summary: artifact.summary || null
+      });
+
+      // Поднимаем уточнения, если агент их вернул
+      const raisedClarifications = [];
+      for (const cl of artifact.clarifications || []) {
+        const channel = (cl.channel || 'AUTO').toUpperCase();
+        const res = await raiseClarification(runId, agentRunId, channel, cl);
+        raisedClarifications.push(res);
+      }
+
+      const durationMs = Date.now() - startedAt;
+      // Получаем накопленный usage от всех aiProvider-вызовов агента и считаем стоимость
+      const u = usageTracker.getUsage() || { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+      let costRub = 0;
+      try {
+        const usdRub = await modelsConfig.getUsdToRub();
+        costRub = modelsConfig.calculateCostRub(spec.model_default, u, usdRub);
+      } catch (_) { /* noop — стоимость 0 если model_default неизвестен */ }
+      await cr.finishAgentRun(agentRunId, {
+        status: 'SUCCESS',
+        outputArtifactId: artifactId,
+        outputSummary: artifact.summary || null,
+        inputTokens: u.inputTokens,
+        outputTokens: u.outputTokens,
+        cacheReadTokens: u.cacheReadTokens,
+        cacheWriteTokens: u.cacheWriteTokens,
+        costRub,
+        durationMs
+      });
+      // Аккумулируем в total run
+      try {
+        await cr.bumpRunMetrics(runId, {
+          inputTokens: u.inputTokens, outputTokens: u.outputTokens, costRub, durationMs
+        });
+      } catch (_) { /* noop */ }
+
+      return {
+        success: true,
+        agent_run_id: agentRunId,
+        artifact_id: artifactId,
+        artifact_type: spec.output_artifact_type,
+        summary: artifact.summary,
+        key_findings: artifact.key_findings || [],
+        clarifications_raised: raisedClarifications,
+        usage: u,
+        cost_rub: costRub
+      };
+    } catch (err) {
+      const u = usageTracker.getUsage() || { inputTokens: 0, outputTokens: 0 };
+      let costRub = 0;
+      try {
+        const usdRub = await modelsConfig.getUsdToRub();
+        costRub = modelsConfig.calculateCostRub(spec.model_default, u, usdRub);
+      } catch (_) {}
+      await cr.finishAgentRun(agentRunId, {
+        status: 'ERROR',
+        errorText: err.message,
+        inputTokens: u.inputTokens,
+        outputTokens: u.outputTokens,
+        costRub,
+        durationMs: Date.now() - startedAt
+      });
+      try {
+        await cr.bumpRunMetrics(runId, {
+          inputTokens: u.inputTokens, outputTokens: u.outputTokens, costRub,
+          durationMs: Date.now() - startedAt
+        });
+      } catch (_) {}
+      cr.addEvent(runId, agentRunId, 'error', { text: err.message, agent_name: agentName });
+      return { success: false, agent_run_id: agentRunId, error: err.message };
     }
-
-    // Вызываем реализацию агента (Сессия 2 — мок)
-    const impl = getAgentImpl(agentName);
-    const artifact = await impl.run({
-      input: input || {},
-      requiredArtifacts,
-      runId,
-      agentRunId,
-      agentName,
-      onThought: (text) => cr.addEvent(runId, agentRunId, 'thought', { text }),
-      onToolCall: (tool, inp) => cr.addEvent(runId, agentRunId, 'tool_call', { tool, input: inp }),
-      onToolResult: (tool, out) => cr.addEvent(runId, agentRunId, 'tool_result', { tool, output_summary: out })
-    });
-
-    // Сохраняем артефакт (с дедупом по хешу)
-    const { artifactId, deduped } = await cr.addArtifact(runId, agentRunId, spec.output_artifact_type, artifact);
-
-    // Сигнал War Room: артефакт произведён (Сессия 3 UI его слушает)
-    cr.addEvent(runId, agentRunId, 'artifact_emitted', {
-      agent_name: agentName,
-      artifact_id: artifactId,
-      artifact_type: spec.output_artifact_type,
-      deduped: !!deduped,
-      summary: artifact.summary || null
-    });
-
-    // Поднимаем уточнения, если агент их вернул
-    const raisedClarifications = [];
-    for (const cl of artifact.clarifications || []) {
-      const channel = (cl.channel || 'AUTO').toUpperCase();
-      const res = await raiseClarification(runId, agentRunId, channel, cl);
-      raisedClarifications.push(res);
-    }
-
-    const durationMs = Date.now() - startedAt;
-    await cr.finishAgentRun(agentRunId, {
-      status: 'SUCCESS',
-      outputArtifactId: artifactId,
-      outputSummary: artifact.summary || null,
-      durationMs
-    });
-
-    return {
-      success: true,
-      agent_run_id: agentRunId,
-      artifact_id: artifactId,
-      artifact_type: spec.output_artifact_type,
-      summary: artifact.summary,
-      key_findings: artifact.key_findings || [],
-      clarifications_raised: raisedClarifications
-    };
-  } catch (err) {
-    await cr.finishAgentRun(agentRunId, {
-      status: 'ERROR',
-      errorText: err.message,
-      durationMs: Date.now() - startedAt
-    });
-    cr.addEvent(runId, agentRunId, 'error', { text: err.message, agent_name: agentName });
-    return { success: false, agent_run_id: agentRunId, error: err.message };
-  }
+  });
 }
 
 /**

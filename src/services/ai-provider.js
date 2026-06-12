@@ -540,24 +540,27 @@ async function complete({ system, messages, maxTokens, temperature, tools, plugi
     };
   }
 
+  // Если есть активный usage-tracker контекст (Conductor agent_run) — копим usage
+  // от каждого ответа провайдера, чтобы tool-executor мог записать total в БД.
+  let _usageTracker = null;
+  try { _usageTracker = require('./mimir-conductor/usage-tracker'); } catch (_) {}
+
   try {
+    let result;
     if (provider === 'anthropic') {
-      const result = await callAnthropic({ system, messages, maxTokens, temperature });
+      result = await callAnthropic({ system, messages, maxTokens, temperature });
       result.provider = 'anthropic';
-      result.durationMs = Date.now() - startTime;
-      return result;
     } else if (provider === 'openai') {
-      const result = await callOpenAI({ system, messages, maxTokens, temperature, tools, plugins, verbosity, responseFormat, model });
+      result = await callOpenAI({ system, messages, maxTokens, temperature, tools, plugins, verbosity, responseFormat, model });
       result.provider = 'openai';
-      result.durationMs = Date.now() - startTime;
-      return result;
     } else if (provider === 'yandexgpt') {
-      const result = await completeYandexGPT({ system, messages, maxTokens, temperature });
-      result.durationMs = Date.now() - startTime;
-      return result;
+      result = await completeYandexGPT({ system, messages, maxTokens, temperature });
     } else {
       throw new Error(`Unknown AI provider: ${provider}`);
     }
+    result.durationMs = Date.now() - startTime;
+    if (_usageTracker && result.usage) _usageTracker.addUsage(result.usage);
+    return result;
   } catch (error) {
     // Попробуем fallback на другого провайдера при 5xx ошибках
     const is5xx = error.message && error.message.includes('5');
@@ -577,6 +580,7 @@ async function complete({ system, messages, maxTokens, temperature, tools, plugi
         result.provider = fallbackProvider;
         result.fallback = true;
         result.durationMs = Date.now() - startTime;
+        if (_usageTracker && result.usage) _usageTracker.addUsage(result.usage);
         return result;
       } catch (fallbackError) {
         throw new Error(`Both providers failed. Primary: ${error.message}, Fallback: ${fallbackError.message}`);
