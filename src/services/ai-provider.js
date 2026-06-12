@@ -1619,6 +1619,10 @@ async function completeWithStream(p = {}) {
   } = p;
   await _loadKeysFromDB();
 
+  // usage-tracker: накопление токенов для Conductor agent_run.
+  let _usageTracker = null;
+  try { _usageTracker = require('./mimir-conductor/usage-tracker'); } catch (_) {}
+
   const hasTools = Array.isArray(tools) && tools.length > 0;
 
   if (isStubMode()) {
@@ -1694,6 +1698,8 @@ async function completeWithStream(p = {}) {
     for (const tu of toolUses) onToolCall(tu);
 
     const stopReason = toolUses.length ? 'tool_use' : (result.stopReason === 'tool_calls' ? 'tool_use' : 'end_turn');
+    const finalUsage = result.usage || { inputTokens: 0, outputTokens: 0 };
+    if (_usageTracker) _usageTracker.addUsage(finalUsage);
     return {
       text: result.text || '',
       thinking: '',
@@ -1701,7 +1707,7 @@ async function completeWithStream(p = {}) {
       content_blocks: contentBlocks,
       stop_reason: stopReason,
       stopReason,
-      usage: result.usage || { inputTokens: 0, outputTokens: 0 },
+      usage: finalUsage,
       model: result.model || model
     };
   }
@@ -1715,6 +1721,7 @@ async function completeWithStream(p = {}) {
     if (chunk.type === 'text') { fullText += chunk.content; onText(chunk.content); }
     else if (chunk.type === 'done') { usage = chunk.usage || usage; }
   }
+  if (_usageTracker) _usageTracker.addUsage(usage);
   return {
     text: fullText, thinking: '',
     tool_uses: [], content_blocks: fullText ? [{ type: 'text', text: fullText }] : [],
