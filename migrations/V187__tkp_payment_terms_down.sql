@@ -1,0 +1,1 @@
+ALTER TABLE tkp DROP COLUMN IF EXISTS payment_terms;
