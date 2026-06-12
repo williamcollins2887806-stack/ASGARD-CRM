@@ -36,40 +36,53 @@ function getMonthNumber() {
 async function generateLesson(trackInfo, monthNumber) {
   if (!aiProvider) return null;
 
-  const systemPrompt = `Ты — корпоративный тренер Асгард. Создаёшь образовательный урок для сотрудников.
+  const systemPrompt = `Ты — корпоративный тренер Асгард. Создаёшь ГЛУБОКИЙ образовательный урок для офисного сотрудника.
+Цель: сотрудник читает 15-20 минут и реально учится, а не пробегает глазами.
+
+ТРЕБОВАНИЯ К ОБЪЁМУ:
+- Минимум 4000 знаков основного текста
+- 14-18 блоков, разнообразие типов
+- Каждый text-блок: 4-7 предложений с цифрами/примерами
+- Минимум 2 fact_card с реальными кейсами из практики
+- Минимум 1 warning блок об опасностях/ошибках
+- 8-10 вопросов quiz (4 варианта), каждый требует знания КОНКРЕТНОГО факта из текста
+
 Формат ответа: строго JSON, без markdown-обёртки.
 Структура:
 {
   "title": "Заголовок урока (до 80 символов)",
-  "estimated_minutes": <число 15-25>,
-  "tags": ["тег1", "тег2", "тег3"],
+  "estimated_minutes": 18,
+  "tags": ["тег1","тег2","тег3"],
   "blocks": [
-    {"type":"heading","text":"Заголовок раздела"},
-    {"type":"text","content":"Текст параграфа..."},
-    {"type":"list","items":["Пункт 1","Пункт 2","Пункт 3"]},
-    {"type":"highlight","text":"Ключевая мысль или важное правило"},
-    {"type":"quote","text":"Цитата или принцип","author":"Источник"}
+    {"type":"cover","icon":"emoji","title":"...","subtitle":"подзаголовок-крючок"},
+    {"type":"intro","text":"вводный абзац — зачем это знать, риски незнания (4-6 предложений)"},
+    {"type":"text_block","title":"...","text":"плотный абзац: определения, цифры (5-9 предложений)"},
+    {"type":"icon_grid","title":"...","items":[{"icon":"emoji","label":"короткий","desc":"объяснение 8-15 слов"}]},
+    {"type":"steps","title":"...","items":["шаг с конкретикой","..."]},
+    {"type":"warning","level":"danger|warning","text":"опасность + последствия + как избежать (3-5 предл)"},
+    {"type":"fact_card","icon":"emoji","text":"реальный кейс: год, место, что случилось, причина, урок (4-6 предл)"}
   ],
   "questions": [
     {
-      "question_text": "Вопрос?",
+      "question_text": "Вопрос на КОНКРЕТНУЮ цифру/факт из текста?",
       "question_type": "choice",
       "options": [
-        {"text":"Вариант 1","is_correct":false},
-        {"text":"Вариант 2","is_correct":true},
-        {"text":"Вариант 3","is_correct":false},
-        {"text":"Вариант 4","is_correct":false}
+        {"text":"Правдоподобный неверный","is_correct":false},
+        {"text":"Правильный","is_correct":true},
+        {"text":"Близкий неверный","is_correct":false},
+        {"text":"Частое заблуждение","is_correct":false}
       ],
-      "correct_explanation": "Объяснение правильного ответа"
+      "correct_explanation": "Объяснение со ссылкой на материал (2-3 предложения)"
     }
   ]
 }
-Требования:
-- 12-18 блоков, разнообразие типов (heading, text, list, highlight, quote)
-- 5-7 вопросов quiz (4 варианта, 1 правильный)
-- Всё на русском языке
-- Практический, применимый контент для офисных сотрудников строительной компании
-- Никаких общих фраз — конкретные инструменты, правила, примеры из практики`;
+
+ЗАПРЕЩЕНО:
+- Вопросы на «здравый смысл» без чтения текста
+- Размытые цели типа «улучшить» без цифр
+- Общие фразы — только конкретика, нормы, реальные примеры из РФ
+
+Тон: уважительный, как опытный коллега новичку. Язык: русский.`;
 
   const userPrompt = `Месяц ${monthNumber}. Трек: "${trackInfo.label}".
 Серия: "${trackInfo.saga}".
@@ -80,18 +93,60 @@ async function generateLesson(trackInfo, monthNumber) {
     const result = await aiProvider.complete({
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
-      maxTokens: 3000,
+      maxTokens: 16000,
     });
 
-    const text = (result.content || result.text || '').trim();
+    let text = (result.content || result.text || '').trim();
+    text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return null;
 
-    return JSON.parse(jsonMatch[0]);
+    try {
+      return JSON.parse(jsonMatch[0]);
+    } catch (parseErr) {
+      // JSON обрезался по токенам — пробуем repair
+      console.warn(`[OfficAcademyCron] JSON parse failed for ${trackInfo.track} (${parseErr.message}), trying repair...`);
+      const repaired = repairTruncatedJson(jsonMatch[0]);
+      if (!repaired) return null;
+      return JSON.parse(repaired);
+    }
   } catch (e) {
     console.error(`[OfficAcademyCron] AI error for track ${trackInfo.track}:`, e.message);
     return null;
   }
+}
+
+// Восстанавливает обрезанный по лимиту токенов JSON: закрывает недостающие
+// массивы и объекты, обрезает незакрытые строки.
+function repairTruncatedJson(text) {
+  let lastClose = text.lastIndexOf('}');
+  if (lastClose < 0) return null;
+  let candidate = text.slice(0, lastClose + 1);
+
+  let depth = { brace: 0, bracket: 0 };
+  let inString = false, escape = false;
+  for (let i = 0; i < candidate.length; i++) {
+    const ch = candidate[i];
+    if (escape) { escape = false; continue; }
+    if (ch === '\\') { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') depth.brace++;
+    else if (ch === '}') depth.brace--;
+    else if (ch === '[') depth.bracket++;
+    else if (ch === ']') depth.bracket--;
+  }
+
+  if (inString) return null;
+  while (depth.brace < 0 && candidate.length > 0) {
+    candidate = candidate.slice(0, candidate.lastIndexOf('}'));
+    depth.brace++;
+  }
+  while (depth.bracket > 0) { candidate += ']'; depth.bracket--; }
+  while (depth.brace > 0) { candidate += '}'; depth.brace--; }
+
+  try { JSON.parse(candidate); return candidate; }
+  catch { return null; }
 }
 
 async function runGeneration() {

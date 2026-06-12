@@ -1529,6 +1529,26 @@ window.AsgardCustomDashboard = (function(){
         alertHtml +
         '<div style="margin-top:8px;text-align:center;font-size:11px;font-weight:600;color:#7b61ff">Открыть Залы Асгарда →</div>' +
       '</div>';
+
+    // Авто-обновление виджета: каждые 60 сек + при возврате на вкладку.
+    // Раньше баннер «пройти лекции» застывал — даже после прохождения теста
+    // в другой вкладке он показывал старое число обязательных.
+    if (!el._academyRefreshBound) {
+      el._academyRefreshBound = true;
+      el._academyRefreshTimer = setInterval(function() {
+        if (!document.hidden && el.isConnected) renderAcademy(el);
+        else if (!el.isConnected) clearInterval(el._academyRefreshTimer);
+      }, 60000);
+      var visHandler = function() {
+        if (!document.hidden && el.isConnected) renderAcademy(el);
+      };
+      document.addEventListener('visibilitychange', visHandler);
+      // Освободить listener когда узел уйдёт из DOM
+      el._academyRefreshCleanup = function() {
+        document.removeEventListener('visibilitychange', visHandler);
+        if (el._academyRefreshTimer) clearInterval(el._academyRefreshTimer);
+      };
+    }
   }
 
   return { render, WIDGET_TYPES };

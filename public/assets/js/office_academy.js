@@ -369,11 +369,16 @@ window.AsgardOfficeAcademyPage = (function () {
 
     showModal({ title: lesson.title || 'Свиток', icon: lesson.cover_icon || '🏛️', html: html, wide: true });
 
-    document.getElementById('btnLessonClose').onclick = function () { closeModal(); };
+    // Heartbeat — копит read_time_seconds на бэке, без него /complete отказывает
+    // по MIN_READ_SECONDS=60 даже после реального чтения.
+    startReadHeartbeat(lessonId);
+
+    document.getElementById('btnLessonClose').onclick = function () { stopReadHeartbeat(); closeModal(); };
 
     var btnC = document.getElementById('btnComplete');
     if (btnC) btnC.onclick = async function () {
       try {
+        stopReadHeartbeat();
         await api('POST', '/lessons/' + lessonId + '/complete');
         toast('Готово', 'Свиток отмечен прочитанным', 'ok');
         closeModal();
@@ -384,6 +389,7 @@ window.AsgardOfficeAcademyPage = (function () {
     var btnR = document.getElementById('btnReread');
     if (btnR) btnR.onclick = async function () {
       try {
+        stopReadHeartbeat();
         var res = await api('POST', '/lessons/' + lessonId + '/complete');
         if (res.attempts_reset) {
           toast('Готово', 'Попытки сброшены! Можешь пройти испытание заново', 'ok');
@@ -396,7 +402,21 @@ window.AsgardOfficeAcademyPage = (function () {
     };
 
     var btnQ = document.getElementById('btnQuiz');
-    if (btnQ) btnQ.onclick = function () { closeModal(); openQuiz(lessonId, questions); };
+    if (btnQ) btnQ.onclick = function () { stopReadHeartbeat(); closeModal(); openQuiz(lessonId, questions); };
+  }
+
+  // ── Heartbeat: каждые 30 сек POST /lessons/:id/heartbeat ─────
+  var _hbTimer = null;
+  function startReadHeartbeat(lessonId) {
+    stopReadHeartbeat();
+    // первый удар через 30с (по согласованию с MIN_READ_SECONDS=60 хватит двух)
+    _hbTimer = setInterval(function () {
+      if (document.hidden) return; // не считаем время если вкладка скрыта
+      api('POST', '/lessons/' + lessonId + '/heartbeat').catch(function () {});
+    }, 30000);
+  }
+  function stopReadHeartbeat() {
+    if (_hbTimer) { clearInterval(_hbTimer); _hbTimer = null; }
   }
 
   // ── Quiz with full feedback ───────────────────────────────────

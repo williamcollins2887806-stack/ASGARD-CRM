@@ -458,6 +458,47 @@ const LESSON_SYSTEM_PROMPT = `Ты — Мимир, хранитель мудро
   ]
 }`;
 
+// Попытка восстановить обрезанный JSON: ищем последний валидный объект
+// внутри массивов "questions" и "blocks", закрываем структуры.
+// Возвращает string-валидный JSON или null если не получилось.
+function repairTruncatedJson(text) {
+  // Срез до последнего "}" — отбрасываем хвост после
+  let lastClose = text.lastIndexOf('}');
+  if (lastClose < 0) return null;
+  let candidate = text.slice(0, lastClose + 1);
+
+  // Считаем глубину { } и [ ] и закрываем недостающие
+  let depth = { brace: 0, bracket: 0 };
+  let inString = false, escape = false;
+  for (let i = 0; i < candidate.length; i++) {
+    const ch = candidate[i];
+    if (escape) { escape = false; continue; }
+    if (ch === '\\') { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') depth.brace++;
+    else if (ch === '}') depth.brace--;
+    else if (ch === '[') depth.bracket++;
+    else if (ch === ']') depth.bracket--;
+  }
+
+  // Если оборвалось внутри строки — не восстанавливаем
+  if (inString) return null;
+
+  // Если объект закрыт лишним } — обрезаем
+  while (depth.brace < 0 && candidate.length > 0) {
+    candidate = candidate.slice(0, candidate.lastIndexOf('}'));
+    depth.brace++;
+  }
+
+  // Закрываем недостающие массивы, потом объекты
+  while (depth.bracket > 0) { candidate += ']'; depth.bracket--; }
+  while (depth.brace > 0) { candidate += '}'; depth.brace--; }
+
+  try { JSON.parse(candidate); return candidate; }
+  catch { return null; }
+}
+
 async function generateWeeklyLesson() {
   if (!aiProvider) throw new Error('AI provider not available');
 
@@ -509,21 +550,38 @@ async function generateWeeklyLesson() {
       { role: 'user', content: `Создай Руну для недели ${nextWeek}.\n\n${topicInfo}` }
     ],
     temperature: 0.7,
-    maxTokens: 16000,
+    maxTokens: 32000,
   });
 
   let text = (response.text || '').trim();
   text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 
-  const lesson = JSON.parse(text);
+  // Иногда AI обрывает JSON по лимиту токенов. Пробуем repair — обрезать
+  // до последнего полного объекта в массиве questions/blocks.
+  let lesson;
+  try {
+    lesson = JSON.parse(text);
+  } catch (parseErr) {
+    console.warn(`[AcademyCron] JSON parse failed (${parseErr.message}), trying repair...`);
+    const repaired = repairTruncatedJson(text);
+    if (!repaired) throw parseErr;
+    lesson = JSON.parse(repaired);
+    console.log(`[AcademyCron] Repair OK: ${(lesson.blocks||[]).length} blocks, ${(lesson.questions||[]).length} questions`);
+  }
 
   // is_mandatory берём из учебной программы (не из AI — AI может ошибиться)
   const isMandatory = curriculumEntry.mandatory;
 
+  // release_monday — ближайший будущий понедельник (так UI видит урок с правильной недели)
+  const nextMonday = new Date();
+  const dow = nextMonday.getUTCDay(); // 0 = Sunday
+  const daysToMonday = dow === 0 ? 1 : 8 - dow;
+  nextMonday.setUTCDate(nextMonday.getUTCDate() + daysToMonday);
+
   const { rows: [inserted] } = await db.query(`
     INSERT INTO academy_lessons
-      (week_number, saga, title, cover_icon, cover_color, estimated_minutes, tags, status, generated_by, blocks, is_mandatory)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, 'draft', 'mimir', $8, $9)
+      (week_number, saga, title, cover_icon, cover_color, estimated_minutes, tags, status, generated_by, blocks, is_mandatory, release_monday)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, 'draft', 'mimir', $8, $9, $10)
     RETURNING id
   `, [
     nextWeek,
@@ -535,6 +593,7 @@ async function generateWeeklyLesson() {
     lesson.tags || curriculumEntry.tags,
     JSON.stringify(lesson.blocks || []),
     isMandatory,
+    nextMonday.toISOString().slice(0, 10),
   ]);
 
   const lessonId = inserted.id;
