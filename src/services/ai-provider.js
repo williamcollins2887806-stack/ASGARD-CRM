@@ -488,13 +488,32 @@ async function callOpenAI({ system, messages, maxTokens, temperature, stream = f
     console.warn('  model:', data.model);
   }
 
+  // Усреднённая оценка ~4 символа на токен (для русского/смешанного контента),
+  // используется как фолбэк когда провайдер не возвращает usage в ответе (tokenator
+  // с tools иногда даёт пустой usage). Без фолбэка cost_rub останется 0 и РП будет
+  // в недоумении почему AI работал но «не потратил токены».
+  function _estTokens(s) { return s ? Math.ceil(String(s).length / 4) : 0; }
+  let promptToks = Number(data.usage?.prompt_tokens) || 0;
+  let completionToks = Number(data.usage?.completion_tokens) || 0;
+  if (!promptToks && !completionToks) {
+    // Оценка через длину текстового представления
+    try {
+      const inText = (system || '') + JSON.stringify(body.messages || messages);
+      const outText = String(content || '') + (choice.message?.tool_calls ? JSON.stringify(choice.message.tool_calls) : '');
+      promptToks = _estTokens(inText);
+      completionToks = _estTokens(outText);
+      console.warn(`[AI Provider] usage отсутствует — приблизительная оценка: ${promptToks}→${completionToks} tok`);
+    } catch (_) { /* noop */ }
+  }
   return {
     text: content || '',
     tool_calls: choice.message?.tool_calls || null, // AP5: tool-calling
     annotations: choice.message?.annotations || null, // AP6: url_citation от web search
     usage: {
-      inputTokens: data.usage?.prompt_tokens || 0,
-      outputTokens: data.usage?.completion_tokens || 0
+      inputTokens: promptToks,
+      outputTokens: completionToks,
+      // флаг для отладки — пометить что это была оценка (UI может показать tilde)
+      estimated: !data.usage?.prompt_tokens && !data.usage?.completion_tokens
     },
     model: data.model,
     stopReason: choice.finish_reason,
