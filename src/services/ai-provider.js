@@ -1740,6 +1740,19 @@ async function completeWithStream(p = {}) {
     if (chunk.type === 'text') { fullText += chunk.content; onText(chunk.content); }
     else if (chunk.type === 'done') { usage = chunk.usage || usage; }
   }
+  // Фолбэк: токенатор в SSE-стриме не всегда возвращает usage. Оцениваем
+  // приблизительно через len/4 чтобы РП видел реалистичные цифры.
+  if ((!usage.inputTokens && !usage.outputTokens) && fullText) {
+    try {
+      const inText = (system || '') + JSON.stringify(messages || []);
+      usage = {
+        inputTokens: Math.ceil(inText.length / 4),
+        outputTokens: Math.ceil(fullText.length / 4),
+        estimated: true
+      };
+      console.warn(`[AI Provider] stream usage отсутствует — оценка: ${usage.inputTokens}→${usage.outputTokens} tok`);
+    } catch (_) {}
+  }
   if (_usageTracker) _usageTracker.addUsage(usage);
   return {
     text: fullText, thinking: '',
