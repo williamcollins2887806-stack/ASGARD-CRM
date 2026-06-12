@@ -116,8 +116,9 @@ async function callAgent(agentName, input, runId, callerAgentRunId = null) {
         } catch (_) { /* noop — оставим u как есть */ }
       } else {
         try {
-          const usdRub = await modelsConfig.getUsdToRub();
-          costRub = modelsConfig.calculateCostRub(spec.model_default, u, usdRub);
+          // Реально-использованный api_id (если был fallback — будет другой)
+          const actualApiId = u.actualApiId || null;
+          costRub = modelsConfig.calculateCostRub(spec.model_default, u, undefined, actualApiId);
         } catch (_) { /* noop */ }
       }
       // Префиксируем summary меткой для прозрачности

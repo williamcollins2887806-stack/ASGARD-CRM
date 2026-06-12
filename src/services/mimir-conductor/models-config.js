@@ -38,6 +38,29 @@ const db = require('../db');
 // Курс по умолчанию, если в settings нет usd_rub_rate
 const DEFAULT_USD_RUB = 90;
 
+// ─────────────────────────────────────────────────────────────────────────
+// ТАРИФ ТОКЕНАТОРА (api.tokenator.top)
+// Биллинг: 2000 ₽ за 100 000 000 биллируемых токенов = 0.00002 ₽/токен.
+// Биллируемые = реальные токены модели × множитель (tokenator_multiplier).
+// Множители (на 13.06.2026): gpt-5.5 ×2.2, gpt-5.4 ×2.0, gemini-2.5-flash ×1.5.
+// Формула: cost_rub = (in + out) × multiplier × TOKENATOR_RATE_RUB_PER_TOKEN
+// Источник: пользователь подтвердил через лог /v1/chat/completions токенатора.
+// ─────────────────────────────────────────────────────────────────────────
+const TOKENATOR_RATE_RUB_PER_TOKEN = 2000 / 100_000_000; // = 0.00002
+
+// Тарифные множители конкретных api_id у токенатора (актуальный список):
+const TOKENATOR_API_MULTIPLIERS = {
+  'gpt-5.5': 2.2,
+  'gpt-5.4': 2.0,
+  'gemini-2.5-flash': 1.5,
+  // По мере возвращения моделей онлайн — пополнять:
+  // 'claude-opus-4-7': 1.6, 'claude-sonnet-4-6': 1.4, 'claude-haiku-4-5': 1.3, ...
+};
+
+// Универсальная fallback-цепочка api_id для общих чат-задач у токенатора.
+// Порядок = приоритет (от лучшего/дешёвого к запасному). Используется при 5xx/timeout.
+const DEFAULT_FALLBACK_CHAIN = ['gpt-5.5', 'gpt-5.4', 'gemini-2.5-flash'];
+
 /**
  * Каталог моделей.
  *
@@ -61,8 +84,7 @@ const models = {
     provider: 'routerai',                        // тут 'routerai' = унифицированный OpenAI-compat путь (ai-provider.callOpenAI)
     api_id: 'gpt-5.5',                            // tokenator: gpt-5.5 (флагман, ×2.2, контекст 1.1M, reasoning встроен)
     anthropic_api_id: 'claude-opus-4-7',          // кэш — вернётся когда Anthropic снова online на токенаторе
-    price_usd_per_1m_input: 2.5,                  // tokenator: ~$2.5/M input (приблизительно по нагрузке ×2.2)
-    price_usd_per_1m_output: 10.0,                // tokenator: ~$10/M output
+    tokenator_multiplier: 2.2,                    // gpt-5.5 множитель
     supports_extended_thinking: true,
     supports_tool_use: true,
     max_context: 1100000,
@@ -72,8 +94,7 @@ const models = {
     provider: 'routerai',
     api_id: 'gpt-5.5',                            // tokenator: gpt-5.5 (одна модель = проще отладка)
     anthropic_api_id: 'claude-sonnet-4-6-20250514',
-    price_usd_per_1m_input: 2.5,
-    price_usd_per_1m_output: 10.0,
+    tokenator_multiplier: 2.2,                    // gpt-5.5 множитель
     supports_extended_thinking: true,
     supports_tool_use: true,
     max_context: 1100000,
@@ -83,8 +104,7 @@ const models = {
     provider: 'routerai',
     api_id: 'gpt-5.5',                            // ранее gemini-2.5-flash, переведено 13.06.2026 в 17:00 MSK — у токенатора Gemini временно 403 «Request error»                   // tokenator: быстрая/дешёвая (×1.5, контекст 1M)
     anthropic_api_id: 'claude-haiku-4-5-20251001',
-    price_usd_per_1m_input: 0.15,
-    price_usd_per_1m_output: 0.60,
+    tokenator_multiplier: 2.2,                    // на gpt-5.5 ×2.2 (вернём ×1.5 когда gemini восстановится)
     supports_extended_thinking: false,
     supports_tool_use: true,
     max_context: 1000000,
@@ -95,8 +115,7 @@ const models = {
   'gpt-5': {
     provider: 'routerai',
     api_id: 'gpt-5.5',                            // gpt-5.5 поддерживает image_url нативно
-    price_usd_per_1m_input: 2.5,
-    price_usd_per_1m_output: 10.0,
+    tokenator_multiplier: 2.2,
     supports_extended_thinking: false,
     supports_tool_use: true,
     max_context: 1100000,
@@ -110,9 +129,8 @@ const models = {
   // либо валидирует и активирует если отключено через настройки ключа).
   'sonar-opus': {
     provider: 'routerai',
-    api_id: 'gpt-5.5',                            // ранее gemini-2.5-flash, переведено 13.06.2026 в 17:00 MSK — у токенатора Gemini временно 403 «Request error»                   // быстрый веб-поиск через gemini + web plugin
-    price_usd_per_1m_input: 0.15,
-    price_usd_per_1m_output: 0.60,
+    api_id: 'gpt-5.5',                            // быстрый веб-поиск через gpt-5.5 + web plugin
+    tokenator_multiplier: 2.2,
     supports_extended_thinking: false,
     supports_tool_use: false,
     max_context: 1000000,
@@ -120,9 +138,8 @@ const models = {
   },
   'web-search-fast': {
     provider: 'routerai',
-    api_id: 'gpt-5.5',                            // ранее gemini-2.5-flash, переведено 13.06.2026 в 17:00 MSK — у токенатора Gemini временно 403 «Request error»
-    price_usd_per_1m_input: 0.15,
-    price_usd_per_1m_output: 0.60,
+    api_id: 'gpt-5.5',
+    tokenator_multiplier: 2.2,
     supports_extended_thinking: false,
     supports_tool_use: true,
     max_context: 1000000,
@@ -138,8 +155,7 @@ const models = {
     provider: 'routerai',                         // через токенатор (унифицированный путь)
     api_id: 'gpt-5.5',                            // gpt-5.5 (вместо YandexGPT)
     yandex_api_id: 'yandexgpt/latest',            // кэш — вернётся когда у Yandex будут деньги
-    price_usd_per_1m_input: 2.5,
-    price_usd_per_1m_output: 10.0,
+    tokenator_multiplier: 2.2,
     supports_extended_thinking: false,
     supports_tool_use: true,
     max_context: 1100000,
@@ -169,8 +185,7 @@ const models = {
   'deepseek-v4': {
     provider: 'routerai',
     api_id: 'gpt-5.5',                            // deepseek offline у токенатора → gpt-5.5
-    price_usd_per_1m_input: 2.5,
-    price_usd_per_1m_output: 10.0,
+    tokenator_multiplier: 2.2,
     supports_extended_thinking: false,
     supports_tool_use: true,
     max_context: 1100000,
@@ -231,25 +246,73 @@ async function getUsdToRub() {
  *                          для точности лучше передавать результат getUsdToRub()).
  * @returns {number} стоимость в рублях (округлено до 4 знаков)
  */
-function calculateCostRub(modelKey, usage = {}, usdRub = DEFAULT_USD_RUB) {
+function calculateCostRub(modelKey, usage = {}, usdRub = DEFAULT_USD_RUB, actualApiId = null) {
   const m = models[modelKey];
   if (!m) return 0;
   // usage может прийти как {inputTokens} (наш код) или {input_tokens} (сырой ответ API)
   const inTok = Number(usage.inputTokens ?? usage.input_tokens) || 0;
   const outTok = Number(usage.outputTokens ?? usage.output_tokens) || 0;
-  const usd =
-    (inTok / 1_000_000) * (m.price_usd_per_1m_input || 0) +
-    (outTok / 1_000_000) * (m.price_usd_per_1m_output || 0);
-  const rub = usd * (Number(usdRub) || DEFAULT_USD_RUB);
-  return Math.round(rub * 10000) / 10000;
+  if (inTok === 0 && outTok === 0) return 0;
+
+  // ── 1) Tokenator-биллинг: (in+out) × множитель × 0.00002 ₽/токен ──
+  // Если есть tokenator_multiplier (наш текущий путь) — считаем по нему.
+  // actualApiId позволяет переопределить (например, если из-за fallback модель
+  // реально была gpt-5.4 вместо запрошенной gpt-5.5).
+  const apiId = actualApiId || m.api_id;
+  let mult = m.tokenator_multiplier;
+  if (apiId && TOKENATOR_API_MULTIPLIERS[apiId] != null) {
+    mult = TOKENATOR_API_MULTIPLIERS[apiId];
+  }
+  if (mult) {
+    const rub = (inTok + outTok) * mult * TOKENATOR_RATE_RUB_PER_TOKEN;
+    return Math.round(rub * 10000) / 10000;
+  }
+
+  // ── 2) Legacy USD-формула для нетокенаторных моделей (Yandex direct, anthropic direct) ──
+  if (m.price_usd_per_1m_input != null || m.price_usd_per_1m_output != null) {
+    const usd =
+      (inTok / 1_000_000) * (m.price_usd_per_1m_input || 0) +
+      (outTok / 1_000_000) * (m.price_usd_per_1m_output || 0);
+    const rub = usd * (Number(usdRub) || DEFAULT_USD_RUB);
+    return Math.round(rub * 10000) / 10000;
+  }
+
+  return 0;
+}
+
+/**
+ * Получить fallback-цепочку api_id для модели. Используется ai-provider при
+ * 5xx/timeout/network — пробует следующую модель из цепочки.
+ * @param {string} modelKey — символический ключ модели Conductor (sonnet-4-6 и т.д.)
+ * @returns {string[]} массив api_id в порядке приоритета
+ */
+function getFallbackChain(modelKey) {
+  const m = models[modelKey];
+  if (!m) return DEFAULT_FALLBACK_CHAIN.slice();
+  // Если у модели свой fallback_chain (явно) — используем его
+  if (Array.isArray(m.fallback_chain) && m.fallback_chain.length) {
+    return m.fallback_chain.slice();
+  }
+  // Иначе: первым идёт текущий api_id (если он есть и не disabled),
+  // дальше — default chain без дубля
+  const chain = [];
+  if (m.api_id && !m.disabled) chain.push(m.api_id);
+  for (const id of DEFAULT_FALLBACK_CHAIN) {
+    if (!chain.includes(id)) chain.push(id);
+  }
+  return chain;
 }
 
 module.exports = {
   models,
   DEFAULT_USD_RUB,
+  TOKENATOR_RATE_RUB_PER_TOKEN,
+  TOKENATOR_API_MULTIPLIERS,
+  DEFAULT_FALLBACK_CHAIN,
   pickConductorModel,
   shouldUseThinking,
   getModel,
+  getFallbackChain,
   getUsdToRub,
   calculateCostRub
 };

@@ -37,7 +37,7 @@ function runInContext(initialCtx, fn) {
  * Прибавить usage от одного ответа AI-провайдера. Безопасно вне контекста — no-op.
  * Принимает оба формата: camelCase (наш внутренний) и snake_case (сырые поля API).
  */
-function addUsage(usage) {
+function addUsage(usage, actualApiId = null) {
   if (!usage) return;
   const ctx = als.getStore();
   if (!ctx) return;
@@ -50,6 +50,8 @@ function addUsage(usage) {
   ctx.cacheReadTokens += cReadTok;
   ctx.cacheWriteTokens += cWriteTok;
   ctx.calls += 1;
+  // Запоминаем реально использованную модель — последний победитель в fallback цепочке
+  if (actualApiId) ctx.actualApiId = actualApiId;
 }
 
 /** Получить снимок накопленного usage. Возвращает null если вне контекста. */

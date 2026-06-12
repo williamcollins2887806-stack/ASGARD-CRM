@@ -328,25 +328,79 @@ function _resolveModelKey(model) {
 }
 
 /**
- * Вызов OpenAI API
+ * Вызов OpenAI API с fallback-цепочкой моделей.
+ * Если первая попытка падает с 5xx/timeout/network/model_not_found —
+ * пробуем следующую модель из getFallbackChain(symbolic_key).
  */
-async function callOpenAI({ system, messages, maxTokens, temperature, stream = false, model = null, tools = null, plugins = null, verbosity = null, responseFormat = null }) {
-  if (!OPENAI_API_KEY) {
-    throw new Error('OPENAI_API_KEY not configured');
-  }
-
-  // Резолв символического ключа Conductor-модели → реальный api_id провайдера.
-  // Если ключ помечен disabled (например voyage-3 embeddings offline) — бросаем
-  // понятную ошибку, вызывающий код Conductor поймает try/catch и пойдёт fallback.
-  if (model) {
-    const resolved = _resolveModelKey(model);
+async function callOpenAI(opts) {
+  // Резолв ключа + получение fallback-цепочки
+  const originalModel = opts.model;
+  let chain = null;
+  if (originalModel) {
+    const resolved = _resolveModelKey(originalModel);
     if (resolved === null) {
       throw new AIProviderError({
         code: 'model_disabled', status: 0,
-        providerMessage: `Модель «${model}» помечена disabled в models-config (провайдер offline)`
+        providerMessage: `Модель «${originalModel}» помечена disabled в models-config (провайдер offline)`
       });
     }
-    if (resolved !== model) model = resolved;
+    // Получаем цепочку через models-config (символический ключ → fallback цепочка)
+    try {
+      const mc = require('./mimir-conductor/models-config');
+      chain = mc.getFallbackChain(originalModel);
+      // Если первая из цепочки = resolved api_id — оставим как есть.
+      // Если resolved отличается от api_id (например, через settings override) — поставим в начало.
+      if (chain[0] !== resolved) chain = [resolved, ...chain.filter((x) => x !== resolved)];
+    } catch (_) { chain = [resolved]; }
+  } else {
+    chain = [opts.model || OPENAI_MODEL];
+  }
+
+  let lastErr = null;
+  for (let i = 0; i < chain.length; i++) {
+    const apiId = chain[i];
+    try {
+      const result = await _callOpenAIOnce({ ...opts, model: apiId });
+      if (i > 0) {
+        console.warn(`[AI Provider] FALLBACK успешен: ${chain.slice(0, i).join('→')} → ${apiId} (опт 1-${i} не сработали)`);
+        result.fallback_chain_used = chain.slice(0, i + 1);
+      }
+      // Запоминаем какая модель реально ответила — для корректного учёта стоимости
+      result._actual_api_id = apiId;
+      return result;
+    } catch (err) {
+      lastErr = err;
+      const isRetriable = _isRetriableError(err);
+      const hasNext = i < chain.length - 1;
+      if (isRetriable && hasNext) {
+        console.warn(`[AI Provider] Модель «${apiId}» упала (${err.code || err.status || 'err'}: ${err.providerMessage || err.message}), пробую «${chain[i+1]}»`);
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
+}
+
+/** Признаки ошибки, для которых стоит пробовать fallback: 5xx, timeout, network, model_disabled, model_not_found. */
+function _isRetriableError(err) {
+  if (!err) return false;
+  const code = err.code;
+  const status = Number(err.status) || 0;
+  if (code === 'timeout' || code === 'network' || code === 'model_disabled') return true;
+  if (status >= 500 && status < 600) return true;
+  // 403/404 от провайдера на конкретную модель (model_not_found / not_available) — тоже фолбэк
+  if (status === 403 || status === 404) return true;
+  // tokenator-специфика: 503 «Model temporarily unavailable»
+  const msg = String(err.providerMessage || err.message || '').toLowerCase();
+  if (msg.includes('temporarily unavailable') || msg.includes('not available') || msg.includes('not found')) return true;
+  return false;
+}
+
+/** Внутренний единичный вызов OpenAI (без fallback-логики). */
+async function _callOpenAIOnce({ system, messages, maxTokens, temperature, stream = false, model = null, tools = null, plugins = null, verbosity = null, responseFormat = null }) {
+  if (!OPENAI_API_KEY) {
+    throw new Error('OPENAI_API_KEY not configured');
   }
 
   // OpenAI использует system message внутри массива messages
@@ -578,7 +632,7 @@ async function complete({ system, messages, maxTokens, temperature, tools, plugi
       throw new Error(`Unknown AI provider: ${provider}`);
     }
     result.durationMs = Date.now() - startTime;
-    if (_usageTracker && result.usage) _usageTracker.addUsage(result.usage);
+    if (_usageTracker && result.usage) _usageTracker.addUsage(result.usage, result._actual_api_id || null);
     return result;
   } catch (error) {
     // Попробуем fallback на другого провайдера при 5xx ошибках
@@ -599,7 +653,7 @@ async function complete({ system, messages, maxTokens, temperature, tools, plugi
         result.provider = fallbackProvider;
         result.fallback = true;
         result.durationMs = Date.now() - startTime;
-        if (_usageTracker && result.usage) _usageTracker.addUsage(result.usage);
+        if (_usageTracker && result.usage) _usageTracker.addUsage(result.usage, result._actual_api_id || null);
         return result;
       } catch (fallbackError) {
         throw new Error(`Both providers failed. Primary: ${error.message}, Fallback: ${fallbackError.message}`);
@@ -1718,7 +1772,7 @@ async function completeWithStream(p = {}) {
 
     const stopReason = toolUses.length ? 'tool_use' : (result.stopReason === 'tool_calls' ? 'tool_use' : 'end_turn');
     const finalUsage = result.usage || { inputTokens: 0, outputTokens: 0 };
-    if (_usageTracker) _usageTracker.addUsage(finalUsage);
+    if (_usageTracker) _usageTracker.addUsage(finalUsage, result._actual_api_id || model);
     return {
       text: result.text || '',
       thinking: '',
@@ -1753,7 +1807,7 @@ async function completeWithStream(p = {}) {
       console.warn(`[AI Provider] stream usage отсутствует — оценка: ${usage.inputTokens}→${usage.outputTokens} tok`);
     } catch (_) {}
   }
-  if (_usageTracker) _usageTracker.addUsage(usage);
+  if (_usageTracker) _usageTracker.addUsage(usage, model);
   return {
     text: fullText, thinking: '',
     tool_uses: [], content_blocks: fullText ? [{ type: 'text', text: fullText }] : [],
