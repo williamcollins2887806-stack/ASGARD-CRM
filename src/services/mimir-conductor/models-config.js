@@ -1,24 +1,33 @@
 /**
  * ASGARD CRM — Mimir Conductor: конфиг моделей и цен
  * ═══════════════════════════════════════════════════════════════════════════
- * Сессия 1, Шаг 1.5.
+ * МИГРАЦИЯ 13.06.2026: с routerai.ru на tokenator.top (старый ключ routerai → 401).
  *
- * ВАЖНО ПРО ПРОВАЙДЕРОВ (уточнение заказчика к плану):
- * Всё идёт через ОДИН прокси routerai.ru (OpenAI-совместимый эндпоинт,
- * переменная OPENAI_URL, ключ OPENAI_API_KEY). Никаких отдельных ключей
- * PERPLEXITY_API_KEY / DEEPSEEK_API_KEY / VOYAGE_API_KEY — все альтернативные
- * модели вызываются тем же OPENAI_URL с указанием конкретного `model` в теле.
+ * Tokenator (OpenAI-совместимый прокси, base: https://api.tokenator.top/v1/chat/completions)
+ * сейчас держит ТРИ активные модели:
+ *   - gpt-5.5         — флагман (×2.2, контекст 1.1M, reasoning встроен, vision)
+ *   - gpt-5.4         — следующая (×2)
+ *   - gemini-2.5-flash — быстрая/дешёвая (×1.5, контекст 1M)
+ * Claude (все варианты opus/sonnet/haiku/fable), Voyage, DeepSeek, Perplexity Sonar,
+ * embedding-модели — OFFLINE на момент миграции (503 Model temporarily unavailable).
  *
- * Поэтому provider у альтернативных моделей = 'routerai' (а не perplexity/voyage/deepseek).
- * `api_id` — точное имя модели в routerai. Где имя неизвестно — стоит TODO и
- * запасной (fallback) вариант, чтобы код не падал.
+ * Стратегия:
+ *   - Conductor «крупный» (opus-4-7) → gpt-5.5 (reasoning enabled)
+ *   - Conductor «средний» (sonnet-4-6) → gpt-5.5 (одна модель = проще отладка)
+ *   - Быстрые/Python-обёртки (haiku-4-5) → gemini-2.5-flash
+ *   - Vision/чертежи (gpt-5) → gpt-5.5 (vision встроен)
+ *   - Web-search цен (sonar-opus, web-search-fast) → gemini-2.5-flash + plugins:[{id:'web'}]
+ *     (у токенатора web-поиск включён по умолчанию)
+ *   - Embeddings (voyage-3) → disabled, searchNorms возвращает [] (graceful)
+ *   - Монте-Карло (deepseek-v4) → gpt-5.5
+ *   - YandexGPT (нормативы РФ) — БЕЗ ИЗМЕНЕНИЙ (отдельный провайдер/ключ)
  *
- * Anthropic-модели можно звать двумя путями:
- *   - через routerai (provider 'routerai', api_id 'anthropic/claude-...') — основной путь;
- *   - напрямую в api.anthropic.com (provider 'anthropic') — когда нужны фичи,
- *     которых нет в routerai (например нативный streaming thinking-блоков).
- * В конфиге для каждой Claude-модели указаны ОБА id: `api_id` (routerai) и
- * `anthropic_api_id` (прямой Anthropic). Какой использовать — решает вызывающий код.
+ * Когда у токенатора активируют Claude / embeddings — поменять api_id обратно
+ * (embeddings-watch-cron уведомит в Telegram при появлении embeddings).
+ *
+ * `anthropic_api_id` оставлен в кэше — пригодится при возврате на прямой Anthropic.
+ * Tokenator поддерживает Anthropic-формат (/anthropic/v1/messages), но провайдер
+ * запросов сейчас 'openai' (унифицированный путь через chat/completions).
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
@@ -44,69 +53,74 @@ const DEFAULT_USD_RUB = 90;
  *   role                     — для документации: чем занимается модель
  */
 const models = {
-  // ─── Conductor / рабочие лошадки (Claude) ──────────────────────────────
+  // ─── Conductor / рабочие лошадки ──────────────────────────────────────
+  // ВСЕ через токенатор (OpenAI-compat). reasoning встроен в gpt-5.5/gpt-5.4 — флаг
+  // supports_extended_thinking оставлен true для совместимости с кодом Conductor,
+  // который проверяет его при формировании запроса (в гилде verbosity:'max').
   'opus-4-7': {
-    provider: 'routerai',
-    api_id: 'anthropic/claude-opus-4.7',        // TODO: уточнить точное имя модели в routerai
-    anthropic_api_id: 'claude-opus-4-7',         // TODO: уточнить точное имя у Anthropic
-    price_usd_per_1m_input: 15.0,
-    price_usd_per_1m_output: 75.0,
+    provider: 'routerai',                        // тут 'routerai' = унифицированный OpenAI-compat путь (ai-provider.callOpenAI)
+    api_id: 'gpt-5.5',                            // tokenator: gpt-5.5 (флагман, ×2.2, контекст 1.1M, reasoning встроен)
+    anthropic_api_id: 'claude-opus-4-7',          // кэш — вернётся когда Anthropic снова online на токенаторе
+    price_usd_per_1m_input: 2.5,                  // tokenator: ~$2.5/M input (приблизительно по нагрузке ×2.2)
+    price_usd_per_1m_output: 10.0,                // tokenator: ~$10/M output
     supports_extended_thinking: true,
     supports_tool_use: true,
-    max_context: 200000,
-    role: 'Conductor для крупных контрактов (>50M)'
+    max_context: 1100000,
+    role: 'Conductor для крупных контрактов (>50M) — gpt-5.5'
   },
   'sonnet-4-6': {
     provider: 'routerai',
-    api_id: 'anthropic/claude-sonnet-4.6',       // совпадает с дефолтом OPENAI_MODEL в ai-provider.js
+    api_id: 'gpt-5.5',                            // tokenator: gpt-5.5 (одна модель = проще отладка)
     anthropic_api_id: 'claude-sonnet-4-6-20250514',
-    price_usd_per_1m_input: 3.0,
-    price_usd_per_1m_output: 15.0,
+    price_usd_per_1m_input: 2.5,
+    price_usd_per_1m_output: 10.0,
     supports_extended_thinking: true,
     supports_tool_use: true,
-    max_context: 200000,
-    role: 'Conductor для средних + структурированные агенты'
+    max_context: 1100000,
+    role: 'Conductor для средних + структурированные агенты — gpt-5.5'
   },
   'haiku-4-5': {
     provider: 'routerai',
-    api_id: 'anthropic/claude-haiku-4.5',        // TODO: уточнить точное имя модели в routerai
+    api_id: 'gemini-2.5-flash',                   // tokenator: быстрая/дешёвая (×1.5, контекст 1M)
     anthropic_api_id: 'claude-haiku-4-5-20251001',
-    price_usd_per_1m_input: 0.25,
-    price_usd_per_1m_output: 1.25,
+    price_usd_per_1m_input: 0.15,
+    price_usd_per_1m_output: 0.60,
     supports_extended_thinking: false,
     supports_tool_use: true,
-    max_context: 200000,
-    role: 'Быстрые трансформации, классификация'
+    max_context: 1000000,
+    role: 'Быстрые трансформации, классификация — gemini-2.5-flash'
   },
 
   // ─── Зрение (чертежи и сканы) ──────────────────────────────────────────
   'gpt-5': {
     provider: 'routerai',
-    api_id: 'openai/gpt-5',                       // TODO: уточнить точное имя модели в routerai
-    price_usd_per_1m_input: 1.25,                 // TODO: уточнить тариф gpt-5
-    price_usd_per_1m_output: 10.0,                // TODO: уточнить тариф gpt-5
+    api_id: 'gpt-5.5',                            // gpt-5.5 поддерживает image_url нативно
+    price_usd_per_1m_input: 2.5,
+    price_usd_per_1m_output: 10.0,
     supports_extended_thinking: false,
     supports_tool_use: true,
-    max_context: 256000,
-    role: 'Чтение чертежей и сканов (vision)'
+    max_context: 1100000,
+    role: 'Чтение чертежей и сканов (vision) — gpt-5.5'
   },
 
-  // ─── Веб-поиск цен (Perplexity Sonar через routerai) ───────────────────
+  // ─── Веб-поиск цен ─────────────────────────────────────────────────────
+  // У токенатора веб-поиск включён по умолчанию для всех чат-моделей.
+  // executeWebSearch() в ai-provider.js передаёт plugins:[{id:'web'}] —
+  // токенатор это принимает (поле игнорируется если функция уже включена,
+  // либо валидирует и активирует если отключено через настройки ключа).
   'sonar-opus': {
     provider: 'routerai',
-    api_id: 'perplexity/sonar-opus-online',       // TODO: уточнить точное имя модели в routerai
-    price_usd_per_1m_input: 5.0,                  // TODO: уточнить тариф sonar
-    price_usd_per_1m_output: 5.0,                 // TODO: уточнить тариф sonar
+    api_id: 'gemini-2.5-flash',                   // быстрый веб-поиск через gemini + web plugin
+    price_usd_per_1m_input: 0.15,
+    price_usd_per_1m_output: 0.60,
     supports_extended_thinking: false,
     supports_tool_use: false,
-    max_context: 127000,
-    role: 'Веб-поиск цен'
+    max_context: 1000000,
+    role: 'Веб-поиск цен — gemini-2.5-flash + web plugin'
   },
-  // Реально доступная и протестированная модель web-search в ai-provider.js.
-  // executeWebSearch() использует именно её (plugin 'web', engine 'native').
   'web-search-fast': {
     provider: 'routerai',
-    api_id: 'google/gemini-2.5-flash',
+    api_id: 'gemini-2.5-flash',
     price_usd_per_1m_input: 0.15,
     price_usd_per_1m_output: 0.60,
     supports_extended_thinking: false,
@@ -115,42 +129,47 @@ const models = {
     role: 'Быстрый web search в agent loop (фактический исполнитель plugin web)'
   },
 
-  // ─── Нормативы РФ (ГЭСН/ФЕР) ───────────────────────────────────────────
+  // ─── Нормативы РФ (ГЭСН/ФЕР) — БЕЗ ИЗМЕНЕНИЙ ──────────────────────────
   'yandex-pro': {
     provider: 'yandex',                           // отдельный путь (YANDEX_GPT_API_KEY + FOLDER_ID)
-    api_id: 'yandexgpt/latest',                   // TODO: уточнить — в дефолте сейчас qwen3-235b-a22b-fp8/latest
-    price_usd_per_1m_input: 0.0,                  // тарификация Yandex отдельная (рубли/у.е.), считаем приблизительно
-    price_usd_per_1m_output: 0.0,                 // TODO: уточнить тариф YandexGPT
+    api_id: 'yandexgpt/latest',
+    price_usd_per_1m_input: 0.0,
+    price_usd_per_1m_output: 0.0,
     supports_extended_thinking: false,
     supports_tool_use: false,
     max_context: 32000,
-    role: 'Нормативы РФ (ГЭСН/ФЕР)'
+    role: 'Нормативы РФ (ГЭСН/ФЕР) — YandexGPT, отдельная инфра'
   },
 
-  // ─── Embeddings для RAG ────────────────────────────────────────────────
+  // ─── Embeddings для RAG — ВРЕМЕННО DISABLED ────────────────────────────
+  // У токенатора (13.06.2026): text-embedding-3-large и voyage-3-large = 503.
+  // searchNorms() в rag/norms-index.js graceful-возвращает [] при пустой
+  // mimir_norms_index (она пуста на проде). aiProvider.embed() возвращает
+  // [null,...] при disabled — код Conductor должен это переваривать.
+  // embeddings-watch-cron уведомит в Telegram когда модель снова станет online.
   'voyage-3': {
     provider: 'routerai',
-    api_id: 'voyage/voyage-3-large',              // TODO: уточнить точное имя embeddings-модели в routerai
-    // fallback на OpenAI embeddings, если voyage в routerai недоступен:
-    fallback_api_id: 'openai/text-embedding-3-large',
-    price_usd_per_1m_input: 0.12,                 // TODO: уточнить тариф voyage
+    api_id: null,                                 // ОТКЛЮЧЕНО (см. выше)
+    disabled: true,
+    fallback_api_id: 'text-embedding-3-large',    // что попробовать, когда снимем disabled
+    price_usd_per_1m_input: 0.13,
     price_usd_per_1m_output: 0.0,
     is_embedding: true,
-    dimensions: 1024,                             // TODO: уточнить размерность voyage-3-large
+    dimensions: 1024,
     max_context: 32000,
-    role: 'Embeddings для RAG'
+    role: 'Embeddings для RAG (DISABLED — токенатор offline 13.06.2026)'
   },
 
   // ─── Монте-Карло / перебор сценариев ───────────────────────────────────
   'deepseek-v4': {
     provider: 'routerai',
-    api_id: 'deepseek/deepseek-chat',             // TODO: уточнить точное имя модели в routerai
-    price_usd_per_1m_input: 0.27,                 // TODO: уточнить тариф deepseek
-    price_usd_per_1m_output: 1.10,                // TODO: уточнить тариф deepseek
+    api_id: 'gpt-5.5',                            // deepseek offline у токенатора → gpt-5.5
+    price_usd_per_1m_input: 2.5,
+    price_usd_per_1m_output: 10.0,
     supports_extended_thinking: false,
     supports_tool_use: true,
-    max_context: 128000,
-    role: 'Монте-Карло + перебор сценариев'
+    max_context: 1100000,
+    role: 'Монте-Карло + перебор сценариев — gpt-5.5'
   }
 };
 

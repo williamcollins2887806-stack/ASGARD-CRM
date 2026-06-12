@@ -754,6 +754,21 @@ try {
   fastify.log.warn('[ReadinessCron] Init skipped: ' + cronErr.message);
 }
 
+// ── Embeddings Watch Cron: probe AI-провайдера на доступность embedding-моделей ──
+// При первом успехе → notification + Telegram директорам. Цикл 5 часов MSK.
+try {
+  const embeddingsWatch = require('./services/embeddings-watch-cron');
+  fastify.addHook('onReady', async () => {
+    embeddingsWatch.start(fastify.db, fastify.log);
+    fastify.log.info('[EmbeddingsWatch] Started — probe every 5h MSK');
+  });
+  fastify.addHook('onClose', async () => {
+    embeddingsWatch.stop();
+  });
+} catch (cronErr) {
+  fastify.log.warn('[EmbeddingsWatch] Init skipped: ' + cronErr.message);
+}
+
 // ── Call Report Scheduler ──
 try {
   const ReportScheduler = require('./services/report-scheduler');

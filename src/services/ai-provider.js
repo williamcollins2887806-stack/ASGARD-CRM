@@ -1305,7 +1305,7 @@ async function searchWeb({ query, model, maxResults = 5, includeDomains = [] } =
 async function embed({ texts, model = 'voyage/voyage-3-large' } = {}) {
   await _loadKeysFromDB();
   const list = Array.isArray(texts) ? texts : [texts];
-  const DIM = 1024; // TODO: уточнить размерность voyage-3-large в routerai
+  const DIM = 1024;
   if (isStubMode()) {
     // Детерминированный псевдо-вектор по длине строки — стабилен между прогонами.
     return list.map((t) => {
@@ -1315,7 +1315,7 @@ async function embed({ texts, model = 'voyage/voyage-3-large' } = {}) {
   }
   if (!OPENAI_API_KEY) throw new AIProviderError({ code: 'auth', providerMessage: 'OPENAI_API_KEY не настроен для embeddings' });
 
-  // routerai — OpenAI-совместимый embeddings endpoint.
+  // routerai/tokenator — OpenAI-совместимый embeddings endpoint.
   // OPENAI_URL указывает на /chat/completions — заменяем хвост на /embeddings.
   const embUrl = OPENAI_URL.replace(/\/chat\/completions\/?$/, '/embeddings');
   const controller = new AbortController();
@@ -1328,6 +1328,16 @@ async function embed({ texts, model = 'voyage/voyage-3-large' } = {}) {
       signal: controller.signal
     });
     if (!res.ok) {
+      // GRACEFUL: 503 «Model temporarily unavailable» (актуально для токенатора 06.2026:
+      // text-embedding-3-large и voyage-3-large временно offline). Вместо краша возвращаем
+      // массив null'ов — searchNorms() в norms-index.js при пустой mimir_norms_index
+      // не ходит сюда вовсе, но если кто-то всё же позвал embed() напрямую — он получит
+      // null-вектор и должен это переварить (фолбэк на текстовый ILIKE-поиск).
+      // 401/403 НЕ глушим — это конфиг-ошибка, должна быть видимой.
+      if (res.status === 503 || res.status === 502 || res.status === 504) {
+        console.warn(`[AI Provider] embed() ${res.status} «Model temporarily unavailable» — отдаём null-векторы (RAG fallback)`);
+        return list.map(() => null);
+      }
       const errText = await res.text();
       const code = _classifyHttpError(res.status, errText);
       throw new AIProviderError({ code, status: res.status, providerMessage: _extractProviderMessage(errText), body: errText.substring(0, 1000) });
@@ -1335,6 +1345,13 @@ async function embed({ texts, model = 'voyage/voyage-3-large' } = {}) {
     const data = await res.json();
     // OpenAI-совместимый формат: { data: [{ embedding: [...] }, ...] }
     return (data.data || []).map(d => d.embedding);
+  } catch (e) {
+    // Сетевая ошибка / таймаут — тоже не валим Conductor, отдаём null-векторы
+    if (e && e.name === 'AbortError') {
+      console.warn('[AI Provider] embed() timeout — отдаём null-векторы (RAG fallback)');
+      return list.map(() => null);
+    }
+    throw e;
   } finally {
     clearTimeout(timeoutId);
   }
