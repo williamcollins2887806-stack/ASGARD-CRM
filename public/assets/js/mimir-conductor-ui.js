@@ -99,6 +99,14 @@
     return true;
   }
 
+  // ─────────── localStorage persistence ───────────
+  const LS_LAST_RUN = 'mc_last_run_id';
+  const LS_LAST_EVT = 'mc_last_event_id_';
+  function lsGetLastRun() { try { return parseInt(localStorage.getItem(LS_LAST_RUN), 10) || null; } catch (_) { return null; } }
+  function lsSetLastRun(id) { try { localStorage.setItem(LS_LAST_RUN, String(id)); } catch (_) { /* noop */ } }
+  function lsGetLastEvt(runId) { try { return parseInt(localStorage.getItem(LS_LAST_EVT + runId), 10) || 0; } catch (_) { return 0; } }
+  function lsSetLastEvt(runId, evtId) { try { localStorage.setItem(LS_LAST_EVT + runId, String(evtId)); } catch (_) { /* noop */ } }
+
   // ─────────── Инициализация ───────────
   async function init() {
     if (!checkAccess()) return;
@@ -126,10 +134,15 @@
       }
     }
 
+    // Если run_id не задан — показываем список «Мои просчёты» вместо ошибки.
     if (!state.runId) {
-      $('mc-run-title').textContent = 'Не задан run_id или work_id';
+      await showRunPicker();
       return;
     }
+
+    // Восстанавливаем точку после которой получать события (для SSE since_event_id)
+    state.lastEventId = lsGetLastEvt(state.runId);
+    lsSetLastRun(state.runId);
 
     await loadRunDetails();
     renderAgentList();
@@ -181,7 +194,10 @@
     state.eventSource.onmessage = (ev) => {
       let event;
       try { event = JSON.parse(ev.data); } catch (_) { return; }
-      if (event && event.id) state.lastEventId = Number(event.id);
+      if (event && event.id) {
+        state.lastEventId = Number(event.id);
+        lsSetLastEvt(state.runId, state.lastEventId);
+      }
       handleEvent(event);
     };
 
@@ -1032,6 +1048,60 @@
   function updateRunStatusPill(status) {
     const pill = $('mc-status');
     if (pill && status) { pill.textContent = status; pill.dataset.status = status; pill.classList.remove('mc-status-live'); }
+  }
+
+  // ─────────── Список «Мои просчёты» (когда run_id не задан) ───────────
+  async function showRunPicker() {
+    const title = $('mc-run-title');
+    if (title) title.textContent = 'Мои просчёты';
+    const lastRunId = lsGetLastRun();
+    try {
+      const resp = await authFetch(`${API}/my-runs?limit=30`);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      const runs = data.runs || [];
+      const ACTIVE = new Set(['DRAFT', 'RUNNING', 'CONSOLIDATING', 'BLOCKED_BY_PM', 'BLOCKED_BY_CUSTOMER']);
+      const active = runs.filter((r) => ACTIVE.has(r.status));
+      const finished = runs.filter((r) => !ACTIVE.has(r.status));
+      const card = (r) => {
+        const name = r.tender_title || r.work_title || `Просчёт #${r.id}`;
+        const customer = r.customer_name || r.work_customer || '';
+        const isLast = lastRunId && Number(r.id) === Number(lastRunId);
+        const lastTag = isLast ? '<span class="mc-pick-last">⏵ был открыт последним</span>' : '';
+        const blockTag = r.open_blockers > 0
+          ? `<span class="mc-pick-blockers">⛔ ${r.open_blockers} блокер${r.open_blockers === 1 ? '' : 'ов'} ждут вас</span>` : '';
+        const progress = `${r.agents_done || 0} агентов · ${fmtCost(r.total_cost_rub)}`;
+        return `
+          <a class="mc-pick-card mc-pick-${(r.status || '').toLowerCase()}" href="?run_id=${r.id}">
+            <div class="mc-pick-head">
+              <span class="mc-pick-status" data-status="${r.status}">${r.status}</span>
+              ${lastTag}${blockTag}
+            </div>
+            <div class="mc-pick-name">${esc(name.substring(0, 80))}</div>
+            <div class="mc-pick-meta">${esc(customer)} · ${progress}</div>
+            <div class="mc-pick-time">обновлён: ${new Date(r.updated_at || r.created_at).toLocaleString('ru-RU')}</div>
+          </a>`;
+      };
+      const html = `
+        <div class="mc-picker">
+          <div class="mc-pick-section">
+            <h3>🟢 Активные (${active.length})</h3>
+            ${active.length ? active.map(card).join('') : '<div class="mc-pick-empty">Нет активных просчётов — запустите со страницы работы или тендера.</div>'}
+          </div>
+          ${finished.length ? `
+          <div class="mc-pick-section">
+            <h3>✅ Завершённые (${finished.length})</h3>
+            ${finished.slice(0, 10).map(card).join('')}
+          </div>` : ''}
+        </div>`;
+      const main = document.querySelector('.mc-main') || document.body;
+      const picker = document.createElement('div');
+      picker.id = 'mc-run-picker';
+      picker.innerHTML = html;
+      main.appendChild(picker);
+    } catch (e) {
+      toast('Ошибка', `Не удалось загрузить просчёты: ${e.message}`, 'err');
+    }
   }
 
   // ─────────── Запуск ───────────

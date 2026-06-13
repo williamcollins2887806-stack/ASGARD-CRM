@@ -93,12 +93,25 @@ async function run({ requiredArtifacts, onThought }) {
     }
   }
   if (unresolved.length === legs.length) {
+    // Структура: РП заполнит ставку ₽/км для типов транспорта (применится ко всем плечам этого типа)
+    const transportsNeeded = [...new Set(legs.map((l) => l.transport))].filter(Boolean);
+    const TRANS_LABELS = { plane: 'Авиа', train: 'РЖД (купе)', auto: 'Авто (ГСМ)', unknown: 'Трансфер' };
+    const expected_inputs = transportsNeeded.map((t) => ({
+      key: `rate_${t}`,
+      label: `Ставка "${TRANS_LABELS[t] || t}" (₽/км)`,
+      type: 'number', unit: '₽/км',
+      hint: `Стоимость 1 км ${TRANS_LABELS[t] || t}. Например авиа ~4₽/км, РЖД ~3.5₽/км, авто ГСМ ~12₽/км. Сохранится в reference_norms.travel_rates_rub_per_km.${t}.`,
+      target: `reference_norms.travel_rates_rub_per_km.${t}`
+    }));
     return {
       summary: 'BLOCKED: цены билетов не найдены ни в эталонах, ни через web search',
       key_findings: unresolved.map((s) => `BLOCKER: цена не определена — ${s}`),
       legs: [], total_travel: 0,
-      clarifications: [{ channel: 'PM', category: 'travel', blocking: true,
-        question_ru: `Не удалось определить цены билетов для плеч: ${unresolved.join('; ')}. Заполните travel_rates_rub_per_km.* в applicable_norms или дайте конкретные цены билетов.` }]
+      clarifications: [{
+        channel: 'PM', category: 'travel', blocking: true,
+        question_ru: `Не удалось определить цены билетов для плеч: ${unresolved.join('; ')}. Укажите ставки ₽/км.`,
+        expected_inputs
+      }]
     };
   }
 

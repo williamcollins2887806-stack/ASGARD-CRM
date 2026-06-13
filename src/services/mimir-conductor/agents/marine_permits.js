@@ -64,14 +64,36 @@ async function run({ requiredArtifacts, input, onThought }) {
     }
   }
   if (missing.length) {
+    const PERMIT_LABELS = {
+      bmpvo: 'БМПВО (безопасность на море)', utm: 'УТМ (морская медкомиссия)',
+      mlsp: 'Допуск на МЛСП/платформу', siz: 'Сертификация СИЗ морских работ'
+    };
+    const expected_inputs = missing.map((k) => {
+      const parts = k.split('.'); // marine_permits.bmpvo.cost_rub
+      const permitKey = parts[1];
+      const field = parts[2];
+      const isCost = field === 'cost_rub';
+      return {
+        key: `${permitKey}_${field}`,
+        label: `${PERMIT_LABELS[permitKey] || permitKey} — ${isCost ? 'стоимость ₽/чел' : 'срок оформления (дн)'}`,
+        type: 'number', unit: isCost ? '₽' : 'дн',
+        hint: isCost
+          ? `Стоимость допуска "${permitKey}" на одного человека. Сохранится для будущих морских проектов.`
+          : `Срок оформления "${permitKey}" в днях.`,
+        target: `reference_norms.${k}`
+      };
+    });
     return {
       summary: 'BLOCKED: морские допуски — нет цен/сроков в эталонах',
       key_findings: missing.map((k) => `BLOCKER: ${k}`),
       permits: [], total_marine: 0, lead_time_days: 0, crew_count: crewCount,
       _source_tiers: { missing },
-      assumptions: [`Заполните marine_permits.* в applicable_norms эталона или загрузите подходящий эталон с морскими работами.`],
-      clarifications: [{ channel: 'PM', category: 'marine_permits', blocking: true,
-        question_ru: `Нет морских допусков в эталонах: ${missing.join(', ')}. Внесите цены/сроки в applicable_norms эталона морского/шельфового проекта.` }]
+      assumptions: [`Заполните прямо здесь — значения сохранятся в reference_norms для будущих морских проектов.`],
+      clarifications: [{
+        channel: 'PM', category: 'marine_permits', blocking: true,
+        question_ru: `Нет морских допусков в эталонах: ${missing.join(', ')}. Заполните прямо здесь.`,
+        expected_inputs
+      }]
     };
   }
   const totalMarine = permits.reduce((s, p) => s + p.cost, 0);

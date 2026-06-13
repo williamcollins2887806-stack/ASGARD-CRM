@@ -40,14 +40,32 @@ async function run({ requiredArtifacts, onThought }) {
   if (strictExtra.value == null) missing.push('strict_extra_days');
   if (weldingExtra.value == null) missing.push('welding_extra_days');
   if (missing.length) {
+    const FIELD_MAP = {
+      writer_rate_rub_per_day: { key: 'writer_rate', label: 'Ставка техписателя (₽/день)', type: 'number', unit: '₽',
+        hint: 'Дневная ставка технического писателя на подготовку исполнительной документации.',
+        target: 'reference_norms.executive_docs.writer_rate_rub_per_day' },
+      base_days: { key: 'base_days', label: 'Базовый объём ИД (дней)', type: 'number', unit: 'дн',
+        hint: 'Сколько дней техписателя на стандартный комплект ИД (типовой проект без сложностей).',
+        target: 'reference_norms.executive_docs.base_days' },
+      strict_extra_days: { key: 'strict_extra_days', label: 'Доп. дни на строгого заказчика', type: 'number', unit: 'дн',
+        hint: 'Сколько лишних дней техписателя добавлять для строгих заказчиков (Газпром, Транснефть и т.п.).',
+        target: 'reference_norms.executive_docs.strict_extra_days' },
+      welding_extra_days: { key: 'welding_extra_days', label: 'Доп. дни при сварке/монтаже', type: 'number', unit: 'дн',
+        hint: 'Сколько лишних дней техписателя при наличии сварных работ (журналы, паспорта стыков).',
+        target: 'reference_norms.executive_docs.welding_extra_days' }
+    };
+    const expected_inputs = missing.map((k) => FIELD_MAP[k]).filter(Boolean);
     return {
       summary: 'BLOCKED: нормы исполнительной документации не найдены в эталонах',
-      key_findings: missing.map((k) => `BLOCKER: executive_docs.${k} отсутствует в applicable_norms`),
+      key_findings: missing.map((k) => `BLOCKER: executive_docs.${k} отсутствует`),
       writer_days: 0, writer_rate: 0, docs_cost: 0, doc_types: [],
       _source_tiers: { missing },
-      assumptions: ['Заполните executive_docs.* в applicable_norms эталона mimir_reference_projects.'],
-      clarifications: [{ channel: 'PM', category: 'executive_docs', blocking: true,
-        question_ru: `Нет норм исполнительной документации в эталонах: ${missing.join(', ')}. Внесите в applicable_norms эталона или подгрузите релевантный эталон в mimir_reference_projects.` }]
+      assumptions: ['Заполните прямо здесь — данные сохранятся в reference_norms и просчёт продолжится.'],
+      clarifications: [{
+        channel: 'PM', category: 'executive_docs', blocking: true,
+        question_ru: `Нет норм исполнительной документации: ${missing.join(', ')}. Заполните прямо здесь.`,
+        expected_inputs
+      }]
     };
   }
 

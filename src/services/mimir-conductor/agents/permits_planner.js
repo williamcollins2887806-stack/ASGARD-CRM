@@ -96,12 +96,22 @@ async function run({ requiredArtifacts, onThought }) {
     }
   }
   if (missing.length) {
+    const expected_inputs = missing.map((p) => ({
+      key: `cost_${String(p).toLowerCase().replace(/[^а-яa-z0-9]/g, '_')}`,
+      label: `Стоимость обучения "${p}" (₽/чел)`,
+      type: 'number', unit: '₽',
+      hint: `Сколько стоит обучить одного человека на допуск "${p}". Сохранится в reference_norms.training_costs_rub_per_permit.<категория> и будет применяться для будущих просчётов.`,
+      target: `reference_norms.training_costs_rub_per_permit.${String(p).toLowerCase().split(/[\s(]+/)[0]}`
+    }));
     return {
       summary: 'BLOCKED: стоимости обучения не найдены в эталонах',
       key_findings: missing.map((p) => `BLOCKER: training_costs_rub_per_permit для "${p}" не найдено`),
       have, to_train: [], to_hire_external: [], total_training_cost: 0,
-      clarifications: [{ channel: 'PM', category: 'permits', blocking: true,
-        question_ru: `Нет стоимостей обучения по допускам в эталонах: ${missing.join('; ')}. Заполните training_costs_rub_per_permit.* в applicable_norms эталона.` }]
+      clarifications: [{
+        channel: 'PM', category: 'permits', blocking: true,
+        question_ru: `Нет стоимостей обучения по допускам: ${missing.join('; ')}. Заполните прямо здесь.`,
+        expected_inputs
+      }]
     };
   }
 

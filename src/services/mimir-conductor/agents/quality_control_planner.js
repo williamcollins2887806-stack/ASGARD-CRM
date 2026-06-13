@@ -68,14 +68,34 @@ async function run({ requiredArtifacts, onThought }) {
   const jointsResult = estimateJoints(resources, requiredArtifacts);
   if (jointsResult.missing) missing.push(jointsResult.missing);
   if (missing.length) {
+    const FIELD_MAP = {
+      'nk_prices_rub.vik_per_joint': { key: 'vik_price', label: 'Цена ВИК (₽/стык)', type: 'number', unit: '₽',
+        hint: 'Стоимость визуально-измерительного контроля одного сварного стыка.', target: 'reference_norms.nk_prices_rub.vik_per_joint' },
+      'nk_prices_rub.uzk_per_joint': { key: 'uzk_price', label: 'Цена УЗК (₽/стык)', type: 'number', unit: '₽',
+        hint: 'Стоимость ультразвукового контроля одного стыка.', target: 'reference_norms.nk_prices_rub.uzk_per_joint' },
+      'nk_prices_rub.rk_per_joint': { key: 'rk_price', label: 'Цена РК (₽/стык)', type: 'number', unit: '₽',
+        hint: 'Стоимость радиографического контроля одного стыка.', target: 'reference_norms.nk_prices_rub.rk_per_joint' },
+      'nk_percent.vik': { key: 'vik_pct', label: 'Доля ВИК (от стыков)', type: 'number', unit: '0..1',
+        hint: 'Какая доля стыков подвергается ВИК (например 1.0 = 100%).', target: 'reference_norms.nk_percent.vik' },
+      'nk_percent.uzk': { key: 'uzk_pct', label: 'Доля УЗК (от стыков)', type: 'number', unit: '0..1',
+        hint: 'Какая доля стыков подвергается УЗК (например 0.2 = 20%).', target: 'reference_norms.nk_percent.uzk' },
+      'nk_percent.rk': { key: 'rk_pct', label: 'Доля РК (от стыков)', type: 'number', unit: '0..1',
+        hint: 'Какая доля стыков подвергается РК (например 0.1 = 10%).', target: 'reference_norms.nk_percent.rk' },
+      'nk_joints_per_meter': { key: 'joints_per_meter', label: 'Стыков на метр трубы', type: 'number', unit: 'стык/м',
+        hint: 'Среднее число сварных стыков на метр трубы (типично 1/12 ≈ 0.083).', target: 'reference_norms.nk_joints_per_meter' }
+    };
+    const expected_inputs = missing.map((k) => FIELD_MAP[k]).filter(Boolean);
     return {
       summary: 'BLOCKED: цены/проценты НК не найдены в эталонах',
       key_findings: missing.map((k) => `BLOCKER: ${k}`),
       joints: 0, methods: [], total_qc: 0,
       _source_tiers: { missing },
-      assumptions: ['Заполните nk_prices_rub.* и nk_percent.* в applicable_norms эталона.'],
-      clarifications: [{ channel: 'PM', category: 'qc', blocking: true,
-        question_ru: `Нет норм НК в эталонах: ${missing.join(', ')}. Загрузите эталон с НК или заполните applicable_norms существующего.` }]
+      assumptions: ['Заполните прямо в форме — данные сохранятся в reference_norms и просчёт продолжится.'],
+      clarifications: [{
+        channel: 'PM', category: 'qc', blocking: true,
+        question_ru: `Нет норм НК в эталонах: ${missing.join(', ')}. Заполните прямо здесь.`,
+        expected_inputs
+      }]
     };
   }
   const joints = jointsResult.joints;

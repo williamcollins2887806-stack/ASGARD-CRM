@@ -558,6 +558,48 @@ async function mimirConductorRoutes(fastify, options) {
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // GET /conductor/my-runs — список последних просчётов пользователя со статусом.
+  // Используется UI для "продолжить просчёт" при возврате на conductor-estimate.html.
+  // PM видит только свои, директор/админ — все. Сортировка по updated_at DESC.
+  // ═══════════════════════════════════════════════════════════════════════════
+  fastify.get('/conductor/my-runs', {
+    preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
+  }, async (request, reply) => {
+    const db = fastify.db;
+    const isPM = request.user.role === 'PM';
+    const limit = Math.min(Number(request.query.limit) || 20, 100);
+    try {
+      const params = [];
+      let whereClause = '';
+      if (isPM) {
+        whereClause = 'WHERE initiated_by = $1';
+        params.push(request.user.id);
+      }
+      params.push(limit);
+      const { rows } = await db.query(
+        `SELECT r.id, r.tender_id, r.work_id, r.status, r.profile,
+                r.contract_value, r.total_cost_rub, r.created_at, r.updated_at,
+                r.completed_at, r.blocked_reason,
+                t.tender_title, t.customer_name,
+                w.work_title, w.customer_name AS work_customer,
+                (SELECT count(*)::int FROM mimir_agent_runs WHERE conductor_run_id=r.id AND status='SUCCESS') AS agents_done,
+                (SELECT count(*)::int FROM mimir_clarifications WHERE conductor_run_id=r.id AND status='OPEN' AND blocking=true) AS open_blockers
+           FROM mimir_conductor_runs r
+           LEFT JOIN tenders t ON t.id = r.tender_id
+           LEFT JOIN works w ON w.id = r.work_id
+           ${whereClause}
+          ORDER BY r.updated_at DESC NULLS LAST, r.id DESC
+          LIMIT $${params.length}`,
+        params
+      );
+      return { runs: rows };
+    } catch (e) {
+      request.log.error(`[my-runs] ${e.message}`);
+      return reply.code(500).send({ error: e.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // POST /conductor/clarification/:id/answer-with-norms — структурированный ввод
   // нормативов прямо из War Room. РП видит expected_inputs[], заполняет поля,
   // данные пишутся в нужное хранилище (settings.company_profile / field_tariff_grid
