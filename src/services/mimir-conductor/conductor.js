@@ -133,6 +133,13 @@ async function pauseRunForCustomer(runId, clarificationResult) {
  * @param {Object} [opts]
  */
 async function runConductor(runId, opts = {}) {
+  // PRODUCTION-режим: детерминированный pipeline из 29 шагов (повторяемость 5/5).
+  // Включается env-переменной MIMIR_DETERMINISTIC_PIPELINE=true ИЛИ opts.mode='deterministic'.
+  if (process.env.MIMIR_DETERMINISTIC_PIPELINE === 'true' || opts.mode === 'deterministic') {
+    const { runDeterministic } = require('./deterministic-conductor');
+    return runDeterministic(runId, opts);
+  }
+
   // Дебаг-fallback: старый детерминированный путь Сессии 2.
   if (process.env.MIMIR_FORCE_DETERMINISTIC === 'true') {
     return runConductorDeterministic(runId, opts);
