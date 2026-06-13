@@ -245,6 +245,22 @@ async function mimirConductorRoutes(fastify, options) {
     if (!canAccessRun(request.user, details.run)) {
       return reply.code(403).send({ error: 'Нет доступа к этому просчёту' });
     }
+    // Required-агенты для прогресс-бара UI
+    try {
+      const hardRules = require('../services/mimir-conductor/hard-rules');
+      const tzArt = (details.artifacts || []).find((a) => a.artifact_type === 'tz_summary');
+      const tzSummary = tzArt ? tzArt.content : null;
+      const required = hardRules.getRequiredAgents(tzSummary, details.run.contract_value, details.run.complexity_flags || {});
+      const successAgents = (details.agent_runs || [])
+        .filter((ar) => ar.status === 'SUCCESS')
+        .map((ar) => ar.agent_name);
+      const completedRequired = required.filter((a) => successAgents.includes(a));
+      details.progress = {
+        required_agents: required,
+        completed_required: completedRequired,
+        progress_pct: required.length ? Math.round((completedRequired.length / required.length) * 100) : 0
+      };
+    } catch (e) { /* progress не критичен */ }
     return details;
   });
 
@@ -592,9 +608,66 @@ async function mimirConductorRoutes(fastify, options) {
           LIMIT $${params.length}`,
         params
       );
+      // queue_position для WAITING_FOR_SLOT (по FIFO created_at среди ожидающих)
+      const waitingIds = rows.filter((r) => r.status === 'WAITING_FOR_SLOT').map((r) => r.id);
+      let queueMap = {};
+      if (waitingIds.length) {
+        const q = await db.query(
+          `SELECT id, ROW_NUMBER() OVER (ORDER BY created_at ASC)::int AS pos
+             FROM mimir_conductor_runs
+            WHERE status='WAITING_FOR_SLOT'`
+        );
+        for (const r of q.rows) queueMap[r.id] = r.pos;
+      }
+      for (const r of rows) {
+        if (r.status === 'WAITING_FOR_SLOT') r.queue_position = queueMap[r.id] || null;
+      }
       return { runs: rows };
     } catch (e) {
       request.log.error(`[my-runs] ${e.message}`);
+      return reply.code(500).send({ error: e.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // POST /conductor/run/:id/cancel — РП останавливает свой просчёт.
+  // RBAC: PM только свой, DIRECTOR/ADMIN — любой. Терминальные статусы не
+  // отменяются (READY_FOR_REVIEW, APPROVED, REJECTED, CANCELLED, ERROR, COMPLETED).
+  // ═══════════════════════════════════════════════════════════════════════════
+  fastify.post('/conductor/run/:id/cancel', {
+    preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
+  }, async (request, reply) => {
+    const runId = Number(request.params.id);
+    if (!runId) return reply.code(400).send({ error: 'bad run id' });
+    const db = fastify.db;
+    try {
+      const { rows } = await db.query('SELECT id, status, initiated_by FROM mimir_conductor_runs WHERE id=$1', [runId]);
+      const run = rows[0];
+      if (!run) return reply.code(404).send({ error: 'Просчёт не найден' });
+      if (request.user.role === 'PM' && run.initiated_by && Number(run.initiated_by) !== Number(request.user.id)) {
+        return reply.code(403).send({ error: 'Нет доступа к чужому просчёту' });
+      }
+      const terminal = new Set(['READY_FOR_REVIEW', 'APPROVED', 'REJECTED', 'CANCELLED', 'ERROR', 'COMPLETED']);
+      if (terminal.has(run.status)) {
+        return reply.code(409).send({ error: `Просчёт уже завершён (${run.status})` });
+      }
+      await db.query(
+        `UPDATE mimir_conductor_runs
+            SET status='CANCELLED', completed_at=NOW(), updated_at=NOW(),
+                blocked_reason=COALESCE(blocked_reason, $1)
+          WHERE id=$2`,
+        [`Отменён пользователем #${request.user.id} (${request.user.role})`, runId]
+      );
+      try {
+        await db.query(
+          `INSERT INTO mimir_agent_events (conductor_run_id, agent_run_id, event_type, payload)
+           VALUES ($1, NULL, 'status_change', $2::jsonb)`,
+          [runId, JSON.stringify({ from: run.status, to: 'CANCELLED', reason: 'user_cancel', by: request.user.id })]
+        );
+      } catch (_) { /* noop */ }
+      return { ok: true, run_id: runId, status: 'CANCELLED', from: run.status };
+    } catch (e) {
+      request.log.error(`[cancel] ${e.message}`);
       return reply.code(500).send({ error: e.message });
     }
   });

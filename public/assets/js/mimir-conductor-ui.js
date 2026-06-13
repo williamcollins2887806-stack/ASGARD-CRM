@@ -290,6 +290,32 @@
     if (!status) return;
     const pill = $('mc-status');
     if (pill) { pill.textContent = status; pill.dataset.status = status; }
+    // Cancel-кнопка: показываем только для активных статусов
+    const cancelBtn = $('mc-cancel-run');
+    if (cancelBtn) {
+      const ACTIVE = new Set(['DRAFT', 'RUNNING', 'CONSOLIDATING', 'BLOCKED_BY_PM', 'BLOCKED_BY_CUSTOMER', 'WAITING_FOR_SLOT']);
+      cancelBtn.style.display = ACTIVE.has(status) ? '' : 'none';
+      if (!cancelBtn.dataset.bound) {
+        cancelBtn.dataset.bound = '1';
+        cancelBtn.addEventListener('click', async () => {
+          if (!confirm('Прервать просчёт? Восстановить не получится — придётся запускать заново.')) return;
+          cancelBtn.disabled = true;
+          cancelBtn.textContent = 'Прерываю…';
+          try {
+            const resp = await authFetch(`${API}/run/${state.runId}/cancel`, { method: 'POST' });
+            if (!resp.ok) {
+              const e = await resp.json().catch(() => ({}));
+              throw new Error(e.error || `HTTP ${resp.status}`);
+            }
+            toast('Прервано', 'Просчёт остановлен', 'ok');
+          } catch (e) {
+            cancelBtn.disabled = false;
+            cancelBtn.textContent = '🛑 Прервать';
+            toast('Ошибка', e.message, 'err');
+          }
+        });
+      }
+    }
     if (TERMINAL_RUN_STATUSES.has(status)) onRunComplete(status);
   }
   function setGlobalCost(rub) {
@@ -298,13 +324,27 @@
   }
 
   function refreshProgress() {
-    // Грубый прогресс: доля SUCCESS-агентов от запущенных + 1 (conductor).
-    const agents = [...state.agents.values()].filter((a) => a.agent_name !== 'conductor');
-    const total = Math.max(agents.length, 1);
-    const done = agents.filter((a) => a.status === 'SUCCESS').length;
+    // Прогресс по обязательным агентам (hard-rules): N из M.
+    const required = (state.run && state.run.progress && state.run.progress.required_agents) || [];
+    const successNames = new Set(
+      [...state.agents.values()].filter((a) => a.status === 'SUCCESS').map((a) => a.agent_name)
+    );
+    let total, done, label;
+    if (required.length) {
+      const completedReq = required.filter((a) => successNames.has(a));
+      total = required.length;
+      done = completedReq.length;
+      label = `${done}/${total} обяз.`;
+    } else {
+      // Фолбэк (старая логика): все агенты кроме conductor
+      const agents = [...state.agents.values()].filter((a) => a.agent_name !== 'conductor');
+      total = Math.max(agents.length, 1);
+      done = agents.filter((a) => a.status === 'SUCCESS').length;
+      label = `${done}/${total}`;
+    }
     const pct = Math.min(100, Math.round((done / total) * 100));
     const fill = $('mc-progress-fill'); if (fill) fill.style.width = `${pct}%`;
-    const txt = $('mc-progress-text'); if (txt) txt.textContent = `${pct}%`;
+    const txt = $('mc-progress-text'); if (txt) txt.textContent = `${label} · ${pct}%`;
 
     // Сводка точного учёта: сколько агентов реально звонили AI vs stub
     const live = agents.filter((a) => a.mode === 'live' && (a.ai_calls || 0) > 0).length;
@@ -1060,9 +1100,10 @@
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
       const runs = data.runs || [];
-      const ACTIVE = new Set(['DRAFT', 'RUNNING', 'CONSOLIDATING', 'BLOCKED_BY_PM', 'BLOCKED_BY_CUSTOMER']);
+      const ACTIVE = new Set(['DRAFT', 'RUNNING', 'CONSOLIDATING', 'BLOCKED_BY_PM', 'BLOCKED_BY_CUSTOMER', 'WAITING_FOR_SLOT']);
       const active = runs.filter((r) => ACTIVE.has(r.status));
       const finished = runs.filter((r) => !ACTIVE.has(r.status));
+      const ACTIVE_SET = ACTIVE;
       const card = (r) => {
         const name = r.tender_title || r.work_title || `Просчёт #${r.id}`;
         const customer = r.customer_name || r.work_customer || '';
@@ -1070,17 +1111,24 @@
         const lastTag = isLast ? '<span class="mc-pick-last">⏵ был открыт последним</span>' : '';
         const blockTag = r.open_blockers > 0
           ? `<span class="mc-pick-blockers">⛔ ${r.open_blockers} блокер${r.open_blockers === 1 ? '' : 'ов'} ждут вас</span>` : '';
+        const queueTag = (r.status === 'WAITING_FOR_SLOT' && r.queue_position)
+          ? `<span class="mc-pick-queue">⏳ В очереди #${r.queue_position}</span>` : '';
         const progress = `${r.agents_done || 0} агентов · ${fmtCost(r.total_cost_rub)}`;
+        const cancelBtn = ACTIVE_SET.has(r.status)
+          ? `<button class="mc-pick-cancel" data-cid="${r.id}" title="Прервать просчёт">🛑</button>` : '';
         return `
-          <a class="mc-pick-card mc-pick-${(r.status || '').toLowerCase()}" href="?run_id=${r.id}">
-            <div class="mc-pick-head">
-              <span class="mc-pick-status" data-status="${r.status}">${r.status}</span>
-              ${lastTag}${blockTag}
-            </div>
-            <div class="mc-pick-name">${esc(name.substring(0, 80))}</div>
-            <div class="mc-pick-meta">${esc(customer)} · ${progress}</div>
-            <div class="mc-pick-time">обновлён: ${new Date(r.updated_at || r.created_at).toLocaleString('ru-RU')}</div>
-          </a>`;
+          <div class="mc-pick-card-wrap">
+            <a class="mc-pick-card mc-pick-${(r.status || '').toLowerCase()}" href="?run_id=${r.id}">
+              <div class="mc-pick-head">
+                <span class="mc-pick-status" data-status="${r.status}">${r.status}</span>
+                ${lastTag}${blockTag}${queueTag}
+              </div>
+              <div class="mc-pick-name">${esc(name.substring(0, 80))}</div>
+              <div class="mc-pick-meta">${esc(customer)} · ${progress}</div>
+              <div class="mc-pick-time">обновлён: ${new Date(r.updated_at || r.created_at).toLocaleString('ru-RU')}</div>
+            </a>
+            ${cancelBtn}
+          </div>`;
       };
       const html = `
         <div class="mc-picker">
@@ -1099,6 +1147,23 @@
       picker.id = 'mc-run-picker';
       picker.innerHTML = html;
       main.appendChild(picker);
+      // Cancel-кнопки в карточках
+      picker.querySelectorAll('.mc-pick-cancel').forEach((btn) => {
+        btn.addEventListener('click', async (e) => {
+          e.preventDefault(); e.stopPropagation();
+          const cid = Number(btn.dataset.cid);
+          if (!confirm(`Прервать просчёт #${cid}?`)) return;
+          try {
+            const resp = await authFetch(`${API}/run/${cid}/cancel`, { method: 'POST' });
+            if (!resp.ok) {
+              const e = await resp.json().catch(() => ({}));
+              throw new Error(e.error || `HTTP ${resp.status}`);
+            }
+            toast('Прервано', `Просчёт #${cid} остановлен`, 'ok');
+            setTimeout(() => location.reload(), 500);
+          } catch (e) { toast('Ошибка', e.message, 'err'); }
+        });
+      });
     } catch (e) {
       toast('Ошибка', `Не удалось загрузить просчёты: ${e.message}`, 'err');
     }

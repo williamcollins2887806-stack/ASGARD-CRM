@@ -324,3 +324,20 @@
 .mc-pick-time { font-size: 11px; color: #999; }
 .mc-pick-empty { padding: 24px; text-align: center; color: #888; background: #f8f8f8;
   border-radius: 8px; }
+
+/* Очередь + кнопка Cancel в picker «Мои просчёты» */
+.mc-pick-card-wrap { position: relative; }
+.mc-pick-card-wrap .mc-pick-card { margin-bottom: 0; }
+.mc-pick-card-wrap { margin-bottom: 10px; }
+.mc-pick-queue { font-size: 11px; color: #856404; background: #fff3cd;
+  padding: 2px 6px; border-radius: 4px; font-weight: 500; }
+.mc-pick-cancel { position: absolute; top: 10px; right: 12px;
+  background: transparent; border: 1px solid #e0e0e0; border-radius: 50%;
+  width: 32px; height: 32px; font-size: 14px; cursor: pointer; padding: 0;
+  transition: all 0.15s ease; }
+.mc-pick-cancel:hover { background: #fee; border-color: #d9534f; color: #d9534f; transform: scale(1.05); }
+
+/* Cancel-кнопка в war-room */
+.mc-btn-danger { background: #d9534f; color: #fff; border: none; }
+.mc-btn-danger:hover { background: #c9302c; }
+.mc-btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
