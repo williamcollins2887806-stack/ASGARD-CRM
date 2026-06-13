@@ -50,6 +50,8 @@ const { parseStrictJson } = require('./_util');
 /**
  * Загружает корпоративный профиль ООО «Асгард-Сервис» из settings.company_profile.
  * Если профиля нет — возвращает {} (агент работает в общем режиме).
+ * Здесь только МЕТА (лицензии, реквизиты, политики) — оборудование/расходники/кадры
+ * подгружаются отдельно динамически из соответствующих таблиц.
  */
 async function _loadCompanyProfile() {
   try {
@@ -58,6 +60,115 @@ async function _loadCompanyProfile() {
     const raw = r.rows[0].value_json;
     return typeof raw === 'string' ? JSON.parse(raw) : raw;
   } catch (_) { return {}; }
+}
+
+/**
+ * Сводка СКЛАДА (реальные позиции на текущий момент). НЕ хардкод — SELECT из БД.
+ * Возвращает { equipment_by_category, consumables_by_category, total_equipment_count,
+ *   total_consumables_count, key_equipment_brands }.
+ * Брэнды собираются из equipment.brand — это покажет AI наши «Крот»/«Тайфун»/«НВД»
+ * не как захардкоженный список, а как реальный snapshot склада.
+ */
+async function _loadWarehouseSnapshot() {
+  const snapshot = {
+    equipment_by_category: [], consumables_by_category: [],
+    key_equipment_brands: [], total_equipment: 0, total_consumables: 0,
+    error: null
+  };
+  try {
+    // Equipment — группируем по бренду+модели для понимания «что у нас вообще есть»
+    const eqByBrand = await db.query(`
+      SELECT
+        COALESCE(NULLIF(TRIM(brand), ''), 'без бренда') AS brand,
+        COALESCE(NULLIF(TRIM(model), ''), '') AS model,
+        COUNT(*) FILTER (WHERE status NOT IN ('written_off','sold') OR status IS NULL)::int AS available_qty
+      FROM equipment
+      WHERE deleted_at IS NULL
+      GROUP BY brand, model
+      HAVING COUNT(*) FILTER (WHERE status NOT IN ('written_off','sold') OR status IS NULL) > 0
+      ORDER BY available_qty DESC
+      LIMIT 50
+    `).catch(() => ({ rows: [] }));
+    snapshot.key_equipment_brands = eqByBrand.rows.map(r => ({
+      brand: r.brand, model: r.model, available_qty: r.available_qty
+    }));
+    snapshot.total_equipment = snapshot.key_equipment_brands.reduce((s, x) => s + x.available_qty, 0);
+
+    // Equipment по категориям (если есть категории) — для AI понимания типов
+    try {
+      const eqByCat = await db.query(`
+        SELECT
+          COALESCE(c.name, 'без категории') AS category,
+          COUNT(e.*)::int AS qty
+        FROM equipment e
+        LEFT JOIN equipment_categories c ON c.id = e.category_id
+        WHERE e.deleted_at IS NULL
+          AND (e.status NOT IN ('written_off','sold') OR e.status IS NULL)
+        GROUP BY c.name
+        ORDER BY qty DESC
+        LIMIT 20
+      `);
+      snapshot.equipment_by_category = eqByCat.rows;
+    } catch (_) { /* категории могут отсутствовать */ }
+
+    // Products + stock — расходники с остатками
+    try {
+      const prodByCat = await db.query(`
+        SELECT
+          COALESCE(c.name, 'без категории') AS category,
+          COUNT(DISTINCT p.id)::int AS sku_count,
+          COALESCE(SUM(s.quantity - COALESCE(s.reserved_qty, 0)), 0)::float AS total_available_qty
+        FROM products p
+        LEFT JOIN product_categories c ON c.id = p.category_id
+        LEFT JOIN stock s ON s.product_id = p.id
+        WHERE p.deleted_at IS NULL AND p.is_active = true
+        GROUP BY c.name
+        ORDER BY sku_count DESC
+        LIMIT 20
+      `);
+      snapshot.consumables_by_category = prodByCat.rows;
+      snapshot.total_consumables = prodByCat.rows.reduce((s, x) => s + Number(x.sku_count || 0), 0);
+    } catch (_) { /* возможно нет product_categories */ }
+  } catch (e) {
+    snapshot.error = e.message;
+  }
+  return snapshot;
+}
+
+/**
+ * Сводка КАДРОВОГО РЕЗЕРВА. SELECT из employees + employee_assignments — реальные
+ * специалисты с квалификациями. Группируется по qualification_name → даёт AI
+ * понимание кого у нас сколько и каких разрядов/специальностей.
+ */
+async function _loadEmployeesSummary() {
+  const out = { by_qualification: [], total_active: 0, ready_for_dispatch: 0, error: null };
+  try {
+    const r = await db.query(`
+      SELECT
+        COALESCE(NULLIF(TRIM(qualification_name), ''), position, 'без квалификации') AS qualification,
+        qualification_grade,
+        COUNT(*)::int AS qty,
+        COUNT(*) FILTER (WHERE readiness_status = 'ready')::int AS ready,
+        ROUND(AVG(day_rate)::numeric, 0) AS avg_day_rate
+      FROM employees
+      WHERE is_active = true
+        AND lower(COALESCE(fio,'')) NOT LIKE '%тест%'
+        AND lower(COALESCE(fio,'')) NOT LIKE '%test%'
+      GROUP BY qualification, qualification_grade
+      ORDER BY qty DESC
+      LIMIT 30
+    `);
+    out.by_qualification = r.rows.map(x => ({
+      qualification: x.qualification, grade: x.qualification_grade,
+      qty: x.qty, ready_for_dispatch: x.ready,
+      avg_day_rate_rub: x.avg_day_rate != null ? Number(x.avg_day_rate) : null
+    }));
+    out.total_active = out.by_qualification.reduce((s, x) => s + x.qty, 0);
+    out.ready_for_dispatch = out.by_qualification.reduce((s, x) => s + x.ready_for_dispatch, 0);
+  } catch (e) {
+    out.error = e.message;
+  }
+  return out;
 }
 
 const SYSTEM_PROMPT_EXTRACTION = `Ты — старший инженер ООО «Асгард-Сервис», специалист
@@ -184,13 +295,20 @@ async function run({ requiredArtifacts, onThought, agentName }) {
   const docs = parsed.documents || [];
   const totalChars = docs.reduce((s, d) => s + (d.content_chars || 0), 0);
 
-  // КОРПОРАТИВНЫЙ ПРОФИЛЬ — учитываем что у нас уже есть (лицензии, оборудование,
-  // ставки, база, связи), чтобы НЕ искать в интернете того что есть, и закладывать
-  // в смету наши реальные ресурсы вместо угадывания.
-  const company = await _loadCompanyProfile();
-  const hasOwnWasteLicense = company && company.licenses_and_capabilities &&
-    company.licenses_and_capabilities.waste_disposal_license &&
-    company.licenses_and_capabilities.waste_disposal_license.has_own === true;
+  // КОРПОРАТИВНЫЙ КОНТЕКСТ — три ОТДЕЛЬНЫХ источника, не хардкод:
+  //   1) company_profile из settings — только мета (лицензии, реквизиты, политики)
+  //   2) warehouse snapshot — РЕАЛЬНЫЙ склад (equipment + products + stock) SQL'ом
+  //   3) employees summary — РЕАЛЬНЫЙ кадровый резерв SQL'ом
+  // AI получает на вход всё, видит «у нас 1239 ед. equipment, бренды X/Y/Z с qty,
+  // 985 расходников по категориям, 234 ИТР, 18 готовых к выезду» — не угадывая.
+  const [company, warehouse, employees] = await Promise.all([
+    _loadCompanyProfile(),
+    _loadWarehouseSnapshot(),
+    _loadEmployeesSummary()
+  ]);
+  const hasOwnWasteLicense = !!(company && company.licenses &&
+    company.licenses.waste_disposal &&
+    company.licenses.waste_disposal.has_own_license === true);
 
   // ── ЭТАП 1: ИЗВЛЕЧЕНИЕ из документов ──
   onThought('Этап 1/3: извлекаю работы, оборудование и ограничения из ТЗ');
@@ -252,16 +370,32 @@ async function run({ requiredArtifacts, onThought, agentName }) {
       constraints: extraction.constraints || {}
     });
 
-    // Подсказка AI: что у нашей компании уже есть — НЕ искать в интернете
-    const companyContext = company && Object.keys(company).length ? `
-КОРПОРАТИВНЫЙ ПРОФИЛЬ компании-подрядчика ООО «Асгард-Сервис»:
+    // Подсказка AI: что у нашей компании уже есть — НЕ искать в интернете.
+    // Source-of-truth: settings.company_profile + текущие SQL-snapshot склада и кадров.
+    const companyContext = `
+КОРПОРАТИВНЫЙ ПРОФИЛЬ (settings.company_profile — мета):
 ${JSON.stringify(company, null, 2)}
+
+РЕАЛЬНЫЙ СКЛАД на сегодня (SQL-snapshot из equipment + products + stock):
+- Всего единиц оборудования (не списанных): ${warehouse.total_equipment}
+- Топ-15 брендов/моделей: ${JSON.stringify((warehouse.key_equipment_brands || []).slice(0, 15))}
+- Equipment по категориям: ${JSON.stringify(warehouse.equipment_by_category || [])}
+- Расходников всего SKU: ${warehouse.total_consumables}
+- Расходники по категориям: ${JSON.stringify(warehouse.consumables_by_category || [])}
+
+РЕАЛЬНЫЙ КАДРОВЫЙ РЕЗЕРВ (SQL-snapshot из employees):
+- Всего активных сотрудников: ${employees.total_active}
+- Готовых к выезду сейчас: ${employees.ready_for_dispatch}
+- По квалификациям (с реальными ставками day_rate из employees.day_rate):
+${JSON.stringify(employees.by_qualification || [])}
 
 ВАЖНО:
 - Если у нас есть ${hasOwnWasteLicense ? 'СВОЯ ЛИЦЕНЗИЯ НА УТИЛИЗАЦИЮ — НЕ ищи сторонних утилизаторов, отметь это как наш cost-saving фактор' : 'НЕТ лицензии на утилизацию — найди лицензированных подрядчиков в регионе'}
-- Если оборудование уже в нашем парке — отметь, не ищи поставщиков
-- Если работали с похожим заказчиком — упомяни в customer_sto_research как experienced
-` : '';
+- Если требуемое оборудование УЖЕ ЕСТЬ в списке наших брендов/моделей — отметь это, не ищи поставщиков (используем своё)
+- Если требуемого оборудования НЕТ в нашем складе — найди поставщиков и цены в интернете
+- Если требуемой квалификации (по qualification) НЕТ в кадровом резерве — отметь как риск (нужно нанимать/обучать)
+- Если работали с похожим заказчиком (см. known_customers_experience) — упомяни в customer_sto_research как experienced
+`;
     try {
       const result = await aiProvider.completeWithStream({
         system: SYSTEM_PROMPT_WEB_RESEARCH,
@@ -350,16 +484,27 @@ ${JSON.stringify(company, null, 2)}
     });
   }
 
-  // Корпоративные cost-savings из профиля (визуально отметим для РП)
+  // Корпоративные cost-savings из реального snapshot (НЕ хардкод, всё из БД)
   if (hasOwnWasteLicense) {
     keyFindings.push('✅ Своя лицензия на утилизацию — экономия 5-15К ₽/т vs конкуренты, не закладываем сторонних');
   }
-  if (company && company.licenses_and_capabilities && company.licenses_and_capabilities.own_equipment_brands) {
-    keyFindings.push(`✅ Своё оборудование: ${company.licenses_and_capabilities.own_equipment_brands.join(', ')} — без аренды/субподряда`);
+  if (warehouse.total_equipment > 0) {
+    const topBrands = (warehouse.key_equipment_brands || []).slice(0, 5)
+      .map(x => `${x.brand}${x.model ? '/' + x.model : ''} (${x.available_qty} ед.)`).join(', ');
+    keyFindings.push(`✅ На складе ${warehouse.total_equipment} ед. оборудования. Топ: ${topBrands}`);
+  }
+  if (warehouse.total_consumables > 0) {
+    keyFindings.push(`✅ В каталоге ${warehouse.total_consumables} расходных SKU по ${(warehouse.consumables_by_category || []).length} категориям`);
+  }
+  if (employees.total_active > 0) {
+    keyFindings.push(`✅ Кадровый резерв: ${employees.total_active} активных сотрудников, ${employees.ready_for_dispatch} готовы к выезду сейчас`);
+  }
+  if (warehouse.error) {
+    keyFindings.push(`⚠ Ошибка чтения склада: ${warehouse.error} — Conductor работает без snapshot склада`);
   }
 
   return {
-    summary: `Фаза 0 (исследование): ${works.length} работ, ${equipment.length} оборудования. ${(webResearch.regulations_pack || []).length} НПА в регуляторике. ${hasOwnWasteLicense ? 'Утилизация — своя лицензия.' : ''} ${(webResearch.competitive_intel || []).length} конкурент-кейсов.`,
+    summary: `Фаза 0 (исследование): ${works.length} работ, ${equipment.length} оборудования. ${(webResearch.regulations_pack || []).length} НПА в регуляторике. ${hasOwnWasteLicense ? 'Утилизация — своя лицензия.' : ''} Склад: ${warehouse.total_equipment} ед. equipment + ${warehouse.total_consumables} SKU расходники. Кадры: ${employees.total_active}/${employees.ready_for_dispatch} готовы.`,
     key_findings: keyFindings,
     works,
     equipment_inventory: equipment,
@@ -369,7 +514,9 @@ ${JSON.stringify(company, null, 2)}
     documents_quality: extraction.documents_quality,
     extraction_gaps: extraction.extraction_gaps || [],
     web_research: webResearch,
-    company_profile: company, // ← следующие агенты используют как факт компании
+    company_profile: company,        // мета (settings.company_profile)
+    warehouse_snapshot: warehouse,   // реальный склад из equipment+products+stock
+    employees_summary: employees,    // реальный кадровый резерв из employees
     clarifications
   };
 }
