@@ -117,9 +117,14 @@ async function mimirConductorRoutes(fastify, options) {
 
     const runId = run.runId;
 
+    // mode из body — может быть 'deterministic' (фиксированный pipeline 29 шагов)
+    // или 'conductor' / undefined (LLM-orchestrator). Передаём дальше в runConductor.
+    const mode = String(request.body?.mode || '').toLowerCase() === 'deterministic'
+      ? 'deterministic' : 'conductor';
+
     // Fire-and-forget: не блокируем ответ. Ошибки внутри loop → статус ERROR.
     setImmediate(() => {
-      runConductor(runId).catch(async (err) => {
+      runConductor(runId, { mode }).catch(async (err) => {
         try {
           await cr.updateRunStatus(runId, 'ERROR', {
             errorMessage: String(err && err.message ? err.message : err)
