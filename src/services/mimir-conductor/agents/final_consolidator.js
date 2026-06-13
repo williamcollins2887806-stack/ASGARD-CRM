@@ -259,20 +259,44 @@ async function run({ runId, onThought }) {
   onThought('Opus 4.7 готовит инженерное обоснование…');
   const userMessage = `Собрал смету. Проверь и обоснуй.\n\n${JSON.stringify({ ssr, artifacts: allArtifacts }, null, 2)}`;
 
-  const result = await aiProvider.completeWithStream({
-    system: FINAL_SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: userMessage }],
-    model: 'opus-4-7',
-    onThought: (t) => onThought(t),
-    onText: thoughtSink((t) => onThought(t))
-  });
-
-  let analysis;
-  if (result._stub || aiProvider.isStubMode()) {
+  // До 3 попыток — opus иногда возвращает битый JSON (особенно с длинным
+  // обоснованием на русском). parseStrictJson уже делает relaxed-cleanup,
+  // но если 3 раза подряд не парсится — fallback на stub-отчёт.
+  let analysis = null;
+  let parseErr = null;
+  if (aiProvider.isStubMode()) {
     onThought('stub-режим: собираю детерминированный директорский отчёт');
     analysis = buildStubAnalysis(ssr);
   } else {
-    analysis = parseStrictJson(result.text);
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const sysPrompt = attempt === 1
+          ? FINAL_SYSTEM_PROMPT
+          : FINAL_SYSTEM_PROMPT + '\n\nКРИТИЧНО: верни ТОЛЬКО валидный JSON без markdown-ограждений, комментариев, trailing comma. Все ключи и строки в двойных кавычках.';
+        const result = await aiProvider.completeWithStream({
+          system: sysPrompt,
+          messages: [{ role: 'user', content: userMessage }],
+          model: 'opus-4-7',
+          onThought: (t) => onThought(t),
+          onText: thoughtSink((t) => onThought(t))
+        });
+        if (result._stub) { analysis = buildStubAnalysis(ssr); break; }
+        analysis = parseStrictJson(result.text);
+        if (attempt > 1) onThought(`✓ final обоснование успешно с попытки ${attempt}`);
+        break;
+      } catch (e) {
+        parseErr = e;
+        if (attempt < 3) {
+          onThought(`⚠ Обоснование упало (попытка ${attempt}): ${e.message} — повторяю с более строгим промптом`);
+          await new Promise((r) => setTimeout(r, 3000));
+        }
+      }
+    }
+    if (!analysis) {
+      onThought(`⚠ Все 3 попытки обоснования упали (${parseErr ? parseErr.message : 'unknown'}) — отдаю детерминированный отчёт`);
+      analysis = buildStubAnalysis(ssr);
+      analysis.warnings = (analysis.warnings || []).concat([`Финальное обоснование Opus не распарсилось: ${parseErr ? parseErr.message : 'unknown'}`]);
+    }
   }
 
   return {

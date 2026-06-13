@@ -414,37 +414,54 @@ ${JSON.stringify(employees.by_qualification || [])}
 - Если требуемой квалификации (по qualification) НЕТ в кадровом резерве — отметь как риск (нужно нанимать/обучать)
 - Если работали с похожим заказчиком (см. known_customers_experience) — упомяни в customer_sto_research как experienced
 `;
-    try {
-      const result = await aiProvider.completeWithStream({
-        system: SYSTEM_PROMPT_WEB_RESEARCH,
-        messages: [{ role: 'user', content: `${companyContext}\n\nИзвлечённый scope:\n${briefForResearch}\n\nПроведи веб-исследование по каждой работе и ключевому оборудованию. Учитывай корпоративный профиль (не ищи то что у нас уже есть). Используй web-plugin активно.` }],
-        model: 'sonnet-4-6',
-        maxTokens: 8000,
-        plugins: [{ id: 'web', engine: 'native', max_results: 5 }],
-        onThought
-      });
-      if (result._stub || aiProvider.isStubMode()) {
-        webResearch = {
-          works_research: (extraction.works || []).map((w) => ({
-            work_title: w.title || '?',
-            explanation: '[stub] описание работы',
-            methods: [], equipment_options: [], similar_cases: [], key_findings: []
-          })),
-          equipment_research: [], regulations_pack: [], waste_disposal: {},
-          competitive_intel: [], customer_sto_research: [],
-          logistics_considerations: {}, seasonality_factors: {},
-          key_research_findings: ['stub-режим']
-        };
-      } else {
+    // До 3 попыток: sonnet с web-plugin иногда отдаёт битый JSON (markdown
+    // вперемешку с тегами цитат). Эскалируем промпт и maxTokens.
+    let lastErr = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const sysPrompt = attempt === 1
+          ? SYSTEM_PROMPT_WEB_RESEARCH
+          : SYSTEM_PROMPT_WEB_RESEARCH + '\n\nКРИТИЧНО: верни ТОЛЬКО валидный JSON-объект. Никаких markdown-ограждений, никаких комментариев, никаких тегов <citation>. Все ключи и строки в двойных кавычках, никаких trailing comma.';
+        const result = await aiProvider.completeWithStream({
+          system: sysPrompt,
+          messages: [{ role: 'user', content: `${companyContext}\n\nИзвлечённый scope:\n${briefForResearch}\n\nПроведи веб-исследование по каждой работе и ключевому оборудованию. Учитывай корпоративный профиль (не ищи то что у нас уже есть). Используй web-plugin активно.` }],
+          model: 'sonnet-4-6',
+          maxTokens: attempt === 1 ? 8000 : 10000,
+          plugins: [{ id: 'web', engine: 'native', max_results: 5 }],
+          onThought
+        });
+        if (result._stub || aiProvider.isStubMode()) {
+          webResearch = {
+            works_research: (extraction.works || []).map((w) => ({
+              work_title: w.title || '?',
+              explanation: '[stub] описание работы',
+              methods: [], equipment_options: [], similar_cases: [], key_findings: []
+            })),
+            equipment_research: [], regulations_pack: [], waste_disposal: {},
+            competitive_intel: [], customer_sto_research: [],
+            logistics_considerations: {}, seasonality_factors: {},
+            key_research_findings: ['stub-режим']
+          };
+          break;
+        }
         webResearch = parseStrictJson(result.text);
+        if (attempt > 1) onThought(`✓ Веб-ресёрч успешно с попытки ${attempt}`);
+        break;
+      } catch (e) {
+        lastErr = e;
+        if (attempt < 3) {
+          onThought(`⚠ Веб-ресёрч упал (попытка ${attempt}): ${e.message} — повторяю с более строгим промптом`);
+          await new Promise((r) => setTimeout(r, 3000));
+        }
       }
-    } catch (e) {
-      onThought(`⚠ Веб-ресёрч упал: ${e.message} — без internet-исследования`);
+    }
+    if (!webResearch) {
+      onThought(`⚠ Все 3 попытки веб-ресёрча упали: ${lastErr ? lastErr.message : 'unknown'} — продолжаю без internet-исследования`);
       webResearch = {
         works_research: [], equipment_research: [], regulations_pack: [],
         waste_disposal: {}, competitive_intel: [], customer_sto_research: [],
         logistics_considerations: {}, seasonality_factors: {},
-        key_research_findings: [`Ошибка веб-поиска: ${e.message}`]
+        key_research_findings: [`Веб-ресёрч недоступен: ${lastErr ? lastErr.message : 'parse failed 3 times'}`]
       };
     }
   }
