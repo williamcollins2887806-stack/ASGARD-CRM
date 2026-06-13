@@ -1725,7 +1725,7 @@ function generateStubToolUses(messages, ctx = {}) {
 async function completeWithStream(p = {}) {
   const {
     system, messages, model, tools = null, tool_choice = 'auto',
-    stubCtx = {}, maxTokens,
+    stubCtx = {}, maxTokens, temperature,
     onThought = () => {}, onText = () => {}, onToolCall = () => {}
   } = p;
   await _loadKeysFromDB();
@@ -1782,6 +1782,7 @@ async function completeWithStream(p = {}) {
       messages: _messagesToOpenAI(messages),
       model,
       maxTokens,
+      temperature,
       tools: _toolsToOpenAI(tools),
       // tool_choice пробрасываем в body через отдельное поле ниже
     });
@@ -1824,7 +1825,7 @@ async function completeWithStream(p = {}) {
   }
 
   // ── LIVE без tools — прежний текстовый стриминг (обратная совместимость).
-  const response = await stream({ system, messages, model });
+  const response = await stream({ system, messages, model, temperature, maxTokens });
   const provider = getProvider();
   let fullText = '';
   let usage = { inputTokens: 0, outputTokens: 0 };

@@ -114,7 +114,8 @@ async function aiCompleteJson(aiProvider, opts, retryOpts = {}) {
   const strictExtra = '\n\nКРИТИЧНО: верни ТОЛЬКО валидный JSON-объект. Без markdown-ограждений (`json), без комментариев, без trailing comma. Все ключи и строки в двойных кавычках. Никаких тегов цитат.';
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const callOpts = { ...opts, system: attempt === 1 ? originalSystem : originalSystem + strictExtra };
+      // temperature=0 для детерминированных просчётов Conductor — 5 одинаковых ранов на одном и том же ТЗ
+      const callOpts = { ...opts, system: attempt === 1 ? originalSystem : originalSystem + strictExtra, temperature: opts.temperature ?? 0 };
       const result = await aiProvider.completeWithStream(callOpts);
       if (result._stub || aiProvider.isStubMode()) {
         return { _stub: true, _result: result };
