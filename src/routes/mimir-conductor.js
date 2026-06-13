@@ -558,6 +558,170 @@ async function mimirConductorRoutes(fastify, options) {
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // POST /conductor/clarification/:id/answer-with-norms — структурированный ввод
+  // нормативов прямо из War Room. РП видит expected_inputs[], заполняет поля,
+  // данные пишутся в нужное хранилище (settings.company_profile / field_tariff_grid
+  // / settings.reference_norms / tz_summary) и clarification закрывается.
+  // Тело: { values: { <expected_input.key>: <значение>, ... } }
+  // ═══════════════════════════════════════════════════════════════════════════
+  fastify.post('/conductor/clarification/:id/answer-with-norms', {
+    preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
+  }, async (request, reply) => {
+    const clarId = Number(request.params.id);
+    if (!clarId) return reply.code(400).send({ error: 'bad clarification id' });
+    const values = (request.body && request.body.values) || {};
+    if (!Object.keys(values).length) return reply.code(400).send({ error: 'values пустой' });
+
+    const db = fastify.db;
+    try {
+      const { rows } = await db.query(
+        `SELECT c.id, c.conductor_run_id, c.status, c.channel, c.blocking,
+                c.options_json, r.tender_id, r.work_id, r.initiated_by
+           FROM mimir_clarifications c
+           JOIN mimir_conductor_runs r ON r.id = c.conductor_run_id
+          WHERE c.id = $1`,
+        [clarId]
+      );
+      const cl = rows[0];
+      if (!cl) return reply.code(404).send({ error: 'Уточнение не найдено' });
+      if (cl.status !== 'OPEN') return reply.code(409).send({ error: `Уточнение уже ${cl.status}` });
+      if (request.user.role === 'PM' && cl.initiated_by && cl.initiated_by !== request.user.id) {
+        return reply.code(403).send({ error: 'Нет доступа к чужому просчёту' });
+      }
+
+      // expected_inputs[] хранится в options_json (как часть clarification)
+      const expected = (cl.options_json && Array.isArray(cl.options_json.expected_inputs))
+        ? cl.options_json.expected_inputs : [];
+
+      const writes = [];
+      const summary = [];
+      for (const inp of expected) {
+        const v = values[inp.key];
+        if (v == null || v === '') {
+          if (!inp.optional) {
+            return reply.code(400).send({ error: `Поле "${inp.key}" обязательно` });
+          }
+          continue;
+        }
+        const value = inp.type === 'number' ? Number(v) : String(v);
+        if (inp.type === 'number' && !Number.isFinite(value)) {
+          return reply.code(400).send({ error: `Поле "${inp.key}" должно быть числом` });
+        }
+        writes.push({ target: inp.target, key: inp.key, value, label: inp.label });
+      }
+
+      // Применяем каждое write к нужному хранилищу
+      await db.transaction(async (client) => {
+        for (const w of writes) {
+          const t = String(w.target || '');
+          if (t.startsWith('company_profile.financial_policy.')) {
+            const fpKey = t.replace('company_profile.financial_policy.', '');
+            await client.query(
+              `INSERT INTO settings (key, value_json, description, updated_at)
+               VALUES ('company_profile', jsonb_build_object('financial_policy', jsonb_build_object($1::text, $2::numeric)), 'Mimir Conductor — авто-обновление', NOW())
+               ON CONFLICT (key) DO UPDATE
+                  SET value_json = jsonb_set(COALESCE(settings.value_json, '{}'::jsonb), ARRAY['financial_policy', $1], to_jsonb($2::numeric), true),
+                      updated_at = NOW()`,
+              [fpKey, w.value]
+            );
+            summary.push(`company_profile.financial_policy.${fpKey} = ${w.value}`);
+          } else if (t.startsWith('reference_norms.')) {
+            const path = t.replace('reference_norms.', '').split('.');
+            await client.query(
+              `INSERT INTO settings (key, value_json, description, updated_at)
+               VALUES ('reference_norms', jsonb_set('{}'::jsonb, $1::text[], to_jsonb($2::numeric), true), 'Mimir Conductor — производственные нормативы (заполняются РП)', NOW())
+               ON CONFLICT (key) DO UPDATE
+                  SET value_json = jsonb_set(COALESCE(settings.value_json, '{}'::jsonb), $1::text[], to_jsonb($2::numeric), true),
+                      updated_at = NOW()`,
+              [path, w.value]
+            );
+            summary.push(`reference_norms.${path.join('.')} = ${w.value}`);
+          } else if (t.startsWith('field_tariff_grid.')) {
+            const positionName = t.replace('field_tariff_grid.', '');
+            await client.query(
+              `INSERT INTO field_tariff_grid (position_name, rate_per_shift, is_active)
+               VALUES ($1, $2, true)
+               ON CONFLICT (position_name) WHERE is_active DO UPDATE
+                  SET rate_per_shift = EXCLUDED.rate_per_shift`,
+              [positionName, w.value]
+            ).catch(async () => {
+              await client.query(
+                `INSERT INTO field_tariff_grid (position_name, rate_per_shift, is_active) VALUES ($1, $2, true)`,
+                [positionName, w.value]
+              );
+            });
+            summary.push(`field_tariff_grid["${positionName}"].rate_per_shift = ${w.value}`);
+          } else if (t.startsWith('tz_summary.')) {
+            const path = t.replace('tz_summary.', '').split('.');
+            // Дополняем артефакт tz_summary текущего run — создаём новую версию
+            const r = await client.query(
+              `SELECT id, content FROM mimir_artifacts
+                WHERE conductor_run_id=$1 AND artifact_type='tz_summary' AND superseded_by IS NULL
+                ORDER BY id DESC LIMIT 1`,
+              [cl.conductor_run_id]
+            );
+            const prev = r.rows[0];
+            const newContent = prev ? JSON.parse(JSON.stringify(prev.content)) : {};
+            let cur = newContent;
+            for (let i = 0; i < path.length - 1; i++) {
+              if (cur[path[i]] == null || typeof cur[path[i]] !== 'object') cur[path[i]] = {};
+              cur = cur[path[i]];
+            }
+            cur[path[path.length - 1]] = w.value;
+            // Помечаем старую как superseded и создаём новую
+            if (prev) {
+              await client.query(`UPDATE mimir_artifacts SET superseded_by=NULL WHERE id=$1`, [prev.id]);
+            }
+            const hash = require('crypto').createHash('sha256').update(JSON.stringify(newContent)).digest('hex');
+            const ins = await client.query(
+              `INSERT INTO mimir_artifacts (conductor_run_id, created_by_agent_run_id, artifact_type, content, content_hash, schema_version, created_at)
+               VALUES ($1, NULL, 'tz_summary', $2::jsonb, $3, '1', NOW()) RETURNING id`,
+              [cl.conductor_run_id, JSON.stringify(newContent), hash]
+            );
+            if (prev) {
+              await client.query(`UPDATE mimir_artifacts SET superseded_by=$1 WHERE id=$2`, [ins.rows[0].id, prev.id]);
+            }
+            summary.push(`tz_summary.${path.join('.')} = ${w.value} (новый артефакт ${ins.rows[0].id})`);
+          } else {
+            summary.push(`SKIPPED unknown target: ${t}`);
+          }
+        }
+
+        // Закрываем clarification
+        await client.query(
+          `UPDATE mimir_clarifications
+              SET status='ANSWERED', answer_text=$1, answered_by=$2, answered_at=NOW(),
+                  answer_source='inline_form', updated_at=NOW()
+            WHERE id=$3`,
+          [`РП заполнил поля: ${summary.join('; ')}`, request.user.id, clarId]
+        );
+
+        await client.query(
+          `INSERT INTO mimir_agent_events (conductor_run_id, agent_run_id, event_type, payload)
+           VALUES ($1, NULL, 'clarification_answered_with_norms', $2::jsonb)`,
+          [cl.conductor_run_id, JSON.stringify({
+            clarification_id: clarId, channel: cl.channel,
+            answered_by_user_id: request.user.id, writes: summary
+          })]
+        );
+      });
+
+      const resumeResult = await _tryResumeRun(fastify, cl.conductor_run_id);
+      return {
+        ok: true,
+        clarification_id: clarId,
+        run_id: cl.conductor_run_id,
+        writes: summary,
+        resumed: !!resumeResult.resumed,
+        remaining_blockers: resumeResult.remaining || 0
+      };
+    } catch (e) {
+      request.log.error(`[answer-with-norms] ${e.message}`);
+      return reply.code(500).send({ error: e.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // POST /conductor/run/:id/recheck-blockers — пересмотр блокеров (когда РП
   // загрузил документы через UI работы/тендера, без явного «ответа на вопрос»).
   // Если у run все blocking-clarifications закрыты ИЛИ появились новые документы

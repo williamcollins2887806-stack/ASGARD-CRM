@@ -122,6 +122,22 @@ async function run({ requiredArtifacts, onThought }) {
   const required = ['fot_tax', 'overhead', 'warranty', 'vat'];
   const missingCritical = required.filter((k) => coef._source_tiers[k] === 'missing');
   if (missingCritical.length) {
+    // Структурированные поля для inline-ввода РП в War Room
+    const FIELD_MAP = {
+      fot_tax: { label: 'Налог на ФОТ (%)', type: 'number', unit: '%',
+        hint: 'Страховые взносы 30% + НС/ПЗ (для ремонтных работ V класс 0.2%). Сохранится в settings.company_profile.financial_policy.fot_tax_pct',
+        target: 'company_profile.financial_policy.fot_tax_pct' },
+      overhead: { label: 'Накладные расходы (% от прямых)', type: 'number', unit: '%',
+        hint: 'Доля накладных от прямой себестоимости (ФОТ+налог). Например: 19.3 (КАО Азот) или 18-25 (типовое). Сохранится в company_profile.financial_policy.overheads_pct_of_direct',
+        target: 'company_profile.financial_policy.overheads_pct_of_direct' },
+      warranty: { label: 'Гарантийный резерв (% от выручки)', type: 'number', unit: '%',
+        hint: 'Резерв на гарантийные обязательства от revenue. Например: 2.4 (КАО Азот). Сохранится в company_profile.financial_policy.warranty_reserve_pct_of_revenue',
+        target: 'company_profile.financial_policy.warranty_reserve_pct_of_revenue' },
+      vat: { label: 'НДС (%)', type: 'number', unit: '%',
+        hint: 'Ставка НДС на дату подачи. С 2026 — 22%. Сохранится в company_profile.financial_policy.vat_rate_pct',
+        target: 'company_profile.financial_policy.vat_rate_pct' }
+    };
+    const expected_inputs = missingCritical.map((k) => ({ key: k + '_pct', ...FIELD_MAP[k] }));
     return {
       summary: 'BLOCKED: критичные коэффициенты не найдены в эталонах/company_profile',
       key_findings: missingCritical.map((k) => `BLOCKER: ${k}_pct не найден`),
@@ -131,9 +147,12 @@ async function run({ requiredArtifacts, onThought }) {
       winter_surcharge: 0, temp_buildings: 0, ecology_cost: 0,
       warranty_reserve: 0, vat_pct: 0, total_indirects: 0,
       _coefficient_sources: coef._source_tiers,
-      assumptions: ['Заполните applicable_norms эталона и/или settings.company_profile.financial_policy.'],
-      clarifications: [{ channel: 'PM', category: 'indirects', blocking: true,
-        question_ru: `Не найдены коэффициенты в эталоне/политике компании: ${missingCritical.join(', ')}. Заполните applicable_norms или settings.company_profile.financial_policy.` }]
+      assumptions: ['Заполните поля прямо в War Room — данные сохранятся в settings.company_profile и просчёт продолжится.'],
+      clarifications: [{
+        channel: 'PM', category: 'indirects', blocking: true,
+        question_ru: `Не найдены коэффициенты ССР: ${missingCritical.join(', ')}. Заполните прямо здесь.`,
+        expected_inputs
+      }]
     };
   }
 

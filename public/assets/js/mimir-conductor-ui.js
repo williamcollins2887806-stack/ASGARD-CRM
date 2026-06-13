@@ -495,6 +495,36 @@
           </div>`;
       }
       const consequenceBlock = c.consequence ? `<div class="mc-clar-conseq">⚠ ${esc(c.consequence)}</div>` : '';
+
+      // Inline-форма для структурированного ввода нормативов (НОВОЕ)
+      const oj = c.options_json || {};
+      const expectedInputs = Array.isArray(oj.expected_inputs) ? oj.expected_inputs
+        : (Array.isArray(oj) ? [] : (oj.expected_inputs || []));
+      let inlineForm = '';
+      if (expectedInputs && expectedInputs.length) {
+        const rows = expectedInputs.map((inp, idx) => {
+          const inpId = `mc-norm-${c.id}-${idx}`;
+          const unit = inp.unit ? `<span class="mc-norm-unit">${esc(inp.unit)}</span>` : '';
+          const opt = inp.optional ? '<span class="mc-norm-opt">(опц.)</span>' : '';
+          const inputEl = inp.type === 'date'
+            ? `<input type="date" class="mc-norm-input" id="${inpId}" data-key="${esc(inp.key)}">`
+            : `<input type="${inp.type === 'number' ? 'number' : 'text'}" step="any" class="mc-norm-input" id="${inpId}" data-key="${esc(inp.key)}" placeholder="введите значение">`;
+          const hint = inp.hint ? `<div class="mc-norm-hint">${esc(inp.hint)}</div>` : '';
+          return `
+            <div class="mc-norm-row">
+              <label class="mc-norm-label" for="${inpId}">${esc(inp.label)} ${unit} ${opt}</label>
+              ${inputEl}
+              ${hint}
+            </div>`;
+        }).join('');
+        inlineForm = `
+          <div class="mc-norm-form" data-cid="${c.id}">
+            <div class="mc-norm-title">📝 Заполните недостающие данные — Conductor сразу применит их и продолжит:</div>
+            ${rows}
+            <button class="mc-btn mc-btn-primary mc-norm-submit" data-cid="${c.id}">💾 Сохранить и продолжить</button>
+          </div>`;
+      }
+
       return `
         <div class="mc-clar mc-clar-${(c.channel || 'PM').toLowerCase()}" data-cid="${c.id}">
           <div class="mc-clar-head">
@@ -505,6 +535,7 @@
           <div class="mc-clar-q">${esc(c.question_ru || '')}</div>
           ${c.why_we_ask ? `<div class="mc-clar-why">Зачем: ${esc(c.why_we_ask)}</div>` : ''}
           ${consequenceBlock}
+          ${inlineForm}
           ${assumptionBlock}
           <div class="mc-clar-actions">
             ${isDocQ ? `<button class="mc-btn mc-btn-sm mc-upload-doc" data-cid="${c.id}">📎 Прикрепить файл</button>` : ''}
@@ -547,6 +578,45 @@
         e.stopPropagation();
         const cid = Number(btn.dataset.cid);
         await postAnswer(cid, { accept_assumption: true });
+      });
+    });
+    // Inline-форма ввода нормативов
+    document.querySelectorAll('.mc-norm-submit').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const cid = Number(btn.dataset.cid);
+        const form = document.querySelector(`.mc-norm-form[data-cid="${cid}"]`);
+        if (!form) return;
+        const values = {};
+        form.querySelectorAll('.mc-norm-input').forEach((inp) => {
+          if (inp.value !== '') values[inp.dataset.key] = inp.value;
+        });
+        if (!Object.keys(values).length) {
+          toast('Пусто', 'Заполните хотя бы одно поле', 'err');
+          return;
+        }
+        btn.disabled = true;
+        btn.textContent = 'Сохраняю…';
+        try {
+          const resp = await authFetch(`${API}/clarification/${cid}/answer-with-norms`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ values })
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+          const c = state.clarifications.find((x) => Number(x.id) === Number(cid));
+          if (c) c.status = 'ANSWERED';
+          renderClarifications();
+          if (data.resumed) {
+            toast('✅ Сохранено + Conductor продолжает', `Записано: ${(data.writes || []).join('; ')}`, 'ok');
+          } else {
+            toast('Сохранено', `Осталось блокеров: ${data.remaining_blockers || 0}`, 'info');
+          }
+        } catch (e) {
+          btn.disabled = false;
+          btn.textContent = '💾 Сохранить и продолжить';
+          toast('Ошибка сохранения', e.message, 'err');
+        }
       });
     });
   }

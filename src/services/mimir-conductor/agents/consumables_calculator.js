@@ -123,8 +123,32 @@ async function run({ requiredArtifacts, onThought }) {
     if (r.value == null) missing.push(k);
   }
   if (missing.length) {
-    clarifications.push({ channel: 'PM', category: 'consumables', blocking: true,
-      question_ru: `Нормы расходки/цены отсутствуют: ${missing.join(', ')}. Источники: applicable_norms в эталонах (mimir_reference_projects), цены в каталоге products, либо AI-поиск (perplexity sonar). Заполните хотя бы один источник.` });
+    const FIELD_MAP = {
+      nozzle_per_100: { label: 'Норма насадок (шт на 100 ед объёма)', type: 'number', unit: 'шт',
+        hint: 'Сколько насадок/форсунок изнашивается на 100 единиц объёма работ. Сохранится в applicable_norms эталона.',
+        target: 'reference_norms.consumables_consumption_rules.nozzle_per_100' },
+      nozzle_price_rub: { label: 'Цена насадки (₽/шт)', type: 'number', unit: '₽',
+        hint: 'Цена одной насадки/форсунки. Можно добавить в каталог products или в applicable_norms.',
+        target: 'reference_norms.consumables_consumption_rules.nozzle_price_rub' },
+      brush_per_100: { label: 'Норма щёток (шт на 100 ед)', type: 'number', unit: 'шт',
+        hint: 'Сколько щёток изнашивается на 100 единиц объёма работ.',
+        target: 'reference_norms.consumables_consumption_rules.brush_per_100' },
+      brush_price_rub: { label: 'Цена щётки (₽/шт)', type: 'number', unit: '₽',
+        hint: 'Цена одной щётки.',
+        target: 'reference_norms.consumables_consumption_rules.brush_price_rub' },
+      ppe_per_manday: { label: 'Норма СИЗ-расходки (компл на чел-день)', type: 'number', unit: 'компл',
+        hint: 'Сколько комплектов СИЗ-расходки (перчатки, фильтры) на одного человека в день.',
+        target: 'reference_norms.consumables_consumption_rules.ppe_per_manday' },
+      ppe_price_rub: { label: 'Цена СИЗ-комплекта (₽)', type: 'number', unit: '₽',
+        hint: 'Цена одного комплекта СИЗ-расходки.',
+        target: 'reference_norms.consumables_consumption_rules.ppe_price_rub' }
+    };
+    const expected_inputs = missing.map((k) => ({ key: k, ...FIELD_MAP[k] }));
+    clarifications.push({
+      channel: 'PM', category: 'consumables', blocking: true,
+      question_ru: `Нормы расходки/цены отсутствуют: ${missing.join(', ')}. Заполните прямо здесь.`,
+      expected_inputs
+    });
     return {
       summary: 'BLOCKED: нормы расходки не найдены ни в эталонах, ни в каталоге, ни через web search',
       key_findings: missing.map((k) => `BLOCKER: норма ${k} не найдена ни в одном источнике`),

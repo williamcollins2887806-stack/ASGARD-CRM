@@ -127,12 +127,26 @@ async function run({ requiredArtifacts, onThought }) {
                        (analogsTimingNorms.mob_demob_days != null ? Number(analogsTimingNorms.mob_demob_days) : null);
 
   if (prepDays == null) {
-    clarifications.push({ channel: 'PM', category: 'timing', blocking: true,
-      question_ru: 'Не задано число дней подготовки на складе. Укажите prep_days в ТЗ.timing или внесите timing_norms.prep_days в эталоны (mimir_reference_projects).' });
+    clarifications.push({
+      channel: 'PM', category: 'timing', blocking: true,
+      question_ru: 'Не задано число дней подготовки на складе.',
+      expected_inputs: [{
+        key: 'prep_days', label: 'Дни подготовки на складе', type: 'number', unit: 'дн',
+        hint: 'Сколько дней бригада готовит оборудование на складе до выезда. Сохранится в applicable_norms эталона (timing_norms.prep_days).',
+        target: 'reference_norms.timing_norms.prep_days'
+      }]
+    });
   }
   if (mobDemobDays == null) {
-    clarifications.push({ channel: 'PM', category: 'timing', blocking: true,
-      question_ru: 'Не задано число дней мобилизации+демобилизации. Укажите mob_demob_days в ТЗ.timing или внесите timing_norms.mob_demob_days в эталоны.' });
+    clarifications.push({
+      channel: 'PM', category: 'timing', blocking: true,
+      question_ru: 'Не задано число дней мобилизации+демобилизации.',
+      expected_inputs: [{
+        key: 'mob_demob_days', label: 'Дни мобилизации+демобилизации', type: 'number', unit: 'дн',
+        hint: 'Сколько дней суммарно на моб+демоб (приёмка/сдача объекта, погрузка/разгрузка). Сохранится в applicable_norms.timing_norms.mob_demob_days.',
+        target: 'reference_norms.timing_norms.mob_demob_days'
+      }]
+    });
   }
 
   onThought('Считаю длительность работ из ТЗ (timing.start/end или duration_days)…');
@@ -152,8 +166,21 @@ async function run({ requiredArtifacts, onThought }) {
   }
 
   if (totalDays == null) {
-    clarifications.push({ channel: 'CUSTOMER', category: 'timing', blocking: true,
-      question_ru: 'Сроки выполнения работ не определены: ни timing.start+end, ни timing.duration_days, ни timing.work_days. Укажите календарные даты или длительность.' });
+    clarifications.push({
+      channel: 'PM', category: 'timing', blocking: true,
+      question_ru: 'Сроки выполнения работ не определены.',
+      expected_inputs: [
+        { key: 'start_date', label: 'Дата начала', type: 'date',
+          hint: 'Календарная дата начала работ. Сохранится в tz_summary.timing.start.',
+          target: 'tz_summary.timing.start' },
+        { key: 'end_date', label: 'Дата окончания', type: 'date',
+          hint: 'Календарная дата окончания работ. Сохранится в tz_summary.timing.end.',
+          target: 'tz_summary.timing.end' },
+        { key: 'work_days', label: 'Или длительность (рабочих дней)', type: 'number', unit: 'дн',
+          hint: 'Если дат нет — укажите длительность в рабочих днях. Сохранится в tz_summary.timing.work_days.',
+          target: 'tz_summary.timing.work_days', optional: true }
+      ]
+    });
   }
 
   // Если данных не хватает — раннее завершение с blocking
@@ -187,8 +214,17 @@ async function run({ requiredArtifacts, onThought }) {
   for (const pos of positionsToResolve) {
     const r = rateFor(tariffMap, pos, requiredArtifacts);
     if (!r) {
-      clarifications.push({ channel: 'PM', category: 'rates', blocking: true,
-        question_ru: `Не найдена ставка для позиции "${pos}" ни в field_tariff_grid, ни в эталонах. Заведите запись в БД (POST /api/field-tariff-grid) или добавьте labor_rates_rub_per_shift в эталоны.` });
+      clarifications.push({
+        channel: 'PM', category: 'rates', blocking: true,
+        question_ru: `Не найдена ставка для позиции "${pos}".`,
+        expected_inputs: [{
+          key: `rate_${pos.toLowerCase().replace(/[^а-яa-z]/g, '_')}`,
+          label: `Ставка "${pos}" (₽/смену)`,
+          type: 'number', unit: '₽',
+          hint: `Запишется в field_tariff_grid (position_name="${pos}", rate_per_shift, is_active=true). Затем все будущие просчёты будут использовать эту ставку.`,
+          target: `field_tariff_grid.${pos}`
+        }]
+      });
     } else {
       resolved[pos] = r;
       assumptions.push(`Ставка ${pos}: ${r.rate} ₽/смену (источник: ${r.source}${r.matched_key ? ', ключ: ' + r.matched_key : ''})`);

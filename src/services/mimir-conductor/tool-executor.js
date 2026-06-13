@@ -249,7 +249,12 @@ async function raiseClarification(runId, agentRunId, channel, input = {}) {
     [
       runId, agentRunId, ch, input.category || null,
       input.question || input.question_ru || '', input.why || input.why_we_ask || null,
-      input.consequence || null, JSON.stringify(input.options || input.options_json || []),
+      input.consequence || null,
+      // options_json теперь хранит {options, expected_inputs} для inline-формы РП
+      JSON.stringify({
+        options: input.options || [],
+        expected_inputs: input.expected_inputs || []
+      }),
       input.impact_rub != null ? input.impact_rub : null,
       blocking, input.default_assumption || null, status,
       ch === 'AUTO' ? 'AUTO_ASSUMPTION' : null,
