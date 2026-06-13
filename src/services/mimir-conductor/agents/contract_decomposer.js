@@ -71,18 +71,17 @@ async function run({ requiredArtifacts, onThought }) {
     onThought('stub-режим: эвристическое разделение');
     report = ruleDecompose(tz);
   } else {
-    try {
-      const result = await aiProvider.completeWithStream({
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: `Сводка ТЗ:\n${JSON.stringify(tz, null, 2)}` }],
-        model: 'opus-4-7',
-        onThought: (t) => onThought(t)
-      });
-      report = (result._stub || !result.text) ? ruleDecompose(tz) : parseStrictJson(result.text);
-    } catch (e) {
-      onThought(`⚠ Opus недоступен (${e.message}) — эвристика`);
-      report = ruleDecompose(tz);
-    }
+    const { aiCompleteJson } = require('./_util');
+    report = await aiCompleteJson(aiProvider, {
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: `Сводка ТЗ:\n${JSON.stringify(tz, null, 2)}` }],
+      model: 'opus-4-7',
+      onThought: (t) => onThought(t)
+    }, {
+      onThought, agentName: 'contract_decomposer',
+      fallback: () => ruleDecompose(tz)
+    });
+    if (report && report._stub) report = ruleDecompose(tz);
   }
 
   const subWorks = report.subcontract_works || [];

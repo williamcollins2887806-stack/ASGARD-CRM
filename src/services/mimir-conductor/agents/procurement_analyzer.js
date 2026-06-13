@@ -67,20 +67,19 @@ async function run({ requiredArtifacts, onThought }) {
     onThought('stub-режим: выбираю минимальную валидную цену детерминированно');
     report = ruleSelect(offers);
   } else {
-    try {
-      const userMessage = `Найденные предложения:\n${JSON.stringify(offers, null, 2)}`;
-      const result = await aiProvider.completeWithStream({
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: userMessage }],
-        model: 'sonnet-4-6',
-        onThought: (t) => onThought(t),
-        onText: thoughtSink((t) => onThought(t))
-      });
-      report = result._stub ? ruleSelect(offers) : parseStrictJson(result.text);
-    } catch (e) {
-      onThought(`⚠ LLM недоступна (${e.message}) — выбор по правилам`);
-      report = ruleSelect(offers);
-    }
+    const { aiCompleteJson } = require('./_util');
+    const userMessage = `Найденные предложения:\n${JSON.stringify(offers, null, 2)}`;
+    report = await aiCompleteJson(aiProvider, {
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userMessage }],
+      model: 'sonnet-4-6',
+      onThought: (t) => onThought(t),
+      onText: thoughtSink((t) => onThought(t))
+    }, {
+      onThought, agentName: 'procurement_analyzer',
+      fallback: () => ruleSelect(offers)
+    });
+    if (report && report._stub) report = ruleSelect(offers);
   }
 
   const selected = report.selected || [];

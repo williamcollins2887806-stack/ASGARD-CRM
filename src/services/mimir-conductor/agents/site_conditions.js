@@ -70,20 +70,19 @@ async function run({ requiredArtifacts, onThought }) {
     onThought('stub-режим: расчёт коэффициентов по правилам');
     report = ruleConditions(tz);
   } else {
-    try {
-      const userMessage = `Условия и сводка ТЗ:\n${JSON.stringify({ conditions: tz.conditions, scope: tz.scope, object: tz.object }, null, 2)}`;
-      const result = await aiProvider.completeWithStream({
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: userMessage }],
-        model: 'opus-4-7',
-        onThought: (t) => onThought(t),
-        onText: thoughtSink((t) => onThought(t))
-      });
-      report = result._stub ? ruleConditions(tz) : parseStrictJson(result.text);
-    } catch (e) {
-      onThought(`⚠ LLM недоступна (${e.message}) — расчёт по правилам`);
-      report = ruleConditions(tz);
-    }
+    const { aiCompleteJson } = require('./_util');
+    const userMessage = `Условия и сводка ТЗ:\n${JSON.stringify({ conditions: tz.conditions, scope: tz.scope, object: tz.object }, null, 2)}`;
+    report = await aiCompleteJson(aiProvider, {
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userMessage }],
+      model: 'opus-4-7',
+      onThought: (t) => onThought(t),
+      onText: thoughtSink((t) => onThought(t))
+    }, {
+      onThought, agentName: 'site_conditions',
+      fallback: () => ruleConditions(tz)
+    });
+    if (report && report._stub) report = ruleConditions(tz);
   }
 
   const totalPct = (report.surcharges || []).reduce((s, x) => s + (Number(x.pct) || 0), 0);

@@ -108,18 +108,17 @@ async function run({ runId, onThought }) {
     report = ruleAudit(all);
   } else {
     onThought('Opus 4.7 атакует смету в роли скептика…');
-    try {
-      const result = await aiProvider.completeWithStream({
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: `Вот собранная смета и все артефакты. Найди слабые места.\n\n${JSON.stringify(all, null, 2)}` }],
-        model: 'opus-4-7',
-        onThought: (t) => onThought(t)
-      });
-      report = (result._stub || !result.text) ? ruleAudit(all) : parseStrictJson(result.text);
-    } catch (e) {
-      onThought(`⚠ Opus недоступен (${e.message}) — аудит по правилам`);
-      report = ruleAudit(all);
-    }
+    const { aiCompleteJson } = require('./_util');
+    report = await aiCompleteJson(aiProvider, {
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: `Вот собранная смета и все артефакты. Найди слабые места.\n\n${JSON.stringify(all, null, 2)}` }],
+      model: 'opus-4-7',
+      onThought: (t) => onThought(t)
+    }, {
+      onThought, agentName: 'devils_advocate',
+      fallback: () => ruleAudit(all)
+    });
+    if (report && report._stub) report = ruleAudit(all);
   }
 
   const vulns = report.vulnerabilities || [];

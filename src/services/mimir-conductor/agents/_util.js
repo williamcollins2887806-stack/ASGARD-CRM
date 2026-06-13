@@ -96,4 +96,46 @@ function thoughtSink(onThought) {
   };
 }
 
-module.exports = { sha256, parseStrictJson, formatRub, thoughtSink };
+/**
+ * Универсальный helper: AI-вызов + парс JSON с 3 попытками retry и graceful fallback.
+ * Используется во всех агентах которые ждут JSON-ответ от LLM (sonnet/opus).
+ *
+ * @param {Object} aiProvider — модуль ai-provider
+ * @param {Object} opts — параметры для aiProvider.completeWithStream
+ * @param {Object} retryOpts — { onThought, agentName, maxAttempts=3, retryDelayMs=3000, fallback }
+ *   fallback (опц.) — функция возвращающая безопасный объект, если все попытки упали.
+ *   Если fallback не задан и все попытки упали — выбрасывается последняя ошибка.
+ * @returns {Promise<Object>} распарсенный JSON-объект
+ */
+async function aiCompleteJson(aiProvider, opts, retryOpts = {}) {
+  const { onThought = () => {}, agentName = 'agent', maxAttempts = 3, retryDelayMs = 3000, fallback = null } = retryOpts;
+  let lastErr = null;
+  const originalSystem = opts.system || '';
+  const strictExtra = '\n\nКРИТИЧНО: верни ТОЛЬКО валидный JSON-объект. Без markdown-ограждений (`json), без комментариев, без trailing comma. Все ключи и строки в двойных кавычках. Никаких тегов цитат.';
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const callOpts = { ...opts, system: attempt === 1 ? originalSystem : originalSystem + strictExtra };
+      const result = await aiProvider.completeWithStream(callOpts);
+      if (result._stub || aiProvider.isStubMode()) {
+        return { _stub: true, _result: result };
+      }
+      const parsed = parseStrictJson(result.text);
+      if (attempt > 1) onThought(`✓ ${agentName}: JSON распарсен с попытки ${attempt}`);
+      return parsed;
+    } catch (e) {
+      lastErr = e;
+      if (attempt < maxAttempts) {
+        onThought(`⚠ ${agentName} (попытка ${attempt}/${maxAttempts}): ${e.message} — повторяю с более строгим промптом`);
+        if (retryDelayMs > 0) await new Promise((r) => setTimeout(r, retryDelayMs));
+      }
+    }
+  }
+  onThought(`⚠ ${agentName}: все ${maxAttempts} попытки упали — ${lastErr ? lastErr.message : 'unknown'}`);
+  if (typeof fallback === 'function') {
+    onThought(`→ ${agentName}: применяю детерминированный fallback`);
+    return fallback();
+  }
+  throw lastErr || new Error(`${agentName}: parse failed ${maxAttempts} times`);
+}
+
+module.exports = { sha256, parseStrictJson, formatRub, thoughtSink, aiCompleteJson };

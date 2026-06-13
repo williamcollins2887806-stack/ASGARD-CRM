@@ -74,20 +74,19 @@ async function run({ requiredArtifacts, onThought }) {
     onThought('stub-режим: проверка совместимости по правилам');
     report = ruleValidate(tz);
   } else {
-    try {
-      const userMessage = `Сводка ТЗ:\n${JSON.stringify(tz, null, 2)}\n\nРесурсы:\n${JSON.stringify(resources, null, 2)}`;
-      const result = await aiProvider.completeWithStream({
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: userMessage }],
-        model: 'opus-4-7',
-        onThought: (t) => onThought(t),
-        onText: thoughtSink((t) => onThought(t))
-      });
-      report = result._stub ? ruleValidate(tz) : parseStrictJson(result.text);
-    } catch (e) {
-      onThought(`⚠ LLM недоступна (${e.message}) — проверка по правилам`);
-      report = ruleValidate(tz);
-    }
+    const { aiCompleteJson } = require('./_util');
+    const userMessage = `Сводка ТЗ:\n${JSON.stringify(tz, null, 2)}\n\nРесурсы:\n${JSON.stringify(resources, null, 2)}`;
+    report = await aiCompleteJson(aiProvider, {
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userMessage }],
+      model: 'opus-4-7',
+      onThought: (t) => onThought(t),
+      onText: thoughtSink((t) => onThought(t))
+    }, {
+      onThought, agentName: 'method_validator',
+      fallback: () => ruleValidate(tz)
+    });
+    if (report && report._stub) report = ruleValidate(tz);
   }
 
   return {

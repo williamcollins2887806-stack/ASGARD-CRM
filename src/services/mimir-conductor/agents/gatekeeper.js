@@ -76,20 +76,19 @@ async function run({ requiredArtifacts, onThought }) {
     onThought('stub-режим: проверка по детерминированным правилам');
     report = ruleCheck(tz, drawings);
   } else {
-    try {
-      const userMessage = `Сводка ТЗ:\n${JSON.stringify(tz, null, 2)}\n\nЧертежи:\n${JSON.stringify(drawings, null, 2)}`;
-      const result = await aiProvider.completeWithStream({
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: userMessage }],
-        model: 'sonnet-4-6',
-        onThought: (t) => onThought(t),
-        onText: thoughtSink((t) => onThought(t))
-      });
-      report = result._stub ? ruleCheck(tz, drawings) : parseStrictJson(result.text);
-    } catch (e) {
-      onThought(`⚠ LLM недоступна (${e.message}) — проверка по правилам`);
-      report = ruleCheck(tz, drawings);
-    }
+    const { aiCompleteJson } = require('./_util');
+    const userMessage = `Сводка ТЗ:\n${JSON.stringify(tz, null, 2)}\n\nЧертежи:\n${JSON.stringify(drawings, null, 2)}`;
+    report = await aiCompleteJson(aiProvider, {
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userMessage }],
+      model: 'sonnet-4-6',
+      onThought: (t) => onThought(t),
+      onText: thoughtSink((t) => onThought(t))
+    }, {
+      onThought, agentName: 'gatekeeper',
+      fallback: () => ruleCheck(tz, drawings)
+    });
+    if (report && report._stub) report = ruleCheck(tz, drawings);
   }
 
   const redCount = (report.violations || []).filter((v) => v.severity === 'red').length;

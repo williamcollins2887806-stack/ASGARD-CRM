@@ -79,18 +79,17 @@ async function run({ requiredArtifacts, onThought }) {
     onThought('stub-режим: чек-лист строгого заказчика');
     report = ruleCheck(tz, customerName);
   } else {
-    try {
-      const result = await aiProvider.completeWithStream({
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: `ТЗ:\n${JSON.stringify(tz, null, 2)}\n\nНайденные пункты СТО:\n${JSON.stringify(normHits, null, 2)}` }],
-        model: 'sonnet-4-6',
-        onThought: (t) => onThought(t)
-      });
-      report = (result._stub || !result.text) ? ruleCheck(tz, customerName) : parseStrictJson(result.text);
-    } catch (e) {
-      onThought(`⚠ LLM недоступна (${e.message}) — чек-лист`);
-      report = ruleCheck(tz, customerName);
-    }
+    const { aiCompleteJson } = require('./_util');
+    report = await aiCompleteJson(aiProvider, {
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: `ТЗ:\n${JSON.stringify(tz, null, 2)}\n\nНайденные пункты СТО:\n${JSON.stringify(normHits, null, 2)}` }],
+      model: 'sonnet-4-6',
+      onThought: (t) => onThought(t)
+    }, {
+      onThought, agentName: 'norms_compliance',
+      fallback: () => ruleCheck(tz, customerName)
+    });
+    if (report && report._stub) report = ruleCheck(tz, customerName);
   }
 
   const issues = report.issues || [];

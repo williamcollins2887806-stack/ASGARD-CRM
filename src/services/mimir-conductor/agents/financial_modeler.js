@@ -97,18 +97,17 @@ async function run({ requiredArtifacts, onThought, input, runId }) {
     analysis = buildStubAnalysis(cashFlow);
   } else {
     onThought('Opus 4.7 анализирует финансовую модель…');
-    try {
-      const result = await aiProvider.completeWithStream({
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: `Модель:\n${JSON.stringify(cashFlow, null, 2)}\nТЗ:\n${JSON.stringify(tz)}` }],
-        model: 'opus-4-7',
-        onThought: (t) => onThought(t)
-      });
-      analysis = (result._stub || !result.text) ? buildStubAnalysis(cashFlow) : parseStrictJson(result.text);
-    } catch (e) {
-      onThought(`⚠ Opus недоступен (${e.message}) — детерминированный анализ`);
-      analysis = buildStubAnalysis(cashFlow);
-    }
+    const { aiCompleteJson } = require('./_util');
+    analysis = await aiCompleteJson(aiProvider, {
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: `Модель:\n${JSON.stringify(cashFlow, null, 2)}\nТЗ:\n${JSON.stringify(tz)}` }],
+      model: 'opus-4-7',
+      onThought: (t) => onThought(t)
+    }, {
+      onThought, agentName: 'financial_modeler',
+      fallback: () => buildStubAnalysis(cashFlow)
+    });
+    if (analysis && analysis._stub) analysis = buildStubAnalysis(cashFlow);
   }
 
   return {
