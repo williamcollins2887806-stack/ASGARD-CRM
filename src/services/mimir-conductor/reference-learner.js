@@ -29,7 +29,7 @@ async function learnFromConductorRun(runId, opts = {}) {
       `SELECT r.id, r.work_id, r.tender_id, r.status, r.contract_value, r.final_estimate_data,
               t.tender_title, t.customer_name, t.customer_inn, t.tender_price,
               w.work_title, w.object_name AS work_object_name, w.city AS work_city,
-              w.start_in_work_date, w.handover_signing_date
+              w.start_in_work_date, w.act_signed_date_fact
          FROM mimir_conductor_runs r
          LEFT JOIN tenders t ON t.id = r.tender_id
          LEFT JOIN works w ON w.id = r.work_id
@@ -199,7 +199,7 @@ async function learnFromEstimate(estimateId, opts = {}) {
       `SELECT e.id, e.tender_id, e.title, e.work_type, e.object_name, e.total_amount,
               e.approval_status, e.ai_report, e.metadata,
               t.customer_name, t.customer_inn, t.tender_price, t.tender_region,
-              w.work_title, w.city AS work_city, w.start_in_work_date, w.handover_signing_date
+              w.work_title, w.city AS work_city, w.start_in_work_date, w.act_signed_date_fact
          FROM estimates e
          LEFT JOIN tenders t ON t.id = e.tender_id
          LEFT JOIN works w ON w.id = e.work_id
