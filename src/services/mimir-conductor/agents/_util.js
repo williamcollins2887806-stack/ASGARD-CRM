@@ -113,6 +113,27 @@ async function aiCompleteJson(aiProvider, opts, retryOpts = {}) {
   let lastRawText = null;
   const originalSystem = opts.system || '';
   const strictExtra = '\n\nКРИТИЧНО: верни ТОЛЬКО валидный JSON-объект. Без markdown-ограждений (`json), без комментариев, без trailing comma. Все ключи и строки в двойных кавычках. Никаких тегов цитат.';
+
+  // AI-кэш для 5/5 reproducibility. Ключ = sha256(system + messages + model + temperature).
+  const cacheKey = sha256(
+    (opts.system || '') + '\n#MSG#\n' + JSON.stringify(opts.messages || []) +
+    '\n#MODEL#\n' + (opts.model || '') + '\n#T#\n' + (opts.temperature ?? 0)
+  );
+  try {
+    const db = require('../../db');
+    const cached = await db.query(
+      `SELECT output_text FROM mimir_ai_cache WHERE input_hash=$1 LIMIT 1`, [cacheKey]
+    );
+    if (cached.rows[0]) {
+      onThought(`💾 ${agentName}: ответ из кэша (детерминированно)`);
+      await db.query(
+        `UPDATE mimir_ai_cache SET hit_count=hit_count+1, last_used_at=NOW() WHERE input_hash=$1`,
+        [cacheKey]
+      );
+      try { return parseStrictJson(cached.rows[0].output_text); } catch (_) { /* кэш битый — упадём дальше */ }
+    }
+  } catch (_) { /* нет соединения / таблицы — игнор */ }
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       // temperature=0 для детерминированных просчётов Conductor — 5 одинаковых ранов на одном и том же ТЗ
@@ -124,6 +145,16 @@ async function aiCompleteJson(aiProvider, opts, retryOpts = {}) {
       lastRawText = result.text;
       const parsed = parseStrictJson(result.text);
       if (attempt > 1) onThought(`✓ ${agentName}: JSON распарсен с попытки ${attempt}`);
+      // Сохраняем удачный ответ в кэш для будущих ранов
+      try {
+        const db = require('../../db');
+        await db.query(
+          `INSERT INTO mimir_ai_cache (input_hash, model, agent_name, output_text, output_usage)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (input_hash) DO NOTHING`,
+          [cacheKey, opts.model || 'unknown', agentName, result.text, result.usage || null]
+        );
+      } catch (_) { /* игнор */ }
       return parsed;
     } catch (e) {
       lastErr = e;
