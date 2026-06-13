@@ -422,14 +422,20 @@ ${JSON.stringify(employees.by_qualification || [])}
         const sysPrompt = attempt === 1
           ? SYSTEM_PROMPT_WEB_RESEARCH
           : SYSTEM_PROMPT_WEB_RESEARCH + '\n\nКРИТИЧНО: верни ТОЛЬКО валидный JSON-объект. Никаких markdown-ограждений, никаких комментариев, никаких тегов <citation>. Все ключи и строки в двойных кавычках, никаких trailing comma.';
-        const result = await aiProvider.completeWithStream({
-          system: sysPrompt,
-          messages: [{ role: 'user', content: `${companyContext}\n\nИзвлечённый scope:\n${briefForResearch}\n\nПроведи веб-исследование по каждой работе и ключевому оборудованию. Учитывай корпоративный профиль (не ищи то что у нас уже есть). Используй web-plugin активно.` }],
-          model: 'sonnet-4-6',
-          maxTokens: attempt === 1 ? 8000 : 10000,
-          plugins: [{ id: 'web', engine: 'native', max_results: 5 }],
-          onThought
-        });
+        // Жёсткий timeout 7 мин на каждую попытку (sonnet с web-plugin висит у Tokenator).
+        // Если 3 попытки × 7 мин = 21 мин, но это маловероятно — обычно проходит с 1-й.
+        const PER_ATTEMPT_TIMEOUT_MS = 7 * 60 * 1000;
+        const result = await Promise.race([
+          aiProvider.completeWithStream({
+            system: sysPrompt,
+            messages: [{ role: 'user', content: `${companyContext}\n\nИзвлечённый scope:\n${briefForResearch}\n\nПроведи веб-исследование по каждой работе и ключевому оборудованию. Учитывай корпоративный профиль (не ищи то что у нас уже есть). Используй web-plugin активно.` }],
+            model: 'sonnet-4-6',
+            maxTokens: attempt === 1 ? 8000 : 10000,
+            plugins: [{ id: 'web', engine: 'native', max_results: 5 }],
+            onThought
+          }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('web_research_timeout_7min')), PER_ATTEMPT_TIMEOUT_MS))
+        ]);
         if (result._stub || aiProvider.isStubMode()) {
           webResearch = {
             works_research: (extraction.works || []).map((w) => ({
