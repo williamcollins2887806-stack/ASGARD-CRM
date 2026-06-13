@@ -65,25 +65,13 @@ async function run({ requiredArtifacts, onThought }) {
 
   onThought('Определяю коэффициенты на ФОТ и доплаты по условиям объекта…');
 
-  let report;
-  if (aiProvider.isStubMode()) {
-    onThought('stub-режим: расчёт коэффициентов по правилам');
-    report = ruleConditions(tz);
-  } else {
-    const { aiCompleteJson } = require('./_util');
-    const userMessage = `Условия и сводка ТЗ:\n${JSON.stringify({ conditions: tz.conditions, scope: tz.scope, object: tz.object }, null, 2)}`;
-    report = await aiCompleteJson(aiProvider, {
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userMessage }],
-      model: 'opus-4-7',
-      onThought: (t) => onThought(t),
-      onText: thoughtSink((t) => onThought(t))
-    }, {
-      onThought, agentName: 'site_conditions',
-      fallback: () => ruleConditions(tz)
-    });
-    if (report && report._stub) report = ruleConditions(tz);
-  }
+  // КРИТИЧНО ДЛЯ 5/5: fot_multiplier считаем ДЕТЕРМИНИРОВАННО по правилам, а не через AI —
+  // иначе на каждом ране opus выдаёт чуть разные надбавки (1.34 / 1.27 / 1.16 → разный итог ССР).
+  // AI использовать тут не нужно: правила доплат фиксированы (ОЗП/вредность/ночные/СИЗ), а описание
+  // объекта приходит в conditions от TZ. Получаем стабильную цифру для всех 5/5 ранов.
+  onThought('Применяю детерминированные правила доплат по условиям объекта (для 5/5)');
+  let report = ruleConditions(tz);
+  // Опционально AI могла бы обогатить notes — оставлено как комментарий на будущее, без вызова.
 
   const totalPct = (report.surcharges || []).reduce((s, x) => s + (Number(x.pct) || 0), 0);
   const fotMultiplier = report.fot_multiplier || Math.round((1 + totalPct / 100) * 100) / 100;
