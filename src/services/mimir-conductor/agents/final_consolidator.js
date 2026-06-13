@@ -173,8 +173,39 @@ function computeFinalSSR(artifacts, coef) {
     vat_pct: coef.vat_pct,
     vat: round(vat),
     total_with_vat: round(totalWithVat),
-    _coefficient_sources: coef._source_tiers // 'analogs' / 'company_profile' / 'defaults'
+    _coefficient_sources: coef._source_tiers, // 'analogs' / 'company_profile' / 'defaults'
+    _g_agents_sources: aggregateGAgentTiers(artifacts) // travel/consumables/permits/quality/marine/docs
   };
+}
+
+/** Агрегировать _source_tiers со всех G-агентов в один объект — РП видит ВСЕ источники. */
+function aggregateGAgentTiers(artifacts) {
+  const out = {};
+  const G = {
+    travel_cost: ['legs'],
+    consumables: ['_source_tiers'],
+    permits_plan: ['to_train'],
+    qc_plan: ['_source_tiers'],
+    marine_permits_plan: ['permits'],
+    docs_plan: ['_source_tiers']
+  };
+  for (const a of artifacts) {
+    if (!G[a.artifact_type]) continue;
+    const c = a.content || {};
+    if (c._source_tiers) out[a.artifact_type] = c._source_tiers;
+    // Из items[]._source собираем сводку
+    const itemsKeys = ['items', 'legs', 'to_train', 'permits', 'methods'];
+    for (const k of itemsKeys) {
+      if (Array.isArray(c[k])) {
+        const tiers = c[k].map((x) => x && (x._source || x._cost_source)).filter(Boolean);
+        if (tiers.length) {
+          const counts = tiers.reduce((m, t) => { m[t] = (m[t] || 0) + 1; return m; }, {});
+          out[a.artifact_type] = Object.assign(out[a.artifact_type] || {}, { items_breakdown: counts });
+        }
+      }
+    }
+  }
+  return out;
 }
 
 /** Детерминированный отчёт для stub-режима. */
