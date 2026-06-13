@@ -76,6 +76,23 @@ async function routes(fastify) {
             payload: {}
           }).catch(err => fastify.log.warn('[approval] auto approve-finalize failed:', err.message));
         });
+
+        // FEEDBACK-LOOP: утверждённая смета → авто-эталон в mimir_reference_projects
+        // (база обучения Conductor растёт от каждого согласованного проекта).
+        setImmediate(() => {
+          try {
+            const { learnFromEstimate } = require('../services/mimir-conductor/reference-learner');
+            learnFromEstimate(parseInt(request.params.id), { createdBy: request.user?.id })
+              .then((r) => {
+                if (r.ok) {
+                  fastify.log.info(`[approval] feedback-loop: estimate #${request.params.id} → reference #${r.reference_id} (${r.created ? 'created' : 'updated'})`);
+                } else {
+                  fastify.log.warn(`[approval] feedback-loop skipped: ${r.reason || r.error}`);
+                }
+              })
+              .catch((e) => fastify.log.warn(`[approval] feedback-loop error: ${e.message}`));
+          } catch (e) { fastify.log.warn(`[approval] learnFromEstimate require failed: ${e.message}`); }
+        });
       }
 
       return result;

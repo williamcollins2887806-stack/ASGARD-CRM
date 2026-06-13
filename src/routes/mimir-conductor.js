@@ -630,6 +630,61 @@ async function mimirConductorRoutes(fastify, options) {
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // POST /conductor/run/:id/approve — директор/HEAD_TO утверждает Conductor-просчёт.
+  // FEEDBACK-LOOP: утверждённый просчёт автоматически попадает в
+  // mimir_reference_projects как эталон для будущих похожих проектов.
+  // Доступ: ADMIN, DIRECTOR_*, HEAD_TO.
+  // ═══════════════════════════════════════════════════════════════════════════
+  fastify.post('/conductor/run/:id/approve', {
+    preHandler: [fastify.authenticate, fastify.requireRoles(['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_TO'])]
+  }, async (request, reply) => {
+    const runId = Number(request.params.id);
+    if (!runId) return reply.code(400).send({ error: 'bad run id' });
+    const db = fastify.db;
+    try {
+      const { rows } = await db.query('SELECT id, status, initiated_by, work_id, tender_id FROM mimir_conductor_runs WHERE id=$1', [runId]);
+      const run = rows[0];
+      if (!run) return reply.code(404).send({ error: 'Просчёт не найден' });
+      if (!['READY_FOR_REVIEW', 'BLOCKED_BY_CUSTOMER', 'BLOCKED_BY_PM'].includes(run.status)) {
+        return reply.code(409).send({ error: `Просчёт нельзя утвердить из статуса ${run.status}` });
+      }
+      await db.query(
+        `UPDATE mimir_conductor_runs SET status='APPROVED', completed_at=NOW(), updated_at=NOW() WHERE id=$1`,
+        [runId]
+      );
+      try {
+        await db.query(
+          `INSERT INTO mimir_agent_events (conductor_run_id, agent_run_id, event_type, payload)
+           VALUES ($1, NULL, 'status_change', $2::jsonb)`,
+          [runId, JSON.stringify({ from: run.status, to: 'APPROVED', by: request.user.id, role: request.user.role, comment: request.body?.comment || '' })]
+        );
+      } catch (_) { /* noop */ }
+
+      // FEEDBACK-LOOP: эталон в mimir_reference_projects
+      let learnResult = null;
+      try {
+        const { learnFromConductorRun } = require('../services/mimir-conductor/reference-learner');
+        learnResult = await learnFromConductorRun(runId, { createdBy: request.user.id, source: 'conductor_approve' });
+        if (learnResult.ok) {
+          fastify.log.info(`[conductor/approve] feedback-loop: run #${runId} → reference #${learnResult.reference_id} (${learnResult.created ? 'created' : 'updated'})`);
+        } else {
+          fastify.log.warn(`[conductor/approve] feedback-loop skipped: ${learnResult.reason || learnResult.error}`);
+        }
+      } catch (e) {
+        fastify.log.warn(`[conductor/approve] learner error: ${e.message}`);
+      }
+
+      return {
+        ok: true, run_id: runId, status: 'APPROVED', from: run.status,
+        feedback_loop: learnResult
+      };
+    } catch (e) {
+      request.log.error(`[conductor/approve] ${e.message}`);
+      return reply.code(500).send({ error: e.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // POST /conductor/run/:id/cancel — РП останавливает свой просчёт.
   // RBAC: PM только свой, DIRECTOR/ADMIN — любой. Терминальные статусы не
   // отменяются (READY_FOR_REVIEW, APPROVED, REJECTED, CANCELLED, ERROR, COMPLETED).
