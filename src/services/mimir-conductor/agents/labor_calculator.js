@@ -53,7 +53,13 @@ function rateFromAnalogs(analogs, position) {
   const norms = (analogs && analogs.analysis && analogs.analysis.applicable_norms) || {};
   const rates = norms.labor_rates_rub_per_shift || {};
   const posLow = String(position || '').toLowerCase();
-  const key = Object.keys(rates).find((k) => k.toLowerCase().includes(posLow.split(/[\s(]+/)[0]));
+  if (!posLow) return null;
+  // Двусторонний матчинг: ключ эталона включён в позицию ИЛИ позиция включена в ключ
+  // (раньше "слесарь" → "слесарь-универсал" не матчилось; теперь матчится).
+  const key = Object.keys(rates).find((k) => {
+    const kLow = k.toLowerCase();
+    return posLow.includes(kLow) || kLow.includes(posLow.split(/[\s(\-]+/)[0]);
+  });
   if (key && rates[key] > 0) {
     return { rate: Number(rates[key]), source: 'analogs', assumed: false };
   }
