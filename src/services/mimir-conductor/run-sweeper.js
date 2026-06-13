@@ -18,7 +18,9 @@
  */
 
 const STALE_STATUSES = ['RUNNING', 'CONSOLIDATING'];
-const SWEEP_INTERVAL_MS = 60 * 60 * 1000; // 1 час
+const SWEEP_INTERVAL_MS = 5 * 60 * 1000; // 5 минут — чтобы РП не ждал час до автоочистки
+const STALE_RUN_MIN = 15;   // run без обновлений > 15 мин → ERROR
+const STALE_AGENT_MIN = 12; // agent_run RUNNING > 12 мин → ERROR (sonnet web-search обычно ≤6 мин, защита от висяков)
 
 let _interval = null;
 
@@ -60,15 +62,50 @@ async function markOrphanedAsError(db, log) {
  * @param {Object} [log]
  */
 async function sweep(db, log) {
+  // 1. Зависшие agent_runs (одиночный агент висит без прогресса > 12 мин).
+  //    Эти агенты блокируют дальнейшую работу Conductor — нужно очистить.
+  try {
+    const res = await db.query(
+      `UPDATE mimir_agent_runs
+          SET status = 'ERROR',
+              error_text = COALESCE(error_text, 'Таймаут агента (>${STALE_AGENT_MIN} мин без завершения)'),
+              error_code = COALESCE(error_code, 'TIMEOUT'),
+              completed_at = NOW()
+        WHERE status = 'RUNNING'
+          AND started_at < NOW() - INTERVAL '${STALE_AGENT_MIN} minutes'
+        RETURNING id, conductor_run_id, agent_name`,
+      []
+    );
+    if (res.rowCount > 0) {
+      const tags = res.rows.map((r) => `#${r.conductor_run_id}/${r.agent_name}`).join(', ');
+      (log && log.info ? log.info.bind(log) : console.log)(
+        `[conductor-sweeper] agent-timeout: ${res.rowCount} зависших агентов помечено как ERROR (${tags})`
+      );
+      // Событие в run для UI
+      for (const r of res.rows) {
+        try {
+          await db.query(
+            `INSERT INTO mimir_agent_events (conductor_run_id, agent_run_id, event_type, payload)
+             VALUES ($1, $2, 'error', $3::jsonb)`,
+            [r.conductor_run_id, r.id, JSON.stringify({ text: `Агент ${r.agent_name} прерван по таймауту >${STALE_AGENT_MIN} мин`, agent_name: r.agent_name, code: 'TIMEOUT' })]
+          );
+        } catch (_) { /* noop */ }
+      }
+    }
+  } catch (e) {
+    (log && log.warn ? log.warn.bind(log) : console.warn)(`[conductor-sweeper] agent-sweep error: ${e.message}`);
+  }
+
+  // 2. Зависшие conductor_runs (нет обновлений > 15 мин).
   try {
     const res = await db.query(
       `UPDATE mimir_conductor_runs
           SET status = 'ERROR',
-              blocked_reason = COALESCE(blocked_reason, 'Таймаут: более 30 минут без обновлений'),
+              blocked_reason = COALESCE(blocked_reason, 'Таймаут: более ${STALE_RUN_MIN} минут без обновлений'),
               completed_at = NOW(),
               updated_at = NOW()
         WHERE status = ANY($1::text[])
-          AND updated_at < NOW() - INTERVAL '30 minutes'
+          AND updated_at < NOW() - INTERVAL '${STALE_RUN_MIN} minutes'
         RETURNING id`,
       [STALE_STATUSES]
     );
@@ -76,13 +113,11 @@ async function sweep(db, log) {
       const ids = res.rows.map((r) => r.id);
       await _logStatusEvents(db, ids, 'timeout');
       (log && log.info ? log.info.bind(log) : console.log)(
-        `[conductor-sweeper] sweep: ${res.rowCount} зависших RUNNING помечено как ERROR (timeout)`
+        `[conductor-sweeper] run-sweep: ${res.rowCount} зависших RUNNING помечено как ERROR (timeout)`
       );
     }
   } catch (e) {
-    (log && log.warn ? log.warn.bind(log) : console.warn)(
-      `[conductor-sweeper] sweep error: ${e.message}`
-    );
+    (log && log.warn ? log.warn.bind(log) : console.warn)(`[conductor-sweeper] run-sweep error: ${e.message}`);
   }
 }
 
@@ -108,7 +143,7 @@ function start(db, log) {
   if (_interval) return;
   markOrphanedAsError(db, log).catch(() => {});
   _interval = setInterval(() => sweep(db, log).catch(() => {}), SWEEP_INTERVAL_MS);
-  (log && log.info ? log.info.bind(log) : console.log)('[conductor-sweeper] Started — hourly stale-run sweep');
+  (log && log.info ? log.info.bind(log) : console.log)(`[conductor-sweeper] Started — sweep каждые 5 мин (run ${STALE_RUN_MIN}мин / agent ${STALE_AGENT_MIN}мин)`);
 }
 
 function stop() {
