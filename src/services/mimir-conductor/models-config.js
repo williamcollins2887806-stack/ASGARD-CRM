@@ -52,14 +52,18 @@ const TOKENATOR_RATE_RUB_PER_TOKEN = 2000 / 100_000_000; // = 0.00002
 const TOKENATOR_API_MULTIPLIERS = {
   'gpt-5.5': 2.2,
   'gpt-5.4': 2.0,
+  'gpt-5.4-mini': 1.8,
+  'gemini-3.5-flash': 2.0,
+  'gemini-3-flash': 1.8,
   'gemini-2.5-flash': 1.5,
+  'gemini-2.5-flash-lite': 1.5,
   // По мере возвращения моделей онлайн — пополнять:
   // 'claude-opus-4-7': 1.6, 'claude-sonnet-4-6': 1.4, 'claude-haiku-4-5': 1.3, ...
 };
 
 // Универсальная fallback-цепочка api_id для общих чат-задач у токенатора.
 // Порядок = приоритет (от лучшего/дешёвого к запасному). Используется при 5xx/timeout.
-const DEFAULT_FALLBACK_CHAIN = ['gpt-5.5', 'gpt-5.4', 'gemini-2.5-flash'];
+const DEFAULT_FALLBACK_CHAIN = ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gemini-3-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
 
 /**
  * Каталог моделей.
@@ -102,13 +106,13 @@ const models = {
   },
   'haiku-4-5': {
     provider: 'routerai',
-    api_id: 'gpt-5.5',                            // ранее gemini-2.5-flash, переведено 13.06.2026 в 17:00 MSK — у токенатора Gemini временно 403 «Request error»                   // tokenator: быстрая/дешёвая (×1.5, контекст 1M)
+    api_id: 'gemini-2.5-flash-lite',              // 14.06.2026: Gemini вернулся — самая дешёвая ×1.5, быстрая, контекст 1M
     anthropic_api_id: 'claude-haiku-4-5-20251001',
-    tokenator_multiplier: 2.2,                    // на gpt-5.5 ×2.2 (вернём ×1.5 когда gemini восстановится)
+    tokenator_multiplier: 1.5,
     supports_extended_thinking: false,
     supports_tool_use: true,
     max_context: 1000000,
-    role: 'Быстрые трансформации, классификация — gemini-2.5-flash'
+    role: 'Быстрые трансформации, JSON-репайр, классификация — gemini-2.5-flash-lite'
   },
 
   // ─── Зрение (чертежи и сканы) ──────────────────────────────────────────
