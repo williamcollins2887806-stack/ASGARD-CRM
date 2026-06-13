@@ -169,9 +169,15 @@ async function _runDeterministicCore(runId, opts = {}) {
       message: `Этап ${node.stage} «${STAGE_NAMES[node.stage]}» — Шаг ${node.step}/${TOTAL_STEPS}: ${node.agent}`
     });
 
+    // Hard-timeout 14 мин на агент (sweeper 12 мин + 2 мин buffer на fetch).
+    // Без этого pipeline зависает на Promise если sweeper пометил БД но fetch ждёт.
+    const AGENT_HARD_TIMEOUT_MS = 14 * 60 * 1000;
     let res;
     try {
-      res = await callAgent(node.agent, {}, runId, null);
+      res = await Promise.race([
+        callAgent(node.agent, {}, runId, null),
+        new Promise((_, reject) => setTimeout(() => reject(new Error(`agent_hard_timeout_${AGENT_HARD_TIMEOUT_MS / 60000}min`)), AGENT_HARD_TIMEOUT_MS))
+      ]);
     } catch (e) {
       res = { success: false, error: e.message };
     }
