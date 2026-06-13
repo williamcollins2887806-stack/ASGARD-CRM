@@ -1087,6 +1087,7 @@ window.AsgardPmWorksPage=(function(){
           ${(user.role==="PM" && String(w.work_status||"")===triggerStatus) ? `<button class="btn danger" id="btnCloseout">Работы завершены</button>` : ``}
           <button class="btn primary" id="btnSaveWork">Сохранить</button>
           <button class="btn ghost" id="btnActions">⚡ Действия</button>
+          ${(['Подписание акта','Завершена','Закрыта','Сдана'].includes(String(w.work_status||''))) ? `<button class="btn" id="btnSaveActuals" style="background:linear-gradient(135deg,#1f6fff,#7a3aff);color:#fff;border:0">📊 Внести факт для обучения Мимира</button>` : ``}
         </div>
       `;
 
@@ -1162,6 +1163,12 @@ window.AsgardPmWorksPage=(function(){
       }
 
       // btnFullGantt moved to popup-grid menu
+
+      // ===== «📊 Внести факт для обучения Мимира» — feedback-loop в базу эталонов =====
+      const btnSaveActuals = $("#btnSaveActuals");
+      if (btnSaveActuals) {
+        btnSaveActuals.addEventListener("click", () => openSaveActualsModal(w, user));
+      }
 
       // ===== Popup-grid menu: "Действия" =====
       const btnActions = $("#btnActions");
@@ -1791,6 +1798,135 @@ window.AsgardPmWorksPage=(function(){
     };
     document.getElementById('aw-mob').onclick = () => createAsm('mobilization');
     document.getElementById('aw-demob').onclick = () => createAsm('demobilization');
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // openSaveActualsModal — РП вносит ФАКТИЧЕСКИЕ данные завершённой работы.
+  // Создаётся эталон в mimir_reference_projects (через /api/mimir/conductor/
+  // run/:id/save-actuals если есть привязка к Conductor-run; иначе через
+  // /api/mimir/conductor/reference/import).
+  // ═══════════════════════════════════════════════════════════════════════════
+  function openSaveActualsModal(work, user) {
+    const esc = AsgardUI.esc || (s => String(s == null ? '' : s));
+    const html = `
+      <div style="max-width:760px;display:grid;gap:12px">
+        <p style="margin:0;font-size:13px;opacity:.85">
+          Внеси фактические показатели завершённой работы. Эти данные сохранятся как <b>эталон</b>
+          и Mimir Conductor будет использовать их для расчёта похожих тендеров в будущем
+          (точность просчётов растёт с каждым эталоном).
+        </p>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div><label>Тип работ (канон.)</label>
+            <input id="sa-work_type" placeholder="напр.: гидромеханическая очистка теплообменных труб" value="${esc(work.work_title || '')}"/>
+          </div>
+          <div><label>Отрасль</label>
+            <input id="sa-industry" placeholder="химия / СПГ / нефтехимия / газопереработка"/>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+          <div><label>Себест. план, ₽</label>
+            <input id="sa-cost_planned" type="number" placeholder="напр.: 13750000"/>
+          </div>
+          <div><label>Себест. ФАКТ, ₽</label>
+            <input id="sa-cost_actual" type="number" placeholder="напр.: 26400000"/>
+          </div>
+          <div><label>Цена договора факт (после ДС), с НДС, ₽</label>
+            <input id="sa-contract_value_actual" type="number" placeholder="напр.: 32716466"/>
+          </div>
+          <div><label>Прибыль факт, ₽</label>
+            <input id="sa-profit_actual" type="number" placeholder="отрицательная = убыток"/>
+          </div>
+          <div><label>Маржа факт, %</label>
+            <input id="sa-margin_actual_pct" type="number" step="0.1" placeholder="напр.: -41.3"/>
+          </div>
+          <div><label>Длительность план, кал. дней</label>
+            <input id="sa-dur_planned" type="number" placeholder="напр.: 57"/>
+          </div>
+          <div><label>Длительность ФАКТ, кал. дней</label>
+            <input id="sa-dur_actual" type="number" placeholder="напр.: 72"/>
+          </div>
+          <div><label>Бригада план, чел.</label>
+            <input id="sa-crew_planned" type="number" placeholder="напр.: 15"/>
+          </div>
+          <div><label>Бригада ФАКТ, чел.</label>
+            <input id="sa-crew_actual" type="number" placeholder="напр.: 21"/>
+          </div>
+        </div>
+
+        <div><label>Состав бригады (JSON)</label>
+          <textarea id="sa-crew_composition" rows="2" placeholder='{"ИТР":1,"мастер":2,"слесарь":18}'></textarea>
+        </div>
+        <div><label>Режим работ</label>
+          <input id="sa-work_regime" placeholder="напр.: круглосуточно 2 смены, 6/1"/>
+        </div>
+
+        <div><label>Resources actual (JSON — см. эталон КАО Азот для образца, опционально)</label>
+          <textarea id="sa-resources" rows="4" placeholder='{"labor":{...},"materials":[...],"travel_costs_rub":{...}}'></textarea>
+        </div>
+        <div><label>Variance (план vs факт, JSON)</label>
+          <textarea id="sa-variance" rows="3" placeholder='{"cost_pct":92,"duration_pct":26,"root_causes":["..."]}'></textarea>
+        </div>
+        <div><label>Insights (уроки и стратегия для будущих похожих, JSON)</label>
+          <textarea id="sa-insights" rows="4" placeholder='{"lessons_learned":["..."],"what_to_check_before_bid":["..."],"pricing_strategy_for_similar":["..."]}'></textarea>
+        </div>
+        <div><label>Примечание</label>
+          <textarea id="sa-notes" rows="2"></textarea>
+        </div>
+
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn ghost" id="sa-cancel">Отмена</button>
+          <button class="btn primary" id="sa-save">📊 Сохранить эталон</button>
+        </div>
+      </div>
+    `;
+    AsgardUI.showModal({ title: `📊 Внести факт работы #${work.id}`, html, wide: true });
+
+    document.getElementById('sa-cancel').onclick = () => AsgardUI.closeModal();
+    document.getElementById('sa-save').onclick = async () => {
+      const v = id => (document.getElementById(id).value || '').trim();
+      const n = id => { const x = parseFloat(v(id)); return isFinite(x) ? x : null; };
+      const j = id => { try { return v(id) ? JSON.parse(v(id)) : null; } catch (e) { AsgardUI.toast('JSON-ошибка', `${id}: ${e.message}`, 'err'); return undefined; } };
+
+      const body = {
+        customer_name: work.customer_name || '',
+        object_name: work.object_name || work.work_title || '',
+        city: work.city || work.object_place || null,
+        work_type: v('sa-work_type') || work.work_title || 'Подрядные работы',
+        industry_sector: v('sa-industry') || null,
+        cost_planned: n('sa-cost_planned'),
+        cost_actual: n('sa-cost_actual'),
+        contract_value_actual: n('sa-contract_value_actual'),
+        profit_actual: n('sa-profit_actual'),
+        margin_actual_pct: n('sa-margin_actual_pct'),
+        duration_planned_calendar_days: n('sa-dur_planned'),
+        duration_actual_calendar_days: n('sa-dur_actual'),
+        crew_size_planned: n('sa-crew_planned'),
+        crew_size_actual: n('sa-crew_actual'),
+        work_regime: v('sa-work_regime') || null,
+        crew_composition_actual: j('sa-crew_composition'),
+        resources_actual: j('sa-resources'),
+        variance: j('sa-variance'),
+        insights: j('sa-insights'),
+        notes: v('sa-notes') || null,
+        source_work_id: work.id,
+        quality_score: 8 // РП сам внёс — высокая достоверность
+      };
+      if (Object.values(body).some(x => x === undefined)) return; // JSON error toasted
+
+      try {
+        const hdrs = { 'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + (localStorage.getItem('asgard_token') || localStorage.getItem('auth_token')) };
+        const r = await fetch('/api/mimir/conductor/reference/import', { method: 'POST', headers: hdrs, body: JSON.stringify(body) });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        AsgardUI.toast('Эталон сохранён', `Reference id=${d.reference_id}. Mimir будет использовать его в похожих просчётах.`, 'ok');
+        AsgardUI.closeModal();
+      } catch (e) {
+        AsgardUI.toast('Ошибка сохранения', e.message, 'err');
+      }
+    };
   }
 
   return { render };

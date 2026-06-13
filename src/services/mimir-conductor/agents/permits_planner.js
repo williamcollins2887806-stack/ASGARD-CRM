@@ -42,7 +42,7 @@ async function loadCrewPermits(employeeIds) {
     const r = await db.query(
       `SELECT employee_id, permit_type FROM employee_permits
        WHERE employee_id = ANY($1::int[])
-         AND (valid_to IS NULL OR valid_to >= CURRENT_DATE)`,
+         AND (expiry_date IS NULL OR expiry_date >= CURRENT_DATE)`,
       [ids]
     );
     const map = new Map();

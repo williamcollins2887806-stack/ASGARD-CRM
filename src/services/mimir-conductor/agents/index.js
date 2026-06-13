@@ -58,8 +58,8 @@ const REAL = {
   executive_docs_planner: require('./executive_docs_planner'),
   warranty_reserve: require('./warranty_reserve'),
   quality_control_planner: require('./quality_control_planner'),
-  marine_permits: require('./marine_permits')
-  // Остаётся моком: site_access_planner (вне объёма Сессии 7).
+  marine_permits: require('./marine_permits'),
+  site_access_planner: require('./site_access_planner')
 };
 
 /**

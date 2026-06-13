@@ -211,20 +211,20 @@ const REGISTRY = {
   // ─── 12. Подбор бригады ────────────────────────────────────────────────
   crew_composer: agent('crew_composer', {
     name: 'Подбор бригады',
-    description: 'Формирует состав бригады по объёмам и методу: специальности, квалификация, численность.',
+    description: 'Формирует состав бригады по объёмам и методу: специальности, квалификация, численность. Берёт реальный кадровый резерв из work_scope_research.employees_summary + crew_size_actual из analogs.',
     model_default: 'sonnet-4-6',
     output_artifact_type: 'crew_plan',
-    requires_artifacts: ['tz_summary', 'resources'],
+    requires_artifacts: ['tz_summary', 'resources', 'work_scope_research', 'analogs_comparison'],
     triggers: [{ type: 'always' }]
   }),
 
   // ─── 13. Расчёт труда (без LLM) ────────────────────────────────────────
   labor_calculator: agent('labor_calculator', {
     name: 'Расчёт труда',
-    description: 'Считает трудозатраты и ФОТ по бригаде и срокам. Детерминированно, без LLM.',
-    model_default: 'haiku-4-5', // Python-расчёт; TODO
+    description: 'Считает трудозатраты и ФОТ по бригаде и срокам. Ставки из employees_summary.by_qualification.avg_day_rate_rub (реальные из БД), коэф. из analogs.applicable_norms.',
+    model_default: 'haiku-4-5',
     output_artifact_type: 'labor_cost',
-    requires_artifacts: ['crew_plan'],
+    requires_artifacts: ['crew_plan', 'work_scope_research', 'analogs_comparison'],
     estimated_cost_rub: 0,
     triggers: [{ type: 'always' }]
   }),
@@ -263,10 +263,10 @@ const REGISTRY = {
   // ─── 17. Косвенные + налоги (без LLM) ──────────────────────────────────
   indirects_calculator: agent('indirects_calculator', {
     name: 'Косвенные + налоги',
-    description: 'Считает накладные, налоги, косвенные затраты по МДС. Детерминированно, без LLM.',
-    model_default: 'haiku-4-5', // Python; TODO
+    description: 'Считает накладные, налоги, косвенные затраты. Берёт коэффициенты из analogs.applicable_norms (overheads_pct, warranty_pct) ИЛИ company_profile.financial_policy. Применяет site_conditions.fot_multiplier.',
+    model_default: 'haiku-4-5',
     output_artifact_type: 'indirects',
-    requires_artifacts: ['labor_cost'],
+    requires_artifacts: ['labor_cost', 'site_conditions', 'analogs_comparison', 'work_scope_research'],
     estimated_cost_rub: 0,
     triggers: [{ type: 'always' }]
   }),
@@ -314,10 +314,10 @@ const REGISTRY = {
   // ─── 22. Главный контролёр ─────────────────────────────────────────────
   final_consolidator: agent('final_consolidator', {
     name: 'Главный контролёр',
-    description: 'Собирает все артефакты в итоговую ССР, проверяет полноту и непротиворечивость.',
+    description: 'Собирает все артефакты в итоговую ССР. Коэффициенты (накладные, маржа, НДС, гарантия) — из analogs.applicable_norms ИЛИ company_profile, fallback на defaults. Применяет site_conditions.fot_multiplier. Маржа = gross-profit-margin от выручки (не mark-up).',
     model_default: 'opus-4-7',
     output_artifact_type: 'final_estimate',
-    requires_artifacts: ['indirects'],
+    requires_artifacts: ['indirects', 'analogs_comparison', 'work_scope_research'],
     always_required: true,
     triggers: [{ type: 'always' }]
   }),

@@ -21,15 +21,44 @@
 const db = require('../../db');
 const { formatRub } = require('./_util');
 
-// Дефолтные ставки (₽/смену), если позиции нет в тарифной сетке.
-const DEFAULT_RATES = {
+// Fallback ставки (₽/смену) — применяются ТОЛЬКО если позиции нет ни в:
+//   1. employees_summary.by_qualification[].avg_day_rate_rub (реальные ставки из БД)
+//   2. analogs_comparison.analysis.applicable_norms.labor_rates_rub_per_shift (из эталонов)
+//   3. field_tariff_grid (тарифная сетка)
+// Это последний рубеж. Если попадаем сюда — в assumptions пишется warning.
+const FALLBACK_RATES = {
   'ИТР (РП)': 10000,
   'Мастер': 6000,
   'Слесарь-универсал': 4500
 };
-const ROAD_RATE = 3000;        // ₽/чел/день дороги
-const PREP_DAYS = 2;           // подготовка на складе
-const MOB_DEMOB_DAYS = 4;      // моб + демоб
+const FALLBACK_ROAD_RATE = 3000;
+const FALLBACK_PREP_DAYS = 2;
+const FALLBACK_MOB_DEMOB_DAYS = 4;
+
+/** Найти ставку в employees_summary.by_qualification по нечёткому matching position. */
+function rateFromEmployees(workScope, position) {
+  const list = (workScope && workScope.employees_summary && workScope.employees_summary.by_qualification) || [];
+  const posLow = String(position || '').toLowerCase();
+  // Сначала прямое включение
+  let hit = list.find((q) => posLow && q.qualification && posLow.includes(q.qualification.toLowerCase()));
+  if (!hit) hit = list.find((q) => q.qualification && posLow && q.qualification.toLowerCase().includes(posLow.split(/[\s(]+/)[0]));
+  if (hit && hit.avg_day_rate_rub && hit.avg_day_rate_rub > 0) {
+    return { rate: Number(hit.avg_day_rate_rub), source: 'employees', assumed: false };
+  }
+  return null;
+}
+
+/** Найти ставку в applicable_norms из historical_comparator. */
+function rateFromAnalogs(analogs, position) {
+  const norms = (analogs && analogs.analysis && analogs.analysis.applicable_norms) || {};
+  const rates = norms.labor_rates_rub_per_shift || {};
+  const posLow = String(position || '').toLowerCase();
+  const key = Object.keys(rates).find((k) => k.toLowerCase().includes(posLow.split(/[\s(]+/)[0]));
+  if (key && rates[key] > 0) {
+    return { rate: Number(rates[key]), source: 'analogs', assumed: false };
+  }
+  return null;
+}
 
 /** Грубая оценка дней дороги по городам бригады vs объекта. */
 function computeRoadDays(crew, objectCity) {
@@ -55,10 +84,15 @@ async function loadTariffs() {
   }
 }
 
-function rateFor(tariffMap, position) {
+function rateFor(tariffMap, position, requiredArtifacts) {
+  // Приоритет: эталоны → реальные employees → тарифная сетка → fallback
+  const fromAnalogs = rateFromAnalogs(requiredArtifacts && requiredArtifacts.analogs_comparison, position);
+  if (fromAnalogs) return fromAnalogs;
+  const fromEmp = rateFromEmployees(requiredArtifacts && requiredArtifacts.work_scope_research, position);
+  if (fromEmp) return fromEmp;
   const fromGrid = tariffMap.get(position);
-  if (fromGrid && fromGrid > 0) return { rate: fromGrid, assumed: false };
-  return { rate: DEFAULT_RATES[position] || 4500, assumed: true };
+  if (fromGrid && fromGrid > 0) return { rate: fromGrid, source: 'tariff_grid', assumed: false };
+  return { rate: FALLBACK_RATES[position] || 4500, source: 'defaults', assumed: true };
 }
 
 async function run({ requiredArtifacts, onThought }) {
@@ -85,16 +119,16 @@ async function run({ requiredArtifacts, onThought }) {
   } else if (timing.duration_days) {
     totalDays = Number(timing.duration_days);
   } else {
-    totalDays = 10 + 2 * roadDays + MOB_DEMOB_DAYS; // дефолт: 10 рабочих дней
-    assumptions.push('Даты проекта не заданы — принята длительность 10 рабочих дней');
+    totalDays = 10 + 2 * roadDays + FALLBACK_MOB_DEMOB_DAYS;
+    assumptions.push('Даты проекта не заданы — принята длительность 10 рабочих дней (FALLBACK)');
   }
 
-  const workDays = totalDays - 2 * roadDays - MOB_DEMOB_DAYS;
+  const workDays = totalDays - 2 * roadDays - FALLBACK_MOB_DEMOB_DAYS;
   if (workDays < 1) {
     onThought('⚠ Окно дат слишком короткое под объём + дорогу + моб/демоб');
     return {
       summary: 'ОШИБКА: окно дат слишком короткое для объёма работ',
-      key_findings: [`Всего дней ${totalDays}, дорога ${roadDays}×2, моб/демоб ${MOB_DEMOB_DAYS}`],
+      key_findings: [`Всего дней ${totalDays}, дорога ${roadDays}×2, моб/демоб ${FALLBACK_MOB_DEMOB_DAYS}`],
       personnel: [],
       subtotal_fot: 0,
       work_days: 0,
@@ -104,7 +138,7 @@ async function run({ requiredArtifacts, onThought }) {
         channel: 'PM',
         category: 'timing',
         blocking: true,
-        question_ru: `Окно ${totalDays} дн не вмещает работу с дорогой ${roadDays}×2 дн и моб/демоб ${MOB_DEMOB_DAYS} дн. Сдвинуть сроки или увеличить бригаду?`
+        question_ru: `Окно ${totalDays} дн не вмещает работу с дорогой ${roadDays}×2 дн и моб/демоб ${FALLBACK_MOB_DEMOB_DAYS} дн. Сдвинуть сроки или увеличить бригаду?`
       }]
     };
   }
@@ -115,29 +149,30 @@ async function run({ requiredArtifacts, onThought }) {
 
   const personnel = [];
 
-  // ИТР — фиксированная ставка
-  const itr = rateFor(tariffMap, 'ИТР (РП)');
-  if (itr.assumed) assumptions.push('Ставка ИТР принята по умолчанию (нет в тарифной сетке)');
-  const itrDays = workDays + 2 * roadDays + MOB_DEMOB_DAYS;
-  personnel.push({ item: 'ИТР (РП)', qty: 1, rate: itr.rate, days: itrDays, total: 1 * itr.rate * itrDays });
+  // ИТР — ставка из аналогов / employees / тарифной сетки / fallback
+  const itr = rateFor(tariffMap, 'ИТР (РП)', requiredArtifacts);
+  assumptions.push(`Ставка ИТР: ${itr.rate} ₽/смену (источник: ${itr.source})`);
+  const itrDays = workDays + 2 * roadDays + FALLBACK_MOB_DEMOB_DAYS;
+  personnel.push({ item: 'ИТР (РП)', qty: 1, rate: itr.rate, days: itrDays, total: 1 * itr.rate * itrDays, rate_source: itr.source });
 
   // Мастер(а)
-  const master = rateFor(tariffMap, 'Мастер');
-  if (master.assumed) assumptions.push('Ставка мастера принята по умолчанию');
-  personnel.push({ item: 'Мастер', qty: foremanCount, rate: master.rate, days: workDays, total: foremanCount * master.rate * workDays });
+  const master = rateFor(tariffMap, 'Мастер', requiredArtifacts);
+  assumptions.push(`Ставка мастера: ${master.rate} ₽/смену (источник: ${master.source})`);
+  personnel.push({ item: 'Мастер', qty: foremanCount, rate: master.rate, days: workDays, total: foremanCount * master.rate * workDays, rate_source: master.source });
 
   // Рабочие
-  const worker = rateFor(tariffMap, 'Слесарь-универсал');
-  if (worker.assumed) assumptions.push('Ставка рабочего принята по умолчанию');
-  personnel.push({ item: 'Слесарь-универсал', qty: workersCount, rate: worker.rate, days: workDays, total: workersCount * worker.rate * workDays });
+  const worker = rateFor(tariffMap, 'Слесарь-универсал', requiredArtifacts);
+  assumptions.push(`Ставка рабочего: ${worker.rate} ₽/смену (источник: ${worker.source})`);
+  personnel.push({ item: 'Слесарь-универсал', qty: workersCount, rate: worker.rate, days: workDays, total: workersCount * worker.rate * workDays, rate_source: worker.source });
 
   // Дни дороги
   if (roadDays > 0) {
-    personnel.push({ item: 'Дни дороги', qty: totalCount, rate: ROAD_RATE, days: roadDays * 2, total: totalCount * ROAD_RATE * roadDays * 2 });
+    personnel.push({ item: 'Дни дороги', qty: totalCount, rate: FALLBACK_ROAD_RATE, days: roadDays * 2, total: totalCount * FALLBACK_ROAD_RATE * roadDays * 2, rate_source: 'fallback' });
   }
 
-  // Подготовка на складе
-  personnel.push({ item: 'Подготовка на складе', qty: 3, rate: worker.rate, days: PREP_DAYS, total: 3 * worker.rate * PREP_DAYS });
+  // Подготовка на складе — берём crewPlan.prep_crew если указан, иначе 3 (минимум)
+  const prepCrew = Number(crewPlan.prep_crew) || 3;
+  personnel.push({ item: 'Подготовка на складе', qty: prepCrew, rate: worker.rate, days: FALLBACK_PREP_DAYS, total: prepCrew * worker.rate * FALLBACK_PREP_DAYS, rate_source: worker.source });
 
   const subtotal = personnel.reduce((s, p) => s + p.total, 0);
 

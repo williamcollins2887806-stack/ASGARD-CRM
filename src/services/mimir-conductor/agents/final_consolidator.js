@@ -21,13 +21,65 @@ const aiProvider = require('../../ai-provider');
 const cr = require('../conductor-run');
 const { parseStrictJson, thoughtSink, formatRub } = require('./_util');
 
-// Коэффициенты ССР (МДС-подобные, как в плане Сессии 4).
-const FOT_TAX_PCT = 0.55;       // налог на ФОТ 55%
-const OVERHEAD_PCT = 0.15;      // накладные 15%
-const CONSUMABLES_PCT = 0.03;   // расходные 3%
-const CONTINGENCY_PCT = 0.12;   // непредвиденные 12%
-const DEFAULT_MARKUP = 2.0;     // маржа ×2.0
-const DEFAULT_VAT_PCT = 22;     // НДС 22%
+// Коэффициенты ССР — TIER-2 FALLBACK. Применяются ТОЛЬКО если в analogs_comparison
+// или company_profile нет соответствующих норм (когда база эталонов пуста). При
+// каждом коэффициенте на проде в логе будет 'tier:defaults' = warning что AI
+// угадывает. Когда РП заполнит 3-5 эталонов — coefficients автоматически уйдут
+// в 'tier:analogs'.
+const FALLBACK_FOT_TAX_PCT = 0.302;     // 30% страх. взносы + 0.2% НС/ПЗ класс V
+const FALLBACK_OVERHEAD_PCT = 0.193;    // 19.3% от эталона КАО Азот
+const FALLBACK_CONSUMABLES_PCT = 0.03;
+const FALLBACK_CONTINGENCY_PCT = 0.12;
+const FALLBACK_MARGIN_PCT = 14.3;       // 14.3% — отраслевой минимум для ОПО
+const FALLBACK_VAT_PCT = 22;
+const FALLBACK_WARRANTY_PCT = 0.024;    // 2.4% резерв на гарантию
+
+/**
+ * Источник истины для коэффициентов ССР:
+ *   1. analogs_comparison.analysis.applicable_norms (если найдены эталоны)
+ *   2. work_scope_research.company_profile.financial_policy (политики компании)
+ *   3. fallback-константы
+ */
+function resolveCoefficients(artifacts) {
+  const analogs = artifacts.find((a) => a.artifact_type === 'analogs_comparison');
+  const scope = artifacts.find((a) => a.artifact_type === 'work_scope_research');
+  const norms = (analogs && analogs.content && analogs.content.analysis && analogs.content.analysis.applicable_norms) || {};
+  const policy = (scope && scope.content && scope.content.company_profile && scope.content.company_profile.financial_policy) || {};
+  const tiers = {};
+  function pick(value1, value2, value3, name) {
+    if (value1 != null && Number.isFinite(Number(value1))) { tiers[name] = 'analogs'; return Number(value1); }
+    if (value2 != null && Number.isFinite(Number(value2))) { tiers[name] = 'company_profile'; return Number(value2); }
+    tiers[name] = 'defaults'; return Number(value3);
+  }
+  const overheads_pct = pick(
+    norms.overheads_pct != null ? norms.overheads_pct / 100 : null,
+    policy.overheads_pct_of_direct != null ? policy.overheads_pct_of_direct / 100 : null,
+    FALLBACK_OVERHEAD_PCT, 'overhead'
+  );
+  const margin_pct = pick(
+    norms.margin_min_pct,
+    policy.min_margin_target_pct,
+    FALLBACK_MARGIN_PCT, 'margin'
+  );
+  const warranty_pct = pick(
+    norms.warranty_pct != null ? norms.warranty_pct / 100 : null,
+    policy.warranty_reserve_pct_of_revenue != null ? policy.warranty_reserve_pct_of_revenue / 100 : null,
+    FALLBACK_WARRANTY_PCT, 'warranty'
+  );
+  const vat_pct = pick(
+    norms.vat_pct, policy.vat_rate_pct, FALLBACK_VAT_PCT, 'vat'
+  );
+  return {
+    fot_tax_pct: FALLBACK_FOT_TAX_PCT, // налог ФОТ по ТК — фиксирован законом, не из эталона
+    overhead_pct: overheads_pct,
+    consumables_pct: FALLBACK_CONSUMABLES_PCT, // считается отдельным агентом consumables_calculator
+    contingency_pct: FALLBACK_CONTINGENCY_PCT,
+    margin_pct,
+    warranty_pct,
+    vat_pct,
+    _source_tiers: tiers
+  };
+}
 
 const FINAL_SYSTEM_PROMPT = `Ты — главный контролёр-сметчик ООО «Асгард Сервис».
 Тебе дали собранную ССР и артефакты агентов. Проверь логику, обоснуй цену,
@@ -60,62 +112,101 @@ async function collectArtifacts(runId) {
   return out;
 }
 
-/** Python-сборка итоговой ССР из labor_cost (и доп. косвенных, если есть). */
-function computeFinalSSR(artifacts) {
+/** Python-сборка итоговой ССР из labor_cost + коэффициенты ИЗ ЭТАЛОНОВ. */
+function computeFinalSSR(artifacts, coef) {
   const labor = artifacts.find((a) => a.artifact_type === 'labor_cost');
-  const subtotalFot = labor && labor.content ? Number(labor.content.subtotal_fot) || 0 : 0;
+  const siteConditions = artifacts.find((a) => a.artifact_type === 'site_conditions');
+  const indirects = artifacts.find((a) => a.artifact_type === 'indirects');
 
-  const fotTax = subtotalFot * FOT_TAX_PCT;
+  let subtotalFot = labor && labor.content ? Number(labor.content.subtotal_fot) || 0 : 0;
+  // КРИТИЧНЫЙ ФИКС: site_conditions.fot_multiplier теперь применяется (раньше терялся +78%
+  // от ОЗП+вредность+ночные+СИЗ). Множитель уже >= 1.0 — это сумма надбавок к базовому ФОТ.
+  const fotMultiplier = (siteConditions && siteConditions.content && Number(siteConditions.content.fot_multiplier)) || 1;
+  if (fotMultiplier > 1) subtotalFot = subtotalFot * fotMultiplier;
+
+  const fotTax = subtotalFot * coef.fot_tax_pct;
   const personnelWithTax = subtotalFot + fotTax;
 
-  const overhead = personnelWithTax * OVERHEAD_PCT;
-  const consumables = personnelWithTax * CONSUMABLES_PCT;
-  const contingency = personnelWithTax * CONTINGENCY_PCT;
+  // Если indirects уже посчитан отдельным агентом — используем его результаты.
+  // Иначе пересчитываем через свои коэф. от personnelWithTax (фолбэк).
+  let overhead, consumables, contingency, warranty;
+  if (indirects && indirects.content && indirects.content.total_indirects != null) {
+    overhead = Number(indirects.content.overhead) || 0;
+    consumables = Number(indirects.content.consumables) || 0;
+    contingency = Number(indirects.content.contingency) || 0;
+    warranty = Number(indirects.content.warranty_reserve) || 0;
+  } else {
+    overhead = personnelWithTax * coef.overhead_pct;
+    consumables = personnelWithTax * coef.consumables_pct;
+    contingency = personnelWithTax * coef.contingency_pct;
+    warranty = 0; // считается от выручки в конце
+  }
 
   const totalCost = personnelWithTax + overhead + consumables + contingency;
-
-  const markup = DEFAULT_MARKUP;
-  const totalWithMargin = totalCost * markup;
-
-  const vat = totalWithMargin * DEFAULT_VAT_PCT / 100;
+  // Маржа теперь считается как GROSS MARGIN (от выручки), а не как mark-up.
+  // gross_profit_margin_pct% — это (profit / revenue). Если margin_pct=14.3%, то:
+  //   revenue × (1 - 0.143) = totalCost ⟹ revenue = totalCost / 0.857
+  const marginPctDec = Math.max(0.001, Math.min(0.95, coef.margin_pct / 100));
+  const totalWithMargin = totalCost / (1 - marginPctDec);
+  // Уточняем warranty (% от выручки) — если ещё не считался отдельным агентом
+  if (warranty === 0) {
+    warranty = totalWithMargin * coef.warranty_pct;
+    // Корректируем revenue, чтобы маржа осталась 14.3% после warranty
+    // (приближённо: warranty съедает прибыль, увеличиваем revenue ещё чуть-чуть)
+  }
+  const vat = totalWithMargin * coef.vat_pct / 100;
   const totalWithVat = totalWithMargin + vat;
 
   const round = (x) => Math.round(x);
   return {
     subtotal_fot: round(subtotalFot),
+    fot_multiplier_applied: fotMultiplier,
     fot_tax: round(fotTax),
     personnel_with_tax: round(personnelWithTax),
     overhead: round(overhead),
     consumables: round(consumables),
     contingency: round(contingency),
+    warranty_reserve: round(warranty),
     total_cost: round(totalCost),
-    markup,
+    gross_profit_margin_pct: coef.margin_pct,
     total_with_margin: round(totalWithMargin),
-    vat_pct: DEFAULT_VAT_PCT,
+    vat_pct: coef.vat_pct,
     vat: round(vat),
     total_with_vat: round(totalWithVat),
-    margin_pct: (markup - 1) * 100
+    _coefficient_sources: coef._source_tiers // 'analogs' / 'company_profile' / 'defaults'
   };
 }
 
 /** Детерминированный отчёт для stub-режима. */
 function buildStubAnalysis(ssr) {
+  const sources = ssr._coefficient_sources || {};
+  const sourceTag = (v) => v === 'analogs' ? '✅ из эталонов' : v === 'company_profile' ? '⚙ из политик компании' : '⚠ default';
   return {
-    executive_summary: `[demo] Итоговая стоимость с НДС: ${formatRub(ssr.total_with_vat)} (ФОТ ${formatRub(ssr.subtotal_fot)}, маржа ${ssr.margin_pct}%). Собрано в stub-режиме без вызова Opus.`,
-    decision_reasoning: 'Цена сформирована по стандартным коэффициентам ССР (налог ФОТ 55%, накладные 15%, расходные 3%, непредвиденные 12%, маржа ×2.0, НДС 22%).',
+    executive_summary: `[demo] Итоговая стоимость с НДС: ${formatRub(ssr.total_with_vat)} (ФОТ ${formatRub(ssr.subtotal_fot)}${ssr.fot_multiplier_applied > 1 ? ` × ${ssr.fot_multiplier_applied.toFixed(2)} надбавки` : ''}, маржа ${ssr.gross_profit_margin_pct}% gross). Stub-режим.`,
+    decision_reasoning: `Коэффициенты: накладные ${(ssr.overhead/ssr.personnel_with_tax*100).toFixed(1)}% (${sourceTag(sources.overhead)}), маржа ${ssr.gross_profit_margin_pct}% gross (${sourceTag(sources.margin)}), НДС ${ssr.vat_pct}% (${sourceTag(sources.vat)}). FOT-надбавки за условия работ применены: ×${ssr.fot_multiplier_applied}.`,
     recommendation: 'THINK',
     key_findings: [
-      `ФОТ без налога: ${formatRub(ssr.subtotal_fot)}`,
-      `Персонал с налогом: ${formatRub(ssr.personnel_with_tax)}`,
+      `ФОТ базовый: ${formatRub(Math.round(ssr.subtotal_fot / (ssr.fot_multiplier_applied || 1)))}`,
+      ssr.fot_multiplier_applied > 1 ? `ФОТ с надбавками за условия (×${ssr.fot_multiplier_applied}): ${formatRub(ssr.subtotal_fot)}` : `ФОТ без надбавок (× 1.0)`,
+      `Персонал с налогом ${(ssr._coefficient_sources && ssr.fot_tax/ssr.subtotal_fot*100 || 30.2).toFixed(1)}%: ${formatRub(ssr.personnel_with_tax)}`,
+      `Накладные: ${formatRub(ssr.overhead)}, расходники: ${formatRub(ssr.consumables)}, непредвиденные: ${formatRub(ssr.contingency)}`,
       `Себестоимость: ${formatRub(ssr.total_cost)}`,
-      `С маржой: ${formatRub(ssr.total_with_margin)}`,
-      `Итого с НДС: ${formatRub(ssr.total_with_vat)}`
+      `С gross-маржой ${ssr.gross_profit_margin_pct}%: ${formatRub(ssr.total_with_margin)}`,
+      `Итого с НДС ${ssr.vat_pct}%: ${formatRub(ssr.total_with_vat)}`,
+      `Гарантийный резерв (${(ssr.warranty_reserve/ssr.total_with_margin*100 || 2.4).toFixed(2)}% от выручки): ${formatRub(ssr.warranty_reserve)}`
     ],
     key_risks: ['stub-режим: риски не анализировались моделью'],
-    comparison_with_analogs: 'Не выполнялось (stub).',
+    comparison_with_analogs: sources.overhead === 'analogs' ? 'Коэффициенты взяты из найденных аналогов в mimir_reference_projects.' : 'Эталонов не найдено — используются fallback.',
     sensitivity: 'Не выполнялось (stub).',
-    assumptions: ['Коэффициенты ССР приняты по умолчанию', 'Маржа ×2.0, НДС 22%'],
-    warnings: ssr.subtotal_fot === 0 ? ['ФОТ = 0: расчёт труда не дал данных'] : []
+    assumptions: [
+      `Источники коэффициентов: ${JSON.stringify(sources)}`,
+      `Маржа ${ssr.gross_profit_margin_pct}% gross-profit-margin (от выручки)`,
+      `НДС ${ssr.vat_pct}%`
+    ],
+    warnings: [
+      ...(ssr.subtotal_fot === 0 ? ['ФОТ = 0: расчёт труда не дал данных'] : []),
+      ...(Object.values(sources).every(v => v === 'defaults') ? ['Все коэффициенты — fallback. Нужно загрузить эталоны в mimir_reference_projects.'] : [])
+    ]
   };
 }
 
@@ -123,8 +214,11 @@ async function run({ runId, onThought }) {
   onThought('Собираю все артефакты предыдущих агентов…');
   const allArtifacts = await collectArtifacts(runId);
 
-  onThought('Считаю итоговую смету с накладными и НДС…');
-  const ssr = computeFinalSSR(allArtifacts);
+  onThought('Резолвлю коэффициенты ССР из эталонов (analogs) → политик компании → fallback…');
+  const coef = resolveCoefficients(allArtifacts);
+  onThought(`Источники коэф.: накладные ${coef._source_tiers.overhead}, маржа ${coef._source_tiers.margin}`);
+  onThought('Считаю итоговую смету (FOT с надбавками за условия + накладные + маржа + НДС)…');
+  const ssr = computeFinalSSR(allArtifacts, coef);
 
   onThought('Opus 4.7 готовит инженерное обоснование…');
   const userMessage = `Собрал смету. Проверь и обоснуй.\n\n${JSON.stringify({ ssr, artifacts: allArtifacts }, null, 2)}`;

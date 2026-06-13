@@ -80,10 +80,17 @@ async function findAnalogs(tz) {
 
   // 1) mimir_reference_projects — текстовый поиск по нескольким полям + embedding_text
   try {
-    const terms = [customer, method, mainWorks, city]
-      .filter((x) => x && x.length > 2)
-      .map((x) => x.toLowerCase().split(/\s+/)[0])
-      .filter(Boolean);
+    // ФИКС: раньше брали .split[0] = только первое слово, из-за чего
+    // 'ПАО Газпром' искалось как 'пао' (мимо). Теперь — берём все значимые
+    // слова (>2 букв) и ищем по каждому отдельным OR-условием.
+    const stopWords = new Set(['пао', 'оао', 'зао', 'ооо', 'ао', 'кпп', 'инн', 'г', 'и', 'для', 'на']);
+    const tokenize = (str) => String(str || '').toLowerCase()
+      .replace(/[«»"',.;:!?()\\/]/g, ' ')
+      .split(/\s+/)
+      .map(s => s.trim())
+      .filter(s => s.length > 2 && !stopWords.has(s));
+    const allTokens = [customer, method, mainWorks, city].flatMap(tokenize);
+    const terms = [...new Set(allTokens)].slice(0, 8); // дедуп + ограничиваем чтобы SQL не разбух
     if (terms.length) {
       // Поиск с OR по нескольким полям + ILIKE по embedding_text
       const params = [];
