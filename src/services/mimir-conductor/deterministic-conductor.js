@@ -25,12 +25,12 @@ const { RUN_SEMAPHORE } = require('./semaphore');
 // Каноническая цепочка для production. Меняется только при добавлении агентов.
 // Каждый шаг: { stage, step, agent, required, condition?(ctx)→bool }
 const PIPELINE = [
-  // ЭТАП 1: ПОНИМАНИЕ ТЗ
+  // ЭТАП 1: ПОНИМАНИЕ ТЗ (work_scope ДО tz_analyst, т.к. tz_analyst требует work_scope_research)
   { stage: 1, step: 1, agent: 'document_parser', required: true },
-  { stage: 1, step: 2, agent: 'tz_analyst', required: true },
+  { stage: 1, step: 2, agent: 'work_scope_researcher', required: true },
+  { stage: 1, step: 3, agent: 'tz_analyst', required: true },
 
   // ЭТАП 2: ИССЛЕДОВАНИЕ
-  { stage: 2, step: 3, agent: 'work_scope_researcher', required: true },
   { stage: 2, step: 4, agent: 'historical_comparator', required: true },
   { stage: 2, step: 5, agent: 'gatekeeper', required: false },
 
