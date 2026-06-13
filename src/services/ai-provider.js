@@ -356,11 +356,35 @@ async function callOpenAI(opts) {
     chain = [opts.model || OPENAI_MODEL];
   }
 
+  // Внутренний помощник: вызов одной модели с retry на rate_limit (общий лимит ключа).
+  // 3 попытки с backoff 5→10→20с. Между попытками НЕ меняем модель — ждём слот.
+  // ВЕСЬ вызов проходит через AI_SEMAPHORE (max 3 concurrent — лимит tokenator).
+  let _AI_SEM = null;
+  try { _AI_SEM = require('./mimir-conductor/semaphore').AI_SEMAPHORE; } catch (_) {}
+  async function callWithRateLimitRetry(apiId) {
+    const RATE_LIMIT_RETRIES = 3;
+    let attempt = 0;
+    const doCall = async () => {
+      while (true) {
+        try {
+          return await _callOpenAIOnce({ ...opts, model: apiId });
+        } catch (err) {
+          if (!_isRateLimitError(err) || attempt >= RATE_LIMIT_RETRIES) throw err;
+          const delaySec = 5 * Math.pow(2, attempt); // 5, 10, 20
+          console.warn(`[AI Provider] rate-limit на «${apiId}» (попытка ${attempt + 1}/${RATE_LIMIT_RETRIES + 1}): ${err.providerMessage || err.message}. Жду ${delaySec}с…`);
+          await _sleep(delaySec * 1000);
+          attempt++;
+        }
+      }
+    };
+    return _AI_SEM ? await _AI_SEM.run(doCall) : await doCall();
+  }
+
   let lastErr = null;
   for (let i = 0; i < chain.length; i++) {
     const apiId = chain[i];
     try {
-      const result = await _callOpenAIOnce({ ...opts, model: apiId });
+      const result = await callWithRateLimitRetry(apiId);
       if (i > 0) {
         console.warn(`[AI Provider] FALLBACK успешен: ${chain.slice(0, i).join('→')} → ${apiId} (опт 1-${i} не сработали)`);
         result.fallback_chain_used = chain.slice(0, i + 1);
@@ -396,6 +420,20 @@ function _isRetriableError(err) {
   if (msg.includes('temporarily unavailable') || msg.includes('not available') || msg.includes('not found')) return true;
   return false;
 }
+
+/** Rate-limit / concurrent-streams — НЕ переключаем модель, а ждём и повторяем (общий лимит ключа). */
+function _isRateLimitError(err) {
+  if (!err) return false;
+  if (err.code === 'rate_limit') return true;
+  const status = Number(err.status) || 0;
+  if (status === 429) return true;
+  const msg = String(err.providerMessage || err.message || '').toLowerCase();
+  if (msg.includes('rate limit') || msg.includes('too many requests') || msg.includes('concurrent streams')) return true;
+  return false;
+}
+
+/** sleep helper для backoff. */
+function _sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
 /** Внутренний единичный вызов OpenAI (без fallback-логики). */
 async function _callOpenAIOnce({ system, messages, maxTokens, temperature, stream = false, model = null, tools = null, plugins = null, verbosity = null, responseFormat = null }) {

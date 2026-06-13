@@ -138,6 +138,24 @@ async function runConductor(runId, opts = {}) {
     return runConductorDeterministic(runId, opts);
   }
 
+  // FIFO-очередь Conductor-loop. Если другой РП уже запустил просчёт — этот
+  // ждёт в очереди (max 1 active одновременно — снижает rate-limit давление
+  // на tokenator и стабилизирует прогоны).
+  const { RUN_SEMAPHORE } = require('./semaphore');
+  if (RUN_SEMAPHORE.active >= RUN_SEMAPHORE.max) {
+    const sStatus = RUN_SEMAPHORE.status();
+    await cr.updateRunStatus(runId, 'WAITING_FOR_SLOT', { reason: `Очередь: впереди ${sStatus.active + sStatus.queued} просчётов` });
+    cr.addEvent(runId, null, 'queue_wait', { semaphore: sStatus, message: 'Жду свободного слота — другой РП сейчас считает' });
+  }
+  await RUN_SEMAPHORE.acquire();
+  try {
+    return await _runConductorCore(runId, opts);
+  } finally {
+    RUN_SEMAPHORE.release();
+  }
+}
+
+async function _runConductorCore(runId, opts = {}) {
   const run = await cr.getRun(runId);
   if (!run) throw new Error(`ConductorRun ${runId} не найден`);
 
