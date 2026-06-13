@@ -141,23 +141,22 @@ async function run({ requiredArtifacts, onThought, runId }) {
         ? 'Документы пустые, но Фаза 0 извлекла работы:\n' + scopeBrief + answersBlock + '\n\nСформируй сводку ТЗ на основе этих данных и ответов заказчика.'
         : 'Документы к проекту не приложены и Фаза 0 ничего не нашла. ' + (answersBlock ? answersBlock + '\n\nСформируй сводку на основе ответов заказчика.' : 'Верни сводку с null/[] во всех полях и пометь в summary, что данных нет.'));
 
-  const result = await aiProvider.completeWithStream({
+  const { aiCompleteJson } = require('./_util');
+  const parsed = await aiCompleteJson(aiProvider, {
     system: SYSTEM_PROMPT,
     messages: [{ role: 'user', content: userMessage }],
     model,
     onThought: (t) => onThought(t),
     onText: thoughtSink((t) => onThought(t))
+  }, {
+    onThought, agentName: 'tz_analyst',
+    fallback: () => buildStubSummary(parsedDocs)
   });
-
-  // STUB: модель не возвращает валидный JSON → детерминированная сводка.
-  if (result._stub || aiProvider.isStubMode()) {
-    onThought('stub-режим: собираю демонстрационную сводку ТЗ');
+  // _stub маркер от helper — выдаём stub-сводку
+  if (parsed && parsed._stub) {
     const stub = buildStubSummary(parsedDocs);
     return { ...stub, key_findings: stub.key_findings };
   }
-
-  // LIVE: парсим строгий JSON модели.
-  const parsed = parseStrictJson(result.text);
   return {
     summary: parsed.summary || 'Сводка ТЗ',
     key_findings: parsed.key_findings || [],
