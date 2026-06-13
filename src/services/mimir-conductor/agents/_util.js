@@ -110,6 +110,7 @@ function thoughtSink(onThought) {
 async function aiCompleteJson(aiProvider, opts, retryOpts = {}) {
   const { onThought = () => {}, agentName = 'agent', maxAttempts = 3, retryDelayMs = 3000, fallback = null } = retryOpts;
   let lastErr = null;
+  let lastRawText = null;
   const originalSystem = opts.system || '';
   const strictExtra = '\n\nКРИТИЧНО: верни ТОЛЬКО валидный JSON-объект. Без markdown-ограждений (`json), без комментариев, без trailing comma. Все ключи и строки в двойных кавычках. Никаких тегов цитат.';
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -120,6 +121,7 @@ async function aiCompleteJson(aiProvider, opts, retryOpts = {}) {
       if (result._stub || aiProvider.isStubMode()) {
         return { _stub: true, _result: result };
       }
+      lastRawText = result.text;
       const parsed = parseStrictJson(result.text);
       if (attempt > 1) onThought(`✓ ${agentName}: JSON распарсен с попытки ${attempt}`);
       return parsed;
@@ -131,12 +133,55 @@ async function aiCompleteJson(aiProvider, opts, retryOpts = {}) {
       }
     }
   }
-  onThought(`⚠ ${agentName}: все ${maxAttempts} попытки упали — ${lastErr ? lastErr.message : 'unknown'}`);
+  // Ступень AI-repair: если основные попытки упали, но есть сырой ответ — позовём дешёвую haiku
+  // починить кривой JSON. Часто sonnet ломается на закрытии массива/кавычки, а haiku это исправляет.
+  if (lastRawText) {
+    try {
+      onThought(`🔧 ${agentName}: пытаюсь починить JSON через haiku`);
+      const repaired = await repairJsonWithAI(aiProvider, lastRawText, agentName, onThought);
+      if (repaired) {
+        onThought(`✓ ${agentName}: JSON восстановлен через haiku-репайр`);
+        return repaired;
+      }
+    } catch (e) {
+      onThought(`⚠ ${agentName}: haiku-репайр не сработал (${e.message})`);
+    }
+  }
+  onThought(`⚠ ${agentName}: все ${maxAttempts} попытки + AI-repair упали — ${lastErr ? lastErr.message : 'unknown'}`);
   if (typeof fallback === 'function') {
     onThought(`→ ${agentName}: применяю детерминированный fallback`);
     return fallback();
   }
   throw lastErr || new Error(`${agentName}: parse failed ${maxAttempts} times`);
+}
+
+/**
+ * Починщик JSON через дешёвую модель (haiku). Берёт сырой текст ответа sonnet'а,
+ * просит модель вернуть строго валидный JSON. Идея: sonnet редко ломает структуру
+ * — обычно лишь опечатка в кавычке или забытая скобка. Haiku исправляет за копейки.
+ * Возвращает распарсенный объект или null если не удалось.
+ */
+async function repairJsonWithAI(aiProvider, brokenText, agentName, onThought) {
+  if (!brokenText || brokenText.length > 80000) return null;
+  const repairPrompt =
+    'Тебе дали ТЕКСТ от другой модели, который ДОЛЖЕН был быть валидным JSON-объектом, ' +
+    'но содержит ошибки парсинга (битые кавычки, незакрытые скобки, trailing comma, преамбулы, markdown). ' +
+    'Твоя задача — вернуть ТОЛЬКО валидный JSON-объект, исправив ошибки. ' +
+    'Ничего не комментируй. Не оборачивай в ```. Не добавляй "вот ваш JSON". ' +
+    'Сохрани все смысловые данные. Если поле было незакрыто — закрой логично или поставь null.';
+  const result = await aiProvider.completeWithStream({
+    system: repairPrompt,
+    messages: [{ role: 'user', content: `БИТЫЙ ТЕКСТ:\n${brokenText}\n\nВЕРНИ ВАЛИДНЫЙ JSON:` }],
+    model: 'haiku-4-5',
+    maxTokens: 8000,
+    temperature: 0
+  });
+  if (result._stub) return null;
+  try {
+    return parseStrictJson(result.text);
+  } catch (_) {
+    return null;
+  }
 }
 
 module.exports = { sha256, parseStrictJson, formatRub, thoughtSink, aiCompleteJson };
