@@ -17,14 +17,23 @@
 
 const aiProvider = require('../../ai-provider');
 const { formatRub } = require('./_util');
+const { resolveNorm } = require('./_norms');
 
-/** Справочная оценка цены билета по транспорту и расстоянию (₽, в одну сторону). */
-function estimatePrice(transport, distanceKm) {
+// Fallback ставки за км для разного транспорта (применяются ТОЛЬКО если ни searchWeb,
+// ни analogs не дали данных). Помечаются source='fallback'.
+const FALLBACK_RATES = { plane: 4, train: 3.5, auto: 12 };
+const FALLBACK_MIN = { plane: 6000, train: 1500, auto: 0, unknown: 3000 };
+
+/** Цена за км из аналогов или fallback. */
+function estimatePrice(transport, distanceKm, requiredArtifacts) {
   const d = Number(distanceKm) || 0;
-  if (transport === 'plane') return Math.max(6000, Math.round(d * 4));      // ~4 ₽/км, мин 6000
-  if (transport === 'train') return Math.max(1500, Math.round(d * 3.5));    // купе ~3.5 ₽/км
-  if (transport === 'auto') return Math.max(0, Math.round(d * 12));         // ГСМ ~12 ₽/км
-  return 3000;
+  // Из applicable_norms.travel_rates_rub_per_km.{plane|train|auto} — если есть
+  const ratePath = `travel_rates_rub_per_km.${transport}`;
+  const r = resolveNorm(requiredArtifacts || {}, ratePath, FALLBACK_RATES[transport] || 0);
+  const ratePerKm = Number(r.value) || 0;
+  const min = FALLBACK_MIN[transport] || 0;
+  if (transport === 'auto') return Math.max(min, Math.round(d * ratePerKm));
+  return Math.max(min, Math.round(d * ratePerKm));
 }
 
 /** Медиана массива чисел. */
@@ -57,8 +66,8 @@ async function run({ requiredArtifacts, onThought }) {
   for (const leg of legs) {
     if (leg.transport === 'auto' || leg.transport === 'unknown') {
       // Авто — ГСМ, не билет; оценим по справочнику.
-      const price = estimatePrice(leg.transport, leg.distance_km);
-      pricedLegs.push({ ...leg, price_per_ticket: price, source: 'оценка ГСМ' });
+      const price = estimatePrice(leg.transport, leg.distance_km, requiredArtifacts);
+      pricedLegs.push({ ...leg, price_per_ticket: price, source: 'оценка ГСМ (из analogs или fallback)' });
       continue;
     }
 
@@ -79,7 +88,7 @@ async function run({ requiredArtifacts, onThought }) {
         onThought(`⚠ поиск билетов не удался (${leg.from}→${leg.to}): ${e.message}`);
       }
     }
-    if (price == null) price = estimatePrice(leg.transport, leg.distance_km);
+    if (price == null) price = estimatePrice(leg.transport, leg.distance_km, requiredArtifacts);
     pricedLegs.push({ ...leg, price_per_ticket: price, source });
   }
 

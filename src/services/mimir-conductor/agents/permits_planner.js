@@ -18,20 +18,30 @@
 
 const db = require('../../db');
 const { formatRub } = require('./_util');
+const { resolveNorm } = require('./_norms');
 
-const TRAINING_COST = {
+// Fallback стоимости обучения (применяется только если нет в applicable_norms).
+const FALLBACK_TRAINING_COST = {
   'отзп': 28000, 'охрана труда': 28000,
   'высот': 20000, 'высота': 20000,
   'накс': 65000, 'сварка': 65000,
   'вик': 35000, 'контроль': 35000
 };
+const FALLBACK_OTHER_TRAINING = 15000;
 
-function costForPermit(permit) {
+/** Стоимость обучения с приоритетом: applicable_norms.training_costs_rub_per_permit.{key} → fallback. */
+function costForPermit(permit, requiredArtifacts) {
   const key = String(permit || '').toLowerCase();
-  for (const k of Object.keys(TRAINING_COST)) {
-    if (key.includes(k)) return TRAINING_COST[k];
+  // Сначала пробуем из эталонов по конкретному имени допуска
+  for (const k of Object.keys(FALLBACK_TRAINING_COST)) {
+    if (key.includes(k)) {
+      const r = resolveNorm(requiredArtifacts || {}, `training_costs_rub_per_permit.${k}`, FALLBACK_TRAINING_COST[k]);
+      return { cost: r.value, source: r.tier, matched_key: k };
+    }
   }
-  return 15000; // прочие допуски
+  // Прочие
+  const other = resolveNorm(requiredArtifacts || {}, 'training_costs_rub_per_permit.other', FALLBACK_OTHER_TRAINING);
+  return { cost: other.value, source: other.tier, matched_key: 'other' };
 }
 
 /** Загрузить допуски сотрудников бригады из employee_permits. */
@@ -84,8 +94,8 @@ async function run({ requiredArtifacts, onThought }) {
     } else {
       // Сколько человек обучить: грубо — половина бригады, минимум 2.
       const count = Math.max(2, Math.ceil(crew.length / 2)) || 2;
-      const costEach = costForPermit(reqP);
-      toTrain.push({ permit: reqP, count, cost_each: costEach, cost_total: count * costEach });
+      const c = costForPermit(reqP, requiredArtifacts);
+      toTrain.push({ permit: reqP, count, cost_each: c.cost, cost_total: count * c.cost, _source: c.source });
     }
   }
 

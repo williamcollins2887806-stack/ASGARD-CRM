@@ -13,13 +13,14 @@
 'use strict';
 
 const { formatRub } = require('./_util');
+const { resolveNorm } = require('./_norms');
 
-// Типовые морские допуски: стоимость подготовки/обучения на бригаду, ₽.
-const PERMITS = [
-  { name: 'БМПВО (безопасность на море, выживание)', days: 5, cost: 45000 },
-  { name: 'Морские медкомиссии (УТМ)', days: 3, cost: 18000 },
-  { name: 'Допуск на МЛСП/платформу (вводный инструктаж заказчика)', days: 2, cost: 12000 },
-  { name: 'Сертификация СИЗ для морских работ', days: 0, cost: 25000 }
+// Fallback (применяется ТОЛЬКО если applicable_norms.marine_permits отсутствует).
+const FALLBACK_PERMITS = [
+  { key: 'bmpvo', name: 'БМПВО (безопасность на море, выживание)', days: 5, cost: 45000 },
+  { key: 'utm', name: 'Морские медкомиссии (УТМ)', days: 3, cost: 18000 },
+  { key: 'mlsp', name: 'Допуск на МЛСП/платформу (вводный инструктаж заказчика)', days: 2, cost: 12000 },
+  { key: 'siz', name: 'Сертификация СИЗ для морских работ', days: 0, cost: 25000 }
 ];
 
 function isMarine(tz) {
@@ -42,12 +43,20 @@ async function run({ requiredArtifacts, input, onThought }) {
   }
 
   const crewCount = (requiredArtifacts.crew_plan && Number(requiredArtifacts.crew_plan.total_count)) || 1;
-  // Стоимость обучения/допусков масштабируется на численность для подушевых пунктов.
-  const permits = PERMITS.map((p) => ({
-    name: p.name,
-    days: p.days,
-    cost: /сиз/i.test(p.name) ? p.cost : p.cost * Math.max(1, crewCount)
-  }));
+  // Резолвим каждый пермит из applicable_norms.marine_permits.{key}.cost/days или fallback
+  const sources = [];
+  const permits = FALLBACK_PERMITS.map((p) => {
+    const costR = resolveNorm(requiredArtifacts || {}, `marine_permits.${p.key}.cost_rub`, p.cost);
+    const daysR = resolveNorm(requiredArtifacts || {}, `marine_permits.${p.key}.days`, p.days);
+    sources.push({ permit: p.key, cost_tier: costR.tier, days_tier: daysR.tier });
+    const isPerCrew = !/сиз/i.test(p.name);
+    return {
+      name: p.name,
+      days: daysR.value,
+      cost: isPerCrew ? costR.value * Math.max(1, crewCount) : costR.value,
+      _cost_source: costR.tier
+    };
+  });
   const totalMarine = permits.reduce((s, p) => s + p.cost, 0);
   const leadTime = Math.max(...permits.map((p) => p.days), 0);
 
