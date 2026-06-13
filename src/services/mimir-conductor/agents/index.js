@@ -26,6 +26,8 @@ const mock = require('./_mock');
 const REAL = {
   // Сессия 4 — ядро:
   document_parser: require('./document_parser'),
+  // ФАЗА 0 — Глубокое понимание задачи (НОВЫЙ, перед tz_analyst):
+  work_scope_researcher: require('./work_scope_researcher'),
   tz_analyst: require('./tz_analyst'),
   crew_composer: require('./crew_composer'),
   labor_calculator: require('./labor_calculator'),

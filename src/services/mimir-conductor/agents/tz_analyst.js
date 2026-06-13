@@ -90,19 +90,35 @@ async function run({ requiredArtifacts, onThought }) {
   const parsedDocs = Array.isArray(parsedArt.documents) ? parsedArt.documents : [];
   const totalChars = parsedDocs.reduce((s, d) => s + (d.content_chars || 0), 0);
 
+  // НОВОЕ: данные от work_scope_researcher (Фаза 0) — дословные работы, оборудование,
+  // ограничения, веб-ресёрч методик/регламентов/конкурент-кейсов.
+  const scope = requiredArtifacts.work_scope_research || {};
+  const scopeBrief = JSON.stringify({
+    works: scope.works || [],
+    equipment_inventory: scope.equipment_inventory || [],
+    constraints: scope.constraints || {},
+    timing: scope.timing || {},
+    customer_requirements: scope.customer_requirements || {},
+    web_findings: (scope.web_research && scope.web_research.key_research_findings) || [],
+    regulations: (scope.web_research && scope.web_research.regulations_pack) || [],
+    similar_cases: (scope.web_research && scope.web_research.competitive_intel) || []
+  });
+
   // Выбор модели: при очень больших документах — модель с большим контекстом.
   // (gemini-2-5-pro в плане → web-search-fast/gemini-2.5-flash: единственный
   //  реально доступный большой контекст через routerai; см. models-config.)
   const model = totalChars > 100000 ? 'web-search-fast' : 'sonnet-4-6';
-  onThought(`Анализирую ${parsedDocs.length} документ(ов) (${totalChars} симв) через ${model}`);
+  onThought(`Анализирую ${parsedDocs.length} документ(ов) (${totalChars} симв) + scope-research через ${model}`);
 
   const userMessage = parsedDocs.length
-    ? 'Документы проекта:\n\n' +
+    ? 'Контекст от Фазы 0 (исследовательская):\n' + scopeBrief + '\n\nДокументы проекта:\n\n' +
       parsedDocs
         .filter((d) => d.content)
         .map((d) => `═══ ${d.name} (${d.content_chars} симв) ═══\n${d.content}`)
         .join('\n\n')
-    : 'Документы к проекту не приложены. Верни сводку с null/[] во всех полях и пометь в summary, что данных нет.';
+    : (scope.works && scope.works.length
+        ? 'Документы пустые, но Фаза 0 извлекла работы:\n' + scopeBrief + '\n\nСформируй сводку ТЗ на основе этих данных.'
+        : 'Документы к проекту не приложены и Фаза 0 ничего не нашла. Верни сводку с null/[] во всех полях и пометь в summary, что данных нет.');
 
   const result = await aiProvider.completeWithStream({
     system: SYSTEM_PROMPT,

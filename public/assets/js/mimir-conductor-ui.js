@@ -17,9 +17,10 @@
   const API = '/api/mimir/conductor';
   const ALLOWED_ROLES = ['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 
-  // Фазы и порядок агентов в левой колонке (отображение всех 31).
+  // Фазы и порядок агентов в левой колонке (отображение всех 32).
   const PHASES = {
-    'Фаза 1 · Контекст': ['document_parser', 'tz_analyst', 'drawings_reader', 'gatekeeper'],
+    'Фаза 0 · Глубокое понимание задачи': ['document_parser', 'work_scope_researcher'],
+    'Фаза 1 · Контекст': ['tz_analyst', 'drawings_reader', 'gatekeeper'],
     'Фаза 2 · Декомпозиция и нормативы': ['contract_decomposer', 'resource_planner', 'method_validator', 'site_conditions', 'norms_compliance'],
     'Фаза 3 · Стоимость': ['warehouse_matcher', 'market_search', 'procurement_analyzer', 'crew_composer', 'labor_calculator', 'routing_planner', 'travel_pricer', 'permits_planner', 'consumables_calculator', 'pre_mob_calculator', 'site_access_planner', 'standby_estimator'],
     'Фаза 4 · Спец-условия': ['marine_permits', 'quality_control_planner', 'warranty_reserve'],
@@ -27,7 +28,9 @@
   };
 
   const DISPLAY_NAMES = {
-    document_parser: 'Парсер документов', tz_analyst: 'Аналитик ТЗ',
+    document_parser: 'Парсер документов',
+    work_scope_researcher: '🔍 Исследователь задачи',
+    tz_analyst: 'Аналитик ТЗ',
     drawings_reader: 'Чтение чертежей', gatekeeper: 'Гейткипер',
     contract_decomposer: 'Декомпозиция договора', resource_planner: 'Планировщик ресурсов',
     method_validator: 'Валидатор методов', site_conditions: 'Условия площадки',

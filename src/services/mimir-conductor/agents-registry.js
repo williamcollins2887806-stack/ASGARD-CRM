@@ -69,17 +69,37 @@ const REGISTRY = {
     }
   }),
 
+  // ─── 1.5. ФАЗА 0 — Исследователь задачи (НОВЫЙ, перед tz_analyst) ────
+  work_scope_researcher: agent('work_scope_researcher', {
+    name: 'Исследователь задачи (Фаза 0)',
+    description: 'Глубокое понимание задачи ПЕРЕД расчётом: дословно извлекает работы и оборудование, делает веб-поиск по методикам/поставщикам/регуляторике/конкурент-кейсам/утилизации/СТО заказчика. Без этого Conductor — слепой счетовод.',
+    model_default: 'sonnet-4-6',
+    output_artifact_type: 'work_scope_research',
+    requires_artifacts: ['parsed_documents'],
+    always_required: true,
+    estimated_duration_sec: 90,
+    estimated_cost_rub: 8,
+    tool_description: 'Запустить исследовательскую фазу. 200% понимания задачи: извлечение работ/оборудования/ограничений + веб-ресёрч методик/поставщиков/регламентов/аналогов. ВСЕГДА перед tz_analyst.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        focus_works_titles: { type: 'array', items: { type: 'string' }, description: 'Если уже известно какие работы — приоритезировать поиск по ним' },
+        additional_instructions: { type: 'string' }
+      }
+    }
+  }),
+
   // ─── 2. Аналитик ТЗ ────────────────────────────────────────────────────
   tz_analyst: agent('tz_analyst', {
     name: 'Аналитик ТЗ',
-    description: 'Читает документы, извлекает суть: что делаем, объёмы, метод, режим работ, особые условия, требуемые допуски.',
+    description: 'Читает документы и веб-ресёрч от Фазы 0, формализует scope: что делаем, объёмы, метод, режим работ, особые условия, требуемые допуски.',
     model_default: 'sonnet-4-6',
     model_for_heavy: 'web-search-fast', // TODO: gemini-2-5-pro когда добавим ключ; если документов >50 страниц
     output_artifact_type: 'tz_summary',
-    requires_artifacts: ['parsed_documents'],
+    requires_artifacts: ['parsed_documents', 'work_scope_research'],
     always_required: true,
     estimated_cost_rub: 4,
-    tool_description: 'Запустить аналитика ТЗ. Возвращает суть проекта: объёмы, метод, режим работ, допуски, особые условия. ВСЕГДА вызывать первым.',
+    tool_description: 'Запустить аналитика ТЗ. Возвращает суть проекта: объёмы, метод, режим работ, допуски, особые условия. ВСЕГДА после work_scope_researcher.',
     input_schema: {
       type: 'object',
       properties: {
