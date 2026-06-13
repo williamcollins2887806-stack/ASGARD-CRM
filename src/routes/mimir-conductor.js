@@ -665,6 +665,172 @@ async function mimirConductorRoutes(fastify, options) {
     }
   });
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // POST /conductor/reference/import — импорт эталона напрямую (РП заполняет
+  // фактические данные после завершения работы или загружает старый проект).
+  // Принимает полный набор полей mimir_reference_projects. Endpoint минимально
+  // умный — структуру эталона формирует РП через UI (либо опциональный AI-extract).
+  // ═══════════════════════════════════════════════════════════════════════════
+  fastify.post('/conductor/reference/import', {
+    preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
+  }, async (request, reply) => {
+    const b = request.body || {};
+    const db = fastify.db;
+    try {
+      if (!b.customer_name || !b.work_type) {
+        return reply.code(400).send({ error: 'customer_name и work_type обязательны' });
+      }
+      const sql = `INSERT INTO mimir_reference_projects (
+        customer_name, customer_inn, customer_kpp, object_name, city, region,
+        work_type, work_subtype, industry_sector, asset_type,
+        contract_number, contract_date,
+        contract_value_planned, contract_value_actual,
+        vat_rate_pct, contract_value_planned_no_vat, contract_value_actual_no_vat,
+        cost_planned, cost_actual, profit_planned, profit_actual,
+        margin_planned_pct, margin_actual_pct,
+        duration_planned_calendar_days, duration_actual_calendar_days,
+        duration_planned_workshifts, duration_actual_workshifts,
+        date_start, date_end_planned, date_end_actual,
+        crew_size_planned, crew_size_actual, crew_composition_actual, work_regime,
+        resources_actual, variance, insights,
+        source_work_id, source_tender_id, source_document_ids,
+        quality_score, is_active, notes, embedding_text, created_by
+      ) VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+        $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,
+        $24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,
+        $35::jsonb,$36::jsonb,$37::jsonb,$38,$39,$40,$41,$42,$43,$44,$45
+      ) RETURNING id`;
+      const params = [
+        b.customer_name, b.customer_inn || null, b.customer_kpp || null,
+        b.object_name || null, b.city || null, b.region || null,
+        b.work_type, b.work_subtype || null, b.industry_sector || null, b.asset_type || null,
+        b.contract_number || null, b.contract_date || null,
+        b.contract_value_planned || null, b.contract_value_actual || null,
+        b.vat_rate_pct || 22,
+        b.contract_value_planned_no_vat || null, b.contract_value_actual_no_vat || null,
+        b.cost_planned || null, b.cost_actual || null,
+        b.profit_planned || null, b.profit_actual || null,
+        b.margin_planned_pct || null, b.margin_actual_pct || null,
+        b.duration_planned_calendar_days || null, b.duration_actual_calendar_days || null,
+        b.duration_planned_workshifts || null, b.duration_actual_workshifts || null,
+        b.date_start || null, b.date_end_planned || null, b.date_end_actual || null,
+        b.crew_size_planned || null, b.crew_size_actual || null,
+        JSON.stringify(b.crew_composition_actual || {}),
+        b.work_regime || null,
+        JSON.stringify(b.resources_actual || {}),
+        JSON.stringify(b.variance || {}),
+        JSON.stringify(b.insights || {}),
+        b.source_work_id || null, b.source_tender_id || null,
+        b.source_document_ids || null,
+        b.quality_score || 5, b.is_active !== false,
+        b.notes || null, b.embedding_text || null,
+        request.user.id
+      ];
+      const { rows } = await db.query(sql, params);
+      return { ok: true, reference_id: rows[0].id };
+    } catch (e) {
+      request.log.error(`[reference/import] ${e.message}`);
+      return reply.code(500).send({ error: e.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // POST /conductor/run/:id/save-actuals — после завершения реальной работы
+  // РП вносит фактические цифры → создаём эталон автоматически из run+actuals.
+  // Это и есть feedback-loop: каждая закрытая работа = +1 эталон в базу.
+  // ═══════════════════════════════════════════════════════════════════════════
+  fastify.post('/conductor/run/:id/save-actuals', {
+    preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
+  }, async (request, reply) => {
+    const runId = Number(request.params.id);
+    const b = request.body || {};
+    if (!runId) return reply.code(400).send({ error: 'bad run id' });
+    const db = fastify.db;
+    try {
+      const { rows: rRows } = await db.query(
+        `SELECT r.*, w.work_title, w.customer_name AS w_customer, w.object_name AS w_object,
+                t.tender_title, t.customer_name AS t_customer, t.tender_region
+           FROM mimir_conductor_runs r
+           LEFT JOIN works w ON w.id = r.work_id
+           LEFT JOIN tenders t ON t.id = r.tender_id
+          WHERE r.id = $1`,
+        [runId]
+      );
+      const run = rRows[0];
+      if (!run) return reply.code(404).send({ error: 'Просчёт не найден' });
+      if (request.user.role === 'PM' && run.initiated_by !== request.user.id) {
+        return reply.code(403).send({ error: 'Нет доступа' });
+      }
+
+      // Получаем артефакт final_estimate если был (для cost_planned)
+      const cr = require('../services/mimir-conductor/conductor-run');
+      const finalArt = await cr.getArtifact(runId, 'final_estimate').catch(() => null);
+      const costPlanned = (finalArt && finalArt.content && finalArt.content.ssr && finalArt.content.ssr.subtotal_cost) || run.contract_value || null;
+
+      const customerName = b.customer_name || run.w_customer || run.t_customer || 'Неизвестный заказчик';
+      const workType = b.work_type || run.work_title || run.tender_title || 'Подрядные работы';
+
+      // Создаём эталон
+      const sql = `INSERT INTO mimir_reference_projects (
+        customer_name, object_name, city, work_type, work_subtype, industry_sector,
+        contract_value_planned, contract_value_actual,
+        cost_planned, cost_actual, profit_actual, margin_actual_pct,
+        duration_planned_calendar_days, duration_actual_calendar_days,
+        crew_size_planned, crew_size_actual, crew_composition_actual, work_regime,
+        resources_actual, variance, insights,
+        source_work_id, source_tender_id, quality_score, notes, embedding_text, created_by
+      ) VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
+        $19::jsonb,$20::jsonb,$21::jsonb,$22,$23,$24,$25,$26,$27
+      ) RETURNING id`;
+      const r2 = await db.query(sql, [
+        customerName, b.object_name || run.w_object || null, b.city || run.tender_region || null,
+        workType, b.work_subtype || null, b.industry_sector || null,
+        run.contract_value || null, b.contract_value_actual || null,
+        costPlanned, b.cost_actual || null,
+        b.profit_actual || null, b.margin_actual_pct || null,
+        b.duration_planned_calendar_days || null, b.duration_actual_calendar_days || null,
+        b.crew_size_planned || null, b.crew_size_actual || null,
+        JSON.stringify(b.crew_composition_actual || {}),
+        b.work_regime || null,
+        JSON.stringify(b.resources_actual || {}),
+        JSON.stringify(b.variance || {}),
+        JSON.stringify(b.insights || {}),
+        run.work_id || null, run.tender_id || null,
+        b.quality_score || 7,
+        b.notes || `Эталон создан из Conductor run #${runId} (feedback-loop)`,
+        `${workType} ${customerName} ${b.object_name || ''}`.toLowerCase(),
+        request.user.id
+      ]);
+      return { ok: true, reference_id: r2.rows[0].id, message: 'Эталон создан, будет использован в похожих просчётах' };
+    } catch (e) {
+      request.log.error(`[save-actuals] ${e.message}`);
+      return reply.code(500).send({ error: e.message });
+    }
+  });
+
+  // GET /conductor/references — список эталонов (для UI и админ-панели)
+  fastify.get('/conductor/references', {
+    preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
+  }, async (request) => {
+    const db = fastify.db;
+    try {
+      const { rows } = await db.query(
+        `SELECT id, customer_name, object_name, work_type, industry_sector,
+                contract_value_actual, cost_actual, margin_actual_pct,
+                duration_actual_calendar_days, quality_score, is_active, created_at
+           FROM mimir_reference_projects
+          WHERE is_active = true
+          ORDER BY quality_score DESC, id DESC
+          LIMIT 100`
+      );
+      return { references: rows };
+    } catch (e) {
+      return { references: [], error: e.message };
+    }
+  });
+
   // GET /conductor/awaiting-customer — просчёты в ожидании заказчика для PM
   fastify.get('/conductor/awaiting-customer', {
     preHandler: [fastify.authenticate]
