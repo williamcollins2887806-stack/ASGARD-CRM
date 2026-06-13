@@ -668,6 +668,9 @@
     return `<div class="mc-final-block"><b>Ключевые допущения</b><ul>${items}</ul></div>`;
   }
 
+  // Текущая SSR-копия для live-пересчёта (mutable между кликами)
+  state.currentSsr = null;
+
   function renderFinalEstimate(data) {
     const panel = $('mc-artifact-panel');
     if (panel) {
@@ -675,11 +678,18 @@
       const recClass = esc((data.recommendation || 'THINK').toLowerCase());
       // Ключевые цифры если есть в data.ssr
       const ssr = data.ssr || {};
+      state.currentSsr = JSON.parse(JSON.stringify(ssr)); // глубокая копия для live-edit
+      state.currentFinalData = data;
+      // Source-tier подсказки (✅ analogs / ⚙ company / ⚠ default)
+      const sources = ssr._coefficient_sources || {};
+      const tierIcon = (s) => s === 'analogs' ? '✅' : s === 'company_profile' ? '⚙' : '⚠';
       const totalsBlock = (ssr.total_with_vat || ssr.total_with_margin) ? `
         <div class="mc-final-totals">
-          ${ssr.subtotal_fot != null ? `<div><span>ФОТ:</span><b>${fmtRub(ssr.subtotal_fot)}</b></div>` : ''}
-          ${ssr.total_with_margin != null ? `<div><span>С маржей:</span><b>${fmtRub(ssr.total_with_margin)}</b></div>` : ''}
-          ${ssr.total_with_vat != null ? `<div><span>С НДС:</span><b>${fmtRub(ssr.total_with_vat)}</b></div>` : ''}
+          ${ssr.subtotal_fot != null ? `<div><span>ФОТ${ssr.fot_multiplier_applied > 1 ? ` (×${ssr.fot_multiplier_applied.toFixed(2)} надбавки)` : ''}:</span><b>${fmtRub(ssr.subtotal_fot)}</b></div>` : ''}
+          ${ssr.total_cost != null ? `<div><span>Себестоимость:</span><b>${fmtRub(ssr.total_cost)}</b></div>` : ''}
+          ${ssr.gross_profit_margin_pct != null ? `<div><span>Маржа ${tierIcon(sources.margin)}:</span><b id="mc-margin-display">${ssr.gross_profit_margin_pct.toFixed(1)}%</b></div>` : ''}
+          ${ssr.total_with_margin != null ? `<div><span>Цена без НДС:</span><b id="mc-revenue-display">${fmtRub(ssr.total_with_margin)}</b></div>` : ''}
+          ${ssr.total_with_vat != null ? `<div><span>С НДС ${ssr.vat_pct || 22}% ${tierIcon(sources.vat)}:</span><b id="mc-totvat-display">${fmtRub(ssr.total_with_vat)}</b></div>` : ''}
         </div>` : '';
       panel.innerHTML = `
         <div class="mc-artifact-head"><span class="mc-artifact-type">🏁 Финальная смета</span></div>
@@ -689,12 +699,41 @@
           <div class="mc-final-block"><b>Резюме</b><p>${esc(data.summary || '—')}</p></div>
           <div class="mc-final-block"><b>Обоснование</b><p>${esc(data.decision_reasoning || '—')}</p></div>
           ${assumptionsHtml(data.key_assumptions)}
+          <div class="mc-margin-tuner" id="mc-margin-tuner" style="display:none;background:rgba(31,111,255,0.08);border:1px solid #1f6fff44;border-radius:10px;padding:14px;margin-top:12px">
+            <div style="font-weight:600;font-size:13px;margin-bottom:10px">🎯 Настройка маржи / цены клиента</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+              <div>
+                <label style="font-size:11.5px;opacity:.85">Маржа (gross-profit, % от выручки)</label>
+                <input type="range" id="mc-margin-slider" min="0" max="80" step="0.5" value="${ssr.gross_profit_margin_pct || 14.3}" style="width:100%"/>
+                <input type="number" id="mc-margin-input" min="0" max="80" step="0.1" value="${(ssr.gross_profit_margin_pct || 14.3).toFixed(1)}" style="width:100%;text-align:center;font-weight:700;font-size:14px;margin-top:4px"/>
+              </div>
+              <div>
+                <label style="font-size:11.5px;opacity:.85">Прибыль абсолютная, ₽ (от выручки без НДС)</label>
+                <input type="number" id="mc-profit-input" step="10000" style="width:100%;text-align:center;font-weight:700;font-size:14px;margin-top:4px" placeholder="посчитается из маржи"/>
+              </div>
+            </div>
+            <div id="mc-margin-preview" style="background:#0e1626;border-radius:8px;padding:10px;font-size:12.5px;margin-bottom:10px"></div>
+            <div style="display:flex;gap:8px;justify-content:flex-end">
+              <button class="mc-btn mc-btn-sm" id="mc-margin-cancel">Отмена</button>
+              <button class="mc-btn mc-btn-sm" id="mc-margin-reset">Вернуть Mimir-маржу</button>
+              <button class="mc-btn mc-btn-sm mc-btn-primary" id="mc-margin-apply">✓ Применить новую цену</button>
+            </div>
+          </div>
           <div class="mc-final-actions">
-            <button class="mc-btn mc-btn-primary" id="mc-recompute">🔄 Пересчитать с правкой</button>
-            <button class="mc-btn" id="mc-edit-estimate">✏ Редактировать вручную</button>
+            <button class="mc-btn mc-btn-primary" id="mc-tune-margin">🎯 Настроить маржу / цену</button>
+            <button class="mc-btn" id="mc-recompute">🔄 Пересчитать с правкой</button>
+            <button class="mc-btn" id="mc-edit-estimate">✏ JSON (продвинутый)</button>
           </div>
         </div>`;
       // Handlers
+      const tm = $('mc-tune-margin');
+      if (tm) tm.onclick = () => {
+        const t = $('mc-margin-tuner');
+        if (t) {
+          t.style.display = t.style.display === 'none' ? 'block' : 'none';
+          if (t.style.display === 'block') wireMarginTuner();
+        }
+      };
       const rc = $('mc-recompute');
       if (rc) rc.onclick = openRecomputeModal;
       const ee = $('mc-edit-estimate');
@@ -702,6 +741,110 @@
     }
     const btn = $('mc-final-report');
     if (btn) btn.disabled = false;
+  }
+
+  // ─── Live-настройка маржи: пересчёт revenue/VAT/profit на лету ───
+  function wireMarginTuner() {
+    const ssrOrig = state.currentSsr;
+    if (!ssrOrig) return;
+    const slider = $('mc-margin-slider');
+    const inputPct = $('mc-margin-input');
+    const inputProfit = $('mc-profit-input');
+    const preview = $('mc-margin-preview');
+
+    function recompute(marginPct) {
+      const cost = Number(ssrOrig.total_cost) || 0;
+      const fotMul = Number(ssrOrig.fot_multiplier_applied) || 1;
+      const m = Math.max(0.1, Math.min(79.9, marginPct)) / 100;
+      const revenue = cost / (1 - m);
+      const profit = revenue - cost;
+      const vatPct = Number(ssrOrig.vat_pct) || 22;
+      const vat = revenue * vatPct / 100;
+      const totalWithVat = revenue + vat;
+
+      // Сравнение с оригиналом
+      const origRevenue = Number(ssrOrig.total_with_margin) || 0;
+      const origProfit = origRevenue - cost;
+      const deltaRev = revenue - origRevenue;
+      const deltaPct = origRevenue > 0 ? (deltaRev / origRevenue * 100) : 0;
+
+      // Update DOM
+      const md = $('mc-margin-display'); if (md) md.textContent = `${(marginPct).toFixed(1)}%`;
+      const rd = $('mc-revenue-display'); if (rd) rd.textContent = fmtRub(revenue);
+      const td = $('mc-totvat-display'); if (td) td.textContent = fmtRub(totalWithVat);
+
+      preview.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div>
+            <div style="opacity:.7;font-size:11px">Себестоимость${fotMul > 1 ? ` (с надбавками ×${fotMul.toFixed(2)})` : ''}</div>
+            <div style="font-weight:700">${fmtRub(cost)}</div>
+          </div>
+          <div>
+            <div style="opacity:.7;font-size:11px">Прибыль (revenue - cost)</div>
+            <div style="font-weight:700;color:${profit > 0 ? '#3fb950' : '#f85149'}">${fmtRub(profit)}</div>
+          </div>
+          <div>
+            <div style="opacity:.7;font-size:11px">Цена без НДС</div>
+            <div style="font-weight:800;font-size:14px">${fmtRub(revenue)}</div>
+            <div style="font-size:10.5px;color:${deltaRev > 0 ? '#3fb950' : (deltaRev < 0 ? '#f85149' : 'inherit')}">
+              ${deltaRev > 0 ? '+' : ''}${fmtRub(deltaRev)} (${deltaPct.toFixed(1)}% от Mimir)
+            </div>
+          </div>
+          <div>
+            <div style="opacity:.7;font-size:11px">С НДС ${vatPct}%</div>
+            <div style="font-weight:800;font-size:14px">${fmtRub(totalWithVat)}</div>
+            <div style="font-size:10.5px;opacity:.6">НДС: ${fmtRub(vat)}</div>
+          </div>
+        </div>`;
+      return { revenue, profit, totalWithVat, vat, marginPct };
+    }
+
+    // Slider ↔ input синхронизация
+    function syncFromPct(pct) {
+      slider.value = pct;
+      inputPct.value = Number(pct).toFixed(1);
+      const r = recompute(Number(pct));
+      inputProfit.value = Math.round(r.profit);
+      return r;
+    }
+    function syncFromProfit(profit) {
+      const cost = Number(ssrOrig.total_cost) || 0;
+      const revenue = cost + Number(profit);
+      const margin = revenue > 0 ? (profit / revenue * 100) : 0;
+      slider.value = margin;
+      inputPct.value = Number(margin).toFixed(1);
+      return recompute(margin);
+    }
+
+    slider.oninput = () => syncFromPct(slider.value);
+    inputPct.oninput = () => syncFromPct(inputPct.value);
+    inputProfit.oninput = () => syncFromProfit(inputProfit.value);
+
+    // Стартовое заполнение
+    syncFromPct(ssrOrig.gross_profit_margin_pct || 14.3);
+
+    $('mc-margin-cancel').onclick = () => { $('mc-margin-tuner').style.display = 'none'; };
+    $('mc-margin-reset').onclick = () => syncFromPct(ssrOrig.gross_profit_margin_pct || 14.3);
+    $('mc-margin-apply').onclick = async () => {
+      const newPct = Number(inputPct.value);
+      try {
+        const r = await authFetch(`${API}/run/${state.runId}/adjust-margin`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ new_margin_pct: newPct })
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+        toast('Маржа изменена',
+          `Новая цена клиенту: ${fmtRub(d.new_ssr.total_with_vat)}. Сохранено как новая версия артефакта.`, 'ok');
+        $('mc-margin-tuner').style.display = 'none';
+        // Перерисуем смету с новой ssr
+        const updated = Object.assign({}, state.currentFinalData, { ssr: d.new_ssr });
+        renderFinalEstimate(updated);
+      } catch (e) {
+        toast('Ошибка', e.message, 'err');
+      }
+    };
   }
 
   // ─── Пересчёт с правкой ───

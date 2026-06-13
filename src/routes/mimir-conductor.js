@@ -666,6 +666,122 @@ async function mimirConductorRoutes(fastify, options) {
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // POST /conductor/run/:id/adjust-margin — РП изменяет маржу/прибыль в финальной
+  // смете и получает пересчитанные цифры. Создаётся новая версия артефакта
+  // final_estimate (старая помечается superseded). Не запускает Conductor —
+  // просто математический пересчёт revenue/VAT при той же себестоимости.
+  //
+  // Body: { new_margin_pct: 22.5 } ИЛИ { new_profit_rub: 5000000 } ИЛИ { new_total_with_margin: 30000000 }
+  // ═══════════════════════════════════════════════════════════════════════════
+  fastify.post('/conductor/run/:id/adjust-margin', {
+    preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
+  }, async (request, reply) => {
+    const runId = Number(request.params.id);
+    if (!runId) return reply.code(400).send({ error: 'bad run id' });
+    const b = request.body || {};
+    const db = fastify.db;
+    try {
+      const { rows: rRows } = await db.query(
+        `SELECT initiated_by FROM mimir_conductor_runs WHERE id = $1`, [runId]
+      );
+      if (!rRows[0]) return reply.code(404).send({ error: 'Просчёт не найден' });
+      if (request.user.role === 'PM' && rRows[0].initiated_by !== request.user.id) {
+        return reply.code(403).send({ error: 'Нет доступа' });
+      }
+
+      // Берём текущий final_estimate
+      const cr = require('../services/mimir-conductor/conductor-run');
+      const final = await cr.getArtifact(runId, 'final_estimate');
+      if (!final || !final.content || !final.content.ssr) {
+        return reply.code(400).send({ error: 'Финальная смета ещё не готова — Conductor не дошёл до неё' });
+      }
+      const ssr = JSON.parse(JSON.stringify(final.content.ssr));
+      const cost = Number(ssr.total_cost) || 0;
+      if (cost <= 0) {
+        return reply.code(400).send({ error: 'Себестоимость = 0 — нельзя пересчитать маржу' });
+      }
+
+      // Определяем новую маржу из любого из трёх полей body
+      let newMarginPct;
+      if (b.new_margin_pct != null) {
+        newMarginPct = Number(b.new_margin_pct);
+      } else if (b.new_profit_rub != null) {
+        const profit = Number(b.new_profit_rub);
+        const revenue = cost + profit;
+        newMarginPct = revenue > 0 ? (profit / revenue * 100) : 0;
+      } else if (b.new_total_with_margin != null) {
+        const revenue = Number(b.new_total_with_margin);
+        newMarginPct = revenue > cost ? ((revenue - cost) / revenue * 100) : 0;
+      } else {
+        return reply.code(400).send({ error: 'Нужно одно из: new_margin_pct, new_profit_rub, new_total_with_margin' });
+      }
+
+      if (!isFinite(newMarginPct) || newMarginPct < 0 || newMarginPct >= 95) {
+        return reply.code(400).send({ error: 'Маржа должна быть в диапазоне 0..95%' });
+      }
+
+      // Пересчёт
+      const marginDec = newMarginPct / 100;
+      const newRevenue = cost / (1 - marginDec);
+      const newProfit = newRevenue - cost;
+      const vatPct = Number(ssr.vat_pct) || 22;
+      const newVat = newRevenue * vatPct / 100;
+      const newTotalWithVat = newRevenue + newVat;
+
+      // Старые цифры для аудита
+      const oldRevenue = Number(ssr.total_with_margin) || 0;
+      const oldMargin = Number(ssr.gross_profit_margin_pct) || 0;
+
+      // Обновлённая SSR
+      ssr.gross_profit_margin_pct = Number(newMarginPct.toFixed(2));
+      ssr.total_with_margin = Math.round(newRevenue);
+      ssr.vat = Math.round(newVat);
+      ssr.total_with_vat = Math.round(newTotalWithVat);
+      ssr._manual_adjustments = ssr._manual_adjustments || [];
+      ssr._manual_adjustments.push({
+        type: 'margin_adjustment',
+        adjusted_by_user_id: request.user.id,
+        adjusted_at: new Date().toISOString(),
+        from: { margin_pct: oldMargin, total_with_margin: oldRevenue },
+        to: { margin_pct: newMarginPct, total_with_margin: ssr.total_with_margin }
+      });
+
+      // Сохраняем новую версию артефакта (supersede старой)
+      const newContent = Object.assign({}, final.content, { ssr });
+      try {
+        await cr.addArtifact(runId, null, 'final_estimate', newContent);
+      } catch (_) { /* schema может ругаться при дубле — best-effort */ }
+
+      // Событие в War Room
+      try {
+        await db.query(
+          `INSERT INTO mimir_agent_events (conductor_run_id, agent_run_id, event_type, payload)
+           VALUES ($1, NULL, 'margin_adjusted', $2::jsonb)`,
+          [runId, JSON.stringify({
+            from_margin_pct: oldMargin, to_margin_pct: newMarginPct,
+            from_revenue: oldRevenue, to_revenue: ssr.total_with_margin,
+            adjusted_by_user_id: request.user.id
+          })]
+        );
+      } catch (_) {}
+
+      return {
+        ok: true,
+        new_ssr: ssr,
+        delta: {
+          margin_pct: newMarginPct - oldMargin,
+          revenue_rub: ssr.total_with_margin - oldRevenue,
+          vat_rub: ssr.vat - (Number(final.content.ssr.vat) || 0),
+          total_with_vat_rub: ssr.total_with_vat - (Number(final.content.ssr.total_with_vat) || 0)
+        }
+      };
+    } catch (e) {
+      request.log.error(`[adjust-margin] ${e.message}`);
+      return reply.code(500).send({ error: e.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // POST /conductor/reference/import — импорт эталона напрямую (РП заполняет
   // фактические данные после завершения работы или загружает старый проект).
   // Принимает полный набор полей mimir_reference_projects. Endpoint минимально
