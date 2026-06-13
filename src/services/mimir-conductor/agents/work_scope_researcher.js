@@ -333,13 +333,17 @@ async function run({ requiredArtifacts, onThought, agentName }) {
         const sysPrompt = attempt === 1
           ? SYSTEM_PROMPT_EXTRACTION
           : SYSTEM_PROMPT_EXTRACTION + '\n\nКРИТИЧНО: верни ТОЛЬКО валидный JSON-объект, без markdown-ограждения, без комментариев. Никаких trailing commas. Все ключи и строки в двойных кавычках.';
-        const result = await aiProvider.completeWithStream({
-          system: sysPrompt,
-          messages: [{ role: 'user', content: `Документы:\n\n${docsText}` }],
-          model: 'sonnet-4-6',
-          maxTokens: attempt === 1 ? 6000 : 8000,
-          onThought
-        });
+        const PER_ATTEMPT_TIMEOUT_MS = 3 * 60 * 1000;
+        const result = await Promise.race([
+          aiProvider.completeWithStream({
+            system: sysPrompt,
+            messages: [{ role: 'user', content: `Документы:\n\n${docsText}` }],
+            model: 'sonnet-4-6',
+            maxTokens: attempt === 1 ? 6000 : 8000,
+            onThought
+          }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('extraction_timeout_3min')), PER_ATTEMPT_TIMEOUT_MS))
+        ]);
         if (result._stub || aiProvider.isStubMode()) {
           extraction = {
             works: [{ title: '[stub] Работа из ТЗ', description: 'stub-режим без LLM' }],
@@ -422,9 +426,9 @@ ${JSON.stringify(employees.by_qualification || [])}
         const sysPrompt = attempt === 1
           ? SYSTEM_PROMPT_WEB_RESEARCH
           : SYSTEM_PROMPT_WEB_RESEARCH + '\n\nКРИТИЧНО: верни ТОЛЬКО валидный JSON-объект. Никаких markdown-ограждений, никаких комментариев, никаких тегов <citation>. Все ключи и строки в двойных кавычках, никаких trailing comma.';
-        // Жёсткий timeout 7 мин на каждую попытку (sonnet с web-plugin висит у Tokenator).
-        // Если 3 попытки × 7 мин = 21 мин, но это маловероятно — обычно проходит с 1-й.
-        const PER_ATTEMPT_TIMEOUT_MS = 7 * 60 * 1000;
+        // Жёсткий timeout на каждую попытку (sonnet с web-plugin висит у Tokenator).
+        // 3 мин × 3 попытки = 9 мин max, под sweeper agent-timeout 12 мин с буфером.
+        const PER_ATTEMPT_TIMEOUT_MS = 3 * 60 * 1000;
         const result = await Promise.race([
           aiProvider.completeWithStream({
             system: sysPrompt,
