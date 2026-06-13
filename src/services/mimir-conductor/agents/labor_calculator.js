@@ -155,12 +155,16 @@ async function run({ requiredArtifacts, onThought }) {
   const roadDays = computeRoadDays(crew, objectCity);
 
   let totalDays = null;
+  // Источники в порядке приоритета: ТЗ.timing → applicable_norms.timing_norms.work_shifts
+  // (последнее — фактическая длительность похожего проекта из эталона)
   if (timing.start && timing.end) {
     const start = new Date(timing.start);
     const end = new Date(timing.end);
     totalDays = Math.round((end - start) / 86400000) + 1;
   } else if (timing.duration_days) {
     totalDays = Number(timing.duration_days);
+  } else if (analogsTimingNorms.work_shifts != null) {
+    totalDays = Number(analogsTimingNorms.work_shifts) + 2 * roadDays + (mobDemobDays || 0);
   } else if (timing.work_days) {
     totalDays = Number(timing.work_days) + 2 * roadDays + (mobDemobDays || 0);
   }
