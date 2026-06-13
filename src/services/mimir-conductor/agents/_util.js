@@ -40,7 +40,35 @@ function parseStrictJson(text) {
     throw new Error('parseStrictJson: в ответе модели не найден JSON-объект');
   }
   const json = body.slice(first, last + 1);
-  return JSON.parse(json);
+
+  // Шаг 1: пробуем строгий JSON.parse
+  try { return JSON.parse(json); } catch (_) { /* fall through */ }
+
+  // Шаг 2: relaxed-парс — sonnet иногда оставляет trailing comma,
+  // одинарные кавычки или незавершённую строку. Чиним типовые опечатки.
+  const cleaned = json
+    .replace(/,(\s*[}\]])/g, '$1')                      // trailing comma before } or ]
+    .replace(/([{\[,]\s*)'([^']*?)':/g, '$1"$2":')      // single-quoted keys → double
+    .replace(/:\s*'([^'\\]*(?:\\.[^'\\]*)*)'/g, ': "$1"') // single-quoted values → double
+    .replace(/\bNone\b/g, 'null')                       // Python-стиль
+    .replace(/\bTrue\b/g, 'true')
+    .replace(/\bFalse\b/g, 'false');
+  try { return JSON.parse(cleaned); } catch (_) { /* fall through */ }
+
+  // Шаг 3: попытка обрезать на последней СБАЛАНСИРОВАННОЙ скобке (sonnet
+  // иногда обрывает ответ на середине поля — берём то что есть).
+  let depth = 0;
+  let bestEnd = -1;
+  for (let i = 0; i < cleaned.length; i++) {
+    const ch = cleaned[i];
+    if (ch === '{') depth++;
+    else if (ch === '}') { depth--; if (depth === 0) bestEnd = i; }
+  }
+  if (bestEnd > 0) {
+    try { return JSON.parse(cleaned.slice(0, bestEnd + 1)); } catch (_) { /* fall through */ }
+  }
+
+  throw new Error('parseStrictJson: не удалось распарсить JSON ни строгим, ни relaxed-парсером');
 }
 
 /** Форматирование суммы в рубли: 1 234 567 ₽. */

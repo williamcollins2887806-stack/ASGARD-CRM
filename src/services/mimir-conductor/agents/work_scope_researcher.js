@@ -325,28 +325,46 @@ async function run({ requiredArtifacts, onThought, agentName }) {
       .filter((d) => d.content && d.content_chars > 0)
       .map((d) => `═══ ${d.name} (${d.content_chars} симв) ═══\n${String(d.content).slice(0, 12000)}`)
       .join('\n\n');
-    try {
-      const result = await aiProvider.completeWithStream({
-        system: SYSTEM_PROMPT_EXTRACTION,
-        messages: [{ role: 'user', content: `Документы:\n\n${docsText}` }],
-        model: 'sonnet-4-6',
-        maxTokens: 6000,
-        onThought
-      });
-      if (result._stub || aiProvider.isStubMode()) {
-        extraction = {
-          works: [{ title: '[stub] Работа из ТЗ', description: 'stub-режим без LLM' }],
-          equipment_inventory: [], constraints: {}, timing: {},
-          customer_requirements: {}, documents_quality: 'stub',
-          extraction_gaps: []
-        };
-      } else {
+    // Retry на parse-fail: sonnet иногда отдаёт битый JSON, повторяем до 2 раз
+    // с увеличенным maxTokens и явной инструкцией "только валидный JSON".
+    let lastErr = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const sysPrompt = attempt === 1
+          ? SYSTEM_PROMPT_EXTRACTION
+          : SYSTEM_PROMPT_EXTRACTION + '\n\nКРИТИЧНО: верни ТОЛЬКО валидный JSON-объект, без markdown-ограждения, без комментариев. Никаких trailing commas. Все ключи и строки в двойных кавычках.';
+        const result = await aiProvider.completeWithStream({
+          system: sysPrompt,
+          messages: [{ role: 'user', content: `Документы:\n\n${docsText}` }],
+          model: 'sonnet-4-6',
+          maxTokens: attempt === 1 ? 6000 : 8000,
+          onThought
+        });
+        if (result._stub || aiProvider.isStubMode()) {
+          extraction = {
+            works: [{ title: '[stub] Работа из ТЗ', description: 'stub-режим без LLM' }],
+            equipment_inventory: [], constraints: {}, timing: {},
+            customer_requirements: {}, documents_quality: 'stub',
+            extraction_gaps: []
+          };
+          break;
+        }
         extraction = parseStrictJson(result.text);
+        if (attempt > 1) onThought(`✓ Извлечение успешно с попытки ${attempt}`);
+        break;
+      } catch (e) {
+        lastErr = e;
+        if (attempt < 3) {
+          onThought(`⚠ Извлечение упало (попытка ${attempt}): ${e.message} — повторяю с более строгим промптом`);
+          await new Promise((r) => setTimeout(r, 3000));
+        }
       }
-    } catch (e) {
-      onThought(`⚠ Извлечение упало: ${e.message} — пустой extraction`);
+    }
+    if (!extraction) {
+      onThought(`⚠ Все 3 попытки извлечения упали: ${lastErr ? lastErr.message : 'unknown'} — пустой extraction`);
       extraction = { works: [], equipment_inventory: [], constraints: {}, timing: {},
-                     customer_requirements: {}, documents_quality: 'extraction_failed', extraction_gaps: [e.message] };
+                     customer_requirements: {}, documents_quality: 'extraction_failed',
+                     extraction_gaps: [lastErr ? lastErr.message : 'parse failed 3 times'] };
     }
   }
 
