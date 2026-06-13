@@ -17,7 +17,7 @@
 
 const aiProvider = require('../../ai-provider');
 const db = require('../../db');
-const { parseStrictJson, formatRub } = require('./_util');
+const { parseStrictJson, formatRub, aiCompleteJson } = require('./_util');
 
 const SYSTEM_PROMPT = `Ты — аудитор смет ООО «Асгард Сервис». Сравниваешь текущий
 проект с историческими эталонами (mimir_reference_projects, _source='reference') и
@@ -171,13 +171,16 @@ async function run({ requiredArtifacts, onThought }) {
     analysis = stubAnalysis(analogs);
   } else {
     try {
-      const result = await aiProvider.complete({
+      const parsed = await aiCompleteJson(aiProvider, {
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: `Текущий проект:\n${JSON.stringify(tz)}\n\nЛейбор:\n${JSON.stringify(labor)}\n\nАналоги:\n${JSON.stringify(analogs)}` }],
         model: 'sonnet-4-6',
         maxTokens: 4000
+      }, {
+        onThought, agentName: 'historical_comparator',
+        fallback: () => stubAnalysis(analogs)
       });
-      analysis = result._stub ? stubAnalysis(analogs) : parseStrictJson(result.text);
+      analysis = parsed && parsed._stub ? stubAnalysis(analogs) : parsed;
     } catch (e) {
       onThought(`⚠ LLM недоступна (${e.message}) — без анализа аналогов`);
       analysis = stubAnalysis(analogs);

@@ -18,7 +18,7 @@
 'use strict';
 
 const aiProvider = require('../../ai-provider');
-const { parseStrictJson, formatRub } = require('./_util');
+const { parseStrictJson, formatRub, aiCompleteJson } = require('./_util');
 
 const SYSTEM_PROMPT = `Ты — координатор доступа на ОПО ООО «Асгард-Сервис».
 На входе — ТЗ, требования заказчика, scope-research. Извлеки и спланируй ВСЕ
@@ -128,15 +128,18 @@ Customer requirements: ${JSON.stringify(scope.customer_requirements || {})}
 )}
 
 Составь план доступа.`;
-    const result = await aiProvider.completeWithStream({
+    const parsed = await aiCompleteJson(aiProvider, {
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userMessage }],
       model: 'sonnet-4-6',
       maxTokens: 3000,
       onThought
+    }, {
+      onThought, agentName: 'site_access_planner',
+      fallback: () => ({ _stubReplace: true, plan: stubPlan(scope, tz) })
     });
-    if (result._stub) return stubPlan(scope, tz);
-    const parsed = parseStrictJson(result.text);
+    if (parsed && parsed._stub) return stubPlan(scope, tz);
+    if (parsed && parsed._stubReplace) return parsed.plan;
     return {
       summary: `Доступ: lead-time ${parsed.pre_arrival_lead_time_days || '?'} дней, ${parsed.estimated_one_time_cost_rub ? `~${formatRub(parsed.estimated_one_time_cost_rub)}` : 'стоимость не оценена'}.`,
       key_findings: [

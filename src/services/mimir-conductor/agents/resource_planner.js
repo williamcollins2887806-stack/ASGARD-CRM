@@ -22,7 +22,7 @@
 
 const aiProvider = require('../../ai-provider');
 const { searchNorms } = require('../rag/norms-index');
-const { parseStrictJson } = require('./_util');
+const { parseStrictJson, aiCompleteJson } = require('./_util');
 
 const SYSTEM_PROMPT = `Ты — сметчик-нормировщик ООО «Асгард Сервис».
 Привязываешь работы к нормативам ГЭСН/ФЕР/СТО и считаешь раскладку ресурсов.
@@ -109,13 +109,19 @@ async function run({ requiredArtifacts, onThought }) {
           `Найденные нормативы:\n` +
           norms.map((n) => `${n.code} (${n.source}): ${n.name}\n  ${String(n.full_text || '').slice(0, 500)}`).join('\n\n') +
           `\n\nПодбери подходящий и выдай раскладку ресурсов на объём ${work.volume}.`;
-        const result = await aiProvider.complete({
+        const fallbackRow = norms.length ? deriveFromNorm(work, norms[0]) : fallbackResource(work);
+        const parsed = await aiCompleteJson(aiProvider, {
           system: SYSTEM_PROMPT,
           messages: [{ role: 'user', content: prompt }],
           model: 'yandex-pro',
           maxTokens: 2000
+        }, {
+          onThought, agentName: 'resource_planner',
+          fallback: () => ({ _stubReplace: true, row: fallbackRow })
         });
-        row = parseStrictJson(result.text);
+        if (parsed && parsed._stub) row = fallbackRow;
+        else if (parsed && parsed._stubReplace) row = parsed.row;
+        else row = parsed;
       } catch (e) {
         onThought(`⚠ LLM-привязка не удалась (${e.message}) — беру RAG-норматив`);
         row = norms.length ? deriveFromNorm(work, norms[0]) : fallbackResource(work);

@@ -17,7 +17,7 @@
 const aiProvider = require('../../ai-provider');
 const cr = require('../conductor-run');
 const { runMonteCarlo } = require('../montecarlo');
-const { parseStrictJson, formatRub } = require('./_util');
+const { parseStrictJson, formatRub, aiCompleteJson } = require('./_util');
 
 const SYSTEM_PROMPT = `Ты — риск-менеджер подрядного проекта ООО «Асгард Сервис».
 Генерируешь конкретные сценарии «что может пойти не так»: срыв сроков заказчиком,
@@ -61,13 +61,18 @@ async function run({ requiredArtifacts, onThought, input, runId }) {
   } else {
     onThought('DeepSeek v4 генерирует сценарии рисков…');
     try {
-      const result = await aiProvider.complete({
+      const parsed = await aiCompleteJson(aiProvider, {
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: `Себестоимость: ${baseCost}. Контракт: ${contractValue}. Сгенерируй 10-15 рисков.` }],
         model: 'deepseek-v4',
         maxTokens: 4000
+      }, {
+        onThought, agentName: 'risk_quantifier',
+        fallback: () => ({ _stubReplace: true, scen: stubScenarios(baseCost) })
       });
-      scen = result._stub ? stubScenarios(baseCost) : parseStrictJson(result.text);
+      if (parsed && parsed._stub) scen = stubScenarios(baseCost);
+      else if (parsed && parsed._stubReplace) scen = parsed.scen;
+      else scen = parsed;
     } catch (e) {
       onThought(`⚠ DeepSeek недоступен (${e.message}) — типовые сценарии`);
       scen = stubScenarios(baseCost);

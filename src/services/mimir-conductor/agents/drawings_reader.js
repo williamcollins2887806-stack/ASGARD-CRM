@@ -21,7 +21,7 @@
 
 const aiProvider = require('../../ai-provider');
 const cr = require('../conductor-run');
-const { parseStrictJson, thoughtSink } = require('./_util');
+const { parseStrictJson, thoughtSink, aiCompleteJson } = require('./_util');
 
 const SYSTEM_PROMPT = `Ты — инженер-проектировщик. Анализируешь чертежи и схемы.
 Извлекай: марки, ревизии, размеры, спецификации позиций.
@@ -81,15 +81,17 @@ async function run({ runId, onThought }) {
         .filter((d) => d.url || d.public_url)
         .map((d) => ({ type: 'image', source: { type: 'url', url: d.url || d.public_url } }))
     ];
-    const result = await aiProvider.completeWithStream({
+    const parsed = await aiCompleteJson(aiProvider, {
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content }],
       model: 'gpt-5',
       onThought: (t) => onThought(t),
       onText: thoughtSink((t) => onThought(t))
-    });
-    const parsed = result._stub ? null : parseStrictJson(result.text);
-    if (parsed) {
+    }, {
+      onThought, agentName: 'drawings_reader',
+      fallback: null
+    }).catch(() => null);
+    if (parsed && !parsed._stub) {
       return {
         summary: `Распознано ${(parsed.drawings || []).length} чертеж(ей)`,
         key_findings: parsed.key_findings || [],
