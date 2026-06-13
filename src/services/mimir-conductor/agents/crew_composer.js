@@ -168,20 +168,40 @@ async function run({ requiredArtifacts, onThought }) {
     `Сводка ТЗ:\n${JSON.stringify({ scope: tz.scope, conditions: tz.conditions, permits_required: permitsRequired, timing }, null, 2)}\n\n` +
     `Свободные сотрудники (${freeWorkers.length}):\n${JSON.stringify(freeWorkers.slice(0, 60), null, 2)}`;
 
-  const result = await aiProvider.completeWithStream({
-    system: CREW_SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: userMessage }],
-    model: 'sonnet-4-6',
-    onThought: (t) => onThought(t),
-    onText: thoughtSink((t) => onThought(t))
-  });
-
-  let crew;
-  if (result._stub || aiProvider.isStubMode()) {
-    onThought('stub-режим: собираю детерминированную бригаду из свободных');
+  // До 3 попыток: sonnet иногда отдаёт битый JSON, повторяем с более строгим промптом.
+  let crew = null;
+  let lastErr = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const sysPrompt = attempt === 1
+        ? CREW_SYSTEM_PROMPT
+        : CREW_SYSTEM_PROMPT + '\n\nКРИТИЧНО: верни ТОЛЬКО валидный JSON. Без markdown, комментариев, trailing comma. Все ключи в двойных кавычках.';
+      const result = await aiProvider.completeWithStream({
+        system: sysPrompt,
+        messages: [{ role: 'user', content: userMessage }],
+        model: 'sonnet-4-6',
+        onThought: (t) => onThought(t),
+        onText: thoughtSink((t) => onThought(t))
+      });
+      if (result._stub || aiProvider.isStubMode()) {
+        onThought('stub-режим: собираю детерминированную бригаду из свободных');
+        crew = buildStubCrew(freeWorkers);
+        break;
+      }
+      crew = parseStrictJson(result.text);
+      if (attempt > 1) onThought(`✓ Компоновка успешно с попытки ${attempt}`);
+      break;
+    } catch (e) {
+      lastErr = e;
+      if (attempt < 3) {
+        onThought(`⚠ Компоновка упала (попытка ${attempt}): ${e.message} — повторяю`);
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+    }
+  }
+  if (!crew) {
+    onThought(`⚠ Все 3 попытки упали (${lastErr ? lastErr.message : 'unknown'}) — собираю детерминированную бригаду из свободных`);
     crew = buildStubCrew(freeWorkers);
-  } else {
-    crew = parseStrictJson(result.text);
   }
 
   const helpers = crew.helpers || 0;
