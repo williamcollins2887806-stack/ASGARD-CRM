@@ -23,7 +23,16 @@ const cr = require('./conductor-run');
 function getRequiredAgents(tzSummary, contractValue, complexityFlags = {}) {
   const v = Number(contractValue) || 0;
   const f = complexityFlags || {};
-  const required = ['tz_analyst', 'final_consolidator']; // всегда
+  // Базовая цепочка для ЛЮБОЙ сметы — без crew/labor нет ФОТ, без indirects/G нет ССР.
+  const required = [
+    'tz_analyst',
+    'crew_composer',
+    'labor_calculator',
+    'site_conditions',
+    'indirects_calculator',
+    'consumables_calculator',
+    'final_consolidator'
+  ];
 
   if (f.has_OZP) required.push('site_conditions', 'permits_planner');
   if (f.has_welding || f.has_assembly) required.push('quality_control_planner');
