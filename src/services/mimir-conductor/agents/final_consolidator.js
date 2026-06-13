@@ -142,6 +142,16 @@ function computeFinalSSR(artifacts, coef) {
     warranty = 0; // считается от выручки в конце
   }
 
+  // ВАЖНО: если был отдельный consumables_calculator-артефакт (G-агент с тарифами/
+  // резолвером норм) — берём его total_consumables и заменяем процентную оценку из
+  // indirects. Иначе расходники для 1500бар-гидроочистки давали бы нереалистичные
+  // цифры (78к от %ФОТ при реальных 6к в каталоге — найдено в run #19).
+  const consumablesArt = artifacts.find((a) => a.artifact_type === 'consumables');
+  if (consumablesArt && consumablesArt.content && Number(consumablesArt.content.total_consumables) > 0) {
+    const direct = Number(consumablesArt.content.total_consumables);
+    consumables = direct;
+  }
+
   const totalCost = personnelWithTax + overhead + consumables + contingency;
   // Маржа теперь считается как GROSS MARGIN (от выручки), а не как mark-up.
   // gross_profit_margin_pct% — это (profit / revenue). Если margin_pct=14.3%, то:
