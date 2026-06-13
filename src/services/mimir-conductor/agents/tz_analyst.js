@@ -19,7 +19,23 @@
 'use strict';
 
 const aiProvider = require('../../ai-provider');
+const db = require('../../db');
 const { parseStrictJson, thoughtSink } = require('./_util');
+
+/** Подгрузить ANSWERED clarifications прошлых раундов — чтобы не дублировать вопросы. */
+async function loadAnsweredClarifications(runId) {
+  if (!runId) return [];
+  try {
+    const r = await db.query(
+      `SELECT id, channel, category, question_ru, answer_text, answered_at
+         FROM mimir_clarifications
+        WHERE conductor_run_id = $1 AND status = 'ANSWERED' AND answer_text IS NOT NULL
+        ORDER BY answered_at DESC LIMIT 30`,
+      [runId]
+    );
+    return r.rows;
+  } catch (_) { return []; }
+}
 
 const SYSTEM_PROMPT = `Ты — Аналитик ТЗ ООО «Асгард Сервис».
 Твоя единственная задача — прочитать прикреплённые документы (ТЗ, договор,
@@ -84,7 +100,7 @@ function buildStubSummary(parsedDocs) {
   };
 }
 
-async function run({ requiredArtifacts, onThought }) {
+async function run({ requiredArtifacts, onThought, runId }) {
   // requiredArtifacts[at] — это уже content артефакта (см. tool-executor.callAgent)
   const parsedArt = requiredArtifacts.parsed_documents || {};
   const parsedDocs = Array.isArray(parsedArt.documents) ? parsedArt.documents : [];
@@ -104,21 +120,26 @@ async function run({ requiredArtifacts, onThought }) {
     similar_cases: (scope.web_research && scope.web_research.competitive_intel) || []
   });
 
+  // НОВОЕ: ответы заказчика на уточнения предыдущих раундов
+  const answered = await loadAnsweredClarifications(runId);
+  const answersBlock = answered.length
+    ? '\n\nОТВЕТЫ ЗАКАЗЧИКА НА ПРЕДЫДУЩИЕ УТОЧНЕНИЯ (учитывай как уже известные данные, НЕ переспрашивай):\n' +
+      answered.map((a) => `Q: ${a.question_ru}\nA: ${a.answer_text}`).join('\n\n')
+    : '';
+
   // Выбор модели: при очень больших документах — модель с большим контекстом.
-  // (gemini-2-5-pro в плане → web-search-fast/gemini-2.5-flash: единственный
-  //  реально доступный большой контекст через routerai; см. models-config.)
   const model = totalChars > 100000 ? 'web-search-fast' : 'sonnet-4-6';
-  onThought(`Анализирую ${parsedDocs.length} документ(ов) (${totalChars} симв) + scope-research через ${model}`);
+  onThought(`Анализирую ${parsedDocs.length} документ(ов) (${totalChars} симв) + scope-research + ${answered.length} ответов заказчика через ${model}`);
 
   const userMessage = parsedDocs.length
-    ? 'Контекст от Фазы 0 (исследовательская):\n' + scopeBrief + '\n\nДокументы проекта:\n\n' +
+    ? 'Контекст от Фазы 0 (исследовательская):\n' + scopeBrief + answersBlock + '\n\nДокументы проекта:\n\n' +
       parsedDocs
         .filter((d) => d.content)
         .map((d) => `═══ ${d.name} (${d.content_chars} симв) ═══\n${d.content}`)
         .join('\n\n')
     : (scope.works && scope.works.length
-        ? 'Документы пустые, но Фаза 0 извлекла работы:\n' + scopeBrief + '\n\nСформируй сводку ТЗ на основе этих данных.'
-        : 'Документы к проекту не приложены и Фаза 0 ничего не нашла. Верни сводку с null/[] во всех полях и пометь в summary, что данных нет.');
+        ? 'Документы пустые, но Фаза 0 извлекла работы:\n' + scopeBrief + answersBlock + '\n\nСформируй сводку ТЗ на основе этих данных и ответов заказчика.'
+        : 'Документы к проекту не приложены и Фаза 0 ничего не нашла. ' + (answersBlock ? answersBlock + '\n\nСформируй сводку на основе ответов заказчика.' : 'Верни сводку с null/[] во всех полях и пометь в summary, что данных нет.'));
 
   const result = await aiProvider.completeWithStream({
     system: SYSTEM_PROMPT,
