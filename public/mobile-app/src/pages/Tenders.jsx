@@ -436,6 +436,7 @@ function TenderDetailSheet({ tender, onClose }) {
 }
 
 function CreateTenderSheet({ open, onClose, onCreated }) {
+  const { user } = useAuthStore();
   const haptic = useHaptic();
   const [customer,    setCustomer]    = useState('');
   const [title,       setTitle]       = useState('');
@@ -443,11 +444,14 @@ function CreateTenderSheet({ open, onClose, onCreated }) {
   const [deadline,    setDeadline]    = useState('');
   const [tenderType,  setTenderType]  = useState('');
   const [comment,     setComment]     = useState('');
+  const [calcKind,    setCalcKind]    = useState('pm');
   const [saving,      setSaving]      = useState(false);
+  const canPickCalcKind = user && ['TO', 'HEAD_TO', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(user.role);
 
   const reset = () => {
     setCustomer(''); setTitle(''); setPrice('');
     setDeadline(''); setTenderType(''); setComment('');
+    setCalcKind('pm');
   };
 
   const handleSubmit = async () => {
@@ -455,14 +459,19 @@ function CreateTenderSheet({ open, onClose, onCreated }) {
     haptic.light();
     setSaving(true);
     try {
-      await api.post('/tenders', {
+      const body = {
         customer:     customer.trim(),
         tender_number: title.trim() || null,
         tender_price: price ? Number(price) : null,
         deadline:     deadline || null,
         tender_type:  tenderType || null,
         comment_to:   comment.trim() || null,
-      });
+      };
+      if (canPickCalcKind) {
+        body.calculator_kind = calcKind;
+        if (calcKind === 'to') body.calculator_user_id = user.id;
+      }
+      await api.post('/tenders', body);
       haptic.success();
       reset();
       onClose();
@@ -522,6 +531,28 @@ function CreateTenderSheet({ open, onClose, onCreated }) {
             className="input-field resize-none"
           />
         </FormField>
+
+        {canPickCalcKind && (
+          <FormField label="Кто будет считать">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setCalcKind('pm')}
+                className={`px-3 py-2 rounded text-sm font-semibold ${calcKind === 'pm' ? 'bg-red-600 text-white' : 'bg-zinc-800 text-gray-300'}`}
+              >👷 РП</button>
+              <button
+                type="button"
+                onClick={() => setCalcKind('to')}
+                className={`px-3 py-2 rounded text-sm font-semibold ${calcKind === 'to' ? 'bg-red-600 text-white' : 'bg-zinc-800 text-gray-300'}`}
+              >📊 Я сам (ТО)</button>
+            </div>
+            <div className="text-xs text-gray-400 mt-1">
+              {calcKind === 'to'
+                ? 'После «На анализ» Рук. ТО подтвердит — тендер появится в «Мои просчёты».'
+                : 'Рук. ТО сам выберет конкретного РП.'}
+            </div>
+          </FormField>
+        )}
 
         <button
           onClick={handleSubmit}

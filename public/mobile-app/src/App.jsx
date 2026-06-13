@@ -84,6 +84,8 @@ import Proxies from '@/pages/Proxies';
 import Funnel from '@/pages/Funnel';
 import AllEstimates from '@/pages/AllEstimates';
 import PmCalcs from '@/pages/PmCalcs';
+import ToCalcs from '@/pages/ToCalcs';
+import HeadToApprovals from '@/pages/HeadToApprovals';
 import Payroll from '@/pages/Payroll';
 import OfficeExpenses from '@/pages/OfficeExpenses';
 import CashAdmin from '@/pages/CashAdmin';
@@ -216,6 +218,8 @@ function AppLayout() {
           <Route path="/funnel" element={<ProtectedRoute section="tenders"><PinGuard><Funnel /></PinGuard></ProtectedRoute>} />
           <Route path="/all-estimates" element={<ProtectedRoute section="tenders"><PinGuard><AllEstimates /></PinGuard></ProtectedRoute>} />
           <Route path="/pm-calcs" element={<ProtectedRoute section="tenders"><PinGuard><PmCalcs /></PinGuard></ProtectedRoute>} />
+          <Route path="/to-calcs" element={<ProtectedRoute section="tenders"><PinGuard><ToCalcs /></PinGuard></ProtectedRoute>} />
+          <Route path="/head-to-approvals" element={<ProtectedRoute section="tenders"><PinGuard><HeadToApprovals /></PinGuard></ProtectedRoute>} />
           <Route path="/payroll" element={<ProtectedRoute section="finances"><PinGuard><Payroll /></PinGuard></ProtectedRoute>} />
           <Route path="/office-expenses" element={<ProtectedRoute section="finances"><PinGuard><OfficeExpenses /></PinGuard></ProtectedRoute>} />
           <Route path="/cash-admin" element={<ProtectedRoute section="finances"><PinGuard><CashAdmin /></PinGuard></ProtectedRoute>} />

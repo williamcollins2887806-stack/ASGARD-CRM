@@ -52,16 +52,26 @@ function sendApprovalTelegram(userId, label, message, approvalData) {
  * Вызывается при отправке сущности на согласование директору.
  * Можно вызывать из любого route при смене статуса на pending/requested/sent.
  */
-async function notifyDirectorsForApproval(db, { entityType, entityId, actorName, title, message, requiresPayment }) {
+async function notifyDirectorsForApproval(db, { entityType, entityId, actorName, title, message, requiresPayment, approverRoles }) {
+  // approverRoles может быть передан явно (например, ['HEAD_TO','ADMIN'] для просчётов ТО),
+  // иначе — обычные директора.
+  const roles = (Array.isArray(approverRoles) && approverRoles.length > 0)
+    ? approverRoles
+    : ['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV'];
+  const placeholders = roles.map((_, i) => `$${i + 1}`).join(',');
   const directors = await db.query(
-    "SELECT id FROM users WHERE role IN ('ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV') AND is_active = true"
+    `SELECT id FROM users WHERE role IN (${placeholders}) AND is_active = true`,
+    roles
   );
   const label = title || `${getLabel(entityType)} #${entityId}`;
   const msg = message || `${actorName || 'Сотрудник'} отправил на согласование`;
+  const linkPath = (entityType === 'estimates' && roles.includes('HEAD_TO') && !roles.includes('DIRECTOR_GEN'))
+    ? '#/head-to-approvals'
+    : `#/${entityType}?id=${entityId}`;
   for (const dir of directors.rows) {
     createNotification(db, {
       user_id: dir.id, title: label, message: msg, type: 'approval',
-      link: `#/${entityType}?id=${entityId}`
+      link: linkPath
     });
     await sendApprovalTelegram(dir.id, label, msg, {
       type: entityType, id: entityId, stage: 'director', requires_payment: !!requiresPayment
@@ -104,6 +114,34 @@ const SAFE_TABLES = new Set([
 
 const DIRECTOR_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 const BUH_ROLES = ['BUH', 'ADMIN'];
+// Согласующие просчёта когда тендер помечен «считает ТО» (calculator_kind='to')
+const HEAD_TO_APPROVER_ROLES = ['ADMIN', 'HEAD_TO'];
+
+/**
+ * Определить, кто согласует данный estimate.
+ * Возвращает массив ролей. Если у тендера calculator_kind='to' — HEAD_TO,
+ * иначе обычные директора.
+ */
+async function getEstimateApproverRoles(db, estimateRecord) {
+  if (!estimateRecord || !estimateRecord.tender_id) return DIRECTOR_ROLES;
+  try {
+    const { rows } = await db.query(
+      'SELECT calculator_kind FROM tenders WHERE id = $1',
+      [estimateRecord.tender_id]
+    );
+    if (rows[0]?.calculator_kind === 'to') return HEAD_TO_APPROVER_ROLES;
+  } catch (e) {
+    // колонки может ещё не быть (миграция не накатана) — fallback на старое поведение
+  }
+  return DIRECTOR_ROLES;
+}
+
+/**
+ * Может ли актор согласовать estimate с учётом calculator_kind тендера.
+ */
+function canApproveEstimate(actorRole, approverRoles) {
+  return approverRoles.includes(actorRole);
+}
 
 // ─── Матрица допустимых переходов статусов для estimates ───
 const ESTIMATE_TRANSITIONS = {
@@ -254,14 +292,22 @@ function getLabel(entityType) {
 // Действие 1: Директор согласовывает
 // ─────────────────────────────────────────────────────────────────
 async function directorApprove(db, { entityType, entityId, actor, comment }) {
-  if (!isDirector(actor.role)) {
-    throw Object.assign(new Error('Только директор может согласовать'), { statusCode: 403 });
-  }
-
   const statusField = getStatusField(entityType);
   const cols = getColumns(entityType);
   const record = await getRecord(db, entityType, entityId);
   if (!record) throw Object.assign(new Error('Запись не найдена'), { statusCode: 404 });
+
+  // Маршрутизация согласующего: для estimates с calculator_kind='to' — HEAD_TO, иначе директор
+  let approverRoles = DIRECTOR_ROLES;
+  if (entityType === 'estimates') {
+    approverRoles = await getEstimateApproverRoles(db, record);
+    if (!canApproveEstimate(actor.role, approverRoles)) {
+      const who = approverRoles.includes('HEAD_TO') ? 'руководитель тендерного отдела' : 'директор';
+      throw Object.assign(new Error(`Согласовать может только ${who}`), { statusCode: 403 });
+    }
+  } else if (!isDirector(actor.role)) {
+    throw Object.assign(new Error('Только директор может согласовать'), { statusCode: 403 });
+  }
 
   // Проверка допустимости перехода для estimates
   if (entityType === 'estimates') {
@@ -349,18 +395,19 @@ async function directorApprove(db, { entityType, entityId, actor, comment }) {
           WHERE id = $1 AND tender_status IN ('Согласование ТКП', 'Отправлено на просчёт')
         `, [record.tender_id, priceNoVat, priceWithVat, vatPct]);
 
-        // Уведомить РП — у него появилось действие «Создать ТКП»
+        // Уведомить расчётчика — у него появилось действие «Создать ТКП»
         if (record.pm_id) {
           const tenderRow = (await client.query(
-            'SELECT customer_name, tender_title FROM tenders WHERE id = $1',
+            'SELECT customer_name, tender_title, calculator_kind FROM tenders WHERE id = $1',
             [record.tender_id]
           )).rows[0] || {};
+          const isToCalc = tenderRow.calculator_kind === 'to';
           createNotification(client, {
             user_id: record.pm_id,
             title: '✅ Просчёт согласован — создайте ТКП',
             message: `${tenderRow.customer_name || ''} — ${tenderRow.tender_title || ''}`,
             type: 'tkp',
-            link: `#/pm-calcs`
+            link: isToCalc ? `#/to-calcs` : `#/pm-calcs`
           });
         }
       }
@@ -432,14 +479,22 @@ async function requestRework(db, { entityType, entityId, actor, comment }) {
   if (!comment || !comment.trim()) {
     throw Object.assign(new Error('Укажите комментарий для доработки'), { statusCode: 400 });
   }
-  if (!isDirector(actor.role) && !isBuh(actor.role)) {
-    throw Object.assign(new Error('Нет прав для этого действия'), { statusCode: 403 });
-  }
 
   const statusField = getStatusField(entityType);
   const cols = getColumns(entityType);
   const record = await getRecord(db, entityType, entityId);
   if (!record) throw Object.assign(new Error('Запись не найдена'), { statusCode: 404 });
+
+  // Маршрутизация: для estimates с calculator_kind='to' — HEAD_TO; иначе директор/бухгалтер
+  if (entityType === 'estimates') {
+    const approverRoles = await getEstimateApproverRoles(db, record);
+    if (!canApproveEstimate(actor.role, approverRoles)) {
+      const who = approverRoles.includes('HEAD_TO') ? 'руководитель тендерного отдела' : 'директор';
+      throw Object.assign(new Error(`Отправить на доработку может только ${who}`), { statusCode: 403 });
+    }
+  } else if (!isDirector(actor.role) && !isBuh(actor.role)) {
+    throw Object.assign(new Error('Нет прав для этого действия'), { statusCode: 403 });
+  }
 
   // Проверка допустимости перехода для estimates
   if (entityType === 'estimates') {
@@ -522,14 +577,22 @@ async function askQuestion(db, { entityType, entityId, actor, comment }) {
   if (!comment || !comment.trim()) {
     throw Object.assign(new Error('Введите вопрос'), { statusCode: 400 });
   }
-  if (!isDirector(actor.role) && !isBuh(actor.role)) {
-    throw Object.assign(new Error('Нет прав для этого действия'), { statusCode: 403 });
-  }
 
   const statusField = getStatusField(entityType);
   const cols = getColumns(entityType);
   const record = await getRecord(db, entityType, entityId);
   if (!record) throw Object.assign(new Error('Запись не найдена'), { statusCode: 404 });
+
+  // Маршрутизация: для estimates с calculator_kind='to' — HEAD_TO; иначе директор/бухгалтер
+  if (entityType === 'estimates') {
+    const approverRoles = await getEstimateApproverRoles(db, record);
+    if (!canApproveEstimate(actor.role, approverRoles)) {
+      const who = approverRoles.includes('HEAD_TO') ? 'руководитель тендерного отдела' : 'директор';
+      throw Object.assign(new Error(`Задать вопрос может только ${who}`), { statusCode: 403 });
+    }
+  } else if (!isDirector(actor.role) && !isBuh(actor.role)) {
+    throw Object.assign(new Error('Нет прав для этого действия'), { statusCode: 403 });
+  }
 
   // Проверка допустимости перехода для estimates
   if (entityType === 'estimates') {
@@ -609,9 +672,6 @@ async function askQuestion(db, { entityType, entityId, actor, comment }) {
 // Действие 4: Директор отклоняет
 // ─────────────────────────────────────────────────────────────────
 async function directorReject(db, { entityType, entityId, actor, comment }) {
-  if (!isDirector(actor.role)) {
-    throw Object.assign(new Error('Только директор может отклонить'), { statusCode: 403 });
-  }
   if (!comment || !comment.trim()) {
     throw Object.assign(new Error('Укажите причину отклонения'), { statusCode: 400 });
   }
@@ -620,6 +680,17 @@ async function directorReject(db, { entityType, entityId, actor, comment }) {
   const cols = getColumns(entityType);
   const record = await getRecord(db, entityType, entityId);
   if (!record) throw Object.assign(new Error('Запись не найдена'), { statusCode: 404 });
+
+  // Маршрутизация: для estimates с calculator_kind='to' — HEAD_TO; иначе только директор
+  if (entityType === 'estimates') {
+    const approverRoles = await getEstimateApproverRoles(db, record);
+    if (!canApproveEstimate(actor.role, approverRoles)) {
+      const who = approverRoles.includes('HEAD_TO') ? 'руководитель тендерного отдела' : 'директор';
+      throw Object.assign(new Error(`Отклонить может только ${who}`), { statusCode: 403 });
+    }
+  } else if (!isDirector(actor.role)) {
+    throw Object.assign(new Error('Только директор может отклонить'), { statusCode: 403 });
+  }
 
   // Проверка допустимости перехода для estimates
   if (entityType === 'estimates') {
@@ -730,14 +801,19 @@ async function resubmit(db, { entityType, entityId, actor }) {
   // Потоковый комментарий
   await writeApprovalComment(db, entityType, entityId, actor.id, 'resubmit', 'Переотправлено после доработки');
 
-  // Уведомляем директоров
+  // Уведомляем согласующих — для estimates с calculator_kind='to' это HEAD_TO
   const label = `${getLabel(entityType)} #${entityId}`;
+  let approverRoles;
+  if (entityType === 'estimates') {
+    approverRoles = await getEstimateApproverRoles(db, record);
+  }
   await notifyDirectorsForApproval(db, {
     entityType, entityId,
     actorName: actor.name,
     title: `📋 ${label} — повторная отправка`,
-    message: `${actor.name || 'РП'} переотправил ${getLabel(entityType)} #${entityId} после доработки`,
-    requiresPayment: false
+    message: `${actor.name || 'Расчётчик'} переотправил ${getLabel(entityType)} #${entityId} после доработки`,
+    requiresPayment: false,
+    approverRoles
   });
 
   // Перевести тендер в «Согласование ТКП» при повторной отправке
@@ -1168,10 +1244,13 @@ module.exports = {
   validateEstimateTransition,
   writeAuditLog,
   writeApprovalComment,
+  getEstimateApproverRoles,
+  canApproveEstimate,
 
   // Константы
   DIRECTOR_ROLES,
   BUH_ROLES,
+  HEAD_TO_APPROVER_ROLES,
   PAYMENT_STATUSES,
   ENTITY_LABELS,
   ESTIMATE_TRANSITIONS,

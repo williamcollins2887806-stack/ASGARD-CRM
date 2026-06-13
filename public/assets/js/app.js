@@ -228,6 +228,8 @@ console.log('[ASGARD] Global period functions loaded');
 
     // ── РАБОТЫ ──
     {r:"/pm-calcs",l:"Просчёты (inbox)",d:"Входящие от ТО",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"pmcalcs",p:"pm_calcs",g:"works"},
+    {r:"/to-calcs",l:"Мои просчёты (ТО)",d:"Тендеры, которые я считаю сам",roles:["ADMIN","TO","HEAD_TO"],i:"pmcalcs",p:"to_calcs",g:"tenders"},
+    {r:"/head-to-approvals",l:"Согласование (ТО)",d:"Просчёты ТО на согласование",roles:["ADMIN","HEAD_TO"],i:"approvals",p:"head_to_approvals",g:"tenders"},
     {r:"/calculator",l:"Калькулятор ᚱ",d:"Расчёт стоимости работ",roles:["ADMIN","PM","TO","HEAD_PM","HEAD_TO",...DIRECTOR_ROLES],i:"calculator",p:"calculator",g:"works"},
     {r:"/approvals",l:"Согласование",d:"Решения Ярла",roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES],i:"approvals",p:"approvals",g:"works"},
     {r:"/bonus-approval",l:"Согласование премий",d:"Премии рабочим",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"approvals",p:"bonus_approval",g:"works"},
@@ -582,7 +584,7 @@ try{
     // ═══════════════════════════════════════════════════════════════
     // MOBILE V2 (LEGACY) — полностью отдельный UI при ≤768px
     // ═══════════════════════════════════════════════════════════════
-    const mobileV2Routes = new Set(['/welcome','/login','/register','/home','/dashboard','/my-dashboard','/big-screen','/engineer-dashboard','/pre-tenders','/funnel','/tenders','/customers','/customer','/tkp','/calculator','/pm-calcs','/approvals','/bonus-approval','/pm-works','/all-works','/all-estimates','/gantt','/gantt-calcs','/gantt-works','/gantt-objects','/kanban','/tasks','/tasks-admin','/pm-consents','/finances','/invoices','/acts','/buh-registry','/office-expenses','/cash','/cash-admin','/payroll','/payroll-sheet','/payroll-grid','/self-employed','/one-time-pay','/pass-requests','/procurement','/assembly','/warehouse','/my-equipment','/correspondence','/contracts','/seals','/proxies','/personnel','/employee','/hr-requests','/collections','/permits','/permit-applications','/permit-application-form','/training','/office-schedule','/workers-schedule','/hr-rating','/travel','/birthdays','/messenger','/chat','/mail','/my-mail','/mailbox','/alerts','/meetings','/telegram','/telephony','/mail-settings','/integrations','/mango','/kpi-works','/kpi-money','/to-analytics','/pm-analytics','/readiness','/readiness-board','/object-map','/calendar','/settings','/backup','/sync','/diag','/system-panel','/more','/user-requests','/reminders','/inbox-applications','/mimir','/test','/test-table']);
+    const mobileV2Routes = new Set(['/welcome','/login','/register','/home','/dashboard','/my-dashboard','/big-screen','/engineer-dashboard','/pre-tenders','/funnel','/tenders','/customers','/customer','/tkp','/calculator','/pm-calcs','/to-calcs','/head-to-approvals','/approvals','/bonus-approval','/pm-works','/all-works','/all-estimates','/gantt','/gantt-calcs','/gantt-works','/gantt-objects','/kanban','/tasks','/tasks-admin','/pm-consents','/finances','/invoices','/acts','/buh-registry','/office-expenses','/cash','/cash-admin','/payroll','/payroll-sheet','/payroll-grid','/self-employed','/one-time-pay','/pass-requests','/procurement','/assembly','/warehouse','/my-equipment','/correspondence','/contracts','/seals','/proxies','/personnel','/employee','/hr-requests','/collections','/permits','/permit-applications','/permit-application-form','/training','/office-schedule','/workers-schedule','/hr-rating','/travel','/birthdays','/messenger','/chat','/mail','/my-mail','/mailbox','/alerts','/meetings','/telegram','/telephony','/mail-settings','/integrations','/mango','/kpi-works','/kpi-money','/to-analytics','/pm-analytics','/readiness','/readiness-board','/object-map','/calendar','/settings','/backup','/sync','/diag','/system-panel','/more','/user-requests','/reminders','/inbox-applications','/mimir','/test','/test-table']);
     if (MOBILE_V2_ENABLED && _isMobile && window.App && window.M && window.DS && mobileV2Routes.has(cur)) {
       try { if (window.AsgardSessionGuard) AsgardSessionGuard.destroy(); } catch(e) {}
       window.removeEventListener('hashchange', window.__ASG_MOBILE_HASH__);
@@ -2174,6 +2176,8 @@ var _setupPinKeypad = null;
     AsgardRouter.add("/customers", ()=>AsgardCustomersPage.renderList({layout, title:"Карта Контрагентов"}), {auth:true, roles:["ADMIN","TO","HEAD_TO","PM","HEAD_PM","OFFICE_MANAGER",...DIRECTOR_ROLES]});
     AsgardRouter.add("/customer", ({query})=>AsgardCustomersPage.renderCard({layout, title:"Карточка контрагента", query}), {auth:true, roles:["ADMIN","TO","HEAD_TO","PM","HEAD_PM","OFFICE_MANAGER",...DIRECTOR_ROLES]});
     AsgardRouter.add("/pm-calcs", ()=>AsgardPmCalcsPage.render({layout, title:"Карта Похода • Просчёты"}), {auth:true, roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/to-calcs", ()=>AsgardToCalcsPage.render({layout, title:"Мои просчёты (ТО)"}), {auth:true, roles:["ADMIN","TO","HEAD_TO"]});
+    AsgardRouter.add("/head-to-approvals", ()=>AsgardHeadToApprovalsPage.render({layout, title:"Согласование просчётов ТО"}), {auth:true, roles:["ADMIN","HEAD_TO"]});
     AsgardRouter.add("/calculator", async ()=>{
       await layout('<div id="calculator-page"></div>', {title:"Калькулятор ᚱ"});
       AsgardCalcV2.renderPage(document.getElementById('calculator-page'));

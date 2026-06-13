@@ -738,6 +738,21 @@ window.AsgardTendersPage = (function(){
         const createdBy = (byId.get(t.created_by_user_id)||{}).name || "";
         const suggestedPm = (byId.get(t.responsible_pm_id)||{}).name || "";
         const ddl = t.docs_deadline ? new Date(t.docs_deadline).toLocaleDateString("ru-RU") : "";
+        const isToCalc = (t.calculator_kind === 'to');
+        const toCalcUserName = isToCalc ? ((byId.get(t.calculator_user_id || t.created_by_user_id || t.created_by)||{}).name || createdBy) : '';
+        // Колонка «кто будет считать»: если ТО хочет сам — синий бейдж; иначе золотой 💡 РП
+        const whoCalcCell = isToCalc
+          ? `<span style="display:inline-block;padding:2px 8px;border-radius:8px;background:rgba(91,141,239,.15);color:#5b8def;font-weight:600">🟦 ТО хочет сам${toCalcUserName?': '+esc(toCalcUserName):''}</span>`
+          : (suggestedPm ? '<span style="color:var(--gold,#c8a84e);font-weight:600">💡 ' + esc(suggestedPm) + '</span>' : '<span class="help">не указан</span>');
+        // Действия: для ТО-просчёта — одна кнопка «Одобрить — пусть считает ТО» + опц. передать РП; для РП — старая логика
+        const actionsCell = isToCalc
+          ? `<button class="btn red" style="padding:6px 10px" data-approve-to="${t.id}">✓ Одобрить — пусть считает ТО</button>
+             <div id="dist_pm_${t.id}_w" style="display:inline-block;min-width:200px;vertical-align:middle;margin-left:8px"></div>
+             <button class="btn ghost mini" style="padding:6px 10px; margin-left:4px" data-assign="${t.id}" title="Передать РП вместо ТО">Передать РП</button>
+             <button class="btn ghost mini" style="padding:6px 10px; margin-left:4px; color:var(--err-t)" data-reject="${t.id}">Не подходит</button>`
+          : `<div id="dist_pm_${t.id}_w" style="display:inline-block;min-width:220px;vertical-align:middle"></div>
+             <button class="btn red" style="padding:6px 10px; margin-left:8px" data-assign="${t.id}">Отправить на просчёт</button>
+             <button class="btn ghost" style="padding:6px 10px; margin-left:4px; color:var(--err-t)" data-reject="${t.id}">Не подходит</button>`;
         return `
           <tr>
             <td>${esc(t.customer_name||"")}</td>
@@ -745,12 +760,8 @@ window.AsgardTendersPage = (function(){
             <td>${esc(String(t.tender_type||""))}</td>
             <td>${esc(ddl)}</td>
             <td>${esc(createdBy)}</td>
-            <td>${suggestedPm ? '<span style="color:var(--gold,#c8a84e);font-weight:600">💡 ' + esc(suggestedPm) + '</span>' : '<span class="help">не указан</span>'}</td>
-            <td style="white-space:nowrap">
-              <div id="dist_pm_${t.id}_w" style="display:inline-block;min-width:220px;vertical-align:middle"></div>
-              <button class="btn red" style="padding:6px 10px; margin-left:8px" data-assign="${t.id}">Отправить на просчёт</button>
-              <button class="btn ghost" style="padding:6px 10px; margin-left:4px; color:var(--err-t)" data-reject="${t.id}">Не подходит</button>
-            </td>
+            <td>${whoCalcCell}</td>
+            <td style="white-space:nowrap">${actionsCell}</td>
           </tr>
         `;
       }).join("");
@@ -761,11 +772,11 @@ window.AsgardTendersPage = (function(){
             <h3 style="margin:0">Тендеры на анализе</h3>
             <span class="badge">${pending.length}</span>
           </div>
-          <div class="help">Рук. ТО анализирует тендер и назначает РП. Колонка «💡 ТО предложил» — кого ТО изначально указал. Можно оставить или выбрать другого. Лимит активных просчётов: ${lim||"без лимита"}.</div>
+          <div class="help">Рук. ТО анализирует тендер и решает: 🟦 ТО может посчитать сам (мелкий) — нажмите «Одобрить»; 💡 либо назначьте РП. Лимит активных просчётов у РП: ${lim||"без лимита"}.</div>
           <div style="overflow:auto; margin-top:10px">
-            <table class="t" style="min-width:1000px">
+            <table class="t" style="min-width:1100px">
               <thead>
-                <tr><th>Заказчик</th><th>Тендер</th><th>Тип</th><th>Дедлайн</th><th>Внёс</th><th>💡 ТО предложил</th><th></th></tr>
+                <tr><th>Заказчик</th><th>Тендер</th><th>Тип</th><th>Дедлайн</th><th>Внёс</th><th>Кто будет считать</th><th>Действия</th></tr>
               </thead>
               <tbody>${rows}</tbody>
             </table>
@@ -793,7 +804,7 @@ window.AsgardTendersPage = (function(){
         }));
       });
 
-      /* Кнопка "Отправить на просчёт" */
+      /* Кнопка "Отправить на просчёт" / "Передать РП" → /assign-calculator kind=pm */
       distPanel.querySelectorAll("button[data-assign]").forEach(btn=>{
         btn.addEventListener("click", async ()=>{
           const tid = Number(btn.getAttribute("data-assign"));
@@ -803,16 +814,39 @@ window.AsgardTendersPage = (function(){
           btn.disabled = true;
           try {
             const token = localStorage.getItem('asgard_token');
-            const resp = await fetch(`/api/tenders/${tid}/send-to-pm`, {
+            const resp = await fetch(`/api/tenders/${tid}/assign-calculator`, {
               method: 'POST',
               headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ pm_id: pmId })
+              body: JSON.stringify({ kind: 'pm', user_id: pmId })
             });
             const data = await resp.json();
             if (!resp.ok) { toast("Анализ", data.error || "Ошибка", "err"); btn.disabled = false; return; }
 
             const pmName = (byId.get(pmId)||{}).name || "РП";
             toast("Анализ","Тендер отправлен в просчёт РП " + pmName,"ok");
+            await render({layout, title});
+          } catch(e) {
+            toast("Анализ", "Ошибка сети", "err");
+            btn.disabled = false;
+          }
+        });
+      });
+
+      /* Кнопка "✓ Одобрить — пусть считает ТО" → /assign-calculator kind=to */
+      distPanel.querySelectorAll("button[data-approve-to]").forEach(btn=>{
+        btn.addEventListener("click", async ()=>{
+          const tid = Number(btn.getAttribute("data-approve-to"));
+          btn.disabled = true;
+          try {
+            const token = localStorage.getItem('asgard_token');
+            const resp = await fetch(`/api/tenders/${tid}/assign-calculator`, {
+              method: 'POST',
+              headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+              body: JSON.stringify({ kind: 'to' })
+            });
+            const data = await resp.json();
+            if (!resp.ok) { toast("Анализ", data.error || "Ошибка", "err"); btn.disabled = false; return; }
+            toast("Анализ","Тендер отдан на просчёт ТО","ok");
             await render({layout, title});
           } catch(e) {
             toast("Анализ", "Ошибка сети", "err");
@@ -1774,9 +1808,27 @@ window.AsgardTendersPage = (function(){
             <div class="cr-f-field"></div>
           </div>
 
+          ${(['TO','HEAD_TO','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV'].includes(user.role)) ? (() => {
+            const ck = (t && t.calculator_kind) || 'pm';
+            const lockedSt = ['Согласование ТКП','ТКП согласовано','Готово к отправке КП','КП отправлено','Выиграли','Проиграли','Не подходит'];
+            const ckLocked = !!(t && lockedSt.includes(t.tender_status));
+            return `
+            <div class="cr-f-row--2" id="e_calc_kind_row">
+              <div class="cr-f-field">
+                <div class="cr-f-label">Кто будет делать просчёт <span class="cr-f-label__req">*</span></div>
+                <div id="e_calc_kind_w" style="display:inline-flex;gap:6px;flex-wrap:wrap">
+                  <button type="button" class="btn ${ck==='pm'?'red':'ghost'} mini" data-ck="pm" ${ckLocked?'disabled':''}>👷 РП</button>
+                  <button type="button" class="btn ${ck==='to'?'red':'ghost'} mini" data-ck="to" ${ckLocked?'disabled':''}>📊 Я сам (ТО)</button>
+                </div>
+                <div class="cr-f-help" id="e_calc_kind_help">${ck==='to' ? 'После «На анализ» Рук. ТО подтвердит — и тендер появится в разделе «Мои просчёты».' : 'Выберите РП справа. Рук. ТО может изменить выбор.'}</div>
+              </div>
+              <div class="cr-f-field"></div>
+            </div>`;
+          })() : ''}
+
           <div class="cr-f-row--2">
-            <div class="cr-f-field">
-              <div class="cr-f-label">Ответственный РП <span class="cr-f-label__req">*</span></div>
+            <div class="cr-f-field" id="e_pm_field">
+              <div class="cr-f-label">Ответственный РП <span class="cr-f-label__req" id="e_pm_req">*</span></div>
               <div id="e_pm_w"></div>
               ${(user.role==="TO" && (!t || !t.handoff_at)) ? `<div class="cr-f-help">Выберите предпочтительного РП. Рук. ТО может изменить выбор.</div>` : ``}
               ${(t && t.tender_status==='На анализе') ? `<div class="cr-f-help" style="color:var(--gold)"><b>На анализе.</b> Рук. ТО рассматривает тендер.</div>` : ``}
@@ -1882,7 +1934,12 @@ window.AsgardTendersPage = (function(){
           ${isNew ? `<button class="btn gold" id="btnStepNext">Далее →</button>` : ''}
           ${!isNew ? '<button class="btn ghost" id="btnTenderActions">⚡ Действия</button>' : ''}
           ${(t && t.tender_status==='Новый' && (user.role==="TO"||user.role==="HEAD_TO")) ? `<button class="btn red" id="btnDist">На анализ</button>` : ``}
-          ${(t && t.tender_status==='ТКП согласовано' && ((user.role==='PM' && Number(t.responsible_pm_id)===Number(user.id)) || user.role==='HEAD_PM' || user.role==='ADMIN')) ? `<button class="btn" id="btnCreateTkp" style="background:#c8a84e;color:#1a1000;font-weight:700">⚡ Создать ТКП</button>` : ``}
+          ${(t && t.tender_status==='ТКП согласовано' && (
+              (user.role==='PM' && Number(t.responsible_pm_id)===Number(user.id))
+              || user.role==='HEAD_PM' || user.role==='ADMIN'
+              || (t.calculator_kind==='to' && user.role==='TO' && Number(t.calculator_user_id||t.created_by_user_id||t.created_by)===Number(user.id))
+              || (t.calculator_kind==='to' && user.role==='HEAD_TO')
+          )) ? `<button class="btn" id="btnCreateTkp" style="background:#c8a84e;color:#1a1000;font-weight:700">⚡ Создать ТКП</button>` : ``}
           ${(t && t.tender_status==='Готово к отправке КП' && ['TO','HEAD_TO','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV'].includes(user.role)) ? `<button class="btn" id="btnSentToClient" style="background:#17a2b8;color:#fff">📨 КП отправлено клиенту</button>` : ``}
           ${(t && t.tender_status==='КП отправлено' && ['TO','HEAD_TO','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV'].includes(user.role)) ? `
             <button class="btn" id="btnTenderWon" style="background:#2ecc71;color:#fff;font-weight:700">🏆 Выиграли</button>
@@ -2302,6 +2359,41 @@ window.AsgardTendersPage = (function(){
       const _isAdmin = user.role === 'ADMIN';
       const _statusOpts = _isAdmin ? refs.tender_statuses : (TENDER_TRANSITIONS[_curStatus] || []).concat([_curStatus]);
       $('#e_status_w')?.appendChild(CRSelect.create({ id: 'e_status', options: [...new Set(_statusOpts)].map(s => ({ value: s, label: s })), value: _curStatus, disabled: _eStatusDis, dropdownClass: 'z-modal' }));
+
+      // ── Переключатель «Кто будет считать» (calculator_kind) ──
+      let _calcKindCurrent = (t && t.calculator_kind) || 'pm';
+      const _calcKindWrap = document.getElementById('e_calc_kind_w');
+      const _calcHelp = document.getElementById('e_calc_kind_help');
+      const _pmField = document.getElementById('e_pm_field');
+      const _pmReq = document.getElementById('e_pm_req');
+      const _updateCalcKindUI = (k) => {
+        _calcKindCurrent = k;
+        if (_calcKindWrap) {
+          _calcKindWrap.querySelectorAll('button[data-ck]').forEach(b => {
+            const on = b.getAttribute('data-ck') === k;
+            b.classList.toggle('red', on);
+            b.classList.toggle('ghost', !on);
+          });
+        }
+        if (_calcHelp) {
+          _calcHelp.textContent = (k === 'to')
+            ? 'После «На анализ» Рук. ТО подтвердит — и тендер появится в разделе «Мои просчёты».'
+            : 'Выберите РП справа. Рук. ТО может изменить выбор.';
+        }
+        if (_pmField) { _pmField.style.opacity = (k === 'to') ? '0.55' : ''; }
+        if (_pmReq) { _pmReq.style.display = (k === 'to') ? 'none' : ''; }
+      };
+      if (_calcKindWrap) {
+        _updateCalcKindUI(_calcKindCurrent);
+        _calcKindWrap.addEventListener('click', (e) => {
+          const btn = e.target.closest('button[data-ck]');
+          if (!btn || btn.disabled) return;
+          e.preventDefault();
+          _updateCalcKindUI(btn.getAttribute('data-ck'));
+        });
+      }
+      // expose to saveTender
+      window.__tenderCalcKindGetter = () => _calcKindCurrent;
 
       /* Mount CRSelect for tag */
       const _tagOpts = tenderTags.map(tg => ({ value: String(tg.id), label: tg.name }));
@@ -3383,6 +3475,12 @@ window.AsgardTendersPage = (function(){
         const tenderType = ((_typeChipsEl && _typeChipsEl._crGetValue) ? (_typeChipsEl._crGetValue() || 'Тендер') : (CRSelect.getValue('e_type') || "Тендер")).trim();
         const pmId = Number(CRSelect.getValue('e_pm')||0) || null;
         const status = CRSelect.getValue('e_status') || '';
+        // «Кто будет считать» — переключатель в форме (только TO/HEAD_TO/ADMIN/DIR его видят)
+        const calcKind = (typeof window.__tenderCalcKindGetter === 'function')
+          ? (window.__tenderCalcKindGetter() || null)
+          : ((t && t.calculator_kind) || null);
+        // Для kind='to' расчётчик = текущий ТО; для kind='pm' calculator_user_id выставит HEAD_TO в /assign-calculator
+        const calcUserId = (calcKind === 'to') ? user.id : null;
         const priceRaw=document.getElementById("e_price").value.trim();
         const price = priceRaw ? Number(priceRaw.replace(/\s/g,"").replace(",", ".")) : null;
         const priceVatRaw=document.getElementById("e_price_vat")?.value?.trim()||"";
@@ -3413,6 +3511,7 @@ window.AsgardTendersPage = (function(){
             purchase_url: url, docs_deadline: docsDeadline,
             reject_reason: reject, group_tag: tag, tag_id: tagId, tender_comment_to: cto,
             created_by_user_id: user.id,
+            calculator_kind: calcKind, calculator_user_id: calcUserId,
             handoff_at: null, handoff_by_user_id: null,
             distribution_requested_at: null, distribution_requested_by_user_id: null,
             distribution_assigned_at: null, distribution_assigned_by_user_id: null,
@@ -3446,7 +3545,8 @@ window.AsgardTendersPage = (function(){
           return null;
         }
 
-        if(!pmId && status!=="Новый"){ toast("Проверка","Назначьте ответственного РП","err"); return null; }
+        // При kind='to' РП не обязателен; иначе обязателен
+        if(calcKind !== 'to' && !pmId && status!=="Новый"){ toast("Проверка","Назначьте ответственного РП (или выберите «Я сам (ТО)»)","err"); return null; }
         if(status==="Проиграли" && !reject){ toast("Проверка","Для отказа нужна причина","err"); return null; }
 
         if(isNew){
@@ -3463,6 +3563,7 @@ window.AsgardTendersPage = (function(){
             group_tag: tag, tag_id: tagId,
             tender_comment_to: cto,
             created_by_user_id: user.id,
+            calculator_kind: calcKind, calculator_user_id: calcUserId,
             handoff_at: null, handoff_by_user_id: null,
             distribution_requested_at: null, distribution_requested_by_user_id: null,
             distribution_assigned_at: null, distribution_assigned_by_user_id: null,
@@ -3508,6 +3609,12 @@ window.AsgardTendersPage = (function(){
             cur.work_start_plan=ws; cur.work_end_plan=we;
             cur.reject_reason=reject;
             cur.purchase_url=url; cur.docs_deadline=docsDeadline; cur.group_tag=tag; cur.tag_id=tagId; cur.tender_comment_to=cto;
+            // calculator_kind можно менять только до запуска просчёта (backend это валидирует, дублируем здесь для UX)
+            const lockedSt = ['Согласование ТКП','ТКП согласовано','Готово к отправке КП','КП отправлено','Выиграли','Проиграли','Не подходит'];
+            if (calcKind && !lockedSt.includes(cur.tender_status)) {
+              cur.calculator_kind = calcKind;
+              cur.calculator_user_id = calcUserId;
+            }
           }else if(rights2.limited){
             cur.purchase_url=url;
             cur.docs_deadline=docsDeadline;

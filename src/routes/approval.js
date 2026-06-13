@@ -137,17 +137,26 @@ async function routes(fastify) {
       const entityId = parseInt(request.params.id);
       const actor = request.user;
 
-      // TO и HEAD_TO не могут отправлять на согласование (только проверка)
-      if (entityType === 'estimates' && ['TO', 'HEAD_TO'].includes(actor.role)) {
-        throw Object.assign(new Error('Тендерный отдел может делать просчёт только для проверки'), { statusCode: 403 });
-      }
-
       // Verify entity exists and is draft
       const result = await db.query(`SELECT * FROM ${entityType} WHERE id = $1`, [entityId]);
       const entity = result.rows[0];
       if (!entity) throw Object.assign(new Error('Запись не найдена'), { statusCode: 404 });
       if (entity.approval_status !== 'draft') {
         throw Object.assign(new Error('Отправить можно только черновик'), { statusCode: 400 });
+      }
+
+      // TO/HEAD_TO могут отправлять estimates на согласование ТОЛЬКО если тендер помечен
+      // calculator_kind='to' (ТО считает сам) — иначе это «проверочный» просчёт для РП.
+      // Для остальных ролей (PM/HEAD_PM/DIRECTOR_*/ADMIN) ограничений нет.
+      let approverRoles;
+      if (entityType === 'estimates') {
+        approverRoles = await approvalService.getEstimateApproverRoles(db, entity);
+        if (['TO', 'HEAD_TO'].includes(actor.role) && !approverRoles.includes('HEAD_TO')) {
+          throw Object.assign(
+            new Error('Тендерный отдел отправляет на согласование только просчёты со своим флагом «считает ТО»'),
+            { statusCode: 403 }
+          );
+        }
       }
 
       // Update status to sent
@@ -170,13 +179,14 @@ async function routes(fastify) {
         [entityType, entityId, actor.id, 'Отправлено на согласование']
       );
 
-      // Notify directors
+      // Notify approvers (для estimates с kind='to' это HEAD_TO; иначе директора)
       await approvalService.notifyDirectorsForApproval(db, {
         entityType, entityId,
         actorName: actor.name,
         title: 'На согласование',
-        message: `${actor.name || 'РП'} отправил на согласование #${entityId}`,
-        requiresPayment: false
+        message: `${actor.name || 'Расчётчик'} отправил на согласование #${entityId}`,
+        requiresPayment: false,
+        approverRoles
       });
 
       // Перевести тендер в «Согласование ТКП» при отправке просчёта

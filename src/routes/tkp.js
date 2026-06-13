@@ -54,24 +54,59 @@ if (!numberToWordsRu) {
 }
 
 // Создавать ТКП может: РП (responsible_pm_id тендера), HEAD_PM, директора и ADMIN.
-// ТО/HEAD_TO УБРАНЫ намеренно — ТКП создаёт только РП, согласовавший просчёт.
-const WRITE_ROLES = ['ADMIN', 'PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+// TO/HEAD_TO допущены УСЛОВНО — только для тендеров с calculator_kind='to' (ТО считал сам).
+// Проверка делается в assertCanCreateTkpForTender по конкретному тендеру.
+const WRITE_ROLES = ['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 // Видеть список ТКП могут все, кто работает с тендером
 const SEE_ALL_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'BUH', 'HEAD_TO', 'TO', 'HEAD_PM'];
+// Согласовать ТКП может директор; для ТО-просчётов — HEAD_TO (см. /api/approval/tkp).
 const APPROVE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 
-// Внутренний хелпер: PM может создавать ТКП только для своего тендера
+// Внутренний хелпер: проверка что пользователь может создать ТКП для конкретного тендера.
 async function assertCanCreateTkpForTender(db, user, tenderId) {
-  if (!tenderId) return; // ТКП без тендера разрешён всем WRITE_ROLES
-  if (user.role !== 'PM') return; // HEAD_PM/директора/ADMIN — без проверки
+  if (!tenderId) {
+    // ТКП без тендера разрешён только классическому WRITE_ROLES (не ТО/HEAD_TO)
+    if (['TO','HEAD_TO'].includes(user.role)) {
+      throw Object.assign(
+        new Error('Тендерный отдел может создавать ТКП только привязанные к своему тендеру'),
+        { statusCode: 403 }
+      );
+    }
+    return;
+  }
   const { rows } = await db.query(
-    'SELECT responsible_pm_id FROM tenders WHERE id = $1',
+    'SELECT responsible_pm_id, calculator_kind, calculator_user_id, created_by_user_id, created_by FROM tenders WHERE id = $1',
     [tenderId]
   );
   if (!rows[0]) {
     throw Object.assign(new Error('Тендер не найден'), { statusCode: 404 });
   }
-  if (Number(rows[0].responsible_pm_id) !== Number(user.id)) {
+  const t = rows[0];
+
+  // ТО/HEAD_TO допущены ТОЛЬКО если тендер помечен «считает ТО»
+  if (['TO','HEAD_TO'].includes(user.role)) {
+    if (t.calculator_kind !== 'to') {
+      throw Object.assign(
+        new Error('Тендерный отдел может создавать ТКП только для своих просчётов (calculator_kind=to)'),
+        { statusCode: 403 }
+      );
+    }
+    // ТО — только для своего тендера (своего расчёта); HEAD_TO — для любого ТО-тендера
+    if (user.role === 'TO') {
+      const owner = Number(t.calculator_user_id || t.created_by_user_id || t.created_by);
+      if (owner !== Number(user.id)) {
+        throw Object.assign(
+          new Error('ТКП по этому тендеру создаёт только сам ТО, который его считал'),
+          { statusCode: 403 }
+        );
+      }
+    }
+    return;
+  }
+
+  // PM — только свой тендер; HEAD_PM/директора/ADMIN — без проверки
+  if (user.role !== 'PM') return;
+  if (Number(t.responsible_pm_id) !== Number(user.id)) {
     throw Object.assign(
       new Error('ТКП по этому тендеру создаёт только назначенный РП'),
       { statusCode: 403 }

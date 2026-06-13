@@ -328,7 +328,8 @@ async function routes(fastify, options) {
         'tender_status', 'period', 'docs_deadline', 'tender_price', 'tender_price_with_vat', 'vat_pct',
         'submission_price', 'submission_price_with_vat',
         'responsible_pm_id', 'group_tag', 'tag_id', 'purchase_url', 'comment_to', 'comment_dir',
-        'reject_reason', 'created_by', 'created_at'
+        'reject_reason', 'created_by', 'created_at',
+        'calculator_kind', 'calculator_user_id'
       ];
       const data = {};
       for (const k of allowedCols) {
@@ -413,6 +414,22 @@ async function routes(fastify, options) {
       }
     }
 
+    // calculator_kind — менять можно только до запуска просчёта
+    if (data.calculator_kind !== undefined && data.calculator_kind !== oldTender.calculator_kind) {
+      if (!['pm','to',null].includes(data.calculator_kind)) {
+        return reply.code(400).send({ error: 'calculator_kind должен быть "pm", "to" или null' });
+      }
+      const lockedStatuses = ['Согласование ТКП','ТКП согласовано','Готово к отправке КП','КП отправлено','Выиграли','Проиграли','Не подходит'];
+      if (lockedStatuses.includes(oldTender.tender_status)) {
+        return reply.code(409).send({ error: 'Изменить «кто считает» нельзя — просчёт уже идёт' });
+      }
+      // ТО/HEAD_TO могут менять для своих/всех; РП не может вмешиваться
+      const role = request.user.role;
+      if (!['TO','HEAD_TO','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV'].includes(role)) {
+        return reply.code(403).send({ error: 'Менять «кто считает» может только ТО или руководитель' });
+      }
+    }
+
     // State machine — проверка перехода статуса
     if (data.tender_status && data.tender_status !== oldTender.tender_status) {
       // Валидация что статус из допустимого списка
@@ -448,7 +465,8 @@ async function routes(fastify, options) {
       'tender_price', 'tender_price_with_vat', 'vat_pct',
       'submission_price', 'submission_price_with_vat',
       'responsible_pm_id', 'tag', 'group_tag', 'tag_id',
-      'docs_link', 'purchase_url', 'comment_to', 'comment_dir', 'reject_reason'
+      'docs_link', 'purchase_url', 'comment_to', 'comment_dir', 'reject_reason',
+      'calculator_kind', 'calculator_user_id'
     ];
 
     const updates = [];
@@ -1123,6 +1141,117 @@ async function routes(fastify, options) {
       tender_status: 'Отправлено на просчёт',
       old_status: 'На анализе',
       responsible_pm_id: pm_id
+    });
+
+    const { rows: [updated] } = await db.query('SELECT * FROM tenders WHERE id = $1', [id]);
+    return { success: true, tender: updated };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // POST /:id/assign-calculator — HEAD_TO одобряет «кто будет считать»
+  // body: { kind: 'pm' | 'to', user_id?: number }
+  //   kind='pm': user_id обязателен — это РП на просчёт (как /send-to-pm)
+  //   kind='to': user_id опционален; по умолчанию = created_by (тот ТО, что создал тендер)
+  // Переводит "На анализе" → "Отправлено на просчёт", выставляет calculator_kind/user_id.
+  // ═══════════════════════════════════════════════════════════════════════════
+  fastify.post('/:id/assign-calculator', {
+    preHandler: [fastify.requireRoles(['ADMIN', 'HEAD_TO'])]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    const { kind, user_id } = request.body || {};
+    const user = request.user;
+
+    if (!['pm','to'].includes(kind)) {
+      return reply.code(400).send({ error: 'kind должен быть "pm" или "to"' });
+    }
+
+    const { rows: [tender] } = await db.query('SELECT * FROM tenders WHERE id = $1', [id]);
+    if (!tender) return reply.code(404).send({ error: 'Тендер не найден' });
+    if (tender.tender_status !== 'На анализе') {
+      return reply.code(400).send({ error: `Тендер должен быть в статусе «На анализе», текущий: «${tender.tender_status}»` });
+    }
+
+    // Определяем расчётчика
+    let calcUserId = user_id ? Number(user_id) : null;
+    if (kind === 'to' && !calcUserId) {
+      // По умолчанию — тот ТО, что создал тендер
+      calcUserId = tender.created_by_user_id || tender.created_by || null;
+    }
+    if (!calcUserId) {
+      return reply.code(400).send({ error: 'Не удалось определить расчётчика (передайте user_id)' });
+    }
+
+    const { rows: [calcUser] } = await db.query(
+      'SELECT id, name, role FROM users WHERE id = $1 AND is_active = true',
+      [calcUserId]
+    );
+    if (!calcUser) return reply.code(400).send({ error: 'Расчётчик не найден или неактивен' });
+
+    // Роль расчётчика должна соответствовать kind
+    if (kind === 'pm' && !['PM','HEAD_PM'].includes(calcUser.role)) {
+      return reply.code(400).send({ error: `Для kind=pm расчётчик должен быть РП, у ${calcUser.name} роль ${calcUser.role}` });
+    }
+    if (kind === 'to' && !['TO','HEAD_TO'].includes(calcUser.role)) {
+      return reply.code(400).send({ error: `Для kind=to расчётчик должен быть из тендерного отдела, у ${calcUser.name} роль ${calcUser.role}` });
+    }
+
+    // Лимит активных просчётов — только для РП (для ТО ограничение бессмысленно)
+    if (kind === 'pm') {
+      const appSettings = await db.query("SELECT value_json FROM settings WHERE key = 'app_settings'");
+      let pmLimit = 0;
+      try {
+        const appS = typeof appSettings.rows[0]?.value_json === 'string'
+          ? JSON.parse(appSettings.rows[0].value_json)
+          : (appSettings.rows[0]?.value_json || {});
+        pmLimit = Number(appS?.limits?.pm_active_calcs_limit ?? 0) || 0;
+      } catch (_) {}
+      if (pmLimit > 0) {
+        const doneStatuses = ['Согласование ТКП', 'ТКП согласовано', 'Готово к отправке КП', 'Выиграли', 'Проиграли'];
+        const { rows: [activeCount] } = await db.query(
+          `SELECT COUNT(*) as cnt FROM tenders
+           WHERE responsible_pm_id = $1 AND handoff_at IS NOT NULL
+             AND tender_status NOT IN (${doneStatuses.map((_, i) => `$${i + 2}`).join(',')})
+             AND id != $${doneStatuses.length + 2}`,
+          [calcUserId, ...doneStatuses, id]
+        );
+        if (parseInt(activeCount.cnt) >= pmLimit) {
+          return reply.code(400).send({ error: `У РП «${calcUser.name}» уже ${activeCount.cnt}/${pmLimit} активных просчётов` });
+        }
+      }
+    }
+
+    await db.query(`
+      UPDATE tenders SET
+        tender_status = 'Отправлено на просчёт',
+        calculator_kind = $2,
+        calculator_user_id = $3,
+        responsible_pm_id = $3,
+        handoff_at = NOW(),
+        handoff_by_user_id = $4,
+        updated_at = NOW()
+      WHERE id = $1
+    `, [id, kind, calcUserId, user.id]);
+
+    await db.query(`
+      INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+      VALUES ($1, 'tender', $2, 'assign_calculator', $3, NOW())
+    `, [user.id, id, JSON.stringify({ kind, calculator_user_id: calcUserId, calculator_name: calcUser.name, calculator_role: calcUser.role, from_status: 'На анализе' })]);
+
+    const linkPath = kind === 'to' ? '#/to-calcs' : '#/pm-calcs';
+    createNotification(db, {
+      user_id: calcUserId,
+      title: kind === 'to' ? '📊 Просчёт за вами' : '📋 Тендер на просчёт',
+      message: `${user.name || 'Рук. ТО'} назначил тендер: ${tender.customer_name || ''} — ${tender.tender_title || ''}`,
+      type: 'tender',
+      link: linkPath
+    });
+
+    broadcast('tender:updated', {
+      id, customer_name: tender.customer_name || '',
+      tender_status: 'Отправлено на просчёт',
+      old_status: 'На анализе',
+      responsible_pm_id: calcUserId,
+      calculator_kind: kind
     });
 
     const { rows: [updated] } = await db.query('SELECT * FROM tenders WHERE id = $1', [id]);
