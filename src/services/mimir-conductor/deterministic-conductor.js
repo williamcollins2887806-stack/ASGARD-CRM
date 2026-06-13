@@ -169,9 +169,9 @@ async function _runDeterministicCore(runId, opts = {}) {
       message: `Этап ${node.stage} «${STAGE_NAMES[node.stage]}» — Шаг ${node.step}/${TOTAL_STEPS}: ${node.agent}`
     });
 
-    // Hard-timeout 14 мин на агент (sweeper 12 мин + 2 мин buffer на fetch).
+    // Hard-timeout: 14 мин для required, 4 мин для опциональных (травел/сайт_акцесс — не блокируют ССР).
     // Без этого pipeline зависает на Promise если sweeper пометил БД но fetch ждёт.
-    const AGENT_HARD_TIMEOUT_MS = 14 * 60 * 1000;
+    const AGENT_HARD_TIMEOUT_MS = node.required ? 14 * 60 * 1000 : 4 * 60 * 1000;
     let res;
     try {
       res = await Promise.race([
