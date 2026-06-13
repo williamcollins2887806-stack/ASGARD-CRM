@@ -32,9 +32,41 @@ const usageTracker = require('./usage-tracker');
  * @param {number|null} callerAgentRunId — agent_run_id вызвавшего (Conductor)
  * @returns {Promise<Object>} компактный результат для Conductor
  */
+// Hard-limit на повторные вызовы агентов «уточняющего» типа — чтобы Conductor
+// не зацикливался на tz_analyst/work_scope_researcher (sonnet иногда так
+// делает, несмотря на правила в промпте). Расчётные агенты (labor/site/
+// indirects/G/final) НЕ ограничены, их и так зовут по одному разу.
+const REPEAT_LIMITED = new Set(['tz_analyst', 'work_scope_researcher', 'document_parser']);
+const REPEAT_MAX = 2;
+
 async function callAgent(agentName, input, runId, callerAgentRunId = null) {
   const spec = REGISTRY[agentName];
   if (!spec) throw new Error(`Unknown agent: ${agentName}`);
+
+  // Hard-rule: блокируем 3-й SUCCESS-вызов уточняющих агентов в одном run.
+  // Возвращаем синтетический «отказ» с указанием Conductor перейти к расчёту.
+  if (REPEAT_LIMITED.has(agentName)) {
+    try {
+      const { rows } = await db.query(
+        `SELECT count(*)::int AS cnt FROM mimir_agent_runs
+          WHERE conductor_run_id=$1 AND agent_name=$2 AND status='SUCCESS'`,
+        [runId, agentName]
+      );
+      if (rows[0] && rows[0].cnt >= REPEAT_MAX) {
+        cr.addEvent(runId, null, 'agent_rejected', {
+          agent_name: agentName,
+          reason: `repeat_limit_${REPEAT_MAX}_reached`,
+          message: `${agentName} уже выполнен ${rows[0].cnt} раз. Перейди к расчётной цепочке (labor_calculator → site_conditions → indirects_calculator → final_consolidator). Отсутствующие детали закроются defaults в resolveNorm.`
+        });
+        return {
+          success: false,
+          error: `LIMIT: ${agentName} достиг лимита повторных вызовов (${REPEAT_MAX}). Переходи к расчётной цепочке без повторных уточнений.`,
+          repeat_limit_reached: true,
+          next_recommended: ['crew_composer', 'labor_calculator', 'site_conditions', 'indirects_calculator', 'final_consolidator']
+        };
+      }
+    } catch (e) { /* fail-safe: пропускаем лимит при ошибке БД */ }
+  }
 
   const agentRunId = await cr.startAgentRun(runId, {
     agentName,
