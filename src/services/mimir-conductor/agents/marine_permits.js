@@ -15,12 +15,13 @@
 const { formatRub } = require('./_util');
 const { resolveNorm } = require('./_norms');
 
-// Fallback (применяется ТОЛЬКО если applicable_norms.marine_permits отсутствует).
-const FALLBACK_PERMITS = [
-  { key: 'bmpvo', name: 'БМПВО (безопасность на море, выживание)', days: 5, cost: 45000 },
-  { key: 'utm', name: 'Морские медкомиссии (УТМ)', days: 3, cost: 18000 },
-  { key: 'mlsp', name: 'Допуск на МЛСП/платформу (вводный инструктаж заказчика)', days: 2, cost: 12000 },
-  { key: 'siz', name: 'Сертификация СИЗ для морских работ', days: 0, cost: 25000 }
+// БЕЗ ХАРДКОДА. Только структура (ключи + имена). Cost/days резолвятся из
+// applicable_norms.marine_permits[key].cost_rub/days. Без — BLOCKING.
+const PERMIT_KEYS = [
+  { key: 'bmpvo', name: 'БМПВО (безопасность на море, выживание)' },
+  { key: 'utm', name: 'Морские медкомиссии (УТМ)' },
+  { key: 'mlsp', name: 'Допуск на МЛСП/платформу (вводный инструктаж заказчика)' },
+  { key: 'siz', name: 'Сертификация СИЗ для морских работ' }
 ];
 
 function isMarine(tz) {
@@ -43,20 +44,36 @@ async function run({ requiredArtifacts, input, onThought }) {
   }
 
   const crewCount = (requiredArtifacts.crew_plan && Number(requiredArtifacts.crew_plan.total_count)) || 1;
-  // Резолвим каждый пермит из applicable_norms.marine_permits.{key}.cost/days или fallback
+  // Резолвим каждый пермит из applicable_norms.marine_permits.{key}.cost/days. БЕЗ fallback.
   const sources = [];
-  const permits = FALLBACK_PERMITS.map((p) => {
-    const costR = resolveNorm(requiredArtifacts || {}, `marine_permits.${p.key}.cost_rub`, p.cost);
-    const daysR = resolveNorm(requiredArtifacts || {}, `marine_permits.${p.key}.days`, p.days);
+  const missing = [];
+  const permits = [];
+  for (const p of PERMIT_KEYS) {
+    const costR = resolveNorm(requiredArtifacts || {}, `marine_permits.${p.key}.cost_rub`, null);
+    const daysR = resolveNorm(requiredArtifacts || {}, `marine_permits.${p.key}.days`, null);
+    if (costR.value == null) missing.push(`marine_permits.${p.key}.cost_rub`);
+    if (daysR.value == null) missing.push(`marine_permits.${p.key}.days`);
     sources.push({ permit: p.key, cost_tier: costR.tier, days_tier: daysR.tier });
-    const isPerCrew = !/сиз/i.test(p.name);
+    if (costR.value != null && daysR.value != null) {
+      const isPerCrew = !/сиз/i.test(p.name);
+      permits.push({
+        name: p.name, days: daysR.value,
+        cost: isPerCrew ? costR.value * Math.max(1, crewCount) : costR.value,
+        _cost_source: costR.tier
+      });
+    }
+  }
+  if (missing.length) {
     return {
-      name: p.name,
-      days: daysR.value,
-      cost: isPerCrew ? costR.value * Math.max(1, crewCount) : costR.value,
-      _cost_source: costR.tier
+      summary: 'BLOCKED: морские допуски — нет цен/сроков в эталонах',
+      key_findings: missing.map((k) => `BLOCKER: ${k}`),
+      permits: [], total_marine: 0, lead_time_days: 0, crew_count: crewCount,
+      _source_tiers: { missing },
+      assumptions: [`Заполните marine_permits.* в applicable_norms эталона или загрузите подходящий эталон с морскими работами.`],
+      clarifications: [{ channel: 'PM', category: 'marine_permits', blocking: true,
+        question_ru: `Нет морских допусков в эталонах: ${missing.join(', ')}. Внесите цены/сроки в applicable_norms эталона морского/шельфового проекта.` }]
     };
-  });
+  }
   const totalMarine = permits.reduce((s, p) => s + p.cost, 0);
   const leadTime = Math.max(...permits.map((p) => p.days), 0);
 

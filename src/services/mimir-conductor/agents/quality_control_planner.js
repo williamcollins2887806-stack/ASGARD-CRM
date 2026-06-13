@@ -16,14 +16,8 @@
 const { formatRub } = require('./_util');
 const { resolveNorm } = require('./_norms');
 
-// Fallback цены и проценты (применяются ТОЛЬКО если нет в applicable_norms).
-const FALLBACK_VIK_PRICE = 150;
-const FALLBACK_UZK_PRICE = 800;
-const FALLBACK_RK_PRICE = 1500;
-const FALLBACK_VIK_PCT = 1.0;
-const FALLBACK_UZK_PCT = 0.20;
-const FALLBACK_RK_PCT = 0.10;
-const FALLBACK_JOINTS_PER_METER = 1 / 12; // 1 стык на 12 м
+// БЕЗ ХАРДКОДА. Цены НК и проценты — только из applicable_norms.nk_*.
+// Если отсутствует — BLOCKING.
 
 function methodStr(tz) {
   const method = (tz.scope && tz.scope.method) || [];
@@ -36,21 +30,22 @@ function estimateJoints(resources, requiredArtifacts) {
   const list = Array.isArray(resources.resources) ? resources.resources : [];
   let vol = 0;
   for (const r of list) vol += Number(r.volume) || Number(r.qty) || 0;
-  const jpm = resolveNorm(requiredArtifacts || {}, 'nk_joints_per_meter', FALLBACK_JOINTS_PER_METER);
-  return Math.max(10, Math.round(vol * jpm.value));
+  const jpm = resolveNorm(requiredArtifacts || {}, 'nk_joints_per_meter', null);
+  if (jpm.value == null) return { joints: null, missing: 'nk_joints_per_meter' };
+  return { joints: Math.max(10, Math.round(vol * jpm.value)), missing: null };
 }
 
 async function run({ requiredArtifacts, onThought }) {
   const tz = requiredArtifacts.tz_summary || {};
   const resources = requiredArtifacts.resources || {};
 
-  onThought('Резолвлю цены и проценты НК из applicable_norms → fallback…');
-  const vikPrice = resolveNorm(requiredArtifacts, 'nk_prices_rub.vik_per_joint', FALLBACK_VIK_PRICE);
-  const uzkPrice = resolveNorm(requiredArtifacts, 'nk_prices_rub.uzk_per_joint', FALLBACK_UZK_PRICE);
-  const rkPrice = resolveNorm(requiredArtifacts, 'nk_prices_rub.rk_per_joint', FALLBACK_RK_PRICE);
-  const vikPct = resolveNorm(requiredArtifacts, 'nk_percent.vik', FALLBACK_VIK_PCT);
-  const uzkPct = resolveNorm(requiredArtifacts, 'nk_percent.uzk', FALLBACK_UZK_PCT);
-  const rkPct = resolveNorm(requiredArtifacts, 'nk_percent.rk', FALLBACK_RK_PCT);
+  onThought('Резолвлю цены и проценты НК из applicable_norms (без fallback)…');
+  const vikPrice = resolveNorm(requiredArtifacts, 'nk_prices_rub.vik_per_joint', null);
+  const uzkPrice = resolveNorm(requiredArtifacts, 'nk_prices_rub.uzk_per_joint', null);
+  const rkPrice = resolveNorm(requiredArtifacts, 'nk_prices_rub.rk_per_joint', null);
+  const vikPct = resolveNorm(requiredArtifacts, 'nk_percent.vik', null);
+  const uzkPct = resolveNorm(requiredArtifacts, 'nk_percent.uzk', null);
+  const rkPct = resolveNorm(requiredArtifacts, 'nk_percent.rk', null);
 
   onThought('Планирую контроль качества сварных соединений…');
   const ms = methodStr(tz);
@@ -63,7 +58,27 @@ async function run({ requiredArtifacts, onThought }) {
     };
   }
 
-  const joints = estimateJoints(resources, requiredArtifacts);
+  const missing = [];
+  if (vikPrice.value == null) missing.push('nk_prices_rub.vik_per_joint');
+  if (uzkPrice.value == null) missing.push('nk_prices_rub.uzk_per_joint');
+  if (rkPrice.value == null) missing.push('nk_prices_rub.rk_per_joint');
+  if (vikPct.value == null) missing.push('nk_percent.vik');
+  if (uzkPct.value == null) missing.push('nk_percent.uzk');
+  if (rkPct.value == null) missing.push('nk_percent.rk');
+  const jointsResult = estimateJoints(resources, requiredArtifacts);
+  if (jointsResult.missing) missing.push(jointsResult.missing);
+  if (missing.length) {
+    return {
+      summary: 'BLOCKED: цены/проценты НК не найдены в эталонах',
+      key_findings: missing.map((k) => `BLOCKER: ${k}`),
+      joints: 0, methods: [], total_qc: 0,
+      _source_tiers: { missing },
+      assumptions: ['Заполните nk_prices_rub.* и nk_percent.* в applicable_norms эталона.'],
+      clarifications: [{ channel: 'PM', category: 'qc', blocking: true,
+        question_ru: `Нет норм НК в эталонах: ${missing.join(', ')}. Загрузите эталон с НК или заполните applicable_norms существующего.` }]
+    };
+  }
+  const joints = jointsResult.joints;
   const tagSrc = (t) => t === 'analogs' ? '✅' : t === 'company_profile' ? '⚙' : '⚠';
   const methods = [
     { method: 'ВИК', pct: vikPct.value * 100, joints: Math.round(joints * vikPct.value), unit_price: vikPrice.value, total: Math.round(joints * vikPct.value) * vikPrice.value, _source_pct: vikPct.tier, _source_price: vikPrice.tier },

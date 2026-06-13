@@ -34,31 +34,35 @@ duration_planned vs duration_actual, cost_planned vs cost_actual, resources_actu
 4. Выведи pricing_strategy: какую цену для клиента эталон рекомендует для подобной
    работы (insights.pricing_strategy_for_similar или расчёт по факту).
 
-Верни СТРОГО JSON:
+КРИТИЧНО: применяй ТОЛЬКО цифры из найденных эталонов. Не выдумывай.
+Если конкретного норматива нет в resources_actual эталона — оставь поле null.
+
+Верни СТРОГО JSON (структура схемы, без примеров цифр):
 {
-  "verdict": "Найдено N эталонов, ближайший — '...' (КАО Азот / ...). Применимость: high|medium|low",
-  "findings": [
-    "В эталоне X фактическая длительность была в Y раз больше плановой из-за ...",
-    "Реальные ставки слесаря в эталоне: 6500 ₽/смена × 1.04 × 1.20",
-    ...
-  ],
-  "unit_indicators": [
-    {"name": "₽/труба", "value": "...", "vs_analogs": "..."}
-  ],
+  "verdict": "Найдено N эталонов, ближайший — '<имя>'. Применимость: high|medium|low",
+  "findings": ["конкретные находки из эталонов с именами проектов и цифрами оттуда"],
+  "unit_indicators": [{"name": "<метрика>", "value": "<из эталона>", "vs_analogs": "<сравнение>"}],
   "applicable_norms": {
-    "labor_rates_rub_per_shift": {"ИТР":..., "мастер":..., "слесарь":...},
-    "overheads_pct": ...,
-    "warranty_pct": ...,
-    "margin_min_pct": ...,
-    "materials_consumption_rules": ["..."]
+    "labor_rates_rub_per_shift": {"<позиция_как_в_эталоне>": "<число_из_эталона>"},
+    "overheads_pct": "<число_из_resources_actual.overheads_pct_of_direct>",
+    "warranty_pct": "<число_из_resources_actual.warranty_reserve_pct_of_revenue>",
+    "margin_min_pct": "<число_из_resources_actual.min_profitability_pct_for_OPO>",
+    "timing_norms": {"prep_days": "<из_эталона_или_null>", "mob_demob_days": "<из_эталона_или_null>"},
+    "consumables_consumption_rules": {
+      "nozzle_per_100": "<число_из_resources_actual.materials>",
+      "nozzle_price_rub": "<unit_price_rub_из_эталона>",
+      "brush_per_100": "<число>", "brush_price_rub": "<число>",
+      "ppe_per_manday": "<число>", "ppe_price_rub": "<число>"
+    },
+    "materials_consumption_rules": ["правила из resources_actual.materials.rule с ценами эталона"]
   },
   "pricing_recommendation": {
-    "min_cost_estimate_rub": ...,
-    "recommended_client_price_no_vat_rub": ...,
-    "reasoning": "Эталон X показал: себестоимость factor × план. Применяем к нашему объёму ..."
+    "min_cost_estimate_rub": "<факт_эталона_*_коэф_объёма>",
+    "recommended_client_price_no_vat_rub": "<из_pricing_strategy_for_similar>",
+    "reasoning": "Эталон <имя> показал: себестоимость <factor> × план. Применяем к объёму ..."
   },
-  "risk_buffer_pct_recommended": ...,
-  "key_risks_from_history": ["..."]
+  "risk_buffer_pct_recommended": "<число_из_эталона>",
+  "key_risks_from_history": ["конкретные риски из risk_factors_realized эталонов"]
 }`;
 
 /**

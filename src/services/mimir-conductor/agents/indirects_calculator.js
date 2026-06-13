@@ -23,15 +23,8 @@ const { formatRub } = require('./_util');
 // Fallback-коэффициенты (применяются ТОЛЬКО при отсутствии эталонов в analogs
 // и политик в company_profile). При каждом fallback в output идёт пометка
 // 'tier:defaults' — РП видит что Conductor «угадывает».
-const FALLBACK_FOT_TAX_PCT = 0.302;   // 30% страх. взносы + 0.2% НС/ПЗ V кл (ремонтные)
-const FALLBACK_OVERHEAD_PCT = 0.193;  // 19.3% — реальная из эталона КАО Азот
-const FALLBACK_CONSUMABLES_PCT = 0.03;
-const FALLBACK_CONTINGENCY_PCT = 0.12;
-const FALLBACK_WINTER_PCT = 0.04;
-const FALLBACK_TEMP_BUILDINGS_PCT = 0.015;
-const FALLBACK_ECOLOGY_PCT = 0.02;
-const FALLBACK_VAT_PCT = 22;
-const FALLBACK_WARRANTY_PCT = 0.024;
+// БЕЗ ХАРДКОДА. Все коэффициенты из applicable_norms (эталоны) → company_profile
+// (settings.company_profile.financial_policy) → BLOCKING.
 
 /**
  * Резолвим коэффициенты из источников истины в порядке приоритета:
@@ -45,29 +38,49 @@ function resolveCoefficients(requiredArtifacts) {
   const policy = (requiredArtifacts.work_scope_research && requiredArtifacts.work_scope_research.company_profile &&
                   requiredArtifacts.work_scope_research.company_profile.financial_policy) || {};
   const tiers = {};
-  function pick(v1, v2, v3, name) {
+  function pick(v1, v2, name) {
     if (v1 != null && Number.isFinite(Number(v1))) { tiers[name] = 'analogs'; return Number(v1); }
     if (v2 != null && Number.isFinite(Number(v2))) { tiers[name] = 'company_profile'; return Number(v2); }
-    tiers[name] = 'defaults'; return Number(v3);
+    tiers[name] = 'missing'; return null;
   }
   return {
-    fot_tax_pct: FALLBACK_FOT_TAX_PCT,
+    fot_tax_pct: pick(norms.fot_tax_pct, policy.fot_tax_pct, 'fot_tax'),
     overhead_pct: pick(
       norms.overheads_pct != null ? norms.overheads_pct / 100 : null,
       policy.overheads_pct_of_direct != null ? policy.overheads_pct_of_direct / 100 : null,
-      FALLBACK_OVERHEAD_PCT, 'overhead'
+      'overhead'
     ),
-    consumables_pct: FALLBACK_CONSUMABLES_PCT,
-    contingency_pct: FALLBACK_CONTINGENCY_PCT,
-    winter_pct: FALLBACK_WINTER_PCT,
-    temp_buildings_pct: FALLBACK_TEMP_BUILDINGS_PCT,
-    ecology_pct: FALLBACK_ECOLOGY_PCT,
+    consumables_pct: pick(
+      norms.consumables_pct_of_personnel != null ? norms.consumables_pct_of_personnel / 100 : null,
+      policy.consumables_pct_of_personnel != null ? policy.consumables_pct_of_personnel / 100 : null,
+      'consumables'
+    ),
+    contingency_pct: pick(
+      norms.contingency_pct != null ? norms.contingency_pct / 100 : null,
+      policy.contingency_pct != null ? policy.contingency_pct / 100 : null,
+      'contingency'
+    ),
+    winter_pct: pick(
+      norms.winter_pct != null ? norms.winter_pct / 100 : null,
+      policy.winter_pct != null ? policy.winter_pct / 100 : null,
+      'winter'
+    ),
+    temp_buildings_pct: pick(
+      norms.temp_buildings_pct != null ? norms.temp_buildings_pct / 100 : null,
+      policy.temp_buildings_pct != null ? policy.temp_buildings_pct / 100 : null,
+      'temp_buildings'
+    ),
+    ecology_pct: pick(
+      norms.ecology_pct != null ? norms.ecology_pct / 100 : null,
+      policy.ecology_pct != null ? policy.ecology_pct / 100 : null,
+      'ecology'
+    ),
     warranty_pct: pick(
       norms.warranty_pct != null ? norms.warranty_pct / 100 : null,
       policy.warranty_reserve_pct_of_revenue != null ? policy.warranty_reserve_pct_of_revenue / 100 : null,
-      FALLBACK_WARRANTY_PCT, 'warranty'
+      'warranty'
     ),
-    vat_pct: pick(norms.vat_pct, policy.vat_rate_pct, FALLBACK_VAT_PCT, 'vat'),
+    vat_pct: pick(norms.vat_pct, policy.vat_rate_pct, 'vat'),
     _source_tiers: tiers
   };
 }
@@ -100,10 +113,29 @@ async function run({ requiredArtifacts, onThought }) {
   const fotMultiplier = Number(siteConditions.fot_multiplier) || 1;
   if (fotMultiplier > 1) subtotalFot = subtotalFot * fotMultiplier;
 
-  // Резолвим коэф. из эталонов / политик / fallback
+  // Резолвим коэф. из эталонов / company_profile. БЕЗ fallback.
   const coef = resolveCoefficients(requiredArtifacts);
   onThought(`Источники коэф.: накладные ${coef._source_tiers.overhead}, гарантия ${coef._source_tiers.warranty}`);
   if (fotMultiplier > 1) onThought(`Применён FOT-multiplier ${fotMultiplier.toFixed(2)} (надбавки за условия работ из site_conditions)`);
+
+  // Проверка отсутствующих критичных коэф.
+  const required = ['fot_tax', 'overhead', 'warranty', 'vat'];
+  const missingCritical = required.filter((k) => coef._source_tiers[k] === 'missing');
+  if (missingCritical.length) {
+    return {
+      summary: 'BLOCKED: критичные коэффициенты не найдены в эталонах/company_profile',
+      key_findings: missingCritical.map((k) => `BLOCKER: ${k}_pct не найден`),
+      base_personnel_with_tax: 0, subtotal_fot: Math.round(subtotalFot),
+      fot_multiplier_applied: fotMultiplier, fot_tax: 0,
+      overhead: 0, consumables: 0, contingency: 0,
+      winter_surcharge: 0, temp_buildings: 0, ecology_cost: 0,
+      warranty_reserve: 0, vat_pct: 0, total_indirects: 0,
+      _coefficient_sources: coef._source_tiers,
+      assumptions: ['Заполните applicable_norms эталона и/или settings.company_profile.financial_policy.'],
+      clarifications: [{ channel: 'PM', category: 'indirects', blocking: true,
+        question_ru: `Не найдены коэффициенты в эталоне/политике компании: ${missingCritical.join(', ')}. Заполните applicable_norms или settings.company_profile.financial_policy.` }]
+    };
+  }
 
   onThought('Считаю налог на ФОТ и базу косвенных…');
   const fotTax = subtotalFot * coef.fot_tax_pct;
@@ -111,16 +143,16 @@ async function run({ requiredArtifacts, onThought }) {
 
   onThought('Считаю накладные, расходные, непредвиденные…');
   const overhead = personnelWithTax * coef.overhead_pct;
-  const consumables = personnelWithTax * coef.consumables_pct;
-  const contingency = personnelWithTax * coef.contingency_pct;
+  const consumables = coef.consumables_pct != null ? personnelWithTax * coef.consumables_pct : 0;
+  const contingency = coef.contingency_pct != null ? personnelWithTax * coef.contingency_pct : 0;
 
   onThought('Считаю лимитированные затраты (зима, ВЗИС, экология)…');
   const timing = tz.timing || {};
   const winter = isWinterStart(timing);
-  const winterSurcharge = winter ? personnelWithTax * coef.winter_pct : 0;
-  const tempBuildings = personnelWithTax * coef.temp_buildings_pct;
+  const winterSurcharge = (winter && coef.winter_pct != null) ? personnelWithTax * coef.winter_pct : 0;
+  const tempBuildings = coef.temp_buildings_pct != null ? personnelWithTax * coef.temp_buildings_pct : 0;
   const chemical = isChemicalMethod(tz);
-  const ecologyCost = chemical ? personnelWithTax * coef.ecology_pct : 0;
+  const ecologyCost = (chemical && coef.ecology_pct != null) ? personnelWithTax * coef.ecology_pct : 0;
 
   const round = (x) => Math.round(x);
   const totalIndirects = round(

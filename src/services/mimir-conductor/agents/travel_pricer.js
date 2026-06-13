@@ -19,21 +19,18 @@ const aiProvider = require('../../ai-provider');
 const { formatRub } = require('./_util');
 const { resolveNorm } = require('./_norms');
 
-// Fallback ставки за км для разного транспорта (применяются ТОЛЬКО если ни searchWeb,
-// ни analogs не дали данных). Помечаются source='fallback'.
-const FALLBACK_RATES = { plane: 4, train: 3.5, auto: 12 };
-const FALLBACK_MIN = { plane: 6000, train: 1500, auto: 0, unknown: 3000 };
+// БЕЗ ХАРДКОДА. Ставки и минимумы — только из applicable_norms.travel_rates_rub_per_km/min.
+// Если нет — null (caller знает что искать через searchWeb или blocking).
 
-/** Цена за км из аналогов или fallback. */
+/** Цена за км из applicable_norms. Если нет — null. */
 function estimatePrice(transport, distanceKm, requiredArtifacts) {
   const d = Number(distanceKm) || 0;
-  // Из applicable_norms.travel_rates_rub_per_km.{plane|train|auto} — если есть
-  const ratePath = `travel_rates_rub_per_km.${transport}`;
-  const r = resolveNorm(requiredArtifacts || {}, ratePath, FALLBACK_RATES[transport] || 0);
-  const ratePerKm = Number(r.value) || 0;
-  const min = FALLBACK_MIN[transport] || 0;
-  if (transport === 'auto') return Math.max(min, Math.round(d * ratePerKm));
-  return Math.max(min, Math.round(d * ratePerKm));
+  const r = resolveNorm(requiredArtifacts || {}, `travel_rates_rub_per_km.${transport}`, null);
+  const minR = resolveNorm(requiredArtifacts || {}, `travel_min_rub.${transport}`, null);
+  if (r.value == null) return null;
+  const ratePerKm = Number(r.value);
+  const min = minR.value != null ? Number(minR.value) : 0;
+  return { price: Math.max(min, Math.round(d * ratePerKm)), source: r.tier };
 }
 
 /** Медиана массива чисел. */
@@ -62,44 +59,57 @@ async function run({ requiredArtifacts, onThought }) {
 
   const stub = aiProvider.isStubMode();
   const pricedLegs = [];
+  const unresolved = [];
 
   for (const leg of legs) {
-    if (leg.transport === 'auto' || leg.transport === 'unknown') {
-      // Авто — ГСМ, не билет; оценим по справочнику.
-      const price = estimatePrice(leg.transport, leg.distance_km, requiredArtifacts);
-      pricedLegs.push({ ...leg, price_per_ticket: price, source: 'оценка ГСМ (из analogs или fallback)' });
-      continue;
-    }
-
     let price = null;
-    let source = 'оценка';
+    let source = null;
+    // Шаг 1: AI web search (perplexity sonar) — реальная цена в интернете
     if (!stub) {
       try {
-        const kind = leg.transport === 'plane' ? 'авиабилет' : 'РЖД билет купе';
+        const kind = leg.transport === 'plane' ? 'авиабилет'
+          : leg.transport === 'train' ? 'РЖД билет купе'
+          : leg.transport === 'auto' ? 'автомобиль ГСМ топливо' : 'трансфер';
         const result = await aiProvider.searchWeb({
           query: `${kind} ${leg.from} ${leg.to} 2026 цена`,
-          model: 'sonar-opus',
-          maxResults: 5
+          model: 'sonar-opus', maxResults: 5
         });
         const prices = (result.citations || []).map((c) => extractPrice(c.snippet || c.title)).filter(Boolean);
         const med = median(prices);
-        if (med) { price = med; source = 'медиана по найденным'; }
+        if (med) { price = med; source = 'web_search_median'; }
       } catch (e) {
         onThought(`⚠ поиск билетов не удался (${leg.from}→${leg.to}): ${e.message}`);
       }
     }
-    if (price == null) price = estimatePrice(leg.transport, leg.distance_km, requiredArtifacts);
-    pricedLegs.push({ ...leg, price_per_ticket: price, source });
+    // Шаг 2: applicable_norms (эталон) — ставка ₽/км
+    if (price == null) {
+      const est = estimatePrice(leg.transport, leg.distance_km, requiredArtifacts);
+      if (est && est.price != null) { price = est.price; source = est.source; }
+    }
+    if (price == null) {
+      unresolved.push(`${leg.from}→${leg.to} (${leg.transport})`);
+    } else {
+      pricedLegs.push({ ...leg, price_per_ticket: price, source });
+    }
+  }
+  if (unresolved.length === legs.length) {
+    return {
+      summary: 'BLOCKED: цены билетов не найдены ни в эталонах, ни через web search',
+      key_findings: unresolved.map((s) => `BLOCKER: цена не определена — ${s}`),
+      legs: [], total_travel: 0,
+      clarifications: [{ channel: 'PM', category: 'travel', blocking: true,
+        question_ru: `Не удалось определить цены билетов для плеч: ${unresolved.join('; ')}. Заполните travel_rates_rub_per_km.* в applicable_norms или дайте конкретные цены билетов.` }]
+    };
   }
 
   const totalTravel = pricedLegs.reduce((s, l) => s + (Number(l.price_per_ticket) || 0), 0);
 
   return {
-    summary: `Проезд: ${pricedLegs.length} плеч, итого ${formatRub(totalTravel)}${stub ? ' (stub: справочные оценки)' : ''}`,
-    key_findings: pricedLegs.slice(0, 8).map((l) => `${l.who}: ${l.from}→${l.to} (${l.transport}) ${formatRub(l.price_per_ticket)}`),
-    legs: pricedLegs,
-    total_travel: Math.round(totalTravel),
-    clarifications: []
+    summary: `Проезд: ${pricedLegs.length} плеч, итого ${formatRub(totalTravel)}${stub ? ' (stub: цены из эталонов)' : ''}`,
+    key_findings: pricedLegs.slice(0, 8).map((l) => `${l.who}: ${l.from}→${l.to} (${l.transport}) ${formatRub(l.price_per_ticket)} [${l.source}]`),
+    legs: pricedLegs, total_travel: Math.round(totalTravel),
+    clarifications: unresolved.length ? [{ channel: 'PM', category: 'travel', blocking: false,
+      question_ru: `Часть плеч без цены: ${unresolved.join('; ')}. Проверьте веб-поиск или заполните applicable_norms.travel_rates_rub_per_km.` }] : []
   };
 }
 

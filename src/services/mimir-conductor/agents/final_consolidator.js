@@ -26,57 +26,52 @@ const { parseStrictJson, thoughtSink, formatRub } = require('./_util');
 // каждом коэффициенте на проде в логе будет 'tier:defaults' = warning что AI
 // угадывает. Когда РП заполнит 3-5 эталонов — coefficients автоматически уйдут
 // в 'tier:analogs'.
-const FALLBACK_FOT_TAX_PCT = 0.302;     // 30% страх. взносы + 0.2% НС/ПЗ класс V
-const FALLBACK_OVERHEAD_PCT = 0.193;    // 19.3% от эталона КАО Азот
-const FALLBACK_CONSUMABLES_PCT = 0.03;
-const FALLBACK_CONTINGENCY_PCT = 0.12;
-const FALLBACK_MARGIN_PCT = 14.3;       // 14.3% — отраслевой минимум для ОПО
-const FALLBACK_VAT_PCT = 22;
-const FALLBACK_WARRANTY_PCT = 0.024;    // 2.4% резерв на гарантию
-
-/**
- * Источник истины для коэффициентов ССР:
- *   1. analogs_comparison.analysis.applicable_norms (если найдены эталоны)
- *   2. work_scope_research.company_profile.financial_policy (политики компании)
- *   3. fallback-константы
- */
+// БЕЗ ХАРДКОДА. Источник истины для коэффициентов ССР:
+//   1. analogs_comparison.analysis.applicable_norms (если найдены эталоны)
+//   2. work_scope_research.company_profile.financial_policy (политики компании)
+//   3. null → caller возвращает BLOCKING-уточнение
 function resolveCoefficients(artifacts) {
   const analogs = artifacts.find((a) => a.artifact_type === 'analogs_comparison');
   const scope = artifacts.find((a) => a.artifact_type === 'work_scope_research');
   const norms = (analogs && analogs.content && analogs.content.analysis && analogs.content.analysis.applicable_norms) || {};
   const policy = (scope && scope.content && scope.content.company_profile && scope.content.company_profile.financial_policy) || {};
   const tiers = {};
-  function pick(value1, value2, value3, name) {
+  function pick(value1, value2, name) {
     if (value1 != null && Number.isFinite(Number(value1))) { tiers[name] = 'analogs'; return Number(value1); }
     if (value2 != null && Number.isFinite(Number(value2))) { tiers[name] = 'company_profile'; return Number(value2); }
-    tiers[name] = 'defaults'; return Number(value3);
+    tiers[name] = 'missing'; return null;
   }
+  const fot_tax_pct = pick(
+    norms.fot_tax_pct != null ? norms.fot_tax_pct / 100 : null,
+    policy.fot_tax_pct != null ? policy.fot_tax_pct / 100 : null,
+    'fot_tax'
+  );
   const overheads_pct = pick(
     norms.overheads_pct != null ? norms.overheads_pct / 100 : null,
     policy.overheads_pct_of_direct != null ? policy.overheads_pct_of_direct / 100 : null,
-    FALLBACK_OVERHEAD_PCT, 'overhead'
+    'overhead'
   );
-  const margin_pct = pick(
-    norms.margin_min_pct,
-    policy.min_margin_target_pct,
-    FALLBACK_MARGIN_PCT, 'margin'
-  );
+  const margin_pct = pick(norms.margin_min_pct, policy.min_margin_target_pct, 'margin');
   const warranty_pct = pick(
     norms.warranty_pct != null ? norms.warranty_pct / 100 : null,
     policy.warranty_reserve_pct_of_revenue != null ? policy.warranty_reserve_pct_of_revenue / 100 : null,
-    FALLBACK_WARRANTY_PCT, 'warranty'
+    'warranty'
   );
-  const vat_pct = pick(
-    norms.vat_pct, policy.vat_rate_pct, FALLBACK_VAT_PCT, 'vat'
+  const vat_pct = pick(norms.vat_pct, policy.vat_rate_pct, 'vat');
+  const consumables_pct = pick(
+    norms.consumables_pct_of_personnel != null ? norms.consumables_pct_of_personnel / 100 : null,
+    policy.consumables_pct_of_personnel != null ? policy.consumables_pct_of_personnel / 100 : null,
+    'consumables'
+  );
+  const contingency_pct = pick(
+    norms.contingency_pct != null ? norms.contingency_pct / 100 : null,
+    policy.contingency_pct != null ? policy.contingency_pct / 100 : null,
+    'contingency'
   );
   return {
-    fot_tax_pct: FALLBACK_FOT_TAX_PCT, // налог ФОТ по ТК — фиксирован законом, не из эталона
-    overhead_pct: overheads_pct,
-    consumables_pct: FALLBACK_CONSUMABLES_PCT, // считается отдельным агентом consumables_calculator
-    contingency_pct: FALLBACK_CONTINGENCY_PCT,
-    margin_pct,
-    warranty_pct,
-    vat_pct,
+    fot_tax_pct, overhead_pct: overheads_pct,
+    consumables_pct, contingency_pct,
+    margin_pct, warranty_pct, vat_pct,
     _source_tiers: tiers
   };
 }

@@ -20,28 +20,21 @@ const db = require('../../db');
 const { formatRub } = require('./_util');
 const { resolveNorm } = require('./_norms');
 
-// Fallback стоимости обучения (применяется только если нет в applicable_norms).
-const FALLBACK_TRAINING_COST = {
-  'отзп': 28000, 'охрана труда': 28000,
-  'высот': 20000, 'высота': 20000,
-  'накс': 65000, 'сварка': 65000,
-  'вик': 35000, 'контроль': 35000
-};
-const FALLBACK_OTHER_TRAINING = 15000;
+// БЕЗ ХАРДКОДА. Список ключей-категорий допусков (структура, без цен).
+const PERMIT_CATEGORY_KEYS = ['отзп', 'охрана труда', 'высот', 'высота', 'накс', 'сварка', 'вик', 'контроль'];
 
-/** Стоимость обучения с приоритетом: applicable_norms.training_costs_rub_per_permit.{key} → fallback. */
+/** Стоимость обучения только из applicable_norms.training_costs_rub_per_permit.{key}. БЕЗ fallback. */
 function costForPermit(permit, requiredArtifacts) {
   const key = String(permit || '').toLowerCase();
-  // Сначала пробуем из эталонов по конкретному имени допуска
-  for (const k of Object.keys(FALLBACK_TRAINING_COST)) {
+  for (const k of PERMIT_CATEGORY_KEYS) {
     if (key.includes(k)) {
-      const r = resolveNorm(requiredArtifacts || {}, `training_costs_rub_per_permit.${k}`, FALLBACK_TRAINING_COST[k]);
-      return { cost: r.value, source: r.tier, matched_key: k };
+      const r = resolveNorm(requiredArtifacts || {}, `training_costs_rub_per_permit.${k}`, null);
+      if (r.value != null) return { cost: r.value, source: r.tier, matched_key: k };
     }
   }
-  // Прочие
-  const other = resolveNorm(requiredArtifacts || {}, 'training_costs_rub_per_permit.other', FALLBACK_OTHER_TRAINING);
-  return { cost: other.value, source: other.tier, matched_key: 'other' };
+  const other = resolveNorm(requiredArtifacts || {}, 'training_costs_rub_per_permit.other', null);
+  if (other.value != null) return { cost: other.value, source: other.tier, matched_key: 'other' };
+  return { cost: null, source: 'missing', matched_key: null };
 }
 
 /** Загрузить допуски сотрудников бригады из employee_permits. */
@@ -85,6 +78,7 @@ async function run({ requiredArtifacts, onThought }) {
 
   const have = [];
   const toTrain = [];
+  const missing = [];
 
   for (const reqP of required) {
     const key = String(reqP).toLowerCase();
@@ -92,11 +86,23 @@ async function run({ requiredArtifacts, onThought }) {
     if (covered) {
       have.push(reqP);
     } else {
-      // Сколько человек обучить: грубо — половина бригады, минимум 2.
       const count = Math.max(2, Math.ceil(crew.length / 2)) || 2;
       const c = costForPermit(reqP, requiredArtifacts);
-      toTrain.push({ permit: reqP, count, cost_each: c.cost, cost_total: count * c.cost, _source: c.source });
+      if (c.cost == null) {
+        missing.push(reqP);
+      } else {
+        toTrain.push({ permit: reqP, count, cost_each: c.cost, cost_total: count * c.cost, _source: c.source });
+      }
     }
+  }
+  if (missing.length) {
+    return {
+      summary: 'BLOCKED: стоимости обучения не найдены в эталонах',
+      key_findings: missing.map((p) => `BLOCKER: training_costs_rub_per_permit для "${p}" не найдено`),
+      have, to_train: [], to_hire_external: [], total_training_cost: 0,
+      clarifications: [{ channel: 'PM', category: 'permits', blocking: true,
+        question_ru: `Нет стоимостей обучения по допускам в эталонах: ${missing.join('; ')}. Заполните training_costs_rub_per_permit.* в applicable_norms эталона.` }]
+    };
   }
 
   const totalTraining = toTrain.reduce((s, x) => s + x.cost_total, 0);

@@ -21,19 +21,8 @@
 const db = require('../../db');
 const { formatRub } = require('./_util');
 
-// Fallback ставки (₽/смену) — применяются ТОЛЬКО если позиции нет ни в:
-//   1. employees_summary.by_qualification[].avg_day_rate_rub (реальные ставки из БД)
-//   2. analogs_comparison.analysis.applicable_norms.labor_rates_rub_per_shift (из эталонов)
-//   3. field_tariff_grid (тарифная сетка)
-// Это последний рубеж. Если попадаем сюда — в assumptions пишется warning.
-const FALLBACK_RATES = {
-  'ИТР (РП)': 10000,
-  'Мастер': 6000,
-  'Слесарь-универсал': 4500
-};
-const FALLBACK_ROAD_RATE = 3000;
-const FALLBACK_PREP_DAYS = 2;
-const FALLBACK_MOB_DEMOB_DAYS = 4;
+// БЕЗ ХАРДКОДА. Все значения берутся из БД/эталонов/ТЗ.
+// Если данных нет — поднимается BLOCKING-уточнение, а не используется default.
 
 /** Найти ставку в employees_summary.by_qualification по нечёткому matching position. */
 function rateFromEmployees(workScope, position) {
@@ -90,15 +79,25 @@ async function loadTariffs() {
   }
 }
 
+
 function rateFor(tariffMap, position, requiredArtifacts) {
-  // Приоритет: эталоны → реальные employees → тарифная сетка → fallback
+  // Приоритет источников (БЕЗ ХАРДКОДА): тарифная сетка → эталоны → реальные employees
+  // Если ни в одном — возвращаем null, агент поднимет blocking-уточнение.
+  const fromGrid = tariffMap.get(position);
+  if (fromGrid && fromGrid > 0) return { rate: fromGrid, source: 'tariff_grid', assumed: false };
+  // Двусторонний матчинг по позициям в тарифной сетке (например 'Слесарь-универсал' ↔ 'слесарь')
+  for (const [key, value] of tariffMap.entries()) {
+    const kLow = String(key).toLowerCase();
+    const pLow = String(position).toLowerCase();
+    if (value > 0 && (pLow.includes(kLow) || kLow.includes(pLow.split(/[\s(\-]+/)[0]))) {
+      return { rate: Number(value), source: 'tariff_grid', assumed: false, matched_key: key };
+    }
+  }
   const fromAnalogs = rateFromAnalogs(requiredArtifacts && requiredArtifacts.analogs_comparison, position);
   if (fromAnalogs) return fromAnalogs;
   const fromEmp = rateFromEmployees(requiredArtifacts && requiredArtifacts.work_scope_research, position);
   if (fromEmp) return fromEmp;
-  const fromGrid = tariffMap.get(position);
-  if (fromGrid && fromGrid > 0) return { rate: fromGrid, source: 'tariff_grid', assumed: false };
-  return { rate: FALLBACK_RATES[position] || 4500, source: 'defaults', assumed: true };
+  return null; // нет ставки — caller поднимет blocking
 }
 
 async function run({ requiredArtifacts, onThought }) {
@@ -108,77 +107,127 @@ async function run({ requiredArtifacts, onThought }) {
   const totalCount = crewPlan.total_count || crew.length || 4;
   const shifts = crewPlan.shifts || 1;
   const assumptions = [];
+  const clarifications = [];
 
-  onThought('Загружаю тарифную сетку…');
+  onThought('Загружаю тарифную сетку из БД…');
   const tariffMap = await loadTariffs();
 
-  onThought('Считаю длительность работ…');
+  onThought('Загружаю ставки дорога/подготовка из field_tariff_grid…');
+  const roadRateRow = tariffMap.get('Дни дороги') || tariffMap.get('Дорога') ||
+                       tariffMap.get('Выходной в командировке (карантин, дорога, нерабочий день)') || 0;
+
+  // Источники для prep/mob: ТЗ timing → applicable_norms (эталон) → BLOCKING
+  const analogsTimingNorms = (requiredArtifacts.analogs_comparison &&
+    requiredArtifacts.analogs_comparison.analysis &&
+    requiredArtifacts.analogs_comparison.analysis.applicable_norms &&
+    requiredArtifacts.analogs_comparison.analysis.applicable_norms.timing_norms) || {};
+  const prepDays = (tz.timing && Number(tz.timing.prep_days)) ||
+                   (analogsTimingNorms.prep_days != null ? Number(analogsTimingNorms.prep_days) : null);
+  const mobDemobDays = (tz.timing && Number(tz.timing.mob_demob_days)) ||
+                       (analogsTimingNorms.mob_demob_days != null ? Number(analogsTimingNorms.mob_demob_days) : null);
+
+  if (prepDays == null) {
+    clarifications.push({ channel: 'PM', category: 'timing', blocking: true,
+      question_ru: 'Не задано число дней подготовки на складе. Укажите prep_days в ТЗ.timing или внесите timing_norms.prep_days в эталоны (mimir_reference_projects).' });
+  }
+  if (mobDemobDays == null) {
+    clarifications.push({ channel: 'PM', category: 'timing', blocking: true,
+      question_ru: 'Не задано число дней мобилизации+демобилизации. Укажите mob_demob_days в ТЗ.timing или внесите timing_norms.mob_demob_days в эталоны.' });
+  }
+
+  onThought('Считаю длительность работ из ТЗ (timing.start/end или duration_days)…');
   const timing = tz.timing || {};
   const objectCity = tz.object && tz.object.city ? tz.object.city : null;
   const roadDays = computeRoadDays(crew, objectCity);
 
-  let totalDays;
+  let totalDays = null;
   if (timing.start && timing.end) {
     const start = new Date(timing.start);
     const end = new Date(timing.end);
     totalDays = Math.round((end - start) / 86400000) + 1;
   } else if (timing.duration_days) {
     totalDays = Number(timing.duration_days);
-  } else {
-    totalDays = 10 + 2 * roadDays + FALLBACK_MOB_DEMOB_DAYS;
-    assumptions.push('Даты проекта не заданы — принята длительность 10 рабочих дней (FALLBACK)');
+  } else if (timing.work_days) {
+    totalDays = Number(timing.work_days) + 2 * roadDays + (mobDemobDays || 0);
   }
 
-  const workDays = totalDays - 2 * roadDays - FALLBACK_MOB_DEMOB_DAYS;
+  if (totalDays == null) {
+    clarifications.push({ channel: 'CUSTOMER', category: 'timing', blocking: true,
+      question_ru: 'Сроки выполнения работ не определены: ни timing.start+end, ни timing.duration_days, ни timing.work_days. Укажите календарные даты или длительность.' });
+  }
+
+  // Если данных не хватает — раннее завершение с blocking
+  if (clarifications.some((c) => c.blocking)) {
+    return {
+      summary: 'BLOCKED: нет данных в БД/ТЗ — поднимаем blocking-уточнения',
+      key_findings: clarifications.map((c) => `BLOCKER: ${c.question_ru}`),
+      personnel: [], subtotal_fot: 0, work_days: 0, road_days: roadDays, total_man_days: 0,
+      assumptions, clarifications
+    };
+  }
+
+  const workDays = totalDays - 2 * roadDays - mobDemobDays;
   if (workDays < 1) {
     onThought('⚠ Окно дат слишком короткое под объём + дорогу + моб/демоб');
     return {
       summary: 'ОШИБКА: окно дат слишком короткое для объёма работ',
-      key_findings: [`Всего дней ${totalDays}, дорога ${roadDays}×2, моб/демоб ${FALLBACK_MOB_DEMOB_DAYS}`],
-      personnel: [],
-      subtotal_fot: 0,
-      work_days: 0,
-      road_days: roadDays,
-      total_man_days: 0,
-      clarifications: [{
-        channel: 'PM',
-        category: 'timing',
-        blocking: true,
-        question_ru: `Окно ${totalDays} дн не вмещает работу с дорогой ${roadDays}×2 дн и моб/демоб ${FALLBACK_MOB_DEMOB_DAYS} дн. Сдвинуть сроки или увеличить бригаду?`
-      }]
+      key_findings: [`Всего дней ${totalDays}, дорога ${roadDays}×2, моб/демоб ${mobDemobDays}`],
+      personnel: [], subtotal_fot: 0, work_days: 0, road_days: roadDays, total_man_days: 0,
+      clarifications: [{ channel: 'PM', category: 'timing', blocking: true,
+        question_ru: `Окно ${totalDays} дн не вмещает работу с дорогой ${roadDays}×2 дн и моб/демоб ${mobDemobDays} дн. Сдвинуть сроки или увеличить бригаду?` }]
     };
   }
 
-  onThought('Считаю ФОТ по позициям…');
+  onThought('Резолвлю ставки бригады из field_tariff_grid → applicable_norms → employees…');
   const foremanCount = shifts === 2 ? 2 : (crewPlan.foremen || 1);
   const workersCount = (crewPlan.workers || Math.max(totalCount - 1 - foremanCount, 1)) * shifts;
 
-  const personnel = [];
-
-  // ИТР — ставка из аналогов / employees / тарифной сетки / fallback
-  const itr = rateFor(tariffMap, 'ИТР (РП)', requiredArtifacts);
-  assumptions.push(`Ставка ИТР: ${itr.rate} ₽/смену (источник: ${itr.source})`);
-  const itrDays = workDays + 2 * roadDays + FALLBACK_MOB_DEMOB_DAYS;
-  personnel.push({ item: 'ИТР (РП)', qty: 1, rate: itr.rate, days: itrDays, total: 1 * itr.rate * itrDays, rate_source: itr.source });
-
-  // Мастер(а)
-  const master = rateFor(tariffMap, 'Мастер', requiredArtifacts);
-  assumptions.push(`Ставка мастера: ${master.rate} ₽/смену (источник: ${master.source})`);
-  personnel.push({ item: 'Мастер', qty: foremanCount, rate: master.rate, days: workDays, total: foremanCount * master.rate * workDays, rate_source: master.source });
-
-  // Рабочие
-  const worker = rateFor(tariffMap, 'Слесарь-универсал', requiredArtifacts);
-  assumptions.push(`Ставка рабочего: ${worker.rate} ₽/смену (источник: ${worker.source})`);
-  personnel.push({ item: 'Слесарь-универсал', qty: workersCount, rate: worker.rate, days: workDays, total: workersCount * worker.rate * workDays, rate_source: worker.source });
-
-  // Дни дороги
-  if (roadDays > 0) {
-    personnel.push({ item: 'Дни дороги', qty: totalCount, rate: FALLBACK_ROAD_RATE, days: roadDays * 2, total: totalCount * FALLBACK_ROAD_RATE * roadDays * 2, rate_source: 'fallback' });
+  const positionsToResolve = ['ИТР (РП)', 'Мастер', 'Слесарь-универсал'];
+  const resolved = {};
+  for (const pos of positionsToResolve) {
+    const r = rateFor(tariffMap, pos, requiredArtifacts);
+    if (!r) {
+      clarifications.push({ channel: 'PM', category: 'rates', blocking: true,
+        question_ru: `Не найдена ставка для позиции "${pos}" ни в field_tariff_grid, ни в эталонах. Заведите запись в БД (POST /api/field-tariff-grid) или добавьте labor_rates_rub_per_shift в эталоны.` });
+    } else {
+      resolved[pos] = r;
+      assumptions.push(`Ставка ${pos}: ${r.rate} ₽/смену (источник: ${r.source}${r.matched_key ? ', ключ: ' + r.matched_key : ''})`);
+    }
+  }
+  if (clarifications.some((c) => c.blocking)) {
+    return {
+      summary: 'BLOCKED: ставки бригады не найдены в БД',
+      key_findings: clarifications.map((c) => `BLOCKER: ${c.question_ru}`),
+      personnel: [], subtotal_fot: 0, work_days: workDays, road_days: roadDays, total_man_days: 0,
+      assumptions, clarifications
+    };
   }
 
-  // Подготовка на складе — берём crewPlan.prep_crew если указан, иначе 3 (минимум)
+  const personnel = [];
+  const itr = resolved['ИТР (РП)'];
+  const itrDays = workDays + 2 * roadDays + mobDemobDays;
+  personnel.push({ item: 'ИТР (РП)', qty: 1, rate: itr.rate, days: itrDays, total: 1 * itr.rate * itrDays, rate_source: itr.source });
+
+  const master = resolved['Мастер'];
+  personnel.push({ item: 'Мастер', qty: foremanCount, rate: master.rate, days: workDays, total: foremanCount * master.rate * workDays, rate_source: master.source });
+
+  const worker = resolved['Слесарь-универсал'];
+  personnel.push({ item: 'Слесарь-универсал', qty: workersCount, rate: worker.rate, days: workDays, total: workersCount * worker.rate * workDays, rate_source: worker.source });
+
+  // Дни дороги — ставка из тарифной сетки или blocking
+  if (roadDays > 0) {
+    if (!roadRateRow || roadRateRow <= 0) {
+      clarifications.push({ channel: 'PM', category: 'rates', blocking: false,
+        question_ru: 'Ставка "Дни дороги" не задана в field_tariff_grid. По умолчанию использована ставка рабочего.' });
+      personnel.push({ item: 'Дни дороги', qty: totalCount, rate: worker.rate, days: roadDays * 2, total: totalCount * worker.rate * roadDays * 2, rate_source: 'workers_rate_proxy' });
+    } else {
+      personnel.push({ item: 'Дни дороги', qty: totalCount, rate: roadRateRow, days: roadDays * 2, total: totalCount * roadRateRow * roadDays * 2, rate_source: 'tariff_grid' });
+    }
+  }
+
+  // Подготовка на складе — норма из тарифной сетки или crewPlan.prep_crew
   const prepCrew = Number(crewPlan.prep_crew) || 3;
-  personnel.push({ item: 'Подготовка на складе', qty: prepCrew, rate: worker.rate, days: FALLBACK_PREP_DAYS, total: prepCrew * worker.rate * FALLBACK_PREP_DAYS, rate_source: worker.source });
+  personnel.push({ item: 'Подготовка на складе', qty: prepCrew, rate: worker.rate, days: prepDays, total: prepCrew * worker.rate * prepDays, rate_source: worker.source });
 
   const subtotal = personnel.reduce((s, p) => s + p.total, 0);
 
@@ -197,7 +246,7 @@ async function run({ requiredArtifacts, onThought }) {
     road_days: roadDays,
     total_man_days: workersCount * workDays,
     assumptions,
-    clarifications: []
+    clarifications
   };
 }
 
