@@ -257,6 +257,44 @@ async function routes(fastify, options) {
     };
   }
 
+  // ─── GET /?my=true — мои работы в подготовке + их готовность (C-14 виджет) ─
+  fastify.get('/', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    try {
+      const isMine = String(request.query.my || '').toLowerCase() === 'true';
+      const userId = request.user.id;
+      const userRole = request.user.role;
+
+      const prepStatuses = ['Новая', 'Подготовка', 'Мобилизация'];
+      const params = [prepStatuses];
+      let where = `w.work_status = ANY($1) AND w.deleted_at IS NULL`;
+      if (isMine && userRole === 'PM') {
+        params.push(userId);
+        where += ` AND w.pm_id = $2`;
+      } else if (isMine) {
+        // HEAD_PM/DIRECTOR — все работы в подготовке
+      }
+
+      const { rows: works } = await fastify.db.query(
+        `SELECT w.id, w.work_title, w.customer_name, w.work_status, w.work_start_date,
+                w.pm_id, u.full_name AS pm_name
+         FROM works w
+         LEFT JOIN users u ON u.id = w.pm_id
+         WHERE ${where}
+         ORDER BY w.work_start_date ASC NULLS LAST, w.id DESC
+         LIMIT 50`, params);
+
+      const items = [];
+      for (const w of works) {
+        const r = await computeReadiness(w.id);
+        if (r) items.push({ ...w, readiness: r });
+      }
+      return { items, total: items.length };
+    } catch (err) {
+      fastify.log.error('[work-readiness] GET /:', err);
+      return reply.code(500).send({ error: 'Ошибка списка готовности' });
+    }
+  });
+
   // ─── GET /:workId — полная карта готовности ───────────────────────────────
   fastify.get('/:workId', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     try {

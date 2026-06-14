@@ -72,8 +72,8 @@ CREATE TABLE IF NOT EXISTS procurement_items (
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
 );
-CREATE INDEX idx_procurement_items_req ON procurement_items(procurement_id);
-CREATE INDEX idx_procurement_items_status ON procurement_items(item_status);
+CREATE INDEX IF NOT EXISTS idx_procurement_items_req ON procurement_items(procurement_id);
+CREATE INDEX IF NOT EXISTS idx_procurement_items_status ON procurement_items(item_status);
 
 -- ── 4. Платёжки ──
 CREATE TABLE IF NOT EXISTS procurement_payments (
@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS procurement_payments (
   uploaded_by INTEGER NOT NULL REFERENCES users(id),
   created_at TIMESTAMP DEFAULT NOW()
 );
-CREATE INDEX idx_procurement_payments_req ON procurement_payments(procurement_id);
+CREATE INDEX IF NOT EXISTS idx_procurement_payments_req ON procurement_payments(procurement_id);
 
 -- ── 5. История ──
 CREATE TABLE IF NOT EXISTS procurement_history (
@@ -102,7 +102,7 @@ CREATE TABLE IF NOT EXISTS procurement_history (
   changes_json JSONB,
   created_at TIMESTAMP DEFAULT NOW()
 );
-CREATE INDEX idx_procurement_history_req ON procurement_history(procurement_id);
+CREATE INDEX IF NOT EXISTS idx_procurement_history_req ON procurement_history(procurement_id);
 
 -- ── 6. Удалить purchase_requests ──
 DROP TABLE IF EXISTS purchase_requests CASCADE;

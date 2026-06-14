@@ -275,6 +275,12 @@ module.exports = async function(fastify) {
     const lines = Math.min(parseInt(req.query.lines || '300'), 1000);
     const level = req.query.level || 'all';
 
+    // D-2 fix: journalctl is Linux-only. On non-Linux (dev/Windows/macOS)
+    // gracefully return an empty list instead of 500 so /diag still loads.
+    if (process.platform !== 'linux') {
+      return { logs: [], total: 0, note: 'logs not available on ' + process.platform };
+    }
+
     try {
       const { stdout } = await execAsync(
         `journalctl -u asgard-crm -n ${lines} --no-pager -o short 2>/dev/null`,
@@ -293,7 +299,8 @@ module.exports = async function(fastify) {
 
       return { logs: parsed.reverse(), total: parsed.length };
     } catch (e) {
-      return reply.code(500).send({ error: e.message });
+      // Graceful degrade — don't break the page.
+      return { logs: [], total: 0, error: e.message };
     }
   });
 

@@ -21,11 +21,60 @@ async function routes(fastify, options) {
   });
 
   // GET /:id — анкета по user_id или employee_id
+  // G-12 F6 SECURITY: ограничение PII работника.
+  //   Полный доступ: ADMIN / HR / HR_MANAGER / CHIEF_ENGINEER / директора / HEAD_PM.
+  //   PM — только если сотрудник числится в его работе (через employee_assignments → works.pm_id).
+  //   Сам себя (?by=user&id===user.id) — может всегда.
+  //   Остальные роли (WAREHOUSE/PROC/TO/HEAD_TO/BUH/OFFICE_MANAGER) — 403.
   fastify.get('/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const id = parseInt(request.params.id, 10);
     if (!id) return reply.code(400).send({ error: 'Неверный id' });
 
     const lookupBy = request.query.by || 'user'; // ?by=employee
+
+    // RBAC gate
+    const role = request.user.role;
+    const PRIVILEGED = ['ADMIN', 'HR', 'HR_MANAGER', 'CHIEF_ENGINEER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_PM'];
+    const isPrivileged = PRIVILEGED.includes(role);
+    const isPM = role === 'PM';
+    // Self-access по user_id
+    const isSelfByUser = lookupBy !== 'employee' && id === request.user.id;
+    let isSelfByEmployee = false;
+    if (lookupBy === 'employee') {
+      try {
+        const empSelf = await db.query('SELECT 1 FROM employees WHERE id = $1 AND user_id = $2', [id, request.user.id]);
+        if (empSelf.rows[0]) isSelfByEmployee = true;
+      } catch (_) {}
+    }
+    if (!isPrivileged && !isPM && !isSelfByUser && !isSelfByEmployee) {
+      return reply.code(403).send({ error: 'Нет доступа к анкете сотрудника' });
+    }
+    if (isPM && !isSelfByUser && !isSelfByEmployee) {
+      // PM имеет доступ только если работник числится у него в активной работе.
+      let allowed = false;
+      try {
+        if (lookupBy === 'employee') {
+          const r = await db.query(
+            `SELECT 1 FROM employee_assignments ea
+             JOIN works w ON w.id = ea.work_id
+             WHERE ea.employee_id = $1 AND w.pm_id = $2 AND ea.is_active = true LIMIT 1`,
+            [id, request.user.id]);
+          allowed = !!r.rows[0];
+        } else {
+          // lookupBy=user — ищем employee.user_id → employee_assignments → works.pm_id
+          const r = await db.query(
+            `SELECT 1 FROM employees e
+             JOIN employee_assignments ea ON ea.employee_id = e.id
+             JOIN works w ON w.id = ea.work_id
+             WHERE e.user_id = $1 AND w.pm_id = $2 AND ea.is_active = true LIMIT 1`,
+            [id, request.user.id]);
+          allowed = !!r.rows[0];
+        }
+      } catch (_) {}
+      if (!allowed) {
+        return reply.code(403).send({ error: 'Нет доступа: сотрудник не назначен на ваши работы' });
+      }
+    }
 
     // Ищем профиль: сначала по user_id, потом по employee_id
     let rows;

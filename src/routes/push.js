@@ -128,14 +128,21 @@ async function routes(fastify) {
   });
 
   // ── POST /resubscribe — auto-resubscribe (called from SW pushsubscriptionchange) ──
-  fastify.post('/resubscribe', async function(request) {
+  // G-12 F3 SECURITY: требуем auth + ownership check (user должен владеть old_endpoint),
+  // иначе злоумышленник с чужим endpoint URL мог бы перенаправлять push-уведомления себе.
+  fastify.post('/resubscribe', { preHandler: [fastify.authenticate] }, async function(request, reply) {
     var body = request.body || {};
     if (!body.old_endpoint || !body.new_subscription || !body.new_subscription.endpoint) {
-      return { success: false, error: 'Missing data' };
+      return reply.code(400).send({ success: false, error: 'Missing data' });
     }
 
     var old = await db.query('SELECT user_id FROM push_subscriptions WHERE endpoint = $1', [body.old_endpoint]);
-    if (old.rows.length === 0) return { success: false };
+    if (old.rows.length === 0) return reply.code(404).send({ success: false, error: 'Old endpoint not found' });
+
+    // Ownership: текущий пользователь должен быть владельцем старой подписки
+    if (old.rows[0].user_id !== request.user.id) {
+      return reply.code(403).send({ success: false, error: 'Not your subscription' });
+    }
 
     var userId = old.rows[0].user_id;
     var keys = body.new_subscription.keys || {};

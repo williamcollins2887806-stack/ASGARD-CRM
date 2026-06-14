@@ -131,6 +131,5 @@ CREATE INDEX IF NOT EXISTS idx_mrp_active ON mimir_reference_projects (is_active
 -- pg_trgm для нечёткого поиска по work_type (если экстеншн есть)
 -- CREATE INDEX IF NOT EXISTS idx_mrp_wt_trgm ON mimir_reference_projects USING gin (work_type gin_trgm_ops);
 
--- Регистрируем
-INSERT INTO migrations (version) VALUES ('V202__mimir_reference_projects')
-  ON CONFLICT (version) DO NOTHING;
+-- Регистрация миграции выполняется migrations/run.js (INSERT INTO migrations(name)).
+-- Прямой INSERT здесь убран: колонки `version` нет, схема `migrations(id,name,executed_at)`.

@@ -8,11 +8,46 @@
  */
 
 const db = require('../services/db');
+const crypto = require('crypto');
 
 module.exports = async function (fastify) {
 
   // ── POST /webhook — события от MAX ──────────────────────────────────────
+  // G-12 F1 SECURITY: HMAC/secret-token verification.
+  //   Secret источник: env MAX_WEBHOOK_SECRET.
+  //   Проверка: либо заголовок X-Max-Signature (HMAC-SHA256 raw body, hex),
+  //   либо query ?secret=… (для конфигов MAX где подпись недоступна).
+  //   Если secret не задан → 503 «не настроено». Если подпись неверна → 401.
   fastify.post('/webhook', { config: { rawBody: true } }, async (req, reply) => {
+    const secret = process.env.MAX_WEBHOOK_SECRET;
+    if (!secret) {
+      fastify.log.warn('[MAX webhook] MAX_WEBHOOK_SECRET не задан — отказ');
+      return reply.code(503).send({ error: 'MAX webhook secret не настроен' });
+    }
+    let verified = false;
+    const sigHeader = req.headers['x-max-signature'];
+    if (sigHeader) {
+      try {
+        const rawBody = req.rawBody || (typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}));
+        const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+        const sigHex = String(sigHeader).replace(/^sha256=/i, '');
+        if (sigHex.length === expected.length &&
+            crypto.timingSafeEqual(Buffer.from(sigHex, 'hex'), Buffer.from(expected, 'hex'))) {
+          verified = true;
+        }
+      } catch (_) { /* fallthrough → 401 */ }
+    }
+    if (!verified) {
+      const qSecret = (req.query && req.query.secret) ? String(req.query.secret) : '';
+      if (qSecret && qSecret.length === secret.length) {
+        try {
+          if (crypto.timingSafeEqual(Buffer.from(qSecret), Buffer.from(secret))) verified = true;
+        } catch (_) { /* fallthrough */ }
+      }
+    }
+    if (!verified) {
+      return reply.code(401).send({ error: 'Invalid MAX webhook signature' });
+    }
     try {
       const event = req.body || {};
       const updateType = event.update_type;
@@ -75,10 +110,14 @@ module.exports = async function (fastify) {
       }
 
       const baseUrl = process.env.CORS_ORIGIN || 'https://asgard-crm.ru';
-      const webhookUrl = `${baseUrl}/api/max/webhook`;
+      const secret = process.env.MAX_WEBHOOK_SECRET;
+      if (!secret) {
+        return reply.code(503).send({ error: 'MAX_WEBHOOK_SECRET не задан в .env. Без него вебхук не пройдёт HMAC-проверку.' });
+      }
+      const webhookUrl = `${baseUrl}/api/max/webhook?secret=${encodeURIComponent(secret)}`;
 
       await max.subscribeWebhook(webhookUrl);
-      return reply.send({ ok: true, webhook_url: webhookUrl });
+      return reply.send({ ok: true, webhook_url: webhookUrl.replace(secret, '***') });
     } catch (err) {
       return reply.code(500).send({ error: err.message });
     }

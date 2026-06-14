@@ -1,8 +1,17 @@
-# ⚠️ ИДЁТ АУДИТ. ПРИ КАЖДОМ ЗАПУСКЕ/СЖАТИИ КОНТЕКСТА — ПЕРВЫМ ДЕЛОМ:
-#   1) прочитать audit-prep/findings/_AUDIT-MANDATE.md (правила и рамки),
-#   2) прочитать audit-prep/findings/_PROGRESS-LEDGER.md (единственный источник истины по прогрессу),
-#   3) продолжить с первого незавершённого пункта журнала.
-# НЕ начинать заново. НЕ спрашивать пользователя. НЕ запускать параллельные волны агентов.
+# ⚠️ АКТИВНАЯ МИГРАЦИЯ CRM v2 (с 01.06.2026, по 14.06.2026 — финальная приёмка).
+# Рабочая директория: public/desktop-v2-src/ (React 18 + Vite + HashRouter).
+# Backend: Fastify (НЕ Express), PostgreSQL asgard_crm.
+# Тест-клон БД: asgard_crm_test (через CREATE DATABASE … WITH TEMPLATE asgard_crm_dev).
+#
+# Правила для агентов:
+#   ✅ МОЖНО править код в public/desktop-v2-src/
+#   ✅ МОЖНО запускать параллельные волны (5-10+ агентов)
+#   ✅ МОЖНО создавать новые компоненты/CSS-файлы/тесты
+#   ❌ НЕ ТРОГАТЬ прод-БД 92.242.61.184
+#   ❌ НЕ ТРОГАТЬ asgard_crm (только клоны)
+#
+# Устаревшее (НЕ применять): audit-prep/findings/_AUDIT-MANDATE.md от 2026-05-31 —
+# read-only аудит завершён 31.05, далее активная миграция React v2.
 
 ---
 
@@ -223,5 +232,146 @@ node sync-vault.js   # обновит авто-карты
 
 ---
 
+---
+
+## Кастомные команды (slash commands)
+
+> Папка: `.claude/commands/` — используй через `/command-name`
+
+| Команда | Что делает |
+|---|---|
+| `/new-route` | Создаёт API-роут с RBAC, soft-delete, валидацией |
+| `/new-page` | Создаёт страницу (React mobile или Desktop) |
+| `/new-migration` | Создаёт SQL-миграцию с правильными паттернами |
+| `/new-feature` | Полный цикл фичи: БД → API → UI → деплой |
+| `/deploy` | Чеклист деплоя на продакшн |
+| `/fix-bug` | Алгоритм диагностики и исправления бага |
+| `/check-quality` | Аудит качества кода (безопасность, БД, фронт) |
+| `/find-module` | Быстрый поиск всех файлов модуля |
+
+---
+
+## MCP-серверы (подключены в `.claude/settings.json`)
+
+| MCP | Что даёт |
+|---|---|
+| **Playwright** | Управление браузером — тестирование UI, скриншоты, клики |
+| **Fetch** | HTTP-запросы к API прямо из Claude |
+
+### Рекомендуемые MCP (установить при необходимости)
+
+```bash
+# PostgreSQL — запросы к БД прямо из Claude
+npx dbhub --transport stdio --dsn "postgresql://asgard:123456789@localhost:5432/asgard_crm"
+
+# GitHub — PR, issues, code review
+npx -y @github/mcp-server
+```
+
+---
+
+## Карта кодовой базы
+
+> **`CODEBASE-MAP.md`** — полная карта: 84 роута, 100+ React-страниц, 110+ Desktop-страниц, 145 миграций, 60+ сервисов.
+> Читай ПЕРВЫМ при работе с незнакомым модулем.
+
+---
+
+## Паттерны кода — копируй и адаптируй
+
+### Бэкенд: Fastify роут с RBAC
+```js
+fastify.get('/api/example', {
+  preHandler: [fastify.authenticate, fastify.requireRoles(['PM', 'ADMIN'])]
+}, async (req, reply) => {
+  const { rows } = await db.query(
+    'SELECT * FROM example WHERE deleted_at IS NULL ORDER BY created_at DESC'
+  );
+  return rows;
+});
+```
+
+### Бэкенд: Параметризованный запрос (НИКОГДА конкатенация!)
+```js
+// ✅ Правильно
+const { rows } = await db.query('SELECT * FROM users WHERE id = $1 AND login = $2', [id, login]);
+
+// ❌ НИКОГДА
+const { rows } = await db.query(`SELECT * FROM users WHERE id = ${id}`);
+```
+
+### React Mobile: Страница с загрузкой данных
+```jsx
+export default function ExamplePage() {
+  const { token } = useAuthStore();
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/example', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : Promise.reject('Ошибка'))
+      .then(setData)
+      .catch(e => toast.error(e))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <Spinner />;
+  if (!data.length) return <EmptyState text="Нет данных" />;
+  return <div className="p-4 space-y-4">{/* рендер */}</div>;
+}
+```
+
+### Desktop: IIFE-модуль
+```js
+'use strict';
+(function() {
+  const container = document.getElementById('main-content');
+  async function init() {
+    const res = await fetch('/api/example', { credentials: 'include' });
+    const data = await res.json();
+    render(data);
+  }
+  function render(data) { container.innerHTML = `...`; }
+  init();
+})();
+```
+
+---
+
+## Чеклист перед каждым коммитом
+
+- [ ] SQL: параметризованные запросы ($1, $2), НЕ конкатенация
+- [ ] SQL: `deleted_at IS NULL` в каждом SELECT
+- [ ] SQL: правильные имена полей (tender_status, tender_price, login)
+- [ ] RBAC: `authenticate` + `requireRoles` на каждом endpoint
+- [ ] Ошибки: try/catch + понятные сообщения
+- [ ] Фронт: loading/error/empty состояния
+- [ ] Desktop JS: SHELL_VERSION бампнут если менял
+- [ ] Mobile: `npm run build` если менял React
+
+---
+
+## Быстрый поиск (где что искать)
+
+| Ищу... | Где смотреть |
+|---|---|
+| API endpoint | `src/routes/` → `CODEBASE-MAP.md` секция 2 |
+| React страницу | `public/mobile-app/src/pages/` |
+| Desktop страницу | `public/assets/js/` + `router.js` |
+| Бизнес-логику | `src/services/` |
+| Таблицу БД | `migrations/V001__initial.sql` + последние миграции |
+| Стили | `public/assets/css/` (desktop), Tailwind (mobile) |
+| Cron-задачи | `src/services/*-cron.js` |
+| AI/Мимир | `src/services/mimir-conductor/` |
+| Уведомления | `src/services/NotificationService.js` |
+| Телефонию | `src/services/mango.js` |
+| Почту | `src/services/crm-mailer.js`, `src/services/imap.js` |
+| Чаты | `src/services/workChat.js`, `src/routes/chat-groups.js` |
+| Геймификацию | `src/services/achievementChecker.js`, `questProgress.js` |
+
+---
+
 *Vault: C:\Users\Nikita-ASGARD\ASGARD-CRM-Vault*
 *Sync: node sync-vault.js*
+*Карта: CODEBASE-MAP.md*
+*Команды: .claude/commands/*

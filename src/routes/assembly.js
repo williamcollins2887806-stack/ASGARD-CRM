@@ -49,9 +49,18 @@ async function routes(fastify) {
 
   fastify.get('/:id', { preHandler: [fastify.authenticate] }, async (req, reply) => {
     const id = parseInt(req.params.id); if (isNaN(id)) return reply.code(400).send({ error: 'Bad ID' });
-    const { rows } = await db.query(`SELECT ao.*,w.work_title,w.customer_name,u.name as creator_name
+    const { rows } = await db.query(`SELECT ao.*,w.work_title,w.customer_name,w.pm_id as work_pm_id,u.name as creator_name
       FROM assembly_orders ao LEFT JOIN works w ON ao.work_id=w.id LEFT JOIN users u ON ao.created_by=u.id WHERE ao.id=$1`, [id]);
     if (!rows[0]) return reply.code(404).send({ error: 'Не найдена' });
+    // G-12 F5 SECURITY: IDOR ownership-check. PM видит только свои сборки (создал сам или назначен на работу).
+    // Остальные роли (WAREHOUSE/PROC/HEAD_PM/DIRECTOR_*/ADMIN/TO/HEAD_TO/CHIEF_ENGINEER/OFFICE_MANAGER/BUH) — без ограничения.
+    if (req.user.role === 'PM') {
+      const ownsCreate = rows[0].created_by === req.user.id;
+      const ownsWork = rows[0].work_pm_id === req.user.id;
+      if (!ownsCreate && !ownsWork) {
+        return reply.code(403).send({ error: 'Нет доступа к этой сборке' });
+      }
+    }
     const items = await db.query('SELECT * FROM assembly_items WHERE assembly_id=$1 ORDER BY sort_order,id', [id]);
     const pallets = await db.query('SELECT * FROM assembly_pallets WHERE assembly_id=$1 ORDER BY pallet_number', [id]);
     return { item: rows[0], items: items.rows, pallets: pallets.rows };

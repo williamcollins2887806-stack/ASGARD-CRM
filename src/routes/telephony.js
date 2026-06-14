@@ -771,12 +771,12 @@ module.exports = async function telephonyRoutes(fastify, opts) {
   }, async (request, reply) => {
     const callId = parseInt(request.params.id);
     if (!callId || callId < 1) return reply.code(400).send({ error: 'Invalid call ID' });
-    const call = (await db.query('SELECT id,record_path,recording_id FROM call_history WHERE id=',[callId])).rows[0];
+    const call = (await db.query('SELECT id,record_path,recording_id FROM call_history WHERE id=$1', [callId])).rows[0];
     if (!call) return reply.code(404).send({ error: 'Call not found' });
     const { getSpeechKitService } = require('../services/speechkit');
     if (!getSpeechKitService().isConfigured()) return reply.code(503).send({ error: 'Транскрибация недоступна — настройте API ключ' });
     if (!call.record_path && !call.recording_id) return reply.code(400).send({ error: 'Нет записи для транскрибации' });
-    await db.query("UPDATE call_history SET transcript_status='none',transcript=NULL,transcript_segments=NULL,updated_at=NOW() WHERE id=", [callId]);
+    await db.query("UPDATE call_history SET transcript_status='none',transcript=NULL,transcript_segments=NULL,updated_at=NOW() WHERE id=$1", [callId]);
     const p = getPipeline();
     if (p) setImmediate(() => p.processCall(callId).catch(e => console.error('[Telephony] Transcribe err:',e.message)));
     reply.send({ status: 'queued', message: 'Транскрибация запущена' });
@@ -788,10 +788,10 @@ module.exports = async function telephonyRoutes(fastify, opts) {
   }, async (request, reply) => {
     const callId = parseInt(request.params.id);
     if (!callId || callId < 1) return reply.code(400).send({ error: 'Invalid call ID' });
-    const call = (await db.query('SELECT id,transcript,transcript_status FROM call_history WHERE id=',[callId])).rows[0];
+    const call = (await db.query('SELECT id,transcript,transcript_status FROM call_history WHERE id=$1', [callId])).rows[0];
     if (!call) return reply.code(404).send({ error: 'Call not found' });
     if (!call.transcript || call.transcript_status !== 'done') return reply.code(400).send({ error: 'Транскрипт не готов' });
-    await db.query("UPDATE call_history SET ai_summary=NULL,ai_is_target=NULL,ai_lead_data=NULL,ai_sentiment=NULL,updated_at=NOW() WHERE id=", [callId]);
+    await db.query("UPDATE call_history SET ai_summary=NULL,ai_is_target=NULL,ai_lead_data=NULL,ai_sentiment=NULL,updated_at=NOW() WHERE id=$1", [callId]);
     const p = getPipeline();
     if (p) setImmediate(() => p.processCall(callId).catch(e => console.error('[Telephony] Analyze err:',e.message)));
     reply.send({ status: 'queued', message: 'ИИ-анализ запущен' });
@@ -821,6 +821,40 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       }
     }
     reply.code(500).send({ error: 'Failed to create lead' });
+  });
+
+  // E-2: добавить/обновить заметку к звонку. Используется CallDetailModal.
+  fastify.post('/calls/:id/note', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { id } = request.params;
+    const { note } = request.body || {};
+    if (note != null && typeof note !== 'string') {
+      return reply.code(400).send({ error: 'note должен быть строкой или null' });
+    }
+    const r = await db.query(
+      'UPDATE call_history SET note = $1 WHERE id = $2 RETURNING id, note',
+      [note || null, id]
+    );
+    if (!r.rows[0]) return reply.code(404).send({ error: 'Call not found' });
+    return { ok: true, call: r.rows[0] };
+  });
+
+  // E-2: установить/снять тег звонка (rating, mark, etc.)
+  fastify.post('/calls/:id/tag', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const { id } = request.params;
+    const { tag } = request.body || {};
+    if (tag != null && (typeof tag !== 'string' || tag.length > 50)) {
+      return reply.code(400).send({ error: 'tag — строка ≤ 50 символов или null' });
+    }
+    const r = await db.query(
+      'UPDATE call_history SET tag = $1 WHERE id = $2 RETURNING id, tag',
+      [tag || null, id]
+    );
+    if (!r.rows[0]) return reply.code(404).send({ error: 'Call not found' });
+    return { ok: true, call: r.rows[0] };
   });
 
   // --- Исходящий звонок (Click-to-Call) ---
@@ -1612,10 +1646,15 @@ module.exports = async function telephonyRoutes(fastify, opts) {
 
   // --- AMI helper для управления звонками через Asterisk ---
   const net = require('net');
-  const AMI_HOST = '127.0.0.1';
-  const AMI_PORT = 5038;
-  const AMI_USER = 'asgard';
-  const AMI_SECRET = 'AsgardAMI2024Secure';
+  // G-18 SECURITY FIX: AMI credentials берутся из env. Hardcoded secret в коде =
+  // прямой взлом всей телефонии (Originate/Redirect/Monitor права в Asterisk).
+  const AMI_HOST = process.env.AMI_HOST || '127.0.0.1';
+  const AMI_PORT = parseInt(process.env.AMI_PORT, 10) || 5038;
+  const AMI_USER = process.env.AMI_USER || 'asgard';
+  const AMI_SECRET = process.env.AMI_SECRET || '';
+  if (!AMI_SECRET) {
+    fastify.log.error('[Telephony] AMI_SECRET env var не задан — AMI операции работать не будут. Установите AMI_SECRET в .env');
+  }
 
   function sendAMI(actions) {
     return new Promise((resolve, reject) => {

@@ -13,6 +13,8 @@
 
 const path = require('path');
 const fs = require('fs').promises;
+const dns = require('dns').promises;
+const net = require('net');
 const { randomUUID } = require('crypto');
 const { sendToUser, isUserOnline } = require('./sse');
 const aiProvider = require('../services/ai-provider');
@@ -1989,6 +1991,37 @@ module.exports = async function(fastify) {
   // ═══ S12: Link Preview (Open Graph) ═══
   const _linkPreviewCache = new Map();
   const LINK_CACHE_TTL = 3600000; // 1 hour
+  const LINK_PREVIEW_MAX_BYTES = 1024 * 1024; // 1 MB
+
+  // G-12 F13 SSRF protection: блокируем приватные / loopback / link-local / cloud-metadata IP.
+  function _isPrivateIp(addr) {
+    if (!addr) return true;
+    const fam = net.isIP(addr);
+    if (fam === 4) {
+      const parts = addr.split('.').map(n => parseInt(n, 10));
+      if (parts.some(p => isNaN(p))) return true;
+      const [a, b] = parts;
+      if (a === 10) return true;                               // 10.0.0.0/8
+      if (a === 127) return true;                              // 127.0.0.0/8 loopback
+      if (a === 0) return true;                                // 0.0.0.0/8
+      if (a === 169 && b === 254) return true;                 // 169.254.0.0/16 link-local + AWS metadata
+      if (a === 172 && b >= 16 && b <= 31) return true;        // 172.16.0.0/12
+      if (a === 192 && b === 168) return true;                 // 192.168.0.0/16
+      if (a === 100 && b >= 64 && b <= 127) return true;       // 100.64.0.0/10 CGNAT
+      if (a >= 224) return true;                               // multicast / reserved
+      return false;
+    }
+    if (fam === 6) {
+      const lc = addr.toLowerCase();
+      if (lc === '::1' || lc === '::' || lc === '0:0:0:0:0:0:0:1') return true;
+      if (lc.startsWith('fc') || lc.startsWith('fd')) return true;   // fc00::/7 ULA
+      if (lc.startsWith('fe80')) return true;                        // link-local
+      if (lc.startsWith('::ffff:')) return _isPrivateIp(lc.slice(7)); // IPv4-mapped
+      if (lc === '2001:db8::' || lc.startsWith('2001:db8:')) return true; // doc range
+      return false;
+    }
+    return true; // не валидный IP → блокируем
+  }
 
   fastify.get('/link-preview', { preValidation: [fastify.authenticate] }, async (request, reply) => {
     const { url } = request.query;
@@ -1998,6 +2031,27 @@ module.exports = async function(fastify) {
     let parsed;
     try { parsed = new URL(url); } catch (_) { return reply.code(400).send({ error: 'invalid url' }); }
     if (!['http:', 'https:'].includes(parsed.protocol)) return reply.code(400).send({ error: 'invalid protocol' });
+
+    // Запрещаем имена без точек / явные localhost
+    const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    if (!host || host === 'localhost' || host === 'ip6-localhost' || host === 'ip6-loopback') {
+      return reply.code(400).send({ error: 'host not allowed' });
+    }
+
+    // G-12 F13: DNS resolve и проверка приватных диапазонов.
+    try {
+      if (net.isIP(host)) {
+        if (_isPrivateIp(host)) return reply.code(400).send({ error: 'host not allowed' });
+      } else {
+        const addrs = await dns.lookup(host, { all: true, verbatim: true });
+        if (!addrs.length) return reply.code(400).send({ error: 'host not resolvable' });
+        if (addrs.some(a => _isPrivateIp(a.address))) {
+          return reply.code(400).send({ error: 'host resolves to private address' });
+        }
+      }
+    } catch (_) {
+      return reply.code(400).send({ error: 'host not resolvable' });
+    }
 
     // Check cache
     const cached = _linkPreviewCache.get(url);
@@ -2011,7 +2065,7 @@ module.exports = async function(fastify) {
 
       const resp = await fetch(url, {
         signal: controller.signal,
-        headers: { 'User-Agent': 'AsgardBot/1.0 (Link Preview)' },
+        headers: { 'User-Agent': 'AsgardBot/1.0 (+https://asgard-crm.ru) Link-Preview' },
         redirect: 'follow',
       });
       clearTimeout(timeout);
@@ -2023,7 +2077,28 @@ module.exports = async function(fastify) {
         return reply.send({ title: parsed.hostname, domain: parsed.hostname });
       }
 
-      const html = await resp.text();
+      // G-12 F13: ограничиваем размер ответа 1 MB — читаем стримом и обрываем.
+      let html = '';
+      let received = 0;
+      try {
+        const reader = resp.body && resp.body.getReader ? resp.body.getReader() : null;
+        if (reader) {
+          const decoder = new TextDecoder('utf-8', { fatal: false });
+          while (received < LINK_PREVIEW_MAX_BYTES) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            received += value.byteLength;
+            html += decoder.decode(value, { stream: true });
+            if (received >= LINK_PREVIEW_MAX_BYTES) break;
+          }
+          try { reader.cancel(); } catch (_) {}
+        } else {
+          // Fallback на полный text() с обрезкой по длине
+          html = (await resp.text()).slice(0, LINK_PREVIEW_MAX_BYTES);
+        }
+      } catch (_) {
+        if (!html) return reply.send({ title: parsed.hostname, domain: parsed.hostname });
+      }
       const ogTitle = (html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i) ||
                        html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i) || [])[1];
       const ogDesc = (html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i) ||

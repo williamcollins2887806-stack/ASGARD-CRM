@@ -10,6 +10,8 @@
  *  POST /wa-webhook/check-phones   — проверить WA-наличие телефонов (с кэшем 24ч)
  */
 
+const crypto = require('crypto');
+
 module.exports = async function waWebhookRoutes(fastify, opts) {
   const db = fastify.db || fastify.pg || (opts && opts.db);
 
@@ -23,16 +25,52 @@ module.exports = async function waWebhookRoutes(fastify, opts) {
   fastify.post('/wa-webhook/setup', { preHandler: [fastify.authenticate] }, async (req, reply) => {
     const ga = require('../services/green-api');
     if (!ga.isEnabled()) return reply.code(400).send({ error: 'GREEN_API не настроен' });
-    const webhookUrl = 'https://asgard-crm.ru/api/wa-webhook/event';
+    const secret = process.env.WA_WEBHOOK_SECRET;
+    if (!secret) {
+      return reply.code(503).send({ error: 'WA_WEBHOOK_SECRET не задан в .env. Без него вебхук не пройдёт проверку.' });
+    }
+    const webhookUrl = `https://asgard-crm.ru/api/wa-webhook/event?secret=${encodeURIComponent(secret)}`;
     try {
       await ga.setWebhook(webhookUrl);
-      return reply.send({ ok: true, webhookUrl });
+      return reply.send({ ok: true, webhookUrl: webhookUrl.replace(secret, '***') });
     } catch (e) {
       return reply.code(500).send({ error: e.message });
     }
   });
 
   fastify.post('/wa-webhook/event', async (req, reply) => {
+    // G-12 F2 SECURITY: Green API webhook secret через env WA_WEBHOOK_SECRET.
+    //   Проверка: либо X-Wa-Signature (HMAC-SHA256), либо query ?secret=…
+    //   Если secret не задан → 503. Если подпись неверна → 401.
+    const secret = process.env.WA_WEBHOOK_SECRET;
+    if (!secret) {
+      fastify.log.warn('[WA webhook] WA_WEBHOOK_SECRET не задан — отказ');
+      return reply.code(503).send({ error: 'WA webhook secret не настроен' });
+    }
+    let verified = false;
+    const sigHeader = req.headers['x-wa-signature'];
+    if (sigHeader) {
+      try {
+        const rawBody = req.rawBody || (typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}));
+        const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+        const sigHex = String(sigHeader).replace(/^sha256=/i, '');
+        if (sigHex.length === expected.length &&
+            crypto.timingSafeEqual(Buffer.from(sigHex, 'hex'), Buffer.from(expected, 'hex'))) {
+          verified = true;
+        }
+      } catch (_) { /* fallthrough */ }
+    }
+    if (!verified) {
+      const qSecret = (req.query && req.query.secret) ? String(req.query.secret) : '';
+      if (qSecret && qSecret.length === secret.length) {
+        try {
+          if (crypto.timingSafeEqual(Buffer.from(qSecret), Buffer.from(secret))) verified = true;
+        } catch (_) { /* fallthrough */ }
+      }
+    }
+    if (!verified) {
+      return reply.code(401).send({ error: 'Invalid WA webhook signature' });
+    }
     try {
       const body = req.body;
       if (!body) return reply.send({ ok: true });

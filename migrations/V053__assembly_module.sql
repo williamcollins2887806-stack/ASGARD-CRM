@@ -9,8 +9,8 @@ CREATE TABLE IF NOT EXISTS assembly_orders (
   notes TEXT, created_by INTEGER NOT NULL REFERENCES users(id), confirmed_by INTEGER REFERENCES users(id),
   created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW()
 );
-CREATE INDEX idx_assembly_orders_work ON assembly_orders(work_id);
-CREATE INDEX idx_assembly_orders_status ON assembly_orders(status);
+CREATE INDEX IF NOT EXISTS idx_assembly_orders_work ON assembly_orders(work_id);
+CREATE INDEX IF NOT EXISTS idx_assembly_orders_status ON assembly_orders(status);
 
 CREATE TABLE IF NOT EXISTS assembly_pallets (
   id SERIAL PRIMARY KEY,
@@ -25,8 +25,8 @@ CREATE TABLE IF NOT EXISTS assembly_pallets (
   received_by INTEGER REFERENCES users(id), scanned_lat NUMERIC(9,6), scanned_lon NUMERIC(9,6),
   notes TEXT, created_at TIMESTAMP DEFAULT NOW()
 );
-CREATE INDEX idx_assembly_pallets_assembly ON assembly_pallets(assembly_id);
-CREATE UNIQUE INDEX idx_assembly_pallets_qr ON assembly_pallets(qr_uuid);
+CREATE INDEX IF NOT EXISTS idx_assembly_pallets_assembly ON assembly_pallets(assembly_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_assembly_pallets_qr ON assembly_pallets(qr_uuid);
 
 CREATE TABLE IF NOT EXISTS assembly_items (
   id SERIAL PRIMARY KEY,
@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS assembly_items (
   return_reason TEXT, received BOOLEAN DEFAULT false, received_at TIMESTAMP, received_by INTEGER REFERENCES users(id),
   sort_order INTEGER DEFAULT 0, notes TEXT, created_at TIMESTAMP DEFAULT NOW()
 );
-CREATE INDEX idx_assembly_items_assembly ON assembly_items(assembly_id);
-CREATE INDEX idx_assembly_items_pallet ON assembly_items(pallet_id);
-CREATE INDEX idx_assembly_items_equipment ON assembly_items(equipment_id);
+CREATE INDEX IF NOT EXISTS idx_assembly_items_assembly ON assembly_items(assembly_id);
+CREATE INDEX IF NOT EXISTS idx_assembly_items_pallet ON assembly_items(pallet_id);
+CREATE INDEX IF NOT EXISTS idx_assembly_items_equipment ON assembly_items(equipment_id);
 COMMIT;

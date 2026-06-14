@@ -497,6 +497,7 @@ fastify.register(require('./routes/tenders'), { prefix: '/api/tenders' });
 fastify.register(require('./routes/estimates'), { prefix: '/api/estimates' });
 fastify.register(require('./routes/works'), { prefix: '/api/works' });
 fastify.register(require('./routes/work-readiness'), { prefix: '/api/work-readiness' });
+fastify.register(require('./routes/birthdays'), { prefix: '/api/birthdays' });  // C-14: виджет ДР на главной
 fastify.register(require('./routes/customers'), { prefix: '/api/customers' });
 fastify.register(require('./routes/expenses'), { prefix: '/api/expenses' });
 fastify.register(require('./routes/incomes'), { prefix: '/api/incomes' });
@@ -566,6 +567,7 @@ fastify.register(require('./routes/staff-requests-v2'), { prefix: '/api/staff-re
 fastify.register(require('./routes/global-timesheet'),  { prefix: '/api/timesheet' });
 fastify.register(require('./routes/payroll-dashboard'), { prefix: '/api/payroll-dashboard' });
 fastify.register(require('./routes/training'),          { prefix: '/api/training' });
+fastify.register(require('./routes/telegram'),          { prefix: '/api/telegram' });
 
 // ── Telephony Job Queue & Escalation ──
 try {
@@ -888,8 +890,17 @@ fastify.setNotFoundHandler((request, reply) => {
     return;
   }
 
-  // React mobile app SPA fallback (/m/* routes)
+  // C-20: НЕ-SPA пути с расширениями файлов должны возвращать 404, не SPA fallback.
+  // Без этого после ребилда browser с устаревшим chunk-hash получает index.html
+  // с Content-Type text/html → MIME error «Unexpected token <» при попытке исполнить как JS.
+  // Касается /v2/assets/*, /assets/*, /m/assets/* и любых *.js/*.css/*.png/*.map/etc.
   const cleanUrl = request.url.split('?')[0];
+  if (/\.(js|mjs|css|map|png|jpg|jpeg|gif|svg|webp|ico|woff2?|ttf|otf|eot|json|txt|wasm|mp3|mp4|webm|ogg|wav)$/i.test(cleanUrl)) {
+    reply.code(404).send({ error: 'Not Found', message: 'Asset не найден' });
+    return;
+  }
+
+  // React mobile app SPA fallback (/m/* routes)
   if (cleanUrl.startsWith('/m/') && reactMobileHtml) {
     reply.type('text/html').header('Cache-Control', 'no-cache').send(reactMobileHtml);
     return;

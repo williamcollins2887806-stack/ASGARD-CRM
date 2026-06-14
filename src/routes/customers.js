@@ -193,7 +193,9 @@ async function routes(fastify, options) {
     return { customer: result.rows[0] };
   });
 
-  fastify.put('/:inn', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  // G-12 F8 SECURITY: PUT /:inn — добавлен ролевой гейт (выровнен с POST).
+  // Раньше любой залогиненный (включая WAREHOUSE, OFFICE_MANAGER) мог менять реквизиты заказчика.
+  fastify.put('/:inn', { preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'BUH'])] }, async (request, reply) => {
     const { inn } = request.params;
     const data = filterData(request.body);
     const updates = [];

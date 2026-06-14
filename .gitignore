@@ -39,3 +39,48 @@ build_apk.ps1
 # Mimir Conductor — сгенерированные письма заказчику и загруженные ответы (Сессия 5)
 storage/letters/*
 !storage/letters/.gitkeep
+
+# Claude Code workspace (skills, MCP settings, project memory)
+.claude/
+
+# Audit prep / planning / session prompts (WIP local docs, не для прода)
+audit-prep/
+HR_SESSION_*.md
+HR_MODULE_TECHNICAL_SPEC.md
+OFFICE_ACADEMY_OVERHAUL_PLAN.md
+QUICK_TKP_PLAN.*
+STAFF_EFFECTIVENESS_TZ.md
+CODEBASE-MAP.md
+WEBHOOK_SECRETS.txt
+.env.audit
+
+# ESLint configs (локальная разработка, на сервере не нужны)
+.eslintignore
+.eslintrc.backend.json
+.eslintrc.frontend.json
+.eslintrc.react.json
+
+# Desktop v2 — исходники React-приложения только для разработки;
+# на прод выкатывается готовый билд public/v2/ через rsync/scp, не через git
+public/desktop-v2-src/
+public/v2/
+
+# WIP исследовательские артефакты (не для прода)
+audit-reports/
+catalog-build/
+docs-output/
+docs-research/
+tests/audit/
+tests/browser/calc-kind/
+gen-catalog-starter.js
+sync-db-schema.js
+playwright.audit.config.js
+
+# Audit baseline миграции — для починки dev-схемы, на прод не применять
+migrations/V001a__audit_baseline_orphan_tables.sql
+migrations/V001b__audit_baseline_columns.sql
+migrations/V031a__audit_baseline_tkp_columns.sql
+
+# Локальные дампы данных (xlsx/csv в корне репо)
+/*.xlsx
+/*.csv

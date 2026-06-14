@@ -76,6 +76,10 @@ async function routes(fastify, options) {
   // POST /api/auth/login
   // ─────────────────────────────────────────────────────────────────────────────
   fastify.post('/login', {
+    // G-12 F11 SECURITY: rate-limit 5 попыток/минута на IP — защита от credential-stuffing.
+    config: {
+      rateLimit: { max: 5, timeWindow: '1 minute' }
+    },
     schema: {
       body: {
         type: 'object',
@@ -266,6 +270,10 @@ async function routes(fastify, options) {
   // ─────────────────────────────────────────────────────────────────────────────
   fastify.post('/change-password', {
     preHandler: [fastify.authenticate],
+    // G-12 F12 SECURITY: rate-limit 5/мин — защита от перебора текущего пароля.
+    config: {
+      rateLimit: { max: 5, timeWindow: '1 minute' }
+    },
     schema: {
       body: {
         type: 'object',

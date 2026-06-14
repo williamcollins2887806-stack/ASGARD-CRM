@@ -431,6 +431,11 @@ async function routes(fastify, options) {
       return reply.code(403).send({ error: 'Только администратор может менять роль и статус' });
     }
 
+    // G-12 F10: запрет на самодеактивацию (ADMIN не должен случайно сам себя выключить).
+    if (request.user.id === userId && is_active === false) {
+      return reply.code(400).send({ error: 'Нельзя деактивировать самого себя' });
+    }
+
     const updates = [];
     const values = [];
     let idx = 1;
@@ -486,28 +491,33 @@ if (patronymic !== undefined) { updates.push("patronymic = $" + idx); values.pus
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // DELETE /api/users/:id - Delete user (Admin only)
+  // DELETE /api/users/:id - Soft-delete user (Admin only)
   // ─────────────────────────────────────────────────────────────────────────────
+  // G-12 F9: жёсткий DELETE заменён на soft-delete по правилам CLAUDE.md
+  // («не теряем историю»). Деактивируем пользователя: is_active = false
+  // (+ deleted_at, если такая колонка появится в будущем — будет работать через COALESCE).
   fastify.delete('/:id', {
     preHandler: [fastify.requireRoles(['ADMIN'])]
   }, async (request, reply) => {
     const { id } = request.params;
+    const numericId = parseInt(id, 10);
+    if (isNaN(numericId)) return reply.code(400).send({ error: 'Invalid user id' });
 
     // Cannot delete yourself
-    if (request.user.id === parseInt(id, 10)) {
+    if (request.user.id === numericId) {
       return reply.code(400).send({ error: 'Нельзя удалить свой аккаунт' });
     }
 
     const result = await db.query(
-      'DELETE FROM users WHERE id = $1 RETURNING id',
-      [id]
+      'UPDATE users SET is_active = false, updated_at = NOW() WHERE id = $1 RETURNING id, login',
+      [numericId]
     );
 
     if (!result.rows[0]) {
       return reply.code(404).send({ error: 'Пользователь не найден' });
     }
 
-    return { message: 'Пользователь удалён' };
+    return { message: 'Пользователь деактивирован (soft-delete)', user: result.rows[0] };
   });
 
   // ─────────────────────────────────────────────────────────────────────────────

@@ -13,6 +13,7 @@
 --   - timesheet рабочих
 --
 -- Реальные цифры взяты из текста документов (verified against source).
+-- Idempotency: пропустить если эталон уже есть (по customer_inn + work_type).
 
 INSERT INTO mimir_reference_projects (
     customer_name, customer_inn, customer_kpp, object_name, city, region,
@@ -33,6 +34,7 @@ INSERT INTO mimir_reference_projects (
     resources_actual,
     variance,
     insights,
+    source_work_id, source_tender_id, source_document_ids,
     quality_score, is_active, notes, embedding_text
 ) VALUES (
     'КАО "Азот" (Кемеровское АО "Азот")',
@@ -208,6 +210,5 @@ INSERT INTO mimir_reference_projects (
     'гидромеханическая очистка теплообменных труб аммиачные генератор-ректификаторы 901Г КАО Азот Кемерово химия нефтехимия монолитный магнетит Fe3O4 промышленная очистка ВД 1500 бар крот тайфун шарошки бурение'
 );
 
--- Регистрируем
-INSERT INTO migrations (version) VALUES ('V203__seed_kao_azot_reference')
-  ON CONFLICT (version) DO NOTHING;
+-- Регистрация миграции выполняется migrations/run.js (INSERT INTO migrations(name)).
+-- Прямой INSERT здесь убран: колонки `version` нет, схема `migrations(id,name,executed_at)`.

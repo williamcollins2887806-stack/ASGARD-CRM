@@ -201,8 +201,11 @@ async function routes(fastify, options) {
   // ─────────────────────────────────────────────────────────────────────────────
   // GET /api/tenders/:id - Get single tender
   // ─────────────────────────────────────────────────────────────────────────────
+  // G-12 F7 SECURITY: ограничен список ролей. PM видит только свои тендеры
+  // (responsible_pm_id == user.id) или те где он назначен PM по работе (works.pm_id).
+  // WAREHOUSE/OFFICE_MANAGER/CHIEF_ENGINEER/HR/PROC/HR_MANAGER — нет доступа к тендерам.
   fastify.get('/:id', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'BUH', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])]
   }, async (request, reply) => {
     const { id } = request.params;
 
@@ -218,6 +221,24 @@ async function routes(fastify, options) {
 
     if (!result.rows[0]) {
       return reply.code(404).send({ error: 'Тендер не найден' });
+    }
+
+    // PM-ownership: только свои тендеры (где он responsible_pm_id) или тендеры с его работами.
+    if (request.user.role === 'PM') {
+      const tender = result.rows[0];
+      const isResponsible = tender.responsible_pm_id === request.user.id;
+      let isWorkPM = false;
+      if (!isResponsible) {
+        try {
+          const r = await db.query(
+            "SELECT 1 FROM works WHERE tender_id = $1 AND pm_id = $2 AND deleted_at IS NULL LIMIT 1",
+            [id, request.user.id]);
+          isWorkPM = !!r.rows[0];
+        } catch (_) {}
+      }
+      if (!isResponsible && !isWorkPM) {
+        return reply.code(403).send({ error: 'Нет доступа к этому тендеру' });
+      }
     }
 
     // Get related estimates

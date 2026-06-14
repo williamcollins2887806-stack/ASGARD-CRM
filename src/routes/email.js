@@ -178,17 +178,21 @@ async function routes(fastify, options) {
     }
     
     const { host, port, secure, user: smtpUser, pass, from } = request.body;
-    
+
+    // G-17 SECURITY FIX: пароль шифруется через imap.encrypt() (как везде в кодовой базе).
+    // Раньше SMTP пароль ложился в settings.value_json plaintext — любой админ БД видел его.
+    const { encrypt } = require('../services/imap');
     const config = {
       host,
       port: parseInt(port) || 587,
       secure: secure === true || secure === 'true',
       auth: {
         user: smtpUser,
-        pass: pass
+        pass: pass ? encrypt(pass) : '',
+        _encrypted: true  // маркер для transporter loader — расшифровать при использовании
       }
     };
-    
+
     try {
       await db.query(`
         INSERT INTO settings (key, value_json, updated_at)
