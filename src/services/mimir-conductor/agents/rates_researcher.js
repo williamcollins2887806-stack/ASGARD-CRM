@@ -177,6 +177,39 @@ function findTimingInAnalogs(analogs, key) {
   return null;
 }
 
+/** Тянет timing напрямую из самих reference_projects (duration_actual_workshifts и т.п.). */
+async function findTimingFromRefProjects(analogs, key) {
+  if (!analogs || !Array.isArray(analogs.analogs) || !analogs.analogs.length) return null;
+  // Маппинг ключа на колонку в mimir_reference_projects
+  const COL_MAP = {
+    work_shifts: 'duration_actual_workshifts',
+    prep_days: null,        // нет напрямую — фоллбек на analogs.timing_norms
+    mob_demob_days: null
+  };
+  const col = COL_MAP[key];
+  if (!col) return null;
+  const ids = analogs.analogs.map(a => Number(a.id)).filter(Boolean).slice(0, 5);
+  if (!ids.length) return null;
+  try {
+    const r = await db.query(
+      `SELECT id, customer_name, ${col} AS v FROM mimir_reference_projects WHERE id = ANY($1::int[]) AND ${col} IS NOT NULL AND ${col} > 0`,
+      [ids]
+    );
+    if (r.rows.length) {
+      // Среднее по аналогам
+      const avg = r.rows.reduce((s, x) => s + Number(x.v), 0) / r.rows.length;
+      return {
+        value: Math.round(avg),
+        unit: 'смен',
+        source: `analog.refs[${r.rows.length}].${col}`,
+        confidence_pct: r.rows.length >= 3 ? 85 : 75,
+        samples: r.rows.map(x => `${x.customer_name}=${x.v}`)
+      };
+    }
+  } catch (_) {}
+  return null;
+}
+
 /* ─────────────────────────────────────────────────────────────────────────
  * Источник 3: RAG ГЭСН/ФЕР (mimir_norms_index, pgvector)
  * ─────────────────────────────────────────────────────────────────────── */
@@ -290,15 +323,23 @@ async function resolveConsumablePrice(name, analogs, onThought) {
 }
 
 async function resolveTimingNorm(key, analogs, ragQuery, onThought) {
+  // 1. applicable_norms.timing_norms в analogs_comparison
   const fromAnalog = findTimingInAnalogs(analogs, key);
   if (fromAnalog) {
-    onThought(`✓ ${key}: ${fromAnalog.value} дней (эталон, ${fromAnalog.confidence_pct}%)`);
+    onThought(`✓ ${key}: ${fromAnalog.value} дней (analogs.timing_norms, ${fromAnalog.confidence_pct}%)`);
     return fromAnalog;
   }
+  // 2. Напрямую из reference_projects (duration_actual_workshifts и др.)
+  const fromRefs = await findTimingFromRefProjects(analogs, key);
+  if (fromRefs) {
+    onThought(`✓ ${key}: ${fromRefs.value} смен (ref_projects avg ${fromRefs.samples.length}, ${fromRefs.confidence_pct}%)`);
+    return fromRefs;
+  }
+  // 3. RAG ГЭСН (только информативно — точной цифры не достаём из текста)
   if (ragQuery) {
     const fromRag = await findNormInRag(ragQuery);
     if (fromRag) {
-      onThought(`→ ${key}: нашёл норматив ${fromRag.code} в RAG, но без точной цифры — оставлю BLOCKING`);
+      onThought(`→ ${key}: нашёл норматив ${fromRag.code} в RAG, но без точной цифры`);
     }
   }
   return null;
