@@ -10,7 +10,9 @@
  * и POST /api/tkp-quick/sessions/:uid/chat
  */
 
+const crypto = require('crypto');
 const aiProvider = require('./ai-provider');
+const db = require('./db');
 
 const TKP_QUICK_SYSTEM = `Ты Мимир — ведущий инженер-сметчик ООО «Асгард Сервис» (промышленный сервис для нефтегаза).
 Твоя задача: составить КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ (ТКП) клиенту на основе его технического задания.
@@ -172,11 +174,34 @@ async function generateEstimate(opts) {
 
   onProgress({ type: 'status', message: '🧠 Мимир анализирует задание и ищет цены...' });
 
+  // AI-кэш на уровне результата generateEstimate. Идемпотентность по hash(system+tz+attachments+customer).
+  // Если тот же ТЗ → возвращаем сохранённый estimate без повторного вызова AI (детерминизм + экономия).
+  const cacheKey = crypto.createHash('sha256').update(
+    systemPrompt + '\n#TZ#\n' + (tz_text || '') +
+    '\n#ATT#\n' + (attachments_text || '') +
+    '\n#CUST#\n' + (customer_name || '') + '|' + (customer_inn || '')
+  ).digest('hex');
+  try {
+    const cached = await db.query(
+      "SELECT output_text FROM mimir_ai_cache WHERE input_hash=$1 AND agent_name='tkp_quick' LIMIT 1",
+      [cacheKey]
+    );
+    if (cached.rows[0]) {
+      onProgress({ type: 'status', message: '💾 Расчёт из кэша (детерминированно)' });
+      await db.query(
+        "UPDATE mimir_ai_cache SET hit_count=hit_count+1, last_used_at=NOW() WHERE input_hash=$1",
+        [cacheKey]
+      ).catch(() => {});
+      const parsed = JSON.parse(cached.rows[0].output_text);
+      return parsed;
+    }
+  } catch (_) { /* нет соединения / таблицы — игнор */ }
+
   const result = await aiProvider.runAgentLoop({
     system: systemPrompt,
     messages,
     maxTokens: 32000,
-    temperature: 0.4,
+    temperature: 0,  // КРИТИЧНО для 10/10 reproducibility: было 0.4 → разброс ×6 на одном ТЗ
     maxIterations: 5,
     webSearchIncludeDomains: [
       'rzd.ru', 'aviasales.ru', 'pulscen.ru', 'tiu.ru',
@@ -194,7 +219,7 @@ async function generateEstimate(opts) {
   const estimate = _extractEstimate(text);
   const chatMd   = _extractMarkdown(text);
 
-  return {
+  const payload = {
     chat_response_md: chatMd,
     estimate,
     diagnostics: {
@@ -203,6 +228,18 @@ async function generateEstimate(opts) {
       iterations: result.agentIterations
     }
   };
+
+  // Сохраним в кэш для будущих повторов
+  try {
+    await db.query(
+      `INSERT INTO mimir_ai_cache (input_hash, model, agent_name, output_text, output_usage)
+       VALUES ($1, $2, 'tkp_quick', $3, $4)
+       ON CONFLICT (input_hash) DO NOTHING`,
+      [cacheKey, result.model || 'unknown', JSON.stringify(payload), result.usage || null]
+    );
+  } catch (_) { /* игнор */ }
+
+  return payload;
 }
 
 /**
