@@ -195,8 +195,10 @@ async function learnFromConductorRun(runId, opts = {}) {
 async function learnFromEstimate(estimateId, opts = {}) {
   if (!estimateId) return { ok: false, reason: 'no_estimate_id' };
   try {
+    // HIGH-фикс: было `e.total_amount` — этой колонки нет в `estimates` (есть `total_sum`).
+    // Feedback-loop Мимира молча падал на каждом approve-finalize, эталоны не обучались.
     const r = await db.query(
-      `SELECT e.id, e.tender_id, e.title, e.work_type, e.object_name, e.total_amount,
+      `SELECT e.id, e.tender_id, e.title, e.work_type, e.object_name, e.total_sum AS total_amount,
               e.approval_status, e.ai_report, e.metadata,
               t.customer_name, t.customer_inn, t.tender_price, t.tender_region,
               w.work_title, w.city AS work_city, w.start_in_work_date, w.act_signed_date_fact

@@ -147,7 +147,7 @@ async function routes(fastify) {
         request.headers.authorization = 'Bearer ' + request.query.token;
       }
     },
-    fastify.requireRoles([...PM_ROLES,...PROC_ROLES])
+    fastify.requireRoles([...PM_ROLES,...PROC_ROLES,...DIR_ROLES,'BUH','HEAD_TO'])
   ]}, async(req,reply)=>{
     const ExcelJS=require('exceljs');const wb=new ExcelJS.Workbook();const ws=wb.addWorksheet('Позиции');
     ws.mergeCells('A1:F1');ws.getCell('A1').value='ООО «АСГАРД СЕРВИС» — Шаблон заявки на закупку';ws.getCell('A1').font={bold:true,size:14};

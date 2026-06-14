@@ -331,7 +331,15 @@ async function actsRoutes(fastify, options) {
     await db.query('UPDATE acts SET file_path = $1 WHERE id = $2', [`acts/${filename}`, act.id]);
 
     reply.header('Content-Type', 'application/pdf');
-    reply.header('Content-Disposition', `attachment; filename="Act_${act.act_number || act.id}.pdf"`);
+    // CRIT: act_number может содержать кириллицу + «/» (например «АС-АРХБУМ-А-2026/03»),
+    // а HTTP-заголовки строго ASCII. Раньше — Node setHeader падал ERR_INVALID_CHAR
+    // и юзер получал 500. Используем RFC 6266: ASCII-fallback + filename* для UTF-8.
+    const rawName = `Act_${act.act_number || act.id}.pdf`;
+    const asciiName = `Act_${act.id}.pdf`;
+    reply.header(
+      'Content-Disposition',
+      `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(rawName)}`
+    );
     return reply.send(pdfBuffer);
   });
 }

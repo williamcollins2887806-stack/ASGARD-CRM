@@ -485,6 +485,7 @@ fastify.register(require('./routes/field-gamification'), { prefix: '/api/field/g
 fastify.register(require('./routes/field-academy'),      { prefix: '/api/field/academy' });
 fastify.register(require('./routes/field-seasonal'),     { prefix: '/api/field/seasonal' });
 fastify.register(require('./routes/field-earnings'),     { prefix: '/api/field/earnings' });
+fastify.register(require('./routes/field-readiness-alias'), { prefix: '/api/field/readiness' }); // bw-compat: старый mobile bundle → редирект на /api/field/worker/readiness
 fastify.register(require('./routes/field-pm'),           { prefix: '/api/pm' });
 fastify.register(require('./routes/app-updates'),        { prefix: '/api/app' });
 fastify.register(require('./routes/admin-system'),       { prefix: '/api/admin/system' });
