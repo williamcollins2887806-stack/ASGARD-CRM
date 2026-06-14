@@ -92,7 +92,7 @@ async function routes(fastify, options) {
     const search = rawSearch ? rawSearch.replace(/\0/g, '') : rawSearch;
 
     let sql = `
-      SELECT t.*, 
+      SELECT t.*,
              u.name as pm_name,
              (SELECT COUNT(*) FROM estimates e WHERE e.tender_id = t.id) as estimates_count,
              (SELECT COUNT(*) FROM works w WHERE w.tender_id = t.id) as works_count
@@ -103,6 +103,17 @@ async function routes(fastify, options) {
     `;
     const params = [];
     let idx = 1;
+
+    // RBAC: PM видит только свои тендеры (где он ответственный ИЛИ есть работа закреплённая
+    // за ним). До этого фикса любой авторизованный получал весь реестр тендеров с финансовыми
+    // данными — data leak найден post-deploy RBAC аудитом.
+    if (request.user.role === 'PM') {
+      sql += ` AND (t.responsible_pm_id = $${idx} OR EXISTS (
+        SELECT 1 FROM works w WHERE w.tender_id = t.id AND w.pm_id = $${idx}
+      ))`;
+      params.push(request.user.id);
+      idx++;
+    }
 
     if (period) {
       sql += ` AND t.period = $${idx}`;
@@ -147,6 +158,15 @@ async function routes(fastify, options) {
     let countSql = 'SELECT COUNT(*) FROM tenders t WHERE 1=1 AND t.deleted_at IS NULL';
     const countParams = [];
     let countIdx = 1;
+
+    // RBAC синхронно с основным SELECT — PM считаем только свои тендеры в total.
+    if (request.user.role === 'PM') {
+      countSql += ` AND (t.responsible_pm_id = $${countIdx} OR EXISTS (
+        SELECT 1 FROM works w WHERE w.tender_id = t.id AND w.pm_id = $${countIdx}
+      ))`;
+      countParams.push(request.user.id);
+      countIdx++;
+    }
 
     if (period) {
       countSql += ` AND t.period = $${countIdx}`;
@@ -477,7 +497,11 @@ async function routes(fastify, options) {
       'deadline': 'docs_deadline',
       'tender_price': 'tender_price',
       'tag': 'group_tag',
-      'docs_link': 'purchase_url'
+      'docs_link': 'purchase_url',
+      // Frontend Funnel-aliases: при выигрыше contract_sum обновляет финальную tender_price,
+      // при возврате этапа status_comment пишется в comment_to (общий комментарий).
+      'contract_sum': 'tender_price',
+      'status_comment': 'comment_to'
     };
 
     const allowedFields = [
@@ -487,7 +511,8 @@ async function routes(fastify, options) {
       'submission_price', 'submission_price_with_vat',
       'responsible_pm_id', 'tag', 'group_tag', 'tag_id',
       'docs_link', 'purchase_url', 'comment_to', 'comment_dir', 'reject_reason',
-      'calculator_kind', 'calculator_user_id'
+      'calculator_kind', 'calculator_user_id',
+      'contract_sum', 'status_comment', 'winner_name'
     ];
 
     const updates = [];

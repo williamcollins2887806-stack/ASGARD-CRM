@@ -182,11 +182,25 @@ async function routes(fastify, options) {
   fastify.post('/', {
     preHandler: [fastify.requireRoles(WRITE_ROLES)]
   }, async (request, reply) => {
+    const b = request.body || {};
     const { subject, title, tender_id, work_id, customer_name, customer_inn,
             contact_person, contact_phone, contact_email, customer_email,
-            items, content_json, services, total_sum, deadline, validity_days,
-            source, customer_address, work_description, estimate_id,
-            link_type, pre_tender_id, purpose_reason } = request.body;
+            items, content_json, services, deadline, validity_days,
+            source, estimate_id, link_type, pre_tender_id, purpose_reason,
+            tkp_number, tkp_type } = b;
+    // Frontend-aliases — фронт шлёт total_amount/address/description, БД хранит total_sum/customer_address/work_description.
+    // Без этих маппингов сумма КП всегда писалась как 0, адрес и описание уходили в null.
+    const total_sum         = b.total_sum         ?? b.total_amount ?? 0;
+    const customer_address  = b.customer_address  ?? b.address      ?? null;
+    const work_description  = b.work_description  ?? b.description  ?? null;
+    // Условия оплаты собираются в jsonb-like text (payment_terms colonny text).
+    const paymentTermsObj = (b.payment_preset || b.avans_pct != null || b.postpay_days != null || b.custom_payment_terms) ? {
+      preset: b.payment_preset || null,
+      avans_pct: b.avans_pct != null ? Number(b.avans_pct) : null,
+      postpay_days: b.postpay_days != null ? Number(b.postpay_days) : null,
+      custom: b.custom_payment_terms || null
+    } : null;
+    const payment_terms = b.payment_terms || (paymentTermsObj ? JSON.stringify(paymentTermsObj) : null);
 
     const subj = subject || title;
     if (!subj || !String(subj).trim()) {
@@ -216,19 +230,21 @@ async function routes(fastify, options) {
                         customer_address, work_description,
                         items, services, total_sum, deadline, validity_days,
                         author_id, source, estimate_id,
-                        link_type, pre_tender_id, purpose_reason)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+                        link_type, pre_tender_id, purpose_reason,
+                        tkp_number, tkp_type, payment_terms)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
       RETURNING *
     `, [
       subj.trim(), tender_id || null, work_id || null,
       customer_name || null, customer_inn || null,
       contact_person || null, contact_phone || null,
       contact_email || customer_email || null,
-      customer_address || null, work_description || null,
+      customer_address, work_description,
       itemsVal, services || null, total_sum || 0,
       deadline || null, validity_days || 30, request.user.id,
       source || null, estimate_id || null,
-      resolvedLinkType, pre_tender_id || null, purpose_reason || null
+      resolvedLinkType, pre_tender_id || null, purpose_reason || null,
+      tkp_number || null, tkp_type || null, payment_terms
     ]);
 
     const newTkp = rows[0];
@@ -541,14 +557,29 @@ async function routes(fastify, options) {
                      'items', 'services', 'total_sum', 'deadline', 'validity_days', 'tkp_type',
                      'source', 'customer_address', 'work_description', 'estimate_id',
                      'link_type', 'pre_tender_id', 'purpose_reason',
-                     'client_decision', 'client_decision_comment'];
+                     'client_decision', 'client_decision_comment',
+                     'tkp_number', 'payment_terms', 'status'];
+    // Frontend-aliases при PUT — обрабатываем те же что в POST.
+    const b = request.body || {};
+    if (b.total_amount != null && b.total_sum == null) b.total_sum = b.total_amount;
+    if (b.address != null && b.customer_address == null) b.customer_address = b.address;
+    if (b.description != null && b.work_description == null) b.work_description = b.description;
+    if (b.payment_terms == null && (b.payment_preset || b.avans_pct != null || b.postpay_days != null || b.custom_payment_terms)) {
+      b.payment_terms = JSON.stringify({
+        preset: b.payment_preset || null,
+        avans_pct: b.avans_pct != null ? Number(b.avans_pct) : null,
+        postpay_days: b.postpay_days != null ? Number(b.postpay_days) : null,
+        custom: b.custom_payment_terms || null
+      });
+    }
+
     const updates = [];
     const values = [];
     let idx = 1;
 
     for (const key of allowed) {
-      if (request.body[key] !== undefined) {
-        const val = key === 'items' ? JSON.stringify(request.body[key]) : request.body[key];
+      if (b[key] !== undefined) {
+        const val = key === 'items' ? JSON.stringify(b[key]) : b[key];
         updates.push(`${key} = $${idx++}`);
         values.push(val);
       }

@@ -18,7 +18,8 @@ const EMPLOYEE_COLS = new Set([
   'qualification_grade', 'brigade', 'notes', 'day_rate',
   'bank_name', 'bik', 'account_number', 'card_number',
   'is_self_employed', 'docs_url', 'skills', 'comment',
-  'imt_number', 'imt_expires', 'permits', 'rating_count'
+  'imt_number', 'imt_expires', 'permits', 'rating_count',
+  'is_officially_employed'
 ]);
 const REVIEW_COLS = new Set([
   'employee_id', 'rating', 'comment', 'pm_id', 'created_at'

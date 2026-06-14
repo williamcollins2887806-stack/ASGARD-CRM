@@ -181,8 +181,8 @@ async function routes(fastify, options) {
 
     const { rows: [created] } = await db.query(`
       INSERT INTO staff_requests
-        (work_id, pm_id, request_json, work_description, work_conditions, status, status_v2, is_vachta, created_at)
-      VALUES ($1, $2, $3, $4, $5, 'sent', 'draft', $6, NOW())
+        (work_id, pm_id, request_json, work_description, work_conditions, status, status_v2, is_vachta, date_from, date_to, created_at)
+      VALUES ($1, $2, $3, $4, $5, 'sent', 'draft', $6, $7, $8, NOW())
       RETURNING *
     `, [
       parseInt(work_id, 10),
@@ -191,6 +191,8 @@ async function routes(fastify, options) {
       work_description || null,
       JSON.stringify(work_conditions || {}),
       !!is_vachta,
+      date_from || null,
+      date_to || null,
     ]);
 
     // Создаём позиции
@@ -223,19 +225,23 @@ async function routes(fastify, options) {
       return reply.code(403).send({ error: 'Чужой черновик' });
     }
 
-    const { work_description, work_conditions, is_vachta, positions } = request.body || {};
+    const { work_description, work_conditions, is_vachta, positions, date_from, date_to } = request.body || {};
 
     await db.query(`
       UPDATE staff_requests SET
         work_description = COALESCE($1, work_description),
         work_conditions  = COALESCE($2, work_conditions),
         is_vachta        = COALESCE($3, is_vachta),
+        date_from        = COALESCE($4, date_from),
+        date_to          = COALESCE($5, date_to),
         updated_at       = NOW()
-      WHERE id = $4
+      WHERE id = $6
     `, [
       work_description !== undefined ? work_description : null,
       work_conditions !== undefined ? JSON.stringify(work_conditions) : null,
       is_vachta !== undefined ? !!is_vachta : null,
+      date_from !== undefined ? date_from : null,
+      date_to !== undefined ? date_to : null,
       id,
     ]);
 
