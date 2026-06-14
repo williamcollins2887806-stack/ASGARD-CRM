@@ -84,3 +84,7 @@ migrations/V031a__audit_baseline_tkp_columns.sql
 # Локальные дампы данных (xlsx/csv в корне репо)
 /*.xlsx
 /*.csv
+
+# Workspaces агентов-аудиторов (скриншоты, отчёты — рабочее, не для прода)
+_audit_console/
+audit-modals/
