@@ -187,9 +187,16 @@ async function run({ requiredArtifacts, onThought }) {
   const roadDays = computeRoadDays(crew, objectCity);
 
   let totalDays = null;
-  // Источники в порядке приоритета: ТЗ.timing → applicable_norms.timing_norms.work_shifts
-  // (последнее — фактическая длительность похожего проекта из эталона)
-  if (timing.start && timing.end) {
+  // Источники в порядке приоритета:
+  //   0. rates_research.timing_norms.work_shifts (новый агент)
+  //   1. ТЗ.timing.start/end
+  //   2. ТЗ.timing.duration_days
+  //   3. applicable_norms.timing_norms.work_shifts (эталон)
+  //   4. ТЗ.timing.work_days
+  const rrWorkShifts = ratesResearchTiming.work_shifts && ratesResearchTiming.work_shifts.value;
+  if (rrWorkShifts) {
+    totalDays = Number(rrWorkShifts) + 2 * roadDays + (mobDemobDays || 0);
+  } else if (timing.start && timing.end) {
     const start = new Date(timing.start);
     const end = new Date(timing.end);
     totalDays = Math.round((end - start) / 86400000) + 1;

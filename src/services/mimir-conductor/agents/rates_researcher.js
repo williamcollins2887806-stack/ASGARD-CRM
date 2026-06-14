@@ -328,11 +328,12 @@ async function run({ requiredArtifacts, onThought }) {
     else unresolvedLabor.push(pos);
   }
 
-  onThought('Этап 2/3: резолвлю нормативы сроков (prep_days, mob_demob_days)');
+  onThought('Этап 2/3: резолвлю нормативы сроков (prep_days, mob_demob_days, work_shifts)');
   const timing_norms = {};
   const timingKeys = [
     { key: 'prep_days', rag: 'подготовка склад химпромывка дни' },
-    { key: 'mob_demob_days', rag: 'мобилизация демобилизация офшорный объект' }
+    { key: 'mob_demob_days', rag: 'мобилизация демобилизация офшорный объект' },
+    { key: 'work_shifts', rag: 'химпромывка теплообменников чистые рабочие смены' }
   ];
   const unresolvedTiming = [];
   for (const t of timingKeys) {
