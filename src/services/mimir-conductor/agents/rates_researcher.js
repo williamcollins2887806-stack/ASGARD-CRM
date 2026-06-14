@@ -180,9 +180,9 @@ function findTimingInAnalogs(analogs, key) {
 /** Тянет timing напрямую из самих reference_projects (duration_actual_workshifts и т.п.). */
 async function findTimingFromRefProjects(analogs, key) {
   if (!analogs || !Array.isArray(analogs.analogs) || !analogs.analogs.length) return null;
-  // Маппинг ключа на колонку в mimir_reference_projects
+  // Маппинг ключа на колонку (с COALESCE на planned если actual пустой)
   const COL_MAP = {
-    work_shifts: 'duration_actual_workshifts',
+    work_shifts: 'COALESCE(duration_actual_workshifts, duration_planned_workshifts)',
     prep_days: null,        // нет напрямую — фоллбек на analogs.timing_norms
     mob_demob_days: null
   };
