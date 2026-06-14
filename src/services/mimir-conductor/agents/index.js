@@ -59,7 +59,9 @@ const REAL = {
   warranty_reserve: require('./warranty_reserve'),
   quality_control_planner: require('./quality_control_planner'),
   marine_permits: require('./marine_permits'),
-  site_access_planner: require('./site_access_planner')
+  site_access_planner: require('./site_access_planner'),
+  // Этап 5b — резолв ставок и норм из 4 источников (CRM/эталоны/RAG/web)
+  rates_researcher: require('./rates_researcher')
 };
 
 /**
