@@ -476,6 +476,8 @@ async function routes(fastify, options) {
 
   // PUT /items/:id — обновить строку
   fastify.put('/items/:id', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    const PAYROLL_WRITE_ROLES = new Set(['ADMIN', 'PM', 'HEAD_PM', 'BUH', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV']);
+    if (!PAYROLL_WRITE_ROLES.has(req.user.role)) return reply.code(403).send({ error: 'Нет доступа к редактированию строки' });
     const { id } = req.params;
     const b = req.body;
 
@@ -525,6 +527,8 @@ async function routes(fastify, options) {
 
   // DELETE /items/:id
   fastify.delete('/items/:id', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    const PAYROLL_WRITE_ROLES = new Set(['ADMIN', 'PM', 'HEAD_PM', 'BUH', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV']);
+    if (!PAYROLL_WRITE_ROLES.has(req.user.role)) return reply.code(403).send({ error: 'Нет доступа к удалению строки' });
     const { id } = req.params;
     const check = await db.query(`
       SELECT pi.sheet_id, ps.status FROM payroll_items pi
@@ -542,6 +546,8 @@ async function routes(fastify, options) {
 
   // POST /items/auto-fill — автозаполнение
   fastify.post('/items/auto-fill', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    const PAYROLL_WRITE_ROLES = new Set(['ADMIN', 'PM', 'HEAD_PM', 'BUH', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV']);
+    if (!PAYROLL_WRITE_ROLES.has(req.user.role)) return reply.code(403).send({ error: 'Нет доступа к автозаполнению' });
     const { sheet_id } = req.body;
     if (!sheet_id) return reply.code(400).send({ error: 'sheet_id обязателен' });
 
@@ -646,6 +652,8 @@ async function routes(fastify, options) {
 
   // POST /items/recalc — пересчёт всех строк
   fastify.post('/items/recalc', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    const PAYROLL_WRITE_ROLES = new Set(['ADMIN', 'PM', 'HEAD_PM', 'BUH', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV']);
+    if (!PAYROLL_WRITE_ROLES.has(req.user.role)) return reply.code(403).send({ error: 'Нет доступа к пересчёту' });
     const { sheet_id } = req.body;
     if (!sheet_id) return reply.code(400).send({ error: 'sheet_id обязателен' });
 
@@ -902,6 +910,8 @@ async function routes(fastify, options) {
 
   // POST /rates
   fastify.post('/rates', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    const PAYROLL_WRITE_ROLES = new Set(['ADMIN', 'PM', 'HEAD_PM', 'BUH', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV']);
+    if (!PAYROLL_WRITE_ROLES.has(req.user.role)) return reply.code(403).send({ error: 'Нет доступа к ставкам' });
     const user = req.user;
     const b = req.body;
     if (!b.employee_id || !b.day_rate) return reply.code(400).send({ error: 'employee_id и day_rate обязательны' });
@@ -928,6 +938,8 @@ async function routes(fastify, options) {
 
   // PUT /rates/:id
   fastify.put('/rates/:id', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    const PAYROLL_WRITE_ROLES = new Set(['ADMIN', 'PM', 'HEAD_PM', 'BUH', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV']);
+    if (!PAYROLL_WRITE_ROLES.has(req.user.role)) return reply.code(403).send({ error: 'Нет доступа к ставкам' });
     const { id } = req.params;
     const b = req.body;
     const q = await db.query(`
@@ -975,6 +987,8 @@ async function routes(fastify, options) {
 
   // POST /self-employed
   fastify.post('/self-employed', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    const PAYROLL_WRITE_ROLES = new Set(['ADMIN', 'PM', 'HEAD_PM', 'BUH', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV']);
+    if (!PAYROLL_WRITE_ROLES.has(req.user.role)) return reply.code(403).send({ error: 'Нет доступа к самозанятым' });
     const b = req.body;
     if (!b.full_name || !b.inn) return reply.code(400).send({ error: 'ФИО и ИНН обязательны' });
     if (!/^\d{12}$/.test(b.inn)) return reply.code(400).send({ error: 'ИНН должен содержать 12 цифр' });
@@ -1008,6 +1022,8 @@ async function routes(fastify, options) {
 
   // PUT /self-employed/:id
   fastify.put('/self-employed/:id', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    const PAYROLL_WRITE_ROLES = new Set(['ADMIN', 'PM', 'HEAD_PM', 'BUH', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV']);
+    if (!PAYROLL_WRITE_ROLES.has(req.user.role)) return reply.code(403).send({ error: 'Нет доступа к самозанятым' });
     const { id } = req.params;
     const b = req.body;
     if (b.inn && !/^\d{12}$/.test(b.inn)) return reply.code(400).send({ error: 'ИНН должен содержать 12 цифр' });
