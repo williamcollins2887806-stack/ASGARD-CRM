@@ -663,6 +663,33 @@ try {
   fastify.log.warn('[AchievementsCron] Init skipped: ' + cronErr.message);
 }
 
+// ── Birthday Push Cron: daily 09:00 MSK — поздравляем именинников и всю команду ──
+try {
+  const birthdayCron = require('./services/birthday-push-cron');
+  fastify.addHook('onReady', async () => { birthdayCron.start(fastify.db, fastify.log); });
+  fastify.addHook('onClose', async () => { birthdayCron.stop(); });
+} catch (cronErr) {
+  fastify.log.warn('[BirthdayCron] Init skipped: ' + cronErr.message);
+}
+
+// ── Cash Limit Cron: daily 10:00 MSK — алерт BUH/DIR если остаток PM > лимита ──
+try {
+  const cashLimitCron = require('./services/cash-limit-cron');
+  fastify.addHook('onReady', async () => { cashLimitCron.start(fastify.db, fastify.log); });
+  fastify.addHook('onClose', async () => { cashLimitCron.stop(); });
+} catch (cronErr) {
+  fastify.log.warn('[CashLimitCron] Init skipped: ' + cronErr.message);
+}
+
+// ── KPI Snapshot Cron: 00:30 MSK — суточный срез метрик для трендов Big Screen ──
+try {
+  const kpiSnapshotCron = require('./services/kpi-snapshot-cron');
+  fastify.addHook('onReady', async () => { kpiSnapshotCron.start(fastify.db, fastify.log); });
+  fastify.addHook('onClose', async () => { kpiSnapshotCron.stop(); });
+} catch (cronErr) {
+  fastify.log.warn('[KpiSnapshotCron] Init skipped: ' + cronErr.message);
+}
+
 // ── Mimir Letter Reminders Cron: напоминания по письмам заказчику (Сессия 5) ──
 try {
   const mimirLetterReminders = require('./services/mimir-letter-reminders-cron');
@@ -1425,6 +1452,9 @@ const shutdown = async () => {
     process.exit(1);
   }, 8000);
   forceExit.unref();
+  // Останавливаем внешних потребителей ДО fastify.close() — иначе polling/cron
+  // успевают сделать запросы в закрытый пул.
+  try { const tg = require('./services/telegram'); if (tg.shutdown) await tg.shutdown(); } catch (_) {}
   try { const imap = require('./services/imap'); await imap.shutdown(); } catch (_) {}
   try { await fastify.close(); } catch (_) {}
   try { await db.end(); } catch (_) {}
