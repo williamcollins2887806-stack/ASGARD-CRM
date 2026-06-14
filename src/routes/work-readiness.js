@@ -275,12 +275,13 @@ async function routes(fastify, options) {
       }
 
       const { rows: works } = await fastify.db.query(
-        `SELECT w.id, w.work_title, w.customer_name, w.work_status, w.work_start_date,
-                w.pm_id, u.full_name AS pm_name
+        `SELECT w.id, w.work_title, w.customer_name, w.work_status,
+                w.start_plan, w.start_in_work_date,
+                w.pm_id, COALESCE(NULLIF(u.name, ''), u.login) AS pm_name
          FROM works w
          LEFT JOIN users u ON u.id = w.pm_id
          WHERE ${where}
-         ORDER BY w.work_start_date ASC NULLS LAST, w.id DESC
+         ORDER BY w.start_plan ASC NULLS LAST, w.id DESC
          LIMIT 50`, params);
 
       const items = [];
