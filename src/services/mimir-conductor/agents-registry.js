@@ -234,10 +234,10 @@ const REGISTRY = {
   // ─── 13. Расчёт труда (без LLM) ────────────────────────────────────────
   labor_calculator: agent('labor_calculator', {
     name: 'Расчёт труда',
-    description: 'Считает трудозатраты и ФОТ по бригаде и срокам. Ставки из employees_summary.by_qualification.avg_day_rate_rub (реальные из БД), коэф. из analogs.applicable_norms.',
+    description: 'Считает трудозатраты и ФОТ по бригаде и срокам. Ставки: rates_research → field_tariff_grid → applicable_norms эталона → employees_summary.',
     model_default: 'haiku-4-5',
     output_artifact_type: 'labor_cost',
-    requires_artifacts: ['crew_plan', 'work_scope_research', 'analogs_comparison'],
+    requires_artifacts: ['crew_plan', 'work_scope_research', 'analogs_comparison', 'rates_research'],
     estimated_cost_rub: 0,
     triggers: [{ type: 'always' }]
   }),
@@ -380,10 +380,10 @@ const REGISTRY = {
   // ─── 27. Расходники по объёму (без LLM) ────────────────────────────────
   consumables_calculator: agent('consumables_calculator', {
     name: 'Расходники по объёму',
-    description: 'Считает расходные материалы пропорционально объёмам работ.',
-    model_default: 'haiku-4-5', // Python; TODO
+    description: 'Считает расходные материалы пропорционально объёмам работ. Цены: rates_research → applicable_norms эталона → products каталог → веб-поиск.',
+    model_default: 'haiku-4-5',
     output_artifact_type: 'consumables',
-    requires_artifacts: ['resources'],
+    requires_artifacts: ['resources', 'labor_cost', 'analogs_comparison', 'rates_research'],
     estimated_cost_rub: 0,
     triggers: [{ type: 'flag', flag: 'has_volumes' }]
   }),

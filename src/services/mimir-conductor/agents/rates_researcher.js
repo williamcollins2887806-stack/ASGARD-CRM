@@ -53,14 +53,14 @@ async function findLaborRateInCrm(position) {
         LIMIT 5`,
       [position]
     );
-    // Берём наилучшее совпадение с similarity >= 0.3 (трешхолд)
-    const best = r.rows.find((x) => Number(x.sim) >= 0.3) || r.rows[0];
+    // Берём наилучшее совпадение с similarity >= 0.3 (иначе матч нерелевантный, лучше null → дальше web)
+    const best = r.rows.find((x) => Number(x.sim) >= 0.3);
     if (best && Number(best.rate_per_shift) > 0) {
       return {
         value: Number(best.rate_per_shift),
         unit: '₽/смену',
         source: 'crm.field_tariff_grid',
-        confidence_pct: best.sim >= 0.5 ? 95 : (best.sim >= 0.3 ? 85 : 70),
+        confidence_pct: best.sim >= 0.5 ? 95 : 85,
         matched_key: best.position_name,
         similarity: Number(best.sim || 0).toFixed(2)
       };
@@ -100,13 +100,13 @@ async function findConsumablePriceInCrm(name) {
         LIMIT 5`,
       [name]
     );
-    const best = r.rows.find((x) => Number(x.sim) >= 0.3) || r.rows[0];
+    const best = r.rows.find((x) => Number(x.sim) >= 0.3);
     if (best && Number(best.last_price) > 0) {
       return {
         value: Number(best.last_price),
         unit: best.unit || '₽/шт',
         source: 'crm.products',
-        confidence_pct: best.sim >= 0.5 ? 95 : (best.sim >= 0.3 ? 80 : 65),
+        confidence_pct: best.sim >= 0.5 ? 95 : 80,
         matched_key: best.name,
         similarity: Number(best.sim || 0).toFixed(2)
       };
