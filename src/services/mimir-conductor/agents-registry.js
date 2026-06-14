@@ -218,6 +218,19 @@ const REGISTRY = {
     triggers: [{ type: 'always' }]
   }),
 
+  // ─── 12b. Резолв ставок (rates_researcher) — каталог/эталоны/RAG/web ───
+  // Закрывает дыру: labor/consumables раньше упирались в отсутствие ставок и
+  // выдавали BLOCKING. Этот агент сам ищет в 4 источниках с указанием уверенности.
+  rates_researcher: agent('rates_researcher', {
+    name: 'Резолв ставок и норм',
+    description: 'Ищет ставки бригады, нормы сроков и цены расходников в 4 источниках: products+тарифная сетка, эталоны, ГЭСН/ФЕР (RAG), веб-поиск.',
+    model_default: 'web-search-fast',
+    output_artifact_type: 'rates_research',
+    requires_artifacts: ['tz_summary', 'analogs_comparison'],
+    estimated_cost_rub: 0,
+    triggers: [{ type: 'always' }]
+  }),
+
   // ─── 13. Расчёт труда (без LLM) ────────────────────────────────────────
   labor_calculator: agent('labor_calculator', {
     name: 'Расчёт труда',

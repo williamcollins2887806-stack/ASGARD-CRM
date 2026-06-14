@@ -51,6 +51,10 @@ const PIPELINE = [
   { stage: 5, step: 15, agent: 'site_conditions', required: true },
   { stage: 5, step: 16, agent: 'norms_compliance', required: false },
 
+  // ЭТАП 5b: РЕЗОЛВ СТАВОК (rates_researcher — 4 источника: каталог/эталоны/RAG/web)
+  // Закрывает дыру, из-за которой labor/consumables упирались в BLOCKING
+  { stage: 5, step: 16, agent: 'rates_researcher', required: false },
+
   // ЭТАП 6: РАСЧЁТ ССР
   { stage: 6, step: 17, agent: 'labor_calculator', required: true },
   { stage: 6, step: 18, agent: 'consumables_calculator', required: false },

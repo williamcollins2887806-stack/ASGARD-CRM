@@ -77,14 +77,36 @@ function totalVolume(resources) {
 }
 
 /** Резолвер нормы расхода: только applicable_norms (эталоны) → null (blocking). */
+/** Найти ключ в rates_research.consumables по имени. */
+function fromRatesResearch(requiredArtifacts, alias) {
+  const rr = requiredArtifacts && requiredArtifacts.rates_research && requiredArtifacts.rates_research.consumables;
+  if (!rr) return null;
+  const aliasLow = String(alias).toLowerCase();
+  for (const k of Object.keys(rr)) {
+    const kLow = k.toLowerCase();
+    if (kLow.includes(aliasLow) || aliasLow.includes(kLow.split(/[\s(\-]+/)[0])) {
+      if (rr[k].value != null && Number(rr[k].value) > 0) {
+        return { value: Number(rr[k].value), source: rr[k].source || 'rates_research', matched_key: k, confidence_pct: rr[k].confidence_pct };
+      }
+    }
+  }
+  return null;
+}
+
 function resolveConsumptionRate(requiredArtifacts, key) {
+  // 0. rates_research (новый агент) — пока он отдаёт только цены, не нормы расхода — пропускаем
   const r = resolveNorm(requiredArtifacts, `consumables_consumption_rules.${key}`, null);
   if (r.value != null) return { value: r.value, source: r.tier };
   return { value: null, source: 'missing' };
 }
 
-/** Резолвер цены: applicable_norms → products каталог → AI web search → null (blocking). */
+/** Резолвер цены: rates_research → applicable_norms → products каталог → AI web search → null. */
 async function resolvePrice(requiredArtifacts, key, catalogQuery, webQuery) {
+  // 0. Сначала rates_research (агрегирует все 4 источника + указывает confidence_pct)
+  const alias = catalogQuery && catalogQuery.name ? catalogQuery.name : (webQuery || key);
+  const fromRR = fromRatesResearch(requiredArtifacts, alias);
+  if (fromRR) return fromRR;
+
   const r = resolveNorm(requiredArtifacts, `consumables_consumption_rules.${key}`, null);
   if (r.value != null) return { value: r.value, source: r.tier };
   if (catalogQuery) {

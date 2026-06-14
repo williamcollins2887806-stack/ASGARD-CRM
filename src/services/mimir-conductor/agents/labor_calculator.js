@@ -80,12 +80,37 @@ async function loadTariffs() {
 }
 
 
+/** Найти ставку в rates_research артефакте (от rates_researcher) — приоритет №0. */
+function rateFromRatesResearch(ratesResearch, position) {
+  if (!ratesResearch || !ratesResearch.labor_rates) return null;
+  const lr = ratesResearch.labor_rates;
+  const posLow = String(position || '').toLowerCase();
+  // Прямой ключ
+  if (lr[position] && lr[position].value > 0) {
+    return { rate: Number(lr[position].value), source: lr[position].source || 'rates_research', assumed: false, confidence_pct: lr[position].confidence_pct };
+  }
+  // Двусторонний матчинг
+  for (const k of Object.keys(lr)) {
+    const kLow = k.toLowerCase();
+    if (lr[k].value > 0 && (posLow.includes(kLow) || kLow.includes(posLow.split(/[\s(\-]+/)[0]))) {
+      return { rate: Number(lr[k].value), source: lr[k].source || 'rates_research', assumed: false, matched_key: k, confidence_pct: lr[k].confidence_pct };
+    }
+  }
+  return null;
+}
+
 function rateFor(tariffMap, position, requiredArtifacts) {
-  // Приоритет источников (БЕЗ ХАРДКОДА): тарифная сетка → эталоны → реальные employees
-  // Если ни в одном — возвращаем null, агент поднимет blocking-уточнение.
+  // Приоритет источников (БЕЗ ХАРДКОДА):
+  //   0. rates_research (новый агент, объединяет все 4 источника)
+  //   1. тарифная сетка (field_tariff_grid)
+  //   2. эталоны (applicable_norms.labor_rates_rub_per_shift)
+  //   3. employees_summary.by_qualification
+  // Если ни в одном — null, caller поднимет blocking.
+  const fromResearch = rateFromRatesResearch(requiredArtifacts && requiredArtifacts.rates_research, position);
+  if (fromResearch) return fromResearch;
+
   const fromGrid = tariffMap.get(position);
   if (fromGrid && fromGrid > 0) return { rate: fromGrid, source: 'tariff_grid', assumed: false };
-  // Двусторонний матчинг по позициям в тарифной сетке (например 'Слесарь-универсал' ↔ 'слесарь')
   for (const [key, value] of tariffMap.entries()) {
     const kLow = String(key).toLowerCase();
     const pLow = String(position).toLowerCase();
@@ -97,7 +122,7 @@ function rateFor(tariffMap, position, requiredArtifacts) {
   if (fromAnalogs) return fromAnalogs;
   const fromEmp = rateFromEmployees(requiredArtifacts && requiredArtifacts.work_scope_research, position);
   if (fromEmp) return fromEmp;
-  return null; // нет ставки — caller поднимет blocking
+  return null;
 }
 
 async function run({ requiredArtifacts, onThought }) {
@@ -116,14 +141,21 @@ async function run({ requiredArtifacts, onThought }) {
   const roadRateRow = tariffMap.get('Дни дороги') || tariffMap.get('Дорога') ||
                        tariffMap.get('Выходной в командировке (карантин, дорога, нерабочий день)') || 0;
 
-  // Источники для prep/mob: ТЗ timing → applicable_norms (эталон) → BLOCKING
+  // Источники для prep/mob:
+  //   0. rates_research.timing_norms (новый агент)
+  //   1. ТЗ timing
+  //   2. applicable_norms эталона
+  //   3. BLOCKING
+  const ratesResearchTiming = (requiredArtifacts.rates_research && requiredArtifacts.rates_research.timing_norms) || {};
   const analogsTimingNorms = (requiredArtifacts.analogs_comparison &&
     requiredArtifacts.analogs_comparison.analysis &&
     requiredArtifacts.analogs_comparison.analysis.applicable_norms &&
     requiredArtifacts.analogs_comparison.analysis.applicable_norms.timing_norms) || {};
-  const prepDays = (tz.timing && Number(tz.timing.prep_days)) ||
+  const prepDays = (ratesResearchTiming.prep_days && ratesResearchTiming.prep_days.value) ||
+                   (tz.timing && Number(tz.timing.prep_days)) ||
                    (analogsTimingNorms.prep_days != null ? Number(analogsTimingNorms.prep_days) : null);
-  const mobDemobDays = (tz.timing && Number(tz.timing.mob_demob_days)) ||
+  const mobDemobDays = (ratesResearchTiming.mob_demob_days && ratesResearchTiming.mob_demob_days.value) ||
+                       (tz.timing && Number(tz.timing.mob_demob_days)) ||
                        (analogsTimingNorms.mob_demob_days != null ? Number(analogsTimingNorms.mob_demob_days) : null);
 
   if (prepDays == null) {
