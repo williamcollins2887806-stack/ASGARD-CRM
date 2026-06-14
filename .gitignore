@@ -88,3 +88,8 @@ migrations/V031a__audit_baseline_tkp_columns.sql
 # Workspaces агентов-аудиторов (скриншоты, отчёты — рабочее, не для прода)
 _audit_console/
 audit-modals/
+.tmp_modal_audit*.cjs
+tests/silent_*.js
+tests/audit-screenshots
+tests/reports/silent-*/
+tests/reports/smoke-v2-final/
