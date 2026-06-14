@@ -18,21 +18,19 @@ const TKP_QUICK_SYSTEM = `Ты Мимир — ведущий инженер-см
 Твоя задача: составить КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ (ТКП) клиенту на основе его технического задания.
 
 ═══ ПРАВИЛА ЦЕНООБРАЗОВАНИЯ ═══
-- Маржа НЕ МЕНЕЕ 100% от себестоимости (итоговая цена клиенту = себестоимость × 2 и более).
-- Непредвиденные расходы: минимум 12% (буфер безопасности, не снижать).
-- СИЗ + спецодежда на каждого рабочего: минимум 25 000 ₽/чел.
-- ИТР (РП) — 10 000 ₽/день (фиксировано). ВСЕГДА 1 человек ИТР.
-- Дни дороги: 3 000 ₽/чел/день (6 баллов × 500 ₽).
-- НДС — из настроек системы (обычно 20%).
-- Лучше завысить цену на 10-15%, чем занизить. Заказчик всегда торгуется вниз.
+- ВСЕГДА используй наши реальные ставки и цены из блока «РЕАЛЬНЫЕ ДАННЫЕ КОМПАНИИ» ниже. Это live-выгрузка из БД.
+- Если позиции нет в наших данных — ищи в эталонах (похожие проекты с фактическими ценами).
+- Если и в эталонах нет — используй веб-поиск с пометкой «оценка по рынку».
+- Маржа берётся из company_profile.financial_policy.min_margin_target_pct (значение в блоке настроек).
+- Непредвиденные, накладные, ФОТ-налог, НДС — ТОЛЬКО из company_profile / settings, НЕ выдумывай.
+- НЕ ЗАВЫШАЙ И НЕ ЗАНИЖАЙ — стремись к точной цене на основе наших данных. Заказчик уважает обоснованные цифры.
 
-═══ ВЕБ-ПОИСК ═══
-Используй обязательно для:
-- Актуальных цен материалов/оборудования 2026 (запрашивай с уточнением «цена 2026 Россия»)
-- Цен билетов РЖД/авиа на конкретные направления
-- Тарифов доставки и аренды спецтехники
-- Цен СИЗ и расходных материалов
-НЕ выдумывай цены из памяти — твои веса от начала 2025, сейчас 2026.
+═══ ВЕБ-ПОИСК (только если не нашлось в БД) ═══
+Для нестандартных позиций которых нет в нашей тарифной сетке/каталоге:
+- Актуальные цены 2026 Россия (b2b-center.ru, pulscen.ru, tiu.ru)
+- Билеты РЖД/авиа на конкретные направления
+- Аренда спецтехники в регионе объекта
+Помечай такие позиции примечанием «web search».
 
 ═══ ФОРМАТ ОТВЕТА ═══
 Сначала — краткий анализ задания и обоснование подхода (3-7 предложений, markdown).
@@ -85,6 +83,87 @@ function _formatCustomerHistory(data) {
 function _formatSettings(settings) {
   if (!settings) return '';
   return `\n═══ НАСТРОЙКИ НДС ═══\nНДС: ${settings.vat_pct || 20}%\n`;
+}
+
+/**
+ * Загружает live-данные из БД и форматирует для промпта.
+ * Цель: дать модели РЕАЛЬНЫЕ ставки/цены/эталоны вместо угадывания.
+ * Состав:
+ *   1) field_tariff_grid (тарифная сетка позиций)
+ *   2) products (топ-50 расходников с last_price)
+ *   3) mimir_reference_projects (топ-5 эталонов по похожести work_type)
+ *   4) settings.company_profile (финансовая политика: маржа, накладные, ФОТ-налог, НДС)
+ * Все цифры — реальные. Без хардкода.
+ */
+async function _loadCrmContext(tz_text) {
+  const parts = [];
+  // 1) Тарифная сетка
+  try {
+    const r = await db.query(
+      "SELECT position_name, rate_per_shift FROM field_tariff_grid WHERE is_active = true AND rate_per_shift > 0 ORDER BY rate_per_shift DESC LIMIT 40"
+    );
+    if (r.rows.length) {
+      parts.push('═══ ТАРИФНАЯ СЕТКА (наши реальные ставки за смену из field_tariff_grid) ═══');
+      parts.push(r.rows.map(x => `  • ${x.position_name}: ${Number(x.rate_per_shift).toLocaleString('ru-RU')} ₽/смену`).join('\n'));
+    }
+  } catch (_) {}
+  // 2) Каталог расходников
+  try {
+    const r = await db.query(
+      "SELECT name, last_price, unit FROM products WHERE last_price > 0 AND deleted_at IS NULL ORDER BY last_price DESC LIMIT 50"
+    );
+    if (r.rows.length) {
+      parts.push('\n═══ КАТАЛОГ РАСХОДНИКОВ (фактическая цена закупки products.last_price) ═══');
+      parts.push(r.rows.map(x => `  • ${x.name}: ${Number(x.last_price).toLocaleString('ru-RU')} ₽/${x.unit || 'шт'}`).join('\n'));
+    }
+  } catch (_) {}
+  // 3) Эталоны — топ-5 по similarity к ТЗ
+  try {
+    const r = await db.query(
+      `SELECT customer_name, object_name, work_type, contract_value_actual, contract_value_actual_no_vat,
+              cost_actual, duration_actual_calendar_days, crew_size_actual,
+              GREATEST(
+                similarity(lower(coalesce(object_name,'')), lower($1)),
+                similarity(lower(coalesce(work_type,'')), lower($1)),
+                similarity(lower(coalesce(customer_name,'')), lower($1))
+              ) AS sim
+         FROM mimir_reference_projects
+        WHERE is_active = true
+        ORDER BY sim DESC NULLS LAST
+        LIMIT 5`,
+      [String(tz_text || '').slice(0, 500)]
+    );
+    if (r.rows.length) {
+      parts.push('\n═══ ЭТАЛОНЫ (5 самых похожих проектов с фактическими ценами) ═══');
+      parts.push(r.rows.map((x, i) => {
+        const sum = x.contract_value_actual_no_vat || x.contract_value_actual;
+        const cost = x.cost_actual;
+        return `  ${i+1}. ${x.customer_name || '?'} | ${(x.object_name || '').slice(0, 80)}\n` +
+               `     work_type: ${x.work_type || '?'}, контракт: ${sum ? Number(sum).toLocaleString('ru-RU') + ' ₽' : '?'}, ` +
+               `себестоимость: ${cost ? Number(cost).toLocaleString('ru-RU') + ' ₽' : '?'}, ` +
+               `длительность: ${x.duration_actual_calendar_days || '?'} дн, бригада: ${x.crew_size_actual || '?'} чел`;
+      }).join('\n'));
+    }
+  } catch (_) {}
+  // 4) Финансовая политика компании
+  try {
+    const r = await db.query("SELECT value_json FROM settings WHERE key = 'company_profile'");
+    if (r.rows[0] && r.rows[0].value_json) {
+      let cp = r.rows[0].value_json;
+      if (typeof cp === 'string') { try { cp = JSON.parse(cp); } catch(_){} }
+      const fp = cp && cp.financial_policy || {};
+      if (Object.keys(fp).length) {
+        parts.push('\n═══ ФИНАНСОВАЯ ПОЛИТИКА КОМПАНИИ (settings.company_profile.financial_policy) ═══');
+        const labels = {
+          vat_pct: 'НДС (%)', fot_tax_pct: 'ФОТ-налог (%)',
+          overheads_pct: 'Накладные (%)', contingency_pct: 'Непредвиденные (%)',
+          min_margin_target_pct: 'Минимальная маржа (%)', consumables_pct_of_personnel: 'Расходники от ФОТ (%)'
+        };
+        parts.push(Object.entries(fp).map(([k, v]) => `  • ${labels[k] || k}: ${v}`).join('\n'));
+      }
+    }
+  } catch (_) {}
+  return parts.length ? '\n\n═══ РЕАЛЬНЫЕ ДАННЫЕ КОМПАНИИ (из БД, использовать как источник истины) ═══\n' + parts.join('\n') : '';
 }
 
 /**
@@ -165,12 +244,15 @@ async function generateEstimate(opts) {
   }
   userContent += '═══ ТЕХНИЧЕСКОЕ ЗАДАНИЕ ═══\n' + (tz_text || '');
 
+  // Подгружаем live-данные компании (тарифная сетка, каталог, эталоны, профиль)
+  const crmCtx = await _loadCrmContext(tz_text).catch(() => '');
+
   const messages = [
     ...history,
     { role: 'user', content: userContent.trim() }
   ];
 
-  const systemPrompt = TKP_QUICK_SYSTEM + _formatSettings(settings);
+  const systemPrompt = TKP_QUICK_SYSTEM + _formatSettings(settings) + crmCtx;
 
   onProgress({ type: 'status', message: '🧠 Мимир анализирует задание и ищет цены...' });
 
