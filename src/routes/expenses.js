@@ -15,7 +15,13 @@ const WORK_EXP_COLS = new Set([
 ]);
 const OFFICE_EXP_COLS = new Set([
   'category', 'description', 'amount', 'date', 'receipt_url',
-  'supplier', 'notes', 'status', 'created_by', 'created_at', 'updated_at'
+  'supplier', 'notes', 'status', 'created_by', 'created_at', 'updated_at',
+  // СчётФактура: эти колонки давно есть в БД (см. SELECT information_schema), но
+  // allowlist их не пропускал — чекбоксы СФ-нужен/СФ-получен молча дропались.
+  'doc_number', 'invoice_needed', 'invoice_received',
+  // Финансовые детали: НДС/итого/оплата — тоже есть в БД, но без allowlist не писались.
+  'vat_pct', 'vat_amount', 'total_amount', 'payment_date', 'payment_method',
+  'contract_id', 'work_id', 'comment'
 ]);
 
 function filterData(data, allowedSet) {
@@ -30,7 +36,11 @@ async function routes(fastify, options) {
   const db = fastify.db;
 
   // Work expenses
-  fastify.get('/work', { preHandler: [fastify.authenticate] }, async (request) => {
+  fastify.get('/work', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    // RBAC: финансовые операции по работам доступны только участникам цикла —
+    // PM/HEAD_PM/BUH/директора/ADMIN/OFFICE_MANAGER (вспомогательная для контроля).
+    const EXP_READ_ROLES = new Set(['ADMIN', 'PM', 'HEAD_PM', 'BUH', 'OFFICE_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV']);
+    if (!EXP_READ_ROLES.has(request.user.role)) return reply.code(403).send({ error: 'Нет доступа к расходам по работам' });
     const { work_id, category, date_from, date_to, limit = 100, offset = 0 } = request.query;
     let sql = 'SELECT e.*, w.work_number FROM work_expenses e LEFT JOIN works w ON e.work_id = w.id WHERE 1=1';
     const params = [];
@@ -64,7 +74,10 @@ async function routes(fastify, options) {
   });
 
   // Office expenses
-  fastify.get('/office', { preHandler: [fastify.authenticate] }, async (request) => {
+  fastify.get('/office', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    // RBAC: офисные расходы видят только финансовые роли.
+    const OFFICE_READ_ROLES = new Set(['ADMIN', 'BUH', 'OFFICE_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV']);
+    if (!OFFICE_READ_ROLES.has(request.user.role)) return reply.code(403).send({ error: 'Нет доступа к офисным расходам' });
     const { category, status, date_from, date_to, limit = 100, offset = 0 } = request.query;
     let sql = 'SELECT * FROM office_expenses WHERE 1=1';
     const params = [];
