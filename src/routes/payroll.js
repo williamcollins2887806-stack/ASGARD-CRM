@@ -411,8 +411,15 @@ async function routes(fastify, options) {
   });
 
   // POST /items — добавить строку
+  // RBAC: запись в зарплатную ведомость могут только участники payroll-цикла
+  // (ADMIN/PM/HEAD_PM/BUH/директора). Без этой защиты любой авторизованный
+  // (WAREHOUSE/PROC/HR/OFFICE_MANAGER/CHIEF_ENGINEER) мог писать строки, зная sheet_id.
   fastify.post('/items', { preHandler: [fastify.authenticate] }, async (req, reply) => {
     const user = req.user;
+    const PAYROLL_WRITE_ROLES = new Set(['ADMIN', 'PM', 'HEAD_PM', 'BUH', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV']);
+    if (!PAYROLL_WRITE_ROLES.has(user.role)) {
+      return reply.code(403).send({ error: 'Нет доступа к записи в зарплатную ведомость' });
+    }
     const b = req.body;
     if (!b.sheet_id || !b.employee_id) return reply.code(400).send({ error: 'sheet_id и employee_id обязательны' });
 

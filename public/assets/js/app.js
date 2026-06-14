@@ -706,6 +706,7 @@ try{
           </div>
           <div class="badges">${[
   ...(user ? [
+    `<a class="v2-switch v2-switch--to-new" href="/v2/" title="Открыть новый интерфейс CRM 2.0"><span class="v2-switch-rune">ᛞ</span><span class="v2-switch-label">CRM 2.0</span><span class="v2-switch-arrow">→</span></a>`,
     `<button class="themebtn" id="btnTheme" type="button" title="Переключить тему" aria-label="Переключить тему"><svg id="themeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg></button>`,
     `<button class="topbar-search" id="btnTopSearch" type="button" title="Поиск (Ctrl+K)"><span class="ts-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span><span class="ts-label">Поиск</span><kbd class="ts-kbd">⌘K</kbd></button>`,
     `<button class="bellbtn" id="btnBell" type="button" aria-label="Уведомления">

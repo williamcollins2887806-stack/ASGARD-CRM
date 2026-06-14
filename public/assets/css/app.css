@@ -10976,3 +10976,26 @@ html[data-theme="light"] .chat-header {
   transform: rotate(45deg);
   background: var(--bg3);
 }
+
+/* ─── v2 переключатель (vanilla → React 2.0) ─── */
+.v2-switch {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; height: 32px;
+  background: linear-gradient(135deg, var(--accent, #c9a96e) 0%, var(--accent-2, #a98b54) 100%);
+  color: #1a1410;
+  border: 1px solid var(--accent-3, #8b7142);
+  border-radius: 6px;
+  text-decoration: none;
+  font-size: 12px; font-weight: 600;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.18);
+}
+.v2-switch:hover { transform: translateY(-1px); filter: brightness(1.08); box-shadow: 0 3px 8px rgba(201, 169, 110, 0.35); }
+.v2-switch:active { transform: translateY(0); }
+.v2-switch-rune { font-size: 14px; line-height: 1; font-family: 'Cinzel', 'Georgia', serif; }
+.v2-switch-label { line-height: 1; }
+.v2-switch-arrow { font-size: 13px; line-height: 1; opacity: 0.85; }
+html[data-theme="light"] .v2-switch { color: #1a1410; }
+@media (max-width: 720px) { .v2-switch-label { display: none; } .v2-switch { padding: 6px 8px; } }

@@ -12,18 +12,28 @@ async function routes(fastify, options) {
   // ─────────────────────────────────────────────────────────────────────────────
   // GET /api/users - List all users
   // ─────────────────────────────────────────────────────────────────────────────
+  // RBAC: только ADMIN/DIRECTOR_*/HR_*/HEAD_PM получают полный набор полей (PII).
+  // Остальные роли (PM/PROC/WAREHOUSE/OFFICE_MANAGER/CHIEF_ENGINEER/BUH) получают
+  // минимум, достаточный для @mention, dropdown «Ответственный», отображения имени —
+  // без email/phone/telegram_chat_id/birth_date/is_blocked/must_change_password.
+  const FULL_USER_ROLES = new Set(['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HR', 'HR_MANAGER', 'HEAD_PM']);
   fastify.get('/', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const { role, is_active, search, limit = 100, offset = 0 } = request.query;
+    const fullAccess = FULL_USER_ROLES.has(request.user.role);
 
-    let sql = `
+    let sql = fullAccess ? `
       SELECT u.id, u.login, u.name, u.email, u.role, u.is_active, u.created_at, u.last_login_at,
         u.birth_date, u.employment_date, u.phone, u.telegram_chat_id, u.is_blocked, u.block_reason, u.must_change_password,
         ea.id as email_account_id, ea.email_address as mail_address, ea.is_active as mail_active,
         ea.last_sync_at as mail_last_sync, ea.last_sync_error as mail_sync_error
       FROM users u
       LEFT JOIN user_email_accounts ea ON ea.user_id = u.id
+      WHERE 1=1
+    ` : `
+      SELECT u.id, u.login, u.name, u.role, u.is_active
+      FROM users u
       WHERE 1=1
     `;
     const params = [];
@@ -77,6 +87,8 @@ async function routes(fastify, options) {
   // ─────────────────────────────────────────────────────────────────────────────
   // GET /api/users/:id - Get single user
   // ─────────────────────────────────────────────────────────────────────────────
+  // RBAC: PII (email/phone/telegram/birth_date/блокировки) выдаём только полным ролям
+  // ИЛИ если пользователь запрашивает собственный профиль.
   fastify.get('/:id', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
@@ -85,9 +97,13 @@ async function routes(fastify, options) {
     if (isNaN(numericId)) {
       return reply.code(400).send({ error: 'Invalid user id' });
     }
+    const fullAccess = FULL_USER_ROLES.has(request.user.role) || request.user.id === numericId;
+    const cols = fullAccess
+      ? 'id, login, name, patronymic, email, role, is_active, created_at, last_login_at, birth_date, employment_date, phone, telegram_chat_id, is_blocked, block_reason, must_change_password'
+      : 'id, login, name, role, is_active';
 
     const result = await db.query(
-      'SELECT id, login, name, patronymic, email, role, is_active, created_at, last_login_at, birth_date, employment_date, phone, telegram_chat_id, is_blocked, block_reason, must_change_password FROM users WHERE id = $1',
+      `SELECT ${cols} FROM users WHERE id = $1`,
       [numericId]
     );
 
