@@ -1117,6 +1117,358 @@ module.exports = async function(fastify) {
     return { success: true };
   });
 
+  // ─── TEMPLATES ─ (moved BEFORE GET /:id to avoid id-shadowing) ───
+  fastify.get('/help/templates', {
+    preHandler: [fastify.requirePermission('tasks', 'read')]
+  }, async (request) => {
+    const uid = request.user.id;
+    const { rows } = await db.query(`
+      SELECT t.*, u.name AS default_assignee_name
+      FROM help_templates t
+      LEFT JOIN users u ON u.id = t.default_assignee_id
+      WHERE t.owner_id = $1 OR t.is_global = true
+      ORDER BY t.use_count DESC, t.created_at DESC
+      LIMIT 100
+    `, [uid]);
+    return { templates: rows };
+  });
+
+  fastify.post('/help/templates', {
+    preHandler: [fastify.requirePermission('tasks', 'write')]
+  }, async (request, reply) => {
+    const u = request.user;
+    const b = request.body || {};
+    if (!b.name || !b.name.trim()) return reply.code(400).send({ error: 'Укажите название шаблона' });
+    if (b.is_global && !DIRECTOR_ROLES.includes(u.role)) {
+      return reply.code(403).send({ error: 'Делать шаблоны общими могут только директора/ADMIN' });
+    }
+    const dh = b.deadline_hours ? parseInt(b.deadline_hours) : null;
+    if (dh !== null && (isNaN(dh) || dh < 0 || dh > 720)) {
+      return reply.code(400).send({ error: 'deadline_hours: 0..720' });
+    }
+    const { rows: [t] } = await db.query(`
+      INSERT INTO help_templates (owner_id, is_global, name, emoji, default_assignee_role, default_assignee_id, title_pattern, description, priority, deadline_hours, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW()) RETURNING *
+    `, [
+      u.id, !!b.is_global, b.name.trim().slice(0, 120),
+      (b.emoji || '🤝').slice(0, 8),
+      b.default_assignee_role || null,
+      b.default_assignee_id ? parseInt(b.default_assignee_id) : null,
+      b.title_pattern?.trim() || null,
+      b.description?.trim() || null,
+      b.priority || 'normal',
+      dh
+    ]);
+    return { template: t };
+  });
+
+  fastify.put('/help/templates/:id', {
+    preHandler: [fastify.requirePermission('tasks', 'write')]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    const u = request.user;
+    const { rows: [t] } = await db.query('SELECT * FROM help_templates WHERE id=$1', [id]);
+    if (!t) return reply.code(404).send({ error: 'Шаблон не найден' });
+    if (t.owner_id !== u.id && u.role !== 'ADMIN') {
+      return reply.code(403).send({ error: 'Редактировать может только владелец или ADMIN' });
+    }
+    const b = request.body || {};
+    if (b.is_global !== undefined && !DIRECTOR_ROLES.includes(u.role)) {
+      return reply.code(403).send({ error: 'Менять флаг "общий" могут только директора/ADMIN' });
+    }
+    const fields = ['name','emoji','default_assignee_role','default_assignee_id','title_pattern','description','priority','deadline_hours','is_global'];
+    const updates = []; const vals = []; let idx = 1;
+    for (const f of fields) {
+      if (b[f] !== undefined) {
+        updates.push(`${f} = $${idx}`);
+        vals.push(f === 'is_global' ? !!b[f]
+                : ['default_assignee_id','deadline_hours'].includes(f) ? (b[f] ? parseInt(b[f]) : null)
+                : (typeof b[f] === 'string' ? b[f].trim().slice(0, 600) : b[f]));
+        idx++;
+      }
+    }
+    if (!updates.length) return reply.code(400).send({ error: 'Нет данных для обновления' });
+    updates.push('updated_at = NOW()');
+    vals.push(id);
+    await db.query(`UPDATE help_templates SET ${updates.join(', ')} WHERE id = $${vals.length}`, vals);
+    return { success: true };
+  });
+
+  fastify.delete('/help/templates/:id', {
+    preHandler: [fastify.requirePermission('tasks', 'write')]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    const u = request.user;
+    const { rows: [t] } = await db.query('SELECT * FROM help_templates WHERE id=$1', [id]);
+    if (!t) return reply.code(404).send({ error: 'Шаблон не найден' });
+    if (t.owner_id !== u.id && u.role !== 'ADMIN') {
+      return reply.code(403).send({ error: 'Удалить может только владелец или ADMIN' });
+    }
+    await db.query('DELETE FROM help_templates WHERE id=$1', [id]);
+    return { success: true };
+  });
+
+  // POST /help/templates/:id/use — создать help-задачу из шаблона
+  // (доп. overrides: assignee_id, title, description, deadline)
+  fastify.post('/help/templates/:id/use', {
+    preHandler: [fastify.requirePermission('tasks', 'write')]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    const u = request.user;
+    const { rows: [t] } = await db.query(`
+      SELECT * FROM help_templates WHERE id=$1 AND (owner_id=$2 OR is_global=true)
+    `, [id, u.id]);
+    if (!t) return reply.code(404).send({ error: 'Шаблон не найден или нет доступа' });
+    const b = request.body || {};
+
+    const assigneeId = b.assignee_id ? parseInt(b.assignee_id) : t.default_assignee_id;
+    if (!assigneeId) return reply.code(400).send({ error: 'У шаблона не задан исполнитель, укажите assignee_id' });
+    if (assigneeId === u.id) return reply.code(400).send({ error: 'Нельзя просить помощи у самого себя' });
+
+    const { rows: [assignee] } = await db.query(
+      'SELECT id, name FROM users WHERE id=$1 AND is_active=true', [assigneeId]
+    );
+    if (!assignee) return reply.code(400).send({ error: 'Исполнитель не найден или не активен' });
+
+    // Применить title_pattern: {{work}} {{customer}} {{me}} {{date}}
+    const today = new Date().toLocaleDateString('ru-RU');
+    let title = b.title?.trim() || (t.title_pattern || t.name || 'Помощь')
+      .replace(/\{\{work\}\}/g, b.work_title || '')
+      .replace(/\{\{customer\}\}/g, b.customer || '')
+      .replace(/\{\{me\}\}/g, u.name || u.login || '')
+      .replace(/\{\{date\}\}/g, today)
+      .trim();
+    if (title.length > 255) title = title.slice(0, 255);
+    if (!title) title = t.name;
+
+    const description = b.description?.trim() || t.description || null;
+    const priority = b.priority || t.priority || 'normal';
+    const deadline = b.deadline
+      ? new Date(b.deadline).toISOString()
+      : (t.deadline_hours ? new Date(Date.now() + t.deadline_hours * 3600000).toISOString() : null);
+
+    const { rows: [task] } = await db.query(`
+      INSERT INTO tasks (creator_id, assignee_id, title, description, deadline, priority, status, task_kind, work_id, tender_id, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, 'new', 'help', $7, $8, NOW(), NOW()) RETURNING *
+    `, [u.id, assigneeId, title, description, deadline, priority, b.work_id || null, b.tender_id || null]);
+
+    // Чат
+    let chat = null;
+    try { const r = await taskChat.createTaskChat(db, task.id, u); chat = r.chat; }
+    catch (e) { fastify.log.error({ err: e }, 'taskChat from template'); }
+
+    // Использования
+    await db.query('UPDATE help_templates SET use_count = use_count + 1 WHERE id=$1', [id]);
+
+    // Уведомление
+    await notify(
+      assigneeId, '🤝 Просьба о помощи',
+      `${u.name || u.login} ${t.emoji || '🤝'} «${title}»`,
+      `#/help?id=${task.id}`
+    );
+
+    return { task: { ...task, chat_id: chat?.id || null }, template_used: t.id };
+  });
+
+  // ─── RATINGS ───────────────────────────────────────────────────
+  // Creator оценивает завершённую задачу 1-5 звёзд + «спасибо».
+  fastify.post('/:id/rate', {
+    preHandler: [fastify.requirePermission('tasks', 'write')]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    const { stars, thanks_text } = request.body || {};
+    const s = parseInt(stars);
+    if (!Number.isInteger(s) || s < 1 || s > 5) {
+      return reply.code(400).send({ error: 'stars: 1..5' });
+    }
+    const { rows: [task] } = await db.query('SELECT * FROM tasks WHERE id=$1', [id]);
+    if (!task) return reply.code(404).send({ error: 'Задача не найдена' });
+    if (task.creator_id !== request.user.id) {
+      return reply.code(403).send({ error: 'Оценивать может только создатель задачи' });
+    }
+    if (task.status !== 'done') {
+      return reply.code(400).send({ error: 'Оценка доступна только для завершённых задач' });
+    }
+    if (!task.assignee_id) return reply.code(400).send({ error: 'У задачи нет исполнителя' });
+
+    try {
+      await db.query(`
+        INSERT INTO help_ratings (task_id, rater_id, rated_id, stars, thanks_text, created_at)
+        VALUES ($1, $2, $3, $4, $5, NOW())
+        ON CONFLICT (task_id, rater_id) DO UPDATE
+          SET stars = EXCLUDED.stars, thanks_text = EXCLUDED.thanks_text, created_at = NOW()
+      `, [id, request.user.id, task.assignee_id, s, (thanks_text || '').slice(0, 500) || null]);
+    } catch (e) {
+      fastify.log.error({ err: e }, 'help rate');
+      return reply.code(500).send({ error: 'Не удалось сохранить оценку' });
+    }
+
+    // System msg в чат + notify
+    if (task.chat_id) {
+      const stars5 = '⭐'.repeat(s) + '☆'.repeat(5 - s);
+      try { await taskChat.postSystemMessage(db, id,
+        `${stars5} ${request.user.name || request.user.login} оценил помощь${thanks_text ? `:\n«${thanks_text}»` : ''}`,
+        { userId: request.user.id }); } catch (_) {}
+    }
+    await notify(
+      task.assignee_id, '⭐ Получена оценка',
+      `${request.user.name || request.user.login} оценил вашу помощь: ${s}/5${thanks_text ? `\n«${thanks_text}»` : ''}`,
+      task.task_kind === 'help' ? `#/help?id=${id}` : `#/tasks?id=${id}`
+    );
+
+    return { success: true };
+  });
+
+  // GET /:id/rating — получить оценку задачи (если есть)
+  fastify.get('/:id/rating', {
+    preHandler: [fastify.requirePermission('tasks', 'read')]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    const r = await db.query('SELECT * FROM help_ratings WHERE task_id=$1 LIMIT 1', [id]);
+    return { rating: r.rows[0] || null };
+  });
+
+  // ─── ANALYTICS ─────────────────────────────────────────────────
+  // GET /help/analytics?period=30d → агрегаты «кто кому больше помогал»
+  fastify.get('/help/analytics', {
+    preHandler: [fastify.requirePermission('tasks', 'read')]
+  }, async (request) => {
+    const period = (request.query.period || '30d');
+    const days = ({ '7d':7, '30d':30, '90d':90, 'all':3650 })[period] || 30;
+    const since = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
+
+    // Top помощников: сколько раз был исполнителем + средний рейтинг + кол-во звёзд
+    const topHelpers = await db.query(`
+      SELECT u.id, u.name, u.role,
+        COUNT(t.id) FILTER (WHERE t.status = 'done')     AS done_count,
+        COUNT(t.id) FILTER (WHERE t.status = 'declined') AS declined_count,
+        COUNT(t.id) AS total_assigned,
+        ROUND(AVG(r.stars)::numeric, 2) AS avg_rating,
+        COUNT(r.id) AS rated_count
+      FROM users u
+      LEFT JOIN tasks t ON t.assignee_id = u.id AND t.task_kind = 'help' AND t.created_at >= $1
+      LEFT JOIN help_ratings r ON r.task_id = t.id
+      WHERE u.is_active = true
+      GROUP BY u.id, u.name, u.role
+      HAVING COUNT(t.id) > 0
+      ORDER BY done_count DESC, avg_rating DESC NULLS LAST
+      LIMIT 20
+    `, [since]);
+
+    // Top просящих: сколько раз были creator
+    const topRequesters = await db.query(`
+      SELECT u.id, u.name, u.role,
+        COUNT(t.id) AS total_requested,
+        COUNT(t.id) FILTER (WHERE t.status = 'done')     AS done_count,
+        COUNT(t.id) FILTER (WHERE t.status = 'declined') AS declined_count
+      FROM users u
+      JOIN tasks t ON t.creator_id = u.id AND t.task_kind = 'help' AND t.created_at >= $1
+      WHERE u.is_active = true
+      GROUP BY u.id, u.name, u.role
+      ORDER BY total_requested DESC
+      LIMIT 20
+    `, [since]);
+
+    // Связи (пары): кто чаще кому пишет
+    const pairs = await db.query(`
+      SELECT
+        c.id   AS from_id, c.name AS from_name, c.role AS from_role,
+        a.id   AS to_id,   a.name AS to_name,   a.role AS to_role,
+        COUNT(t.id) AS interactions
+      FROM tasks t
+      JOIN users c ON c.id = t.creator_id
+      JOIN users a ON a.id = t.assignee_id
+      WHERE t.task_kind = 'help' AND t.created_at >= $1
+      GROUP BY c.id, c.name, c.role, a.id, a.name, a.role
+      ORDER BY interactions DESC
+      LIMIT 15
+    `, [since]);
+
+    // Сводка
+    const summary = await db.query(`
+      SELECT
+        COUNT(*)                                                 AS total,
+        COUNT(*) FILTER (WHERE status = 'done')                  AS done,
+        COUNT(*) FILTER (WHERE status = 'declined')              AS declined,
+        COUNT(*) FILTER (WHERE status IN ('new','accepted','in_progress')) AS active,
+        COUNT(*) FILTER (WHERE redirected_once = true)           AS redirected,
+        ROUND((AVG(EXTRACT(EPOCH FROM (completed_at - created_at))/3600.0)
+               FILTER (WHERE status = 'done'))::numeric, 1)        AS avg_completion_hours
+      FROM tasks WHERE task_kind = 'help' AND created_at >= $1
+    `, [since]);
+
+    return {
+      period, days,
+      summary: summary.rows[0] || {},
+      top_helpers: topHelpers.rows,
+      top_requesters: topRequesters.rows,
+      top_pairs: pairs.rows
+    };
+  });
+
+  // ─── AI-SUGGEST ─────────────────────────────────────────────────
+  // POST /help/ai-suggest {description} → {suggested:[{user_id, name, role, reason}], dept_hint}
+  // Без LLM (для скорости + без расхода токенов на простой задаче): match по ключевым словам
+  // + статистика прошлых help-задач (popularity). Если хочется LLM — заменить эту функцию на
+  // call к aiProvider.completeFast() с prompt + список юзеров — но это +задержка/+цена.
+  fastify.post('/help/ai-suggest', {
+    preHandler: [fastify.requirePermission('tasks', 'write')]
+  }, async (request, reply) => {
+    const text = String(request.body?.description || request.body?.title || '').toLowerCase();
+    if (text.length < 5) return reply.code(400).send({ error: 'Слишком короткое описание' });
+
+    // Простая эвристика: ключевые слова → отдел
+    const KEYS = {
+      TO:  ['тз','смет','просчёт','просчет','чертёж','чертеж','объект','оборудование','нормы','гэсн','работ','технич'],
+      PROC:['закуп','счёт','счет','поставщик','счёт-фактур','счет-фактур','оплат','тендер','доставк','каталог','артикул'],
+      BUH: ['акт','счёт-фактур','выписк','платёж','бухгалт','налог','финанс','ндс','декларац','выручк'],
+      PM:  ['работ','проект','объект','подряд','бригад','график','мобилизац','рп'],
+      HR:  ['кадр','собеседован','зарплат','штат','найм','увольн','декрет','отпуск'],
+      OFFICE_MANAGER: ['офис','канцеляр','уборщ','чай','кофе','встреч','перегов','почт'],
+      WAREHOUSE: ['склад','остатк','инвентар','выдача оборудован','наличи'],
+      CHIEF_ENGINEER: ['инжен','технологи','авари','неисправ','ремонт']
+    };
+    const scored = [];
+    for (const [role, kws] of Object.entries(KEYS)) {
+      let score = 0;
+      for (const kw of kws) if (text.includes(kw)) score++;
+      if (score > 0) scored.push({ role, score });
+    }
+    scored.sort((a, b) => b.score - a.score);
+    const topDepts = scored.slice(0, 3).map(x => x.role);
+
+    if (!topDepts.length) {
+      return { suggested: [], dept_hint: null, reason: 'Не удалось определить отдел по описанию' };
+    }
+
+    // Поиск top-помощников из этих отделов за 90 дней (по done_count + avg_rating)
+    const since = new Date(Date.now() - 90 * 24 * 3600 * 1000).toISOString();
+    const { rows: candidates } = await db.query(`
+      SELECT u.id, u.name, u.role,
+        COUNT(t.id) FILTER (WHERE t.status = 'done')     AS done_count,
+        COUNT(t.id) FILTER (WHERE t.status = 'declined') AS declined_count,
+        ROUND(AVG(r.stars)::numeric, 2) AS avg_rating
+      FROM users u
+      LEFT JOIN tasks t ON t.assignee_id = u.id AND t.task_kind = 'help' AND t.created_at >= $1
+      LEFT JOIN help_ratings r ON r.task_id = t.id
+      WHERE u.is_active = true AND u.role = ANY($2::text[]) AND u.id <> $3
+      GROUP BY u.id, u.name, u.role
+      ORDER BY done_count DESC NULLS LAST, avg_rating DESC NULLS LAST
+      LIMIT 5
+    `, [since, topDepts, request.user.id]);
+
+    return {
+      suggested: candidates.map(c => ({
+        user_id: c.id, name: c.name, role: c.role,
+        done_count: parseInt(c.done_count || 0),
+        avg_rating: c.avg_rating ? parseFloat(c.avg_rating) : null,
+        reason: `Опыт: ${c.done_count || 0} задач${c.avg_rating ? `, рейтинг ${c.avg_rating}/5` : ''}`
+      })),
+      dept_hint: topDepts[0],
+      detected_depts: topDepts
+    };
+  });
+
   // ───────────────────────────────────────────────────────────────
   // GET /api/tasks/check-deadlines — Проверка просроченных
   // ───────────────────────────────────────────────────────────────
