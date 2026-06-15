@@ -58,6 +58,7 @@ import Login from '@/pages/Login';
 import PinEntry from '@/pages/PinEntry';
 import Home from '@/pages/Home';
 import Tasks from '@/pages/Tasks';
+import HelpTasks from '@/pages/HelpTasks';
 import Chat from '@/pages/Chat';
 import ChatView from '@/pages/ChatView';
 import Mimir from '@/pages/Mimir';
@@ -189,6 +190,7 @@ function AppLayout() {
           <Route path="/pin" element={<PinRoute />} />
           <Route path="/" element={<ProtectedRoute section="dashboard"><PinGuard><Home /></PinGuard></ProtectedRoute>} />
           <Route path="/tasks" element={<ProtectedRoute section="tasks"><PinGuard><Tasks /></PinGuard></ProtectedRoute>} />
+          <Route path="/help" element={<ProtectedRoute section="tasks"><PinGuard><HelpTasks /></PinGuard></ProtectedRoute>} />
           <Route path="/chat" element={<ProtectedRoute section="chat"><PinGuard><Chat /></PinGuard></ProtectedRoute>} />
           <Route path="/chat/:chatId" element={<ProtectedRoute section="chat"><PinGuard><ChatView /></PinGuard></ProtectedRoute>} />
           <Route path="/mimir" element={<ProtectedRoute section="chat"><PinGuard><Mimir /></PinGuard></ProtectedRoute>} />
