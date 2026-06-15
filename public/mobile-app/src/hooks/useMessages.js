@@ -42,7 +42,7 @@ export function useMessages(chatId) {
   }, [chatId, hasOlder, messages]);
 
   const sendMessage = useCallback(
-    async (text, replyToId) => {
+    async (text, replyToId, extra) => {
       const tempId = `temp-${Date.now()}`;
       const optimistic = {
         id: tempId,
@@ -61,6 +61,7 @@ export function useMessages(chatId) {
         const res = await api.post(`/chat-groups/${chatId}/messages`, {
           text,
           reply_to_id: replyToId || undefined,
+          ...(extra || {}),
         });
         const msg = res.message || res;
         setMessages((prev) =>

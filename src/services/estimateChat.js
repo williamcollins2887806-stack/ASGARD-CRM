@@ -795,9 +795,11 @@ async function buildEstimateContext(db, estimateId) {
  *
  * Вызывается fire-and-forget из POST /:id/messages.
  */
-async function mimirRespondToQuestion(db, { chatId, estimateId, question, askerName, askerId }) {
+async function mimirRespondToQuestion(db, { chatId, estimateId, question, askerName, askerId, mimirModel }) {
   try {
     const aiProvider = require('./ai-provider');
+    const chatModels = require('./chat-models');
+    const modelCfg = chatModels.getModel(mimirModel) || chatModels.getDefault();
 
     // 1. mimir_bot user
     const botResult = await db.query("SELECT id FROM users WHERE login = 'mimir_bot' LIMIT 1");
@@ -842,8 +844,20 @@ async function mimirRespondToQuestion(db, { chatId, estimateId, question, askerN
       ? history.map(m => `${m.user_name} (${m.user_role}): ${m.message}`).join('\n')
       : '(пусто)';
 
-    // 5. System prompt
-    const systemPrompt = `Ты Мимир — ИИ-ассистент в чате обсуждения просчёта ООО «Асгард Сервис».
+    // 5. System prompt — зависит от system_mode выбранной модели.
+    // light-модель (gpt-5.4) обламывается на длинном prompt'е → используем короткий
+    // (без БД-контекста). full-модель (gpt-5.5/claude) получает полный prompt с просчётом.
+    let systemPrompt;
+    if (modelCfg.system_mode === 'light') {
+      systemPrompt = `Ты Мимир — ИИ-ассистент в чате обсуждения просчёта ООО «Асгард Сервис». Тебя упомянул ${askerName}.
+
+⚠️ ВАЖНО: ты сейчас в БЫСТРОМ режиме — ты НЕ видишь данные этого просчёта, документы тендера и историю чата. Отвечай только на общие вопросы про работу системы / методики (ФОТ × 1.55, накладные 15%, расходные 3%) / стандартные практики стройподряда.
+
+Если ${askerName} спрашивает про конкретные цифры этого просчёта, документы или предыдущие сообщения — кратко скажи: «Я в быстром режиме без доступа к данным сметы — переключи в шапке чата модель на «🧠 С данными CRM», и я отвечу с цифрами.»
+
+ПРАВИЛА: 2–4 предложения, на русском, без эмодзи, без обращений типа «Что повелеваешь?».`;
+    } else {
+      systemPrompt = `Ты Мимир — ИИ-ассистент в чате обсуждения просчёта ООО «Асгард Сервис».
 Тебя упомянул ${askerName}. Ответ увидят все участники чата (РП, директоры, ТО).
 
 ${ctx.estimateInfo}
@@ -871,14 +885,16 @@ ${historyText}
 - Markdown: **жирный** для ключевых цифр, списки (-), без ### заголовков
 - НЕ пиши "Что повелеваешь?", "Что ещё могу сделать?", "Обращайтесь!" — просто ответь и остановись
 - Будь профессионален — твой ответ видят директоры`;
+    }
 
-    // 6. AI call (completeAnalytics → Токенатор)
+    // 6. AI call через Токенатор. Передаём явно выбранную модель.
     const startTime = Date.now();
     const aiResult = await aiProvider.completeAnalytics({
       system: systemPrompt,
       messages: [{ role: 'user', content: question }],
       maxTokens: 2000,
-      temperature: 0.3
+      temperature: 0.3,
+      model: modelCfg.id
     });
     const responseText = aiResult.text || 'Не удалось сформировать ответ. Попробуй позже.';
     const durationMs = Date.now() - startTime;

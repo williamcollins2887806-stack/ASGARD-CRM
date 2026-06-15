@@ -39,13 +39,20 @@ export default function HuginnEstimateChat() {
   const [showScrollFab, setShowScrollFab] = useState(false);
   const [newMsgIds, setNewMsgIds] = useState(new Set());
   const [mimirTyping, setMimirTyping] = useState(false);
+  const [mimirSeconds, setMimirSeconds] = useState(0);
   const [unreadBelow, setUnreadBelow] = useState(0);
   const [longPressMsg, setLongPressMsg] = useState(null);
+  const [chatModels, setChatModels] = useState([]);
+  const [mimirModel, setMimirModel] = useState(
+    () => { try { return localStorage.getItem('asgard_huginn_model') || ''; } catch (e) { return ''; } }
+  );
 
   const containerRef = useRef(null);
   const bottomRef = useRef(null);
   const prevLenRef = useRef(0);
   const mimirTimerRef = useRef(null);
+  const mimirTickRef = useRef(null);
+  const mimirStartRef = useRef(0);
   const longPressTimerRef = useRef(null);
   const longPressTouchRef = useRef({ x: 0, y: 0 });
 
@@ -73,6 +80,25 @@ export default function HuginnEstimateChat() {
     })();
     loadMessages();
   }, [chatId, loadMessages]);
+
+  // Load Мимир models registry once (for selector)
+  useEffect(() => {
+    if (chatModels.length > 0) return;
+    api.get('/mimir/chat/models')
+      .then((d) => {
+        const list = d?.models || [];
+        setChatModels(list);
+        if (!mimirModel && (d?.default || list[0])) {
+          setMimirModel(d.default || list[0].id);
+        }
+      })
+      .catch(() => {});
+  }, [chatModels.length, mimirModel]);
+
+  const onModelChange = (id) => {
+    setMimirModel(id);
+    try { localStorage.setItem('asgard_huginn_model', id); } catch (e) {}
+  };
 
   // Extract pinned card from messages (estimate_card type)
   useEffect(() => {
@@ -126,13 +152,11 @@ export default function HuginnEstimateChat() {
       // Check if incoming message is mimir — stop mimir typing
       if (event === 'new_message' && data.message) {
         if (data.message.message_type === 'mimir_response' || data.message.user_id === MIMIR_USER_ID) {
-          setMimirTyping(false);
-          if (mimirTimerRef.current) clearTimeout(mimirTimerRef.current);
+          stopMimirTyping();
         }
         // Trigger Мимир typing after director comment with approval_action
         if (data.message.metadata?.approval_action && data.message.metadata.approval_action !== 'approve') {
-          setMimirTyping(true);
-          mimirTimerRef.current = setTimeout(() => setMimirTyping(false), 15000);
+          startMimirTyping(90000);
         }
       }
       handleMsgSSE(event, data);
@@ -142,14 +166,67 @@ export default function HuginnEstimateChat() {
 
   useSSE(handleSSE);
 
+  const stopMimirTyping = useCallback(() => {
+    setMimirTyping(false);
+    setMimirSeconds(0);
+    if (mimirTimerRef.current) { clearTimeout(mimirTimerRef.current); mimirTimerRef.current = null; }
+    if (mimirTickRef.current) { clearInterval(mimirTickRef.current); mimirTickRef.current = null; }
+  }, []);
+
+  const startMimirTyping = useCallback((timeoutMs = 90000) => {
+    if (mimirTimerRef.current) clearTimeout(mimirTimerRef.current);
+    if (mimirTickRef.current) clearInterval(mimirTickRef.current);
+    mimirStartRef.current = Date.now();
+    setMimirTyping(true);
+    setMimirSeconds(0);
+    mimirTickRef.current = setInterval(() => {
+      setMimirSeconds(Math.floor((Date.now() - mimirStartRef.current) / 1000));
+    }, 1000);
+    mimirTimerRef.current = setTimeout(() => stopMimirTyping(), timeoutMs);
+  }, [stopMimirTyping]);
+
+  useEffect(() => () => stopMimirTyping(), [stopMimirTyping]);
+
+  const MIMIR_MENTION_RE = /@(mimir|мимир|мімир)\b/i;
+
   const handleSend = useCallback(
     (text, replyId) => {
       haptic.light();
-      sendMessage(text, replyId);
+      const hasMention = text && MIMIR_MENTION_RE.test(text);
+      sendMessage(text, replyId, hasMention && mimirModel ? { mimir_model: mimirModel } : undefined);
       setReplyTo(null);
+      if (hasMention) {
+        startMimirTyping(90000);
+      }
     },
-    [sendMessage, haptic]
+    [sendMessage, haptic, startMimirTyping, mimirModel]
   );
+
+  // Catchup: при возвращении вкладки в фокус — догрузить пропущенные сообщения
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === 'visible' && messages.length > 0) {
+        const lastId = messages[messages.length - 1]?.id;
+        if (lastId) {
+          api
+            .get(`/chat-groups/${chatId}/messages?after_id=${lastId}&limit=50`)
+            .then((res) => {
+              const fresh = res.messages || res || [];
+              if (fresh.length > 0) {
+                fresh.forEach((m) => handleMsgSSE('new_message', { message: m }));
+                const gotMimir = fresh.some(
+                  (m) => m.message_type === 'mimir_response' || m.user_id === MIMIR_USER_ID
+                );
+                if (gotMimir) stopMimirTyping();
+              }
+            })
+            .catch(() => {});
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [chatId, messages, handleMsgSSE, stopMimirTyping]);
 
   // Scroll tracking
   const handleScroll = useCallback(() => {
@@ -356,6 +433,62 @@ export default function HuginnEstimateChat() {
         </button>
       </div>
 
+      {/* Model selector for Мимир */}
+      {chatModels.length > 0 && (() => {
+        const m = chatModels.find((x) => x.id === mimirModel) || chatModels[0];
+        const knows = !!m?.capabilities?.knows_crm_data;
+        return (
+          <div
+            style={{
+              padding: '6px 10px',
+              background: 'var(--bg-surface)',
+              borderBottom: '0.5px solid var(--border-norse)',
+              display: 'flex', alignItems: 'center', gap: 8,
+            }}
+          >
+            <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>🧙 Мимир:</span>
+            <select
+              value={mimirModel}
+              onChange={(e) => onModelChange(e.target.value)}
+              style={{
+                flex: 1,
+                background: 'var(--bg-elevated)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-norse)',
+                borderRadius: 6,
+                padding: '4px 6px',
+                fontSize: 12,
+              }}
+            >
+              {chatModels.map((x) => (
+                <option key={x.id} value={x.id}>{x.label}{x.short_hint ? '  ·  ' + x.short_hint : ''}</option>
+              ))}
+            </select>
+          </div>
+        );
+      })()}
+      {chatModels.length > 0 && (() => {
+        const m = chatModels.find((x) => x.id === mimirModel) || chatModels[0];
+        const knows = !!m?.capabilities?.knows_crm_data;
+        return (
+          <div
+            style={{
+              padding: '6px 10px',
+              fontSize: 10.5,
+              lineHeight: 1.35,
+              color: 'var(--text-secondary)',
+              background: knows ? 'rgba(46,160,67,0.12)' : 'rgba(212,168,67,0.12)',
+              borderBottom: '0.5px solid ' + (knows ? 'rgba(46,160,67,0.35)' : 'rgba(212,168,67,0.4)'),
+            }}
+          >
+            {knows ? '🧠 ' : '⚠️ '}
+            {knows
+              ? 'Видит этот просчёт (цифры, документы тендера, историю чата). Можно спрашивать про конкретные данные.'
+              : 'НЕ видит этот просчёт — отвечает только на общие вопросы по методике. Для разбора цифр переключи на «🧠 С данными CRM».'}
+          </div>
+        );
+      })()}
+
       {/* Pinned card */}
       <EstimatePinnedCard metadata={pinnedMeta} flash={pinnedFlash} />
 
@@ -452,7 +585,8 @@ export default function HuginnEstimateChat() {
                       ))}
                     </div>
                     <p style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>
-                      Мимир анализирует...
+                      Мимир анализирует{mimirSeconds > 0 ? `… ${mimirSeconds}с` : '…'}
+                      {mimirSeconds >= 30 && ' (бывает до минуты)'}
                     </p>
                   </div>
                 </div>

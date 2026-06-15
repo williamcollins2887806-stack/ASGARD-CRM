@@ -80,7 +80,7 @@ export default function FieldLogistics() {
         <button onClick={() => navigate('/field/home')} className="p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-elevated)' }}>
           <ArrowLeft size={20} style={{ color: 'var(--text-primary)' }} />
         </button>
-        <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Логистика</h1>
+        <h1 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Поездки и направления</h1>
       </div>
 
       {error && <div className="p-3 rounded-lg text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>{error}</div>}
@@ -148,13 +148,19 @@ export default function FieldLogistics() {
                     {/* Details */}
                     <div className="mt-1 space-y-0.5 text-xs" style={{ color: 'var(--text-secondary)' }}>
                       {item.work_title && <p className="font-medium">{item.work_title}</p>}
+                      {item.description && <p>{item.description}</p>}
                       {(item.departure || item.details?.departure) && <p>Отправление: {item.departure || item.details?.departure}</p>}
+                      {item.departure_at && <p>🛫 Вылет: {new Date(item.departure_at).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}</p>}
+                      {item.arrival_at && <p>🛬 Прилёт: {new Date(item.arrival_at).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}</p>}
+                      {item.transport_no && <p>№ рейса/поезда: {item.transport_no}</p>}
                       {item.route && <p>{item.route}</p>}
                       {item.carrier && <p>{item.carrier}</p>}
                       {item.hotel_name && <p>{item.hotel_name}</p>}
+                      {item.hotel_address && <p>📍 {item.hotel_address}</p>}
                       {item.address && <p>{item.address}</p>}
+                      {item.referral_at && <p>🩺 Направление выдано: {fmtDate(item.referral_at)}</p>}
                       {item.date_from && (
-                        <p>{fmtDate(item.date_from)}{item.date_to ? ' — ' + fmtDate(item.date_to) : ''}</p>
+                        <p>📅 {fmtDate(item.date_from)}{item.date_to ? ' — ' + fmtDate(item.date_to) : ''}</p>
                       )}
                       {item.flight_number && <p>Рейс: {item.flight_number}</p>}
                     </div>
@@ -179,7 +185,16 @@ export default function FieldLogistics() {
                     })()}
                     {item.driver_phone && (
                       <a href={`tel:${item.driver_phone}`} className="mt-1 flex items-center gap-1 text-xs" style={{ color: 'var(--gold)' }}>
-                        <ExternalLink size={12} /> Водитель: {item.driver_phone}
+                        <ExternalLink size={12} /> 📞 Водитель: {item.driver_phone}
+                      </a>
+                    )}
+                    {item.hotel_address && (
+                      <a
+                        href={`https://yandex.ru/maps/?text=${encodeURIComponent(item.hotel_address)}`}
+                        target="_blank" rel="noreferrer"
+                        className="mt-1 flex items-center gap-1 text-xs" style={{ color: 'var(--gold)' }}
+                      >
+                        <ExternalLink size={12} /> Открыть на карте
                       </a>
                     )}
                   </div>

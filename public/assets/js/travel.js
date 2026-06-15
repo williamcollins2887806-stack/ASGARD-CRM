@@ -1,4 +1,4 @@
-// Жильё, Билеты и Направления — Логистика сотрудников
+// Логистика дружины — жильё, билеты, направления, обучение
 // Использует /api/field/logistics (field-logistics.js)
 
 window.AsgardTravelPage = (function(){
@@ -228,8 +228,8 @@ window.AsgardTravelPage = (function(){
         <div class="panel">
           <div class="tl-header">
             <div>
-              <h2 class="page-title" style="margin:0">Логистика сотрудников</h2>
-              <div class="help" style="margin-top:6px">Жильё, авиабилеты, ж/д, направления МО и обучение</div>
+              <h2 class="page-title" style="margin:0">Логистика дружины</h2>
+              <div class="help" style="margin-top:6px">Жильё, авиабилеты и ж/д, направления на медосмотр, обучение и аттестации</div>
             </div>
             <button class="btn" id="btnAddItem">➕ Добавить</button>
           </div>
@@ -284,9 +284,12 @@ window.AsgardTravelPage = (function(){
                       <div class="tl-card-title">${esc(item.title || '—')}</div>
                       ${item.description ? `<div class="tl-card-sub">${esc(item.description)}</div>` : ''}
                       <div class="tl-card-meta">
-                        ${emp ? `<span>👤 ${esc(emp.fio || '')}</span>` : ''}
+                        ${emp ? `<span>👤 ${esc(emp.fio || '')}${item.has_lk === false ? ' <span title="Нет личного кабинета — push не уйдёт, только SMS" style="color:#f59e0b">🚫 LK</span>' : ''}</span>` : ''}
                         ${work ? `<span>📁 ${esc(work.work_title || '')}</span>` : ''}
+                        ${item.referral_at ? `<span>🩺 Выдано: ${formatDate(item.referral_at)}</span>` : ''}
                         ${item.date_from ? `<span>📅 ${formatDate(item.date_from)}${item.date_to && item.date_to !== item.date_from ? ' — ' + formatDate(item.date_to) : ''}</span>` : ''}
+                        ${item.hotel_address ? `<span>📍 ${esc(item.hotel_address)}</span>` : ''}
+                        ${item.driver_phone ? `<span>📞 ${esc(item.driver_phone)}</span>` : ''}
                         ${fileUrl ? `<a class="tl-file-link" href="${esc(fileUrl)}" target="_blank">📎 Файл</a>` : ''}
                         <span class="tl-status-badge ${stClass}">${stLabel}</span>
                       </div>
@@ -383,16 +386,26 @@ window.AsgardTravelPage = (function(){
         });
       });
 
-      // Удалить
+      // Удалить — доменный DELETE с каскадом по work_expenses/документу
       $$('[data-del]').forEach(btn => {
         btn.addEventListener('click', async () => {
-          if (!confirm('Удалить запись?')) return;
-          // Используем generic data API для удаления
-          await AsgardDB.del('field_logistics', Number(btn.dataset.del));
-          toast('Удалено', 'Запись удалена');
-          const data = await apiGet('/');
-          items = Array.isArray(data.logistics) ? data.logistics : [];
-          renderPage();
+          if (!confirm('Удалить запись? Связанный расход в проекте и файл будут удалены.')) return;
+          try {
+            const res = await fetch('/api/field/logistics/' + Number(btn.dataset.del), {
+              method: 'DELETE',
+              headers: { Authorization: 'Bearer ' + await getToken() }
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              throw new Error(err.error || 'HTTP ' + res.status);
+            }
+            toast('Удалено', 'Запись и связанные данные удалены');
+            const data = await apiGet('/');
+            items = Array.isArray(data.logistics) ? data.logistics : [];
+            renderPage();
+          } catch (e) {
+            toast('Ошибка', e.message, 'err');
+          }
         });
       });
     }
@@ -432,6 +445,21 @@ window.AsgardTravelPage = (function(){
             <input id="ti_transno" class="field" placeholder="SU-1402 / поезд 092Э"/>
           </div>
         </div>
+        <div class="formrow" id="ti_hotel_row" style="display:none">
+          <div style="grid-column:1/-1"><label>📍 Адрес гостиницы / жилья</label>
+            <input id="ti_hotel_addr" class="field" placeholder="г. Москва, ул. Тверская 1, оф. 101"/>
+          </div>
+        </div>
+        <div class="formrow" id="ti_driver_row" style="display:none">
+          <div style="grid-column:1/-1"><label>📞 Телефон водителя</label>
+            <input id="ti_driver_phone" class="field" placeholder="+7 999 123 45 67"/>
+          </div>
+        </div>
+        <div class="formrow" id="ti_referral_row" style="display:none">
+          <div><label>🩺 Дата выдачи направления</label>
+            <input type="date" id="ti_referral_at" class="field"/>
+          </div>
+        </div>
         <div class="formrow">
           <div><label>Дата (с)</label><input type="date" id="ti_from" class="field" value="${today()}"/></div>
           <div><label>Дата (по)</label><input type="date" id="ti_to" class="field"/></div>
@@ -464,17 +492,23 @@ window.AsgardTravelPage = (function(){
 
       showModal('Новая запись', html);
 
-      // показывать поля времени/№ рейса только для транспортных типов
+      // показывать условные поля в зависимости от типа
       const TRANSPORT_TYPES = ['ticket_to','ticket_back','flight','train','transfer'];
-      function toggleTransportFields() {
+      const HOUSING_TYPES = ['hotel','housing','hostel'];
+      function toggleTypeFields() {
         const t = $('#ti_type')?.value;
-        const show = TRANSPORT_TYPES.includes(t);
+        const isTransport = TRANSPORT_TYPES.includes(t);
+        const isHousing = HOUSING_TYPES.includes(t);
         const r1 = $('#ti_transport_row'), r2 = $('#ti_transportno_row');
-        if (r1) r1.style.display = show ? '' : 'none';
-        if (r2) r2.style.display = show ? '' : 'none';
+        const rH = $('#ti_hotel_row'), rD = $('#ti_driver_row'), rR = $('#ti_referral_row');
+        if (r1) r1.style.display = isTransport ? '' : 'none';
+        if (r2) r2.style.display = isTransport ? '' : 'none';
+        if (rH) rH.style.display = isHousing ? '' : 'none';
+        if (rD) rD.style.display = (t === 'transfer') ? '' : 'none';
+        if (rR) rR.style.display = (t === 'directive_mo') ? '' : 'none';
       }
-      $('#ti_type')?.addEventListener('change', toggleTransportFields);
-      toggleTransportFields();
+      $('#ti_type')?.addEventListener('change', toggleTypeFields);
+      toggleTypeFields();
 
       $('#btnSaveTi')?.addEventListener('click', async () => {
         const type    = $('#ti_type')?.value;
@@ -484,6 +518,9 @@ window.AsgardTravelPage = (function(){
         const dep      = $('#ti_dep')?.value;    // datetime-local "YYYY-MM-DDTHH:mm"
         const arr      = $('#ti_arr')?.value;
         const transNo  = $('#ti_transno')?.value?.trim();
+        const hotelAddr= $('#ti_hotel_addr')?.value?.trim();
+        const driverPh = $('#ti_driver_phone')?.value?.trim();
+        const referralAt = $('#ti_referral_at')?.value;
         let from    = $('#ti_from')?.value;
         let to      = $('#ti_to')?.value;
         const amount  = parseFloat($('#ti_amount')?.value) || 0;
@@ -514,6 +551,9 @@ window.AsgardTravelPage = (function(){
             departure_at: dep ? new Date(dep).toISOString() : null,
             arrival_at:   arr ? new Date(arr).toISOString() : null,
             transport_no: transNo || null,
+            hotel_address: hotelAddr || null,
+            driver_phone: driverPh || null,
+            referral_at: referralAt || null,
             amount:    amount || null,
             vat_included: vat,
             work_id:   workId,

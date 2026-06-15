@@ -336,12 +336,24 @@ async function mimirRoutes(fastify, options) {
     }
   });
 
+  // GET /chat/models — список доступных моделей чата (для UI-selector'a в Хугине и ФАБ).
+  fastify.get('/chat/models', { preHandler: [fastify.authenticate] }, async () => {
+    const chatModels = require('../services/chat-models');
+    return { models: chatModels.getModels(), default: chatModels.getDefault().id };
+  });
+
   // Чат со стримингом (SSE)
   fastify.post('/chat-stream', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
-    const { message, context, conversation_id } = request.body;
+    const { message, context, conversation_id, model: requestedModel } = request.body || {};
     const user = request.user;
+
+    // Резолв модели из реестра. Если клиент прислал невалидный id — fallback на default.
+    const chatModels = require('../services/chat-models');
+    const modelConfig = chatModels.getModel(requestedModel) || chatModels.getDefault();
+    const systemMode = modelConfig.system_mode;     // 'light' | 'full'
+    const modelId = modelConfig.id;
 
     if (!message?.trim()) {
       return reply.code(400).send({ success: false, message: 'Пустое сообщение' });
@@ -376,55 +388,63 @@ async function mimirRoutes(fastify, options) {
         convId = newConv.rows[0].id;
       }
 
-      sendEvent({ type: 'start', conversation_id: convId });
+      sendEvent({ type: 'start', conversation_id: convId, model: modelId, system_mode: systemMode });
 
-      // Загружаем ВСЮ историю (270K контекст позволяет)
-      const history = await db.query(`
-        SELECT role, content FROM mimir_messages
-        WHERE conversation_id = $1
-        ORDER BY created_at ASC
-      `, [convId]);
+      // === LIGHT-режим: минимальный промпт, без БД-контекста, без истории, без Text-to-SQL ===
+      // Подходит для быстрых вопросов вроде «как создать тендер», «где посмотреть отчёт».
+      // Не нагружает модель — gpt-5.4 на длинном системном prompt'е обрывает ответ
+      // после одного chunk'а. Эта ветка обходит проблему.
+      let systemPrompt;
+      let aiMessages;
 
-      const historyMessages = history.rows;
+      if (systemMode === 'light') {
+        systemPrompt = 'Ты Мимир — ИИ-помощник в ASGARD CRM (стройподряд, ' +
+          'промывки, химочистки). Помогаешь сотрудникам с навигацией по системе ' +
+          'и общими вопросами. Отвечай кратко (2–4 предложения), на русском, без эмодзи. ' +
+          'Если вопрос требует данных из БД — попроси переключить модель на «думающую» (GPT-5.5).';
+        let userMessage = message;
+        if (context) userMessage = '[Раздел: ' + context + ']\n' + userMessage;
+        aiMessages = [{ role: 'user', content: userMessage }];
+      } else {
+        // === FULL-режим: текущий тяжёлый путь с историей+БД+text-to-SQL. ===
+        const history = await db.query(`
+          SELECT role, content FROM mimir_messages
+          WHERE conversation_id = $1
+          ORDER BY created_at ASC
+        `, [convId]);
+        const historyMessages = history.rows;
 
-      // Обработка запроса
-      const { additionalData, results, action: streamAction } = await mimirData.processQuery(db, message, user);
+        const { additionalData, results, action: streamAction } = await mimirData.processQuery(db, message, user);
+        if (results) sendEvent({ type: 'results', data: results });
+        if (streamAction) sendEvent({ type: 'action', data: streamAction });
 
-      if (results) {
-        sendEvent({ type: 'results', data: results });
+        let sqlContext = '';
+        try {
+          const { dataContext } = await mimirSchema.textToSQL(aiProvider, db, message, user);
+          if (dataContext) {
+            sqlContext = '\n\n[ДАННЫЕ ИЗ БД]\n' + dataContext;
+            sendEvent({ type: 'status', message: 'Данные из БД получены' });
+          }
+        } catch (e) { /* Text-to-SQL не критичен */ }
+
+        let userMessage = message;
+        if (context) userMessage = '[Раздел: ' + context + ']\n' + userMessage;
+        if (additionalData) userMessage += additionalData;
+        if (sqlContext) userMessage += sqlContext;
+
+        systemPrompt = await mimirData.buildSystemPrompt(db, user);
+        aiMessages = [
+          ...historyMessages.map(m => ({ role: m.role, content: m.content })),
+          { role: 'user', content: userMessage }
+        ];
       }
-      if (streamAction) {
-        sendEvent({ type: 'action', data: streamAction });
-      }
 
-      // Text-to-SQL: AI генерирует SQL → сервер выполняет → данные в контекст
-      let sqlContext = '';
-      try {
-        const { dataContext } = await mimirSchema.textToSQL(aiProvider, db, message, user);
-        if (dataContext) {
-          sqlContext = '\n\n[ДАННЫЕ ИЗ БД]\n' + dataContext;
-          sendEvent({ type: 'status', message: 'Данные из БД получены' });
-        }
-      } catch (e) { /* Text-to-SQL не критичен */ }
-
-      let userMessage = message;
-      if (context) userMessage = '[Раздел: ' + context + ']\n' + userMessage;
-      if (additionalData) userMessage += additionalData;
-      if (sqlContext) userMessage += sqlContext;
-
-      const systemPrompt = await mimirData.buildSystemPrompt(db, user);
-
-      const aiMessages = [
-        ...historyMessages.map(m => ({ role: m.role, content: m.content })),
-        { role: 'user', content: userMessage }
-      ];
-
-      // Запускаем стриминг
       const streamResponse = await aiProvider.stream({
         system: systemPrompt,
         messages: aiMessages,
         maxTokens: 8000,
-        temperature: 0.5
+        temperature: 0.5,
+        model: modelId
       });
 
       // Парсим поток
@@ -439,6 +459,11 @@ async function mimirRoutes(fastify, options) {
         if (event.type === 'text') {
           fullResponse += event.content;
           sendEvent({ type: 'text', content: event.content });
+        } else if (event.type === 'reasoning') {
+          // reasoning_content от reasoning-моделей (gpt-5.5 и т.п.) — отдельный поток
+          // мыслей. Шлём клиенту для UX (можно показать «Мимир размышляет: …»),
+          // но не добавляем в fullResponse — это не финальный ответ.
+          sendEvent({ type: 'reasoning', content: event.content });
         } else if (event.type === 'done') {
           inputTokens = event.usage?.inputTokens || 0;
           outputTokens = event.usage?.outputTokens || 0;
@@ -492,7 +517,24 @@ async function mimirRoutes(fastify, options) {
 
     } catch (error) {
       fastify.log.error({ err: error }, 'Stream error details');
-      sendEvent({ type: 'error', message: 'Ошибка стриминга: ' + (error.message || 'неизвестная ошибка') });
+      // Преобразуем код ошибки в понятное юзеру сообщение + подсказку выбрать
+      // другую модель. UI смотрит code='model_unavailable' чтобы подсветить
+      // селектор модели.
+      const errMsg = String(error?.message || '');
+      let humanMsg, code = 'model_error';
+      if (/Insufficient balance|balance_rub/.test(errMsg)) {
+        humanMsg = `Модель «${modelId}» недоступна: на USD-балансе Токенатора закончились деньги. Выбери в шапке чата другую модель (например GPT-5.4 или GPT-5.5).`;
+        code = 'model_unavailable';
+      } else if (/HTTP 401|Request error/.test(errMsg)) {
+        humanMsg = `Модель «${modelId}» недоступна по этому ключу Токенатора. Выбери другую модель в шапке чата.`;
+        code = 'model_unavailable';
+      } else if (/HTTP 5\d{2}/.test(errMsg)) {
+        humanMsg = `Модель «${modelId}» сейчас недоступна на стороне Токенатора. Попробуй ещё раз или выбери другую модель.`;
+        code = 'model_unavailable';
+      } else {
+        humanMsg = `Ошибка модели «${modelId}»: ${errMsg.slice(0, 200)}. Попробуй другую модель в шапке чата.`;
+      }
+      sendEvent({ type: 'error', code, model: modelId, message: humanMsg });
     }
 
     reply.raw.end();
@@ -2728,12 +2770,19 @@ ${analogsSummary}
   fastify.post('/auto-estimate-chat', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
-    const { work_id, tender_id, estimate_id, message, history } = request.body || {};
+    const { work_id, tender_id, estimate_id, message, history, model: requestedModel } = request.body || {};
     const user = request.user;
 
     if (!estimate_id || !message?.trim()) {
       return reply.code(400).send({ success: false, message: 'estimate_id и message обязательны' });
     }
+
+    // Резолв модели из реестра /api/mimir/chat/models. light-режим тут пересчёт
+    // не делает корректно (короткий prompt без контекста просчёта), поэтому
+    // если выбрана light — мягко предупреждаем и всё равно гоним через выбранную
+    // модель, но без UPDATE в БД.
+    const chatModels = require('../services/chat-models');
+    const modelCfg = chatModels.getModel(requestedModel) || chatModels.getDefault();
 
     // work_id может прийти напрямую или через estimate
     let workId = work_id ? parseInt(work_id) : null;
@@ -2781,11 +2830,23 @@ ${history && history.length > 0 ? `\nКОНТЕКСТ ДИАЛОГА:\n${history
 В analysis.markup_reasoning — обновлённое обоснование.
 ВЕРНИ ТОЛЬКО JSON, без пояснений.`;
 
+      // light-модель не умеет в пересчёт сметы (нет ни prompt'а, ни JSON-выхода).
+      // Возвращаем безопасный текст без UPDATE — пусть юзер переключит на full.
+      if (modelCfg.system_mode === 'light') {
+        return reply.send({
+          success: true,
+          response: 'Я сейчас в быстром режиме (' + modelCfg.label + ') — не могу пересчитать смету. ' +
+            'Переключи модель в шапке чата на «🧠 С данными CRM», и я учту твоё замечание.',
+          ai_meta: { model: modelCfg.id, provider: 'tokenator', light_mode: true }
+        });
+      }
+
       const aiResult = await aiProvider.complete({
         system: getSystemPrompt(),
         messages: [{ role: 'user', content: userTurn }],
         maxTokens: 16000,
-        temperature: 0.2
+        temperature: 0.2,
+        model: modelCfg.id
       });
 
       if (!aiResult?.text) throw new Error('AI не ответил');

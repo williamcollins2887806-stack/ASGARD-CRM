@@ -403,7 +403,7 @@ export default function FieldHome() {
     { icon: Users, label: 'Бригада', path: '/field/crew' },
     { icon: Wallet, label: 'Сейчас', path: '/field/money' },
     { icon: Map, label: 'Маршрут', path: '/field/stages' },
-    { icon: Truck, label: 'Билеты', path: '/field/logistics' },
+    { icon: Truck, label: 'Поездки и направления', path: '/field/logistics' },
     { icon: Camera, label: 'Фото', path: '/field/photos' },
     { icon: Package, label: 'Сбор паллет', path: '/field/assembly' },
     { icon: History, label: 'История', path: '/field/history' },

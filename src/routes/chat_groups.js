@@ -738,7 +738,7 @@ module.exports = async function(fastify) {
     const chatId = parseInt(request.params.id);
     if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
     const userId = request.user.id;
-    const { text, reply_to_id, message_type, file_url, file_duration, waveform } = request.body;
+    const { text, reply_to_id, message_type, file_url, file_duration, waveform, mimir_model } = request.body;
 
     const member = await getChatMembership(chatId, userId);
     if (!member) return reply.code(403).send({ error: 'Нет доступа' });
@@ -808,7 +808,8 @@ module.exports = async function(fastify) {
           // Fire-and-forget — клиент не ждёт ответ Мимира
           setImmediate(() => {
             estimateChat.mimirRespondToQuestion(db, {
-              chatId, estimateId, question, askerName, askerId
+              chatId, estimateId, question, askerName, askerId,
+              mimirModel: mimir_model || undefined
             }).catch(err => {
               console.error('[BF2b] mimir mention handler error:', err.message);
             });

@@ -12,6 +12,27 @@ window.AsgardAI = (function(){
   let messages = [];
   let attachedFiles = [];
   let isLoading = false;
+  let conversationId = null;
+  let thinkSeconds = 0;
+  let thinkTimer = null;
+  let activeAbort = null;
+  let availableModels = [];
+  let selectedModelId = null;
+
+  function getToken() {
+    try { return localStorage.getItem('asgard_token') || localStorage.getItem('token'); } catch (e) { return null; }
+  }
+
+  function startThinkTicker() {
+    thinkSeconds = 0;
+    if (thinkTimer) clearInterval(thinkTimer);
+    thinkTimer = setInterval(() => { thinkSeconds++; renderMessages(); }, 1000);
+  }
+
+  function stopThinkTicker() {
+    if (thinkTimer) { clearInterval(thinkTimer); thinkTimer = null; }
+    thinkSeconds = 0;
+  }
   
   // ─────────────────────────────────────────────────────────────────────────────
   // Styles
@@ -483,10 +504,12 @@ window.AsgardAI = (function(){
             <div class="ai-header-status">Готов помочь</div>
           </div>
           <div class="ai-header-actions">
+            <select id="aiModelSelect" class="ai-model-select" title="Модель Мимира" style="background:rgba(255,255,255,0.12);color:#fff;border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:3px 6px;font-size:11px;margin-right:6px;cursor:pointer;max-width:140px;"></select>
             <button class="ai-header-btn" id="aiMinimize" title="Свернуть">${icons.minimize}</button>
             <button class="ai-header-btn" id="aiClose" title="Закрыть">${icons.close}</button>
           </div>
         </div>
+        <div id="aiModelHint" style="display:none;"></div>
         <div class="ai-messages" id="aiMessages">
           <div class="ai-welcome">
             <div class="ai-welcome-icon">${icons.bot}</div>
@@ -518,6 +541,55 @@ window.AsgardAI = (function(){
     
     document.body.appendChild(widget);
     bindEvents();
+    loadChatModels();
+  }
+
+  async function loadChatModels() {
+    const token = getToken();
+    if (!token) return;
+    try {
+      const resp = await fetch('/api/mimir/chat/models', { headers: { 'Authorization': 'Bearer ' + token } });
+      if (!resp.ok) return;
+      const data = await resp.json();
+      availableModels = data.models || [];
+      const stored = localStorage.getItem('asgard_ai_model');
+      selectedModelId = (stored && availableModels.find(m => m.id === stored)) ? stored : (data.default || availableModels[0]?.id);
+      renderModelSelect();
+    } catch (e) { /* silently fall back to backend default */ }
+  }
+
+  function renderModelSelect() {
+    const sel = document.getElementById('aiModelSelect');
+    if (!sel || !availableModels.length) return;
+    sel.innerHTML = availableModels.map(m => {
+      const isSel = (m.id === selectedModelId) ? ' selected' : '';
+      const hint = m.short_hint ? `  · ${m.short_hint}` : '';
+      return `<option value="${esc(m.id)}"${isSel} title="${esc(m.description || '')}">${esc(m.label)}${esc(hint)}</option>`;
+    }).join('');
+    sel.onchange = () => {
+      selectedModelId = sel.value;
+      try { localStorage.setItem('asgard_ai_model', selectedModelId); } catch (e) {}
+      renderModelHint();
+      renderMessages();
+    };
+    renderModelHint();
+  }
+
+  function renderModelHint() {
+    const hintEl = document.getElementById('aiModelHint');
+    if (!hintEl) return;
+    const m = availableModels.find(x => x.id === selectedModelId);
+    if (!m) { hintEl.style.display = 'none'; return; }
+    const caps = m.capabilities || {};
+    const knows = caps.knows_crm_data;
+    const bg = knows ? 'rgba(46,160,67,0.12)' : 'rgba(212,168,67,0.12)';
+    const bd = knows ? 'rgba(46,160,67,0.35)' : 'rgba(212,168,67,0.4)';
+    const ic = knows ? '🧠' : '⚡';
+    const txt = knows
+      ? 'Эта модель видит данные CRM (тендеры, работы, финансы) и помнит диалог. Можно спрашивать про цифры.'
+      : 'Эта модель НЕ видит данные CRM — отвечает только на общие вопросы про систему. Для вопросов про ваши тендеры/финансы переключи на «🧠 с данными CRM».';
+    hintEl.style.cssText = `display:flex;gap:8px;align-items:flex-start;padding:6px 10px;margin:6px 12px 4px;background:${bg};border:1px solid ${bd};border-radius:8px;font-size:11px;color:var(--text-secondary,#aaa);`;
+    hintEl.innerHTML = `<span style="font-size:14px;line-height:1;">${ic}</span><span>${esc(txt)}</span>`;
   }
   
   // ─────────────────────────────────────────────────────────────────────────────
@@ -675,13 +747,22 @@ window.AsgardAI = (function(){
     }).join('');
     
     if (isLoading) {
+      const lastIsEmptyBot = messages.length > 0
+        && messages[messages.length - 1].role === 'assistant'
+        && !messages[messages.length - 1].content;
+      const hint = thinkSeconds > 0
+        ? `Мимир думает… ${thinkSeconds}с${thinkSeconds >= 30 ? ' (бывает до минуты)' : ''}`
+        : 'Мимир печатает…';
       container.innerHTML += `
-        <div class="ai-typing">
+        <div class="ai-typing" title="${esc(hint)}">
           <span></span><span></span><span></span>
         </div>
+        <div style="font-size:11px;color:var(--text-tertiary,#888);padding:2px 12px;">${esc(hint)}</div>
       `;
+      // (lastIsEmptyBot переменная зарезервирована для будущего варианта со стримом «в пузырь»)
+      void lastIsEmptyBot;
     }
-    
+
     container.scrollTop = container.scrollHeight;
   }
   
@@ -721,92 +802,114 @@ window.AsgardAI = (function(){
     
     // Show typing indicator
     isLoading = true;
+    startThinkTicker();
+    // Сразу добавляем пустой пузырь ассистента — в него стрим дописывает текст
+    const botMsg = { role: 'assistant', content: '' };
+    messages.push(botMsg);
     renderMessages();
-    
+
     try {
-      // Call AI API
-      const response = await callAI(text, filesToSend);
-      
-      messages.push({
-        role: 'assistant',
-        content: response
-      });
-      
+      await streamAI(text, botMsg);
     } catch (err) {
       console.error('AI error:', err);
-      messages.push({
-        role: 'assistant',
-        content: 'Извините, произошла ошибка. Попробуйте позже.'
-      });
+      botMsg.content = botMsg.content || 'Произошла ошибка соединения. Попробуйте ещё раз.';
+    } finally {
+      isLoading = false;
+      stopThinkTicker();
+      activeAbort = null;
+      renderMessages();
     }
-    
-    isLoading = false;
-    renderMessages();
   }
-  
+
   // ─────────────────────────────────────────────────────────────────────────────
-  // AI API Call (placeholder - will be connected to YandexGPT)
+  // Streaming AI Call → /api/mimir/chat-stream (SSE через fetch+ReadableStream)
   // ─────────────────────────────────────────────────────────────────────────────
-  async function callAI(text, files) {
-    // For now, return mock response
-    // This will be replaced with actual YandexGPT API call
-    
-    await new Promise(r => setTimeout(r, 1000 + Math.random() * 1000));
-    
-    const mockResponses = {
-      'тендер': `Чтобы создать новый тендер:
+  async function streamAI(text, botMsg) {
+    const token = getToken();
+    if (!token) {
+      botMsg.content = 'Нужно перелогиниться (нет токена).';
+      return;
+    }
+    if (activeAbort) { try { activeAbort.abort(); } catch (e) {} }
+    activeAbort = new AbortController();
 
-1. Перейдите в раздел **"Сага Тендеров"**
-2. Нажмите кнопку **"+ Внести тендер"**
-3. Заполните обязательные поля: заказчик, тип, дедлайн
-4. Нажмите **"Сохранить"**
+    const body = { message: text };
+    if (conversationId) body.conversation_id = conversationId;
+    if (selectedModelId) body.model = selectedModelId;
+    try {
+      const ctx = (location.hash || '').replace(/^#\/?/, '').split('?')[0];
+      if (ctx) body.context = ctx;
+    } catch (e) {}
 
-Тендер появится в реестре и воронке продаж.`,
-      
-      'статистик': `Для просмотра статистики:
+    const response = await fetch('/api/mimir/chat-stream', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + token,
+        'Accept': 'text/event-stream'
+      },
+      body: JSON.stringify(body),
+      signal: activeAbort.signal
+    });
 
-1. Откройте **"Дашборд руководителя"** — общая сводка
-2. Или **"Аналитика Ярла"** — детальные KPI
-3. Раздел **"Финансы"** — доходы и расходы
+    if (!response.ok || !response.body) {
+      const errText = await response.text().catch(() => '');
+      throw new Error(`HTTP ${response.status}: ${errText.substring(0, 200)}`);
+    }
 
-Данные обновляются автоматически.`,
-      
-      'расход': `Добавить расходы можно двумя способами:
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let lastRender = 0;
 
-1. **По работе**: откройте работу → вкладка "Расходы" → "Добавить"
-2. **Офисные**: раздел "Офисные расходы" → "Новый расход"
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop() || '';
 
-Также доступен **импорт выписки** из Альфа-Банка в разделе "Финансы".`,
-      
-      'default': `Я AI-помощник ASGARD CRM. Могу помочь с:
+      for (const part of parts) {
+        const line = part.trim();
+        if (!line.startsWith('data:')) continue;
+        const json = line.slice(5).trim();
+        if (!json) continue;
+        let event;
+        try { event = JSON.parse(json); } catch (e) { continue; }
 
-• Навигацией по системе
-• Созданием тендеров и работ
-• Аналитикой и отчётами
-• Настройками
-
-Что вас интересует?`
-    };
-    
-    // Simple keyword matching
-    const lowerText = text.toLowerCase();
-    for (const [key, response] of Object.entries(mockResponses)) {
-      if (lowerText.includes(key)) {
-        return response;
+        if (event.type === 'start' && event.conversation_id) {
+          conversationId = event.conversation_id;
+        } else if (event.type === 'text' && typeof event.content === 'string') {
+          botMsg.content += event.content;
+          // Тротлим перерисовку до 60fps (16мс) чтобы не лагать на длинных ответах
+          const now = Date.now();
+          if (now - lastRender > 50) {
+            lastRender = now;
+            renderMessages();
+          }
+        } else if (event.type === 'reasoning') {
+          // reasoning_content от reasoning-моделей (gpt-5.5) — оставляем в стороне.
+          // Юзеру не нужно видеть chain-of-thought, но typing-индикатор показывает
+          // что что-то происходит (счётчик секунд уже крутится).
+        } else if (event.type === 'done') {
+          renderMessages();
+          return;
+        } else if (event.type === 'error') {
+          // Если бэк сказал code='model_unavailable' — подсвечиваем селектор
+          // моделей красным, чтобы юзер сразу понял где переключить.
+          if (event.code === 'model_unavailable') {
+            const sel = document.getElementById('aiModelSelect');
+            if (sel) { sel.style.outline = '2px solid #d9534f'; setTimeout(() => { sel.style.outline = ''; }, 5000); }
+          }
+          botMsg.content = (botMsg.content || '') + (botMsg.content ? '\n\n' : '') + '⚠️ ' + (event.message || 'Ошибка');
+          renderMessages();
+          return;
+        }
       }
     }
-    
-    if (files.length > 0) {
-      return `Получил ${files.length} файл(ов): ${files.map(f => f.name).join(', ')}
-
-*Анализ файлов будет доступен после подключения YandexGPT.*
-
-Пока могу помочь с вопросами о работе системы ASGARD CRM.`;
-    }
-    
-    return mockResponses.default;
+    renderMessages();
   }
-  
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Public API
   // ─────────────────────────────────────────────────────────────────────────────

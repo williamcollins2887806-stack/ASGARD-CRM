@@ -649,48 +649,23 @@ async function complete({ system, messages, maxTokens, temperature, tools, plugi
   let _usageTracker = null;
   try { _usageTracker = require('./mimir-conductor/usage-tracker'); } catch (_) {}
 
-  try {
-    let result;
-    if (provider === 'anthropic') {
-      result = await callAnthropic({ system, messages, maxTokens, temperature });
-      result.provider = 'anthropic';
-    } else if (provider === 'openai') {
-      result = await callOpenAI({ system, messages, maxTokens, temperature, tools, plugins, verbosity, responseFormat, model });
-      result.provider = 'openai';
-    } else {
-      throw new Error(`Unknown AI provider: ${provider}`);
-    }
-    result.durationMs = Date.now() - startTime;
-    if (_usageTracker && result.usage) _usageTracker.addUsage(result.usage, result._actual_api_id || null);
-    return result;
-  } catch (error) {
-    // Попробуем fallback на другого провайдера при 5xx ошибках
-    const is5xx = error.message && error.message.includes('5');
-    const fallbackProvider = provider === 'anthropic' ? 'openai' : 'anthropic';
-    const hasFallbackKey = fallbackProvider === 'anthropic' ? ANTHROPIC_API_KEY : OPENAI_API_KEY;
-
-    if (is5xx && hasFallbackKey) {
-      console.warn(`[AI Provider] ${provider} failed, trying fallback to ${fallbackProvider}`);
-
-      try {
-        let result;
-        if (fallbackProvider === 'anthropic') {
-          result = await callAnthropic({ system, messages, maxTokens, temperature });
-        } else {
-          result = await callOpenAI({ system, messages, maxTokens, temperature, tools, plugins, verbosity, responseFormat });
-        }
-        result.provider = fallbackProvider;
-        result.fallback = true;
-        result.durationMs = Date.now() - startTime;
-        if (_usageTracker && result.usage) _usageTracker.addUsage(result.usage, result._actual_api_id || null);
-        return result;
-      } catch (fallbackError) {
-        throw new Error(`Both providers failed. Primary: ${error.message}, Fallback: ${fallbackError.message}`);
-      }
-    }
-
-    throw error;
+  // Без silent fallback: если выбранная модель упала — бросаем ошибку наверх,
+  // чтобы caller (UI чата) показал юзеру явное «модель X недоступна, выберите
+  // другую». Раньше код пытался autoswap anthropic ↔ openai при 5xx, но это
+  // путало пользователя (он выбрал модель — а ответила другая).
+  let result;
+  if (provider === 'anthropic') {
+    result = await callAnthropic({ system, messages, maxTokens, temperature });
+    result.provider = 'anthropic';
+  } else if (provider === 'openai') {
+    result = await callOpenAI({ system, messages, maxTokens, temperature, tools, plugins, verbosity, responseFormat, model });
+    result.provider = 'openai';
+  } else {
+    throw new Error(`Unknown AI provider: ${provider}`);
   }
+  result.durationMs = Date.now() - startTime;
+  if (_usageTracker && result.usage) _usageTracker.addUsage(result.usage, result._actual_api_id || null);
+  return result;
 }
 
 /**
@@ -707,31 +682,14 @@ async function stream({ system, messages, maxTokens, temperature, model }) {
   await _loadKeysFromDB();
   const provider = AI_PROVIDER;
 
-  try {
-    if (provider === 'anthropic') {
-      return await callAnthropic({ system, messages, maxTokens, temperature, stream: true });
-    } else if (provider === 'openai') {
-      return await callOpenAI({ system, messages, maxTokens, temperature, stream: true, model });
-    } else {
-      throw new Error(`Unknown AI provider: ${provider}`);
-    }
-  } catch (error) {
-    // Fallback для стриминга
-    const is5xx = error.message && error.message.includes('5');
-    const fallbackProvider = provider === 'anthropic' ? 'openai' : 'anthropic';
-    const hasFallbackKey = fallbackProvider === 'anthropic' ? ANTHROPIC_API_KEY : OPENAI_API_KEY;
-
-    if (is5xx && hasFallbackKey) {
-      console.warn(`[AI Provider] ${provider} stream failed, trying fallback to ${fallbackProvider}`);
-
-      if (fallbackProvider === 'anthropic') {
-        return await callAnthropic({ system, messages, maxTokens, temperature, stream: true });
-      } else {
-        return await callOpenAI({ system, messages, maxTokens, temperature, stream: true, model });
-      }
-    }
-
-    throw error;
+  // Без silent fallback — см. complete() выше: если выбранная модель упала,
+  // юзер должен увидеть «модель X недоступна», а не получить тихий swap.
+  if (provider === 'anthropic') {
+    return await callAnthropic({ system, messages, maxTokens, temperature, stream: true });
+  } else if (provider === 'openai') {
+    return await callOpenAI({ system, messages, maxTokens, temperature, stream: true, model });
+  } else {
+    throw new Error(`Unknown AI provider: ${provider}`);
   }
 }
 
@@ -824,6 +782,11 @@ async function* parseOpenAIStream(response) {
           const event = JSON.parse(jsonStr);
           const delta = event.choices?.[0]?.delta;
 
+          // Reasoning-модели (gpt-5.5 и подобные) шлют рассуждения отдельным
+          // полем reasoning_content. Финальный ответ потом приходит в .content.
+          if (delta?.reasoning_content) {
+            yield { type: 'reasoning', content: delta.reasoning_content };
+          }
           if (delta?.content) {
             yield { type: 'text', content: delta.content };
           }
