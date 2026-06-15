@@ -1455,7 +1455,7 @@ module.exports = async function(fastify) {
     if (isNaN(chatId)) return reply.code(400).send({ error: 'Некорректный ID чата' });
     const userId = request.user.id;
     const user = request.user;
-    const { message } = request.body;
+    const { message, model: requestedModel } = request.body;
 
     if (!message || !message.trim()) {
       return reply.code(400).send({ error: 'Пустое сообщение' });
@@ -1466,6 +1466,11 @@ module.exports = async function(fastify) {
     if (!chat || !chat.is_mimir) {
       return reply.code(400).send({ error: 'Это не Мимир-чат' });
     }
+
+    // Резолв модели из реестра. light-режим — короткий промпт без БД-контекста
+    // и без истории (gpt-5.4 обламывается на тяжёлом prompt'е Хугинна).
+    const chatModelsReg = require('../services/chat-models');
+    const modelCfg = chatModelsReg.getModel(requestedModel) || chatModelsReg.getDefault();
     const member = await getChatMembership(chatId, userId);
     if (!member) return reply.code(403).send({ error: 'Нет доступа' });
 
@@ -1569,16 +1574,26 @@ module.exports = async function(fastify) {
       aiMessages.splice(1, 0, { role: 'assistant', content: 'Понял, я вижу загруженные файлы. Готов ответить на вопросы по ним.' });
     }
 
-    // 3. Построить system prompt через mimir-data
+    // 3. Построить system prompt в зависимости от system_mode выбранной модели.
+    // light → короткий, без БД-контекста, без длинных правил (модель не справится)
+    // full  → полный buildSystemPrompt + правила Хугинна (для GPT-5.5/Claude)
     let systemPrompt;
-    try {
-      systemPrompt = await mimirData.buildSystemPrompt(db, user);
-    } catch (e) {
-      systemPrompt = `Ты — Мимир, AI-помощник ASGARD CRM. Помогаешь с проектами, тендерами, CRM. Отвечай развёрнуто, используй markdown.\nПользователь: ${senderName} (${user.role})`;
-    }
+    if (modelCfg.system_mode === 'light') {
+      systemPrompt = `Ты — Мимир, ИИ-помощник ASGARD CRM. Пользователь: ${senderName} (${user.role}).
 
-    // Дополнить системный промпт для Хугинна
-    systemPrompt += `\n\nПРАВИЛА ОТВЕТА В ХУГИННЕ:
+⚠️ Сейчас ты в БЫСТРОМ режиме: НЕ видишь данные CRM (тендеры/работы/финансы/сотрудников) и НЕ помнишь предыдущие сообщения. Отвечай только на общие вопросы про работу системы.
+
+Если пользователь спрашивает про конкретные данные — кратко скажи: «Я в быстром режиме без доступа к данным. Переключи модель в шапке чата на «🧠 С данными CRM» — я отвечу с цифрами.»
+
+Отвечай: 2–4 предложения, на русском, без эмодзи.`;
+    } else {
+      try {
+        systemPrompt = await mimirData.buildSystemPrompt(db, user);
+      } catch (e) {
+        systemPrompt = `Ты — Мимир, AI-помощник ASGARD CRM. Помогаешь с проектами, тендерами, CRM. Отвечай развёрнуто, используй markdown.\nПользователь: ${senderName} (${user.role})`;
+      }
+
+      systemPrompt += `\n\nПРАВИЛА ОТВЕТА В ХУГИННЕ:
 - Отвечай РАЗВЁРНУТО и ПОДРОБНО, минимум 3-5 предложений
 - Используй markdown: **bold**, _italic_, списки (-), заголовки (##)
 - Будь дружелюбным и профессиональным
@@ -1587,6 +1602,7 @@ module.exports = async function(fastify) {
 - НИКОГДА не отвечай одним словом или одним предложением
 - Помни ВЕСЬ контекст переписки, ссылайся на предыдущие сообщения
 - При вопросах о просчётах — используй тарифную сетку, считай конкретные суммы`;
+    }
 
     // 4. Обработка быстрых команд
     let processedMessage = text;
@@ -1625,19 +1641,29 @@ module.exports = async function(fastify) {
       user_name: 'Мимир'
     });
 
-    // 6. Вызвать AI
+    // 6. Вызвать AI с выбранной моделью. light даёт минимум сообщений (только
+    // последнее), чтобы не упереться в тяжёлый контекст.
+    const finalMessages = modelCfg.system_mode === 'light'
+      ? [{ role: 'user', content: processedMessage }]
+      : aiMessages;
     let aiResponse;
     try {
       const aiResult = await aiProvider.complete({
         system: systemPrompt,
-        messages: aiMessages,
+        messages: finalMessages,
         maxTokens: 8000,
-        temperature: 0.6
+        temperature: 0.6,
+        model: modelCfg.id
       });
       aiResponse = aiResult.content || aiResult.text || 'Не удалось получить ответ';
     } catch (aiErr) {
       fastify.log.error(aiErr, 'Mimir AI error in Huginn');
-      aiResponse = '⚠️ Один из воронов заблудился... Попробуйте ещё раз через минуту.';
+      const errMsg = String(aiErr?.message || '');
+      if (/Insufficient balance|balance_rub|HTTP 4\d{2}|HTTP 5\d{2}/.test(errMsg)) {
+        aiResponse = `⚠️ Модель «${modelCfg.label}» сейчас недоступна. Выбери другую модель в шапке чата (рядом с именем «Мимир»).`;
+      } else {
+        aiResponse = '⚠️ Один из воронов заблудился... Попробуйте ещё раз через минуту.';
+      }
     }
 
     const durationMs = Date.now() - startTime;
