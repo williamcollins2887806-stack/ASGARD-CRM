@@ -21,7 +21,8 @@ import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import {
   Handshake, Inbox, Send, Eye, Plus, User, Clock, Flag, Check, X,
-  CornerUpRight, MessageSquare, Shield, RotateCw, AlertTriangle, Search
+  CornerUpRight, MessageSquare, Shield, RotateCw, AlertTriangle, Search,
+  Sparkles, Star, FileText
 } from 'lucide-react';
 import { formatDate, relativeTime } from '@/lib/utils';
 
@@ -130,11 +131,13 @@ function HelpCard({ task, mode, onOpen, delay }) {
 function HelpDetail({ task, onClose, onRefresh, currentUser, users }) {
   const navigate = useNavigate();
   const haptic = useHaptic();
-  const [view, setView]  = useState('main'); // main | decline | redirect | reassign | escalate | complete
+  const [view, setView]  = useState('main'); // main | decline | redirect | reassign | escalate | complete | rate
   const [busy, setBusy]  = useState(false);
   const [reason, setReason] = useState('');
   const [newId, setNewId]   = useState('');
   const [comment, setComment] = useState('');
+  const [stars, setStars] = useState(5);
+  const [thanks, setThanks] = useState('');
 
   if (!task) return null;
 
@@ -150,6 +153,7 @@ function HelpDetail({ task, onClose, onRefresh, currentUser, users }) {
   const showRedirect = isMine && ['new','accepted','in_progress'].includes(task.status) && !task.redirected_once;
   const showReassign = isCreator && task.status === 'declined';
   const showEscalate = isCreator && task.status === 'declined';
+  const showRate     = isCreator && task.status === 'done';
 
   const usersFiltered = users.filter(u =>
     u.is_active !== false && u.id !== me && u.id !== task.creator_id && u.id !== task.assignee_id
@@ -201,6 +205,14 @@ function HelpDetail({ task, onClose, onRefresh, currentUser, users }) {
   const onEscalate = async () => {
     haptic.light(); setBusy(true);
     try { await api.put(`/tasks/${task.id}/escalate`);
+          haptic.success(); onRefresh(); onClose(); }
+    catch (e) { haptic.error?.(); }
+    finally { setBusy(false); }
+  };
+
+  const onRate = async () => {
+    haptic.light(); setBusy(true);
+    try { await api.post(`/tasks/${task.id}/rate`, { stars, thanks_text: thanks.trim() || null });
           haptic.success(); onRefresh(); onClose(); }
     catch (e) { haptic.error?.(); }
     finally { setBusy(false); }
@@ -295,6 +307,13 @@ function HelpDetail({ task, onClose, onRefresh, currentUser, users }) {
                     className="rounded-xl py-3 spring-tap flex items-center justify-center gap-2"
                     style={{ background:'rgba(212,160,23,0.18)', color:'#e8c060', border:'0.5px solid rgba(212,160,23,0.55)' }}>
               <Shield size={16}/> Эскалировать руководителю
+            </button>
+          )}
+          {showRate && (
+            <button onClick={() => { setStars(5); setThanks(''); setView('rate'); }}
+                    className="rounded-xl py-3 spring-tap flex items-center justify-center gap-2"
+                    style={{ background:'#f4c430', color:'#1a1410', fontWeight:600 }}>
+              <Star size={16}/> Оценить помощь
             </button>
           )}
           {task.chat_id && (
@@ -400,6 +419,36 @@ function HelpDetail({ task, onClose, onRefresh, currentUser, users }) {
         </div>
       </div>
     );
+  } else if (view === 'rate') {
+    content = (
+      <div className="flex flex-col gap-3 pb-6">
+        <p className="text-[13px]" style={{ color:'var(--text-secondary)' }}>
+          Как помог <b>{task.assignee_name}</b>?
+        </p>
+        <div className="flex items-center justify-center gap-3">
+          {[1,2,3,4,5].map(n => (
+            <button key={n} onClick={() => { haptic.light(); setStars(n); }}
+                    className="spring-tap"
+                    style={{ background:'transparent', border:'none', fontSize:42, lineHeight:1, color: stars >= n ? '#f4c430' : '#444' }}>
+              {stars >= n ? '★' : '☆'}
+            </button>
+          ))}
+        </div>
+        <textarea value={thanks} onChange={(e) => setThanks(e.target.value)} maxLength={500}
+                  placeholder="Спасибо (необязательно)…" rows={3}
+                  className="rounded-xl p-3 text-[14px]"
+                  style={{ background:'var(--bg-surface)', border:'0.5px solid var(--border-norse)', color:'var(--text-primary)' }}/>
+        <div className="flex gap-2 mt-2">
+          <button onClick={() => setView('main')} className="flex-1 py-3 rounded-xl"
+                  style={{ background:'var(--bg-surface)', color:'var(--text-secondary)' }}>Назад</button>
+          <button disabled={busy} onClick={onRate}
+                  className="flex-1 py-3 rounded-xl"
+                  style={{ background:'#f4c430', color:'#1a1410', fontWeight:600, opacity: busy ? 0.5 : 1 }}>
+            ⭐ Оценить
+          </button>
+        </div>
+      </div>
+    );
   } else if (view === 'complete') {
     content = (
       <div className="flex flex-col gap-3 pb-6">
@@ -474,7 +523,7 @@ function UserSelect({ users, value, onChange, placeholder='Выбери' }) {
 }
 
 // ─── Создание задачи ─────────────────────────────────────────────
-function CreateModal({ open, onClose, onCreated, users, currentUser }) {
+function CreateModal({ open, onClose, onCreated, users, currentUser, templates }) {
   const haptic = useHaptic();
   const [step, setStep] = useState(1); // 1=кому, 2=что, 3=когда
   const [assigneeId, setAssigneeId] = useState('');
@@ -483,8 +532,38 @@ function CreateModal({ open, onClose, onCreated, users, currentUser }) {
   const [deadline, setDeadline] = useState('');
   const [priority, setPriority] = useState('normal');
   const [busy, setBusy] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiResult, setAiResult] = useState(null);
+  const [showTpl, setShowTpl] = useState(false);
 
-  const reset = () => { setStep(1); setAssigneeId(''); setTitle(''); setDescription(''); setDeadline(''); setPriority('normal'); };
+  const applyTemplate = (t) => {
+    if (t.default_assignee_id) setAssigneeId(String(t.default_assignee_id));
+    const dateStr = new Date().toLocaleDateString('ru-RU');
+    setTitle((t.title_pattern || t.name).replace(/\{\{me\}\}/g, currentUser?.name || '').replace(/\{\{date\}\}/g, dateStr).trim());
+    if (t.description) setDescription(t.description);
+    if (t.priority) setPriority(t.priority);
+    if (t.deadline_hours) {
+      const d = new Date(Date.now() + t.deadline_hours * 3600000);
+      const off = d.getTimezoneOffset();
+      const local = new Date(d.getTime() - off * 60000);
+      setDeadline(local.toISOString().slice(0, 16));
+    }
+    setShowTpl(false);
+    haptic.success();
+    if (t.default_assignee_id) setStep(2); // сразу к описанию
+  };
+
+  const askAi = async () => {
+    if (description.trim().length < 5 && title.trim().length < 5) { haptic.error?.(); return; }
+    setAiBusy(true);
+    try {
+      const r = await api.post('/tasks/help/ai-suggest', { description: description || title, title });
+      setAiResult(r);
+    } catch (e) { haptic.error?.(); }
+    finally { setAiBusy(false); }
+  };
+
+  const reset = () => { setStep(1); setAssigneeId(''); setTitle(''); setDescription(''); setDeadline(''); setPriority('normal'); setAiResult(null); setShowTpl(false); };
 
   const handleClose = () => { reset(); onClose(); };
 
@@ -534,6 +613,29 @@ function CreateModal({ open, onClose, onCreated, users, currentUser }) {
 
         {step === 1 && (
           <>
+            {templates?.length > 0 && (
+              <button onClick={() => setShowTpl(s => !s)}
+                      className="rounded-xl py-2.5 spring-tap flex items-center justify-center gap-2 text-[13px]"
+                      style={{ background:'rgba(196,160,98,0.08)', color:'#c4a062', border:'0.5px solid rgba(196,160,98,0.3)' }}>
+                <FileText size={14}/> Шаблоны ({templates.length}) {showTpl ? '▲':'▼'}
+              </button>
+            )}
+            {showTpl && (
+              <div className="rounded-xl overflow-hidden" style={{ background:'var(--bg-surface)', border:'0.5px solid var(--border-norse)' }}>
+                {templates.map(t => (
+                  <button key={t.id} onClick={() => applyTemplate(t)}
+                          className="w-full text-left px-3 py-2.5 spring-tap"
+                          style={{ borderBottom:'0.5px solid var(--border-norse)' }}>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[16px]">{t.emoji || '🤝'}</span>
+                      <span className="text-[14px] font-medium" style={{ color:'var(--text-primary)' }}>{t.name}</span>
+                      {t.use_count > 0 && <span className="text-[10px] ml-auto" style={{ color:'var(--text-tertiary)' }}>{t.use_count}×</span>}
+                    </div>
+                    {t.default_assignee_name && <div className="text-[11px] mt-1" style={{ color:'var(--text-tertiary)' }}>→ {t.default_assignee_name}</div>}
+                  </button>
+                ))}
+              </div>
+            )}
             <UserSelect users={usersFiltered} value={assigneeId} onChange={setAssigneeId} placeholder="Имя или роль…"/>
             <button disabled={!assigneeId} onClick={() => setStep(2)}
                     className="rounded-xl py-3 mt-2"
@@ -553,6 +655,27 @@ function CreateModal({ open, onClose, onCreated, users, currentUser }) {
                       placeholder="Подробности (необязательно)" rows={4}
                       className="rounded-xl px-3 py-3 text-[14px]"
                       style={{ background:'var(--bg-surface)', border:'0.5px solid var(--border-norse)', color:'var(--text-primary)' }}/>
+            <button onClick={askAi} disabled={aiBusy}
+                    className="rounded-xl py-2.5 spring-tap flex items-center justify-center gap-2 text-[13px]"
+                    style={{ background:'rgba(160,120,196,0.15)', color:'#b89ad4', border:'0.5px solid rgba(160,120,196,0.45)', opacity: aiBusy?0.5:1 }}>
+              <Sparkles size={14}/> {aiBusy ? 'Думаю…' : 'Подсказать кому передать'}
+            </button>
+            {aiResult && (
+              <div className="rounded-xl p-3"
+                   style={{ background:'rgba(160,120,196,0.06)', border:'0.5px solid rgba(160,120,196,0.25)' }}>
+                <div className="text-[11px] mb-2" style={{ color:'var(--text-tertiary)' }}>
+                  🤖 По описанию подходит отдел <b style={{ color:'#b89ad4' }}>{ROLE_LABELS[aiResult.dept_hint] || aiResult.dept_hint || '?'}</b>:
+                </div>
+                {aiResult.suggested?.length ? aiResult.suggested.map(s => (
+                  <button key={s.user_id} onClick={() => { setAssigneeId(String(s.user_id)); setAiResult(null); haptic.success(); }}
+                          className="w-full text-left px-2 py-1.5 mb-1 rounded-lg spring-tap"
+                          style={{ background:'rgba(28,22,18,0.55)', border:'0.5px solid rgba(160,120,196,0.2)' }}>
+                    <div className="text-[13px]" style={{ color:'var(--text-primary)' }}><b>{s.name}</b> · {ROLE_LABELS[s.role]||s.role}</div>
+                    <div className="text-[10px]" style={{ color:'var(--text-tertiary)' }}>{s.reason}</div>
+                  </button>
+                )) : <div className="text-[12px]" style={{ color:'var(--text-tertiary)' }}>Не нашёл подходящих</div>}
+              </div>
+            )}
             <div className="flex gap-2">
               <button onClick={() => setStep(1)} className="flex-1 py-3 rounded-xl"
                       style={{ background:'var(--bg-surface)', color:'var(--text-secondary)' }}>Назад</button>
@@ -637,6 +760,7 @@ export default function HelpTasksPage() {
   const [watching, setWatching] = useState([]);
   const [stats, setStats]       = useState({});
   const [users, setUsers]       = useState([]);
+  const [templates, setTemplates] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [opened, setOpened]     = useState(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -661,7 +785,14 @@ export default function HelpTasksPage() {
     } catch (e) { setUsers([]); }
   }, []);
 
-  useEffect(() => { if (user?.id) { load(); loadUsers(); } }, [user?.id, load, loadUsers]);
+  const loadTemplates = useCallback(async () => {
+    try {
+      const r = await api.get('/tasks/help/templates');
+      setTemplates(r.templates || []);
+    } catch (e) { setTemplates([]); }
+  }, []);
+
+  useEffect(() => { if (user?.id) { load(); loadUsers(); loadTemplates(); } }, [user?.id, load, loadUsers, loadTemplates]);
 
   const list = tab === 'inbox' ? inbox : tab === 'outbox' ? outbox : watching;
   const sorted = useMemo(() => {
@@ -735,7 +866,7 @@ export default function HelpTasksPage() {
                   currentUser={user} users={users}/>
 
       <CreateModal open={createOpen} onClose={() => setCreateOpen(false)}
-                   onCreated={load} users={users} currentUser={user}/>
+                   onCreated={load} users={users} currentUser={user} templates={templates}/>
     </PageShell>
   );
 }

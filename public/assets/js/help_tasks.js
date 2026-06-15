@@ -25,9 +25,10 @@ window.AsgardHelpTasks = (function() {
   const PRIORITY_LABELS = { low:'Низкий', normal:'Обычно', high:'⚠️ Важно', urgent:'🔥 Горит' };
 
   let state = {
-    tab: 'inbox',  // inbox | outbox | watching
+    tab: 'inbox',  // inbox | outbox | watching | analytics
     inbox: [], outbox: [], watching: [], stats: {},
     users: [],
+    templates: [],   // Phase 8
     q: '',
     statusFilter: '',
     currentUser: null,
@@ -157,6 +158,7 @@ window.AsgardHelpTasks = (function() {
     const showComplete = mode === 'inbox' && isMine && ['accepted','in_progress'].includes(task.status);
     const showReassign = mode === 'outbox' && isCreator && task.status === 'declined';
     const showEscalate = mode === 'outbox' && isCreator && task.status === 'declined';
+    const showRate     = mode === 'outbox' && isCreator && task.status === 'done';
 
     const fromTo = mode === 'inbox'
       ? `📨 От: <b>${esc(task.creator_name)}</b> · ${esc(ROLE_LABELS[task.creator_role] || task.creator_role || '')}`
@@ -187,6 +189,7 @@ window.AsgardHelpTasks = (function() {
           ${showRedirect ? `<button class="ht-act redirect" data-act="redirect" data-id="${task.id}">↪️ Перенаправить</button>` : ''}
           ${showReassign ? `<button class="ht-act accept"   data-act="reassign" data-id="${task.id}">🔄 Переназначить</button>` : ''}
           ${showEscalate ? `<button class="ht-act escalate" data-act="escalate" data-id="${task.id}">🛡 Эскалировать</button>` : ''}
+          ${showRate     ? `<button class="ht-act escalate" data-act="rate"     data-id="${task.id}">⭐ Оценить</button>` : ''}
           ${task.chat_id ? `<a class="ht-act chat" href="#/messenger?id=${task.chat_id}">💬 Чат</a>` : ''}
         </div>
       </article>
@@ -287,6 +290,7 @@ window.AsgardHelpTasks = (function() {
         else if (act === 'redirect') openRedirectModal(t, container);
         else if (act === 'reassign') openReassignModal(t, container);
         else if (act === 'escalate') openEscalateModal(t, container);
+        else if (act === 'rate')     openRatingModal(t, container);
       };
     });
 
@@ -444,12 +448,22 @@ window.AsgardHelpTasks = (function() {
 
   function openCreateModal() {
     if (!state.users.length) { loadUsers().then(openCreateModal); toast('Подгружаю список…', 'info'); return; }
+    if (!state.templates.length) loadTemplatesLite(); // подгружу в фоне
     const me = state.currentUser?.id;
     const usersOpts = state.users.filter(u => u.is_active !== false && u.id !== me)
       .map(u => `<option value="${u.id}">${esc(u.name||u.login)} (${esc(ROLE_LABELS[u.role]||u.role)})</option>`).join('');
+    const tplOpts = (state.templates || []).map(t =>
+      `<option value="${t.id}">${esc(t.emoji||'🤝')} ${esc(t.name)}${t.default_assignee_name?' → '+esc(t.default_assignee_name):''}${t.use_count?' · '+t.use_count+'×':''}</option>`
+    ).join('');
     const html = `
-      <div class="ht-mod-field"><label class="required">Кому отправить</label>
+      ${tplOpts ? `<div class="ht-mod-field"><label>📋 Шаблон (заполнит форму одним кликом)</label>
+        <select id="ht-tpl"><option value="">— без шаблона —</option>${tplOpts}</select>
+      </div>` : ''}
+      <div class="ht-mod-field"><label class="required">Кому отправить
+        <button type="button" id="ht-ai-btn" style="margin-left:8px;background:linear-gradient(180deg,rgba(160,120,196,.2),rgba(160,120,196,.08));border:1px solid rgba(160,120,196,.45);color:#b89ad4;padding:3px 10px;border-radius:12px;font-size:11px;cursor:pointer">🤖 Подсказать кому</button>
+      </label>
         <select id="ht-assignee"><option value="">— выберите коллегу —</option>${usersOpts}</select>
+        <div id="ht-ai-result" style="margin-top:8px;display:none"></div>
       </div>
       <div class="ht-mod-field"><label>Кто ещё поможет (наблюдатели, через Ctrl/Cmd-click)</label>
         <select id="ht-watchers" multiple style="min-height:120px"><option value="" disabled>— выберите —</option>${usersOpts}</select>
@@ -519,8 +533,99 @@ window.AsgardHelpTasks = (function() {
             modal.querySelector('#ht-dl').value = local.toISOString().slice(0, 16);
           };
         });
+        // Phase 8: шаблон применить
+        const tplSel = modal.querySelector('#ht-tpl');
+        if (tplSel) tplSel.onchange = () => {
+          const t = (state.templates || []).find(x => x.id === parseInt(tplSel.value));
+          if (!t) return;
+          if (t.default_assignee_id) modal.querySelector('#ht-assignee').value = String(t.default_assignee_id);
+          const dt = new Date();
+          const dateStr = dt.toLocaleDateString('ru-RU');
+          let title = (t.title_pattern || t.name).replace(/\{\{me\}\}/g, state.currentUser?.name || '').replace(/\{\{date\}\}/g, dateStr).trim();
+          modal.querySelector('#ht-title').value = title;
+          if (t.description) modal.querySelector('#ht-desc').value = t.description;
+          if (t.priority) {
+            modal.querySelectorAll('.ht-prio-radio input').forEach(r => r.checked = (r.value === t.priority));
+            modal.querySelectorAll('.ht-prio-radio label').forEach(l => l.classList.toggle('active', l.querySelector('input').checked));
+          }
+          if (t.deadline_hours) {
+            const d = new Date(Date.now() + t.deadline_hours * 3600000);
+            const off = d.getTimezoneOffset();
+            const local = new Date(d.getTime() - off * 60000);
+            modal.querySelector('#ht-dl').value = local.toISOString().slice(0, 16);
+          }
+          toast('Шаблон применён: ' + t.name, 'ok');
+        };
+        // Phase 8: AI-suggest
+        const aiBtn = modal.querySelector('#ht-ai-btn');
+        if (aiBtn) aiBtn.onclick = async () => {
+          const desc = modal.querySelector('#ht-desc').value.trim() || modal.querySelector('#ht-title').value.trim();
+          if (desc.length < 5) { toast('Опиши задачу подробнее (мин. 5 симв.)', 'err'); return; }
+          aiBtn.disabled = true; aiBtn.textContent = '⏳ Думаю…';
+          try {
+            const r = await api('POST', '/api/tasks/help/ai-suggest', { description: desc });
+            const box = modal.querySelector('#ht-ai-result');
+            if (!r.suggested?.length) { box.style.display='block'; box.innerHTML = `<div style="font-size:12px;color:#888">Не нашёл подходящих сотрудников</div>`; }
+            else {
+              box.style.display = 'block';
+              box.innerHTML = `<div style="font-size:11px;color:#a8987a;margin-bottom:6px">🤖 Подходит отдел <b style="color:#b89ad4">${esc(ROLE_LABELS[r.dept_hint]||r.dept_hint)}</b>:</div>` +
+                r.suggested.map(s => `<button type="button" data-uid="${s.user_id}" class="ht-ai-card" style="display:block;width:100%;text-align:left;padding:6px 10px;margin-bottom:4px;background:rgba(28,22,18,.55);border:1px solid rgba(160,120,196,.2);border-radius:6px;color:#d4c08a;cursor:pointer;font-size:12px"><b>${esc(s.name)}</b> · ${esc(ROLE_LABELS[s.role]||s.role)} <i style="color:#888;font-size:10px">· ${esc(s.reason)}</i></button>`).join('');
+              box.querySelectorAll('.ht-ai-card').forEach(b => b.onclick = () => {
+                modal.querySelector('#ht-assignee').value = b.dataset.uid;
+                box.style.display = 'none';
+                toast('Исполнитель выбран', 'ok');
+              });
+            }
+          } catch (e) { toast('Ошибка AI: ' + e.message, 'err'); }
+          finally { aiBtn.disabled = false; aiBtn.textContent = '🤖 Подсказать кому'; }
+        };
       }
     });
+  }
+
+  // ── Phase 8: Rating ─────────────────────────────────────────
+  function openRatingModal(task, container) {
+    const html = `
+      <div class="ht-mod-field"><label class="required">Насколько помог?</label>
+        <div id="ht-stars" style="display:inline-flex;gap:8px;font-size:32px;cursor:pointer">
+          ${[1,2,3,4,5].map(n => `<span data-n="${n}" style="color:#f4c430">★</span>`).join('')}
+        </div>
+      </div>
+      <div class="ht-mod-field"><label>Спасибо (необязательно)</label>
+        <textarea id="ht-thanks" rows="3" maxlength="500" placeholder="«Огромное спасибо!» — увидит сам помощник"></textarea>
+      </div>
+    `;
+    let chosen = 5;
+    AsgardUI.showModal({
+      title: '⭐ Оценить помощь',
+      html,
+      buttons: [
+        { label: 'Пропустить', variant: 'ghost' },
+        { label: '⭐ Оценить', variant: 'primary', handler: async (modal) => {
+            const thanks = modal.querySelector('#ht-thanks').value.trim() || null;
+            try {
+              await api('POST', `/api/tasks/${task.id}/rate`, { stars: chosen, thanks_text: thanks });
+              toast('⭐ Спасибо за оценку!', 'ok');
+              await refresh(container);
+            } catch (e) { toast('Ошибка: ' + e.message, 'err'); return false; }
+          }
+        }
+      ],
+      onOpen: (modal) => {
+        const update = () => {
+          modal.querySelectorAll('#ht-stars span').forEach((s, i) => s.style.color = (i+1) <= chosen ? '#f4c430' : '#444');
+        };
+        update();
+        modal.querySelectorAll('#ht-stars span').forEach(s => s.onclick = () => { chosen = parseInt(s.dataset.n); update(); });
+      }
+    });
+  }
+
+  async function loadTemplatesLite() {
+    try {
+      const r = await api('GET', '/api/tasks/help/templates');
+      state.templates = r?.templates || [];
+    } catch (e) {}
   }
 
   function toast(msg, tone) {
@@ -560,6 +665,7 @@ window.AsgardHelpTasks = (function() {
     container.innerHTML = '<div class="ht-page"><div class="ht-empty">⏳ Загружаем…</div></div>';
     // Параллельно — пользователи (для пикеров)
     loadUsers();
+    loadTemplatesLite();
     await loadAll();
     renderHeader(container);
   }
