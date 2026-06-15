@@ -888,7 +888,7 @@ async function equipmentRoutes(fastify, options) {
       return reply.code(403).send({ success: false, message: 'Нет прав на выдачу' });
     }
 
-    const { equipment_id, holder_id, object_id, work_id, issue_reason, issue_date, condition, notes } = request.body;
+    const { equipment_id, holder_id, object_id, work_id, issue_reason, issue_date, condition_after, notes } = request.body;
 
     if (!equipment_id || !holder_id) {
       return reply.code(400).send({ success: false, message: 'Укажите equipment_id и holder_id' });
@@ -915,7 +915,7 @@ async function equipmentRoutes(fastify, options) {
           work_id, condition_before, condition_after, notes, confirmed, confirmed_at, created_by
         ) VALUES ($1, 'issue', $2, $3, $4, $5, $6, $7, $8, true, NOW(), $9)
       `, [equipment_id, eq.warehouse_id, holder_id, object_id || null, work_id || null,
-          eq.condition, condition || eq.condition, notes || issue_reason || 'Выдача', user.id]);
+          eq.condition, condition_after || eq.condition, notes || issue_reason || 'Выдача', user.id]);
 
       // Update equipment
       await client.query(`
@@ -923,7 +923,7 @@ async function equipmentRoutes(fastify, options) {
           status = 'issued', current_holder_id = $1, current_object_id = $2,
           warehouse_id = NULL, work_id = $3, condition = COALESCE($4, condition), updated_at = NOW()
         WHERE id = $5
-      `, [holder_id, object_id || null, work_id || null, condition, equipment_id]);
+      `, [holder_id, object_id || null, work_id || null, condition_after, equipment_id]);
 
       await client.query('COMMIT');
       return { success: true, message: 'Оборудование выдано' };
