@@ -101,6 +101,28 @@ async function routes(fastify, options) {
       if (!approvedByEmp[a.employee_id]) approvedByEmp[a.employee_id] = a;
     }
 
+    // Последняя завершённая работа — для тех, кто СЕЙЧАС не на объекте и не согласован.
+    // Показываем в колонке «Объект/РП» как «история», и в «Начало работ» — дату начала
+    // последнего assignment'а (это и есть «срок последней работы» по сути).
+    const { rows: lastAssignments } = await db.query(`
+      SELECT DISTINCT ON (ea.employee_id)
+        ea.employee_id, ea.work_id,
+        ea.assigned_at AS start_date,
+        ea.departure_date AS end_date,
+        w.work_title,
+        wpm.name AS pm_name
+      FROM employee_assignments ea
+      LEFT JOIN works w   ON w.id  = ea.work_id
+      LEFT JOIN users wpm ON wpm.id = w.pm_id
+      WHERE ea.employee_id = ANY($1::int[])
+      ORDER BY ea.employee_id, COALESCE(ea.departure_date, ea.assigned_at) DESC
+    `, [empIds]);
+
+    const lastByEmp = {};
+    for (const a of lastAssignments) {
+      if (!lastByEmp[a.employee_id]) lastByEmp[a.employee_id] = a;
+    }
+
     // Документы — просрочка / скоро истекут.
     // Просроченный допуск НЕ считается проблемой, если у рабочего есть другой
     // действующий допуск того же типа (свежая замена скрывает старый дубль).
@@ -174,11 +196,23 @@ async function routes(fastify, options) {
 
       if (groups[effective_status] !== undefined) groups[effective_status]++;
 
+      // last_assignment_info — последняя работа сотрудника (даже завершённая).
+      // Используется для пустых строк «Объект/РП» и «Начало работ», когда сотрудник
+      // СЕЙЧАС не на объекте и не согласован, но ИСТОРИЯ его работ есть.
+      const last_assignment_info = lastByEmp[e.id] ? {
+        work_id:    lastByEmp[e.id].work_id,
+        work_title: lastByEmp[e.id].work_title,
+        pm_name:    lastByEmp[e.id].pm_name,
+        start_date: lastByEmp[e.id].start_date,
+        end_date:   lastByEmp[e.id].end_date,
+      } : null;
+
       return {
         ...e,
         effective_status,
         on_site_info,
         approved_info,
+        last_assignment_info,
         permits: permitsByEmp[e.id] || { expired: 0, expiring: 0 },
         se_transferred_year: seByEmp[e.id] || 0,
       };
