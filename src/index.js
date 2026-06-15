@@ -683,12 +683,18 @@ try {
 }
 
 // ── Tasks Deadlines Cron: каждые 10 мин — 1h/24h warnings + overdue marking ──
-try {
-  const tasksDeadlinesCron = require('./services/tasks-deadlines-cron');
-  fastify.addHook('onReady', async () => { tasksDeadlinesCron.start(fastify.db, fastify.log); });
-  fastify.addHook('onClose', async () => { tasksDeadlinesCron.stop(); });
-} catch (cronErr) {
-  fastify.log.warn('[TasksDeadlinesCron] Init skipped: ' + cronErr.message);
+// ⚠️ НЕ запускается на тест-БД (иначе шлёт реальные push/Telegram юзерам в клоне).
+// Inline-проверка (не зависит от _IS_PROD_DB ниже по файлу — он определён позже):
+if ((process.env.DB_NAME || 'asgard_crm') !== 'asgard_crm') {
+  fastify.log.warn(`[TasksDeadlinesCron] Skipped — non-prod DB (${process.env.DB_NAME})`);
+} else {
+  try {
+    const tasksDeadlinesCron = require('./services/tasks-deadlines-cron');
+    fastify.addHook('onReady', async () => { tasksDeadlinesCron.start(fastify.db, fastify.log); });
+    fastify.addHook('onClose', async () => { tasksDeadlinesCron.stop(); });
+  } catch (cronErr) {
+    fastify.log.warn('[TasksDeadlinesCron] Init skipped: ' + cronErr.message);
+  }
 }
 
 // ── KPI Snapshot Cron: 00:30 MSK — суточный срез метрик для трендов Big Screen ──
@@ -809,21 +815,29 @@ try {
 }
 
 // ── Call Report Scheduler ──
-try {
-  const ReportScheduler = require('./services/report-scheduler');
-  const { createNotification } = require('./services/notify');
-  let aiProv = null;
-  try { aiProv = require('./services/ai-provider'); } catch (_) {}
-  const reportScheduler = new ReportScheduler(db, aiProv, createNotification, fastify.log);
-  fastify.addHook('onReady', async () => {
-    await reportScheduler.start();
-    fastify.log.info('[ReportScheduler] Call report scheduler started');
-  });
-  fastify.addHook('onClose', async () => {
-    reportScheduler.stop();
-  });
-} catch (schedErr) {
-  fastify.log.warn('[ReportScheduler] Init skipped: ' + schedErr.message);
+// ⚠️ ВАЖНО: НЕ запускается на тест-/staging-БД! Иначе клон тест-сервера будет
+// слать реальные email-отчёты директорам (инцидент 2026-06-15: 3 одинаковых email
+// от прода + 2 тест-клонов одновременно). Только DB_NAME='asgard_crm' = боевая.
+const _IS_PROD_DB = (process.env.DB_NAME || 'asgard_crm') === 'asgard_crm';
+if (!_IS_PROD_DB) {
+  fastify.log.warn(`[ReportScheduler] Skipped — non-prod DB (${process.env.DB_NAME}). Тест-сервер не шлёт реальные отчёты.`);
+} else {
+  try {
+    const ReportScheduler = require('./services/report-scheduler');
+    const { createNotification } = require('./services/notify');
+    let aiProv = null;
+    try { aiProv = require('./services/ai-provider'); } catch (_) {}
+    const reportScheduler = new ReportScheduler(db, aiProv, createNotification, fastify.log);
+    fastify.addHook('onReady', async () => {
+      await reportScheduler.start();
+      fastify.log.info('[ReportScheduler] Call report scheduler started');
+    });
+    fastify.addHook('onClose', async () => {
+      reportScheduler.stop();
+    });
+  } catch (schedErr) {
+    fastify.log.warn('[ReportScheduler] Init skipped: ' + schedErr.message);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
