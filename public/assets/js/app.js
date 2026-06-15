@@ -219,6 +219,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/calendar",l:"Календарь встреч",d:"Совещания и события",roles:ALL_ROLES,i:"schedule",p:"calendar",g:"home"},
     {r:"/birthdays",l:"Дни рождения",d:"Офисный календарь ДР",roles:ALL_ROLES,i:"birthdays",p:"birthdays",g:"home"},
     {r:"/tasks",l:"Мои задачи",d:"Задачи и Todo-список",roles:ALL_ROLES,i:"approvals",p:"tasks",g:"home"},
+    {r:"/help",l:"Помощь коллеги",d:"Любой → любому, с чатом",roles:ALL_ROLES,i:"approvals",p:"tasks",g:"comm"},
 
     // ── ТЕНДЕРЫ ──
     {r:"/pre-tenders",l:"Заявки",d:"Предварительные заявки (AI)",roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES],i:"alerts",p:"pre_tenders",g:"tenders"},
@@ -2287,6 +2288,11 @@ AsgardRouter.add("/assembly", ()=>AsgardAssemblyPage.render({layout, title:"Сб
     AsgardRouter.add("/tasks", async ()=>{
       await layout('<div id="tasks-page"></div>', {title:"Мои задачи"});
       AsgardTasksPage.render(document.getElementById('tasks-page'));
+    }, {auth:true, roles:ALL_ROLES});
+    // 🤝 Помощь коллеги (V212) — любой → любому
+    AsgardRouter.add("/help", async ()=>{
+      await layout('<div id="help-tasks-page"></div>', {title:"Помощь коллеги"});
+      AsgardHelpTasks.render(document.getElementById('help-tasks-page'));
     }, {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/tasks-admin", async ()=>{
       await layout('<div id="tasks-admin-page"></div>', {title:"Управление задачами"});
