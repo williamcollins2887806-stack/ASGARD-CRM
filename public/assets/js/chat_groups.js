@@ -148,12 +148,17 @@ window.AsgardChatGroups = (function(){
       });
       return res.json();
     },
-    async sendMimir(chatId, message) {
+    async sendMimir(chatId, message, model) {
       const res = await fetch(`/api/chat-groups/${chatId}/mimir`, {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + token(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message })
+        body: JSON.stringify({ message, model: model || undefined })
       });
+      return res.json();
+    },
+    async loadMimirModels() {
+      const res = await fetch('/api/mimir/chat/models', { headers: { 'Authorization': 'Bearer ' + token() } });
+      if (!res.ok) return { models: [], default: null };
       return res.json();
     }
   };
@@ -1008,6 +1013,7 @@ window.AsgardChatGroups = (function(){
         <button class="hg-search-close" onclick="AsgardChatGroups.toggleSearch()">&times;</button>
       </div>
       ${pinnedCardHtml}
+      ${isMimir ? '<div id="hg-mimir-hint" style="display:none"></div>' : ''}
       <div class="chat-messages" id="chat-messages-container"
            ondragover="AsgardChatGroups._dragOver(event)"
            ondragleave="AsgardChatGroups._dragLeave(event)"
@@ -1026,6 +1032,10 @@ window.AsgardChatGroups = (function(){
       <div class="hg-drop-overlay" id="hg-drop-overlay" style="display:none">
         <div class="hg-drop-text">📎 Перетащите файлы сюда</div>
       </div>
+      ${isMimir ? `<div id="hg-mimir-model-bar" style="display:none;padding:6px 12px 0;font-size:12px;align-items:center;gap:8px;background:var(--bg2);border-top:1px solid var(--brd);">
+        <span style="color:var(--t3);white-space:nowrap;">🧙 Модель:</span>
+        <select id="hg-mimir-model" title="Модель Мимира" style="flex:1;background:var(--bg3);color:var(--t1);border:1px solid var(--brd);border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;"></select>
+      </div>` : ''}
       <div class="chat-input-area">
         ${!isMimir ? `<button class="chat-emoji-btn" onclick="AsgardChatGroups.toggleEmojiPicker()" title="Emoji">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
@@ -1048,6 +1058,11 @@ window.AsgardChatGroups = (function(){
     if (shouldScroll || true) {
       const container = $('#chat-messages-container');
       if (container) requestAnimationFrame(() => { container.scrollTop = container.scrollHeight; });
+    }
+
+    // Селектор модели Мимира — заполняем после рендера шапки
+    if (isMimir) {
+      _initMimirModelSelector().catch(() => {});
     }
 
     // Mark as read
@@ -1223,6 +1238,54 @@ window.AsgardChatGroups = (function(){
     }
   }
 
+  // === Селектор модели для Мимир-чата ===
+  let _mimirModels = [];
+  let _currentMimirModel = (function(){ try { return localStorage.getItem('asgard_huginn_mimir_model') || ''; } catch (e) { return ''; } })();
+
+  async function _initMimirModelSelector() {
+    const sel = document.getElementById('hg-mimir-model');
+    const bar = document.getElementById('hg-mimir-model-bar');
+    const hint = document.getElementById('hg-mimir-hint');
+    if (!sel) return;
+    if (_mimirModels.length === 0) {
+      try {
+        const d = await API.loadMimirModels();
+        _mimirModels = d?.models || [];
+        if (!_currentMimirModel && (d?.default || _mimirModels[0])) {
+          _currentMimirModel = d.default || _mimirModels[0].id;
+        }
+      } catch (e) { return; }
+    }
+    sel.innerHTML = _mimirModels.map(m => {
+      const isSel = m.id === _currentMimirModel ? ' selected' : '';
+      const tip = (m.description || '').replace(/"/g, '&quot;');
+      const hintText = m.short_hint ? '  ·  ' + m.short_hint : '';
+      return `<option value="${m.id}"${isSel} title="${tip}">${m.label}${hintText}</option>`;
+    }).join('');
+    sel.onchange = () => {
+      _currentMimirModel = sel.value;
+      try { localStorage.setItem('asgard_huginn_mimir_model', _currentMimirModel); } catch (e) {}
+      _renderMimirHint(hint);
+    };
+    if (bar) bar.style.display = 'flex';
+    _renderMimirHint(hint);
+  }
+
+  function _renderMimirHint(hint) {
+    if (!hint) return;
+    const m = _mimirModels.find(x => x.id === _currentMimirModel);
+    if (!m) { hint.style.display = 'none'; return; }
+    const knows = !!m.capabilities?.knows_crm_data;
+    const bg = knows ? 'rgba(46,160,67,0.12)' : 'rgba(212,168,67,0.12)';
+    const bd = knows ? 'rgba(46,160,67,0.35)' : 'rgba(212,168,67,0.4)';
+    const ic = knows ? '🧠' : '⚠️';
+    const txt = knows
+      ? 'Эта модель видит данные CRM (тендеры, работы, финансы) и помнит диалог. Можно спрашивать про цифры.'
+      : 'Эта модель НЕ видит данные CRM — отвечает только на общие вопросы. Для вопросов про твои тендеры/финансы переключи на «🧠 С данными CRM».';
+    hint.style.cssText = `display:flex;gap:8px;align-items:flex-start;padding:8px 12px;margin:0 12px 6px;background:${bg};border:1px solid ${bd};border-radius:8px;font-size:12px;color:var(--t2);line-height:1.35;`;
+    hint.innerHTML = `<span style="font-size:16px;line-height:1;">${ic}</span><span>${txt}</span>`;
+  }
+
   async function _sendMimirMessage(chatId) {
     const input = $('#chat-message-input');
     const text = input?.value?.trim();
@@ -1247,7 +1310,7 @@ window.AsgardChatGroups = (function(){
     _showTyping('Мимир');
 
     try {
-      const resp = await API.sendMimir(chatId, text);
+      const resp = await API.sendMimir(chatId, text, _currentMimirModel);
       // Typing will be hidden by SSE new_message or manually
       const typing = $('#chat-typing');
       if (typing) typing.style.display = 'none';

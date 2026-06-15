@@ -433,62 +433,6 @@ export default function HuginnEstimateChat() {
         </button>
       </div>
 
-      {/* Model selector for Мимир */}
-      {chatModels.length > 0 && (() => {
-        const m = chatModels.find((x) => x.id === mimirModel) || chatModels[0];
-        const knows = !!m?.capabilities?.knows_crm_data;
-        return (
-          <div
-            style={{
-              padding: '6px 10px',
-              background: 'var(--bg-surface)',
-              borderBottom: '0.5px solid var(--border-norse)',
-              display: 'flex', alignItems: 'center', gap: 8,
-            }}
-          >
-            <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>🧙 Мимир:</span>
-            <select
-              value={mimirModel}
-              onChange={(e) => onModelChange(e.target.value)}
-              style={{
-                flex: 1,
-                background: 'var(--bg-elevated)',
-                color: 'var(--text-primary)',
-                border: '1px solid var(--border-norse)',
-                borderRadius: 6,
-                padding: '4px 6px',
-                fontSize: 12,
-              }}
-            >
-              {chatModels.map((x) => (
-                <option key={x.id} value={x.id}>{x.label}{x.short_hint ? '  ·  ' + x.short_hint : ''}</option>
-              ))}
-            </select>
-          </div>
-        );
-      })()}
-      {chatModels.length > 0 && (() => {
-        const m = chatModels.find((x) => x.id === mimirModel) || chatModels[0];
-        const knows = !!m?.capabilities?.knows_crm_data;
-        return (
-          <div
-            style={{
-              padding: '6px 10px',
-              fontSize: 10.5,
-              lineHeight: 1.35,
-              color: 'var(--text-secondary)',
-              background: knows ? 'rgba(46,160,67,0.12)' : 'rgba(212,168,67,0.12)',
-              borderBottom: '0.5px solid ' + (knows ? 'rgba(46,160,67,0.35)' : 'rgba(212,168,67,0.4)'),
-            }}
-          >
-            {knows ? '🧠 ' : '⚠️ '}
-            {knows
-              ? 'Видит этот просчёт (цифры, документы тендера, историю чата). Можно спрашивать про конкретные данные.'
-              : 'НЕ видит этот просчёт — отвечает только на общие вопросы по методике. Для разбора цифр переключи на «🧠 С данными CRM».'}
-          </div>
-        );
-      })()}
-
       {/* Pinned card */}
       <EstimatePinnedCard metadata={pinnedMeta} flash={pinnedFlash} />
 
@@ -672,6 +616,41 @@ export default function HuginnEstimateChat() {
           </div>
         </div>
       )}
+
+      {/* Селектор модели Мимира — над Composer'ом, чтобы было видно где переключить */}
+      {chatModels.length > 0 && (() => {
+        const m = chatModels.find((x) => x.id === mimirModel) || chatModels[0];
+        const knows = !!m?.capabilities?.knows_crm_data;
+        return (
+          <div style={{
+            padding: '6px 10px',
+            background: knows ? 'rgba(46,160,67,0.10)' : 'rgba(212,168,67,0.10)',
+            borderTop: '0.5px solid ' + (knows ? 'rgba(46,160,67,0.35)' : 'rgba(212,168,67,0.4)'),
+            display: 'flex', alignItems: 'center', gap: 8,
+          }}>
+            <span style={{ fontSize: 11, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+              {knows ? '🧠' : '⚡'} Мимир:
+            </span>
+            <select
+              value={mimirModel}
+              onChange={(e) => onModelChange(e.target.value)}
+              style={{
+                flex: 1,
+                background: 'var(--bg-elevated)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-norse)',
+                borderRadius: 6,
+                padding: '4px 6px',
+                fontSize: 12,
+              }}
+            >
+              {chatModels.map((x) => (
+                <option key={x.id} value={x.id}>{x.label}{x.short_hint ? '  ·  ' + x.short_hint : ''}</option>
+              ))}
+            </select>
+          </div>
+        );
+      })()}
 
       {/* Composer */}
       <Composer

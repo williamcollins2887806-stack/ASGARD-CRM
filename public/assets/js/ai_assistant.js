@@ -504,12 +504,10 @@ window.AsgardAI = (function(){
             <div class="ai-header-status">Готов помочь</div>
           </div>
           <div class="ai-header-actions">
-            <select id="aiModelSelect" class="ai-model-select" title="Модель Мимира" style="background:rgba(255,255,255,0.12);color:#fff;border:1px solid rgba(255,255,255,0.2);border-radius:6px;padding:3px 6px;font-size:11px;margin-right:6px;cursor:pointer;max-width:140px;"></select>
             <button class="ai-header-btn" id="aiMinimize" title="Свернуть">${icons.minimize}</button>
             <button class="ai-header-btn" id="aiClose" title="Закрыть">${icons.close}</button>
           </div>
         </div>
-        <div id="aiModelHint" style="display:none;"></div>
         <div class="ai-messages" id="aiMessages">
           <div class="ai-welcome">
             <div class="ai-welcome-icon">${icons.bot}</div>
@@ -523,6 +521,11 @@ window.AsgardAI = (function(){
           </div>
         </div>
         <div class="ai-input-area">
+          <div id="aiModelBar" style="display:none;padding:6px 12px 0;font-size:11px;align-items:center;gap:8px;border-top:1px solid rgba(255,255,255,0.06);">
+            <span style="color:var(--text-tertiary,#888);white-space:nowrap;">🧙 Модель:</span>
+            <select id="aiModelSelect" title="Модель Мимира" style="flex:1;background:var(--bg-elevated,#1a1f2e);color:var(--text-primary,#eee);border:1px solid var(--border-norse,rgba(255,255,255,0.15));border-radius:6px;padding:4px 6px;font-size:12px;cursor:pointer;"></select>
+          </div>
+          <div id="aiModelHint" style="display:none;"></div>
           <div class="ai-attachments" id="aiAttachments"></div>
           <div class="ai-input-row">
             <button class="ai-attach-btn" id="aiAttachBtn" title="Прикрепить файл">${icons.attach}</button>
@@ -561,6 +564,9 @@ window.AsgardAI = (function(){
   function renderModelSelect() {
     const sel = document.getElementById('aiModelSelect');
     if (!sel || !availableModels.length) return;
+    // Показать строку с селектором (была display:none пока не загрузились модели)
+    const bar = document.getElementById('aiModelBar');
+    if (bar) bar.style.display = 'flex';
     sel.innerHTML = availableModels.map(m => {
       const isSel = (m.id === selectedModelId) ? ' selected' : '';
       const hint = m.short_hint ? `  · ${m.short_hint}` : '';
