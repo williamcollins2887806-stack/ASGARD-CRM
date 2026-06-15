@@ -347,10 +347,15 @@ module.exports = async function(fastify) {
   // ───────────────────────────────────────────────────────────────
   // POST /api/tasks — Создать задачу
   //   task_kind='directive' (по умолч.) — только DIRECTOR_ROLES, как раньше
-  //   task_kind='help' — любой сотрудник любому, +чат в Хугинне, +watcher_ids
+  //   task_kind='help' — любой авторизованный сотрудник любому, +чат в Хугинне, +watcher_ids
+  //
+  // ВАЖНО: preHandler — только authenticate (для help). Для directive проверяется
+  // внутри (DIRECTOR_ROLES). Старая проверка requirePermission('tasks','write')
+  // блокировала ролям без tasks:write (BUH, PROC, OFFICE_MANAGER в role_presets) —
+  // но help должен быть доступен любому активному.
   // ───────────────────────────────────────────────────────────────
   fastify.post('/', {
-    preHandler: [fastify.requirePermission('tasks', 'write')]
+    preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     let {
       assignee_id, title, description, deadline, priority, creator_comment,
@@ -359,7 +364,7 @@ module.exports = async function(fastify) {
 
     const kind = (task_kind === 'help') ? 'help' : 'directive';
 
-    // RBAC: directive → только DIRECTOR_ROLES; help → любой
+    // RBAC: directive → только DIRECTOR_ROLES; help → любой авторизованный
     if (kind === 'directive' && !DIRECTOR_ROLES.includes(request.user.role)) {
       return reply.code(403).send({ error: 'Директивы создаёт только руководство' });
     }
