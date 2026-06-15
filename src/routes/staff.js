@@ -19,7 +19,16 @@ const EMPLOYEE_COLS = new Set([
   'bank_name', 'bik', 'account_number', 'card_number',
   'is_self_employed', 'docs_url', 'skills', 'comment',
   'imt_number', 'imt_expires', 'permits', 'rating_count',
-  'is_officially_employed'
+  'is_officially_employed',
+  // V217 (16.06.2026): доп. поля анкеты — экстренные контакты + образование + медицина + одежда.
+  // Источник: vanilla employee.js блоки «Экстренные контакты» (269-294) и «Дополнительно» (296-337).
+  // React v2: public/desktop-v2-src/src/pages/Personnel/EmployeeExtraFields.jsx.
+  'phone2', 'telegram',
+  'spouse_name', 'spouse_phone',
+  'relative_name', 'relative_relation', 'relative_phone',
+  'education', 'specialty',
+  'marital_status', 'children_count',
+  'shoe_size', 'height', 'blood_type', 'medical_notes'
 ]);
 const REVIEW_COLS = new Set([
   'employee_id', 'rating', 'comment', 'pm_id', 'created_at'
