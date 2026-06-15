@@ -57,8 +57,12 @@ const TOKENATOR_API_MULTIPLIERS = {
   'gemini-3-flash': 1.8,
   'gemini-2.5-flash': 1.5,
   'gemini-2.5-flash-lite': 1.5,
-  // По мере возвращения моделей онлайн — пополнять:
-  // 'claude-opus-4-7': 1.6, 'claude-sonnet-4-6': 1.4, 'claude-haiku-4-5': 1.3, ...
+  // Claude вернулся в токенатор (15.06.2026) — оплата по балансу Anthropic:
+  // opus-4-8: ₽225 in/₽1150 out за 1M токенов; sonnet-4-6: ₽125/₽600; haiku-4-5: ₽55/₽220
+  // tokenator_multiplier игнорируется (биллинг pass-through по anthropic-таксам).
+  'claude-opus-4-8': 1.0,
+  'claude-sonnet-4-6': 1.0,
+  'claude-haiku-4-5': 1.0
 };
 
 // Универсальная fallback-цепочка api_id для общих чат-задач у токенатора.
@@ -84,35 +88,37 @@ const models = {
   // ВСЕ через токенатор (OpenAI-compat). reasoning встроен в gpt-5.5/gpt-5.4 — флаг
   // supports_extended_thinking оставлен true для совместимости с кодом Conductor,
   // который проверяет его при формировании запроса (в гилде verbosity:'max').
+  // 15.06.2026: Claude вернулся на токенатор — возвращаем нативные модели Anthropic.
+  // Это даёт стабильность (Claude меньше виснет на стриме) + лучшее качество JSON.
   'opus-4-7': {
-    provider: 'routerai',                        // тут 'routerai' = унифицированный OpenAI-compat путь (ai-provider.callOpenAI)
-    api_id: 'gpt-5.5',                            // tokenator: gpt-5.5 (флагман, ×2.2, контекст 1.1M, reasoning встроен)
-    anthropic_api_id: 'claude-opus-4-7',          // кэш — вернётся когда Anthropic снова online на токенаторе
-    tokenator_multiplier: 2.2,                    // gpt-5.5 множитель
+    provider: 'routerai',
+    api_id: 'claude-opus-4-8',                    // tokenator: opus-4-8 (последняя версия opus)
+    anthropic_api_id: 'claude-opus-4-8',
+    tokenator_multiplier: 1.0,
     supports_extended_thinking: true,
     supports_tool_use: true,
-    max_context: 1100000,
-    role: 'Conductor для крупных контрактов (>50M) — gpt-5.5'
+    max_context: 1000000,
+    role: 'Conductor для крупных контрактов (>50M) — claude-opus-4-8'
   },
   'sonnet-4-6': {
     provider: 'routerai',
-    api_id: 'gpt-5.5',                            // tokenator: gpt-5.5 (одна модель = проще отладка)
-    anthropic_api_id: 'claude-sonnet-4-6-20250514',
-    tokenator_multiplier: 2.2,                    // gpt-5.5 множитель
+    api_id: 'claude-sonnet-4-6',                  // tokenator: нативный sonnet-4-6
+    anthropic_api_id: 'claude-sonnet-4-6',
+    tokenator_multiplier: 1.0,
     supports_extended_thinking: true,
     supports_tool_use: true,
-    max_context: 1100000,
-    role: 'Conductor для средних + структурированные агенты — gpt-5.5'
+    max_context: 1000000,
+    role: 'Conductor для средних + структурированные агенты — claude-sonnet-4-6'
   },
   'haiku-4-5': {
     provider: 'routerai',
-    api_id: 'gemini-2.5-flash-lite',              // 14.06.2026: Gemini вернулся — самая дешёвая ×1.5, быстрая, контекст 1M
-    anthropic_api_id: 'claude-haiku-4-5-20251001',
-    tokenator_multiplier: 1.5,
+    api_id: 'claude-haiku-4-5',                   // tokenator: нативный haiku-4-5
+    anthropic_api_id: 'claude-haiku-4-5',
+    tokenator_multiplier: 1.0,
     supports_extended_thinking: false,
     supports_tool_use: true,
-    max_context: 1000000,
-    role: 'Быстрые трансформации, JSON-репайр, классификация — gemini-2.5-flash-lite'
+    max_context: 200000,
+    role: 'Быстрые трансформации, JSON-репайр, классификация — claude-haiku-4-5'
   },
 
   // ─── Зрение (чертежи и сканы) ──────────────────────────────────────────
