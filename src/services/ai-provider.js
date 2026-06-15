@@ -623,9 +623,9 @@ async function _callOpenAIOnce({ system, messages, maxTokens, temperature, strea
  * @param {number} options.temperature - Температура (0-1)
  * @returns {Promise<{text: string, usage: {inputTokens: number, outputTokens: number}, model: string}>}
  */
-async function complete({ system, messages, maxTokens, temperature, tools, plugins, verbosity, responseFormat, model }) {
+async function complete({ system, messages, maxTokens, temperature, tools, plugins, verbosity, responseFormat, model, provider: providerOverride }) {
   await _loadKeysFromDB();
-  let provider = AI_PROVIDER;
+  let provider = providerOverride || AI_PROVIDER;
   const startTime = Date.now();
 
   // Smart provider selection: if messages contain document blocks (scanned PDFs),
@@ -1883,6 +1883,7 @@ module.exports = {
   getConfig,
   getProvider,
   _loadKeysFromDB, // AP5: agent needs to ensure keys are loaded
+  _resetKeysCache: function () { _dbKeysLoaded = false; }, // сброс кэша после изменения ai_config из админ-панели
   AIProviderError, // экспорт класса для классификации ошибок в caller-ах
   runAgentLoop, // agent-loop с автоматическим выполнением tool_calls (WebSearch)
   executeWebSearch, // прямой вызов web search (можно использовать без agent loop)

@@ -433,6 +433,131 @@ module.exports = async function(fastify) {
     return { info: CRM_PASSPORT };
   });
 
+  // ── GET /ai-config ───────────────────────────────────────────────────────────
+  // Текущая конфигурация AI-провайдеров (маскированные ключи, статус подключения).
+  fastify.get('/ai-config', adminOnly, async (req, reply) => {
+    const aiProvider = require('../services/ai-provider');
+    try { await aiProvider._loadKeysFromDB(); } catch (_) {}
+    const cfg = aiProvider.getConfig();
+
+    let dbConfig = {};
+    try {
+      const r = await db.query("SELECT value_json FROM settings WHERE key = 'ai_config'");
+      if (r.rows[0]?.value_json) {
+        let parsed = JSON.parse(r.rows[0].value_json);
+        dbConfig = parsed.value_json ? JSON.parse(parsed.value_json) : parsed;
+      }
+    } catch (_) {}
+
+    function maskKey(k) {
+      if (!k) return '';
+      if (k.length < 8) return '****';
+      return k.slice(0, 4) + '****' + k.slice(-4);
+    }
+
+    return {
+      provider: cfg.provider,
+      model: cfg.model,
+      hasAnthropicKey: cfg.hasAnthropicKey,
+      hasOpenAIKey:    cfg.hasOpenAIKey,
+      hasYandexKey:    cfg.hasYandexKey,
+      anthropic_model: dbConfig.anthropic_model || '',
+      openai_model:    dbConfig.openai_model    || '',
+      openai_url:      dbConfig.openai_url      || '',
+      yandex_folder_id: dbConfig.yandex_folder_id || process.env.YANDEX_FOLDER_ID || '',
+      yandex_model:    dbConfig.yandex_model    || process.env.YANDEX_GPT_MODEL  || 'qwen3-235b-a22b-fp8/latest',
+      // Маски (никогда не возвращаем сам ключ)
+      anthropic_key_mask: maskKey(dbConfig.anthropic_api_key || ''),
+      openai_key_mask:    maskKey(dbConfig.openai_api_key || ''),
+      yandex_key_mask:    maskKey(dbConfig.yandex_gpt_api_key || process.env.YANDEX_GPT_API_KEY || '')
+    };
+  });
+
+  // ── POST /ai-config — сохранить настройки AI (ключи + provider) ─────────────
+  fastify.post('/ai-config', adminOnly, async (req, reply) => {
+    const body = req.body || {};
+    // Читаем текущий ai_config, чтобы не затереть ключи которые пользователь не менял
+    let current = {};
+    try {
+      const r = await db.query("SELECT value_json FROM settings WHERE key = 'ai_config'");
+      if (r.rows[0]?.value_json) {
+        let parsed = JSON.parse(r.rows[0].value_json);
+        current = parsed.value_json ? JSON.parse(parsed.value_json) : parsed;
+      }
+    } catch (_) {}
+
+    const next = { ...current };
+    // Текстовые поля без ключей — перезаписываем всегда
+    if (body.provider          !== undefined) next.provider          = String(body.provider);
+    if (body.anthropic_model   !== undefined) next.anthropic_model   = String(body.anthropic_model || '');
+    if (body.openai_model      !== undefined) next.openai_model      = String(body.openai_model    || '');
+    if (body.openai_url        !== undefined) next.openai_url        = String(body.openai_url      || '');
+    if (body.yandex_folder_id  !== undefined) next.yandex_folder_id  = String(body.yandex_folder_id|| '');
+    if (body.yandex_model      !== undefined) next.yandex_model      = String(body.yandex_model    || '');
+    // Ключи: пишем только если пришли непустые
+    if (body.anthropic_api_key && String(body.anthropic_api_key).trim()) next.anthropic_api_key = String(body.anthropic_api_key).trim();
+    if (body.openai_api_key    && String(body.openai_api_key).trim())    next.openai_api_key    = String(body.openai_api_key).trim();
+    if (body.yandex_gpt_api_key && String(body.yandex_gpt_api_key).trim()) next.yandex_gpt_api_key = String(body.yandex_gpt_api_key).trim();
+    // Очистка ключа — отдельным флагом
+    if (body.clear_anthropic_key) delete next.anthropic_api_key;
+    if (body.clear_openai_key)    delete next.openai_api_key;
+    if (body.clear_yandex_key)    delete next.yandex_gpt_api_key;
+
+    await db.query(`
+      INSERT INTO settings (key, value_json, updated_at)
+      VALUES ('ai_config', $1, NOW())
+      ON CONFLICT (key) DO UPDATE SET value_json = $1, updated_at = NOW()
+    `, [JSON.stringify(next)]);
+
+    // Сбросим кэш ai-provider, чтобы новые ключи перечитались на следующий запрос
+    try {
+      const aiProvider = require('../services/ai-provider');
+      if (aiProvider._resetKeysCache) aiProvider._resetKeysCache();
+    } catch (_) {}
+
+    return { ok: true };
+  });
+
+  // ── POST /ai-test — отправить пробный запрос текущему провайдеру ────────────
+  // Body: { provider?: 'auto'|'anthropic'|'openai'|'yandexgpt', prompt?: string }
+  fastify.post('/ai-test', adminOnly, async (req, reply) => {
+    const aiProvider = require('../services/ai-provider');
+    const { provider, prompt } = req.body || {};
+    const userPrompt = (prompt && String(prompt).trim()) || 'Ответь одной фразой: «AI готов к работе». Ничего не добавляй.';
+
+    try {
+      await aiProvider._loadKeysFromDB();
+    } catch (_) {}
+
+    // Если попросили конкретного провайдера — временно переопределим через опции complete()
+    const callOpts = {
+      system: 'Ты — тестовый бот для проверки соединения. Отвечай кратко (одна фраза).',
+      messages: [{ role: 'user', content: userPrompt }],
+      maxTokens: 80,
+      temperature: 0.2
+    };
+    if (provider && provider !== 'auto') callOpts.provider = provider;
+
+    const t0 = Date.now();
+    try {
+      const r = await aiProvider.complete(callOpts);
+      return {
+        ok: true,
+        text:     r.text || '',
+        provider: r.provider || provider || 'auto',
+        model:    r.model    || '?',
+        usage:    r.usage    || null,
+        ms:       Date.now() - t0
+      };
+    } catch (e) {
+      return reply.code(502).send({
+        ok: false,
+        error: e.message || 'AI request failed',
+        ms: Date.now() - t0
+      });
+    }
+  });
+
   // ── GET /terminal — WebSocket PTY ──────────────────────────────────────────
   // Проверяем что @fastify/websocket зарегистрирован и node-pty доступен
   let nodePty = null;

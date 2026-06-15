@@ -1114,6 +1114,98 @@ async function routes(fastify, options) {
     return { history: rows };
   });
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // POST /:id/request-assign-override — HEAD_TO/TO просит у директоров одобрение
+  // на назначение РП при пересечении дат с другими работами этого РП.
+  // Пишет в audit_log + рассылает уведомления директорам через createNotification
+  // (тот же путь, что используется во внутреннем согласовании — без ADMIN-only ограничения
+  // вокруг /notify-role). Идемпотентным не делаем — каждый запрос — отдельная запись.
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.post('/:id/request-assign-override', {
+    preHandler: [fastify.requireRoles(['ADMIN', 'TO', 'HEAD_TO', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    if (!Number.isFinite(id)) return reply.code(400).send({ error: 'Некорректный ID' });
+    const { pm_id, pm_name, reason, conflicts } = request.body || {};
+    if (!pm_id) return reply.code(400).send({ error: 'pm_id обязателен' });
+    if (!reason || String(reason).trim().length < 10) {
+      return reply.code(400).send({ error: 'Причина обязательна (минимум 10 символов)' });
+    }
+
+    const { rows: [tender] } = await db.query('SELECT * FROM tenders WHERE id = $1', [id]);
+    if (!tender) return reply.code(404).send({ error: 'Тендер не найден' });
+
+    await db.query(
+      `INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
+       VALUES ($1, 'tender', $2, 'request_assign_override', $3, NOW())`,
+      [request.user.id, id, JSON.stringify({
+        pm_id, pm_name: pm_name || null, reason: String(reason).trim(),
+        conflicts: Array.isArray(conflicts) ? conflicts.slice(0, 10) : []
+      })]
+    );
+
+    // Уведомить директоров (без ADMIN-only ограничения — createNotification принимает любого
+    // вызывающего, проверка прав уже сделана requireRoles выше).
+    const { rows: directors } = await db.query(
+      "SELECT id FROM users WHERE is_active = true AND role IN ('DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV')"
+    );
+    const summary = `${tender.customer_name || ''} — ${tender.tender_title || ''}\nРП: ${pm_name || `#${pm_id}`}\nПричина: ${String(reason).slice(0, 200)}`;
+    for (const d of directors) {
+      createNotification(db, {
+        user_id: d.id,
+        title: '⚠️ Override для назначения РП',
+        message: summary,
+        type: 'tender',
+        link: `#/tenders?id=${id}`
+      });
+    }
+
+    return { success: true, directors_notified: directors.length };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // GET /:id/history — журнал изменений (audit_log по тендеру с именами актёров).
+  // Vanilla tenders.js:3255 строил это локально из IndexedDB audit_log.
+  // На сервере audit_log доступен только ADMIN/директорам через /api/data —
+  // здесь даём всем ролям, имеющим доступ к /api/tenders/:id, безопасный JOIN-вид.
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.get('/:id/history', {
+    preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'BUH', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    if (!Number.isFinite(id)) return reply.code(400).send({ error: 'Некорректный ID' });
+
+    // PM-ownership: только свои тендеры (как в GET /:id).
+    if (request.user.role === 'PM') {
+      const t = await db.query('SELECT responsible_pm_id FROM tenders WHERE id = $1', [id]);
+      if (!t.rows[0]) return reply.code(404).send({ error: 'Тендер не найден' });
+      const isResponsible = t.rows[0].responsible_pm_id === request.user.id;
+      let isWorkPM = false;
+      if (!isResponsible) {
+        const r = await db.query(
+          "SELECT 1 FROM works WHERE tender_id = $1 AND pm_id = $2 AND deleted_at IS NULL LIMIT 1",
+          [id, request.user.id]
+        );
+        isWorkPM = !!r.rows[0];
+      }
+      if (!isResponsible && !isWorkPM) {
+        return reply.code(403).send({ error: 'Нет доступа к истории этого тендера' });
+      }
+    }
+
+    const { rows } = await db.query(`
+      SELECT a.id, a.action, a.payload_json, a.details, a.created_at,
+             a.actor_user_id,
+             u.name AS actor_name, u.login AS actor_login, u.role AS actor_role
+      FROM audit_log a
+      LEFT JOIN users u ON u.id = a.actor_user_id
+      WHERE a.entity_type = 'tender' AND a.entity_id = $1
+      ORDER BY a.created_at DESC
+      LIMIT 500
+    `, [id]);
+    return { history: rows };
+  });
+
   // ═══════════════════════════════════════════════════════════════════════════
   // POST /:id/send-to-pm — HEAD_TO отправляет тендер на просчёт РП
   // ═══════════════════════════════════════════════════════════════════════════

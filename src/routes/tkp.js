@@ -1838,6 +1838,173 @@ module.exports = async function routesWithExtensions(fastify, options) {
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // GET /api/tkp/followup
+  // Реестр отправленных ТКП с агрегатом «последний контакт» для модуля TKP-Followup.
+  // Дни без контакта = days since max(sent_at, последний log_call/log_email/decision из audit_log).
+  // PM видит свои (author_id), руководство — все.
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.get('/followup', {
+    preHandler: [fastify.authenticate]
+  }, async (request) => {
+    const { status_filter, limit = 200, offset = 0 } = request.query;
+    const userRole = request.user.role;
+    const userId   = request.user.id;
+
+    const params = [];
+    let idx = 1;
+    let whereOwner = '';
+    if (!SEE_ALL_ROLES.includes(userRole)) {
+      whereOwner = ` AND t.author_id = $${idx++}`;
+      params.push(userId);
+    }
+
+    // sent_at IS NOT NULL ИЛИ статус 'sent' — для совместимости со старыми записями,
+    // которые могли быть отправлены вне нашего pipeline.
+    const sql = `
+      SELECT
+        t.id, t.tkp_number, t.subject, t.customer_name, t.customer_inn,
+        t.contact_person, t.contact_phone, t.contact_email,
+        t.total_sum, t.status, t.sent_at, t.created_at,
+        t.client_decision, t.client_decision_at, t.client_decision_comment,
+        t.link_type, t.tender_id, t.pre_tender_id,
+        u.name AS author_name,
+        cdec.name AS client_decision_by_name,
+        (
+          SELECT GREATEST(
+            COALESCE(t.sent_at, t.created_at),
+            COALESCE((
+              SELECT MAX(al.created_at)
+              FROM audit_log al
+              WHERE al.entity_type = 'tkp'
+                AND al.entity_id = t.id
+                AND al.action IN ('followup_call','followup_email','followup_meeting','followup_other','client_decision')
+            ), TIMESTAMP 'epoch')
+          )
+        ) AS last_contact_at,
+        (
+          SELECT json_agg(row_to_json(x)) FROM (
+            SELECT al.id, al.action, al.details, al.created_at,
+                   COALESCE(au.name, 'system') AS actor_name
+            FROM audit_log al
+            LEFT JOIN users au ON au.id = al.actor_user_id
+            WHERE al.entity_type = 'tkp' AND al.entity_id = t.id
+              AND al.action IN ('followup_call','followup_email','followup_meeting','followup_other','client_decision','followup_note')
+            ORDER BY al.created_at DESC
+            LIMIT 20
+          ) x
+        ) AS followup_log
+      FROM tkp t
+      LEFT JOIN users u    ON u.id = t.author_id
+      LEFT JOIN users cdec ON cdec.id = t.client_decision_by
+      WHERE (t.sent_at IS NOT NULL OR t.status = 'sent')${whereOwner}
+      ORDER BY COALESCE(t.sent_at, t.created_at) DESC
+      LIMIT $${idx++} OFFSET $${idx++}
+    `;
+    params.push(Math.min(parseInt(limit), 500), parseInt(offset));
+
+    const { rows } = await db.query(sql, params);
+
+    // Постфильтр по «status_filter» (нужен_контакт / в_работе / решение / архив).
+    const now = Date.now();
+    const STALE_DAYS = 7;
+    const enriched = rows.map((r) => {
+      const lastTs = r.last_contact_at ? new Date(r.last_contact_at).getTime() : 0;
+      const daysSince = lastTs ? Math.floor((now - lastTs) / 86400000) : null;
+      // bucket
+      let bucket = 'in_progress';
+      if (r.client_decision === 'accepted' || r.client_decision === 'rejected') bucket = 'decided';
+      else if (r.status === 'expired') bucket = 'archive';
+      else if (daysSince != null && daysSince > STALE_DAYS) bucket = 'needs_contact';
+      return { ...r, days_since_last_contact: daysSince, followup_bucket: bucket };
+    });
+
+    const filtered = status_filter ? enriched.filter((r) => r.followup_bucket === status_filter) : enriched;
+    return { items: filtered, stats: {
+      total: enriched.length,
+      needs_contact: enriched.filter((r) => r.followup_bucket === 'needs_contact').length,
+      in_progress:   enriched.filter((r) => r.followup_bucket === 'in_progress').length,
+      decided:       enriched.filter((r) => r.followup_bucket === 'decided').length,
+      archive:       enriched.filter((r) => r.followup_bucket === 'archive').length
+    } };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // POST /api/tkp/:id/followup
+  // Залогировать контакт с клиентом (звонок / письмо / встреча / прочее)
+  // или текстовую заметку. Записывается в audit_log.
+  // body: { kind: 'call'|'email'|'meeting'|'other'|'note', comment }
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.post('/:id/followup', {
+    preHandler: [fastify.requireRoles(EDIT_ROLES)]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    const { kind, comment } = request.body || {};
+    const VALID_KINDS = ['call', 'email', 'meeting', 'other', 'note'];
+    if (!VALID_KINDS.includes(kind)) {
+      return reply.code(400).send({ error: `kind должен быть одним из: ${VALID_KINDS.join(', ')}` });
+    }
+    const { rows: [tkp] } = await db.query('SELECT id, author_id, customer_name, subject FROM tkp WHERE id = $1', [id]);
+    if (!tkp) return reply.code(404).send({ error: 'ТКП не найден' });
+
+    // PM — только свои; SEE_ALL_ROLES — любые.
+    if (!SEE_ALL_ROLES.includes(request.user.role) && tkp.author_id !== request.user.id) {
+      return reply.code(403).send({ error: 'Можно логировать контакт только по своим ТКП' });
+    }
+
+    const action = 'followup_' + kind;
+    const details = (comment || '').toString().slice(0, 2000);
+
+    try {
+      await db.query(
+        `INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, details, created_at)
+         VALUES ($1, 'tkp', $2, $3, $4, NOW())`,
+        [request.user.id, id, action, details]
+      );
+    } catch (e) {
+      return reply.code(500).send({ error: 'Не удалось записать событие: ' + e.message });
+    }
+
+    // Сообщим автору, если контакт залогировал не он сам.
+    if (tkp.author_id && tkp.author_id !== request.user.id) {
+      const labels = { call: '📞 звонок', email: '📧 письмо', meeting: '🤝 встреча', other: '✏️ контакт', note: '📝 заметка' };
+      createNotification(db, {
+        user_id: tkp.author_id,
+        title: `Контакт по ТКП #${id}`,
+        message: `${labels[kind] || kind}: ${tkp.customer_name || ''}${details ? ' — ' + details.slice(0, 120) : ''}`,
+        type: 'tkp',
+        link: `#/tkp-followup`
+      });
+    }
+
+    return { success: true, kind, logged_at: new Date().toISOString() };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // GET /api/tkp/:id/followup
+  // История followup-событий по конкретному ТКП.
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.get('/:id/followup', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    const { rows: [tkp] } = await db.query('SELECT id, author_id FROM tkp WHERE id = $1', [id]);
+    if (!tkp) return reply.code(404).send({ error: 'ТКП не найден' });
+    if (!SEE_ALL_ROLES.includes(request.user.role) && tkp.author_id !== request.user.id) {
+      return reply.code(403).send({ error: 'Доступ запрещён' });
+    }
+    const { rows } = await db.query(
+      `SELECT al.id, al.action, al.details, al.created_at, u.name AS actor_name
+         FROM audit_log al
+         LEFT JOIN users u ON u.id = al.actor_user_id
+        WHERE al.entity_type = 'tkp' AND al.entity_id = $1
+          AND al.action IN ('followup_call','followup_email','followup_meeting','followup_other','followup_note','client_decision')
+        ORDER BY al.created_at DESC`,
+      [id]
+    );
+    return { items: rows };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // GET /api/tkp/:id/attachment
   // Скачать оригинальный прикреплённый файл (только для ТКП с attachment_path).
   // Поддерживает ?token= как GET /:id/pdf.
