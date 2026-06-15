@@ -682,6 +682,15 @@ try {
   fastify.log.warn('[CashLimitCron] Init skipped: ' + cronErr.message);
 }
 
+// ── Tasks Deadlines Cron: каждые 10 мин — 1h/24h warnings + overdue marking ──
+try {
+  const tasksDeadlinesCron = require('./services/tasks-deadlines-cron');
+  fastify.addHook('onReady', async () => { tasksDeadlinesCron.start(fastify.db, fastify.log); });
+  fastify.addHook('onClose', async () => { tasksDeadlinesCron.stop(); });
+} catch (cronErr) {
+  fastify.log.warn('[TasksDeadlinesCron] Init skipped: ' + cronErr.message);
+}
+
 // ── KPI Snapshot Cron: 00:30 MSK — суточный срез метрик для трендов Big Screen ──
 try {
   const kpiSnapshotCron = require('./services/kpi-snapshot-cron');
