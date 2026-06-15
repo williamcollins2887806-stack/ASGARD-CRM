@@ -15,15 +15,46 @@
 const path = require('path');
 const fs = require('fs').promises;
 const { randomUUID } = require('crypto');
+const taskChat = require('../services/taskChat');
 
 module.exports = async function(fastify) {
   const db = fastify.db;
   const uploadDir = process.env.UPLOAD_DIR || './uploads';
 
   const DIRECTOR_ROLES = ["ADMIN", "DIRECTOR_GEN", "DIRECTOR_COMM", "DIRECTOR_DEV"];
+  const HEAD_ROLES = ["HEAD_PM", "HEAD_TO"];
+  const ESCALATION_TARGET_ROLES = [...DIRECTOR_ROLES, ...HEAD_ROLES];
+  const MAX_WATCHERS = 20;
 
   // Valid task statuses (used in state machine validation)
-  const VALID_TASK_STATUSES = ["new", "accepted", "in_progress", "done", "cancelled", "overdue", "pending", "completed"];
+  const VALID_TASK_STATUSES = ["new","accepted","in_progress","done","cancelled","overdue","pending","completed","declined","redirected"];
+
+  // ═══════════════════════════════════════════════════════════════
+  // HELPER: Получить HEAD_* для отдела по роли исполнителя
+  // ═══════════════════════════════════════════════════════════════
+  async function findDepartmentHead(assigneeRole) {
+    // Маппинг: для каждой «обычной» роли — кто HEAD
+    const map = {
+      'PM':            ['HEAD_PM'],
+      'TO':            ['HEAD_TO'],
+      'PROC':          ['DIRECTOR_COMM','ADMIN'],
+      'BUH':           ['DIRECTOR_GEN','ADMIN'],
+      'WAREHOUSE':     ['CHIEF_ENGINEER','DIRECTOR_GEN','ADMIN'],
+      'HR':            ['HR_MANAGER','DIRECTOR_GEN','ADMIN'],
+      'OFFICE_MANAGER':['DIRECTOR_GEN','ADMIN'],
+      'CHIEF_ENGINEER':['DIRECTOR_GEN','ADMIN'],
+      'HEAD_PM':       ['DIRECTOR_GEN','ADMIN'],
+      'HEAD_TO':       ['DIRECTOR_GEN','ADMIN'],
+      'HR_MANAGER':    ['DIRECTOR_GEN','ADMIN']
+    };
+    const targets = map[assigneeRole] || ['DIRECTOR_GEN','ADMIN'];
+    const { rows } = await db.query(
+      `SELECT id, name, role FROM users WHERE role = ANY($1::text[]) AND is_active = true
+       ORDER BY array_position($1::text[], role), id LIMIT 1`,
+      [targets]
+    );
+    return rows[0] || null;
+  }
 
   // ═══════════════════════════════════════════════════════════════
   // HELPER: Уведомление
@@ -194,6 +225,94 @@ module.exports = async function(fastify) {
   });
 
   // ───────────────────────────────────────────────────────────────
+  // GET /api/tasks/help/inbox — задачи-помощь, назначенные мне
+  // ───────────────────────────────────────────────────────────────
+  fastify.get('/help/inbox', {
+    preHandler: [fastify.requirePermission('tasks', 'read')]
+  }, async (request) => {
+    const { status, limit = 100, offset = 0 } = request.query;
+    let sql = `
+      SELECT t.*, uc.name AS creator_name, uc.role AS creator_role,
+             (SELECT COUNT(*) FROM task_watchers WHERE task_id = t.id) AS watchers_count,
+             (SELECT COUNT(*) FROM chat_messages WHERE chat_id = t.chat_id AND COALESCE(is_system,false) = false) AS messages_count
+      FROM tasks t
+      LEFT JOIN users uc ON uc.id = t.creator_id
+      WHERE t.assignee_id = $1 AND t.task_kind = 'help' AND t.archived_at IS NULL
+    `;
+    const params = [request.user.id];
+    let idx = 2;
+    if (status) { sql += ` AND t.status = $${idx}`; params.push(status); idx++; }
+    sql += ` ORDER BY
+      CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
+      t.deadline ASC NULLS LAST, t.created_at DESC
+      LIMIT $${idx} OFFSET $${idx + 1}`;
+    params.push(parseInt(limit), parseInt(offset));
+    const { rows } = await db.query(sql, params);
+    return { tasks: rows };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // GET /api/tasks/help/outbox — задачи-помощь, созданные мной
+  // ───────────────────────────────────────────────────────────────
+  fastify.get('/help/outbox', {
+    preHandler: [fastify.requirePermission('tasks', 'read')]
+  }, async (request) => {
+    const { status, limit = 100, offset = 0 } = request.query;
+    let sql = `
+      SELECT t.*, ua.name AS assignee_name, ua.role AS assignee_role,
+             (SELECT COUNT(*) FROM task_watchers WHERE task_id = t.id) AS watchers_count,
+             (SELECT COUNT(*) FROM chat_messages WHERE chat_id = t.chat_id AND COALESCE(is_system,false) = false) AS messages_count
+      FROM tasks t
+      LEFT JOIN users ua ON ua.id = t.assignee_id
+      WHERE t.creator_id = $1 AND t.task_kind = 'help' AND t.archived_at IS NULL
+    `;
+    const params = [request.user.id];
+    let idx = 2;
+    if (status) { sql += ` AND t.status = $${idx}`; params.push(status); idx++; }
+    sql += ` ORDER BY t.created_at DESC LIMIT $${idx} OFFSET $${idx + 1}`;
+    params.push(parseInt(limit), parseInt(offset));
+    const { rows } = await db.query(sql, params);
+    return { tasks: rows };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // GET /api/tasks/help/watching — задачи-помощь, где я наблюдатель
+  // ───────────────────────────────────────────────────────────────
+  fastify.get('/help/watching', {
+    preHandler: [fastify.requirePermission('tasks', 'read')]
+  }, async (request) => {
+    const { rows } = await db.query(`
+      SELECT t.*, uc.name AS creator_name, ua.name AS assignee_name
+      FROM tasks t
+      JOIN task_watchers w ON w.task_id = t.id AND w.user_id = $1
+      LEFT JOIN users uc ON uc.id = t.creator_id
+      LEFT JOIN users ua ON ua.id = t.assignee_id
+      WHERE t.task_kind = 'help' AND t.archived_at IS NULL
+      ORDER BY t.created_at DESC LIMIT 100
+    `, [request.user.id]);
+    return { tasks: rows };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // GET /api/tasks/help/stats — счётчики для бейджей
+  // ───────────────────────────────────────────────────────────────
+  fastify.get('/help/stats', {
+    preHandler: [fastify.requirePermission('tasks', 'read')]
+  }, async (request) => {
+    const uid = request.user.id;
+    const { rows } = await db.query(`
+      SELECT
+        (SELECT COUNT(*) FROM tasks WHERE assignee_id=$1 AND task_kind='help' AND status='new')           AS inbox_new,
+        (SELECT COUNT(*) FROM tasks WHERE assignee_id=$1 AND task_kind='help' AND status IN ('accepted','in_progress')) AS inbox_active,
+        (SELECT COUNT(*) FROM tasks WHERE assignee_id=$1 AND task_kind='help' AND status IN ('new','accepted','in_progress')
+          AND deadline IS NOT NULL AND deadline < NOW())                                                  AS inbox_overdue,
+        (SELECT COUNT(*) FROM tasks WHERE creator_id=$1  AND task_kind='help' AND status='declined')      AS outbox_declined,
+        (SELECT COUNT(*) FROM tasks WHERE creator_id=$1  AND task_kind='help' AND status IN ('new','accepted','in_progress')) AS outbox_active
+    `, [uid]);
+    return rows[0] || {};
+  });
+
+  // ───────────────────────────────────────────────────────────────
   // GET /api/tasks/:id — Детали задачи
   // ───────────────────────────────────────────────────────────────
   fastify.get('/:id', {
@@ -226,55 +345,113 @@ module.exports = async function(fastify) {
   });
 
   // ───────────────────────────────────────────────────────────────
-  // POST /api/tasks — Создать задачу (директора)
+  // POST /api/tasks — Создать задачу
+  //   task_kind='directive' (по умолч.) — только DIRECTOR_ROLES, как раньше
+  //   task_kind='help' — любой сотрудник любому, +чат в Хугинне, +watcher_ids
   // ───────────────────────────────────────────────────────────────
   fastify.post('/', {
-    preHandler: [fastify.requirePermission('tasks_admin', 'write')]
+    preHandler: [fastify.requirePermission('tasks', 'write')]
   }, async (request, reply) => {
-    let { assignee_id, title, description, deadline, priority, creator_comment } = request.body;
+    let {
+      assignee_id, title, description, deadline, priority, creator_comment,
+      task_kind, watcher_ids, work_id, tender_id
+    } = request.body || {};
+
+    const kind = (task_kind === 'help') ? 'help' : 'directive';
+
+    // RBAC: directive → только DIRECTOR_ROLES; help → любой
+    if (kind === 'directive' && !DIRECTOR_ROLES.includes(request.user.role)) {
+      return reply.code(403).send({ error: 'Директивы создаёт только руководство' });
+    }
 
     if (!assignee_id) return reply.code(400).send({ error: 'Укажите исполнителя' });
     if (!title || !title.trim()) return reply.code(400).send({ error: 'Укажите название задачи' });
 
     // Truncate title to prevent VARCHAR overflow (max 255 chars)
-    if (title.length > 255) {
-      title = title.slice(0, 255);
+    if (title.length > 255) title = title.slice(0, 255);
+
+    const assigneeIdInt = parseInt(assignee_id);
+    if (kind === 'help' && assigneeIdInt === request.user.id) {
+      return reply.code(400).send({ error: 'Нельзя просить помощи у самого себя' });
     }
 
-    // Проверить что исполнитель существует
+    // watchers лимит/валидация
+    let watchers = Array.isArray(watcher_ids) ? watcher_ids.map(x => parseInt(x)).filter(x => !isNaN(x) && x > 0) : [];
+    watchers = [...new Set(watchers)].filter(uid => uid !== request.user.id && uid !== assigneeIdInt);
+    if (watchers.length > MAX_WATCHERS) {
+      return reply.code(400).send({ error: `Слишком много наблюдателей (макс. ${MAX_WATCHERS})` });
+    }
+
     try {
+      // Проверить исполнителя
       const { rows: [assignee] } = await db.query(
-        'SELECT id, name FROM users WHERE id = $1 AND is_active = true', [parseInt(assignee_id)]
+        'SELECT id, name, role FROM users WHERE id = $1 AND is_active = true', [assigneeIdInt]
       );
-      if (!assignee) return reply.code(400).send({ error: 'Исполнитель не найден' });
+      if (!assignee) return reply.code(400).send({ error: 'Исполнитель не найден или не активен' });
+
+      // Проверить watcher'ов
+      if (watchers.length) {
+        const { rows: validWatchers } = await db.query(
+          'SELECT id FROM users WHERE id = ANY($1::int[]) AND is_active = true',
+          [watchers]
+        );
+        if (validWatchers.length !== watchers.length) {
+          return reply.code(400).send({ error: 'Некоторые наблюдатели не найдены или не активны' });
+        }
+      }
 
       const result = await db.query(`
-        INSERT INTO tasks (creator_id, assignee_id, title, description, deadline, priority, creator_comment, status, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, 'new', NOW(), NOW())
+        INSERT INTO tasks (creator_id, assignee_id, title, description, deadline, priority,
+                           creator_comment, status, task_kind, work_id, tender_id, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 'new', $8, $9, $10, NOW(), NOW())
         RETURNING *
       `, [
-        request.user.id,
-        parseInt(assignee_id),
-        title.trim(),
-        description || null,
-        deadline || null,
-        priority || 'normal',
-        creator_comment || null
+        request.user.id, assigneeIdInt, title.trim(), description || null,
+        deadline || null, priority || 'normal', creator_comment || null, kind,
+        work_id ? parseInt(work_id) : null,
+        tender_id ? parseInt(tender_id) : null
       ]);
-
       const task = result.rows[0];
 
-      // Уведомить исполнителя
-      const creatorName = request.user.name || request.user.login;
-      const deadlineStr = deadline ? new Date(deadline).toLocaleDateString('ru-RU') : 'не указан';
-      await notify(
-        parseInt(assignee_id),
-        '📋 Новая задача',
-        `${creatorName} назначил вам задачу:\n«${title.trim()}»\nДедлайн: ${deadlineStr}\nПриоритет: ${priority || 'normal'}`,
-        `#/tasks?id=${task.id}`
-      );
+      // Watchers
+      for (const wid of watchers) {
+        await db.query(
+          `INSERT INTO task_watchers (task_id, user_id, created_at)
+           VALUES ($1, $2, NOW()) ON CONFLICT (task_id, user_id) DO NOTHING`,
+          [task.id, wid]
+        );
+      }
 
-      return { task };
+      // Чат в Хугинне (для help — всегда; для directive — нет, чтобы не перегружать)
+      let chat = null;
+      if (kind === 'help') {
+        try {
+          const r = await taskChat.createTaskChat(db, task.id, request.user);
+          chat = r.chat;
+        } catch (e) {
+          fastify.log.error({ err: e }, 'taskChat.createTaskChat failed');
+        }
+      }
+
+      // Уведомления
+      const creatorName = request.user.name || request.user.login;
+      const deadlineStr = deadline ? new Date(deadline).toLocaleString('ru-RU', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : 'не указан';
+      const priorityLabel = ({ urgent:'🔥 Горит', high:'⚠️ Важно', normal:'Обычно', low:'Низкий' })[priority || 'normal'] || priority || 'normal';
+      const link = kind === 'help' ? `#/help?id=${task.id}` : `#/tasks?id=${task.id}`;
+      const headTitle = kind === 'help' ? '🤝 Просьба о помощи' : '📋 Новая задача';
+      const verb = kind === 'help' ? 'попросил помощи' : 'назначил вам задачу';
+
+      await notify(
+        assigneeIdInt, headTitle,
+        `${creatorName} ${verb}:\n«${title.trim()}»\nСрок: ${deadlineStr} · ${priorityLabel}`,
+        link
+      );
+      for (const wid of watchers) {
+        await notify(wid, '👁 Подключили к задаче',
+          `${creatorName} добавил вас наблюдателем в задачу «${title.trim()}»`, link);
+      }
+
+      return { task: { ...task, chat_id: chat?.id || task.chat_id || null }, chat };
     } catch (err) {
       fastify.log.error({ err }, 'Task creation error');
       if (err.code === '22001') return reply.code(400).send({ error: 'Значение поля слишком длинное' });
@@ -443,24 +620,33 @@ module.exports = async function(fastify) {
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
 
-    // Any user with 'tasks' write permission can accept tasks in 'new' status
     const { rows: [task] } = await db.query(
       'SELECT * FROM tasks WHERE id = $1 AND status = $2', [id, 'new']
     );
     if (!task) return reply.code(400).send({ error: 'Задача не найдена или не в статусе "Новая"' });
+    // Принимает только assignee (или директор/ADMIN — для overrides)
+    if (task.assignee_id !== request.user.id && !DIRECTOR_ROLES.includes(request.user.role)) {
+      return reply.code(403).send({ error: 'Принимать может только исполнитель' });
+    }
 
     await db.query(`
       UPDATE tasks SET status = 'accepted', accepted_at = NOW(), updated_at = NOW()
       WHERE id = $1
     `, [id]);
 
+    // Чат: system msg + обновить карточку
+    const actorName = request.user.name || request.user.login;
+    if (task.chat_id) {
+      try {
+        await taskChat.postSystemMessage(db, id, `✓ ${actorName} принял задачу`, { userId: request.user.id });
+        await taskChat.refreshTaskCard(db, id);
+      } catch (e) { fastify.log.error({ err: e }, 'taskChat accept'); }
+    }
+
     // Уведомить создателя
-    await notify(
-      task.creator_id,
-      '👍 Задача принята',
-      `${request.user.name || request.user.login} принял задачу «${task.title}»`,
-      `#/tasks-admin?id=${id}`
-    );
+    const link = task.task_kind === 'help' ? `#/help?id=${id}` : `#/tasks-admin?id=${id}`;
+    await notify(task.creator_id, '👍 Задача принята',
+      `${actorName} принял задачу «${task.title}»`, link);
 
     return { success: true };
   });
@@ -526,15 +712,342 @@ module.exports = async function(fastify) {
       WHERE id = $2
     `, [comment || null, id]);
 
-    // Уведомить создателя
-    await notify(
-      task.creator_id,
-      '✅ Задача выполнена',
-      `${request.user.name || request.user.login} выполнил задачу «${task.title}»${comment ? '\nКомментарий: ' + comment : ''}`,
-      `#/tasks-admin?id=${id}`
-    );
+    // Чат: system msg + обновить карточку + архивировать (для help — сразу read-only)
+    const actorName = request.user.name || request.user.login;
+    if (task.chat_id) {
+      try {
+        await taskChat.postSystemMessage(db, id,
+          `✅ ${actorName} завершил задачу${comment ? `:\n«${comment}»` : ''}`,
+          { userId: request.user.id });
+        await taskChat.refreshTaskCard(db, id);
+        if (task.task_kind === 'help') {
+          await taskChat.archiveTaskChat(db, id);
+          await taskChat.postSystemMessage(db, id, '🗄 Чат архивирован (задача завершена)', { userId: request.user.id });
+        }
+      } catch (e) { fastify.log.error({ err: e }, 'taskChat complete'); }
+    }
+
+    // Уведомить создателя + всех наблюдателей
+    const link = task.task_kind === 'help' ? `#/help?id=${id}` : `#/tasks-admin?id=${id}`;
+    await notify(task.creator_id, '✅ Задача выполнена',
+      `${actorName} выполнил задачу «${task.title}»${comment ? '\nКомментарий: ' + comment : ''}`, link);
+
+    try {
+      const { rows: watchers } = await db.query('SELECT user_id FROM task_watchers WHERE task_id = $1', [id]);
+      for (const w of watchers) {
+        if (w.user_id !== request.user.id && w.user_id !== task.creator_id) {
+          await notify(w.user_id, '✅ Задача завершена',
+            `${actorName} завершил задачу «${task.title}»`, link);
+        }
+      }
+    } catch (_) {}
 
     return { success: true };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // PUT /api/tasks/:id/decline — Исполнитель отказывается с причиной
+  //   Возврат создателю (status='declined'), создатель сам решает дальше
+  //   (reassign / escalate / cancel).
+  // ───────────────────────────────────────────────────────────────
+  fastify.put('/:id/decline', {
+    preHandler: [fastify.requirePermission('tasks', 'write')]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    if (isNaN(id)) return reply.code(400).send({ error: 'Invalid id' });
+    const { reason } = request.body || {};
+    if (!reason || !reason.trim() || reason.trim().length < 5) {
+      return reply.code(400).send({ error: 'Укажите причину отказа (мин. 5 символов)' });
+    }
+
+    const { rows: [task] } = await db.query('SELECT * FROM tasks WHERE id = $1', [id]);
+    if (!task) return reply.code(404).send({ error: 'Задача не найдена' });
+    if (task.assignee_id !== request.user.id) {
+      return reply.code(403).send({ error: 'Отказаться может только исполнитель' });
+    }
+    if (!['new','accepted','in_progress'].includes(task.status)) {
+      return reply.code(400).send({ error: 'Нельзя отказаться от задачи в этом статусе' });
+    }
+
+    await db.query(`
+      UPDATE tasks
+      SET status = 'declined', declined_reason = $1, declined_at = NOW(), declined_by = $2, updated_at = NOW()
+      WHERE id = $3
+    `, [reason.trim(), request.user.id, id]);
+
+    const actorName = request.user.name || request.user.login;
+    if (task.chat_id) {
+      try {
+        await taskChat.postSystemMessage(db, id,
+          `❌ ${actorName} отказался: «${reason.trim()}»`, { userId: request.user.id });
+        await taskChat.refreshTaskCard(db, id);
+      } catch (e) { fastify.log.error({ err: e }, 'taskChat decline'); }
+    }
+
+    const link = task.task_kind === 'help' ? `#/help?id=${id}` : `#/tasks-admin?id=${id}`;
+    await notify(task.creator_id, '❌ Отказ от задачи',
+      `${actorName} отказался от задачи «${task.title}»\nПричина: ${reason.trim()}`, link);
+
+    return { success: true };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // PUT /api/tasks/:id/redirect — Исполнитель перенаправляет другому
+  //   Только 1 раз за всю жизнь задачи (redirected_once=true блокирует).
+  //   Старый исполнитель → в watchers (видит чат).
+  // ───────────────────────────────────────────────────────────────
+  fastify.put('/:id/redirect', {
+    preHandler: [fastify.requirePermission('tasks', 'write')]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    if (isNaN(id)) return reply.code(400).send({ error: 'Invalid id' });
+    const { new_assignee_id, reason } = request.body || {};
+    const newId = parseInt(new_assignee_id);
+    if (!newId) return reply.code(400).send({ error: 'Укажите нового исполнителя' });
+    if (!reason || !reason.trim() || reason.trim().length < 5) {
+      return reply.code(400).send({ error: 'Укажите причину перенаправления (мин. 5 символов)' });
+    }
+
+    const { rows: [task] } = await db.query('SELECT * FROM tasks WHERE id = $1', [id]);
+    if (!task) return reply.code(404).send({ error: 'Задача не найдена' });
+    if (task.assignee_id !== request.user.id) {
+      return reply.code(403).send({ error: 'Перенаправить может только текущий исполнитель' });
+    }
+    if (task.redirected_once) {
+      return reply.code(409).send({ error: 'Эту задачу уже перенаправляли. Повторное перенаправление невозможно — откажитесь, чтобы создатель сам перевыдал.' });
+    }
+    if (!['new','accepted','in_progress'].includes(task.status)) {
+      return reply.code(400).send({ error: 'Нельзя перенаправить в этом статусе' });
+    }
+    if (newId === task.creator_id) {
+      return reply.code(400).send({ error: 'Нельзя перенаправить создателю задачи' });
+    }
+    if (newId === request.user.id) {
+      return reply.code(400).send({ error: 'Нельзя перенаправить самому себе' });
+    }
+
+    const { rows: [newAssignee] } = await db.query(
+      'SELECT id, name, role FROM users WHERE id = $1 AND is_active = true', [newId]
+    );
+    if (!newAssignee) return reply.code(400).send({ error: 'Новый исполнитель не найден или не активен' });
+
+    // Старый исполнитель — в watchers (чтобы остался в чате и видел задачу)
+    const oldAssignee = request.user.id;
+    await db.query(`
+      INSERT INTO task_watchers (task_id, user_id, created_at)
+      VALUES ($1, $2, NOW()) ON CONFLICT (task_id, user_id) DO NOTHING
+    `, [id, oldAssignee]);
+
+    await db.query(`
+      UPDATE tasks
+      SET assignee_id = $1, status = 'new', accepted_at = NULL,
+          redirected_from = $2, redirected_at = NOW(),
+          redirected_once = true, redirect_reason = $3, updated_at = NOW()
+      WHERE id = $4
+    `, [newId, oldAssignee, reason.trim(), id]);
+
+    const actorName = request.user.name || request.user.login;
+    if (task.chat_id) {
+      try {
+        await taskChat.addParticipant(db, id, newId, 'member');
+        await taskChat.postSystemMessage(db, id,
+          `↪️ ${actorName} перенаправил задачу → ${newAssignee.name}.\nПричина: «${reason.trim()}»`,
+          { userId: request.user.id });
+        await taskChat.refreshTaskCard(db, id);
+      } catch (e) { fastify.log.error({ err: e }, 'taskChat redirect'); }
+    }
+
+    const link = task.task_kind === 'help' ? `#/help?id=${id}` : `#/tasks?id=${id}`;
+    await notify(newId, '↪️ Перенаправлено вам',
+      `${actorName} перенаправил вам задачу «${task.title}»\nПричина: ${reason.trim()}`, link);
+    await notify(task.creator_id, '↪️ Задача перенаправлена',
+      `${actorName} перенаправил задачу «${task.title}» → ${newAssignee.name}\nПричина: ${reason.trim()}`, link);
+
+    return { success: true, new_assignee: newAssignee };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // PUT /api/tasks/:id/reassign — Создатель назначает нового исполнителя
+  //   Доступен только после отказа (status='declined') и только creator.
+  // ───────────────────────────────────────────────────────────────
+  fastify.put('/:id/reassign', {
+    preHandler: [fastify.requirePermission('tasks', 'write')]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    if (isNaN(id)) return reply.code(400).send({ error: 'Invalid id' });
+    const { new_assignee_id } = request.body || {};
+    const newId = parseInt(new_assignee_id);
+    if (!newId) return reply.code(400).send({ error: 'Укажите нового исполнителя' });
+
+    const { rows: [task] } = await db.query('SELECT * FROM tasks WHERE id = $1', [id]);
+    if (!task) return reply.code(404).send({ error: 'Задача не найдена' });
+    if (task.creator_id !== request.user.id && request.user.role !== 'ADMIN') {
+      return reply.code(403).send({ error: 'Переназначить может только создатель' });
+    }
+    if (task.status !== 'declined') {
+      return reply.code(400).send({ error: 'Переназначение доступно только для отказанных задач' });
+    }
+    if (newId === request.user.id) {
+      return reply.code(400).send({ error: 'Нельзя переназначить самому себе' });
+    }
+
+    const { rows: [newAssignee] } = await db.query(
+      'SELECT id, name, role FROM users WHERE id = $1 AND is_active = true', [newId]
+    );
+    if (!newAssignee) return reply.code(400).send({ error: 'Исполнитель не найден или не активен' });
+
+    const oldAssignee = task.assignee_id;
+    await db.query(`
+      UPDATE tasks
+      SET assignee_id = $1, status = 'new', accepted_at = NULL,
+          declined_reason = NULL, declined_at = NULL, declined_by = NULL,
+          updated_at = NOW()
+      WHERE id = $2
+    `, [newId, id]);
+
+    const actorName = request.user.name || request.user.login;
+    if (task.chat_id) {
+      try {
+        await taskChat.addParticipant(db, id, newId, 'member');
+        await taskChat.postSystemMessage(db, id,
+          `🔄 ${actorName} переназначил задачу → ${newAssignee.name}`, { userId: request.user.id });
+        await taskChat.refreshTaskCard(db, id);
+      } catch (e) { fastify.log.error({ err: e }, 'taskChat reassign'); }
+    }
+
+    const link = task.task_kind === 'help' ? `#/help?id=${id}` : `#/tasks?id=${id}`;
+    await notify(newId, '📋 Задача назначена',
+      `${actorName} назначил вам задачу «${task.title}»`, link);
+    if (oldAssignee && oldAssignee !== newId) {
+      await notify(oldAssignee, 'ℹ️ Задача переназначена',
+        `Задача «${task.title}» переназначена другому исполнителю`, link);
+    }
+
+    return { success: true, new_assignee: newAssignee };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // PUT /api/tasks/:id/escalate — Эскалация руководителю отдела
+  //   Только creator, только после declined. Находит HEAD_* для роли
+  //   исходного исполнителя и переназначает на него.
+  // ───────────────────────────────────────────────────────────────
+  fastify.put('/:id/escalate', {
+    preHandler: [fastify.requirePermission('tasks', 'write')]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    if (isNaN(id)) return reply.code(400).send({ error: 'Invalid id' });
+
+    const { rows: [task] } = await db.query(`
+      SELECT t.*, ua.role AS assignee_role
+      FROM tasks t LEFT JOIN users ua ON ua.id = t.assignee_id WHERE t.id = $1
+    `, [id]);
+    if (!task) return reply.code(404).send({ error: 'Задача не найдена' });
+    if (task.creator_id !== request.user.id && request.user.role !== 'ADMIN') {
+      return reply.code(403).send({ error: 'Эскалировать может только создатель' });
+    }
+    if (task.status !== 'declined') {
+      return reply.code(400).send({ error: 'Эскалация доступна только для отказанных задач' });
+    }
+
+    const head = await findDepartmentHead(task.assignee_role);
+    if (!head) {
+      return reply.code(422).send({ error: 'Не удалось найти руководителя отдела для эскалации' });
+    }
+    if (head.id === request.user.id) {
+      return reply.code(400).send({ error: 'Вы и так руководитель этого отдела — переназначьте задачу вручную' });
+    }
+
+    const oldAssignee = task.assignee_id;
+    await db.query(`
+      UPDATE tasks
+      SET assignee_id = $1, status = 'new', accepted_at = NULL,
+          escalated_at = NOW(), escalated_to = $1, updated_at = NOW()
+      WHERE id = $2
+    `, [head.id, id]);
+
+    const actorName = request.user.name || request.user.login;
+    if (task.chat_id) {
+      try {
+        await taskChat.addParticipant(db, id, head.id, 'member');
+        await taskChat.postSystemMessage(db, id,
+          `🛡 Задача эскалирована руководителю отдела: ${head.name} (${head.role})`,
+          { userId: request.user.id });
+        await taskChat.refreshTaskCard(db, id);
+      } catch (e) { fastify.log.error({ err: e }, 'taskChat escalate'); }
+    }
+
+    const link = task.task_kind === 'help' ? `#/help?id=${id}` : `#/tasks?id=${id}`;
+    await notify(head.id, '🛡 Эскалация задачи',
+      `${actorName} эскалировал вам задачу «${task.title}» (отказался исполнитель отдела)`, link);
+
+    return { success: true, escalated_to: head };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // POST /api/tasks/:id/watchers/bulk — Массовое добавление наблюдателей
+  // ───────────────────────────────────────────────────────────────
+  fastify.post('/:id/watchers/bulk', {
+    preHandler: [fastify.requirePermission('tasks', 'write')]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    if (isNaN(id)) return reply.code(400).send({ error: 'Invalid id' });
+    const { user_ids } = request.body || {};
+    if (!Array.isArray(user_ids) || user_ids.length === 0) {
+      return reply.code(400).send({ error: 'user_ids[] обязателен' });
+    }
+
+    const { rows: [task] } = await db.query('SELECT * FROM tasks WHERE id = $1', [id]);
+    if (!task) return reply.code(404).send({ error: 'Задача не найдена' });
+
+    // Право: creator, assignee, или директор/ADMIN
+    const canEdit = task.creator_id === request.user.id
+      || task.assignee_id === request.user.id
+      || DIRECTOR_ROLES.includes(request.user.role);
+    if (!canEdit) return reply.code(403).send({ error: 'Нет прав' });
+
+    let uids = user_ids.map(x => parseInt(x)).filter(x => !isNaN(x) && x > 0);
+    uids = [...new Set(uids)].filter(uid => uid !== task.creator_id && uid !== task.assignee_id);
+
+    // Проверить общий лимит
+    const { rows: [{ count: existing }] } = await db.query(
+      'SELECT COUNT(*)::int AS count FROM task_watchers WHERE task_id = $1', [id]
+    );
+    if (existing + uids.length > MAX_WATCHERS) {
+      return reply.code(400).send({ error: `Превышен лимит наблюдателей (макс. ${MAX_WATCHERS}, сейчас ${existing})` });
+    }
+
+    // Валидация активности
+    const { rows: validUsers } = await db.query(
+      'SELECT id, name FROM users WHERE id = ANY($1::int[]) AND is_active = true', [uids]
+    );
+    if (validUsers.length === 0) return reply.code(400).send({ error: 'Нет валидных пользователей' });
+
+    for (const u of validUsers) {
+      await db.query(`
+        INSERT INTO task_watchers (task_id, user_id, created_at)
+        VALUES ($1, $2, NOW()) ON CONFLICT (task_id, user_id) DO NOTHING
+      `, [id, u.id]);
+      if (task.chat_id) {
+        try { await taskChat.addParticipant(db, id, u.id, 'member'); } catch(_) {}
+      }
+    }
+
+    if (task.chat_id) {
+      const names = validUsers.map(u => u.name).join(', ');
+      try {
+        await taskChat.postSystemMessage(db, id,
+          `👁 ${request.user.name || request.user.login} добавил наблюдателей: ${names}`,
+          { userId: request.user.id });
+      } catch(_) {}
+    }
+
+    const link = task.task_kind === 'help' ? `#/help?id=${id}` : `#/tasks?id=${id}`;
+    for (const u of validUsers) {
+      await notify(u.id, '👁 Подключили к задаче',
+        `${request.user.name || request.user.login} добавил вас наблюдателем в задачу «${task.title}»`, link);
+    }
+
+    return { success: true, added: validUsers.length, watchers: validUsers };
   });
 
   // ───────────────────────────────────────────────────────────────
