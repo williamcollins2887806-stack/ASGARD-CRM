@@ -327,7 +327,7 @@ class VoiceAgent {
       const systemPrompt = VOICE_OPERATOR_SYSTEM(context);
       const userPrompt = VOICE_OPERATOR_USER(context);
 
-      // Голосовой агент: всегда быстрый YandexGPT (не Qwen3 — долго для живого диалога)
+      // Голосовой агент: быстрый ответ через Токенатор (completeFast — алиас complete)
       const completeFn = this.aiProvider.completeFast || this.aiProvider.complete;
       const response = await completeFn({
         system: systemPrompt,
@@ -384,7 +384,7 @@ class VoiceAgent {
     } catch (err) {
       console.error('[VoiceAgent] AI stream error:', err.message);
 
-      // Fallback на completeFast() при ошибке стриминга — быстрый YandexGPT
+      // Fallback на completeFast() при ошибке стриминга — через Токенатор
       try {
         const completeFn = this.aiProvider.completeFast || this.aiProvider.complete;
         const response = await completeFn({

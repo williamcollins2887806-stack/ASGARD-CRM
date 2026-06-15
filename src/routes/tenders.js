@@ -207,6 +207,130 @@ async function routes(fastify, options) {
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
+  // GET /api/tenders/find-duplicates - Поиск дубликатов перед созданием
+  // Параметры query:
+  //   customer_inn   — точное совпадение по ИНН
+  //   customer       — совпадение по customer_name (lower-substring)
+  //   subject        — фраза для fuzzy-сопоставления с tender_title
+  //   amount         — опц., сумма для «±10%» окна цены
+  // Возвращает:
+  //   {
+  //     exact:   [{ id, tender_title, customer_name, tender_price, tender_status }],
+  //     similar: [{ id, similarity, ... }]
+  //   }
+  // exact = совпадает customer_inn + subject (substring любой стороны).
+  // similar = тот же заказчик + сумма ±10% ИЛИ fuzzy-схожесть subject > 0.5.
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.get('/find-duplicates', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const rawInn = String(request.query.customer_inn || '').replace(/\D/g, '');
+    const customer = String(request.query.customer || '').trim();
+    const subject = String(request.query.subject || '').trim();
+    const amountNum = Number(request.query.amount);
+    const hasAmount = Number.isFinite(amountNum) && amountNum > 0;
+
+    // Нужен хотя бы один ключ (inn или customer name).
+    if (!rawInn && !customer) {
+      return { exact: [], similar: [] };
+    }
+
+    // Базовая выборка: тендеры этого заказчика (по inn ИЛИ name substring).
+    // RBAC: PM видит только свои тендеры (синхронно с GET /).
+    let sql = `
+      SELECT id, tender_title, customer_name, customer_inn, tender_price,
+             tender_status, period, created_at, responsible_pm_id
+        FROM tenders
+       WHERE deleted_at IS NULL
+    `;
+    const params = [];
+    let idx = 1;
+
+    if (rawInn && customer) {
+      sql += ` AND (customer_inn = $${idx} OR LOWER(customer_name) LIKE $${idx + 1})`;
+      params.push(rawInn, '%' + customer.toLowerCase() + '%');
+      idx += 2;
+    } else if (rawInn) {
+      sql += ` AND customer_inn = $${idx}`;
+      params.push(rawInn);
+      idx++;
+    } else {
+      sql += ` AND LOWER(customer_name) LIKE $${idx}`;
+      params.push('%' + customer.toLowerCase() + '%');
+      idx++;
+    }
+
+    if (request.user.role === 'PM') {
+      sql += ` AND (responsible_pm_id = $${idx} OR EXISTS (
+        SELECT 1 FROM works w WHERE w.tender_id = tenders.id AND w.pm_id = $${idx}
+      ))`;
+      params.push(request.user.id);
+      idx++;
+    }
+
+    sql += ` ORDER BY id DESC LIMIT 50`;
+
+    const result = await db.query(sql, params);
+
+    // Fuzzy match (минимальная инлайн-копия vanilla tenders.js:217 fuzzyMatch)
+    function fuzzyScore(a, b) {
+      const s1 = String(a || '').toLowerCase().trim();
+      const s2 = String(b || '').toLowerCase().trim();
+      if (!s1 || !s2) return 0;
+      if (s1 === s2) return 1;
+      const w1 = s1.split(/\s+/).filter((w) => w.length > 2);
+      const w2 = s2.split(/\s+/).filter((w) => w.length > 2);
+      if (!w1.length || !w2.length) return 0;
+      let matches = 0;
+      for (const x of w1) {
+        for (const y of w2) {
+          if (x === y || x.includes(y) || y.includes(x)) { matches++; break; }
+        }
+      }
+      return matches / Math.max(w1.length, w2.length);
+    }
+
+    const subjLower = subject.toLowerCase();
+    const exact = [];
+    const similar = [];
+
+    for (const t of result.rows) {
+      const tTitle = String(t.tender_title || '');
+      const tTitleLower = tTitle.toLowerCase();
+      const sameByInn = rawInn && t.customer_inn === rawInn;
+      // EXACT — совпал ИНН и фраза subject полностью включена в tender_title (или наоборот).
+      const subjectMatch = subject && (
+        tTitleLower.includes(subjLower) || (subjLower.length > 4 && subjLower.includes(tTitleLower))
+      );
+      if (sameByInn && subjectMatch) {
+        exact.push({ ...t, similarity: 1.0, match_type: 'exact' });
+        continue;
+      }
+      // SIMILAR — fuzzy >= 0.5 или ±10% по сумме при совпадении inn/name
+      const sim = subject ? fuzzyScore(subject, tTitle) : 0;
+      let priceMatch = false;
+      if (hasAmount && Number(t.tender_price) > 0) {
+        const ratio = Number(t.tender_price) / amountNum;
+        priceMatch = ratio >= 0.9 && ratio <= 1.1;
+      }
+      if (sim >= 0.5 || priceMatch) {
+        const score = Math.max(sim, priceMatch ? 0.7 : 0);
+        similar.push({
+          ...t,
+          similarity: Math.round(score * 100) / 100,
+          match_type: score >= 0.9 ? 'high' : score >= 0.7 ? 'medium' : 'low'
+        });
+      }
+    }
+
+    // Сортировка по убыванию похожести
+    similar.sort((a, b) => b.similarity - a.similarity);
+
+    return {
+      exact: exact.slice(0, 5),
+      similar: similar.slice(0, 10)
+    };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
   // GET /api/tenders/tags - List all tender tags
   // ─────────────────────────────────────────────────────────────────────────────
   fastify.get('/tags', {

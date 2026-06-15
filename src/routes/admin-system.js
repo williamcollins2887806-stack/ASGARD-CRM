@@ -460,16 +460,12 @@ module.exports = async function(fastify) {
       model: cfg.model,
       hasAnthropicKey: cfg.hasAnthropicKey,
       hasOpenAIKey:    cfg.hasOpenAIKey,
-      hasYandexKey:    cfg.hasYandexKey,
       anthropic_model: dbConfig.anthropic_model || '',
       openai_model:    dbConfig.openai_model    || '',
       openai_url:      dbConfig.openai_url      || '',
-      yandex_folder_id: dbConfig.yandex_folder_id || process.env.YANDEX_FOLDER_ID || '',
-      yandex_model:    dbConfig.yandex_model    || process.env.YANDEX_GPT_MODEL  || 'qwen3-235b-a22b-fp8/latest',
       // Маски (никогда не возвращаем сам ключ)
       anthropic_key_mask: maskKey(dbConfig.anthropic_api_key || ''),
-      openai_key_mask:    maskKey(dbConfig.openai_api_key || ''),
-      yandex_key_mask:    maskKey(dbConfig.yandex_gpt_api_key || process.env.YANDEX_GPT_API_KEY || '')
+      openai_key_mask:    maskKey(dbConfig.openai_api_key || '')
     };
   });
 
@@ -492,16 +488,16 @@ module.exports = async function(fastify) {
     if (body.anthropic_model   !== undefined) next.anthropic_model   = String(body.anthropic_model || '');
     if (body.openai_model      !== undefined) next.openai_model      = String(body.openai_model    || '');
     if (body.openai_url        !== undefined) next.openai_url        = String(body.openai_url      || '');
-    if (body.yandex_folder_id  !== undefined) next.yandex_folder_id  = String(body.yandex_folder_id|| '');
-    if (body.yandex_model      !== undefined) next.yandex_model      = String(body.yandex_model    || '');
     // Ключи: пишем только если пришли непустые
     if (body.anthropic_api_key && String(body.anthropic_api_key).trim()) next.anthropic_api_key = String(body.anthropic_api_key).trim();
     if (body.openai_api_key    && String(body.openai_api_key).trim())    next.openai_api_key    = String(body.openai_api_key).trim();
-    if (body.yandex_gpt_api_key && String(body.yandex_gpt_api_key).trim()) next.yandex_gpt_api_key = String(body.yandex_gpt_api_key).trim();
     // Очистка ключа — отдельным флагом
     if (body.clear_anthropic_key) delete next.anthropic_api_key;
     if (body.clear_openai_key)    delete next.openai_api_key;
-    if (body.clear_yandex_key)    delete next.yandex_gpt_api_key;
+    // Зачистим legacy Yandex-ключи если они ещё в БД от старой версии
+    delete next.yandex_gpt_api_key;
+    delete next.yandex_folder_id;
+    delete next.yandex_model;
 
     await db.query(`
       INSERT INTO settings (key, value_json, updated_at)
@@ -519,7 +515,7 @@ module.exports = async function(fastify) {
   });
 
   // ── POST /ai-test — отправить пробный запрос текущему провайдеру ────────────
-  // Body: { provider?: 'auto'|'anthropic'|'openai'|'yandexgpt', prompt?: string }
+  // Body: { provider?: 'auto'|'anthropic'|'openai', prompt?: string }
   fastify.post('/ai-test', adminOnly, async (req, reply) => {
     const aiProvider = require('../services/ai-provider');
     const { provider, prompt } = req.body || {};

@@ -104,12 +104,6 @@ const AI_TIMEOUT_MS = parseInt(process.env.AI_TIMEOUT_MS || '600000', 10); // 60
 const ANTHROPIC_URL = process.env.ANTHROPIC_URL || 'https://api.anthropic.com/v1/messages';
 let OPENAI_URL = process.env.OPENAI_URL || 'https://routerai.ru/api/v1/chat/completions';
 
-// YandexGPT Pro
-let YANDEX_GPT_API_KEY = process.env.YANDEX_GPT_API_KEY || '';
-let YANDEX_FOLDER_ID = process.env.YANDEX_FOLDER_ID || '';
-const YANDEX_GPT_MODEL = process.env.YANDEX_GPT_MODEL || 'qwen3-235b-a22b-fp8/latest';
-const YANDEX_GPT_URL = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion';
-
 // ─────────────────────────────────────────────────────────────────────────────
 // STUB-режим для локальной разработки без расхода баланса.
 // Если ключ начинается с 'stub-' — новые Conductor-методы (searchWeb, embed,
@@ -207,12 +201,11 @@ function _convertContentForOpenAI(contentArray) {
 function getConfig() {
   return {
     provider: AI_PROVIDER,
-    model: AI_PROVIDER === 'anthropic' ? ANTHROPIC_MODEL : AI_PROVIDER === 'yandexgpt' ? YANDEX_GPT_MODEL : OPENAI_MODEL,
+    model: AI_PROVIDER === 'anthropic' ? ANTHROPIC_MODEL : OPENAI_MODEL,
     maxTokens: AI_MAX_TOKENS,
     temperature: AI_TEMPERATURE,
     hasAnthropicKey: !!ANTHROPIC_API_KEY,
     hasOpenAIKey: !!OPENAI_API_KEY,
-    hasYandexKey: !!(YANDEX_GPT_API_KEY && YANDEX_FOLDER_ID),
     // AP5: для agent tool-calling (прямой доступ к URL и ключу)
     openaiUrl: OPENAI_URL,
     openaiKey: OPENAI_API_KEY
@@ -639,7 +632,7 @@ async function complete({ system, messages, maxTokens, temperature, tools, plugi
   }
 
   // Demo mode: if no API keys configured, return a mock response
-  if (!ANTHROPIC_API_KEY && !OPENAI_API_KEY && !(YANDEX_GPT_API_KEY && YANDEX_FOLDER_ID)) {
+  if (!ANTHROPIC_API_KEY && !OPENAI_API_KEY) {
     const lastMsg = messages[messages.length - 1]?.content || '';
     return {
       text: `[Demo] Получено сообщение (${lastMsg.length} символов). AI-провайдер не настроен — работает демо-режим.`,
@@ -664,8 +657,6 @@ async function complete({ system, messages, maxTokens, temperature, tools, plugi
     } else if (provider === 'openai') {
       result = await callOpenAI({ system, messages, maxTokens, temperature, tools, plugins, verbosity, responseFormat, model });
       result.provider = 'openai';
-    } else if (provider === 'yandexgpt') {
-      result = await completeYandexGPT({ system, messages, maxTokens, temperature });
     } else {
       throw new Error(`Unknown AI provider: ${provider}`);
     }
@@ -703,34 +694,6 @@ async function complete({ system, messages, maxTokens, temperature, tools, plugi
 }
 
 /**
- * Fake SSE stream для провайдеров без поддержки стриминга (YandexGPT).
- * Возвращает объект с body.getReader() в формате OpenAI SSE.
- */
-function _fakeStream(result) {
-  const text = result.text || '';
-  const usage = result.usage || { inputTokens: 0, outputTokens: 0 };
-  // Формируем SSE-данные как OpenAI формат
-  const chunks = [];
-  // Разбиваем текст на куски ~80 символов для имитации стриминга
-  const chunkSize = 80;
-  for (let i = 0; i < text.length; i += chunkSize) {
-    const piece = text.slice(i, i + chunkSize);
-    chunks.push(`data: ${JSON.stringify({ choices: [{ delta: { content: piece } }] })}\n\n`);
-  }
-  chunks.push(`data: ${JSON.stringify({ choices: [{ finish_reason: 'stop' }], usage: { prompt_tokens: usage.inputTokens, completion_tokens: usage.outputTokens } })}\n\n`);
-  chunks.push('data: [DONE]\n\n');
-
-  const encoded = new TextEncoder().encode(chunks.join(''));
-  const stream = new ReadableStream({
-    start(controller) {
-      controller.enqueue(encoded);
-      controller.close();
-    }
-  });
-  return { body: stream };
-}
-
-/**
  * Стриминг запрос к AI (возвращает Response со stream)
  *
  * @param {Object} options
@@ -749,9 +712,6 @@ async function stream({ system, messages, maxTokens, temperature, model }) {
       return await callAnthropic({ system, messages, maxTokens, temperature, stream: true });
     } else if (provider === 'openai') {
       return await callOpenAI({ system, messages, maxTokens, temperature, stream: true, model });
-    } else if (provider === 'yandexgpt') {
-      const result = await completeYandexGPT({ system, messages, maxTokens, temperature });
-      return _fakeStream(result);
     } else {
       throw new Error(`Unknown AI provider: ${provider}`);
     }
@@ -893,150 +853,7 @@ function parseStream(response, provider) {
   if (p === 'anthropic') {
     return parseAnthropicStream(response);
   } else {
-    // yandexgpt fake stream и openai используют одинаковый OpenAI SSE формат
     return parseOpenAIStream(response);
-  }
-}
-
-/**
- * Yandex Cloud AI — YandexGPT и сторонние модели (Qwen3, Llama и др.)
- * YandexGPT модели → Foundation Models API (gRPC)
- * Сторонние модели → OpenAI-совместимый API
- */
-async function completeYandexGPT(options) {
-  const { system, messages, maxTokens = 4000, temperature = 0.3 } = options;
-  const isNativeYandex = YANDEX_GPT_MODEL.startsWith('yandexgpt');
-
-  if (!isNativeYandex) {
-    // OpenAI-совместимый API для Qwen3, Llama и др.
-    return _completeYandexOpenAI(options);
-  }
-
-  // Foundation Models API для yandexgpt/yandexgpt-32k
-  const yMessages = [];
-  if (system) yMessages.push({ role: 'system', text: system });
-  for (const m of messages) {
-    const text = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
-    if (!text || !text.trim()) continue;
-    yMessages.push({ role: m.role, text });
-  }
-
-  const body = {
-    modelUri: `gpt://${YANDEX_FOLDER_ID}/${YANDEX_GPT_MODEL}`,
-    completionOptions: { stream: false, temperature, maxTokens: String(maxTokens) },
-    messages: yMessages
-  };
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
-
-  try {
-    const res = await fetch(YANDEX_GPT_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Api-Key ${YANDEX_GPT_API_KEY}`,
-        'x-folder-id': YANDEX_FOLDER_ID
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`YandexGPT error ${res.status}: ${errText.slice(0, 300)}`);
-    }
-
-    const data = await res.json();
-    const result = data.result;
-    const text = result.alternatives?.[0]?.message?.text || '';
-
-    return {
-      text,
-      usage: {
-        inputTokens: parseInt(result.usage?.inputTextTokens || 0),
-        outputTokens: parseInt(result.usage?.completionTokens || 0)
-      },
-      model: YANDEX_GPT_MODEL,
-      provider: 'yandexgpt'
-    };
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-/**
- * Очистка <think>...</think> блока из ответов Thinking-моделей (Qwen3-*-thinking).
- * Модель возвращает: "<think>\nрассуждения...\n</think>\n\nОтвет"
- * Оставляем только финальный ответ.
- */
-function _stripThinkingBlock(text) {
-  if (!text) return text;
-  // Удаляем <think>...</think> блок (greedy, может быть многострочным)
-  const stripped = text.replace(/<think>[\s\S]*?<\/think>\s*/g, '').trim();
-  return stripped || text; // Если после очистки пусто — вернуть оригинал
-}
-
-/**
- * Yandex Cloud OpenAI-совместимый API для сторонних моделей
- */
-const YANDEX_OPENAI_URL = 'https://llm.api.cloud.yandex.net/v1/chat/completions';
-
-async function _completeYandexOpenAI(options) {
-  const { system, messages, maxTokens = 4000, temperature = 0.3 } = options;
-
-  const oaiMessages = [];
-  if (system) oaiMessages.push({ role: 'system', content: system });
-  for (const m of messages) {
-    const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
-    if (!content || !content.trim()) continue;
-    oaiMessages.push({ role: m.role, content });
-  }
-
-  const body = {
-    model: `gpt://${YANDEX_FOLDER_ID}/${YANDEX_GPT_MODEL}`,
-    max_tokens: maxTokens,
-    temperature,
-    messages: oaiMessages
-  };
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
-
-  try {
-    const res = await fetch(YANDEX_OPENAI_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Api-Key ${YANDEX_GPT_API_KEY}`
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`Yandex OpenAI API error ${res.status}: ${errText.slice(0, 300)}`);
-    }
-
-    const data = await res.json();
-    let text = data.choices?.[0]?.message?.content || '';
-
-    // Thinking-модели (Qwen3-*-thinking) добавляют <think>...</think> блок
-    // Очищаем его, оставляя только финальный ответ
-    text = _stripThinkingBlock(text);
-
-    return {
-      text,
-      usage: {
-        inputTokens: data.usage?.prompt_tokens || 0,
-        outputTokens: data.usage?.completion_tokens || 0
-      },
-      model: YANDEX_GPT_MODEL,
-      provider: 'yandexgpt'
-    };
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
@@ -1314,87 +1131,19 @@ async function runAgentLoop(options) {
 }
 
 /**
- * Быстрый вызов через нативный YandexGPT Pro (yandexgpt-32k/latest).
- * Для задач где критична скорость отклика (голосовой секретарь).
- * Всегда использует Foundation Models API напрямую, минуя Qwen3.
+ * Быстрый вызов — алиас на complete() через основной провайдер (Токенатор).
+ * Сохранён для обратной совместимости с voice-agent и др.
  */
 async function completeFast(options) {
-  await _loadKeysFromDB();
-  if (!YANDEX_GPT_API_KEY || !YANDEX_FOLDER_ID) {
-    return complete(options); // fallback на основной provider
-  }
-
-  const { system, messages, maxTokens = 400, temperature = 0.3 } = options;
-  const fastModel = 'yandexgpt-32k/latest';
-
-  const yMessages = [];
-  if (system) yMessages.push({ role: 'system', text: system });
-  for (const m of messages) {
-    const text = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
-    if (!text || !text.trim()) continue;
-    yMessages.push({ role: m.role, text });
-  }
-
-  const body = {
-    modelUri: `gpt://${YANDEX_FOLDER_ID}/${fastModel}`,
-    completionOptions: { stream: false, temperature, maxTokens: String(maxTokens) },
-    messages: yMessages
-  };
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000); // 30с для скорости
-
-  try {
-    const res = await fetch(YANDEX_GPT_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Api-Key ${YANDEX_GPT_API_KEY}`,
-        'x-folder-id': YANDEX_FOLDER_ID
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      throw new Error(`YandexGPT fast error ${res.status}: ${errText.slice(0, 300)}`);
-    }
-
-    const data = await res.json();
-    const result = data.result;
-    const text = result.alternatives?.[0]?.message?.text || '';
-
-    return {
-      text,
-      usage: {
-        inputTokens: parseInt(result.usage?.inputTextTokens || 0),
-        outputTokens: parseInt(result.usage?.completionTokens || 0)
-      },
-      model: fastModel,
-      provider: 'yandexgpt'
-    };
-  } catch (e) {
-    console.warn('[AI] YandexGPT fast failed, falling back to main:', e.message);
-    return complete(options);
-  } finally {
-    clearTimeout(timeout);
-  }
+  return complete(options);
 }
 
 /**
- * Аналитика — YandexGPT Pro (fallback на default provider)
- * Для: отчётов по звонкам, анализа email, подсказок Мимира
+ * Аналитика — алиас на complete() через основной провайдер (Токенатор).
+ * Сохранён для обратной совместимости с estimateChat / call-analyzer /
+ * ai-email-analyzer / mimir-schema.
  */
 async function completeAnalytics(options) {
-  await _loadKeysFromDB();
-  if (YANDEX_GPT_API_KEY && YANDEX_FOLDER_ID) {
-    try {
-      return await completeYandexGPT(options);
-    } catch (e) {
-      console.warn('[AI] YandexGPT failed, falling back:', e.message);
-    }
-  }
   return complete(options);
 }
 
@@ -1875,7 +1624,6 @@ module.exports = {
   complete,
   completeFast,
   completeAnalytics,
-  completeYandexGPT,
   stream,
   parseStream,
   parseAnthropicStream,

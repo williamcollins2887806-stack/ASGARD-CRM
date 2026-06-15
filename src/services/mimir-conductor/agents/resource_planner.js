@@ -2,7 +2,7 @@
  * ASGARD CRM — Mimir Conductor: агент «Нормативный привязчик» (Сессия 6, Шаг 6.3)
  * ═══════════════════════════════════════════════════════════════════════════
  * Привязывает работы из tz_summary к нормативам ГЭСН/ФЕР/СТО через RAG-поиск
- * (rag/norms-index.searchNorms) и LLM-подбор (Yandex GPT 5 Pro через ai-provider).
+ * (rag/norms-index.searchNorms) и LLM-подбор (gpt-5.5 через Токенатор; alias 'yandex-pro').
  *
  * Артефакт: resources
  *   { summary, key_findings[], resources:[{work, code, source, materials[],
@@ -12,8 +12,8 @@
  * собираются детерминированно из найденных RAG-нормативов (их resources-поля).
  * Если индекс пуст или нормы не найдены — типовая раскладка по эвристике.
  *
- * ВАЖНО: модель yandex-pro в ai-provider ходит отдельным путём (Yandex). Если
- * ключ не настроен — complete() уйдёт в demo/ошибку, поэтому ВСЕГДА страхуемся
+ * ВАЖНО: символический ключ 'yandex-pro' маппится в Токенатор (gpt-5.5),
+ * см. mimir-conductor/models-config.js. Если AI недоступен — страхуемся
  * isStubMode() + try/catch и детерминированным фолбэком.
  * ═══════════════════════════════════════════════════════════════════════════
  */
@@ -102,7 +102,7 @@ async function run({ requiredArtifacts, onThought }) {
       // STUB: берём топ-норматив из RAG и выводим раскладку детерминированно.
       row = norms.length ? deriveFromNorm(work, norms[0]) : fallbackResource(work);
     } else {
-      // LIVE: Yandex GPT выбирает норматив и считает ресурсы.
+      // LIVE: gpt-5.5 (alias 'yandex-pro') через Токенатор выбирает норматив и считает ресурсы.
       try {
         const prompt =
           `Работа: ${work.type} ${work.object}, объём ${work.volume} ${work.volume_unit}.\n\n` +

@@ -20,7 +20,7 @@
  *     (у токенатора web-поиск включён по умолчанию)
  *   - Embeddings (voyage-3) → disabled, searchNorms возвращает [] (graceful)
  *   - Монте-Карло (deepseek-v4) → gpt-5.5
- *   - YandexGPT (нормативы РФ) — БЕЗ ИЗМЕНЕНИЙ (отдельный провайдер/ключ)
+ *   - Нормативы РФ (alias 'yandex-pro') → gpt-5.5 через Токенатор
  *
  * Когда у токенатора активируют Claude / embeddings — поменять api_id обратно
  * (embeddings-watch-cron уведомит в Telegram при появлении embeddings).
@@ -157,19 +157,18 @@ const models = {
   },
 
   // ─── Нормативы РФ (ГЭСН/ФЕР) ──────────────────────────────────────────
-  // YandexGPT ключ возвращает 403 Permission denied (баланс/права закончились).
-  // Заменено на gpt-5.5 — знает нормативы РФ по обучающим данным, контекст 1.1M
-  // позволяет загружать большие фрагменты СТО/ТЗ заказчика. Когда у Yandex
-  // восстановится доступ — вернуть provider:'yandex' + api_id:'yandexgpt/latest'.
+  // Через Токенатор, модель gpt-5.5: знает нормативы РФ по обучающим данным,
+  // контекст 1.1M позволяет загружать большие фрагменты СТО/ТЗ заказчика.
+  // Ключ 'yandex-pro' оставлен как legacy alias имени, чтобы не ломать
+  // agents-registry / агенты resource_planner — реальный путь = Токенатор.
   'yandex-pro': {
-    provider: 'routerai',                         // через токенатор (унифицированный путь)
-    api_id: 'gpt-5.5',                            // gpt-5.5 (вместо YandexGPT)
-    yandex_api_id: 'yandexgpt/latest',            // кэш — вернётся когда у Yandex будут деньги
+    provider: 'routerai',
+    api_id: 'gpt-5.5',
     tokenator_multiplier: 2.2,
     supports_extended_thinking: false,
     supports_tool_use: true,
     max_context: 1100000,
-    role: 'Нормативы РФ (ГЭСН/ФЕР) — gpt-5.5 (Yandex GPT 403 на 13.06.2026)'
+    role: 'Нормативы РФ (ГЭСН/ФЕР) — gpt-5.5 через Токенатор'
   },
 
   // ─── Embeddings для RAG — ВРЕМЕННО DISABLED ────────────────────────────
@@ -278,7 +277,7 @@ function calculateCostRub(modelKey, usage = {}, usdRub = DEFAULT_USD_RUB, actual
     return Math.round(rub * 10000) / 10000;
   }
 
-  // ── 2) Legacy USD-формула для нетокенаторных моделей (Yandex direct, anthropic direct) ──
+  // ── 2) Legacy USD-формула для нетокенаторных моделей (anthropic direct) ──
   if (m.price_usd_per_1m_input != null || m.price_usd_per_1m_output != null) {
     const usd =
       (inTok / 1_000_000) * (m.price_usd_per_1m_input || 0) +

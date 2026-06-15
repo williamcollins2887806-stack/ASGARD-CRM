@@ -5,6 +5,8 @@
  */
 const path = require('path');
 const fs = require('fs').promises;
+const fsSync = require('fs');
+const AdmZip = require('adm-zip');
 const { v4: uuidv4 } = require('uuid');
 
 async function routes(fastify, options) {
@@ -362,6 +364,132 @@ async function routes(fastify, options) {
     params.push(parseInt(limit));
     const result = await db.query(sql, params);
     return { files: result.rows };
+  });
+
+  // GET /api/files/zip?tender_ids=1,2,3&token=...
+  // Серверная упаковка всех документов выбранных тендеров в один ZIP.
+  // Используется на реестре тендеров (bulk «📦 Скачать архивом»).
+  // RBAC: PM видит только свои тендеры (responsible_pm_id == user.id ИЛИ есть его работа).
+  // Остальные роли с доступом к тендерам — все выбранные.
+  fastify.get('/zip', {
+    preHandler: [
+      async (request) => {
+        if (!request.headers.authorization && request.query.token) {
+          request.headers.authorization = 'Bearer ' + request.query.token;
+        }
+      },
+      fastify.authenticate
+    ]
+  }, async (request, reply) => {
+    const rawIds = String(request.query.tender_ids || '').split(',').map(s => s.trim()).filter(Boolean);
+    const tenderIds = [];
+    for (const r of rawIds) {
+      if (!/^\d+$/.test(r)) continue;
+      const n = parseInt(r, 10);
+      if (n > 0 && tenderIds.length < 200) tenderIds.push(n);
+    }
+    if (!tenderIds.length) {
+      return reply.code(400).send({ error: 'tender_ids required' });
+    }
+
+    // RBAC: PM фильтруется по responsible_pm_id ИЛИ наличию работы за ним.
+    // Остальные допустимые роли (ADMIN/HEAD_PM/TO/HEAD_TO/BUH/DIRECTOR_*) — без сужения.
+    const ALLOWED_ROLES = ['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'BUH',
+                            'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+    if (!ALLOWED_ROLES.includes(request.user.role)) {
+      return reply.code(403).send({ error: 'Недостаточно прав' });
+    }
+
+    let visibleIds = tenderIds;
+    if (request.user.role === 'PM') {
+      const vis = await db.query(
+        `SELECT id FROM tenders
+          WHERE id = ANY($1::int[])
+            AND deleted_at IS NULL
+            AND (responsible_pm_id = $2 OR EXISTS (
+              SELECT 1 FROM works w WHERE w.tender_id = tenders.id AND w.pm_id = $2
+            ))`,
+        [tenderIds, request.user.id]
+      );
+      visibleIds = vis.rows.map(r => r.id);
+      if (!visibleIds.length) {
+        return reply.code(403).send({ error: 'Нет доступа к выбранным тендерам' });
+      }
+    } else {
+      const vis = await db.query(
+        `SELECT id, tender_name FROM tenders WHERE id = ANY($1::int[]) AND deleted_at IS NULL`,
+        [tenderIds]
+      );
+      visibleIds = vis.rows.map(r => r.id);
+      if (!visibleIds.length) {
+        return reply.code(404).send({ error: 'Тендеры не найдены' });
+      }
+    }
+
+    // Документы по тендеру + по работам тендера (каскад как в GET /).
+    const docsQ = await db.query(
+      `SELECT d.id, d.filename, d.original_name, d.mime_type,
+              COALESCE(d.tender_id, w.tender_id) AS tid,
+              t.tender_name
+         FROM documents d
+         LEFT JOIN works w ON w.id = d.work_id
+         LEFT JOIN tenders t ON t.id = COALESCE(d.tender_id, w.tender_id)
+        WHERE COALESCE(d.tender_id, w.tender_id) = ANY($1::int[])
+        ORDER BY tid, d.created_at`,
+      [visibleIds]
+    );
+
+    if (!docsQ.rows.length) {
+      return reply.code(404).send({ error: 'No documents found' });
+    }
+
+    // Сборка ZIP в памяти через adm-zip (есть в зависимостях).
+    const zip = new AdmZip();
+    const sanitize = (s) => String(s || '').replace(/[\\/:*?"<>| -]/g, '_').trim() || 'unnamed';
+    const usedNames = new Set();
+    let addedCount = 0;
+
+    for (const doc of docsQ.rows) {
+      const storedPath = resolveStoredFilePath(doc.filename);
+      if (!storedPath) continue;
+      try {
+        await fs.access(storedPath);
+      } catch { continue; }
+
+      const folder = `tender_${doc.tid}_${sanitize((doc.tender_name || '').slice(0, 40))}`;
+      const baseName = sanitize(doc.original_name || `doc_${doc.id}`);
+      let entryName = `${folder}/${baseName}`;
+      // Защита от дубликатов имён внутри одной папки.
+      if (usedNames.has(entryName)) {
+        const ext = path.extname(baseName);
+        const stem = baseName.slice(0, baseName.length - ext.length);
+        entryName = `${folder}/${stem}_${doc.id}${ext}`;
+      }
+      usedNames.add(entryName);
+
+      try {
+        const buf = fsSync.readFileSync(storedPath);
+        zip.addFile(entryName, buf);
+        addedCount++;
+      } catch (e) {
+        request.log.warn(`[files/zip] не удалось прочесть ${storedPath}: ${e.message}`);
+      }
+    }
+
+    if (!addedCount) {
+      return reply.code(404).send({ error: 'Файлы документов не найдены на диске' });
+    }
+
+    const zipBuffer = zip.toBuffer();
+    const niceName = `tenders_${visibleIds.join('_')}.zip`;
+    const fallback = `tenders_${visibleIds.length}.zip`;
+    // RFC 6266 — корректное имя файла с кириллицей.
+    reply
+      .header('Content-Type', 'application/zip')
+      .header('Content-Length', zipBuffer.length)
+      .header('Content-Disposition',
+        `attachment; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(niceName)}`)
+      .send(zipBuffer);
   });
 
   fastify.delete('/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {

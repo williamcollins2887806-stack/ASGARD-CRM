@@ -5,14 +5,43 @@
 // SECURITY: Allowlist of columns for customers
 const ALLOWED_COLS = new Set([
   'inn', 'name', 'full_name', 'kpp', 'ogrn', 'address', 'phone',
-  'email', 'contact_person', 'bank_account', 'bank_name', 'bik',
+  'email', 'contact_person', 'contacts', 'bank_account', 'bank_name', 'bik',
   'notes', 'category', 'is_active', 'created_at', 'updated_at'
 ]);
+
+// Нормализация массива contacts: чистим строки, фильтруем пустые,
+// гарантируем единственный is_primary (если несколько true — оставляем первый;
+// если ни одного — первый контакт становится primary).
+function normalizeContacts(input) {
+  if (!Array.isArray(input)) return [];
+  const cleaned = input
+    .map((c) => ({
+      name:       String(c?.name || '').trim(),
+      position:   String(c?.position || '').trim(),
+      phone:      String(c?.phone || '').trim(),
+      email:      String(c?.email || '').trim(),
+      is_primary: !!c?.is_primary
+    }))
+    .filter((c) => c.name || c.phone || c.email);
+  let primaryFound = false;
+  for (const c of cleaned) {
+    if (c.is_primary && !primaryFound) primaryFound = true;
+    else c.is_primary = false;
+  }
+  if (cleaned.length && !primaryFound) cleaned[0].is_primary = true;
+  return cleaned;
+}
 
 function filterData(data) {
   const filtered = {};
   for (const [k, v] of Object.entries(data)) {
-    if (ALLOWED_COLS.has(k) && v !== undefined) filtered[k] = v;
+    if (!ALLOWED_COLS.has(k) || v === undefined) continue;
+    if (k === 'contacts') {
+      // pg umеет JSONB-приём через JSON.stringify; нормализуем структуру.
+      filtered[k] = JSON.stringify(normalizeContacts(v));
+    } else {
+      filtered[k] = v;
+    }
   }
   return filtered;
 }
@@ -390,6 +419,127 @@ async function routes(fastify, options) {
         overdue_invoices_cnt: overdueCnt
       },
       last_contact: t.last_tender_at || null
+    };
+  });
+
+  // ─── PUT /:inn/score — записать событие и пересчитать кэш рейтинга ──────────
+  // Принимает { event, amount, ref_type?, ref_id?, meta? }.
+  // Карта событий → delta:
+  //   tender_created  → +0.10   (просто факт интереса)
+  //   tender_won      → +0.50
+  //   tender_lost     → -0.20
+  //   tender_archived → -0.10
+  //   invoice_paid    → +0.30
+  //   invoice_overdue → -0.40
+  // Базовая оценка 3.0; clamp 1..5.
+  //
+  // RBAC: те же роли что POST/PUT — кто может создавать тендеры/работы.
+  // Возвращает { score, events_count, last_events:[…5] }.
+  fastify.put('/:inn/score', {
+    preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH'])]
+  }, async (request, reply) => {
+    const inn = String(request.params.inn || '').replace(/\D/g, '');
+    if (inn.length !== 10 && inn.length !== 12) {
+      return reply.code(400).send({ error: 'Некорректный ИНН (должен содержать 10 или 12 цифр)' });
+    }
+
+    const { event, amount, ref_type, ref_id, meta } = request.body || {};
+    if (!event || typeof event !== 'string') {
+      return reply.code(400).send({ error: 'event обязателен' });
+    }
+
+    const DELTAS = {
+      tender_created:  0.10,
+      tender_won:      0.50,
+      tender_lost:    -0.20,
+      tender_archived:-0.10,
+      tkp_accepted:    0.30,
+      tkp_rejected:   -0.20,
+      invoice_paid:    0.30,
+      invoice_overdue:-0.40,
+      manual_up:       0.20,
+      manual_down:    -0.20
+    };
+    const delta = DELTAS[event] != null ? DELTAS[event] : 0;
+
+    // Запись события
+    await db.query(
+      `INSERT INTO customer_score_events
+        (customer_inn, event_type, amount, delta, ref_type, ref_id, meta, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        inn,
+        event,
+        amount != null && Number.isFinite(Number(amount)) ? Number(amount) : null,
+        delta,
+        ref_type || null,
+        ref_id != null && Number.isFinite(Number(ref_id)) ? Number(ref_id) : null,
+        meta ? JSON.stringify(meta) : null,
+        request.user.id || null
+      ]
+    );
+
+    // Пересчёт кэша: базис 3.0 + сумма дельт по всем событиям, clamp 1..5.
+    const aggRes = await db.query(
+      `SELECT COALESCE(SUM(delta), 0)::float AS sum_delta, COUNT(*)::int AS cnt
+         FROM customer_score_events
+        WHERE customer_inn = $1`,
+      [inn]
+    );
+    const sumDelta = Number(aggRes.rows[0].sum_delta) || 0;
+    let score = 3.0 + sumDelta;
+    if (score < 1) score = 1;
+    if (score > 5) score = 5;
+    score = Math.round(score * 10) / 10;
+
+    // Обновляем кэш в customers (если контрагент существует)
+    await db.query(
+      `UPDATE customers
+          SET customer_score = $1,
+              customer_score_updated_at = NOW()
+        WHERE inn = $2`,
+      [score, inn]
+    );
+
+    // Последние 5 событий — для UI
+    const eventsRes = await db.query(
+      `SELECT id, event_type, amount, delta, ref_type, ref_id, created_at
+         FROM customer_score_events
+        WHERE customer_inn = $1
+        ORDER BY created_at DESC
+        LIMIT 5`,
+      [inn]
+    );
+
+    return {
+      score,
+      events_count: Number(aggRes.rows[0].cnt) || 0,
+      last_events: eventsRes.rows
+    };
+  });
+
+  // ─── GET /:inn/score — текущий кэш + история событий (для карточки контрагента)
+  fastify.get('/:inn/score', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const inn = String(request.params.inn || '').replace(/\D/g, '');
+    if (inn.length !== 10 && inn.length !== 12) {
+      return reply.code(400).send({ error: 'Некорректный ИНН' });
+    }
+    const cust = await db.query(
+      `SELECT customer_score, customer_score_updated_at FROM customers WHERE inn = $1`,
+      [inn]
+    );
+    const events = await db.query(
+      `SELECT id, event_type, amount, delta, ref_type, ref_id, created_at, created_by
+         FROM customer_score_events
+        WHERE customer_inn = $1
+        ORDER BY created_at DESC
+        LIMIT 50`,
+      [inn]
+    );
+    return {
+      score: cust.rows[0]?.customer_score ?? null,
+      updated_at: cust.rows[0]?.customer_score_updated_at ?? null,
+      events: events.rows
     };
   });
 

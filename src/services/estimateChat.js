@@ -474,7 +474,7 @@ ${analogsSummary}
 
     const startTime = Date.now();
 
-    // 7. Вызвать AI (YandexGPT Pro для авто-ответов, fallback на основной провайдер)
+    // 7. Вызвать AI (через Токенатор; completeAnalytics — алиас complete)
     const aiResult = await aiProvider.completeAnalytics({
       system: systemPrompt,
       messages: [{ role: 'user', content: comment }],
@@ -788,7 +788,7 @@ async function buildEstimateContext(db, estimateId) {
  *   3. Собрать полный контекст просчёта (estimate + calc + tender + комментарии + документы)
  *   4. Загрузить ВСЮ историю чата (271К контекста позволяет)
  *   5. Сформировать system prompt с тарифами и правилами
- *   6. Вызвать AI (completeAnalytics → YandexGPT Pro)
+ *   6. Вызвать AI (completeAnalytics → Токенатор)
  *   7. Сохранить ответ в chat_messages с типом 'mimir_response'
  *   8. Разослать SSE chat:new_message всем участникам
  *   9. Залогировать в mimir_auto_log (scenario='chat_response')
@@ -872,7 +872,7 @@ ${historyText}
 - НЕ пиши "Что повелеваешь?", "Что ещё могу сделать?", "Обращайтесь!" — просто ответь и остановись
 - Будь профессионален — твой ответ видят директоры`;
 
-    // 6. AI call (completeAnalytics → YandexGPT Pro, не зависит от баланса routerai.ru)
+    // 6. AI call (completeAnalytics → Токенатор)
     const startTime = Date.now();
     const aiResult = await aiProvider.completeAnalytics({
       system: systemPrompt,
