@@ -2,12 +2,16 @@
  * AcceptModal + FastTrackModal + RejectModal + RequestDocsModal + CreateManualModal.
  * Источник: openAcceptModal, openFastTrackModal, openRejectModal, openCreateManual в pre_tenders.js.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useModal } from '@/modals';
 import { MCard, MHead, MBody, MFoot, Btn } from '@/modals/parts';
 import { Field, TextInput, INNInput, PhoneInput, TextareaInput, DatePicker, MoneyInput, SelectInput, Checkbox } from '@/inputs/Inputs';
 import { toast } from '@/modals/Notifications';
 import { accept, fastTrack, reject, requestDocs, createManual, loadPms, REJECT_REASONS } from '../api';
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
 
 export function AcceptModal({ preTender }) {
   const { close } = useModal();
@@ -16,6 +20,34 @@ export function AcceptModal({ preTender }) {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => { loadPms().then(setPms); }, []);
+
+  const emailSubject = useMemo(() => {
+    if (preTender.email_subject) return preTender.email_subject;
+    const num = preTender.tender_number || preTender.id || '';
+    return `Принят к расчёту тендер ${num}`.trim();
+  }, [preTender.email_subject, preTender.tender_number, preTender.id]);
+
+  const bodyHtml = useMemo(() => {
+    const greetName = (form.contact_person || preTender.contact_person || 'коллеги').trim();
+    const greet = `Здравствуйте, ${escapeHtml(greetName)}!`;
+    const baseBody = preTender.email_body
+      ? escapeHtml(preTender.email_body).replace(/\n/g, '<br/>')
+      : `Благодарим за обращение. Ваша заявка${preTender.customer_name ? ` от ${escapeHtml(preTender.customer_name)}` : ''} принята в работу. Наш специалист свяжется с вами в ближайшее время для уточнения деталей и подготовки коммерческого предложения.`;
+    const commentBlock = form.comment?.trim()
+      ? `<p style="margin:10px 0 0 0;">${escapeHtml(form.comment).replace(/\n/g, '<br/>')}</p>`
+      : '';
+    const phone = (form.contact_phone || preTender.contact_phone || '').trim();
+    const signature = `
+      <p style="margin:14px 0 0 0;">С уважением,<br/>
+      Команда «Асгард»${phone ? `<br/>Контактный телефон: ${escapeHtml(phone)}` : ''}</p>
+    `;
+    return `
+      <p style="margin:0 0 10px 0;">${greet}</p>
+      <p style="margin:0;">${baseBody}</p>
+      ${commentBlock}
+      ${signature}
+    `;
+  }, [form.contact_person, form.contact_phone, form.comment, preTender.contact_person, preTender.contact_phone, preTender.email_body, preTender.customer_name]);
 
   const submit = async () => {
     setBusy(true);
@@ -46,6 +78,13 @@ export function AcceptModal({ preTender }) {
           <Field label="Телефон"><PhoneInput value={form.contact_phone} onChange={(v) => setForm({ ...form, contact_phone: v })} /></Field>
           <Field label="Комментарий"><TextareaInput value={form.comment} onChange={(v) => setForm({ ...form, comment: v })} minRows={2} maxRows={4} /></Field>
           <Checkbox checked={form.send_email} onChange={(v) => setForm({ ...form, send_email: v })} label="📧 Отправить заказчику письмо «принято в работу»" />
+          {form.send_email && (
+            <div style={{ border: '1px solid var(--b-1)', borderRadius: 'var(--r-sm)', padding: 12, background: 'var(--bg-card)', fontSize: 13, color: 'var(--t-1)' }}>
+              <div style={{ fontSize: 11.5, textTransform: 'uppercase', letterSpacing: 0.6, color: 'var(--t-3)', marginBottom: 6 }}>📧 Предпросмотр письма</div>
+              <div style={{ fontWeight: 600, marginBottom: 8, color: 'var(--t-1)' }}>Тема: {emailSubject}</div>
+              <div style={{ borderTop: '1px solid var(--b-1)', paddingTop: 8, lineHeight: 1.5, color: 'var(--t-2)' }} dangerouslySetInnerHTML={{ __html: bodyHtml }} />
+            </div>
+          )}
         </div>
       </MBody>
       <MFoot align="spread">

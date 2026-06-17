@@ -26,6 +26,8 @@ import {
 } from '../api';
 import { CustomerQuickCreateModal } from './CustomerQuickCreateModal';
 import CommentsTab from './CommentsTab';
+import { ArchiveErrorModal } from './ArchiveErrorModal';
+import { ArchivePreviewModal } from './ArchivePreviewModal';
 
 /* D-50: zip-распаковка на клиенте.
    Если пользователь добавил .zip — раскрываем его через JSZip и подмешиваем
@@ -474,6 +476,35 @@ function TenderEditorInner({ initial, tags, onFinish, isNew, lsKey, openCreateCu
               <div className="files-attach-head">
                 Прикреплено · {s.documents.length}
               </div>
+              {(() => {
+                // D-60: «Просмотреть архив» — рисуем общую кнопку для тендера, если в списке
+                // есть хотя бы один архив И всего файлов > 1 (по условию задачи). Сама
+                // ArchivePreviewModal на лету загрузит GET /archive-files; если архивов нет
+                // — кнопка не показывается.
+                const ARCHIVE_RX_LOCAL = /\.(zip|rar|7z|tar|tar\.gz|tgz|gz|bz2|jar)$/i;
+                const archivesInList = (s.documents || []).filter((d) => {
+                  const nm = d?.name || d?.original_name || d?.filename || '';
+                  return ARCHIVE_RX_LOCAL.test(nm);
+                });
+                const showPreviewBtn =
+                  initial.id && archivesInList.length > 0 && s.documents.length > 1;
+                if (!showPreviewBtn) return null;
+                return (
+                  <div style={{ padding: '4px 8px 6px' }}>
+                    <Btn
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => modal.open(
+                        <ArchivePreviewModal tenderId={initial.id} />,
+                        { size: 'wide' }
+                      )}
+                      title="Выбрать файлы из загруженного архива"
+                    >
+                      📋 Просмотреть архив
+                    </Btn>
+                  </div>
+                );
+              })()}
               {s.documents.map((d, i) => {
                 // Уже сохранённый документ (с сервера) — рисуем ссылкой на /api/files/download.
                 // Новый файл из FileDrop (с .file: File) — без ссылки, только имя+размер.
@@ -848,9 +879,10 @@ export function TenderEditorWizard({ tenderId, onSaved }) {
             errCnt++; continue;
           }
           if (ARCHIVE_RX.test(d.name)) {
-            // Архив — серверная распаковка через upload-archive; preview-выбор делается отдельно
-            // на странице тендера (vanilla 2058+). Здесь просто загружаем — пользователь увидит
-            // preview-модалку в карточке тендера. Если не реализована — файл всё равно сохранится.
+            // Архив — серверная распаковка через upload-archive (vanilla 2058+).
+            // D-59: вместо плоского toast разбираем `{error:{code,message,hint}}`
+            // и показываем структурную ArchiveErrorModal — пользователь видит hint.
+            // D-60: при успехе с N>1 файлов открываем ArchivePreviewModal (см. ниже).
             try {
               const fd = new FormData();
               fd.append('file', d.file);
@@ -859,10 +891,47 @@ export function TenderEditorWizard({ tenderId, onSaved }) {
                 headers: { Authorization: 'Bearer ' + token },
                 body: fd
               });
-              if (!r.ok) throw new Error('HTTP ' + r.status);
+              const bodyText = await r.text().catch(() => '');
+              let resp = null;
+              try { resp = bodyText ? JSON.parse(bodyText) : null; } catch { /* noop */ }
+              if (!r.ok) {
+                // Бэкенд отдаёт `{error: {code, message, hint}}` (tenders.js:2167,2185,2190,2198,2205)
+                // или `{error: 'string'}` для legacy-кейсов. Нормализуем к errObj.
+                let errObj = resp?.error;
+                if (!errObj || typeof errObj === 'string') {
+                  errObj = {
+                    code: r.status === 413 ? 'FILE_TOO_LARGE' : 'NETWORK',
+                    message: (typeof errObj === 'string' ? errObj : '') || `HTTP ${r.status}`,
+                    hint: r.status >= 500 ? 'Попробуйте ещё раз через минуту' : ''
+                  };
+                }
+                modal.open(<ArchiveErrorModal errObj={errObj} />, { size: 'narrow' });
+                errCnt++;
+                continue;
+              }
               arcCnt++;
+              // D-60: если в архиве >1 файла — открыть preview для выбора.
+              // Бэк возвращает {session_id, files: [...]}. Передаём tenderId; модалка
+              // дернёт GET /archive-files и POST /select-files как описано в плане D-60.
+              const files = Array.isArray(resp?.files) ? resp.files : [];
+              if (files.length > 1) {
+                modal.open(
+                  <ArchivePreviewModal tenderId={savedId} />,
+                  { size: 'wide' }
+                );
+              }
             } catch (e) {
-              toast('Архив', `${d.name}: ${e?.message || e}`, 'err');
+              // Сетевая ошибка / TypeError fetch — нет JSON-тела, показываем как NETWORK.
+              modal.open(
+                <ArchiveErrorModal
+                  errObj={{
+                    code: 'NETWORK',
+                    message: `${d.name}: ${e?.message || 'Сетевая ошибка'}`,
+                    hint: 'Проверьте соединение и попробуйте ещё раз'
+                  }}
+                />,
+                { size: 'narrow' }
+              );
               errCnt++;
             }
             continue;

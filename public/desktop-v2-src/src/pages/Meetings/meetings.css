@@ -45,3 +45,16 @@
   font-weight: 600;
   cursor: pointer;
 }
+
+.agenda-block {
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+}
+.mtg-agenda-pre {
+  margin: 0;
+  font-family: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

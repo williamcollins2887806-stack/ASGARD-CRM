@@ -10,7 +10,7 @@ import { Field, TextareaInput, SelectInput, Combobox } from '@/inputs/Inputs';
 import { StatusBadge } from '@/modals/Notifications';
 import {
   loadOne, addMinutes, updateMinute as _updateMinute, createTaskFromMinutes, finalize,
-  rsvp, deleteMeeting, loadUsers, ITEM_TYPE_MAP, RSVP_MAP, STATUS_MAP, STATUS_TONES
+  rsvp, updateMeeting, loadUsers, ITEM_TYPE_MAP, RSVP_MAP, STATUS_MAP, STATUS_TONES
 } from './api';
 import { MeetingEditModal } from './MeetingEditModal';
 import './meetings.css';
@@ -59,9 +59,10 @@ export function MeetingDetailModal({ id, onChanged }) {
 
   const isOrganizer = m.organizer_id === user?.id;
   const _isDir = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(role);
+  const isCancelled = m.status === 'cancelled';
   const canEdit = (isOrganizer || _isDir) && (m.status === 'scheduled' || m.status === 'in_progress');
-  const canFinalize = (isOrganizer || _isDir) && m.status !== 'completed';
-  const canDelete = (isOrganizer || _isDir) && m.status === 'scheduled';
+  const canFinalize = (isOrganizer || _isDir) && m.status !== 'completed' && !isCancelled;
+  const canCancel = (isOrganizer || _isDir) && m.status === 'scheduled';
 
   const myPart = participants.find((p) => p.user_id === user?.id);
   const userOptions = users.filter((u) => u.is_active).map((u) => ({ value: String(u.id), label: u.name }));
@@ -122,10 +123,10 @@ export function MeetingDetailModal({ id, onChanged }) {
     setTimeout(() => open(<MeetingEditModal meeting={m} onSaved={() => { emit(); onChanged?.(); }} />), 30);
   };
 
-  const onDelete = () => open(<ConfirmModal tone="danger" title="Удалить совещание?" message="Восстановить будет нельзя." onConfirm={async () => {
+  const onCancel = () => open(<ConfirmModal tone="danger" title="Отменить встречу?" message="Совещание будет помечено как отменённое." onConfirm={async () => {
     try {
-      await deleteMeeting(id);
-      toast.success('Удалено');
+      await updateMeeting(id, { status: 'cancelled' });
+      toast.success('Встреча отменена');
       emit();
       close();
       onChanged?.();
@@ -147,13 +148,22 @@ export function MeetingDetailModal({ id, onChanged }) {
         onClose={close}
       />
       <MBody>
-        <div className="mb-14">
+        <div className="mb-14 u-flex gap-8">
           <StatusBadge tone={STATUS_TONES[m.status]} label={STATUS_MAP[m.status] || m.status} />
+          {isCancelled && <StatusBadge tone="rejected" label="❌ Отменена" />}
         </div>
 
         {m.description && (
           <Section title="Описание">
             <div className="fs-13 c-t2 lh-15 u-prewrap">{m.description}</div>
+          </Section>
+        )}
+
+        {m.agenda && (
+          <Section title="Повестка">
+            <div className="agenda-block">
+              <pre className="fs-13 c-t2 lh-15 u-prewrap mtg-agenda-pre">{m.agenda}</pre>
+            </div>
           </Section>
         )}
 
@@ -271,7 +281,7 @@ export function MeetingDetailModal({ id, onChanged }) {
       </MBody>
       <MFoot align="spread">
         <div className="u-flex gap-8">
-          {canDelete && <Btn variant="ghost" className="c-err" onClick={onDelete}>🗑 Удалить</Btn>}
+          {canCancel && !isCancelled && <Btn variant="ghost" className="c-err" onClick={onCancel}>✕ Отменить</Btn>}
           {canEdit && <Btn variant="ghost" onClick={onEdit}>✎ Редактировать</Btn>}
         </div>
         <Btn variant="ghost" onClick={close}>Закрыть</Btn>

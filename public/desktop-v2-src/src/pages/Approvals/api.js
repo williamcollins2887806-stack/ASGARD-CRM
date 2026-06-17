@@ -180,3 +180,64 @@ export function filterByPm(items, pmId) {
   if (!pmId || pmId === 'all') return items;
   return items.filter((e) => String(e.pm_id || '') === String(pmId));
 }
+
+/* ─── SLA / overdue ─── */
+/* Прибавить N рабочих дней (пропуская Sat/Sun). Источник: vanilla approvals.js:86-99.
+ * base — ISO-строка или Date; days — число. Возврат Date или null. */
+export function addWorkdays(base, days) {
+  if (!base) return null;
+  const dt = new Date(base);
+  if (!Number.isFinite(dt.getTime())) return null;
+  let n = Number(days || 0);
+  if (!Number.isFinite(n) || n <= 0) return dt;
+  while (n > 0) {
+    dt.setDate(dt.getDate() + 1);
+    const w = dt.getDay();
+    if (w !== 0 && w !== 6) n--;
+  }
+  return dt;
+}
+
+/* Прочитать director_approval_due_workdays из настроек (default 5 по тех.заданию D-18,
+ * vanilla seed.js по умолчанию 2 — но D-vol5 закрепляет 5; реальное значение в БД перебивает default). */
+export function getDirectorApprovalDueWorkdays(settings) {
+  const v = Number(settings?.sla?.director_approval_due_workdays);
+  return Number.isFinite(v) && v > 0 ? v : 5;
+}
+
+/* Просрочка: только для status='sent' и установленного sent_for_approval_at.
+ * dueDate = sent_for_approval_at + N_workdays; overdue = now > dueDate. */
+export function isOverdue(estimate, days) {
+  if (!estimate || estimate.approval_status !== 'sent') return false;
+  const due = addWorkdays(estimate.sent_for_approval_at || estimate.created_at, days);
+  if (!due) return false;
+  return Date.now() > due.getTime();
+}
+
+/* ─── QA-сообщения ──────────────────────────────────────────────────────
+ * Бэкенд: GET /api/data/qa_messages?limit=10000 → { qa_messages:[...] }.
+ * Спецификация D-18 говорит `/api/qa-messages?estimate_id=:id`, но реального
+ * REST-эндпоинта с таким путём нет — используется generic data API (settings.js
+ * → routes/data.js, prefix '/api/data', allowed table 'qa_messages').
+ * Грузим разом батчем (одним запросом) и считаем по estimate_id — это дешевле,
+ * чем N запросов в цикле, и совпадает с vanilla approvals.js:316. */
+export function loadQaCountsForEstimates(estimateIds) {
+  if (!Array.isArray(estimateIds) || estimateIds.length === 0) {
+    return Promise.resolve({});
+  }
+  return api('/api/data/qa_messages?limit=10000')
+    .then((d) => {
+      const arr = d?.qa_messages || d?.items || [];
+      const wanted = new Set(estimateIds.map((x) => String(x)));
+      const counts = {};
+      for (const m of arr) {
+        const eid = m?.estimate_id;
+        if (eid == null) continue;
+        const key = String(eid);
+        if (!wanted.has(key)) continue;
+        counts[key] = (counts[key] || 0) + 1;
+      }
+      return counts;
+    })
+    .catch(() => ({}));
+}

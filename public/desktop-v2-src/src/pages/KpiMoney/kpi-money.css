@@ -151,3 +151,77 @@
   margin-top: 6px;
 }
 .km-kpi-value--text { font-size: 18px; }
+
+/* ─── Расходы по категориям: donut + таблица ────────────────────────── */
+.km-cat-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.km-cat-month { min-width: 160px; }
+
+.km-cat-grid {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 720px) {
+  .km-cat-grid { grid-template-columns: 1fr; }
+}
+
+.km-donut-wrap {
+  display: flex;
+  justify-content: center;
+}
+.km-donut {
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  position: relative;
+  /* conic-gradient выставляется inline-style — токены из var(--…) */
+}
+.km-donut-hole {
+  position: absolute;
+  inset: 30px;
+  background: var(--inner-bg);
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+.km-donut-total {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--t-1);
+}
+.km-donut-label {
+  font-size: 11px;
+  color: var(--t-3);
+  margin-top: 4px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.km-cat-table-scroll { overflow-x: auto; }
+.km-cat-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.km-cat-table thead tr { border-bottom: 1px solid var(--brd-1); }
+.km-cat-table tbody tr { border-bottom: 1px solid var(--brd-2); }
+.km-cat-table tbody tr.km-cat-total { border-top: 2px solid var(--brd-1); }
+.km-cat-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 8px;
+  vertical-align: middle;
+}

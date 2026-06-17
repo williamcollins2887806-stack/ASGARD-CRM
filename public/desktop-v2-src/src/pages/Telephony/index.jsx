@@ -36,6 +36,7 @@ const MissedTab = lazy(() => import('./tabs/Missed'));
 const StatsTab = lazy(() => import('./tabs/Stats'));
 const AnalyticsTab = lazy(() => import('./tabs/Analytics'));
 const RoutingTab = lazy(() => import('./tabs/Routing'));
+const MangoTab = lazy(() => import('./tabs/Mango'));
 
 // RBAC синхронно с backend `src/routes/telephony.js:10` (TEL_ROLES).
 // Inline-литералы нужны скрипту rbac-audit для автопроверки покрытия.
@@ -46,7 +47,8 @@ const TABS = [
   { id: 'missed',    label: '☎ Пропущенные' },
   { id: 'stats',     label: '📊 Статистика' },
   { id: 'analytics', label: '🧙 Аналитика' },
-  { id: 'routing',   label: '↪ Маршрутизация' }
+  { id: 'routing',   label: '↪ Маршрутизация' },
+  { id: 'mango',     label: '🥭 Интеграция Mango' }
 ];
 
 export default function TelephonyPage() {
@@ -214,6 +216,7 @@ export default function TelephonyPage() {
           {tab === 'stats'     && <StatsTab />}
           {tab === 'analytics' && <AnalyticsTab />}
           {tab === 'routing'   && <RoutingTab />}
+          {tab === 'mango'     && <MangoTab />}
         </Suspense>
       )}
     </div>

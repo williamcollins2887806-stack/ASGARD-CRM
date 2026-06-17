@@ -7,6 +7,7 @@
  *  - KPI по РП: контракты, факт, маржа в %, прибыль
  *  - Динамика по месяцам (выручка / прибыль)
  *  - Топ работ по марже
+ *  - Donut chart + таблица расходов по 12 категориям (vanilla kpi_money.js:13-26)
  *
  * RBAC: ADMIN, HEAD_PM, BUH, DIRECTOR_GEN, DIRECTOR_COMM, DIRECTOR_DEV.
  */
@@ -22,6 +23,41 @@ import './kpi-money.css';
 const _ALLOWED = ['ADMIN', 'PM', 'HEAD_PM', 'BUH', 'OFFICE_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 
 const MONTHS = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
+const MONTHS_FULL = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+
+/**
+ * EXPENSE_CATEGORIES — 12 категорий расходов, 1:1 с vanilla kpi_money.js:13-26.
+ * Цвета — только токены темы (var(--…)), без хардкод-цветов.
+ * Для категорий, в vanilla имевших hex (#14b8a6 / #ec4899 / #a855f7 / #84cc16),
+ * подобраны эквивалентные токены v2: var(--cyan)/var(--err-t)/var(--purple)/var(--ok-t).
+ */
+const EXPENSE_CATEGORIES = [
+  { key: 'fot',           label: 'ФОТ',          color: 'var(--info)'  },
+  { key: 'materials',     label: 'Материалы',    color: 'var(--ok-t)'  },
+  { key: 'chemicals',     label: 'Химия',        color: 'var(--amber)' },
+  { key: 'equipment',     label: 'Оборудование', color: 'var(--purple)'},
+  { key: 'logistics',     label: 'Логистика',    color: 'var(--err-t)' },
+  { key: 'transfer',      label: 'Трансфер',     color: 'var(--cyan)'  },
+  { key: 'accommodation', label: 'Проживание',   color: 'var(--ok)'    },
+  { key: 'subcontract',   label: 'Субподряд',    color: 'var(--err)'   },
+  { key: 'tickets',       label: 'Билеты',       color: 'var(--gold)'  },
+  { key: 'daily',         label: 'Суточные',     color: 'var(--info)'  },
+  { key: 'office',        label: 'Офис',         color: 'var(--orange)'},
+  { key: 'other',         label: 'Прочее',       color: 'var(--t-3)'   }
+];
+
+// Алиасы категорий (русские/старые → стандартные) — 1:1 с vanilla
+const CATEGORY_ALIASES = {
+  chemistry: 'chemicals',
+  transport: 'logistics',
+  payroll:   'fot',
+  fot_tax:   'fot',
+  'Материалы': 'materials'
+};
+function normalizeCategory(cat) {
+  const mapped = CATEGORY_ALIASES[cat] || cat || 'other';
+  return EXPENSE_CATEGORIES.some((c) => c.key === mapped) ? mapped : 'other';
+}
 
 function fmtMoney(n) {
   const x = Number(n) || 0;
@@ -48,8 +84,10 @@ export default function KpiMoneyPage() {
   const now = new Date();
 
   const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1); // 1..12 для period=YYYY-MM
   const [works, setWorks] = useState([]);
   const [users, setUsers] = useState([]);
+  const [expenses, setExpenses] = useState([]); // [{date, category, amount, ...}]
   const [loading, setLoading] = useState(true);
 
   // RBAC inline-литералы — синхронно с vanilla kpi_money.js (ADMIN/PM/OFFICE_MANAGER/BUH/DIRECTOR_*)
@@ -57,11 +95,30 @@ export default function KpiMoneyPage() {
 
   const refresh = () => {
     setLoading(true);
+    const dateFrom = `${year}-01-01`;
+    const dateTo   = `${year}-12-31`;
+    const q = new URLSearchParams({ date_from: dateFrom, date_to: dateTo, limit: '10000' }).toString();
+
+    // TODO(backend): endpoint /api/kpi-money/expenses-by-category?period=YYYY-MM пока НЕ существует
+    // (см. src/routes/expenses.js — есть только /work и /office). Когда появится — заменить
+    // двойной fetch ниже на одиночный к серверному агрегату. Пока агрегируем на клиенте
+    // по тем же источникам, что и vanilla kpi_money.js (work_expenses + office_expenses + travel).
     Promise.all([
       api('/api/works?limit=2000').then((d) => d?.works || d?.items || []).catch(() => []),
-      api('/api/users?limit=500').then((d) => d?.users || []).catch(() => [])
+      api('/api/users?limit=500').then((d) => d?.users || []).catch(() => []),
+      api('/api/expenses/work?' + q).then((d) => d?.expenses || []).catch(() => []),
+      api('/api/expenses/office?' + q).then((d) => d?.expenses || []).catch(() => [])
     ])
-      .then(([w, u]) => { setWorks(w); setUsers(u); })
+      .then(([w, u, we, oe]) => {
+        setWorks(w);
+        setUsers(u);
+        // Унифицируем источник expenses: для office проставим category='office' если пусто
+        const merged = [
+          ...we.map((e) => ({ ...e, _src: 'work' })),
+          ...oe.map((e) => ({ ...e, category: e.category || 'office', _src: 'office' }))
+        ];
+        setExpenses(merged);
+      })
       .catch((e) => toast.error('Не удалось загрузить: ' + (e?.message || e)))
       .finally(() => setLoading(false));
   };
@@ -75,7 +132,7 @@ export default function KpiMoneyPage() {
     }
     refresh();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.role]);
+  }, [user?.role, year]);
 
   const inYear = (w) => {
     const d = w.start_fact || w.start_plan || w.start_in_work_date || w.created_at;
@@ -139,10 +196,38 @@ export default function KpiMoneyPage() {
       .slice(0, 10);
   }, [yearWorks]);
 
+  // Расходы за выбранный месяц (period=YYYY-MM) — 12 категорий из EXPENSE_CATEGORIES.
+  // Источник: те же expenses, что и vanilla kpi_money.js (work + office + позже travel).
+  const expensesByCategory = useMemo(() => {
+    const period = `${year}-${String(month).padStart(2, '0')}`;
+    const byCat = Object.fromEntries(EXPENSE_CATEGORIES.map((c) => [c.key, 0]));
+    let totalAll = 0;
+    for (const e of expenses) {
+      const d = e.date || e.created_at;
+      if (!d || String(d).slice(0, 7) !== period) continue;
+      // фильтр approval / rejected — 1:1 с vanilla shouldCount()
+      if (e.requires_approval && e.approval_status !== 'approved') continue;
+      if (e.status === 'rejected' || e.status === 'rework') continue;
+      const cat = normalizeCategory(e.category);
+      const amt = Number(e.amount) || 0;
+      byCat[cat] += amt;
+      totalAll += amt;
+    }
+    const rows = EXPENSE_CATEGORIES.map((c) => ({
+      key: c.key,
+      label: c.label,
+      color: c.color,
+      sum: byCat[c.key],
+      pct: totalAll > 0 ? (byCat[c.key] / totalAll) * 100 : 0
+    }));
+    return { rows, total: totalAll, period };
+  }, [expenses, year, month]);
+
   if (user && !_allowed) return null;
 
   const yearOptions = [now.getFullYear(), now.getFullYear() - 1, now.getFullYear() - 2, now.getFullYear() - 3]
     .map((y) => ({ value: String(y), label: String(y) }));
+  const monthOptions = MONTHS_FULL.map((m, i) => ({ value: String(i + 1), label: m }));
 
   return (
     <div className="km-wrap">
@@ -171,6 +256,17 @@ export default function KpiMoneyPage() {
             <Kpi label="Факт себест." value={shortMoney(dept.fact)} tone="amber" isText />
             <Kpi label="Прибыль факт" value={shortMoney(dept.profitFact)} tone={dept.profitFact >= 0 ? 'ok' : 'err'} isText />
             <Kpi label="Маржа" value={dept.mPct != null ? dept.mPct.toFixed(1) + ' %' : '—'} tone={dept.mPct != null && dept.mPct >= 15 ? 'ok' : 'err'} isText />
+          </div>
+
+          {/* Расходы по 12 категориям — donut + таблица */}
+          <div className="card km-section">
+            <div className="km-cat-head">
+              <h3 className="km-section-title">💸 Расходы по категориям</h3>
+              <div className="km-cat-month">
+                <SelectInput value={String(month)} onChange={(v) => setMonth(Number(v))} options={monthOptions} />
+              </div>
+            </div>
+            <ExpenseDonutTable data={expensesByCategory} />
           </div>
 
           {/* By PM */}
@@ -315,6 +411,74 @@ function MonthlyChart({ byMonth }) {
     </div>
   );
 }
+
+/**
+ * Donut расходов по 12 категориям + таблица (category | sum | %).
+ * Inline-CSS conic-gradient — без библиотек, без хардкод-цветов
+ * (все цвета из EXPENSE_CATEGORIES → токены темы var(--…)).
+ */
+function ExpenseDonutTable({ data }) {
+  const { rows, total } = data;
+  // Сегменты с ненулевой суммой
+  const segs = rows.filter((r) => r.sum > 0);
+  // Строим CSS conic-gradient: 'color 0% pct1, color2 pct1 pct2, ...'
+  let acc = 0;
+  const stops = segs.map((s) => {
+    const start = acc;
+    acc += s.pct;
+    return `${s.color} ${start.toFixed(3)}% ${acc.toFixed(3)}%`;
+  });
+  const conicGradient = total > 0
+    ? `conic-gradient(${stops.join(', ')})`
+    : 'conic-gradient(var(--brd-2) 0% 100%)';
+
+  return (
+    <div className="km-cat-grid">
+      <div className="km-donut-wrap">
+        <div
+          className="km-donut"
+          style={{ background: conicGradient }}
+          aria-label={`Расходы по категориям, всего ${shortMoney(total)}`}
+        >
+          <div className="km-donut-hole">
+            <div className="km-donut-total">{shortMoney(total)}</div>
+            <div className="km-donut-label">за месяц</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="km-cat-table-scroll">
+        <table className="km-cat-table">
+          <thead>
+            <tr>
+              <Th>Категория</Th>
+              <Th>Сумма</Th>
+              <Th>%</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.key}>
+                <Td>
+                  <span className="km-cat-dot" style={{ background: r.color }} />
+                  {r.label}
+                </Td>
+                <Td>{fmtMoney(r.sum)}</Td>
+                <Td>{r.pct.toFixed(1)}%</Td>
+              </tr>
+            ))}
+            <tr className="km-cat-total">
+              <Td><b>Итого</b></Td>
+              <Td><b>{fmtMoney(total)}</b></Td>
+              <Td><b>100%</b></Td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function plural(n, forms) {
   const a = Math.abs(n) % 100;
   const b = a % 10;

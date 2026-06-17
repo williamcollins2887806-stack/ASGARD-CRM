@@ -25,9 +25,10 @@ import { useDebounce } from '@/api/useListHelpers';
 
 import { EstimateApprovalModal } from './EstimateApprovalModal';
 import {
-  loadEstimates, loadPms,
+  loadEstimates, loadPms, loadAppSettings, loadQaCountsForEstimates,
   MODE_OPTIONS, statusMeta,
-  fmtMoney, fmtDateTime, calcMargin, filterByQuery, filterByPm
+  fmtMoney, fmtDateTime, calcMargin, filterByQuery, filterByPm,
+  getDirectorApprovalDueWorkdays, isOverdue
 } from './api';
 import './approvals.css';
 
@@ -53,6 +54,11 @@ export default function ApprovalsPage() {
   const [items, setItems] = useState([]);
   const [pms, setPms] = useState([]);
   const [loading, setLoading] = useState(true);
+  // SLA: /api/settings/app → sla.director_approval_due_workdays (default 5 рабочих дней).
+  // Используется и для подсветки overdue-строк, и для бэйджа Просрочено в EstimateApprovalModal.
+  const [dueWorkdays, setDueWorkdays] = useState(5);
+  // QA: count qa_messages per estimate_id — батч одним запросом /api/data/qa_messages.
+  const [qaCounts, setQaCounts] = useState({});
 
   const refresh = () => {
     setLoading(true);
@@ -67,10 +73,17 @@ export default function ApprovalsPage() {
             loadEstimates({ status: 'question', limit: 2000 }),
             loadEstimates({ status: 'rejected', limit: 2000 })
           ]).then((arrays) => arrays.flat()),
-      loadPms().then(setPms)
+      loadPms().then(setPms),
+      loadAppSettings().then((s) => setDueWorkdays(getDirectorApprovalDueWorkdays(s)))
     ];
     Promise.all(tasks)
-      .then(([list]) => setItems(Array.isArray(list) ? list : []))
+      .then(([list]) => {
+        const safe = Array.isArray(list) ? list : [];
+        setItems(safe);
+        // Подтягиваем счётчики QA только для видимого списка id.
+        const ids = safe.map((e) => e.id).filter((x) => x != null);
+        return loadQaCountsForEstimates(ids).then(setQaCounts);
+      })
       .catch((e) => toast('Ошибка загрузки', String(e?.message || e), 'err'))
       .finally(() => setLoading(false));
   };
@@ -175,7 +188,13 @@ export default function ApprovalsPage() {
         <>
           <div className="appr-list">
             {slice.map((e) => (
-              <ApprovalRow key={e.id} item={e} onOpen={() => modal.open(<EstimateApprovalModal estimate={e} onChanged={refresh} />)} />
+              <ApprovalRow
+                key={e.id}
+                item={e}
+                overdue={isOverdue(e, dueWorkdays)}
+                qaCount={qaCounts[String(e.id)] || 0}
+                onOpen={() => modal.open(<EstimateApprovalModal estimate={e} onChanged={refresh} />)}
+              />
             ))}
           </div>
 
@@ -194,17 +213,21 @@ export default function ApprovalsPage() {
   );
 }
 
-function ApprovalRow({ item, onOpen }) {
+function ApprovalRow({ item, onOpen, overdue = false, qaCount = 0 }) {
   const meta = statusMeta(item.approval_status);
   const margin = calcMargin(item.price_tkp, item.cost_plan);
+  // .row--overdue + .appr-row--overdue: первый класс — глобальный селектор по спецификации D-18,
+  // второй — локальный (контекстный для CSS-модулей страницы). Оба применяют красную заливку
+  // фона + 3px бордер слева (var(--err-bg) / var(--err)).
+  const rowCls = `appr-row${overdue ? ' appr-row--overdue row--overdue' : ''}`;
   return (
     <div
-      className="appr-row"
+      className={rowCls}
       onClick={onOpen}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen?.(); } }}
       role="button"
       tabIndex={0}
-      aria-label={`Просчёт ${item.title || item.tender_title || item.id} — открыть`}
+      aria-label={`Просчёт ${item.title || item.tender_title || item.id}${overdue ? ' (просрочено)' : ''} — открыть`}
     >
       <div className="appr-row-left">
         <div className="appr-row-customer">{item.customer || item.customer_name || '—'}</div>
@@ -217,6 +240,20 @@ function ApprovalRow({ item, onOpen }) {
             <>
               <span>·</span>
               <span>отправлено: {fmtDateTime(item.sent_for_approval_at)}</span>
+            </>
+          )}
+          {overdue && (
+            <>
+              <span>·</span>
+              <span className="appr-row-overdue-tag" aria-label="просрочено">⏰ Просрочено</span>
+            </>
+          )}
+          {qaCount > 0 && (
+            <>
+              <span>·</span>
+              <span className="appr-row-qa-badge" aria-label={`Вопросов и ответов: ${qaCount}`}>
+                ❓ {qaCount}
+              </span>
             </>
           )}
           {Number.isFinite(item.comments_count) && item.comments_count > 0 && (
