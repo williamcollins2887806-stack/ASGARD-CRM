@@ -9,10 +9,12 @@
  *
  * Доступ: ADMIN, DIRECTOR_GEN, DIRECTOR_COMM, BUH (бэк проверяет requireRoles).
  *
- * Vanilla имела отдельный роут `/pm-balance/:pm_id`; мы открываем детали как модалку
- * (без отдельного URL) — функционально эквивалентно.
+ * Vanilla имела отдельный роут `/pm-balance/:pm_id` для автооткрытия деталей.
+ * v2 поддерживает оба: `/pm-balance` (список) и `/pm-balance/:pm_id` (список + модалка
+ * деталей открывается автоматически по параметру URL).
  */
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/api/useAuth';
 import { useModal } from '@/modals';
 import { toast } from '@/modals/Notifications';
@@ -21,19 +23,25 @@ import { SelectInput } from '@/inputs/Inputs';
 import { TopActionsBar, EmptyState } from '@/blocks/Blocks';
 
 import { PmBalanceDetailModal } from './PmBalanceDetailModal';
-import { loadPmBalanceList, rub, balanceTone, buildMonthOptions } from './api';
+import { loadPmBalanceList, loadPmBalanceDetail, rub, balanceTone, buildMonthOptions } from './api';
 
 const ALLOWED_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'BUH'];
 
 export default function PmBalancePage() {
   const { user } = useAuth();
   const modal = useModal();
+  const params = useParams();
+  const navigate = useNavigate();
   const role = user?.role;
   const hasAccess = ALLOWED_ROLES.includes(role);
 
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [month, setMonth] = useState('');
+
+  // Deep-link: #/pm-balance/:pm_id → автооткрытие модалки деталей (паритет с vanilla).
+  const deepLinkPmId = params?.pm_id ? Number(params.pm_id) : null;
+  const autoOpenedRef = useRef(null); // помечаем, что уже открывали этот pm_id
 
   const refresh = () => {
     setLoading(true);
@@ -44,6 +52,52 @@ export default function PmBalancePage() {
   };
 
   useEffect(() => { if (hasAccess) refresh(); }, [hasAccess]);
+
+  const openDetail = (pm) => modal.open(
+    <PmBalanceDetailModal pmId={pm.pm_id} pmName={pm.pm_name} />,
+    {
+      size: 'wide',
+      onClose: () => {
+        // При закрытии модалки, открытой через deep-link, возвращаем URL к /pm-balance,
+        // чтобы повторное закрытие/повторный заход не открывали её снова.
+        if (deepLinkPmId && autoOpenedRef.current === deepLinkPmId) {
+          navigate('/pm-balance', { replace: true });
+        }
+      }
+    }
+  );
+
+  // Deep-link авто-открытие: ждём окончания загрузки списка, ищем РП в нём;
+  // если в списке нет (например, у РП ещё нет операций) — пробуем подтянуть детали
+  // напрямую через /api/payroll-dashboard/pm-balance/:pm_id (как делала vanilla).
+  useEffect(() => {
+    if (!hasAccess) return;
+    if (!deepLinkPmId) return;
+    if (loading) return;
+    if (autoOpenedRef.current === deepLinkPmId) return; // уже открывали — не дублируем
+
+    const found = items.find((pm) => Number(pm.pm_id) === deepLinkPmId);
+    if (found) {
+      autoOpenedRef.current = deepLinkPmId;
+      openDetail(found);
+      return;
+    }
+    // В списке нет — fallback на прямую загрузку деталей по pm_id.
+    let cancelled = false;
+    loadPmBalanceDetail(deepLinkPmId)
+      .then((d) => {
+        if (cancelled) return;
+        autoOpenedRef.current = deepLinkPmId;
+        openDetail({ pm_id: deepLinkPmId, pm_name: d?.pm_name || `РП #${deepLinkPmId}` });
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        toast('РП не найден', String(e?.message || e), 'err');
+        navigate('/pm-balance', { replace: true });
+      });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkPmId, loading, items, hasAccess]);
 
   // Фильтр по месяцу (клиентский — по last_activity если есть)
   const visible = useMemo(() => {
@@ -74,11 +128,6 @@ export default function PmBalancePage() {
       </div>
     );
   }
-
-  const openDetail = (pm) => modal.open(
-    <PmBalanceDetailModal pmId={pm.pm_id} pmName={pm.pm_name} />,
-    { size: 'wide' }
-  );
 
   return (
     <div className="col gap-12">

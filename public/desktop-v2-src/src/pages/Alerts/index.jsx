@@ -32,6 +32,12 @@ const FILTER_OPTS = [
   { value: 'all',    label: 'Все' }
 ];
 
+// Паритет vanilla alerts.js:29-30,40-46 — фильтр «Область» (только ADMIN/DIRECTOR_*).
+const SCOPE_OPTS = [
+  { value: 'me',  label: 'Мои' },
+  { value: 'all', label: 'Все' }
+];
+
 export default function AlertsPage() {
   const { user } = useAuth();
   const modal = useModal();
@@ -48,13 +54,17 @@ export default function AlertsPage() {
   const [groupBy, setGroupBy] = useState('type'); // type | none
   const [q, setQ] = useState('');
   const dq = useDebounce(q, 300);  // G-11: debounce 300мс
+  // Паритет vanilla alerts.js:56,60 — scope=me|all (RBAC: показываем селектор только ADMIN/DIRECTOR_*).
+  const canScopeAll = user?.role === 'ADMIN' || String(user?.role || '').startsWith('DIRECTOR_');
+  const [scope, setScope] = useState('me');
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
 
   const refresh = () => {
     setLoading(true);
-    loadNotifications({ limit: 500 })
+    // scope передаём только если у пользователя есть право (бэкенд тоже валидирует RBAC).
+    loadNotifications({ limit: 500, scope: canScopeAll ? scope : 'me' })
       .then(({ notifications, unread_count }) => {
         setItems(notifications);
         setUnreadCount(unread_count);
@@ -64,7 +74,7 @@ export default function AlertsPage() {
   };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { if (user) refresh(); }, [user?.id]);
+  useEffect(() => { if (user) refresh(); }, [user?.id, scope]);
 
   const filtered = useMemo(() => {
     const norm = dq.trim().toLowerCase();
@@ -255,6 +265,16 @@ export default function AlertsPage() {
         <div>
           <SearchInput value={q} onChange={setQ} placeholder="Поиск по заголовку или тексту…" />
         </div>
+        {canScopeAll && (
+          <div>
+            <SelectInput
+              value={scope}
+              onChange={setScope}
+              options={SCOPE_OPTS}
+              placeholder="Область"
+            />
+          </div>
+        )}
         <div>
           <SelectInput value={filter} onChange={setFilter} options={FILTER_OPTS} placeholder="Фильтр" />
         </div>

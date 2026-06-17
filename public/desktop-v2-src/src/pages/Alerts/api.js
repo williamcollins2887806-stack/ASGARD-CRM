@@ -24,10 +24,12 @@ export function canSeeAdminNotifications(user) {
   return ADMIN_VIEW_ROLES.includes(user?.role);
 }
 
-export async function loadNotifications({ is_read, limit = 200 } = {}) {
+export async function loadNotifications({ is_read, limit = 200, scope } = {}) {
   const params = new URLSearchParams();
   params.set('limit', String(limit));
   if (is_read != null) params.set('is_read', is_read ? 'true' : 'false');
+  // scope=all — только ADMIN/DIRECTOR_* (бэкенд игнорит для остальных), паритет vanilla alerts.js:56,60.
+  if (scope === 'all') params.set('scope', 'all');
   const r = await api('/api/notifications?' + params.toString());
   return {
     notifications: r?.notifications || [],

@@ -23,11 +23,15 @@ import { useAuth } from '@/api/useAuth';
 import BotSettings from './BotSettings';
 import UsersList from './UsersList';
 import TestSend from './TestSend';
+import SmsParser from './SmsParser';
+import Templates from './Templates';
 
 const TABS = [
-  { id: 'bot',   label: '🤖 Бот' },
-  { id: 'users', label: '👥 Пользователи' },
-  { id: 'test',  label: '✈️ Тест-отправка' }
+  { id: 'bot',       label: '🤖 Бот' },
+  { id: 'users',     label: '👥 Пользователи' },
+  { id: 'test',      label: '✈️ Тест-отправка' },
+  { id: 'sms',       label: '📱 Парсер SMS' },
+  { id: 'templates', label: '📝 Шаблоны' }
 ];
 
 export default function TelegramPage() {
@@ -53,9 +57,11 @@ export default function TelegramPage() {
       <TabsBar tabs={TABS} active={tab} onChange={setTab} />
 
       <div>
-        {tab === 'bot'   && <BotSettings key="bot" />}
-        {tab === 'users' && <UsersList key="users" />}
-        {tab === 'test'  && <TestSend key="test" />}
+        {tab === 'bot'       && <BotSettings key="bot" />}
+        {tab === 'users'     && <UsersList key="users" />}
+        {tab === 'test'      && <TestSend key="test" />}
+        {tab === 'sms'       && <SmsParser key="sms" />}
+        {tab === 'templates' && <Templates key="templates" />}
       </div>
     </div>
   );

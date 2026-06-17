@@ -25,6 +25,40 @@ import {
   findTenderDuplicates, updateCustomerScore
 } from '../api';
 import { CustomerQuickCreateModal } from './CustomerQuickCreateModal';
+import CommentsTab from './CommentsTab';
+
+/* D-50: zip-распаковка на клиенте.
+   Если пользователь добавил .zip — раскрываем его через JSZip и подмешиваем
+   реальные File-объекты в state.documents. Каждый файл потом загрузится отдельно
+   через обычный /api/files/upload (вместо непредсказуемой серверной распаковки).
+   Лимиты: пропускаем папки, симлинки, нулевые файлы. Уведомляем пользователя. */
+const ZIP_RX = /\.zip$/i;
+
+async function expandZipFile(zipFile) {
+  // Динамический импорт — jszip ~95KB, ленивая загрузка не утяжеляет initial bundle.
+  const JSZip = (await import('jszip')).default;
+  const zip = await JSZip.loadAsync(zipFile);
+  const out = [];
+  const entries = Object.values(zip.files);
+  for (const entry of entries) {
+    if (entry.dir) continue;
+    // Имя без пути (как пользователь увидит)
+    const baseName = entry.name.split('/').pop() || entry.name;
+    if (!baseName || baseName.startsWith('.')) continue; // .DS_Store и пр.
+    try {
+      const blob = await entry.async('blob');
+      if (!blob || blob.size === 0) continue;
+      const file = new File([blob], baseName, {
+        type: blob.type || 'application/octet-stream',
+        lastModified: entry.date ? entry.date.getTime() : Date.now()
+      });
+      out.push({ name: file.name, size: file.size, type: file.type, file });
+    } catch {
+      // Битый entry — пропускаем, не валим весь zip
+    }
+  }
+  return out;
+}
 
 /* ─── LS-черновик (vanilla tenders.js:120-202 saveDraft/loadDraft) ──────────
    Раздельный ключ под роль + userId — чтобы РП А не получил черновик РП Б
@@ -399,15 +433,38 @@ function TenderEditorInner({ initial, tags, onFinish, isNew, lsKey, openCreateCu
             <FileDrop
               accept=".pdf,.doc,.docx,.xls,.xlsx,.zip,.rar,.jpg,.jpeg,.png"
               multiple
-              hint="Перетащи файлы или нажми — можно несколько"
-              onFiles={(files) => {
-                const arr = Array.from(files).map((f) => ({
-                  name: f.name,
-                  size: f.size,
-                  type: f.type,
-                  file: f
-                }));
-                setS({ ...s, documents: [...(s.documents || []), ...arr] });
+              hint="Перетащи файлы или нажми — можно несколько. ZIP распакуем автоматически"
+              onFiles={async (files) => {
+                // D-50: распознать .zip и распаковать на клиенте через JSZip.
+                // Каждый файл из архива добавится отдельно — загрузится обычным POST /api/files/upload.
+                const arr = Array.from(files);
+                const result = [];
+                let zipExpanded = 0;
+                let zipErrors = 0;
+                for (const f of arr) {
+                  if (ZIP_RX.test(f.name)) {
+                    try {
+                      const inner = await expandZipFile(f);
+                      if (inner.length === 0) {
+                        toast('ZIP', `${f.name}: пустой архив или только папки`, 'warn');
+                      } else {
+                        result.push(...inner);
+                        zipExpanded += inner.length;
+                      }
+                    } catch (e) {
+                      zipErrors++;
+                      toast('ZIP', `${f.name}: ${e?.message || 'ошибка распаковки'}`, 'err');
+                    }
+                  } else {
+                    result.push({ name: f.name, size: f.size, type: f.type, file: f });
+                  }
+                }
+                if (zipExpanded > 0) {
+                  toast('ZIP распакован', `Добавлено файлов из архива: ${zipExpanded}${zipErrors ? `, ошибок: ${zipErrors}` : ''}`, zipErrors ? 'warn' : 'ok');
+                }
+                if (result.length) {
+                  setS({ ...s, documents: [...(s.documents || []), ...result] });
+                }
               }}
             />
           </Field>
@@ -449,6 +506,39 @@ function TenderEditorInner({ initial, tags, onFinish, isNew, lsKey, openCreateCu
                   </div>
                 );
               })}
+            </div>
+          )}
+        </div>
+      )
+    },
+    /* D-51: вкладка комментариев в wizard'е.
+       Для нового тендера (нет id) показываем хинт — комменты появятся после сохранения.
+       Для редактируемого — встраиваем существующий CommentsTab (GET/POST/DELETE
+       /api/tenders/:id/comments из ../api). */
+    {
+      key: 'comments',
+      title: 'Комментарии',
+      canNext: () => true,
+      render: () => (
+        <div className="col gap-14">
+          {initial.id ? (
+            <CommentsTab tenderId={initial.id} />
+          ) : (
+            <div
+              style={{
+                padding: '24px 16px',
+                textAlign: 'center',
+                background: 'var(--inner-bg)',
+                border: '1px dashed var(--border)',
+                borderRadius: 8,
+                color: 'var(--text-muted)'
+              }}
+            >
+              <div style={{ fontSize: 28, marginBottom: 8 }}>💬</div>
+              <div style={{ fontSize: 14 }}>
+                Комментарии станут доступны после создания тендера.<br />
+                Заполните основные поля и нажмите «✓ Создать».
+              </div>
             </div>
           )}
         </div>

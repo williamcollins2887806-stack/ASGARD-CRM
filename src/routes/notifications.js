@@ -5,26 +5,39 @@ async function routes(fastify, options) {
   const db = fastify.db;
 
   // Получить уведомления пользователя
+  // RBAC: scope=all доступен только ADMIN и DIRECTOR_* (паритет vanilla alerts.js:29-30,60).
   fastify.get('/', { preHandler: [fastify.authenticate] }, async (request) => {
-    const { is_read, limit = 50, offset = 0 } = request.query;
-    let sql = 'SELECT * FROM notifications WHERE user_id = $1';
-    const params = [request.user.id];
-    let idx = 2;
-    if (is_read !== undefined) { 
-      sql += ` AND is_read = $${idx}`; 
-      params.push(is_read === 'true'); 
-      idx++; 
+    const { is_read, limit = 50, offset = 0, scope } = request.query;
+    const role = String(request.user.role || '');
+    const canScopeAll = role === 'ADMIN' || role.startsWith('DIRECTOR_');
+    const useScopeAll = scope === 'all' && canScopeAll;
+
+    let sql, params, idx;
+    if (useScopeAll) {
+      sql = 'SELECT * FROM notifications WHERE 1=1';
+      params = [];
+      idx = 1;
+    } else {
+      sql = 'SELECT * FROM notifications WHERE user_id = $1';
+      params = [request.user.id];
+      idx = 2;
+    }
+    if (is_read !== undefined) {
+      sql += ` AND is_read = $${idx}`;
+      params.push(is_read === 'true');
+      idx++;
     }
     sql += ` ORDER BY created_at DESC LIMIT $${idx} OFFSET $${idx + 1}`;
     params.push(limit, offset);
     const result = await db.query(sql, params);
-    
-    const countResult = await db.query(
-      'SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND is_read = false',
-      [request.user.id]
-    );
-    
-    return { 
+
+    const countSql = useScopeAll
+      ? 'SELECT COUNT(*) FROM notifications WHERE is_read = false'
+      : 'SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND is_read = false';
+    const countParams = useScopeAll ? [] : [request.user.id];
+    const countResult = await db.query(countSql, countParams);
+
+    return {
       notifications: result.rows,
       unread_count: parseInt(countResult.rows[0].count, 10)
     };
