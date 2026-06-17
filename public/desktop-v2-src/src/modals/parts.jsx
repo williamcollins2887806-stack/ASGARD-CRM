@@ -21,7 +21,12 @@ export function MHead({ icon, title, subtitle, accent = 'default', onClose }) {
         >{max.maximized ? '⮌' : '⛶'}</button>
       )}
       {onClose && (
-        <button className="close-btn" onClick={onClose} aria-label="Закрыть">×</button>
+        <button
+          type="button"
+          className="close-btn"
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClose(e); }}
+          aria-label="Закрыть"
+        >×</button>
       )}
     </div>
   );
