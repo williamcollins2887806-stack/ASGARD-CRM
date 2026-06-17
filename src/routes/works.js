@@ -892,7 +892,13 @@ async function routes(fastify, options) {
       // === Profit ===
       // Real cost = expenses + tax burden - VAT deductible (input VAT is refunded)
       const profitBeforeTax = Math.round((revenueExVat - totalExpensesWithTax + totalVatDeductible) * 100) / 100;
-      const incomeTax = Math.round(profitBeforeTax * incomeTaxRate / 100 * 100) / 100;
+      // ВАЖНО: налог на прибыль начисляется ТОЛЬКО при прибыли (profit > 0).
+      // При убытке формула profit * rate давала отрицательный налог и УМЕНЬШАЛА абсолютный
+      // убыток — это неверно (налоговая не возвращает деньги при убытке отчётного периода).
+      // Loss carry-forward — отдельный механизм для следующих периодов, не для текущего отчёта.
+      const incomeTax = profitBeforeTax > 0
+        ? Math.round(profitBeforeTax * incomeTaxRate / 100 * 100) / 100
+        : 0;
       const netProfit = Math.round((profitBeforeTax - incomeTax) * 100) / 100;
       const margin = revenueExVat > 0 ? Math.round(netProfit / revenueExVat * 1000) / 10 : 0;
 

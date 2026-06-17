@@ -343,7 +343,10 @@ async function getWorkFinancials(db, workId) {
 
   // Прибыль и маржа (как в work_report)
   const profitBeforeTax = Math.round((revenueExVat - totalExpensesWithTax + totalVatDeductible) * 100) / 100;
-  const incomeTax = Math.round(profitBeforeTax * incomeTaxRate / 100 * 100) / 100;
+  // ВАЖНО: налог на прибыль 25% только при profit > 0 (см. works.js — единая логика).
+  const incomeTax = profitBeforeTax > 0
+    ? Math.round(profitBeforeTax * incomeTaxRate / 100 * 100) / 100
+    : 0;
   const netProfit = Math.round((profitBeforeTax - incomeTax) * 100) / 100;
   const marginPct = revenueExVat > 0 ? Math.round(netProfit / revenueExVat * 1000) / 10 : 0;
 
