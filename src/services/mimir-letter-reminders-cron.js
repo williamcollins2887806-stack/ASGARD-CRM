@@ -64,7 +64,7 @@ async function checkStalledLetters(db, log) {
           title: '📭 Заказчик не ответил на запрос',
           message: `Письмо ${letter.letter_number} отправлено ${days} дн. назад, ответа нет. Напомнить заказчику?`,
           type: 'warning',
-          link: '/awaiting-customer.html'
+          link: '#/awaiting-customer'
         });
       }
 
@@ -78,7 +78,7 @@ async function checkStalledLetters(db, log) {
               title: '⏰ Эскалация: нет ответа заказчика 10+ дней',
               message: `Письмо ${letter.letter_number} без ответа ${days} дн. Требуется вмешательство.`,
               type: 'error',
-              link: '/awaiting-customer.html'
+              link: '#/awaiting-customer'
             });
           }
         } catch (e) {
