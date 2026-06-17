@@ -30,7 +30,7 @@ import {
 import './invoices.css';
 
 const PAGE = 25;
-const WRITE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'PM', 'BUH'];
+const WRITE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'PM', 'BUH'];
 
 export default function InvoicesPage() {
   const { user } = useAuth();
