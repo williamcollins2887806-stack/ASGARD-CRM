@@ -2701,4 +2701,28 @@ D-15-candidate из A-29 (correspondence RBAC расширен) и A-31 (custome
 
 **Действие:** D-78/D-83/D-84 переводятся в **AWAITING-RETARGET** (требуют переписать что именно фиксить с учётом реальной схемы). Из активной очереди batch B сняты.
 
+---
+
+## D-137 — TkpForm.jsx не подхватывает данные при открытии существующего ТКП (user-report)
+
+- **Тип:** contract-mismatch / replaced-regression
+- **Серьёзность:** **CRITICAL** (РП не может редактировать ТКП в v2)
+- **Дата находки:** 2026-06-17 (юзер: «v2 ТКП #3002 пустое, в vanilla — полное»)
+- **Backend контракт:** `src/routes/tkp.js:163-178` GET `/api/tkp/:id` → `return { item: rows[0] };`
+- **V2 ожидание (до фикса):** `TkpForm.jsx:113-120` — `setForm({ ...EMPTY_FORM, ...(data.tkp || data), items: data.items || data.tkp?.items || [] })`. `data.tkp = undefined`, `data = {item:{...}}` → форма пустая.
+- **Дополнительные расхождения:**
+  - Backend хранит `customer_address`/`work_description`, v2 ожидает `address`/`description`.
+  - `payment_terms` — JSON-строка в БД (text), v2 ждёт разделённые `payment_preset/avans_pct/postpay_days/custom_payment_terms`.
+  - `items` — JSON-строка из БД, v2 ждёт массив.
+- **FIXED:** 2026-06-17 коммит f1d06e7. `data.item || data.tkp || data → t`. Парсинг `payment_terms` JSON → подполя. Маппинг `customer_address→address`/`work_description→description`/`customer_inn→inn`. Парсинг items (string/array/{items:[]}) в массив.
+- **VERIFIED:** 2026-06-17 deploy на прод (юзер должен подтвердить).
+- **СВЯЗАННЫЙ АУДИТ-РИСК (TODO для следующего батча):** похожий контракт-mismatch может быть в:
+  - Tenders/modals/TenderEditor.jsx
+  - Invoices/InvoiceEditModal.jsx
+  - Customers/CustomerEditModal.jsx
+  - Contracts/ContractEditModal.jsx
+  - Meetings/MeetingDetailModal.jsx
+  - Все, что используют GET `/:id` endpoint при edit-режиме.
+  Регистрировать как **D-vol-audit-load** в отдельном батче.
+
 **Конец файла.**
