@@ -2639,6 +2639,37 @@ D-15-candidate из A-29 (correspondence RBAC расширен) и A-31 (custome
   - **(B) Канонизировать `score_1_10`.** Миграция V223 ALTER TABLE employee_reviews ADD COLUMN IF NOT EXISTS score_1_10 INTEGER + backfill из `score` если есть → UPDATE SET score_1_10=score. Добавить score_1_10 в `REVIEW_COLS`. Удалить отдельную колонку `score` отдельной миграцией позже.
 - **Группа в _FIX-QUEUE:** теперь не A (silent-drop), а **B (migration-backfill)** — нужна миграция перед тем как можно править allowlist/SQL.
 - **Связано с:** D-136 (тот же класс прод-схема-drift).
+- **РЕШЕНИЕ:** **A** (пользователь, 2026-06-17) — канонизировать `score`.
+- **FIXED:** 2026-06-17 batch-B (коммит e29fec5).
+  - `migrations/V226__employee_reviews_score_canonicalize.sql` + `.down`: idempotent ADD COLUMN IF NOT EXISTS `score`, `work_id`, `updated_at` + DO $$ backfill `score := COALESCE(score, score_1_10)` если score_1_10 присутствует.
+  - `src/routes/staff.js`: `REVIEW_COLS` добавлен `'score'`; SQL :228 `SELECT AVG(COALESCE(score, rating))` (раньше `score_1_10` → ERROR).
+  - `public/desktop-v2-src/src/pages/Personnel/ReviewModal.jsx`: payload `{score: score, rating: score, comment}` (раньше `score_1_10: score`).
+- **VERIFIED:** 2026-06-17 batch-B независимым аудит-агентом
+- **Sentinel test (от B.1):** на клоне asgard_crm_test через :3100 (/tmp копия), POST `/api/staff/employees/7/review` body `{"score":7,"rating":7,"comment":"sentinel-D003"}` → DB SELECT `7|7|sentinel-D003`; employees.rating_avg=7.00 (раньше try/catch проглатывал ERROR, rating_avg НЕ обновлялся).
+- **Sentinel test (от B.Z):** POST `/api/staff/employees/<id>/review` body `{"score":9,...,"comment":"auditZ-D003"}` → DB `9|9|auditZ-D003` ✓; cleanup чисто.
+- **Result:** PASS
+
+---
+
+## Обновление к D-135 (tkp ALTER backfill) — VERIFIED
+
+- **FIXED:** 2026-06-17 batch-B (коммит e29fec5). `migrations/V227__tkp_alter_backfill.sql` + `.down`: 15× `ALTER TABLE tkp ADD COLUMN IF NOT EXISTS` с типами verbatim из information_schema.columns на проде. Down — `SELECT 1;` (no-op, колонки в production-use).
+- **VERIFIED:** 2026-06-17 batch-B независимым аудит-агентом
+- **Sentinel test:** на свежем клоне `asgard_crm_fresh_b2` (createdb + psql -f V001 + V031): SELECT column_name перед V227 → 0/15 из 15; psql -f V227 → SELECT → 15/15 ✓; повторное apply V227 → 15× NOTICE «column "X" of relation "tkp" already exists, skipping» (idempotent). Cleanup: DROP DATABASE.
+- **Type fidelity:** VARCHAR/TEXT длины и defaults match (link_type VARCHAR(32) NOT NULL DEFAULT 'standalone', parsed_from_attachment BOOLEAN DEFAULT false, attachment_size BIGINT и т.д.).
+- **Result:** PASS
+
+---
+
+## Обновление к D-136 (employee_assignments ALTER backfill) — VERIFIED
+
+- **FIXED:** 2026-06-17 batch-B (коммит e29fec5). `migrations/V228__employee_assignments_alter_backfill.sql` + `.down`: 22× `ALTER TABLE employee_assignments ADD COLUMN IF NOT EXISTS` с типами verbatim из information_schema.columns на проде. Down — `SELECT 1;`.
+- **Триггер `update_updated_at_column()`** проверен на проде (pg_proc + pg_trigger): функция и триггер ОТСУТСТВУЮТ → CREATE TRIGGER в миграцию НЕ добавлен (агент не выдумал).
+- **VERIFIED:** 2026-06-17 batch-B независимым аудит-агентом
+- **Sentinel test:** на свежем клоне `asgard_crm_fresh_b3`: V001 → 4 колонки (id, employee_id, work_id, created_at); psql -f V228 → 26 колонок (4 + 22) ✓; повторное apply → 22× NOTICE «already exists, skipping»; sentinel INSERT employee_assignments(employee_id=1, work_id=1, date_from=CURRENT_DATE, role='worker', is_active=true, sms_sent=false) → RETURNING `id|date_from|is_active|max_invite_status` = `1|2026-06-17|t|not_sent` (дефолты сработали).
+- **Минор (не блокер):** `per_diem` на проде `numeric` без precision, в V228 указан `NUMERIC(10,2)`. На проде ALTER не применится (IF NOT EXISTS), на свежей установке создастся (10,2) — теоретическое микро-расхождение между fresh-install и прод, но не критично для backfill.
+- **Type fidelity:** дефолты match: `field_role 'worker'`, `shift_type 'day'`, `is_active true`, `max_invite_status 'not_sent'`, `wa_invite_status 'not_sent'`.
+- **Result:** PASS
 
 ---
 
