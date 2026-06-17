@@ -380,21 +380,26 @@ module.exports = async function(fastify) {
   fastify.post('/', {
     preHandler: [fastify.requirePermission('chat_groups', 'write')]
   }, async (request, reply) => {
-    const { name, description, member_ids, is_readonly } = request.body;
+    const { name, description, member_ids, is_readonly, group_kind } = request.body;
     const creatorId = request.user.id;
 
     if (!name || !name.trim()) {
       return reply.code(400).send({ error: 'Укажите название чата' });
     }
 
+    // D-83: group_kind — семантика групповой ленты (public/private/work/broadcast).
+    // Колонка `type` зарезервирована под direct/group/mimir.
+    const allowedKinds = ['public', 'private', 'work', 'broadcast'];
+    const kind = allowedKinds.includes(group_kind) ? group_kind : 'public';
+
     let chat;
     try {
       // Создать чат
       const { rows: [row] } = await db.query(`
-        INSERT INTO chats (name, description, type, is_group, created_at, updated_at)
-        VALUES ($1, $2, 'group', true, NOW(), NOW())
+        INSERT INTO chats (name, description, type, group_kind, is_group, created_at, updated_at)
+        VALUES ($1, $2, 'group', $3, true, NOW(), NOW())
         RETURNING *
-      `, [name.trim(), description || null]);
+      `, [name.trim(), description || null, kind]);
       chat = row;
     } catch (e) {
       if (e.code === '23503') {
@@ -461,7 +466,7 @@ module.exports = async function(fastify) {
       return reply.code(403).send({ error: 'Только владелец или админ может редактировать' });
     }
 
-    const { name, description, is_readonly } = request.body;
+    const { name, description, is_readonly, group_kind } = request.body;
     const updates = [];
     const values = [];
     let idx = 1;
@@ -469,6 +474,14 @@ module.exports = async function(fastify) {
     if (name !== undefined) { updates.push(`name = $${idx}`); values.push(name.trim()); idx++; }
     if (description !== undefined) { updates.push(`description = $${idx}`); values.push(description); idx++; }
     if (is_readonly !== undefined) { updates.push(`is_readonly = $${idx}`); values.push(is_readonly === true); idx++; }
+    // D-83: group_kind whitelist
+    if (group_kind !== undefined) {
+      const allowedKinds = ['public', 'private', 'work', 'broadcast'];
+      if (!allowedKinds.includes(group_kind)) {
+        return reply.code(400).send({ error: 'Недопустимый тип группы' });
+      }
+      updates.push(`group_kind = $${idx}`); values.push(group_kind); idx++;
+    }
 
     if (updates.length === 0) {
       return reply.code(400).send({ error: 'Нет данных для обновления' });

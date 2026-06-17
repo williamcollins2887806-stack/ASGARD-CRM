@@ -13,7 +13,9 @@ export function GroupEditModal({ group, onCreated }) {
   const [form, setForm] = useState({
     name: group?.name || group?.title || '',
     description: group?.description || '',
-    type: group?.type || 'public',
+    // D-83: group_kind (public/private/work/broadcast) — отдельная семантика
+    // от chats.type (direct/group/mimir). На бэке поле называется group_kind.
+    type: group?.group_kind || group?.type || 'public',
     work_id: group?.work_id || null
   });
   const [users, setUsers] = useState([]);
@@ -33,11 +35,17 @@ export function GroupEditModal({ group, onCreated }) {
       const payload = {
         name: form.name?.trim(),
         description: form.description?.trim() || null,
-        is_readonly: false
+        group_kind: form.type || 'public',
+        is_readonly: form.type === 'broadcast' // объявления — только админ пишет
         // member_ids синхронизируются отдельно через addMember после создания (ниже)
       };
       if (group?.id) {
-        await updateGroup(group.id, { name: payload.name, description: payload.description });
+        await updateGroup(group.id, {
+          name: payload.name,
+          description: payload.description,
+          group_kind: payload.group_kind,
+          is_readonly: payload.is_readonly
+        });
       } else {
         const created = await createGroup(payload);
         id = created?.group?.id || created?.id;

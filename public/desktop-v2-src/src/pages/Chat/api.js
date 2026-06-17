@@ -40,7 +40,16 @@ export function loadLinkPreview(url) {
 }
 
 export function loadGroup(id) {
-  return api(`/api/chat-groups/${id}`).catch(() => null);
+  // Backend /api/chat-groups/:id отдаёт `{ chat, members, myRole }`.
+  // Раньше возвращали raw, и потребитель (Chat/index.jsx) читал `activeGroup.title`,
+  // которого не было (поля чата лежат в `chat.*`). Раскладываем chat вверх + members/myRole сохраняем рядом.
+  return api(`/api/chat-groups/${id}`)
+    .then((d) => {
+      if (!d) return null;
+      const chat = d.chat || d;
+      return { ...chat, members: d.members || [], myRole: d.myRole || null };
+    })
+    .catch(() => null);
 }
 
 export function loadMessages(groupId, params = {}) {

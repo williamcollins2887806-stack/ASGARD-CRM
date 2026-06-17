@@ -67,7 +67,11 @@ export function loadCorrespondence(limit = 5000) {
 
 export function loadOne(id) {
   const _id = encodeURIComponent(id);
-  return api(`/api/data/correspondence/${_id}`).catch(() => null);
+  // Backend /api/data/:table/:id отдаёт `{ item: row }`. Раньше возвращали raw обёртку,
+  // и CorrViewModal видел `item.subject === undefined` (поля молча не подхватывались).
+  return api(`/api/data/correspondence/${_id}`)
+    .then((d) => d?.item || d?.row || d || null)
+    .catch(() => null);
 }
 
 export function getNextOutgoingNumber(date) {
