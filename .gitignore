@@ -8,7 +8,13 @@ backups/
 test-results/
 tests/screenshots/
 tests/audit-screenshots/
-tests/reports/
+# tests/reports/* — игнорим только файлы в корне, не подпапки (whitelist ниже).
+tests/reports/*
+# Whitelist — источники истины фикс-конвейера (попадают в git)
+!tests/reports/_DIFF-LEDGER.md
+!tests/reports/PHASE2-PARITY-MATRIX.md
+!tests/reports/_FIX-QUEUE.md
+!tests/reports/.last-verified
 tests/report.html
 tests/report.json
 _deprecated/
