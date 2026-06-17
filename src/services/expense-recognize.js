@@ -301,14 +301,12 @@ async function getWorkFinancials(db, workId) {
   const vatCharged = Math.round(contractValue * vatPct / (100 + vatPct) * 100) / 100;
   const revenueExVat = Math.round((contractValue - vatCharged) * 100) / 100;
 
-  // Расходы: 55% по payment_method (cash/card/auto для fot/per_diem), НДС из vat_amount
-  // payment_method: 'cash'/'card' → 55% нагрузка (обнал)
-  //                 'auto' + category fot/per_diem → 55% (ФОТ/суточные)
-  //                 'bank'/'self' → без 55%, но может быть НДС к вычету
-  const TAX_METHODS = ['cash', 'card']; // Всегда 55%
-  const TAX_AUTO_CATS = ['fot', 'per_diem', 'payroll']; // 55% только для auto+эти категории
+  // Расходы: 55% и НДС считаем через единый helper expense-tax.js
+  // (тот же модуль использует src/routes/works.js — чтобы desktop-отчёт и Мимир-Кошелёк
+  //  показывали одинаковые цифры; источник правды для логики см. в expense-tax.js)
+  const expenseTax = require('./expense-tax');
 
-  const { rows: expenses } = await db.query(
+  const { rows: expenseGroups } = await db.query(
     `SELECT category, payment_method,
             SUM(amount) as total,
             SUM(COALESCE(vat_amount, 0)) as vat_total
@@ -321,25 +319,24 @@ async function getWorkFinancials(db, workId) {
   let totalTaxBurden = 0;
   let totalVatDeductible = 0;
 
-  for (const row of expenses) {
-    const cat = row.category || 'other';
-    const method = row.payment_method || '';
+  for (const row of expenseGroups) {
     const amount = parseFloat(row.total) || 0;
-    const vatFromDb = parseFloat(row.vat_total) || 0;
     totalExpenses += amount;
 
-    // 55% налоговая нагрузка: наличные/карта ИЛИ авто-ФОТ/суточные
-    if (TAX_METHODS.includes(method) || (method === 'auto' && TAX_AUTO_CATS.includes(cat))) {
-      totalTaxBurden += Math.round(amount * taxRate / 100 * 100) / 100;
-    }
+    // 55%-нагрузка по единой логике (cash/card → всегда; auto+ФОТ/суточные → да; bank/self → 0)
+    totalTaxBurden += expenseTax.calcTaxBurden(
+      { amount, category: row.category, payment_method: row.payment_method },
+      taxRate
+    );
 
-    // НДС к вычету: ТОЛЬКО если vat_rate явно указан (не все безнал с НДС!)
-    // САТУРН (УСН), ИП Шакуров, гостиница ИП — безнал но БЕЗ НДС
-    if (vatFromDb > 0) {
-      // Реальный НДС из счёта (vat_amount заполнен)
-      totalVatDeductible += vatFromDb;
-    }
+    // НДС к вычету ТОЛЬКО если vat_amount явно > 0 (реальный счёт-фактура)
+    const vatFromDb = parseFloat(row.vat_total) || 0;
+    if (vatFromDb > 0) totalVatDeductible += vatFromDb;
   }
+
+  totalExpenses = Math.round(totalExpenses * 100) / 100;
+  totalTaxBurden = Math.round(totalTaxBurden * 100) / 100;
+  totalVatDeductible = Math.round(totalVatDeductible * 100) / 100;
 
   // Итого расходы с налогами
   const totalExpensesWithTax = Math.round((totalExpenses + totalTaxBurden) * 100) / 100;

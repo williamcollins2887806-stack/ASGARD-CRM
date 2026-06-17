@@ -13,7 +13,19 @@ const STATUS_MAP = {
   closed: { label: 'Закрыто', bg: 'rgba(107,114,128,0.15)', color: '#6b7280' },
 };
 
-const EXPENSE_CATEGORIES = ['Материалы', 'Инструмент', 'Транспорт', 'Питание', 'Расходники', 'Прочее'];
+// Категории расходов полевого модуля.
+// value — канонический English ключ для backend (field-funds.js маппит → cash + subcategory).
+// label — что показываем РП в пилюлях.
+const EXPENSE_CATEGORIES = [
+  { value: 'supplies',  label: '📦 Материалы' },
+  { value: 'transport', label: '🚗 Транспорт' },
+  { value: 'food',      label: '🍽 Питание' },
+  { value: 'gsm',       label: '⛽ ГСМ' },
+  { value: 'services',  label: '🛠 Услуги' },
+  { value: 'representational', label: '🎁 Представительские' },
+  { value: 'accommodation',    label: '🏨 Жильё' },
+  { value: 'other',     label: '📋 Прочее' }
+];
 
 /* ══════════════════════════════════════════════════════════════════
    Fund Detail view
@@ -125,18 +137,18 @@ function FundDetail({ fundId, fund, onBack, onRefresh }) {
             className="w-full p-3 rounded-lg text-sm"
             style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }} />
 
-          {/* Category pills */}
+          {/* Category pills (English value → backend; emoji label → UI) */}
           <div>
             <p className="text-xs mb-1.5" style={{ color: 'var(--text-tertiary)' }}>Категория</p>
             <div className="flex flex-wrap gap-1.5">
               {EXPENSE_CATEGORIES.map(cat => (
-                <button key={cat} onClick={() => setExpenseForm({ ...expenseForm, category: cat })}
+                <button key={cat.value} onClick={() => setExpenseForm({ ...expenseForm, category: cat.value })}
                   className="px-3 py-1 rounded-full text-xs font-medium"
                   style={{
-                    backgroundColor: expenseForm.category === cat ? 'var(--gold)' : 'var(--bg-primary)',
-                    color: expenseForm.category === cat ? '#000' : 'var(--text-secondary)',
+                    backgroundColor: expenseForm.category === cat.value ? 'var(--gold)' : 'var(--bg-primary)',
+                    color: expenseForm.category === cat.value ? '#000' : 'var(--text-secondary)',
                     border: '1px solid var(--border-norse)',
-                  }}>{cat}</button>
+                  }}>{cat.label}</button>
               ))}
             </div>
           </div>

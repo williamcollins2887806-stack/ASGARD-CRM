@@ -763,9 +763,11 @@ async function routes(fastify, options) {
         } catch (_) {}
       }
 
-      // Expenses by category (fot_employee_name for ФОТ/суточные, supplier for materials)
+      // Expenses by category + subcategory + payment_method (для корректного 55%/НДС учёта)
+      // fot_employee_name для ФОТ/суточных, supplier для материалов; description/comment — детали
       const { rows: expenses } = await db.query(`
-        SELECT we.id, we.category, we.amount, we.comment,
+        SELECT we.id, we.category, we.subcategory, we.amount, we.comment, we.description,
+               we.payment_method, we.vat_amount, we.vat_rate, we.date,
           COALESCE(
             NULLIF(TRIM(we.supplier), ''),
             NULLIF(TRIM(we.fot_employee_name), ''),
@@ -775,7 +777,7 @@ async function routes(fastify, options) {
         FROM work_expenses we
         LEFT JOIN employees e ON e.id = we.fot_employee_id
         WHERE we.work_id = $1
-        ORDER BY we.category, we.id`,
+        ORDER BY we.category, we.subcategory NULLS FIRST, we.id`,
         [workId]
       );
 
@@ -810,11 +812,11 @@ async function routes(fastify, options) {
       const vatCharged = Math.round(contractValue * vatPct / (100 + vatPct) * 100) / 100;
       const revenueExVat = Math.round((contractValue - vatCharged) * 100) / 100;
 
-      // === Expense categories with tax logic ===
-      // 55% tax (НДФЛ + взносы / обналичка):
-      const TAX_CATEGORIES = ['payroll', 'fot', 'cash', 'per_diem', 'subcontract'];
-      // VAT deduction (безнал с НДС):
-      const VAT_CATEGORIES = ['materials', 'chemicals', 'equipment', 'tickets', 'logistics', 'accommodation', 'transfer', 'other'];
+      // === Expense aggregation with unified 55%/НДС logic ===
+      // Источник правды — src/services/expense-tax.js (общий для works.js и expense-recognize.js).
+      // 55% начисляется по payment_method (cash/card → всегда, auto → только ФОТ/суточные).
+      // НДС к вычету — ТОЛЬКО если в строке явно vat_amount > 0 (счёт-фактура).
+      const expenseTax = require('../services/expense-tax');
 
       const catMap = {};
       let totalExpenses = 0;
@@ -823,8 +825,15 @@ async function routes(fastify, options) {
 
       for (const exp of expenses) {
         const cat = exp.category || 'other';
+        const sub = exp.subcategory || null;
         if (!catMap[cat]) {
-          catMap[cat] = { category: cat, sum: 0, count: 0, vatDeductible: 0, taxBurden: 0, items: [] };
+          catMap[cat] = {
+            category: cat,
+            sum: 0, count: 0,
+            vatDeductible: 0, taxBurden: 0,
+            items: [],
+            subcategories: {}, // детализация для отчёта
+          };
         }
         const amount = parseFloat(exp.amount) || 0;
         catMap[cat].sum += amount;
@@ -832,17 +841,26 @@ async function routes(fastify, options) {
         catMap[cat].items.push(exp);
         totalExpenses += amount;
 
-        // VAT deduction for non-cash categories (materials, equipment, etc.)
-        if (VAT_CATEGORIES.includes(cat)) {
-          // VAT deductible = amount * vatPct / (100 + vatPct)
-          const vatDed = Math.round(amount * vatPct / (100 + vatPct) * 100) / 100;
+        // Подкатегория-аггрегат (если задана)
+        if (sub) {
+          if (!catMap[cat].subcategories[sub]) {
+            catMap[cat].subcategories[sub] = { subcategory: sub, sum: 0, count: 0, items: [] };
+          }
+          catMap[cat].subcategories[sub].sum += amount;
+          catMap[cat].subcategories[sub].count++;
+          catMap[cat].subcategories[sub].items.push(exp);
+        }
+
+        // НДС к вычету: только реальный НДС из vat_amount (счёт-фактура)
+        const vatDed = expenseTax.calcVatDeductible(exp);
+        if (vatDed > 0) {
           catMap[cat].vatDeductible += vatDed;
           totalVatDeductible += vatDed;
         }
 
-        // Tax burden for cash-based categories
-        if (TAX_CATEGORIES.includes(cat)) {
-          const tax = Math.round(amount * taxRate / 100 * 100) / 100;
+        // 55% налоговая нагрузка по единой логике
+        const tax = expenseTax.calcTaxBurden(exp, taxRate);
+        if (tax > 0) {
           catMap[cat].taxBurden += tax;
           totalTaxBurden += tax;
         }
@@ -853,6 +871,12 @@ async function routes(fastify, options) {
         c.sum = Math.round(c.sum * 100) / 100;
         c.vatDeductible = Math.round(c.vatDeductible * 100) / 100;
         c.taxBurden = Math.round(c.taxBurden * 100) / 100;
+        // Округлить подкатегории
+        for (const sc of Object.values(c.subcategories)) {
+          sc.sum = Math.round(sc.sum * 100) / 100;
+        }
+        // Превратить subcategories в отсортированный массив для удобства фронта
+        c.subcategories = Object.values(c.subcategories).sort((a, b) => b.sum - a.sum);
       }
 
       // === VAT block ===

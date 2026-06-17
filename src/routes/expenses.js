@@ -9,10 +9,15 @@ const WRITE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'PM', 'BUH'];
 
 // SECURITY: Allowlist of columns for expenses
 const WORK_EXP_COLS = new Set([
-  'work_id', 'category', 'description', 'amount', 'date', 'receipt_url',
+  'work_id', 'category', 'subcategory', 'description', 'amount', 'date', 'receipt_url',
   'supplier', 'notes', 'status', 'created_by', 'created_at', 'updated_at',
   'doc_number', 'vat_rate', 'vat_amount', 'amount_ex_vat', 'payment_method',
-  'comment'
+  'comment', 'invoice_needed', 'invoice_received',
+  // ФОТ-поля (V050) — нужны для редактирования зарплатных строк
+  'fot_employee_id', 'fot_employee_name', 'fot_base_pay', 'fot_per_diem', 'fot_bonus',
+  'fot_date_from', 'fot_date_to',
+  // Source tracking (V071) — для автосинка из field/worker_payments
+  'source_table', 'source_id', 'source_key', 'is_finalized'
 ]);
 const OFFICE_EXP_COLS = new Set([
   'category', 'description', 'amount', 'date', 'receipt_url',
@@ -56,22 +61,41 @@ async function routes(fastify, options) {
     return { expenses: result.rows };
   });
 
+  // GET /api/expenses/categories — единый словарь для фронтов
+  // Фронты больше не хардкодят список — тянут отсюда. См. work-expense-categories.js.
+  fastify.get('/categories', { preHandler: [fastify.authenticate] }, async (_request, reply) => {
+    const taxo = require('../services/work-expense-categories');
+    return reply.send({
+      categories: taxo.CATEGORIES,
+      subcategories: {
+        cash: taxo.CASH_SUBCATEGORIES,
+        subcontract: taxo.SUB_SUBCATEGORIES,
+      },
+      payment_methods: taxo.PAYMENT_METHODS,
+    });
+  });
+
   // SECURITY: Только WRITE_ROLES (HIGH-9)
-  // SECURITY: SQL injection fix — filter keys
+  // POST → одна точка записи через src/services/work-expense-writer.js
   fastify.post('/work', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request, reply) => {
     const body = request.body || {};
-    if (!body.category?.trim()) {
-      return reply.code(400).send({ error: 'Обязательное поле: category' });
+    try {
+      const { insertWorkExpense } = require('../services/work-expense-writer');
+      const row = await insertWorkExpense(db, {
+        ...body,
+        created_by: request.user.id,
+        source_table: body.source_table || 'manual',
+      });
+      return reply.send({ expense: row });
+    } catch (err) {
+      // Валидационные / FK ошибки возвращаем 400 (понятный текст), остальное 500
+      const msg = err?.message || 'Не удалось сохранить расход';
+      if (/обязател|не входит|положитель|подкатегори|payment_method/i.test(msg)) {
+        return reply.code(400).send({ error: msg });
+      }
+      request.log.error('[expenses.POST /work]', err);
+      return reply.code(500).send({ error: msg });
     }
-    if (body.amount === undefined || body.amount === null || Number(body.amount) <= 0) {
-      return reply.code(400).send({ error: 'Поле amount должно быть положительным числом' });
-    }
-    const data = filterData({ ...body, created_by: request.user.id, created_at: new Date().toISOString() }, WORK_EXP_COLS);
-    const keys = Object.keys(data);
-    const values = Object.values(data);
-    const sql = `INSERT INTO work_expenses (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
-    const result = await db.query(sql, values);
-    return { expense: result.rows[0] };
   });
 
   // Office expenses

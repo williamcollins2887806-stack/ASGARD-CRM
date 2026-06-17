@@ -3101,8 +3101,9 @@ ${history && history.length > 0 ? `\nКОНТЕКСТ ДИАЛОГА:\n${history
     preHandler: [fastify.requireRoles(EXPENSE_ROLES)]
   }, async (request, reply) => {
     const {
-      work_id, amount, date, category, supplier, description, notes, document_id,
-      doc_number, vat_rate, vat_amount, amount_ex_vat, inn, items, receipt_url
+      work_id, amount, date, category, subcategory, supplier, description, notes, document_id,
+      doc_number, vat_rate, vat_amount, amount_ex_vat, inn, items, receipt_url,
+      payment_method
     } = request.body || {};
     const user = request.user;
 
@@ -3117,32 +3118,30 @@ ${history && history.length > 0 ? `\nКОНТЕКСТ ДИАЛОГА:\n${history
       const before = await expRecognize.getWorkFinancials(db, work_id);
       if (!before) return reply.code(404).send({ error: 'Работа не найдена' });
 
-      // INSERT в work_expenses (с НДС и doc_number)
-      const today = new Date().toISOString().slice(0, 10);
-      const result = await db.query(
-        `INSERT INTO work_expenses (work_id, category, description, amount, date, supplier, notes,
-         doc_number, vat_rate, vat_amount, amount_ex_vat, receipt_url,
-         status, source_table, created_by, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-         'confirmed', 'mimir_expense', $13, NOW())
-         RETURNING *`,
-        [
-          work_id,
-          category || 'other',
-          String(description || '').substring(0, 500),
-          Number(amount),
-          date || today,
-          String(supplier || '').substring(0, 500),
-          String(notes || '').substring(0, 1000),
-          doc_number || null,
-          vat_rate != null ? Number(vat_rate) : null,
-          vat_amount != null ? Number(vat_amount) : null,
-          amount_ex_vat != null ? Number(amount_ex_vat) : null,
-          receipt_url || null,
-          user.id
-        ]
-      );
-      const expense = result.rows[0];
+      // INSERT через единую точку записи (см. src/services/work-expense-writer.js).
+      // Мимир-Кошелёк — это распознавание чеков (QR/фото/текст), все его расходы
+      // по умолчанию payment_method='cash' (получают 55% налог). Если безнал/самозанятый —
+      // клиент должен явно прислать payment_method в body.
+      const { insertWorkExpense } = require('../services/work-expense-writer');
+      const expense = await insertWorkExpense(db, {
+        work_id,
+        category: category || 'other',
+        subcategory: subcategory || null,
+        description,
+        amount,
+        date,
+        supplier,
+        notes,
+        doc_number,
+        vat_rate,
+        vat_amount,
+        amount_ex_vat,
+        receipt_url,
+        payment_method: payment_method || 'cash',
+        source_table: 'mimir_expense',
+        status: 'confirmed',
+        created_by: user.id,
+      });
 
       // Сохранить позиции (items) в work_expense_items
       if (Array.isArray(items) && items.length > 0) {

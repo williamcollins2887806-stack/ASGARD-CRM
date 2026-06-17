@@ -21,13 +21,43 @@ window.AsgardWorkExpenses = (function(){
     { key: 'transfer', label: 'Трансфер', color: 'var(--cyan)', icon: '🚗', hidden: true },
   ];
 
-  // Получить все расходы по работе
+  // ─────────────────────────────────────────────────────────────────────
+  // Data layer — server API (PostgreSQL)
+  // До 2026-06-16: писали в IndexedDB через AsgardDB → данные не уходили на сервер
+  // и не попадали в фин-отчёт. После фикса все CRUD идут через /api/expenses/*.
+  // ─────────────────────────────────────────────────────────────────────
+
+  function _token() { return localStorage.getItem('asgard_token') || ''; }
+
+  async function _api(url, opts = {}) {
+    const headers = { 'Authorization': 'Bearer ' + _token(), ...(opts.headers || {}) };
+    if (opts.body && typeof opts.body === 'object' && !(opts.body instanceof FormData)) {
+      headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(opts.body);
+    }
+    const r = await fetch(url, { ...opts, headers });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+    return data;
+  }
+
+  // GET все расходы по работе
   async function getExpensesByWork(workId){
     try {
-      return await AsgardDB.byIndex("work_expenses", "work_id", Number(workId));
+      const data = await _api('/api/expenses/work?work_id=' + Number(workId));
+      return data.expenses || [];
     } catch(e){
+      console.warn('[work_expenses] getExpensesByWork failed:', e.message);
       return [];
     }
+  }
+
+  // GET одну запись (нужно при редактировании)
+  async function getExpense(id) {
+    try {
+      const data = await _api('/api/expenses/work?work_id=&limit=1000');
+      return (data.expenses || []).find(e => Number(e.id) === Number(id)) || null;
+    } catch(e){ return null; }
   }
 
   // Сумма расходов по работе
@@ -36,17 +66,10 @@ window.AsgardWorkExpenses = (function(){
     return expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
   }
 
-  // F6: Авто-синхронизация cost_fact на работе
-  async function syncCostFact(workId) {
-    if (!workId) return;
-    const total = await getTotalByWork(workId);
-    const work = await AsgardDB.get('works', Number(workId));
-    if (work) {
-      work.cost_fact = total;
-      work.updated_at = isoNow();
-      await AsgardDB.put('works', work);
-    }
-  }
+  // F6: cost_fact пересчитывается серверным триггером trg_work_expenses_cost_fact (V070)
+  // после INSERT/UPDATE/DELETE в work_expenses. На клиенте дополнительно вызывать не нужно —
+  // оставляем функцию для обратной совместимости вызовов (вернуть актуальную сумму).
+  async function syncCostFact(workId) { return getTotalByWork(workId); }
 
   // Сумма расходов по категориям
   async function getTotalsByCategory(workId){
@@ -61,11 +84,13 @@ window.AsgardWorkExpenses = (function(){
     return totals;
   }
 
-  // Добавить расход
-  async function addExpense({work_id, category, amount, date, comment, supplier, doc_number, invoice_needed, invoice_received, vat_rate, vat_amount, amount_ex_vat, payment_method, created_by}){
-    const expense = {
+  // POST /api/expenses/work
+  async function addExpense({work_id, category, subcategory, amount, date, comment, supplier, doc_number, invoice_needed, invoice_received, vat_rate, vat_amount, amount_ex_vat, payment_method}){
+    const normalizedCategory = (category === 'payroll') ? 'fot' : category;
+    const payload = {
       work_id: Number(work_id),
-      category: String(category || 'other'),
+      category: String(normalizedCategory || 'other'),
+      subcategory: subcategory || null,
       amount: Number(amount || 0),
       date: String(date || new Date().toISOString().slice(0,10)),
       comment: String(comment || ''),
@@ -76,62 +101,57 @@ window.AsgardWorkExpenses = (function(){
       vat_rate: vat_rate || null,
       vat_amount: vat_amount || null,
       amount_ex_vat: amount_ex_vat || null,
-      payment_method: payment_method || 'cash',
-      created_by: Number(created_by || 0),
-      created_at: isoNow(),
-      updated_at: isoNow()
+      payment_method: payment_method || 'cash'
     };
-    const result = await AsgardDB.add("work_expenses", expense);
-    await syncCostFact(work_id);
-    return result;
+    const data = await _api('/api/expenses/work', { method: 'POST', body: payload });
+    return data.expense || data; // {expense:{id,...}} or fallback
   }
 
-  // Обновить расход
+  // PUT /api/expenses/work/:id
   async function updateExpense(id, updates){
-    const expense = await AsgardDB.get("work_expenses", Number(id));
-    if(!expense) throw new Error("Расход не найден");
-    Object.assign(expense, updates, { updated_at: isoNow() });
-    await AsgardDB.put("work_expenses", expense);
-    await syncCostFact(expense.work_id);
-    return expense;
+    const data = await _api('/api/expenses/work/' + Number(id), { method: 'PUT', body: updates });
+    return data.expense || data;
   }
 
-  // Удалить расход
+  // DELETE /api/expenses/work/:id
   async function deleteExpense(id){
-    const expense = await AsgardDB.get("work_expenses", Number(id));
-    const workId = expense?.work_id;
-    await AsgardDB.del("work_expenses", Number(id));
-    if (workId) await syncCostFact(workId);
+    await _api('/api/expenses/work/' + Number(id), { method: 'DELETE' });
   }
 
-  // ФОТ: добавить строку по сотруднику
-  async function addFotEntry({work_id, employee_id, employee_name, base_pay, per_diem, bonus, date_from, date_to, comment, created_by}){
+  // ФОТ: добавить строку по сотруднику (передаём поля ФОТ как extra-payload — backend allowlist
+  // не пропустит лишнее, но сами fot_* колонки прописаны в БД V050)
+  async function addFotEntry({work_id, employee_id, employee_name, base_pay, per_diem, bonus, date_from, date_to, comment}){
     const total = Number(base_pay || 0) + Number(per_diem || 0) + Number(bonus || 0);
-    const expense = {
-      work_id: Number(work_id),
+    // Через серверный API: addExpense + затем PUT с fot_*-полями
+    const created = await addExpense({
+      work_id,
       category: 'fot',
       amount: total,
-      date: String(date_from || new Date().toISOString().slice(0,10)),
-      comment: String(comment || ''),
-      supplier: '', // для ФОТ не используется
-      doc_number: '',
-      invoice_needed: false,
-      invoice_received: false,
-      created_by: Number(created_by || 0),
-      created_at: isoNow(),
-      updated_at: isoNow(),
-      // Дополнительные поля для ФОТ
-      fot_employee_id: Number(employee_id || 0),
-      fot_employee_name: String(employee_name || ''),
-      fot_base_pay: Number(base_pay || 0),
-      fot_per_diem: Number(per_diem || 0),
-      fot_bonus: Number(bonus || 0),
-      fot_date_from: String(date_from || ''),
-      fot_date_to: String(date_to || '')
-    };
-    const result = await AsgardDB.add("work_expenses", expense);
-    await syncCostFact(work_id);
-    return result;
+      date: date_from || new Date().toISOString().slice(0,10),
+      comment: comment || '',
+      supplier: employee_name || '',
+    });
+    const id = created.id || created.expense?.id;
+    if (id) {
+      try {
+        await _api('/api/expenses/work/' + id, {
+          method: 'PUT',
+          body: {
+            fot_employee_id: Number(employee_id || 0) || null,
+            fot_employee_name: employee_name || null,
+            fot_base_pay: Number(base_pay || 0),
+            fot_per_diem: Number(per_diem || 0),
+            fot_bonus: Number(bonus || 0),
+            fot_date_from: date_from || null,
+            fot_date_to: date_to || null,
+          }
+        });
+      } catch (e) {
+        // Если backend не пропустит fot_* — расход всё равно сохранён как fot total
+        console.warn('[work_expenses] addFotEntry detail PUT failed:', e.message);
+      }
+    }
+    return created;
   }
 
   // Модальное окно расходов для карточки работы
@@ -252,12 +272,14 @@ window.AsgardWorkExpenses = (function(){
   }
 
   function bindExpenseHandlers(work, user){
-    // Переключение режима
+    // Переключение режима ручной/авто
     $$('.exp-mode-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
         const mode = btn.dataset.mode;
         work.cost_mode = mode;
-        await AsgardDB.put('works', work);
+        try {
+          await _api('/api/works/' + work.id, { method: 'PUT', body: { cost_mode: mode } });
+        } catch (e) { console.warn('cost_mode save:', e.message); }
         toast('Режим', mode === 'auto' ? 'Авто-расчёт включён' : 'Ручной режим');
         openExpensesModal(work, user);
       });
@@ -288,8 +310,9 @@ window.AsgardWorkExpenses = (function(){
     $$('[data-edit]').forEach(btn => {
       btn.addEventListener('click', async () => {
         const id = Number(btn.dataset.edit);
-        const expense = await AsgardDB.get('work_expenses', id);
-        if(expense) openEditExpenseModal(work, user, expense);
+        const expense = await getExpense(id);
+        if (expense) openEditExpenseModal(work, user, expense);
+        else toast('Расход', 'Не удалось загрузить', 'err');
       });
     });
 
@@ -352,20 +375,22 @@ window.AsgardWorkExpenses = (function(){
     });
 
     // Синхронизировать себестоимость
+    // cost_fact в БД пересчитывается автоматически серверным триггером после INSERT/UPDATE/DELETE
+    // в work_expenses (V070 trg_work_expenses_cost_fact). Кнопка просто рефрешит UI и работу.
     const syncBtn = $('#btnSyncCost');
     if(syncBtn) syncBtn.addEventListener('click', async () => {
       const total = await getTotalByWork(work.id);
       work.cost_fact = total;
-      await AsgardDB.put('works', work);
-      toast('Себестоимость', `Обновлена: ${money(total)} ₽`);
+      toast('Себестоимость', `Актуально: ${money(total)} ₽`);
       openExpensesModal(work, user);
     });
   }
 
   // Модальное окно добавления расхода
   function openAddExpenseModal(work, user, category){
-    const cat = EXPENSE_CATEGORIES.find(c => c.key === category) || EXPENSE_CATEGORIES[7];
-    const isFot = category === 'fot' || category === 'payroll';
+    const normalizedCategory = (category === 'payroll') ? 'fot' : category;
+    const cat = EXPENSE_CATEGORIES.find(c => c.key === normalizedCategory) || EXPENSE_CATEGORIES[7];
+    const isFot = normalizedCategory === 'fot';
 
     const html = isFot ? `
       <div class="help">ФОТ: расходы на оплату труда сотрудника</div>
@@ -485,7 +510,7 @@ window.AsgardWorkExpenses = (function(){
 
           const expResult = await addExpense({
             work_id: work.id,
-            category: category,
+            category: normalizedCategory,
             amount: amount,
             date: $('#exp_date').value,
             comment: $('#exp_comment').value,

@@ -263,20 +263,42 @@ async function routes(fastify, options) {
         `, [amount, fundId]);
       }
 
-      // Auto-sync to work_expenses
+      // Auto-sync to work_expenses (с правильным маппингом категорий)
+      //
+      // Баг до фикса: писали `employee_id` и `source` — таких колонок нет в work_expenses,
+      // INSERT валился в catch, в журнал расходов работы ничего не попадало.
+      // Сейчас: используем `source_table`/`source_id`/`source_key` (V071) + map русских
+      // ярлыков из мобилки в канонические English ключи (cash + subcategory).
+      // payment_method='cash' — РП в поле всегда тратит наличку из аванса.
+      const taxo = require('../services/work-expense-categories');
+      const mapped = taxo.resolveFieldCategory(category);
+
       let workExpenseId = null;
       try {
-        const { rows: we } = await db.query(`
-          INSERT INTO work_expenses (work_id, employee_id, amount, description, category, source, receipt_url, created_at)
-          VALUES ($1, $2, $3, $4, $5, 'field_master', $6, NOW())
-          RETURNING id
-        `, [fund[0].work_id, empId, amount, description, category || 'Полевые расходы',
-            receiptFilename ? `/uploads/receipts/${receiptFilename}` : null]);
-        workExpenseId = we[0].id;
+        const { insertWorkExpense } = require('../services/work-expense-writer');
+        const we = await insertWorkExpense(db, {
+          work_id: fund[0].work_id,
+          category: mapped.category,
+          subcategory: mapped.subcategory,
+          amount,
+          description,
+          supplier: supplier || null,
+          payment_method: 'cash',
+          receipt_url: receiptFilename ? `/uploads/receipts/${receiptFilename}` : null,
+          source_table: 'field_master_expenses',
+          source_id: inserted[0].id,
+          source_key: `field_master_expense:${inserted[0].id}`,
+          date: expenseDate || null,
+          status: 'confirmed',
+          created_by: empId,
+        });
+        workExpenseId = we?.id || null;
 
-        await db.query(`
-          UPDATE field_master_expenses SET work_expense_id = $1, synced_at = NOW() WHERE id = $2
-        `, [workExpenseId, inserted[0].id]);
+        if (workExpenseId) {
+          await db.query(`
+            UPDATE field_master_expenses SET work_expense_id = $1, synced_at = NOW() WHERE id = $2
+          `, [workExpenseId, inserted[0].id]);
+        }
       } catch (syncErr) {
         fastify.log.warn('[field-funds] work_expenses sync failed:', syncErr.message);
       }
