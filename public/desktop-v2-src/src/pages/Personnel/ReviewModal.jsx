@@ -1,7 +1,7 @@
 /**
  * Модалка «Оценить рабочего» (РП ставит оценку 1–10 + комментарий).
  *
- * POST /api/staff/employees/:id/review — { score_1_10, comment, work_id? }
+ * POST /api/staff/employees/:id/review — { score, comment, work_id? }
  * Доступ: PM, ADMIN, директора (любой авторизованный — backend authenticate).
  */
 import { useState } from 'react';
@@ -25,7 +25,7 @@ export function ReviewModal({ employee, onSaved }) {
     setBusy(true);
     try {
       await createReview(employee.id, {
-        score_1_10: score,
+        score: score,
         rating: score,
         comment: comment.trim() || null,
       });
