@@ -2674,3 +2674,31 @@ D-15-candidate из A-29 (correspondence RBAC расширен) и A-31 (custome
 ---
 
 **Конец файла.**
+
+---
+
+## Batch B-vol2 — VERIFIED 7/7 (коммит b71f786, 2026-06-17)
+
+Сводный апдейт после прод-диагностики и независимого аудита:
+
+- **D-004 (office_expenses contract):** РЕШЕНИЕ B (пользователь). `OfficeExpenseFormModal.jsx` — SelectInput по `/api/data/contracts?limit=500`, payload `contract_id`. Backend `OFFICE_EXP_COLS` уже имел `contract_id`. Sentinel: contract_id=15 → DB ассерт. **VERIFIED**.
+- **D-20 (calendar participants):** прод-evidence: колонка ЕСТЬ. `calendar.js` ALLOWED_COLS добавил `participants`. `EventModal.jsx` добавил Input «Участники». `telegram.js:612` уже использует. Sentinel: participants `Иванов, Петров` → DB. **VERIFIED**.
+- **D-58 (equipment bulk-create):** прод-evidence: колонки ЕСТЬ. `equipment.js` bulk-create добавил `useful_life_months/salvage_value` в INSERT cols + placeholders. `EquipmentBulkCreateModal.jsx` парсер 11 кол + 6 form fields. Sentinel: 4 поля ассерт. **VERIFIED**.
+- **D-77 (reminders rename):** прод-evidence: колонки `description` и `reminder_date` есть рядом с legacy `message`/`due_date`. Vanilla `reminders.js` rename в 8 местах. Backend generic `src/routes/data.js` через information_schema — правок не требует. v2 ReminderEditModal через `/api/data/reminders` (НЕ `/api/reminders`). Sentinel: 4 поля → DB. **VERIFIED**.
+- **D-79 (equipment transfer-request):** прод-evidence: `equipment_movements.target_holder_id/object_id/work_id` ЕСТЬ. Реально transfer-request пишет в `equipment_requests`, не `equipment_movements` (те создаются на transfer-execute). Backend добавил `target_holder_id` в destruct + backward-compat. `EquipmentTransferModal.jsx` state target_holder_id + object_id + loadObjects. Sentinel: equipment_requests row. **VERIFIED**.
+- **D-93 (correspondence FKs):** **AS-IS работало** — sentinel показал что backend `src/services/correspondence.js:193,215-219,270,290-294` уже включает tender_id/work_id/customer_id, v2 CorrFormModal.jsx:162-164 уже шлёт. **Закрыто как already-fixed, certified by sentinel**.
+- **D-94 (customers contacts JSONB):** прод-evidence: ОБЕ колонки `contacts` (JSONB) и `contacts_json` (TEXT) ЕСТЬ. РЕШЕНИЕ: канон `contacts`. Backend уже канонизирован (`normalizeContacts` + `filterData` JSON.stringify, contacts_json НЕ в allowlist). v2 CustomerEditModal — добавил parse fallback на чтение legacy `contacts_json` (TEXT) между `contacts` и `contact_person`. Write всегда canonical. Sentinel: jsonb_array_length=2. **VERIFIED**.
+
+---
+
+## Переоценка D-78 / D-83 / D-84 после прод-evidence (2026-06-17)
+
+Прод-диагностика показала что **3 таблицы из ledger НЕ существуют на проде** и **код их не использует**:
+
+- **`equipment_returns`** — таблицы НЕТ. Grep `FROM/INTO equipment_returns` в `src/` → 0 совпадений. v2 EquipmentReturnModal (D-78) пишет через какой-то другой endpoint (вероятно через `equipment_movements` с `movement_type='return'` или вообще не имеет реализации). Ledger-формулировка D-78 устарела.
+- **`chat_groups`** — таблицы НЕТ. Реальный канон — `chats` (с FK на `chat_group_members`/`chat_messages`/`chat_attachments`). Backend `src/routes/chat_groups.js` (имя файла, не таблицы) использует `chats`. Ledger D-83 (chat_groups.type) и D-84 (chat_groups.muted forever) — формулировки устарели; нужен retarget на `chats`/`chat_group_members` если фича действительно нужна.
+- **`customer_contacts`** — таблицы НЕТ. Решение D-94 — JSONB в `customers.contacts` (см. выше). Подпункт «отдельная таблица» из ledger D-94 нерелевантен.
+
+**Действие:** D-78/D-83/D-84 переводятся в **AWAITING-RETARGET** (требуют переписать что именно фиксить с учётом реальной схемы). Из активной очереди batch B сняты.
+
+**Конец файла.**
