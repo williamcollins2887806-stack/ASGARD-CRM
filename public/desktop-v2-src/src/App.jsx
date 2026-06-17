@@ -82,6 +82,7 @@ const Acts = lazy(() => import('@/pages/Acts'));
 const OfficeExpenses = lazy(() => import('@/pages/OfficeExpenses'));
 const PayrollDashboard = lazy(() => import('@/pages/PayrollDashboard'));
 const Payroll = lazy(() => import('@/pages/Payroll'));
+const PayrollReport = lazy(() => import('@/pages/PayrollReport'));
 const MyEquipment = lazy(() => import('@/pages/MyEquipment'));
 const Contracts = lazy(() => import('@/pages/Contracts'));
 const Seals = lazy(() => import('@/pages/Seals'));
@@ -273,7 +274,7 @@ export default function App() {
               <Route path="/payroll"       element={<Protected title="Расчёты с рабочими"><Payroll /></Protected>} />
               <Route path="/payroll-sheet" element={<Protected title="Ведомость"><Payroll mode="sheet" /></Protected>} />
               <Route path="/payroll-grid"  element={<Protected title="Ведомость-сетка"><Payroll mode="grid" /></Protected>} />
-              <Route path="/reports/payroll" element={<Protected title="Отчёт по выплатам"><Payroll mode="report" /></Protected>} />
+              <Route path="/reports/payroll" element={<Protected title="Отчёт по выплатам"><PayrollReport /></Protected>} />
               <Route path="/my-equipment" element={<Protected title="Моё оборудование"><MyEquipment /></Protected>} />
               <Route path="/contracts" element={<Protected title="Реестр договоров"><Contracts /></Protected>} />
               <Route path="/seals" element={<Protected title="Реестр печатей"><Seals /></Protected>} />

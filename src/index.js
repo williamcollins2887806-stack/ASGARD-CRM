@@ -530,7 +530,11 @@ fastify.register(require('./routes/permit_applications'), { prefix: '/api/permit
 fastify.register(require('./routes/mailbox'), { prefix: '/api/mailbox' });
 fastify.register(require("./routes/my-mail"), { prefix: "/api/my-mail" });
 fastify.register(require('./routes/inbox_applications_ai'), { prefix: '/api/inbox-applications' });
-fastify.register(require('./routes/personal-kanban'), { prefix: '/api/personal-kanban' });
+try {
+  fastify.register(require('./routes/personal-kanban'), { prefix: '/api/personal-kanban' });
+} catch (e) {
+  fastify.log.warn('[PersonalKanban route] Init skipped: ' + e.message);
+}
 fastify.register(require('./routes/integrations'), { prefix: '/api/integrations' });
 fastify.register(require('./routes/sites'), { prefix: '/api/sites' });
 fastify.register(require('./routes/command-map'), { prefix: '/api/command-map' });

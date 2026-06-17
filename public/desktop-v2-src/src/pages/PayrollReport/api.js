@@ -31,14 +31,12 @@ export async function loadPayrollReport(year, month) {
   return api(`/api/worker-payments/reports/payroll/${year}/${month}`, { silent: true });
 }
 
-/** ФОТ по объектам — новый endpoint payroll-report/labor. */
+/** ФОТ по объектам — реальный endpoint worker-payments. */
 export async function loadLaborByObjects(year, month) {
-  const period = `${year}-${String(month).padStart(2, '0')}`;
-  return api(`/api/payroll-report/labor?period=${period}`, { silent: true });
+  return api(`/api/worker-payments/reports/labor-costs/${year}/${month}`, { silent: true });
 }
 
-/** Задолженности — новый endpoint payroll-report/debts. */
+/** Задолженности — реальный endpoint worker-payments. */
 export async function loadDebts(year, month) {
-  const period = `${year}-${String(month).padStart(2, '0')}`;
-  return api(`/api/payroll-report/debts?period=${period}`, { silent: true });
+  return api(`/api/worker-payments/reports/debts/${year}/${month}`, { silent: true });
 }
