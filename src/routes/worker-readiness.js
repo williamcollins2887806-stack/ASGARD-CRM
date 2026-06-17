@@ -104,10 +104,13 @@ async function routes(fastify, options) {
     // Последняя завершённая работа — для тех, кто СЕЙЧАС не на объекте и не согласован.
     // Показываем в колонке «Объект/РП» как «история», и в «Начало работ» — дату начала
     // последнего assignment'а (это и есть «срок последней работы» по сути).
+    // Канонический столбец «когда сотрудника назначили на работу» в БД — `date_from`
+    // (триггером заполняется из works.start_plan/created_at; см. field-pm.js:163,224).
+    // Колонки `assigned_at` в схеме нет — обращение к ней даёт 42703 column does not exist → 500.
     const { rows: lastAssignments } = await db.query(`
       SELECT DISTINCT ON (ea.employee_id)
         ea.employee_id, ea.work_id,
-        ea.assigned_at AS start_date,
+        COALESCE(ea.date_from, ea.created_at) AS start_date,
         ea.departure_date AS end_date,
         w.work_title,
         wpm.name AS pm_name
@@ -115,7 +118,7 @@ async function routes(fastify, options) {
       LEFT JOIN works w   ON w.id  = ea.work_id
       LEFT JOIN users wpm ON wpm.id = w.pm_id
       WHERE ea.employee_id = ANY($1::int[])
-      ORDER BY ea.employee_id, COALESCE(ea.departure_date, ea.assigned_at) DESC
+      ORDER BY ea.employee_id, COALESCE(ea.departure_date, ea.date_from, ea.created_at) DESC
     `, [empIds]);
 
     const lastByEmp = {};
