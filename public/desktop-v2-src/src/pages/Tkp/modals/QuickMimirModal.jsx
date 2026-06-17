@@ -3,17 +3,72 @@
  * Источник: openMimirQuickModal в tkp_page.js (1409–1675).
  *
  * Фазы:
- *  1. Вход — ИНН/название, документ работ, краткое описание
- *  2. Расчёт — Мимир считает (показывает прогресс), может задать вопросы
- *  3. Чат — редактирование, финализация
+ *  1. intro — ИНН/название, документ работ, краткое описание
+ *  2. calc  — SSE-stream расчёта (статус + лог прогресса) → таблица сметы
+ *  3. chat  — диалог уточнений с Мимиром на готовой смете → финализация
  */
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useModal } from '@/modals';
 import { MCard, MHead, MBody, MFoot, Btn } from '@/modals/parts';
 import { Field, TextInput, INNInput, TextareaInput, FileDrop } from '@/inputs/Inputs';
 import { toast } from '@/modals/Notifications';
-import { quickTkpCreate, quickTkpDadata, quickTkpUpload, quickTkpChat, quickTkpFinalize } from '../api';
+import {
+  quickTkpCreate, quickTkpDadata, quickTkpUpload, quickTkpChat,
+  quickTkpCalculate, quickTkpFinalize, fmtMoney
+} from '../api';
 import { validateFile, MAX_ATTACHMENT_SIZE } from '@/api/upload';
+
+// ── Рендер таблицы сметы (vanilla _renderEstTable, tkp-page.js:1415-1438) ──
+function EstimateTable({ est }) {
+  if (!est || !Array.isArray(est.items) || est.items.length === 0) {
+    return (
+      <p style={{ color: 'var(--t-3)', fontSize: 12 }}>Смета не сформирована</p>
+    );
+  }
+  const vatPct = est.vat_pct != null ? est.vat_pct : 20;
+  return (
+    <div style={{ overflowX: 'auto', marginTop: 4 }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
+        <thead>
+          <tr style={{ background: 'var(--inner-bg)', color: 'var(--t-2)' }}>
+            <th style={{ padding: '6px 8px', textAlign: 'left', borderBottom: '1px solid var(--brd-2)' }}>#</th>
+            <th style={{ padding: '6px 8px', textAlign: 'left', borderBottom: '1px solid var(--brd-2)' }}>Наименование</th>
+            <th style={{ padding: '6px 8px', textAlign: 'center', borderBottom: '1px solid var(--brd-2)' }}>Ед.</th>
+            <th style={{ padding: '6px 8px', textAlign: 'right', borderBottom: '1px solid var(--brd-2)' }}>Кол</th>
+            <th style={{ padding: '6px 8px', textAlign: 'right', borderBottom: '1px solid var(--brd-2)' }}>Цена</th>
+            <th style={{ padding: '6px 8px', textAlign: 'right', borderBottom: '1px solid var(--brd-2)' }}>Сумма</th>
+          </tr>
+        </thead>
+        <tbody>
+          {est.items.map((it, idx) => (
+            <tr key={idx} style={{ borderBottom: '1px solid var(--brd-2)' }}>
+              <td style={{ padding: '6px 8px', color: 'var(--t-3)' }}>{idx + 1}</td>
+              <td style={{ padding: '6px 8px', color: 'var(--t-1)' }}>{it.name || ''}</td>
+              <td style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--t-2)' }}>{it.unit || ''}</td>
+              <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--t-2)' }}>{it.qty || 0}</td>
+              <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--t-2)' }}>{fmtMoney(it.price || 0)}</td>
+              <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--t-1)', fontWeight: 600 }}>{fmtMoney(it.total || 0)}</td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr style={{ background: 'var(--inner-bg)' }}>
+            <td colSpan={5} style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, color: 'var(--t-2)' }}>Без НДС:</td>
+            <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, color: 'var(--t-1)' }}>{fmtMoney(est.subtotal || 0)}</td>
+          </tr>
+          <tr>
+            <td colSpan={5} style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--t-2)' }}>НДС {vatPct}%:</td>
+            <td style={{ padding: '6px 8px', textAlign: 'right', color: 'var(--t-2)' }}>{fmtMoney(est.vat_sum || 0)}</td>
+          </tr>
+          <tr style={{ background: 'var(--gold-bg)' }}>
+            <td colSpan={5} style={{ padding: '8px', textAlign: 'right', fontWeight: 700, color: 'var(--t-1)' }}>ИТОГО с НДС:</td>
+            <td style={{ padding: '8px', textAlign: 'right', fontWeight: 700, color: 'var(--gold)' }}>{fmtMoney(est.total_with_vat || 0)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
 
 export function QuickMimirModal({ onCreated, prefill }) {
   const { close } = useModal();
@@ -35,26 +90,88 @@ export function QuickMimirModal({ onCreated, prefill }) {
   const [chatInput, setChatInput] = useState('');
   const [busy, setBusy] = useState(false);
 
+  // calc phase state
+  const [estimate, setEstimate] = useState(null);
+  const [calcStatus, setCalcStatus] = useState('Мимир анализирует задание...');
+  const [calcSubStatus, setCalcSubStatus] = useState('');
+  const [calcLog, setCalcLog] = useState([]);
+  const [calcDone, setCalcDone] = useState(false);
+  const [calcError, setCalcError] = useState('');
+  const [introChatMd, setIntroChatMd] = useState('');
+  const calcLogRef = useRef(null);
+
+  // Авто-скролл лога прогресса
+  useEffect(() => {
+    if (calcLogRef.current) {
+      calcLogRef.current.scrollTop = calcLogRef.current.scrollHeight;
+    }
+  }, [calcLog]);
+
+  // Запуск SSE-расчёта Мимира на сессии uid
+  const runCalculation = async (sessionUid) => {
+    setCalcStatus('Мимир анализирует задание...');
+    setCalcSubStatus('');
+    setCalcLog([]);
+    setCalcDone(false);
+    setCalcError('');
+    setEstimate(null);
+    setIntroChatMd('');
+    try {
+      await quickTkpCalculate(sessionUid, (ev) => {
+        if (!ev || !ev.type) return;
+        if (ev.type === 'status') {
+          setCalcStatus(ev.message || '');
+        } else if (ev.type === 'progress') {
+          if (ev.message) {
+            setCalcSubStatus(ev.message);
+            setCalcLog((l) => [...l, ev.message]);
+          }
+        } else if (ev.type === 'done') {
+          setEstimate(ev.estimate || null);
+          setIntroChatMd(ev.chat_response_md || '');
+          setCalcDone(true);
+          setCalcStatus('✅ Расчёт готов');
+          setCalcSubStatus('');
+        } else if (ev.type === 'error') {
+          setCalcError(ev.message || 'Ошибка расчёта');
+          setCalcStatus('❌ ' + (ev.message || 'Ошибка расчёта'));
+        }
+      });
+    } catch (e) {
+      setCalcError(String(e?.message || e));
+      setCalcStatus('❌ ' + String(e?.message || e));
+    }
+  };
+
   const startSession = async () => {
     if (!intro.customer_name?.trim()) return toast('Заказчик', 'Укажи название или ИНН', 'warn');
     if (!intro.subject?.trim()) return toast('Предмет', 'Укажи название работ', 'warn');
     setBusy(true);
     try {
       const sess = await quickTkpCreate();
-      const newUid = sess?._uid || sess?.uid;
+      const newUid = sess?._uid || sess?.uid || (sess?.session && sess.session.session_uid);
       if (!newUid) throw new Error('Сессия не создана');
       setUid(newUid);
       if (intro.inn) {
-        await quickTkpDadata(newUid, { inn: intro.inn });
+        try { await quickTkpDadata(newUid, { inn: intro.inn, company_name: intro.customer_name }); } catch { /* noop */ }
       }
-      // Запускаем расчёт
-      const calc = await quickTkpChat(newUid, { phase: 'calc', subject: intro.subject, description: intro.description, customer_name: intro.customer_name, inn: intro.inn });
-      const reply = calc?.message || calc?.reply || 'Мимир начал расчёт. Опиши детали в чате.';
-      setMessages([{ role: 'mimir', text: reply, ts: Date.now() }]);
-      setPhase('chat');
+      // Сообщить серверу контекст задачи (subject/description) — отдельным chat-сообщением фазы intro.
+      // Сервер примет это как «введённое ТЗ» (vanilla 1523 шлёт это в POST /sessions body).
+      try {
+        await quickTkpChat(newUid, {
+          phase: 'intro',
+          subject: intro.subject,
+          description: intro.description,
+          customer_name: intro.customer_name,
+          inn: intro.inn
+        });
+      } catch { /* noop */ }
+      // Переходим в phase=calc и запускаем SSE
+      setPhase('calc');
+      setBusy(false);
+      runCalculation(newUid);
     } catch (e) {
       toast('Ошибка', String(e?.message || e), 'err');
-    } finally {
       setBusy(false);
     }
   };
@@ -84,6 +201,21 @@ export function QuickMimirModal({ onCreated, prefill }) {
     }
   };
 
+  const acceptEstimate = () => {
+    // Переход calc → chat. Стартовое сообщение Мимира — chat_response_md из 'done' события.
+    setMessages([{
+      role: 'mimir',
+      text: introChatMd || 'Смета готова. Уточни детали или сохрани как ТКП.',
+      ts: Date.now()
+    }]);
+    setPhase('chat');
+  };
+
+  const recalculate = () => {
+    if (!uid) return;
+    runCalculation(uid);
+  };
+
   const sendChat = async () => {
     if (!chatInput.trim() || !uid) return;
     const userText = chatInput.trim();
@@ -92,7 +224,9 @@ export function QuickMimirModal({ onCreated, prefill }) {
     setBusy(true);
     try {
       const reply = await quickTkpChat(uid, { phase: 'chat', message: userText });
-      const text = reply?.message || reply?.reply || '...';
+      const text = reply?.message || reply?.reply || reply?.chat_response_md || '...';
+      // Если бэкенд вернул пересчитанную смету — обновим.
+      if (reply?.estimate) setEstimate(reply.estimate);
       setMessages((m) => [...m, { role: 'mimir', text, ts: Date.now() }]);
     } catch (e) {
       toast('Ошибка', String(e?.message || e), 'err');
@@ -105,8 +239,12 @@ export function QuickMimirModal({ onCreated, prefill }) {
     if (!uid) return;
     setBusy(true);
     try {
-      const res = await quickTkpFinalize(uid, {});
-      const tkpId = res?.tkp_id || res?.id;
+      const res = await quickTkpFinalize(uid, {
+        tender_id: _pre.tender_id || null,
+        pre_tender_id: _pre.pre_tender_id || null,
+        work_id: _pre.work_id || null
+      });
+      const tkpId = res?.tkp_id || res?.id || (res?.tkp && res.tkp.id);
       toast('🧙 Готово', `ТКП #${tkpId || ''} создан`, 'ok');
       onCreated?.(tkpId, res);
       window.dispatchEvent(new CustomEvent('asgard:tkp:changed'));
@@ -143,9 +281,81 @@ export function QuickMimirModal({ onCreated, prefill }) {
           </div>
         )}
 
+        {phase === 'calc' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minHeight: 360 }}>
+            {/* Прогресс расчёта */}
+            <div style={{
+              padding: '20px 16px',
+              background: 'var(--purple-bg)',
+              borderRadius: 'var(--r-sm)',
+              textAlign: 'center'
+            }}>
+              {!calcDone && !calcError && (
+                <div className="qm-dots" style={{ justifyContent: 'center', marginBottom: 8 }}>
+                  <span></span><span></span><span></span>
+                </div>
+              )}
+              <div style={{
+                fontSize: 14,
+                fontWeight: 600,
+                color: calcError ? 'var(--err-t)' : (calcDone ? 'var(--ok)' : 'var(--t-1)')
+              }}>
+                {calcStatus}
+              </div>
+              {calcSubStatus && (
+                <div style={{ marginTop: 6, fontSize: 12, color: 'var(--t-3)' }}>{calcSubStatus}</div>
+              )}
+            </div>
+
+            {/* Лог прогресса (видимо пока считает или если есть ошибка) */}
+            {(calcLog.length > 0 || calcError) && !calcDone && (
+              <div
+                ref={calcLogRef}
+                style={{
+                  maxHeight: 120,
+                  overflowY: 'auto',
+                  padding: '8px 12px',
+                  background: 'var(--inner-bg)',
+                  border: '1px solid var(--brd-2)',
+                  borderRadius: 'var(--r-sm)',
+                  fontSize: 11,
+                  color: 'var(--t-3)',
+                  fontFamily: 'ui-monospace, monospace',
+                  whiteSpace: 'pre-wrap'
+                }}
+              >
+                {calcLog.join('\n')}
+                {calcError && <div style={{ color: 'var(--err-t)', marginTop: 4 }}>❌ {calcError}</div>}
+              </div>
+            )}
+
+            {/* Готовая смета: таблица + кнопки */}
+            {calcDone && estimate && (
+              <div>
+                <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--t-3)', marginBottom: 6 }}>
+                  📊 Сформированная смета
+                </div>
+                <EstimateTable est={estimate} />
+              </div>
+            )}
+          </div>
+        )}
+
         {phase === 'chat' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 400 }}>
-            <div style={{ flex: 1, padding: 10, background: 'var(--inner-bg)', borderRadius: 'var(--r-sm)', maxHeight: 360, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {/* Кнопка свернуть/развернуть смету в chat-фазе — компактный блок сверху */}
+            {estimate && (
+              <details style={{ background: 'var(--inner-bg)', border: '1px solid var(--brd-2)', borderRadius: 'var(--r-sm)', padding: 8 }}>
+                <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--t-2)', fontWeight: 600 }}>
+                  📊 Смета — ИТОГО {fmtMoney(estimate.total_with_vat || 0)} (клик чтобы развернуть)
+                </summary>
+                <div style={{ marginTop: 8 }}>
+                  <EstimateTable est={estimate} />
+                </div>
+              </details>
+            )}
+
+            <div style={{ flex: 1, padding: 10, background: 'var(--inner-bg)', borderRadius: 'var(--r-sm)', maxHeight: 320, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
               {messages.map((m, i) => (
                 <div
                   key={i}
@@ -175,7 +385,6 @@ export function QuickMimirModal({ onCreated, prefill }) {
             <div className="u-flex gap-6">
               <input
                 className="m-input flex-1"
-                
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !busy) sendChat(); }}
@@ -189,7 +398,20 @@ export function QuickMimirModal({ onCreated, prefill }) {
       <MFoot align="spread">
         <Btn onClick={close}>Отмена</Btn>
         {phase === 'intro' && (
-          <Btn variant="primary" disabled={busy} onClick={startSession}>{busy ? 'Запускаем…' : '🧙 Запустить Мимира →'}</Btn>
+          <Btn variant="primary" disabled={busy} onClick={startSession}>{busy ? 'Запускаем…' : '🧙 Запустить расчёт →'}</Btn>
+        )}
+        {phase === 'calc' && (
+          <div className="u-flex gap-6">
+            {calcDone && estimate && (
+              <>
+                <Btn onClick={recalculate}>↻ Пересчитать</Btn>
+                <Btn variant="primary" onClick={acceptEstimate}>✅ Принять →</Btn>
+              </>
+            )}
+            {calcError && (
+              <Btn variant="primary" onClick={recalculate}>↻ Повторить расчёт</Btn>
+            )}
+          </div>
         )}
         {phase === 'chat' && (
           <Btn variant="primary" disabled={busy} onClick={finalize}>{busy ? 'Финализируем…' : '✓ Создать ТКП'}</Btn>

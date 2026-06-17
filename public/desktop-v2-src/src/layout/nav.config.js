@@ -139,7 +139,8 @@ export const NAV_ITEMS = [
   { r: '/backup',       l: 'Резервные копии',     d: 'Экспорт/импорт',        i: '💾', g: 'system', roles: ['ADMIN'] },
   { r: '/sync',         l: 'PostgreSQL Sync',     d: 'Синхронизация',         i: '🔄', g: 'system', roles: ['ADMIN'] },
   { r: '/diag',         l: 'Диагностика',         d: 'Self-test',             i: '🔬', g: 'system', roles: ['ADMIN'] },
-  { r: '/system-panel', l: 'Панель сервера',      d: 'Сервер, логи',          i: '🖥', g: 'system', roles: ['ADMIN'] }
+  { r: '/system-panel', l: 'Панель сервера',      d: 'Сервер, логи',          i: '🖥', g: 'system', roles: ['ADMIN'] },
+  { r: '/field-tariffs',l: 'Тарифы поля',         d: 'Тарифная сетка полевого модуля', i: '💼', g: 'system', roles: ['ADMIN'] }
 ];
 
 /** Фильтр по роли пользователя */

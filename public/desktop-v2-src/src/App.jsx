@@ -136,6 +136,7 @@ const WorkReport = lazy(() => import('@/pages/WorkReport'));
 const AutoReports = lazy(() => import('@/pages/AutoReports'));
 const PaymentsReport = lazy(() => import('@/pages/PaymentsReport'));
 const SystemPanel = lazy(() => import('@/pages/SystemPanel'));
+const FieldTariffs = lazy(() => import('@/pages/FieldTariffs'));
 // Волна 4б: личный канбан РП + корзина заявок директора
 const PersonalKanban = lazy(() => import('@/pages/PersonalKanban'));
 const DirectorsInbox = lazy(() => import('@/pages/DirectorsInbox'));
@@ -331,6 +332,7 @@ export default function App() {
               <Route path="/gantt"                  element={<Navigate to="/gantt-objects" replace />} />
               <Route path="/todo"                   element={<Navigate to="/tasks" replace />} />
               <Route path="/system-panel"           element={<Protected title="Панель сервера" roles={['ADMIN']}><SystemPanel /></Protected>} />
+              <Route path="/field-tariffs"          element={<Protected title="Тарифы поля" roles={['ADMIN']}><FieldTariffs /></Protected>} />
               <Route path="/equipment"              element={<Navigate to="/warehouse-v2" replace />} />
               <Route path="/customer"               element={<Navigate to="/customers" replace />} />
               <Route path="/mango"                  element={<Navigate to="/telephony" replace />} />

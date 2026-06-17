@@ -126,6 +126,42 @@ export function quickTkpChat(uid, payload) {
   return api(`/api/tkp-quick/sessions/${uid}/chat`, { method: 'POST', body: payload });
 }
 
+/**
+ * POST /api/tkp-quick/sessions/:uid/calculate — SSE-stream расчёта Мимира.
+ * Vanilla: tkp-page.js:1536-1550 — POST с ReadableStream, парс `data: {...}\n`.
+ * События: { type:'status'|'progress'|'done'|'error', message?, estimate?, chat_response_md? }
+ * onEvent вызывается на каждое событие. Возвращает Promise (resolved когда поток закрыт).
+ */
+export async function quickTkpCalculate(uid, onEvent) {
+  const token = localStorage.getItem('asgard_token') || '';
+  const resp = await fetch(`/api/tkp-quick/sessions/${uid}/calculate`, {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + token },
+  });
+  if (!resp.ok) {
+    const txt = await resp.text().catch(() => '');
+    throw new Error(`HTTP ${resp.status}: ${txt || resp.statusText}`);
+  }
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      try {
+        const ev = JSON.parse(line.slice(6));
+        onEvent(ev);
+      } catch { /* skip malformed chunk */ }
+    }
+  }
+}
+
 export function quickTkpFinalize(uid, payload) {
   return api(`/api/tkp-quick/sessions/${uid}/finalize`, { method: 'POST', body: payload });
 }

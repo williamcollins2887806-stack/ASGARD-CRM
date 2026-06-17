@@ -22,7 +22,7 @@ import {
   cmapMedical, cmapPresenceBoard, openLiveStream,
   fmtMln, fmtDT
 } from './api';
-import { MapStage } from './MapStage';
+import { PixiStage } from './PixiStage';
 import './command-map.css';
 
 export default function CommandMapPage() {
@@ -94,6 +94,9 @@ export default function CommandMapPage() {
   const openFlight = (f) => {
     modal.open(<FlightModal flight={f} />, { size: 'wide' });
   };
+  const openPerson = (p) => {
+    modal.open(<PersonModal person={p} />, { size: 'wide' });
+  };
 
   if (!ready || !user) {
     return <div className="p-24 c-t3">⏳ Загружаем…</div>;
@@ -118,7 +121,16 @@ export default function CommandMapPage() {
         {loading ? (
           <div className="cmap-stage"><div className="cmap-hint">⏳ Загружаем карту…</div></div>
         ) : (
-          <MapStage sites={sites} flights={flights} onSite={openSite} onFlight={openFlight} />
+          <PixiStage
+            sites={sites}
+            flights={flights}
+            people={(live && live.people) || []}
+            hubLat={55.96}
+            hubLng={37.41}
+            onSite={openSite}
+            onFlight={openFlight}
+            onPerson={openPerson}
+          />
         )}
       </div>
 
@@ -428,6 +440,41 @@ function SiteModal({ site }) {
             title="Нет активных работ"
             hint="Объект создаётся из работ — привяжите работу к этому объекту (site_id)."
           />
+        )}
+      </MBody>
+      <MFoot align="end">
+        <Btn variant="primary" onClick={() => close()}>Закрыть</Btn>
+      </MFoot>
+    </MCard>
+  );
+}
+
+function PersonModal({ person: p }) {
+  const { close } = useModal();
+  return (
+    <MCard>
+      <MHead
+        icon="🧑"
+        title={p.name || ('Сотрудник #' + p.user_id)}
+        subtitle={p.role || ''}
+        onClose={() => close()}
+      />
+      <MBody>
+        <div className="cmap-hero mb-12">
+          <Hcard cap="Статус"  big={p.online ? '● онлайн' : '○ офлайн'} sm={p.status_label || p.status_code || '—'} />
+          <Hcard cap="Звонок"  big={p.on_call ? '📞 на звонке' : '—'} />
+          <Hcard cap="Активность" big={p.self_act || p.doing || '—'} />
+        </div>
+        {p.work && (
+          <>
+            <div className="cmap-sec">Работа</div>
+            <div className="cmap-frow read">
+              <div>
+                <b>{p.work.title || p.work.work_title}</b>
+                {p.work.site_name && <div className="meta">Объект: {p.work.site_name}</div>}
+              </div>
+            </div>
+          </>
         )}
       </MBody>
       <MFoot align="end">
