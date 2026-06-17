@@ -757,13 +757,15 @@ async function equipmentRoutes(fastify, options) {
             INSERT INTO equipment (
               name, category_id, inventory_number, serial_number, barcode, qr_uuid,
               brand, model, purchase_price, book_value, purchase_date,
+              useful_life_months, salvage_value,
               quantity, unit, notes, status, warehouse_id, condition,
               min_stock_level, reorder_point, created_by
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
             RETURNING *
           `, [
             item.name, catId, item.inventory_number || ('INV-' + Date.now().toString(36).toUpperCase() + '-' + i), item.serial_number || null, item.barcode || null, qrUuid,
             item.brand || null, item.model || null, item.purchase_price || null, item.purchase_price || null, item.purchase_date || null,
+            item.useful_life_months || null, item.salvage_value || null,
             item.quantity || 1, item.unit || 'шт', item.notes || null, 'on_warehouse', item.warehouse_id || defaultWarehouseId, item.condition || 'new',
             item.min_stock_level || 0, item.reorder_point || 0, user.id
           ]);
@@ -1013,18 +1015,20 @@ async function equipmentRoutes(fastify, options) {
   }, async (request, reply) => {
     const user = request.user;
 
-    const { equipment_id, to_user_id, to_warehouse_id, object_id, work_id, reason, notes } = request.body;
+    const { equipment_id, to_user_id, target_holder_id, to_warehouse_id, object_id, work_id, reason, notes } = request.body;
 
     if (!equipment_id) {
       return reply.code(400).send({ success: false, message: 'Укажите equipment_id' });
     }
+
+    const holderId = target_holder_id || to_user_id || null;
 
     const result = await db.query(`
       INSERT INTO equipment_requests (
         request_type, requester_id, equipment_id, work_id, object_id, target_holder_id, notes, status
       ) VALUES ('transfer', $1, $2, $3, $4, $5, $6, 'pending')
       RETURNING *
-    `, [user.id, equipment_id, work_id || null, object_id || null, to_user_id || null, notes || reason || null]);
+    `, [user.id, equipment_id, work_id || null, object_id || null, holderId, notes || reason || null]);
 
     return { success: true, request: result.rows[0] };
   });

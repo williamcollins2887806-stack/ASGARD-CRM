@@ -44,9 +44,10 @@ function emitChanged() {
   window.dispatchEvent(new CustomEvent('asgard:customers:changed'));
 }
 
-// ── Backward-compat: legacy contact_person → массив ───────────────────────
-// Если у заказчика contacts[] пустой, но есть legacy contact_person —
-// делаем из него один контакт с is_primary=true (чтобы данные не потерялись).
+// ── Backward-compat: legacy contact_person + contacts_json (text) → массив ─
+// D-94: канон БД = `contacts` (JSONB). Старые записи могут иметь только
+// legacy `contacts_json` (TEXT JSON-string из vanilla v1) или `contact_person`
+// (одна строка). Читаем оба источника, пишем всегда в `contacts`.
 function initialContacts(customer) {
   const arr = Array.isArray(customer?.contacts) ? customer.contacts : [];
   if (arr.length) {
@@ -57,6 +58,21 @@ function initialContacts(customer) {
       email:      String(c?.email || ''),
       is_primary: !!c?.is_primary
     }));
+  }
+  // legacy: contacts_json (TEXT, parse JSON)
+  if (customer?.contacts_json && String(customer.contacts_json).trim()) {
+    try {
+      const parsed = JSON.parse(String(customer.contacts_json));
+      if (Array.isArray(parsed) && parsed.length) {
+        return parsed.map((c) => ({
+          name:       String(c?.name || ''),
+          position:   String(c?.position || ''),
+          phone:      String(c?.phone || ''),
+          email:      String(c?.email || ''),
+          is_primary: !!c?.is_primary
+        }));
+      }
+    } catch (_e) { /* ignore — fallback ниже */ }
   }
   if (customer?.contact_person && String(customer.contact_person).trim()) {
     return [{

@@ -10,7 +10,7 @@
 import { useState } from 'react';
 import { useModal } from '@/modals';
 import { MCard, MHead, MBody, MFoot, Btn, Field } from '@/modals/parts';
-import { TextareaInput, SelectInput } from '@/inputs/Inputs';
+import { TextareaInput, SelectInput, TextInput, NumberInput } from '@/inputs/Inputs';
 import { toast } from '@/modals/Notifications';
 import { bulkCreateEquipment } from './api';
 import { EquipmentQrPrintModal } from './EquipmentQrPrintModal';
@@ -22,15 +22,25 @@ const CONDITIONS = [
   { value: 'poor', label: 'Плохое' }
 ];
 
-const TEMPLATE = `# Формат: name; category; serial_number; inventory_number; condition
+const TEMPLATE = `# Формат: name; category; serial_number; inventory_number; condition; brand; model; purchase_price; purchase_date(YYYY-MM-DD); useful_life_months; salvage_value
 # Каждая строка — одна единица. Можно вставить из Excel (Tab/«;» как разделитель).
-Перфоратор Bosch GBH 2-26; Электроинструмент; PER-001; INV-001; new
-Сварочный аппарат Ресанта; Электроинструмент; WLD-002; INV-002; good`;
+Перфоратор Bosch GBH 2-26; Электроинструмент; PER-001; INV-001; new; Bosch; GBH 2-26; 15000; 2026-01-15; 60; 1500
+Сварочный аппарат Ресанта; Электроинструмент; WLD-002; INV-002; good; Ресанта; САИ-220; 8500; 2025-09-01; 48; 800`;
+
+const numOrNull = (v) => {
+  if (v === '' || v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
 
 export function EquipmentBulkCreateModal({ onCreated }) {
   const { close, open } = useModal();
   const [raw, setRaw] = useState('');
   const [defCondition, setDefCondition] = useState('new');
+  const [defaults, setDefaults] = useState({
+    brand: '', model: '', purchase_price: '', purchase_date: '',
+    useful_life_months: '', salvage_value: ''
+  });
   const [busy, setBusy] = useState(false);
 
   const parse = () => {
@@ -44,11 +54,19 @@ export function EquipmentBulkCreateModal({ onCreated }) {
           category_name: cells[1] || null,
           serial_number: cells[2] || null,
           inventory_number: cells[3] || null,
-          condition: cells[4] || defCondition
+          condition: cells[4] || defCondition,
+          brand: cells[5] || defaults.brand || null,
+          model: cells[6] || defaults.model || null,
+          purchase_price: numOrNull(cells[7]) ?? numOrNull(defaults.purchase_price),
+          purchase_date: cells[8] || defaults.purchase_date || null,
+          useful_life_months: numOrNull(cells[9]) ?? numOrNull(defaults.useful_life_months),
+          salvage_value: numOrNull(cells[10]) ?? numOrNull(defaults.salvage_value)
         };
       })
       .filter((it) => it.name);
   };
+
+  const setDef = (k, v) => setDefaults((d) => ({ ...d, [k]: v }));
 
   const preview = parse();
 
@@ -83,7 +101,27 @@ export function EquipmentBulkCreateModal({ onCreated }) {
           <Field label="Дефолтное состояние (для строк без значения)">
             <SelectInput value={defCondition} onChange={setDefCondition} options={CONDITIONS} />
           </Field>
-          <Field label="Данные (одна позиция = одна строка)" help="Колонки: name; category; serial; inventory; condition">
+          <div className="row gap-10 wrap">
+            <Field label="Бренд (по умолчанию)">
+              <TextInput value={defaults.brand} onChange={(v) => setDef('brand', v)} placeholder="Bosch" />
+            </Field>
+            <Field label="Модель (по умолчанию)">
+              <TextInput value={defaults.model} onChange={(v) => setDef('model', v)} placeholder="GBH 2-26" />
+            </Field>
+            <Field label="Цена покупки">
+              <NumberInput value={defaults.purchase_price} onChange={(v) => setDef('purchase_price', v)} placeholder="15000" />
+            </Field>
+            <Field label="Дата покупки">
+              <input type="date" className="inp" value={defaults.purchase_date} onChange={(e) => setDef('purchase_date', e.target.value)} />
+            </Field>
+            <Field label="Срок службы (мес.)">
+              <NumberInput value={defaults.useful_life_months} onChange={(v) => setDef('useful_life_months', v)} placeholder="60" />
+            </Field>
+            <Field label="Ликвидационная стоимость">
+              <NumberInput value={defaults.salvage_value} onChange={(v) => setDef('salvage_value', v)} placeholder="1500" />
+            </Field>
+          </div>
+          <Field label="Данные (одна позиция = одна строка)" help="Колонки: name; category; serial; inventory; condition; brand; model; purchase_price; purchase_date; useful_life_months; salvage_value">
             <TextareaInput
               value={raw}
               onChange={setRaw}

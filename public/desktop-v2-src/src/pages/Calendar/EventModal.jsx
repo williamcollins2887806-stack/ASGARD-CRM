@@ -18,6 +18,7 @@ export function EventModal({ event, defaultDate, onChanged }) {
     type:         event?.type || 'meeting',
     description:  event?.description || '',
     location:     event?.location || '',
+    participants: event?.participants || '',
     reminder_minutes: event?.reminder_minutes ?? 30
   });
   const [saving, setSaving] = useState(false);
@@ -42,6 +43,7 @@ export function EventModal({ event, defaultDate, onChanged }) {
         type:        data.type,
         description: data.description || '',
         location:    data.location || '',
+        participants: data.participants || null,
         reminder_minutes: Number(data.reminder_minutes) || 0
       };
       if (isEdit) {
@@ -131,6 +133,14 @@ export function EventModal({ event, defaultDate, onChanged }) {
             value={data.location}
             onChange={(e) => set('location', e.target.value)}
             placeholder="Адрес или ссылка на Zoom/MAX/Telegram"
+          />
+        </Field>
+
+        <Field label="Участники">
+          <Input
+            value={data.participants}
+            onChange={(e) => set('participants', e.target.value)}
+            placeholder="Иванов, Петров, …"
           />
         </Field>
 

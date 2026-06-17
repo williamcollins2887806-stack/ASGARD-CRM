@@ -132,10 +132,10 @@ window.AsgardReminders = (function(){
                 type: 'invoice',
                 priority: 'normal',
                 title: 'Счёт скоро просрочится',
-                message: `Счёт ${inv.invoice_number} — срок оплаты через 3 дня`,
+                description: `Счёт ${inv.invoice_number} — срок оплаты через 3 дня`,
                 entity_type: 'invoice',
                 entity_id: inv.id,
-                due_date: inv.due_date,
+                reminder_date: inv.due_date,
                 user_id: user.id,
                 auto_key: key
               });
@@ -150,10 +150,10 @@ window.AsgardReminders = (function(){
                 type: 'invoice',
                 priority: 'high',
                 title: 'Сегодня срок оплаты!',
-                message: `Счёт ${inv.invoice_number} — сегодня последний день оплаты`,
+                description: `Счёт ${inv.invoice_number} — сегодня последний день оплаты`,
                 entity_type: 'invoice',
                 entity_id: inv.id,
-                due_date: inv.due_date,
+                reminder_date: inv.due_date,
                 user_id: user.id,
                 auto_key: key
               });
@@ -168,10 +168,10 @@ window.AsgardReminders = (function(){
                 type: 'invoice',
                 priority: 'urgent',
                 title: 'Счёт просрочен!',
-                message: `Счёт ${inv.invoice_number} просрочен на ${Math.abs(diffDays)} дн.`,
+                description: `Счёт ${inv.invoice_number} просрочен на ${Math.abs(diffDays)} дн.`,
                 entity_type: 'invoice',
                 entity_id: inv.id,
-                due_date: inv.due_date,
+                reminder_date: inv.due_date,
                 user_id: user.id,
                 auto_key: key
               });
@@ -201,10 +201,10 @@ window.AsgardReminders = (function(){
               type: 'tender',
               priority: 'high',
               title: 'Дедлайн тендера завтра!',
-              message: `${t.tender_title || t.customer_name} — дедлайн завтра`,
+              description: `${t.tender_title || t.customer_name} — дедлайн завтра`,
               entity_type: 'tender',
               entity_id: t.id,
-              due_date: t.deadline_date,
+              reminder_date: t.deadline_date,
               user_id: user.id,
               auto_key: key
             });
@@ -218,10 +218,10 @@ window.AsgardReminders = (function(){
               type: 'tender',
               priority: 'urgent',
               title: 'Дедлайн тендера СЕГОДНЯ!',
-              message: `${t.tender_title || t.customer_name} — дедлайн сегодня`,
+              description: `${t.tender_title || t.customer_name} — дедлайн сегодня`,
               entity_type: 'tender',
               entity_id: t.id,
-              due_date: t.deadline_date,
+              reminder_date: t.deadline_date,
               user_id: user.id,
               auto_key: key
             });
@@ -249,10 +249,10 @@ window.AsgardReminders = (function(){
               type: 'work',
               priority: 'normal',
               title: 'Работа завершается через 3 дня',
-              message: `${w.work_title || w.customer_name} — план. окончание через 3 дня`,
+              description: `${w.work_title || w.customer_name} — план. окончание через 3 дня`,
               entity_type: 'work',
               entity_id: w.id,
-              due_date: w.end_plan,
+              reminder_date: w.end_plan,
               user_id: user.id,
               auto_key: key
             });
@@ -277,8 +277,9 @@ window.AsgardReminders = (function(){
     const reminders = await getByUser(auth.user.id);
     const active = reminders.filter(r => {
       if (r.completed || r.dismissed) return false;
-      if (r.due_date) {
-        const due = new Date(r.due_date);
+      const when = r.reminder_date || r.due_date;
+      if (when) {
+        const due = new Date(when);
         const now = new Date();
         const diffDays = Math.ceil((due - now) / (1000 * 60 * 60 * 24));
         return diffDays <= 7; // Показываем на ближайшую неделю
@@ -289,7 +290,7 @@ window.AsgardReminders = (function(){
       const pOrder = { urgent: 0, high: 1, normal: 2, low: 3 };
       const pDiff = (pOrder[a.priority] || 2) - (pOrder[b.priority] || 2);
       if (pDiff !== 0) return pDiff;
-      return new Date(a.due_date || '9999') - new Date(b.due_date || '9999');
+      return new Date(a.reminder_date || a.due_date || '9999') - new Date(b.reminder_date || b.due_date || '9999');
     });
     
     if (active.length === 0) {
@@ -309,8 +310,8 @@ window.AsgardReminders = (function(){
                 <span class="reminder-title">${esc(r.title)}</span>
                 <button class="btn mini ghost" data-dismiss-rem="${r.id}" title="Скрыть">✕</button>
               </div>
-              <div class="reminder-message">${esc(r.message)}</div>
-              ${r.due_date ? `<div class="reminder-due">📅 ${new Date(r.due_date).toLocaleDateString('ru-RU')}</div>` : ''}
+              <div class="reminder-message">${esc(r.description || r.message || '')}</div>
+              ${(r.reminder_date || r.due_date) ? `<div class="reminder-due">📅 ${new Date(r.reminder_date || r.due_date).toLocaleDateString('ru-RU')}</div>` : ''}
             </div>
           `;
         }).join('')}
@@ -398,8 +399,8 @@ window.AsgardReminders = (function(){
         type: CRSelect.getValue('rem_type'),
         priority: CRSelect.getValue('rem_priority'),
         title: title,
-        message: $('#rem_message').value.trim(),
-        due_date: $('#rem_date').value || null,
+        description: $('#rem_message').value.trim(),
+        reminder_date: $('#rem_date').value || null,
         due_time: $('#rem_time').value || null,
         user_id: auth.user.id,
         entity_type: options.entity_type || null,
@@ -442,8 +443,8 @@ window.AsgardReminders = (function(){
                   <span style="color:${type.color}">${type.icon}</span> ${esc(r.title)}
                   ${isCompleted ? '<span style="margin-left:8px;color:var(--green)">✓</span>' : ''}
                 </div>
-                <div class="muted" style="font-size:14px">${esc(r.message || '')}</div>
-                ${r.due_date ? `<div style="margin-top:8px;font-size:13px">📅 ${new Date(r.due_date).toLocaleDateString('ru-RU')}</div>` : ''}
+                <div class="muted" style="font-size:14px">${esc(r.description || r.message || '')}</div>
+                ${(r.reminder_date || r.due_date) ? `<div style="margin-top:8px;font-size:13px">📅 ${new Date(r.reminder_date || r.due_date).toLocaleDateString('ru-RU')}</div>` : ''}
                 ${isCompleted && r.completed_at ? `<div style="margin-top:6px;font-size:12px">${timeLeft(r.completed_at)}</div>` : ''}
               </div>
               ${showActions ? `

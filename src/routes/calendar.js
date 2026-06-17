@@ -6,7 +6,8 @@
 const ALLOWED_COLS = new Set([
   'title', 'description', 'date', 'end_date',
   'created_by', 'type', 'created_at', 'updated_at',
-  'time', 'location', 'color', 'tender_id', 'work_id', 'reminder_minutes'
+  'time', 'location', 'color', 'tender_id', 'work_id', 'reminder_minutes',
+  'participants'
 ]);
 
 function filterData(data) {
