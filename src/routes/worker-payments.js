@@ -534,7 +534,7 @@ async function routes(fastify, options) {
         JOIN works w ON w.id = fc.work_id
         WHERE EXTRACT(YEAR FROM fc.date) = $1
           AND EXTRACT(MONTH FROM fc.date) = $2
-          AND fc.status = 'active'
+          AND fc.status = 'completed'
           ${workIdFilter ? 'AND fc.work_id = $3' : ''}
         GROUP BY fc.employee_id, fc.work_id, w.work_title
         ORDER BY fc.employee_id

@@ -86,7 +86,7 @@ export function GenerateSalaryModal({ work, onSaved }) {
         <div className="ft-pw-preview" style={{ marginTop: 10 }}>
           <div className="ft-pw-preview-ttl">📋 Что произойдёт</div>
           <div className="ft-pw-preview-row" style={{ fontSize: 12 }}>
-            Из <code>field_checkins</code> за {MONTHS[Number(month) - 1]?.label || '—'} {year} (только статус «active»)
+            Из <code>field_checkins</code> за {MONTHS[Number(month) - 1]?.label || '—'} {year} (только статус «completed»)
             агрегируются смены по сотрудникам. Для каждого создаётся
             <code> worker_payments </code> со статусом <strong>pending</strong> —
             сумма = баллы × {pointValue} ₽. Дальше можно отметить выплату кнопкой «💰 Выплатить»

@@ -17,26 +17,50 @@ function emitChanged() {
 /* ─── Выигрыш ─── */
 /* Источник: vanilla tenders.js → openWonModal (~3867..3938) + POST /api/tenders/:id/win.
    Поля payload: submission_price (без НДС), submission_price_with_vat, win_comment.
-   Цена подачи без НДС обязательна; "с НДС" авто-пересчёт по vat_pct (по умолч. 22%). */
+   Цена подачи без НДС обязательна; "с НДС" авто-пересчёт по vat_pct (по умолч. 22%, fetch /api/settings/vat_default_pct). */
 const VAT_DEFAULT_PCT = 22;
 
 export function WonModal({ tender }) {
   const { close } = useModal();
-  const vatMul = 1 + VAT_DEFAULT_PCT / 100;
+  const [vatPct, setVatPct] = useState(VAT_DEFAULT_PCT);
+  const vatMul = 1 + vatPct / 100;
   const initNoVat = Number(tender?.submission_price || tender?.tender_price || 0) || '';
-  const initWithVat = initNoVat ? Math.round(initNoVat * vatMul * 100) / 100 : '';
+  const initWithVat = initNoVat ? Math.round(initNoVat * (1 + VAT_DEFAULT_PCT / 100) * 100) / 100 : '';
 
   const [priceNoVat, setPriceNoVat] = useState(String(initNoVat || ''));
   const [priceWithVat, setPriceWithVat] = useState(String(initWithVat || ''));
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState(false);
+  const [vatTouched, setVatTouched] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api('/api/settings/vat_default_pct')
+      .then((res) => {
+        if (cancelled) return;
+        const v = Number(res?.value);
+        if (Number.isFinite(v) && v >= 0 && v <= 100) {
+          setVatPct(v);
+          // Если пользователь ещё не трогал — пересчитать "с НДС" по реальной ставке
+          if (!vatTouched && priceNoVat) {
+            const n = Number(priceNoVat);
+            if (n > 0) setPriceWithVat(String(Math.round(n * (1 + v / 100) * 100) / 100));
+          }
+        }
+      })
+      .catch(() => { /* fallback to VAT_DEFAULT_PCT */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleNoVat = (v) => {
+    setVatTouched(true);
     setPriceNoVat(v);
     const n = Number(v);
     setPriceWithVat(n > 0 ? String(Math.round(n * vatMul * 100) / 100) : '');
   };
   const handleWithVat = (v) => {
+    setVatTouched(true);
     setPriceWithVat(v);
     const n = Number(v);
     setPriceNoVat(n > 0 ? String(Math.round((n / vatMul) * 100) / 100) : '');
@@ -77,7 +101,7 @@ export function WonModal({ tender }) {
             <Field label="Цена подачи без НДС, ₽" required>
               <MoneyInput value={priceNoVat} onChange={handleNoVat} />
             </Field>
-            <Field label={`Цена подачи с НДС ${VAT_DEFAULT_PCT}%, ₽`}>
+            <Field label={`Цена подачи с НДС ${vatPct}%, ₽`}>
               <MoneyInput value={priceWithVat} onChange={handleWithVat} />
             </Field>
           </div>

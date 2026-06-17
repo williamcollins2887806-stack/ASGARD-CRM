@@ -113,9 +113,51 @@ export function TkpFormModal({ editId, prefill }) {
   useEffect(() => {
     if (!editId) return;
     loadTkp(editId).then((data) => {
-      if (data) {
-        setForm({ ...EMPTY_FORM, ...(data.tkp || data), items: data.items || data.tkp?.items || [] });
+      if (!data) return;
+      // Backend GET /api/tkp/:id отдаёт { item: {...} } (tkp.js:178).
+      const t = data.item || data.tkp || data;
+      // payment_terms приходит как JSON-строка из БД (text). Парсим обратно
+      // в поля формы (payment_preset/avans_pct/postpay_days/custom_payment_terms).
+      let payment_preset = EMPTY_FORM.payment_preset;
+      let avans_pct = EMPTY_FORM.avans_pct;
+      let postpay_days = EMPTY_FORM.postpay_days;
+      let custom_payment_terms = '';
+      if (t.payment_terms) {
+        try {
+          const pt = typeof t.payment_terms === 'string' ? JSON.parse(t.payment_terms) : t.payment_terms;
+          if (pt && typeof pt === 'object') {
+            payment_preset = pt.preset || payment_preset;
+            if (pt.avans_pct != null) avans_pct = Number(pt.avans_pct);
+            if (pt.postpay_days != null) postpay_days = Number(pt.postpay_days);
+            custom_payment_terms = pt.custom || '';
+          } else if (typeof pt === 'string') {
+            custom_payment_terms = pt;
+          }
+        } catch { /* нечитаемый формат — оставляем дефолты */ }
       }
+      // items — может быть JSON-строкой, массивом или объектом {items:[]}.
+      let itemsArr = [];
+      if (t.items) {
+        if (Array.isArray(t.items)) itemsArr = t.items;
+        else if (typeof t.items === 'string') {
+          try { const parsed = JSON.parse(t.items); itemsArr = Array.isArray(parsed) ? parsed : (parsed?.items || []); } catch { itemsArr = []; }
+        } else if (typeof t.items === 'object') {
+          itemsArr = t.items.items || [];
+        }
+      }
+      setForm({
+        ...EMPTY_FORM,
+        ...t,
+        // Backend → frontend маппинг (обратное от POST tkp.js:191-195):
+        address: t.customer_address || t.address || '',
+        description: t.work_description || t.description || '',
+        inn: t.customer_inn || t.inn || '',
+        payment_preset,
+        avans_pct,
+        postpay_days,
+        custom_payment_terms,
+        items: itemsArr
+      });
     });
   }, [editId]);
 
