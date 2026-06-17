@@ -22,7 +22,10 @@
 | A. Прод-500 хотфиксы | **0** (✅ закрыт коммитом 7f975f6, 3/3 VERIFIED) | ~~D-134, D-14, D-19~~ |
 | B. Migration-backfill | **0 активных** (7 ✅ коммит b71f786, 3 ✅ коммит e29fec5, 3 → AWAITING-RETARGET) | ~~D-003, D-004, D-20, D-58, D-77, D-79, D-93, D-94, D-135, D-136~~ ✅ + D-78/D-83/D-84 retarget |
 | C. Крупные пересборки | 7 | D-15, D-21, D-24, D-53, D-54, D-55, D-56 |
-| D. Обязательные средние | 8 (D-vol1-6 ✅ 34 closed; D-44 staged; D-45 AWAITING-BACKEND) | D-43, D-44*, D-45*, D-66, D-69, D-72, D-74, D-80, D-106, D-111 |
+| D. Обязательные средние | **2** (40 closed; D-44 staged; D-45 AWAITING-BACKEND) | D-43, D-44*, D-45* |
+| E. v2-extension round-trip | **0** | ВСЕ 9 ALREADY-DONE (D-vol10) |
+| RETARGET | **0** | D-78 NO-OP, D-83 V229, D-84 FOREVER_ISO |
+| D-137 TKP load + D-138 audit | **0** | оба VERIFIED + DEPLOYED |
 | E. Проверки полей (v2-extension) | 9 | D-88, D-89, D-90, D-98, D-99, D-100, D-101, D-105, D-113 |
 | F. Опциональная косметика | 4 | D-112, D-114, D-124, D-131 |
 | KEEP-DECISION (отдельно) | 35 | D-25, D-28, D-29, D-32, D-33, D-37, D-38, D-39, D-40, D-41, D-46, D-47, D-81, D-82, D-85, D-86, D-87, D-92, D-95, D-96, D-97, D-102, D-104, D-107, D-108, D-109, D-110, D-125, D-126, D-127, D-128, D-129, D-130, D-132, D-133 |
