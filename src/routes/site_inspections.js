@@ -235,7 +235,7 @@ module.exports = async function (fastify) {
 
       try {
         await db.query(`
-          INSERT INTO notifications (user_id, title, message, type, entity_id, entity_type, url, created_at)
+          INSERT INTO notifications (user_id, title, message, type, entity_id, entity_type, link, created_at)
           VALUES ($1, $2, $3, 'site_inspection', $4, 'site_inspection', $5, NOW())
         `, [si.author_id, 'Осмотр объекта', msg, si.id, `#/pm-works`]);
       } catch (_) { /* notification is non-critical */ }
@@ -572,7 +572,7 @@ module.exports = async function (fastify) {
       for (const om of officeManagers.rows) {
         try {
           await db.query(`
-            INSERT INTO notifications (user_id, title, message, type, entity_id, entity_type, url, created_at)
+            INSERT INTO notifications (user_id, title, message, type, entity_id, entity_type, link, created_at)
             VALUES ($1, 'Заявка на командировку', $2, 'business_trip', $3, 'business_trip', '#/pm-works', NOW())
           `, [om.id, `Новая заявка на командировку: ${inspectionName}. Требуется: ${needs.join(', ')}`, id]);
         } catch (_) {}
@@ -613,7 +613,7 @@ module.exports = async function (fastify) {
         for (const dir of directors.rows) {
           try {
             await db.query(`
-              INSERT INTO notifications (user_id, title, message, type, entity_id, entity_type, url, created_at)
+              INSERT INTO notifications (user_id, title, message, type, entity_id, entity_type, link, created_at)
               VALUES ($1, 'Заявка на аванс', $2, 'cash_request', $3, 'cash_request', '#/cash', NOW())
             `, [dir.id, `Заявка на аванс ${Number(trip.advance_amount).toLocaleString('ru-RU')} ₽: ${inspectionName}`, cashRequestId]);
           } catch (_) {}

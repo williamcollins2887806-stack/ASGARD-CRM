@@ -26,15 +26,24 @@ async function getLimit(db) {
 
 async function runOnce(db, log) {
   const limit = await getLimit(db);
-  // Cash on hands per active PM (используем тот же расчёт что в /api/cash/my-balance).
+  // Cash on hands per active PM — фильтры идентичны GET /api/cash/my-balance.
   const r = await db.query(`
     SELECT u.id, COALESCE(NULLIF(u.name, ''), u.login) AS name,
-      COALESCE((SELECT SUM(amount) FROM cash_operations WHERE user_id=u.id AND kind='issue'), 0)
-      - COALESCE((SELECT SUM(amount) FROM cash_operations WHERE user_id=u.id AND kind='return'), 0)
-      - COALESCE((SELECT SUM(amount) FROM cash_operations WHERE user_id=u.id AND kind='spend'), 0) AS balance
+      COALESCE((SELECT SUM(cr.amount) FROM cash_requests cr
+                WHERE cr.user_id = u.id
+                  AND cr.status IN ('money_issued','received','reporting')), 0)
+      - COALESCE((SELECT SUM(ce.amount) FROM cash_expenses ce
+                  JOIN cash_requests cr ON cr.id = ce.request_id
+                  WHERE cr.user_id = u.id
+                    AND cr.status IN ('received','reporting')), 0)
+      - COALESCE((SELECT SUM(crt.amount) FROM cash_returns crt
+                  JOIN cash_requests cr ON cr.id = crt.request_id
+                  WHERE cr.user_id = u.id
+                    AND cr.status IN ('received','reporting')
+                    AND crt.confirmed_at IS NOT NULL), 0) AS balance
     FROM users u
     WHERE u.is_active=true AND u.role IN ('PM','HEAD_PM')
-  `).catch(() => ({ rows: [] }));
+  `);
 
   const overLimit = r.rows.filter((x) => Number(x.balance) > limit);
   if (!overLimit.length) {

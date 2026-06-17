@@ -348,6 +348,50 @@ async function directorApprove(db, { entityType, entityId, actor, comment }) {
       await writeApprovalComment(client, entityType, entityId, actor.id, 'approve', comment);
     }
 
+    // D-19: bonus_requests approved → создать work_expenses (category='fot_bonus') на каждый бонус.
+    // Атомарно в той же транзакции — паритет с vanilla public/assets/js/bonus_approval.js:480-497.
+    if (entityType === 'bonus_requests') {
+      let bonuses = record.bonuses;
+      if (typeof bonuses === 'string') {
+        try { bonuses = JSON.parse(bonuses); } catch (_) { bonuses = null; }
+      }
+      if (!Array.isArray(bonuses) || bonuses.length === 0) {
+        let bj = record.bonuses_json;
+        if (typeof bj === 'string') {
+          try { bj = JSON.parse(bj); } catch (_) { bj = null; }
+        }
+        if (Array.isArray(bj)) bonuses = bj;
+      }
+      if (!Array.isArray(bonuses)) bonuses = [];
+      const today = new Date().toISOString().slice(0, 10);
+      const reasonComment = record.comment || record.reason || '';
+      for (const b of bonuses) {
+        const amount = Number(b?.amount);
+        const employeeId = b?.employee_id != null ? parseInt(b.employee_id, 10) : null;
+        if (!amount || amount <= 0 || !employeeId) continue;
+        // Категория 'fot' = канон по V219 chk_work_expenses_category.
+        // Маркер «премия» — bonus_request_id IS NOT NULL + fot_bonus = amount
+        // (отдельная сумма-подколонка существует именно для этого, см. schema work_expenses).
+        await client.query(
+          `INSERT INTO work_expenses
+             (work_id, employee_id, category, amount, fot_bonus, fot_employee_id,
+              date, comment, bonus_request_id, created_by, source,
+              created_at, updated_at)
+           VALUES ($1, $2, 'fot', $3, $3, $2, $4, $5, $6, $7, 'bonus_approval',
+                   NOW(), NOW())`,
+          [
+            record.work_id || null,
+            employeeId,
+            amount,
+            today,
+            `Премия (согласовано): ${reasonComment}`,
+            entityId,
+            actor.id
+          ]
+        );
+      }
+    }
+
     // Обновить director_id и last_director_comment для estimates
     if (entityType === 'estimates') {
       const dirFields = { director_id: actor.id };

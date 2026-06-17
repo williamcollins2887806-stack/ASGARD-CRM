@@ -5,7 +5,7 @@
  * Хранит в settings.kpi_snapshots (jsonb-массив 30 последних дней).
  *
  * Источник памяти L-2 backlog: «missing KPI cron».
- * Метрики собираем по существующим таблицам — works/tenders/cash_operations —
+ * Метрики собираем по существующим таблицам — works/tenders/cash_requests/returns/expenses —
  * без новых эндпоинтов. История нужна для трендов Big Screen / Дашборда директора.
  */
 
@@ -24,11 +24,14 @@ async function takeSnapshot(db, log) {
                      COUNT(*) FILTER (WHERE tender_status='Выиграли') AS won,
                      COUNT(*) FILTER (WHERE tender_status='Проиграли') AS lost
               FROM tenders WHERE deleted_at IS NULL`),
-    db.query(`SELECT COALESCE(SUM(amount) FILTER (WHERE kind='issue'),0) AS issued,
-                     COALESCE(SUM(amount) FILTER (WHERE kind='return'),0) AS returned,
-                     COALESCE(SUM(amount) FILTER (WHERE kind='spend'),0) AS spent
-              FROM cash_operations
-              WHERE created_at >= CURRENT_DATE - INTERVAL '1 day'`).catch(() => ({ rows: [{ issued: 0, returned: 0, spent: 0 }] }))
+    db.query(`SELECT
+                COALESCE((SELECT SUM(amount) FROM cash_requests
+                          WHERE issued_at IS NOT NULL
+                            AND issued_at >= CURRENT_DATE - INTERVAL '1 day'), 0) AS issued,
+                COALESCE((SELECT SUM(amount) FROM cash_returns
+                          WHERE confirmed_at >= CURRENT_DATE - INTERVAL '1 day'), 0) AS returned,
+                COALESCE((SELECT SUM(amount) FROM cash_expenses
+                          WHERE created_at >= CURRENT_DATE - INTERVAL '1 day'), 0) AS spent`)
   ]);
 
   const snap = {
