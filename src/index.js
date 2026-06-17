@@ -530,6 +530,7 @@ fastify.register(require('./routes/permit_applications'), { prefix: '/api/permit
 fastify.register(require('./routes/mailbox'), { prefix: '/api/mailbox' });
 fastify.register(require("./routes/my-mail"), { prefix: "/api/my-mail" });
 fastify.register(require('./routes/inbox_applications_ai'), { prefix: '/api/inbox-applications' });
+fastify.register(require('./routes/personal-kanban'), { prefix: '/api/personal-kanban' });
 fastify.register(require('./routes/integrations'), { prefix: '/api/integrations' });
 fastify.register(require('./routes/sites'), { prefix: '/api/sites' });
 fastify.register(require('./routes/command-map'), { prefix: '/api/command-map' });
@@ -680,6 +681,15 @@ try {
   fastify.addHook('onClose', async () => { cashLimitCron.stop(); });
 } catch (cronErr) {
   fastify.log.warn('[CashLimitCron] Init skipped: ' + cronErr.message);
+}
+
+// ── Personal Kanban Reminders Cron: every minute — пуш напоминаний по картам ──
+try {
+  const personalKanbanRemindersCron = require('./services/personal-kanban-reminders-cron');
+  fastify.addHook('onReady', async () => { personalKanbanRemindersCron.start(fastify.db, fastify.log); });
+  fastify.addHook('onClose', async () => { personalKanbanRemindersCron.stop(); });
+} catch (cronErr) {
+  fastify.log.warn('[PersonalKanbanRemindersCron] Init skipped: ' + cronErr.message);
 }
 
 // ── Tasks Deadlines Cron: каждые 10 мин — 1h/24h warnings + overdue marking ──

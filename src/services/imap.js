@@ -257,7 +257,9 @@ async function saveEmail(account, msg, parsed) {
     ? parsed.references.join(' ')
     : (parsed.references || '');
 
-  // Deduplication check
+  // Deduplication check (H2: UNIQUE partial-индекс на emails.message_id с V224
+  // закрывает гонку; ниже INSERT использует ON CONFLICT DO NOTHING RETURNING id).
+  // Сначала — быстрая выборка для UPDATE flags существующих писем.
   if (messageId) {
     const exists = await db.query('SELECT id FROM emails WHERE message_id = $1', [messageId]);
     if (exists.rows.length > 0) {
@@ -315,6 +317,9 @@ async function saveEmail(account, msg, parsed) {
   const totalAttSize = attachments.reduce((sum, a) => sum + (a.size || 0), 0);
 
   // Insert email
+  // H2: гонка между двумя параллельными IMAP-syncами по одному Message-ID
+  // закрывается partial UNIQUE-индексом uq_emails_message_id (V224) +
+  // ON CONFLICT DO NOTHING RETURNING id. rowCount=0 → дубль уже вставлен.
   const emailRes = await db.query(`
     INSERT INTO emails (
       account_id, direction, message_id, in_reply_to, references_header, thread_id,
@@ -332,7 +337,11 @@ async function saveEmail(account, msg, parsed) {
       $20, $21, $22, $23,
       $24, $25, $26, $27,
       $28, NOW()
-    ) RETURNING id
+    )
+    ON CONFLICT (message_id)
+      WHERE message_id IS NOT NULL AND message_id <> ''
+      DO NOTHING
+    RETURNING id
   `, [
     account.id, messageId, inReplyTo, referencesHeader, threadId,
     fromAddr.address || '', fromAddr.name || '', JSON.stringify(toEmails), JSON.stringify(ccEmails), JSON.stringify(bccEmails), replyToEmail,
@@ -342,6 +351,11 @@ async function saveEmail(account, msg, parsed) {
     msg.uid, account.imap_folder || 'INBOX', flags, rawHeaders,
     parsed.date || new Date()
   ]);
+
+  // Гонка: другой sync успел вставить раньше — выходим спокойно.
+  if (emailRes.rowCount === 0) {
+    return { isNew: false, attachmentCount: 0, dedupedByConflict: true };
+  }
 
   const emailId = emailRes.rows[0].id;
   let attachmentCount = 0;
@@ -433,6 +447,69 @@ async function updateEmailAiClassification(emailId, classification, color, summa
   `, [jsonVal, ...params]);
 }
 
+// ── Forward-email detection (§2.5) ──────────────────────────────────────────
+// Внутренние домены — для определения «отправитель свой сотрудник переслал» (corporate_forward)
+// vs «внешний прямой отправитель» (external_direct).
+const INTERNAL_DOMAINS = ['asgard-crm.ru', 'asgard-service.ru', 'asgard-s.ru', 'асгард.рф'];
+
+function isInternalSender(fromEmail) {
+  const f = (fromEmail || '').toLowerCase();
+  for (const d of INTERNAL_DOMAINS) {
+    if (f.includes(d)) return true;
+  }
+  return false;
+}
+
+/**
+ * Эвристика: письмо — это пересланное?
+ * Проверяем (а) шапки X-Forwarded-For / Resent-From в raw_headers,
+ * (б) типовые маркеры в body: «Forwarded message», «Пересланное сообщение»,
+ *    блок «От:/From:» + «Кому:/To:».
+ */
+function detectForwarded(parsed, bodyText, rawHeaders) {
+  const body = bodyText || '';
+  const headers = rawHeaders || '';
+
+  // Заголовки
+  if (/X-Forwarded-For:|Resent-From:|Resent-Sender:/i.test(headers)) {
+    return true;
+  }
+
+  // Маркеры в теле — typical forwarded blocks
+  const reMarker = /^[ \t>]*(?:-{2,}\s*)?(?:Forwarded message|Пересланное сообщение|Begin forwarded message)/im;
+  if (reMarker.test(body)) return true;
+
+  // Блок «От:/Кому:» (русский) или «From:/To:» (англ.) в теле (forwarded inline)
+  // Должны быть рядом (одна за другой в пределах 8 строк)
+  const reRuPair = /^[ \t>]*От:\s.+[\r\n]+[ \t>]*(?:Дата|Sent|Тема|Subject|Кому)/im;
+  const reEnPair = /^[ \t>]*From:\s.+[\r\n]+[ \t>]*(?:Sent|Date|Subject|To):/im;
+  if (reRuPair.test(body) || reEnPair.test(body)) return true;
+
+  return false;
+}
+
+/**
+ * Вынуть оригинального отправителя из тела forwarded-письма.
+ * Поддерживает форматы:
+ *   От: Иван Иванов <ivan@example.com>
+ *   From: John Doe <john@example.com>
+ *   От: ivan@example.com   (без имени)
+ */
+function extractOriginalSender(bodyText) {
+  const body = bodyText || '';
+  // 1) «От: Имя <email>» / «From: Name <email>»
+  let m = body.match(/^[ \t>]*(?:От|From):\s*(?:"?([^<\n"]+?)"?\s*)?<([^>\s]+@[^>\s]+)>/m);
+  if (m) {
+    return { name: (m[1] || '').trim() || null, email: (m[2] || '').trim().toLowerCase() };
+  }
+  // 2) «От: email» (без угловых скобок)
+  m = body.match(/^[ \t>]*(?:От|From):\s*([^\s<>"]+@[^\s<>"]+)/m);
+  if (m) {
+    return { name: null, email: (m[1] || '').trim().toLowerCase() };
+  }
+  return null;
+}
+
 /**
  * Process a single email with AI analysis.
  * Updates emails table and creates inbox_application.
@@ -448,13 +525,60 @@ async function analyzeOneEmail(email) {
     );
     const attNames = attRes.rows.map(a => a.original_filename || 'file');
 
-    console.log(`[IMAP-AI] #${emailId} step 1: calling analyzeEmail...`);
+    // ─── Forward-detect и определение source_kind ───────────────────────
+    // Подтягиваем raw_headers (для шапок X-Forwarded-For/Resent-From).
+    let rawHeaders = '';
+    try {
+      const rh = await db.query('SELECT raw_headers FROM emails WHERE id = $1', [emailId]);
+      rawHeaders = rh.rows[0]?.raw_headers || '';
+    } catch (_) {}
+
+    const internalSender = isInternalSender(email.from_email);
+    const forwarded = detectForwarded(null, email.body_text, rawHeaders);
+
+    let sourceKind = 'unknown';
+    let needsReview = false;
+    let originalSender = null;
+    let forwardedFromEmail = null;
+    let forwardedByUserId = null;
+    // overrides для analyzeEmail если forwarded — реальный клиент в теле
+    let analyzeFromEmail = email.from_email;
+    let analyzeFromName = email.from_name;
+
+    if (forwarded) {
+      // Это пересланное письмо. Источник — corporate_forward (если переслал свой) или
+      // external_direct (если внешний прислал и сам же его пометил forwarded — редкость).
+      sourceKind = internalSender ? 'corporate_forward' : 'external_direct';
+      if (internalSender) {
+        forwardedFromEmail = (email.from_email || '').toLowerCase();
+        try {
+          const u = await db.query(
+            `SELECT id FROM users WHERE LOWER(email) = $1 AND is_active = TRUE LIMIT 1`,
+            [forwardedFromEmail]);
+          forwardedByUserId = u.rows[0]?.id || null;
+        } catch (_) {}
+      }
+      originalSender = extractOriginalSender(email.body_text);
+      if (originalSender) {
+        analyzeFromEmail = originalSender.email;
+        analyzeFromName = originalSender.name || email.from_name;
+      }
+    } else if (!internalSender) {
+      // Прямое внешнее письмо — нужна ручная проверка по умолчанию
+      sourceKind = 'external_direct';
+      needsReview = true;
+    } else {
+      // Внутренний sender, не forwarded — оставляем 'unknown' (skipEmail может его отсечь)
+      sourceKind = 'unknown';
+    }
+
+    console.log(`[IMAP-AI] #${emailId} step 1: calling analyzeEmail... (source_kind=${sourceKind}, forwarded=${forwarded})`);
     const analysis = await aiAnalyzer.analyzeEmail({
       emailId,
       subject: email.subject,
       bodyText: email.body_text,
-      fromEmail: email.from_email,
-      fromName: email.from_name,
+      fromEmail: analyzeFromEmail,
+      fromName: analyzeFromName,
       attachmentNames: attNames
     });
     console.log(`[IMAP-AI] #${emailId} step 2: analyzeEmail returned classification=${analysis.classification}, color=${analysis.color}`);
@@ -473,31 +597,103 @@ async function analyzeOneEmail(email) {
     const applicationTypes = ['direct_request', 'platform_tender', 'commercial_offer'];
     if (applicationTypes.includes(analysis.classification) && !analysis._skipped) {
       try {
-        await db.query(`
+        const confidence = parseFloat(analysis.confidence) || 0;
+        // §2.5: низкий confidence → needs_review=true
+        const needsReviewFinal = needsReview || confidence < 0.5;
+
+        // source_email/name: для forwarded — оригинальный клиент, иначе — sender как есть.
+        const sourceEmailFinal = originalSender?.email || email.from_email || '';
+        const sourceNameFinal = originalSender?.name || email.from_name || '';
+
+        // H2: UNIQUE partial-индекс uq_inbox_applications_email_id (V224) +
+        // ON CONFLICT DO NOTHING закрывает гонку.
+        const insRes = await db.query(`
           INSERT INTO inbox_applications (
             email_id, source, source_email, source_name, subject, body_preview,
             ai_classification, ai_color, ai_summary, ai_recommendation,
             ai_work_type, ai_estimated_budget, ai_estimated_days,
             ai_keywords, ai_confidence, ai_raw_json, ai_analyzed_at, ai_model,
-            workload_snapshot, attachment_count, status
+            workload_snapshot, attachment_count, status,
+            source_kind, needs_review,
+            forwarded_by_user_id, forwarded_from_email,
+            original_sender_email, original_sender_name
           ) VALUES (
             $1, 'email', $2, $3, $4, $5,
             $6, $7, $8, $9,
             $10, $11, $12,
             $13, $14, $15, NOW(), $16,
-            $17, $18, 'ai_processed'
-          ) ON CONFLICT DO NOTHING
+            $17, $18, 'ai_processed',
+            $19, $20,
+            $21, $22,
+            $23, $24
+          )
+          ON CONFLICT (email_id) WHERE email_id IS NOT NULL DO NOTHING
+          RETURNING id, subject, source_name, source_email
         `, [
           emailId,
-          email.from_email || '', email.from_name || '',
+          sourceEmailFinal, sourceNameFinal,
           email.subject || '(без темы)', (email.body_text || '').slice(0, 500),
           (analysis.classification || '').slice(0, 100), (analysis.color || '').slice(0, 50), (analysis.summary || '').slice(0, 2000), (analysis.recommendation || '').slice(0, 2000),
           (analysis.work_type || '').slice(0, 100), analysis.estimated_budget ? String(analysis.estimated_budget).slice(0, 100) : null, analysis.estimated_days ? String(analysis.estimated_days).slice(0, 100) : null,
-          analysis.keywords || [], parseFloat(analysis.confidence) || 0, JSON.stringify(analysis), analysis._raw?.model || null,
-          JSON.stringify(workload), email.attachment_count || 0
+          analysis.keywords || [], confidence, JSON.stringify(analysis), analysis._raw?.model || null,
+          JSON.stringify(workload), email.attachment_count || 0,
+          sourceKind, needsReviewFinal,
+          forwardedByUserId, forwardedFromEmail,
+          originalSender?.email || null, originalSender?.name || null
         ]);
 
-        console.log(`[IMAP-AI] Created application for email #${emailId}: ${analysis.color} / ${analysis.classification}`);
+        // §2.7: рассылка директорам/HEAD_PM при создании новой заявки.
+        if (insRes.rowCount > 0) {
+          const newAppId = insRes.rows[0].id;
+          try {
+            const { createNotification } = require('./notify');
+            const dirs = await db.query(
+              `SELECT id FROM users
+                WHERE role = ANY($1::text[]) AND is_active = true`,
+              [['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_PM']]);
+            const subjLine = (insRes.rows[0].source_name || sourceEmailFinal || 'отправитель')
+              + ': ' + (insRes.rows[0].subject || '(без темы)').slice(0, 120);
+            for (const dir of dirs.rows) {
+              // H3 (Wave-2 fixer): ловим promise-rejection из async createNotification
+              Promise.resolve(createNotification(db, {
+                user_id: dir.id,
+                title: `Новая заявка №${newAppId}`,
+                message: subjLine,
+                type: 'inbox_application_new',
+                link: `#/inbox-applications?id=${newAppId}`
+              })).catch(err => console.warn(`[IMAP-AI] directors-notify rejection for app #${newAppId}, dir #${dir.id}:`, err.message));
+            }
+          } catch (notifyErr) {
+            console.error(`[IMAP-AI] directors-notify error for app #${newAppId}:`, notifyErr.message);
+          }
+
+          // §2.6 / Wave-2 F1: автоответ в той же ветке (corporate_forward → corporate_received,
+          // external_direct → external_received). unknown/platform — не наша заявка, без ответа.
+          try {
+            const { sendAutoReply } = require('./crm-mailer');
+            let mode = null;
+            if (sourceKind === 'corporate_forward') mode = 'corporate_received';
+            else if (sourceKind === 'external_direct') mode = 'external_received';
+            if (mode) {
+              // Не валит транзакцию — sendAutoReply сам глотает ошибки.
+              sendAutoReply(db, { emailId, applicationId: newAppId, mode })
+                .then(r => {
+                  if (r && r.ok && r.sent) {
+                    console.log(`[IMAP-AI] auto-reply sent for app #${newAppId} (mode=${mode}, in_reply_to=${r.inReplyTo || 'none'})`);
+                  } else if (r && r.ok && r.fallback) {
+                    console.log(`[IMAP-AI] auto-reply fallback (no SMTP) for app #${newAppId} (mode=${mode}, logged in emails table)`);
+                  } else if (r && !r.ok) {
+                    console.warn(`[IMAP-AI] auto-reply skipped for app #${newAppId}: ${r.reason}`);
+                  }
+                })
+                .catch(e => console.warn('[IMAP-AI] auto-reply failed:', e.message));
+            }
+          } catch (autoReplyErr) {
+            console.warn('[IMAP-AI] auto-reply require failed:', autoReplyErr.message);
+          }
+        }
+
+        console.log(`[IMAP-AI] Created application for email #${emailId}: ${analysis.color} / ${analysis.classification} (source_kind=${sourceKind}, needs_review=${needsReviewFinal})`);
 
         // Generate detailed AI report (reads attachment contents: PDF, DOCX, XLSX)
         try {

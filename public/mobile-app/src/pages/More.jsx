@@ -14,7 +14,7 @@ import {
   Users, UserPlus, Plane, ShieldCheck, Stamp, CalendarDays, Table2,
   // Документы
   Inbox, Calendar, HardHat, Warehouse, Package,
-  ShoppingCart, Disc3, GanttChartSquare,
+  ShoppingCart, Disc3, GanttChartSquare, LayoutGrid,
   // Настройки
   Bell, GraduationCap, Mail, Cpu, Plug, Stethoscope, ListChecks,
   // Прочее
@@ -92,10 +92,20 @@ const GROUPS = [
     ],
   },
   {
+    key: 'work',
+    label: 'Работа',
+    color: 'var(--gold)',
+    items: [
+      { path: '/personal-kanban',        icon: LayoutGrid,    label: 'Мой канбан',                section: 'personal_kanban' },
+      { path: '/personal-kanban-config', icon: ListChecks,    label: 'Конфигурация подэтапов',   section: 'personal_kanban' },
+    ],
+  },
+  {
     key: 'docs',
     label: 'Документы и объекты',
     color: 'var(--blue)',
     items: [
+      { path: '/director-inbox', icon: Inbox,            label: 'Корзина заявок',  section: 'inbox' },
       { path: '/correspondence', icon: Inbox,            label: 'Корреспонденция', section: 'works' },
       { path: '/meetings',       icon: Calendar,         label: 'Совещания',       section: 'dashboard' },
       { path: '/works',          icon: HardHat,          label: 'Работы',          section: 'works' },

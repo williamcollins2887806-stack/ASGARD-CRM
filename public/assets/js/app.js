@@ -158,7 +158,9 @@ console.log('[ASGARD] Global period functions loaded');
     "/cash":"Деньги любят счёт. Каждый рубль — на виду.",
     "/cash-admin":"Контроль — залог доверия. Считай и подтверждай.",
     "/tasks":"Дело назначено — доведи до конца.",
-    "/tasks-admin":"Ярл видит все задачи. Порядок в дружине."
+    "/tasks-admin":"Ярл видит все задачи. Порядок в дружине.",
+    "/personal-kanban":"Свои подэтапы — путь к ясности.",
+    "/director-inbox":"Все врата заявок здесь."
   };
 
   const DIRECTOR_ROLES = ["DIRECTOR_COMM","DIRECTOR_GEN","DIRECTOR_DEV"]; // legacy DIRECTOR removed in Stage 25
@@ -242,6 +244,8 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/gantt-works",l:"Гантт: Работы",d:"План и факты",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"ganttworks",p:"gantt",g:"works"},
     {r:"/tasks-admin",l:"Управление задачами",d:"Контроль задач",roles:["ADMIN"],i:"approvals",p:"tasks_admin",g:"works"},
     {r:"/kanban",l:"Канбан-доска",d:"Визуальное управление задачами",roles:ALL_ROLES,i:"approvals",p:"kanban",g:"works"},
+    {r:"/personal-kanban",l:"Мой канбан",d:"Личный канбан с подэтапами",roles:["PM","HEAD_PM","ADMIN",...DIRECTOR_ROLES],i:"approvals",p:"personal_kanban",g:"works"},
+    {r:"/director-inbox",l:"Корзина заявок",d:"Назначение РП на входящие заявки",roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_PM"],i:"alerts",p:"director_inbox",g:"tenders"},
 
     // ── ФИНАНСЫ ──
     {r:"/finances",l:"Финансы",d:"Аналитика и реестр",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"finances",g:"finance"},
@@ -2337,6 +2341,10 @@ AsgardRouter.add("/assembly", ()=>AsgardAssemblyPage.render({layout, title:"Сб
 
     // Фаза 9: AI входящие заявки
     AsgardRouter.add("/inbox-applications", ()=>AsgardInboxApplicationsPage.render({layout, title:"Входящие заявки (AI)"}), {auth:true, roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_TO"]});
+
+    // Волна 4а: Личный канбан + Корзина заявок директора
+    AsgardRouter.add("/personal-kanban", ()=>AsgardPersonalKanbanPage.render({layout, title:"Мой канбан"}), {auth:true, roles:["PM","HEAD_PM","ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"]});
+    AsgardRouter.add("/director-inbox", ()=>AsgardDirectorInboxPage.render({layout, title:"Корзина заявок"}), {auth:true, roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_PM"]});
 
     // ── Phase: TKP, Pass Requests, TMC ──
     AsgardRouter.add("/tkp", ()=>AsgardTkpPage.render({layout, title:"ТКП — Коммерческие предложения"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO",...DIRECTOR_ROLES]});

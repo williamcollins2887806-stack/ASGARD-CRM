@@ -136,6 +136,9 @@ const WorkReport = lazy(() => import('@/pages/WorkReport'));
 const AutoReports = lazy(() => import('@/pages/AutoReports'));
 const PaymentsReport = lazy(() => import('@/pages/PaymentsReport'));
 const SystemPanel = lazy(() => import('@/pages/SystemPanel'));
+// Волна 4б: личный канбан РП + корзина заявок директора
+const PersonalKanban = lazy(() => import('@/pages/PersonalKanban'));
+const DirectorsInbox = lazy(() => import('@/pages/DirectorsInbox'));
 
 function Protected({ title, children, roles }) {
   const { user, ready } = useAuth();
@@ -252,6 +255,9 @@ export default function App() {
               <Route path="/readiness" element={<Protected title="Готовность проектов"><ReadinessPm /></Protected>} />
               <Route path="/readiness-board" element={<Protected title="Сводка готовности по РП"><ReadinessBoard /></Protected>} />
               <Route path="/kanban" element={<Protected title="Канбан-доска задач"><Kanban /></Protected>} />
+              {/* ─── Волна 4б: Личный канбан + Корзина заявок директора ─── */}
+              <Route path="/personal-kanban" element={<Protected title="Мой канбан" roles={['PM','HEAD_PM','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV']}><PersonalKanban /></Protected>} />
+              <Route path="/director-inbox" element={<Protected title="Корзина заявок" roles={['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','HEAD_PM']}><DirectorsInbox /></Protected>} />
               <Route path="/big-screen" element={<ProtectedBare><BigScreen /></ProtectedBare>} />
               <Route path="/engineer-dashboard" element={<Protected title="Кузница Инженера"><EngineerDashboard /></Protected>} />
               <Route path="/pm-analytics" element={<Protected title="Хроники РП"><PmAnalytics /></Protected>} />

@@ -1,11 +1,21 @@
 /**
- * usePushSubscription — управление Web Push подпиской для рабочих (field)
- * Использует field_token, эндпоинт /api/field/push/*
- * iOS 16.4+: работает только когда PWA добавлена на экран «Домой»
+ * usePushSubscription — управление Web Push подпиской.
+ *
+ * Поддерживает два набора эндпоинтов:
+ *  - office  → /api/push/subscribe        + /api/push/unsubscribe        (PM / директор / HEAD_PM …)
+ *  - field   → /api/field/push/subscribe  + /api/field/push/unsubscribe  (полевые)
+ *
+ * Использование:
+ *   const push = usePushSubscription();                          // авто-определение
+ *   const push = usePushSubscription({ kind: 'office' });
+ *   const push = usePushSubscription({ kind: 'field' });
+ *
+ * iOS 16.4+: работает только когда PWA добавлена на экран «Домой».
  */
 import { useState, useEffect, useCallback } from 'react';
 
-const FIELD_TOKEN_KEY = 'field_token';
+const FIELD_TOKEN_KEY  = 'field_token';
+const OFFICE_TOKEN_KEY = 'asgard_token'; // см. src/api/client.js
 
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -16,12 +26,36 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
-async function getFieldToken() {
-  return localStorage.getItem(FIELD_TOKEN_KEY);
+function detectKind() {
+  // Эвристика: если есть field_token — мы в полевой сессии; иначе office.
+  // Параметр kind в опциях имеет приоритет.
+  try {
+    if (localStorage.getItem(FIELD_TOKEN_KEY)) return 'field';
+  } catch { /* localStorage недоступен (SSR/private mode) — office по умолчанию */ }
+  return 'office';
 }
 
-async function fieldFetch(path, options = {}) {
-  const token = await getFieldToken();
+function tokenForKind(kind) {
+  try {
+    return localStorage.getItem(kind === 'field' ? FIELD_TOKEN_KEY : OFFICE_TOKEN_KEY);
+  } catch { return null; }
+}
+
+function endpointsFor(kind) {
+  if (kind === 'field') {
+    return {
+      subscribe:   '/api/field/push/subscribe',
+      unsubscribe: '/api/field/push/unsubscribe',
+    };
+  }
+  return {
+    subscribe:   '/api/push/subscribe',
+    unsubscribe: '/api/push/unsubscribe',
+  };
+}
+
+async function authFetch(path, kind, options = {}) {
+  const token = tokenForKind(kind);
   return fetch(path, {
     ...options,
     headers: {
@@ -32,7 +66,10 @@ async function fieldFetch(path, options = {}) {
   });
 }
 
-export function usePushSubscription() {
+export function usePushSubscription(opts = {}) {
+  const kind = opts.kind || detectKind();
+  const eps  = endpointsFor(kind);
+
   const [permission, setPermission] = useState(() =>
     typeof Notification !== 'undefined' ? Notification.permission : 'default'
   );
@@ -66,7 +103,7 @@ export function usePushSubscription() {
     if (!supported) return { ok: false, reason: 'not_supported' };
     setLoading(true);
     try {
-      // 1. Get VAPID key
+      // 1. Get VAPID key (общий для office/field — отдаёт одинаковый ключ)
       const vapidRes = await fetch('/api/push/vapid-key');
       const { publicKey } = await vapidRes.json();
       if (!publicKey) throw new Error('No VAPID key');
@@ -76,16 +113,15 @@ export function usePushSubscription() {
       setPermission(perm);
       if (perm !== 'granted') return { ok: false, reason: 'denied' };
 
-      // 3. Subscribe
+      // 3. Subscribe (browser → web-push)
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(publicKey),
       });
 
-      // 4. Save on server (field endpoint)
-      const token = await getFieldToken();
-      const res = await fieldFetch('/api/field/push/subscribe', {
+      // 4. Save on server — endpoint зависит от kind
+      const res = await authFetch(eps.subscribe, kind, {
         method: 'POST',
         body: JSON.stringify({
           endpoint: sub.endpoint,
@@ -110,7 +146,7 @@ export function usePushSubscription() {
     } finally {
       setLoading(false);
     }
-  }, [supported, isIOSPWA]);
+  }, [supported, isIOSPWA, kind, eps.subscribe]);
 
   const unsubscribe = useCallback(async () => {
     setLoading(true);
@@ -118,7 +154,7 @@ export function usePushSubscription() {
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
       if (sub) {
-        await fieldFetch('/api/field/push/unsubscribe', {
+        await authFetch(eps.unsubscribe, kind, {
           method: 'POST',
           body: JSON.stringify({ endpoint: sub.endpoint }),
         });
@@ -130,7 +166,7 @@ export function usePushSubscription() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [kind, eps.unsubscribe]);
 
-  return { supported, permission, subscribed, loading, isIOSPWA, subscribe, unsubscribe };
+  return { supported, permission, subscribed, loading, isIOSPWA, kind, subscribe, unsubscribe };
 }

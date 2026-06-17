@@ -569,7 +569,89 @@ module.exports = async function (fastify) {
       }
     }
 
-    return { success: true, tender_id: tenderId };
+    // Wave-5 хук 3: конвертация карты application → tender.
+    // Если есть открытая карта inbox_application с этим id и заявка успешно превращена в тендер —
+    // переводим её на entity_kind='tender', flow_type='tender', main_status='Новый'.
+    // Если карты нет (директор сам accept без assign-pm и тендер ещё не у PM) — НЕ создаём:
+    //   карта появится позже при PUT tender responsible_pm_id (хук 2) или assign-work-pm (хук 1).
+    let convertedCardId = null;
+    if (tenderId) {
+      try {
+        const personalKanban = require('./personal-kanban');
+        const { broadcast } = require('./sse');
+        const pkClient = await db.pool.connect();
+        try {
+          await pkClient.query('BEGIN');
+          const ex = await pkClient.query(
+            `SELECT id, owner_user_id, current_substage_id, current_main_status, version
+               FROM personal_kanban_cards
+              WHERE entity_kind = 'inbox_application' AND entity_id = $1 AND is_closed = FALSE
+              ORDER BY id LIMIT 1
+              FOR UPDATE`,
+            [parseInt(id, 10)]);
+          if (ex.rows[0]) {
+            const card = ex.rows[0];
+            // Защита от дубля: у того же owner уже есть карта на новый тендер?
+            const dup = await pkClient.query(
+              `SELECT id FROM personal_kanban_cards
+                WHERE owner_user_id = $1 AND entity_kind = 'tender' AND entity_id = $2 LIMIT 1`,
+              [card.owner_user_id, tenderId]);
+            if (!dup.rows[0]) {
+              const newSub = await personalKanban.loadFirstActiveSubstage(
+                pkClient, card.owner_user_id, 'tender', 'Новый');
+              await pkClient.query(
+                `UPDATE personal_kanban_cards
+                    SET flow_type = 'tender',
+                        entity_kind = 'tender',
+                        entity_id = $1,
+                        current_main_status = 'Новый',
+                        current_substage_id = $2,
+                        last_moved_at = now(),
+                        version = version + 1,
+                        updated_at = now()
+                  WHERE id = $3`,
+                [tenderId, newSub, card.id]);
+              await pkClient.query(
+                `INSERT INTO personal_kanban_card_history
+                  (card_id, from_substage_id, to_substage_id, from_main_status, to_main_status, moved_by, note, action)
+                 VALUES ($1, $2, $3, $4, 'Новый', $5, $6, 'convert')`,
+                [card.id, card.current_substage_id, newSub, card.current_main_status, user.id,
+                 `auto: accept inbox_application #${id} → tender #${tenderId}`]);
+              await pkClient.query('COMMIT');
+              convertedCardId = card.id;
+              try {
+                broadcast('personal_kanban:card_converted', {
+                  card_id: card.id,
+                  owner_user_id: card.owner_user_id,
+                  flow_type: 'tender',
+                  entity_kind: 'tender',
+                  entity_id: tenderId,
+                  from_entity_kind: 'inbox_application',
+                  from_entity_id: parseInt(id, 10),
+                  main_status: 'Новый',
+                  by_user_id: user.id
+                });
+              } catch (_) {}
+            } else {
+              // У PM-а уже есть карта на этот тендер — оставляем старую inbox-карту открытой,
+              // её закрытие отдельно через H4 (DELETE источника) или ручной move.
+              await pkClient.query('ROLLBACK');
+            }
+          } else {
+            await pkClient.query('ROLLBACK');
+          }
+        } catch (pkErr) {
+          try { await pkClient.query('ROLLBACK'); } catch (_) {}
+          fastify.log.error({ err: pkErr }, '[inbox-app/accept] personal_kanban convert failed');
+        } finally {
+          pkClient.release();
+        }
+      } catch (outerErr) {
+        fastify.log.error({ err: outerErr }, '[inbox-app/accept] personal_kanban hook outer failed');
+      }
+    }
+
+    return { success: true, tender_id: tenderId, kanban_card_id: convertedCardId };
   });
 
   // ═══════════════════════════════════════════════════════════════════
@@ -694,7 +776,35 @@ module.exports = async function (fastify) {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const { id } = request.params;
-    await db.query(`UPDATE inbox_applications SET status = 'archived', updated_at = NOW() WHERE id = $1`, [id]);
+    const appIdInt = parseInt(id, 10);
+    const upd = await db.query(
+      `UPDATE inbox_applications SET status = 'archived', updated_at = NOW() WHERE id = $1 RETURNING id`,
+      [appIdInt]);
+    // Wave-5 H4: архив = эквивалент soft-delete для inbox-flow, закрываем открытые карты.
+    if (upd.rowCount > 0) {
+      try {
+        const personalKanban = require('./personal-kanban');
+        const { broadcast } = require('./sse');
+        const { closed_card_ids, rows } = await personalKanban.closeKanbanCardsForEntity(
+          db, 'inbox_application', appIdInt, request.user.id, 'inbox_application archived');
+        if (Array.isArray(closed_card_ids) && closed_card_ids.length) {
+          for (const card of rows) {
+            try {
+              broadcast('personal_kanban:card_closed', {
+                card_id: card.id,
+                owner_user_id: card.owner_user_id,
+                entity_kind: 'inbox_application',
+                entity_id: appIdInt,
+                reason: 'inbox_application archived',
+                by_user_id: request.user.id
+              });
+            } catch (_) {}
+          }
+        }
+      } catch (pkErr) {
+        request.log.error({ err: pkErr }, '[inbox-app archive] close kanban cards failed');
+      }
+    }
     return { success: true };
   });
 
@@ -705,12 +815,453 @@ module.exports = async function (fastify) {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const { id } = request.params;
+    const appIdInt = parseInt(id, 10);
     // Удаляем логи анализов
-    await db.query('DELETE FROM ai_analysis_log WHERE entity_type = $1 AND entity_id = $2', ['inbox_application', parseInt(id)]);
-    await db.query('DELETE FROM inbox_applications WHERE id = $1', [id]);
+    await db.query('DELETE FROM ai_analysis_log WHERE entity_type = $1 AND entity_id = $2', ['inbox_application', appIdInt]);
+    const del = await db.query('DELETE FROM inbox_applications WHERE id = $1 RETURNING id', [appIdInt]);
+
+    // Wave-5 H4: закрыть orphan-карты канбана (только если реально удалили).
+    if (del.rowCount > 0) {
+      try {
+        const personalKanban = require('./personal-kanban');
+        const { broadcast } = require('./sse');
+        const { closed_card_ids, rows } = await personalKanban.closeKanbanCardsForEntity(
+          db, 'inbox_application', appIdInt, request.user.id, 'inbox_application deleted');
+        if (Array.isArray(closed_card_ids) && closed_card_ids.length) {
+          for (const card of rows) {
+            try {
+              broadcast('personal_kanban:card_closed', {
+                card_id: card.id,
+                owner_user_id: card.owner_user_id,
+                entity_kind: 'inbox_application',
+                entity_id: appIdInt,
+                reason: 'inbox_application deleted',
+                by_user_id: request.user.id
+              });
+            } catch (_) {}
+          }
+        }
+      } catch (pkErr) {
+        request.log.error({ err: pkErr }, '[inbox-app DELETE] close kanban cards failed');
+      }
+    }
     return { success: true };
   });
 
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 12. POST /:id/assign-pm  {pm_user_id, note?}
+  // RBAC: ADMIN / DIRECTOR_* / HEAD_PM (см. §2.2). H3: оптимистичный UPDATE.
+  // Создаёт personal_kanban_cards (flow_type='application',
+  // current_main_status='assigned' — каноник §9.1 для inbox после V223).
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.post('/:id/assign-pm', {
+    preHandler: [fastify.requireRoles(['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_PM'])]
+  }, async (request, reply) => {
+    const { id } = request.params;
+    const appId = parseInt(id, 10);
+    if (!Number.isFinite(appId)) return reply.code(400).send({ error: 'invalid_id' });
+    const body = request.body || {};
+    const pmUserId = parseInt(body.pm_user_id, 10);
+    if (!Number.isFinite(pmUserId)) return reply.code(400).send({ error: 'pm_user_id_required' });
+    const note = body.note ? String(body.note).slice(0, 2000) : null;
+    const actor = request.user;
+
+    // Валидируем PM
+    const pm = await db.query(
+      `SELECT id, name, role, is_active FROM users WHERE id = $1`, [pmUserId]);
+    if (!pm.rows[0]) return reply.code(404).send({ error: 'pm_not_found' });
+    if (!pm.rows[0].is_active) return reply.code(400).send({ error: 'pm_inactive' });
+    if (!['PM', 'HEAD_PM'].includes(pm.rows[0].role)) {
+      return reply.code(400).send({ error: 'pm_invalid_role', message: 'assign только PM/HEAD_PM' });
+    }
+
+    const personalKanban = require('./personal-kanban');
+    const { broadcast } = require('./sse');
+
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // H3: оптимистичный UPDATE — защита от двойного назначения
+      const upd = await client.query(
+        `UPDATE inbox_applications
+            SET assigned_pm_id = $1, assigned_by = $2, assigned_at = NOW(),
+                status = 'assigned', updated_at = NOW()
+          WHERE id = $3 AND assigned_pm_id IS NULL
+          RETURNING id, subject, source_name, source_email, ai_color, ai_classification`,
+        [pmUserId, actor.id, appId]);
+
+      if (upd.rowCount === 0) {
+        // Либо нет, либо уже назначено
+        const cur = await client.query(
+          `SELECT id, assigned_pm_id FROM inbox_applications WHERE id = $1`, [appId]);
+        await client.query('ROLLBACK');
+        if (!cur.rows[0]) return reply.code(404).send({ error: 'application_not_found' });
+        return reply.code(409).send({
+          error: 'already_assigned',
+          assigned_pm_id: cur.rows[0].assigned_pm_id
+        });
+      }
+      const application = upd.rows[0];
+
+      // Первый активный substage PM для (application, 'assigned')
+      const firstSub = await personalKanban.loadFirstActiveSubstage(
+        client, pmUserId, 'application', 'assigned');
+
+      // Создание карты (UNIQUE owner+entity_kind+entity_id → ON CONFLICT DO NOTHING)
+      const cardIns = await client.query(
+        `INSERT INTO personal_kanban_cards
+          (owner_user_id, flow_type, entity_kind, entity_id,
+           current_main_status, current_substage_id)
+         VALUES ($1, 'application', 'inbox_application', $2, 'assigned', $3)
+         ON CONFLICT (owner_user_id, entity_kind, entity_id) DO NOTHING
+         RETURNING id, owner_user_id, current_main_status, current_substage_id`,
+        [pmUserId, appId, firstSub]);
+
+      let cardId;
+      if (cardIns.rowCount > 0) {
+        cardId = cardIns.rows[0].id;
+        await client.query(
+          `INSERT INTO personal_kanban_card_history
+            (card_id, from_substage_id, to_substage_id, from_main_status, to_main_status, moved_by, note, action)
+           VALUES ($1, NULL, $2, NULL, 'assigned', $3, $4, 'create')`,
+          [cardId, firstSub, actor.id, note || `назначено PM пользователем ${actor.id}`]);
+      } else {
+        // Уже есть карта (повторное назначение → ровно тому же PM невозможно из-за UPDATE-гарда,
+        // но карта могла быть создана отдельно).
+        const ex = await client.query(
+          `SELECT id FROM personal_kanban_cards
+            WHERE owner_user_id = $1 AND entity_kind = 'inbox_application' AND entity_id = $2`,
+          [pmUserId, appId]);
+        cardId = ex.rows[0]?.id || null;
+      }
+
+      await client.query('COMMIT');
+
+      // Уведомление PM (H3: cатчим promise-rejection из async createNotification)
+      try {
+        Promise.resolve(createNotification(db, {
+          user_id: pmUserId,
+          title: `Вам назначена заявка №${appId}`,
+          message: application.subject ? String(application.subject).slice(0, 200) : '(без темы)',
+          type: 'inbox_application_assigned',
+          link: cardId ? `#/personal-kanban?card=${cardId}` : `#/inbox-applications?id=${appId}`
+        })).catch(err => request.log.warn({ err }, '[inbox-app/assign-pm] notify failed'));
+      } catch (e) {
+        request.log.warn({ err: e }, '[inbox-app/assign-pm] notify sync-throw');
+      }
+
+      // SSE
+      try {
+        broadcast('inbox_applications:assigned', {
+          application_id: appId, pm_user_id: pmUserId,
+          assigned_by: actor.id, card_id: cardId
+        });
+      } catch (_) {}
+
+      return { success: true, application_id: appId, card_id: cardId, assigned_pm_id: pmUserId };
+    } catch (e) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+      request.log.error({ err: e }, '[inbox-app/assign-pm] failed');
+      return reply.code(500).send({ error: 'assign_failed', message: e.message });
+    } finally {
+      client.release();
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 13. POST /direct — прямая заявка (multipart)
+  // PM: assign_pm_user_id default = req.user.id
+  // DIRECTOR_*/ADMIN/HEAD_PM: assign_pm_user_id обязателен
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.post('/direct', {
+    preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])]
+  }, async (request, reply) => {
+    const actor = request.user;
+    // multipart парсинг
+    let title = '';
+    let bodyText = '';
+    let customerName = '';
+    let customerContact = '';
+    let assignPmUserId = null;
+    const files = [];
+
+    // H7 (Wave-2 fixer): жёсткий лимит multipart-частей.
+    const MAX_FILES = 20;
+    const MAX_FILE_BYTES = 50 * 1024 * 1024;
+
+    const isMultipart = (request.headers['content-type'] || '').includes('multipart/form-data');
+    if (isMultipart) {
+      try {
+        // limits: files=20, fileSize=50MB — fastify-multipart прокидывает в busboy.
+        const parts = request.parts({ limits: { files: MAX_FILES, fileSize: MAX_FILE_BYTES } });
+        let tooManyFiles = false;
+        let oversize = false;
+        for await (const part of parts) {
+          if (part.file) {
+            // Доп. явный счётчик — если limits не сработал (старые версии библиотеки).
+            if (files.length >= MAX_FILES) {
+              tooManyFiles = true;
+              try { part.file.resume(); } catch (_) {}
+              continue;
+            }
+            const buf = await part.toBuffer();
+            // truncated => превышение fileSize в busboy
+            if (part.file && part.file.truncated) {
+              oversize = true;
+              continue;
+            }
+            if (buf.length > MAX_FILE_BYTES) {
+              oversize = true;
+              continue;
+            }
+            files.push({
+              filename: part.filename,
+              mimetype: part.mimetype,
+              buffer: buf
+            });
+          } else if (part.fieldname === 'title') title = String(part.value || '').trim();
+          else if (part.fieldname === 'body') bodyText = String(part.value || '').trim();
+          else if (part.fieldname === 'customer_name') customerName = String(part.value || '').trim();
+          else if (part.fieldname === 'customer_contact') customerContact = String(part.value || '').trim();
+          else if (part.fieldname === 'assign_pm_user_id') {
+            const n = parseInt(part.value, 10);
+            if (Number.isFinite(n)) assignPmUserId = n;
+          }
+        }
+        if (tooManyFiles) {
+          return reply.code(400).send({ error: 'too_many_files', max: MAX_FILES });
+        }
+        if (oversize) {
+          return reply.code(400).send({ error: 'file_too_large', max_bytes: MAX_FILE_BYTES });
+        }
+      } catch (e) {
+        // fastify-multipart кидает FST_REQ_FILE_TOO_LARGE / FST_FILES_LIMIT — мапим в 400.
+        const code = e && (e.code || '');
+        if (code === 'FST_FILES_LIMIT') {
+          return reply.code(400).send({ error: 'too_many_files', max: MAX_FILES });
+        }
+        if (code === 'FST_REQ_FILE_TOO_LARGE') {
+          return reply.code(400).send({ error: 'file_too_large', max_bytes: MAX_FILE_BYTES });
+        }
+        request.log.error({ err: e }, '[inbox-app/direct] multipart parse error');
+        return reply.code(400).send({ error: 'multipart_parse_error', message: e.message });
+      }
+    } else {
+      const b = request.body || {};
+      title = String(b.title || '').trim();
+      bodyText = String(b.body || '').trim();
+      customerName = String(b.customer_name || '').trim();
+      customerContact = String(b.customer_contact || '').trim();
+      if (b.assign_pm_user_id != null) {
+        const n = parseInt(b.assign_pm_user_id, 10);
+        if (Number.isFinite(n)) assignPmUserId = n;
+      }
+    }
+
+    if (!title || title.length < 2 || title.length > 500) {
+      return reply.code(400).send({ error: 'invalid_title' });
+    }
+    if (!bodyText) {
+      return reply.code(400).send({ error: 'invalid_body' });
+    }
+
+    // Определяем PM
+    if (actor.role === 'PM') {
+      if (assignPmUserId === null) assignPmUserId = actor.id;
+      // PM может назначить только себе
+      if (assignPmUserId !== actor.id) {
+        return reply.code(403).send({ error: 'pm_can_assign_only_self' });
+      }
+    } else {
+      // DIRECTOR / HEAD_PM / ADMIN — обязателен assign_pm_user_id
+      if (assignPmUserId === null) {
+        return reply.code(400).send({ error: 'assign_pm_user_id_required' });
+      }
+    }
+
+    // Валидируем PM
+    const pm = await db.query(
+      `SELECT id, role, is_active FROM users WHERE id = $1`, [assignPmUserId]);
+    if (!pm.rows[0]) return reply.code(404).send({ error: 'pm_not_found' });
+    if (!pm.rows[0].is_active) return reply.code(400).send({ error: 'pm_inactive' });
+    if (!['PM', 'HEAD_PM'].includes(pm.rows[0].role)) {
+      return reply.code(400).send({ error: 'pm_invalid_role' });
+    }
+
+    const personalKanban = require('./personal-kanban');
+    const { broadcast } = require('./sse');
+
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // INSERT inbox_applications (source_kind='manual')
+      const insApp = await client.query(
+        `INSERT INTO inbox_applications
+          (source, source_email, source_name, subject, body_preview,
+           attachment_count, status, source_kind,
+           assigned_pm_id, assigned_by, assigned_at,
+           created_by, needs_review)
+         VALUES ('direct', $1, $2, $3, $4, $5, 'assigned', 'manual',
+                 $6, $7, NOW(), $8, FALSE)
+         RETURNING id, subject`,
+        [
+          customerContact || null,
+          customerName || null,
+          title.slice(0, 500),
+          bodyText.slice(0, 4000),
+          files.length,
+          assignPmUserId,
+          actor.id,
+          actor.id
+        ]);
+      const appId = insApp.rows[0].id;
+
+      // H6 (Wave-2 fixer): файлы НЕ пишем на диск внутри транзакции.
+      // Внутри tx — только INSERT в documents (логические записи).
+      // После COMMIT — fs.writeFile. Если writeFile упадёт — компенсация:
+      //   UPDATE inbox_applications.attachment_count = 0 + DELETE documents.
+      const ALLOWED_EXTENSIONS = [
+        '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+        '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg',
+        '.zip', '.rar', '.7z', '.tar', '.gz',
+        '.txt', '.csv', '.rtf', '.odt', '.ods'
+      ];
+      const fsLocal = require('fs').promises;
+      const pathLocal = require('path');
+      const uploadBaseDir = pathLocal.resolve(uploadDir);
+
+      // План на запись после COMMIT
+      const pendingWrites = []; // [{filepath, buffer, docId}]
+      const docIdsCreated = []; // для compensation на failure
+      let acceptedFiles = 0;
+      for (const f of files) {
+        const ext = (pathLocal.extname(f.filename || '') || '.bin').toLowerCase();
+        if (!ALLOWED_EXTENSIONS.includes(ext)) {
+          continue; // пропускаем недопустимые типы
+        }
+        const safeName = `${uuidv4()}${ext}`;
+        const filepath = pathLocal.join(uploadBaseDir, safeName);
+        try {
+          const docIns = await client.query(
+            `INSERT INTO documents
+              (filename, original_name, mime_type, size, type, uploaded_by, download_url, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+             RETURNING id`,
+            [safeName, f.filename || safeName, f.mimetype || 'application/octet-stream',
+             f.buffer.length, 'Прямая заявка', actor.id,
+             `/api/files/download/${safeName}`]);
+          docIdsCreated.push(docIns.rows[0].id);
+          pendingWrites.push({ filepath, buffer: f.buffer, docId: docIns.rows[0].id, safeName });
+          acceptedFiles++;
+        } catch (dbErr) {
+          request.log.warn({ err: dbErr }, '[inbox-app/direct] document INSERT failed');
+        }
+      }
+
+      // Корректируем attachment_count под реально принятые (вне зависимости от len(files))
+      if (acceptedFiles !== files.length) {
+        await client.query(
+          `UPDATE inbox_applications SET attachment_count = $1 WHERE id = $2`,
+          [acceptedFiles, appId]);
+      }
+
+      // Карта канбана для PM
+      const firstSub = await personalKanban.loadFirstActiveSubstage(
+        client, assignPmUserId, 'application', 'assigned');
+
+      let cardId = null;
+      const cardIns = await client.query(
+        `INSERT INTO personal_kanban_cards
+          (owner_user_id, flow_type, entity_kind, entity_id,
+           current_main_status, current_substage_id)
+         VALUES ($1, 'application', 'inbox_application', $2, 'assigned', $3)
+         ON CONFLICT (owner_user_id, entity_kind, entity_id) DO NOTHING
+         RETURNING id`,
+        [assignPmUserId, appId, firstSub]);
+      if (cardIns.rowCount > 0) {
+        cardId = cardIns.rows[0].id;
+        await client.query(
+          `INSERT INTO personal_kanban_card_history
+            (card_id, from_substage_id, to_substage_id, from_main_status, to_main_status, moved_by, note, action)
+           VALUES ($1, NULL, $2, NULL, 'assigned', $3, $4, 'create')`,
+          [cardId, firstSub, actor.id, 'прямая заявка']);
+      }
+
+      await client.query('COMMIT');
+
+      // H6: запись файлов на диск ПОСЛЕ COMMIT. Failure → компенсация (DELETE documents).
+      let filesSaved = 0;
+      let writeFailures = 0;
+      if (pendingWrites.length > 0) {
+        try {
+          await fsLocal.mkdir(uploadBaseDir, { recursive: true });
+        } catch (_) {}
+        for (const w of pendingWrites) {
+          try {
+            await fsLocal.writeFile(w.filepath, w.buffer);
+            filesSaved++;
+          } catch (writeErr) {
+            writeFailures++;
+            request.log.warn({ err: writeErr, doc_id: w.docId },
+              '[inbox-app/direct] writeFile failed, will delete orphan document row');
+            // Компенсация: удаляем DB-запись, чтобы не было «есть документ, но нет файла»
+            try {
+              await db.query('DELETE FROM documents WHERE id = $1', [w.docId]);
+            } catch (cleanErr) {
+              request.log.warn({ err: cleanErr, doc_id: w.docId },
+                '[inbox-app/direct] compensation DELETE failed');
+            }
+          }
+        }
+        // Если ни один файл не записан / часть не записана — синхронизируем attachment_count.
+        if (writeFailures > 0) {
+          try {
+            await db.query(
+              `UPDATE inbox_applications SET attachment_count = $1 WHERE id = $2`,
+              [filesSaved, appId]);
+          } catch (_) {}
+        }
+      }
+
+      // Уведомление PM (H3: ловим promise-rejection из async createNotification)
+      try {
+        Promise.resolve(createNotification(db, {
+          user_id: assignPmUserId,
+          title: `Новая прямая заявка №${appId}`,
+          message: title.slice(0, 200),
+          type: 'inbox_application_direct',
+          link: cardId ? `#/personal-kanban?card=${cardId}` : `#/inbox-applications?id=${appId}`
+        })).catch(err => request.log.warn({ err }, '[inbox-app/direct] notify failed'));
+      } catch (e) {
+        request.log.warn({ err: e }, '[inbox-app/direct] notify sync-throw');
+      }
+
+      try {
+        broadcast('inbox_applications:direct_created', {
+          application_id: appId, pm_user_id: assignPmUserId,
+          by_user_id: actor.id, card_id: cardId
+        });
+      } catch (_) {}
+
+      return {
+        success: true,
+        application_id: appId,
+        card_id: cardId,
+        files_saved: filesSaved,
+        files_accepted: acceptedFiles,
+        files_received: files.length
+      };
+    } catch (e) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+      request.log.error({ err: e }, '[inbox-app/direct] failed');
+      return reply.code(500).send({ error: 'direct_create_failed', message: e.message });
+    } finally {
+      client.release();
+    }
+  });
 
   // POST /:id/calc-cost
   fastify.post('/:id/calc-cost', {

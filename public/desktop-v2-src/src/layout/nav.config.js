@@ -42,6 +42,7 @@ export const NAV_ITEMS = [
   { r: '/tenders',      l: 'Сага Тендеров',       d: 'Реестр тендеров',       i: '📋', g: 'tenders', roles: ['ADMIN','TO','HEAD_TO', ...DIRECTOR_ROLES] },
   { r: '/customers',    l: 'Карта Контрагентов',  d: 'Справочник организаций',i: '🏢', g: 'tenders', roles: ['ADMIN','TO','HEAD_TO','PM','HEAD_PM','OFFICE_MANAGER', ...DIRECTOR_ROLES] },
   { r: '/inbox-applications', l: 'Входящие заявки', d: 'AI-обработка писем',  i: '📥', g: 'tenders', roles: ['ADMIN','HEAD_TO', ...DIRECTOR_ROLES] },
+  { r: '/director-inbox', l: 'Корзина заявок',   d: 'Назначение РП на заявки', i: '📭', g: 'tenders', roles: ['ADMIN', ...DIRECTOR_ROLES, 'HEAD_PM'], ready: true },
 
   // ── РАБОТЫ ──
   { r: '/pm-calcs',     l: 'Просчёты (inbox)',    d: 'Входящие от ТО',        i: '🧮', g: 'works', roles: ['ADMIN','PM','HEAD_PM', ...DIRECTOR_ROLES] },
@@ -57,6 +58,7 @@ export const NAV_ITEMS = [
   { r: '/gantt-works',  l: 'Гантт: Работы',       d: 'План и факты',          i: '📊', g: 'works', roles: ['ADMIN','PM','HEAD_PM', ...DIRECTOR_ROLES] },
   { r: '/tasks-admin',  l: 'Управление задачами', d: 'Контроль задач',        i: '✓', g: 'works', roles: ['ADMIN'] },
   { r: '/kanban',       l: 'Канбан-доска',        d: 'Управление задачами',   i: '◫', g: 'works', roles: ALL_ROLES },
+  { r: '/personal-kanban', l: 'Мой канбан',         d: 'Личный канбан с подэтапами', i: '◫', g: 'works', roles: ['PM','HEAD_PM','ADMIN', ...DIRECTOR_ROLES], ready: true },
 
   // ── ФИНАНСЫ ──
   { r: '/finances',     l: 'Финансы',             d: 'Аналитика и реестр',    i: '💰', g: 'finance', roles: ['ADMIN','BUH', ...DIRECTOR_ROLES] },

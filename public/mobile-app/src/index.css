@@ -29,6 +29,9 @@
   --red-soft: #ff453a;
   --green: #30d158;
   --green-dim: #2e7d32;
+  --orange: #ff9f0a;
+  --cyan: #5ac8fa;
+  --purple: #7B68EE;
 
   /* Gradients */
   --hero-gradient: linear-gradient(135deg, #1a4a8a 0%, #3a1535 50%, #c62828 100%);
@@ -108,6 +111,9 @@
   --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
   --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
   --shadow-gold: 0 0 20px rgba(200, 168, 78, 0.1);
+  --orange: #ff8a00;
+  --cyan: #00a7e6;
+  --purple: #6655d9;
 
   /* shadcn light overrides */
   --background: #F2F2F7;

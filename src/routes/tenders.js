@@ -715,6 +715,144 @@ async function routes(fastify, options) {
       });
     }
 
+    // Wave-5 хук 2: смена responsible_pm_id → переезд (или создание) карты flow_type='tender'.
+    // Делаем ПОСЛЕ COMMIT-а основного UPDATE: канбан-карта — производный артефакт, не блокирует тендер.
+    // Сценарии:
+    //   а) карта была у старого owner — UPDATE owner+transferred_*+substage(NULL→первый активный у нового PM).
+    //   б) карты не было — INSERT новой (как в assign-work-pm), но flow_type='tender'.
+    //   в) у нового PM уже есть карта на этот tender — ON CONFLICT DO NOTHING, dup защита.
+    if (
+      data.responsible_pm_id !== undefined &&
+      data.responsible_pm_id !== null &&
+      data.responsible_pm_id !== oldTender.responsible_pm_id
+    ) {
+      try {
+        const personalKanban = require('./personal-kanban');
+        const newPmId = Number(updated.responsible_pm_id);
+        const oldPmId = oldTender.responsible_pm_id ? Number(oldTender.responsible_pm_id) : null;
+        const pkClient = await db.pool.connect();
+        try {
+          await pkClient.query('BEGIN');
+          // Берём актуальный canonical main_status для tender — из tenders.tender_status, либо 'Новый'.
+          // (Канонический список из personal-kanban.js включает все TENDER_TRANSITIONS keys.)
+          const mainStatus = updated.tender_status && updated.tender_status !== 'Черновик'
+            ? updated.tender_status
+            : 'Новый';
+          const safeMain = personalKanban.isValidMainStatus('tender', mainStatus) ? mainStatus : 'Новый';
+
+          // Существующая открытая карта на этот тендер (у любого owner)
+          const exCard = await pkClient.query(
+            `SELECT id, owner_user_id, current_substage_id, current_main_status, version
+               FROM personal_kanban_cards
+              WHERE entity_kind = 'tender' AND entity_id = $1 AND is_closed = FALSE
+              ORDER BY id LIMIT 1
+              FOR UPDATE`,
+            [updated.id]);
+
+          if (exCard.rows[0]) {
+            const card = exCard.rows[0];
+            if (card.owner_user_id !== newPmId) {
+              // Дубль у нового PM (например, ручное создание)? Если есть — пропускаем перенос.
+              const dup = await pkClient.query(
+                `SELECT id FROM personal_kanban_cards
+                  WHERE owner_user_id = $1 AND entity_kind = 'tender' AND entity_id = $2 AND id <> $3 LIMIT 1`,
+                [newPmId, updated.id, card.id]);
+              if (!dup.rows[0]) {
+                // Новый substage у нового owner
+                const newSub = await personalKanban.loadFirstActiveSubstage(
+                  pkClient, newPmId, 'tender', safeMain);
+                // Подпись предыдущего substage (для метки transferred_prev_substage_label)
+                let prevLabel = null;
+                if (card.current_substage_id) {
+                  const ps = await pkClient.query(
+                    `SELECT title FROM kanban_substages WHERE id = $1`, [card.current_substage_id]);
+                  prevLabel = ps.rows[0]?.title || null;
+                }
+                await pkClient.query(
+                  `UPDATE personal_kanban_cards
+                      SET owner_user_id = $1,
+                          current_substage_id = $2,
+                          current_main_status = $3,
+                          transferred_from_user_id = $4,
+                          transferred_prev_substage_label = $5,
+                          transferred_at = now(),
+                          last_moved_at = now(),
+                          version = version + 1,
+                          updated_at = now()
+                    WHERE id = $6`,
+                  [newPmId, newSub, safeMain, card.owner_user_id, prevLabel, card.id]);
+                await pkClient.query(
+                  `INSERT INTO personal_kanban_card_history
+                    (card_id, from_substage_id, to_substage_id, from_main_status, to_main_status, moved_by, note, action)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, 'transfer')`,
+                  [card.id, card.current_substage_id, newSub, card.current_main_status, safeMain, request.user.id,
+                   `auto: смена ответственного через PUT tender (${oldPmId || 'NULL'} → ${newPmId})`]);
+                await pkClient.query('COMMIT');
+                try {
+                  broadcast('personal_kanban:card_transferred', {
+                    card_id: card.id,
+                    from_user_id: card.owner_user_id,
+                    to_user_id: newPmId,
+                    by_user_id: request.user.id,
+                    flow_type: 'tender',
+                    entity_kind: 'tender',
+                    entity_id: updated.id
+                  });
+                } catch (_) {}
+              } else {
+                await pkClient.query('ROLLBACK');
+              }
+            } else {
+              // owner совпадает — ничего не делаем (no-op).
+              await pkClient.query('ROLLBACK');
+            }
+          } else {
+            // Карты не было — создаём новую у нового PM.
+            const firstSub = await personalKanban.loadFirstActiveSubstage(
+              pkClient, newPmId, 'tender', safeMain);
+            const ins = await pkClient.query(
+              `INSERT INTO personal_kanban_cards
+                (owner_user_id, flow_type, entity_kind, entity_id,
+                 current_main_status, current_substage_id, last_moved_at, version)
+               VALUES ($1, 'tender', 'tender', $2, $3, $4, now(), 1)
+               ON CONFLICT (owner_user_id, entity_kind, entity_id) DO NOTHING
+               RETURNING id`,
+              [newPmId, updated.id, safeMain, firstSub]);
+            if (ins.rowCount > 0) {
+              const newCardId = ins.rows[0].id;
+              await pkClient.query(
+                `INSERT INTO personal_kanban_card_history
+                  (card_id, from_substage_id, to_substage_id, from_main_status, to_main_status, moved_by, note, action)
+                 VALUES ($1, NULL, $2, NULL, $3, $4, $5, 'create')`,
+                [newCardId, firstSub, safeMain, request.user.id, `auto: PUT tender responsible_pm_id (${oldPmId || 'NULL'} → ${newPmId})`]);
+              await pkClient.query('COMMIT');
+              try {
+                broadcast('personal_kanban:card_created', {
+                  card_id: newCardId,
+                  owner_user_id: newPmId,
+                  flow_type: 'tender',
+                  entity_kind: 'tender',
+                  entity_id: updated.id,
+                  main_status: safeMain,
+                  by_user_id: request.user.id
+                });
+              } catch (_) {}
+            } else {
+              await pkClient.query('ROLLBACK');
+            }
+          }
+        } catch (pkErr) {
+          try { await pkClient.query('ROLLBACK'); } catch (_) {}
+          request.log.error({ err: pkErr }, '[tender PUT] personal_kanban hook failed');
+        } finally {
+          pkClient.release();
+        }
+      } catch (outerErr) {
+        // Любая ошибка в хуке — не валит ответ клиенту
+        request.log.error({ err: outerErr }, '[tender PUT] personal_kanban hook outer failed');
+      }
+    }
+
     return { tender: updated };
   });
 
@@ -740,6 +878,29 @@ async function routes(fastify, options) {
 
     if (!result.rows[0]) {
       return reply.code(404).send({ error: 'Тендер не найден' });
+    }
+
+    // Wave-5 H4: закрыть orphan-карты канбана этого тендера.
+    try {
+      const personalKanban = require('./personal-kanban');
+      const { closed_card_ids, rows } = await personalKanban.closeKanbanCardsForEntity(
+        db, 'tender', parseInt(id, 10), request.user.id, 'tender deleted');
+      if (Array.isArray(closed_card_ids) && closed_card_ids.length) {
+        for (const card of rows) {
+          try {
+            broadcast('personal_kanban:card_closed', {
+              card_id: card.id,
+              owner_user_id: card.owner_user_id,
+              entity_kind: 'tender',
+              entity_id: parseInt(id, 10),
+              reason: 'tender deleted',
+              by_user_id: request.user.id
+            });
+          } catch (_) {}
+        }
+      }
+    } catch (pkErr) {
+      request.log.error({ err: pkErr }, '[tender DELETE] close kanban cards failed');
     }
 
     return { message: 'Тендер удалён' };
@@ -1727,6 +1888,9 @@ async function routes(fastify, options) {
     // Атомарное создание под advisory-локом на выделенном соединении — иначе в READ COMMITTED
     // два параллельных запроса не видят незакоммиченную строку друг друга и создают дубль.
     let work;
+    let kanbanCardId = null; // Wave-5 hook 1: id созданной/конвертированной карты work
+    let kanbanAction = null; // Wave-5 round-1 F-1: 'create' | 'convert' — что произошло с картой
+    let convertFromEntityId = null; // Wave-5 round-1 F-2: исходный tender.id для broadcast'а card_converted
     const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
@@ -1746,8 +1910,100 @@ async function routes(fastify, options) {
       `, [id, pm_id, tender.customer_name, tender.tender_title,
           tender.work_start_plan || null, tender.work_end_plan || null,
           contractValue, costPlan, work_comment || null, siteId]);
-      await client.query('COMMIT');
       work = insRows[0];
+
+      // Wave-5 хук 1 (round-1 F-1: convert tender→work):
+      // §6 строка 583 — при выигрыше тендера + assign-work-pm
+      // существующая tender-карта PM должна КОНВЕРТИРОВАТЬСЯ в work-карту (та же запись,
+      // entity_kind меняется с 'tender' на 'work'), а не создаваться второй картой.
+      // Сначала ищем открытую tender-карту PM (с FOR UPDATE на той же tx).
+      // INSERT/UPDATE внутри той же транзакции — при ROLLBACK выше карта тоже откатится.
+      // §2.5/§9.1: canonical work main_status = 'Подготовка'.
+      try {
+        const personalKanban = require('./personal-kanban');
+        const firstSub = await personalKanban.loadFirstActiveSubstage(
+          client, pm_id, 'work', 'Подготовка');
+
+        // F-1: ищем уже существующую открытую tender-карту PM на этот тендер.
+        const existingTenderCard = await client.query(
+          `SELECT id, current_main_status, current_substage_id, version
+             FROM personal_kanban_cards
+            WHERE owner_user_id = $1
+              AND entity_kind = 'tender'
+              AND entity_id = $2
+              AND is_closed = FALSE
+            FOR UPDATE`,
+          [pm_id, parseInt(id, 10)]);
+
+        if (existingTenderCard.rows[0]) {
+          // ── CONVERT PATH ─────────────────────────────────────────────────
+          const pkc = existingTenderCard.rows[0];
+          const upd = await client.query(
+            `UPDATE personal_kanban_cards
+                SET entity_kind = 'work',
+                    entity_id = $1,
+                    flow_type = 'work',
+                    current_main_status = 'Подготовка',
+                    current_substage_id = $2,
+                    last_moved_at = now(),
+                    version = version + 1,
+                    updated_at = now()
+              WHERE id = $3 AND version = $4
+              RETURNING id`,
+            [work.id, firstSub, pkc.id, pkc.version]);
+          if (upd.rowCount === 0) {
+            // Optimistic lock не сошёлся (никто не должен был трогать карту под FOR UPDATE,
+            // но на всякий случай) — это аномалия, throw rollback'нёт всю транзакцию,
+            // и работа не будет создана с битой картой.
+            throw new Error('personal_kanban_cards optimistic lock failed during convert');
+          }
+          kanbanCardId = pkc.id;
+          kanbanAction = 'convert';
+          convertFromEntityId = parseInt(id, 10);
+          await client.query(
+            `INSERT INTO personal_kanban_card_history
+              (card_id, from_substage_id, to_substage_id, from_main_status, to_main_status, moved_by, note, action)
+             VALUES ($1, $2, $3, $4, 'Подготовка', $5, $6, 'convert')`,
+            [pkc.id, pkc.current_substage_id, firstSub, pkc.current_main_status, user.id,
+             `auto: assign-work-pm tender ${id} → work ${work.id}`]);
+        } else {
+          // ── CREATE PATH (как было) ──────────────────────────────────────
+          const cardIns = await client.query(
+            `INSERT INTO personal_kanban_cards
+              (owner_user_id, flow_type, entity_kind, entity_id,
+               current_main_status, current_substage_id, last_moved_at, version)
+             VALUES ($1, 'work', 'work', $2, 'Подготовка', $3, now(), 1)
+             ON CONFLICT (owner_user_id, entity_kind, entity_id) DO NOTHING
+             RETURNING id`,
+            [pm_id, work.id, firstSub]);
+          if (cardIns.rowCount > 0) {
+            kanbanCardId = cardIns.rows[0].id;
+            kanbanAction = 'create';
+            await client.query(
+              `INSERT INTO personal_kanban_card_history
+                (card_id, from_substage_id, to_substage_id, from_main_status, to_main_status, moved_by, note, action)
+               VALUES ($1, NULL, $2, NULL, 'Подготовка', $3, $4, 'create')`,
+              [kanbanCardId, firstSub, user.id, `auto: assign-work-pm tender ${id} → work ${work.id}`]);
+          } else {
+            // Карта уже была work-картой (idempotent retry или ручное создание ранее).
+            const ex = await client.query(
+              `SELECT id FROM personal_kanban_cards
+                WHERE owner_user_id = $1 AND entity_kind = 'work' AND entity_id = $2`,
+              [pm_id, work.id]);
+            kanbanCardId = ex.rows[0]?.id || null;
+            // kanbanAction остаётся null — broadcast'а не будет (карта была раньше).
+          }
+        }
+      } catch (pkErr) {
+        // Не валим основную транзакцию из-за личного канбана — карта восстанавливаема вручную.
+        // Логируем, но коммитим работу. Если хотим строгий режим — заменить на throw.
+        fastify.log.error({ err: pkErr }, '[tender->work] personal_kanban card create/convert failed');
+        kanbanCardId = null;
+        kanbanAction = null;
+        convertFromEntityId = null;
+      }
+
+      await client.query('COMMIT');
     } catch (txErr) {
       try { await client.query('ROLLBACK'); } catch (_) {}
       fastify.log.error('[tender->work] tx error:', txErr);
@@ -1774,16 +2030,50 @@ async function routes(fastify, options) {
 
     createNotification(db, {
       user_id: pm_id,
-      title: '🔨 Работа назначена',
+      title: `🔨 Вам назначена работа №${work.id}`,
       message: `Тендер выигран: ${tender.customer_name || ''} — ${tender.tender_title || ''}`,
       type: 'work',
-      link: `#/pm-works`
+      link: kanbanCardId ? `#/personal-kanban?card=${kanbanCardId}` : `#/pm-works`
     });
 
     broadcast('tender:updated', { id, work_assigned_pm_id: pm_id });
+    // Wave-5 хук 1 (round-1 F-2): SSE broadcast — ПОСЛЕ COMMIT.
+    //   - kanbanAction='create'  → 'personal_kanban:card_created'  (новая work-карта)
+    //   - kanbanAction='convert' → 'personal_kanban:card_converted' (та же карта PM
+    //                              переключилась с tender → work, фронты должны
+    //                              убрать её из tender-доски и показать в work).
+    if (kanbanCardId && kanbanAction === 'create') {
+      try {
+        broadcast('personal_kanban:card_created', {
+          card_id: kanbanCardId,
+          owner_user_id: pm_id,
+          flow_type: 'work',
+          entity_kind: 'work',
+          entity_id: work.id,
+          main_status: 'Подготовка',
+          by_user_id: user.id
+        });
+      } catch (_) {}
+    } else if (kanbanCardId && kanbanAction === 'convert') {
+      try {
+        broadcast('personal_kanban:card_converted', {
+          card_id: kanbanCardId,
+          owner_user_id: pm_id,
+          flow_type: 'work',
+          entity_kind: 'work',
+          entity_id: work.id,
+          from_entity_kind: 'tender',
+          from_entity_id: convertFromEntityId,
+          main_status: 'Подготовка',
+          by_user_id: user.id
+        });
+      } catch (_) {}
+    }
     return {
       success: true,
       work_id: work.id,
+      kanban_card_id: kanbanCardId,
+      kanban_action: kanbanAction, // Wave-5 round-1 F-1: фронт различает 'create' vs 'convert'
       contract_value_missing: contractMissing,
       ...(contractMissing ? { warning: 'Сумма договора не определена — проставьте её в работе, иначе закрытие будет недоступно' } : {})
     };

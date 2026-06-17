@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { useThemeStore } from '@/stores/themeStore';
@@ -119,6 +119,49 @@ import EstimateReport from '@/pages/EstimateReport';
 import MimirAutoEstimate from '@/pages/MimirAutoEstimate';
 import HuginnEstimateChat from '@/pages/HuginnEstimateChat';
 import ExpenseChat from '@/pages/ExpenseChat';
+import { Toaster } from '@/components/ui/sonner';
+import { usePushSubscription } from '@/hooks/usePushSubscription';
+
+const PersonalKanban       = lazy(() => import('@/pages/PersonalKanban'));
+const PersonalKanbanConfig = lazy(() => import('@/pages/PersonalKanbanConfig'));
+const DirectorsInbox       = lazy(() => import('@/pages/DirectorsInbox'));
+
+// Роли, получающие office push (web-push на /api/push/subscribe).
+// Полевые (с field_token) идут через FieldHome → /api/field/push/subscribe.
+const OFFICE_PUSH_ROLES = new Set([
+  'PM', 'HEAD_PM', 'ADMIN',
+  'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV',
+  'HEAD_TO', 'TO', 'BUH', 'HR', 'HR_MANAGER',
+  'OFFICE_MANAGER', 'CHIEF_ENGINEER', 'PROC', 'WAREHOUSE',
+]);
+
+/**
+ * OfficePushBootstrap — один раз на сессию монтирует usePushSubscription{kind:'office'}
+ * для авторизованной office-роли и пытается подписать пользователя на web-push
+ * (если permission уже granted и подписки ещё нет — идемпотентно).
+ * §3.6 — Wave-2 шлёт `inbox_application_assigned` / `personal_kanban_transfer` через push.
+ */
+function OfficePushBootstrap() {
+  const token = useAuthStore((s) => s.token);
+  const role  = useAuthStore((s) => s.user?.role);
+  const push  = usePushSubscription({ kind: 'office' });
+  const triedRef = useRef(false);
+
+  useEffect(() => {
+    if (!token) return;
+    if (!role || !OFFICE_PUSH_ROLES.has(role)) return;
+    if (!push.supported) return;
+    if (push.permission !== 'granted') return; // silent skip: не дёргаем requestPermission без user gesture
+    if (push.subscribed) return;
+    if (push.loading) return;
+    if (triedRef.current) return;
+    triedRef.current = true;
+    // Идемпотентно: subscribe внутренне создаёт запись через ON CONFLICT (см. push routes Wave-2).
+    push.subscribe().catch(() => { /* silent */ });
+  }, [token, role, push.supported, push.permission, push.subscribed, push.loading, push.subscribe]);
+
+  return null;
+}
 
 function PinRoute() {
   const pinStatus = useAuthStore((s) => s.pinStatus);
@@ -177,6 +220,7 @@ function AppLayout() {
   return (
     <div className="h-full relative" style={{ backgroundColor: 'var(--bg-primary)' }}>
       {showPresenceGate && <PresenceGateMobile />}
+      <OfficePushBootstrap />
       <div
         key={location.pathname}
         style={{
@@ -255,6 +299,44 @@ function AppLayout() {
           <Route path="/expense-chat/:workId" element={<ProtectedRoute section="finances"><PinGuard><ExpenseChat /></PinGuard></ProtectedRoute>} />
           <Route path="/more" element={<ProtectedRoute><PinGuard><More /></PinGuard></ProtectedRoute>} />
 
+          {/* ═══ Личный канбан + Inbox (Волна 3) ═══ */}
+          <Route
+            path="/personal-kanban"
+            element={
+              <ProtectedRoute section="personal_kanban">
+                <PinGuard>
+                  <Suspense fallback={<div style={{ padding: 20, color: 'var(--text-secondary)' }}>Загрузка…</div>}>
+                    <PersonalKanban />
+                  </Suspense>
+                </PinGuard>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/personal-kanban-config"
+            element={
+              <ProtectedRoute section="personal_kanban">
+                <PinGuard>
+                  <Suspense fallback={<div style={{ padding: 20, color: 'var(--text-secondary)' }}>Загрузка…</div>}>
+                    <PersonalKanbanConfig />
+                  </Suspense>
+                </PinGuard>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/director-inbox"
+            element={
+              <ProtectedRoute section="inbox">
+                <PinGuard>
+                  <Suspense fallback={<div style={{ padding: 20, color: 'var(--text-secondary)' }}>Загрузка…</div>}>
+                    <DirectorsInbox />
+                  </Suspense>
+                </PinGuard>
+              </ProtectedRoute>
+            }
+          />
+
           {/* ═══ PM Panel routes ═══ */}
           <Route path="/pm" element={<ProtectedRoute section="works"><PinGuard><PmDashboard /></PinGuard></ProtectedRoute>} />
           <Route path="/pm/workers" element={<ProtectedRoute section="works"><PinGuard><PmWorkers /></PinGuard></ProtectedRoute>} />
@@ -314,6 +396,7 @@ function AppLayout() {
         </Routes>
       </div>
       {!hideTabBar && <TabBar />}
+      <Toaster position="top-center" richColors closeButton />
     </div>
   );
 }

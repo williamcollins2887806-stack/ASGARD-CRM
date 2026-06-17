@@ -76,7 +76,13 @@ class ApiClient {
       body: formData,
     });
     if (response.status === 401 || response.status === 403) { this.clearToken(); window.location.href = '/welcome'; throw new Error('Session expired'); }
-    if (!response.ok) { const e = await response.json().catch(() => ({})); throw new Error(e.error || e.message || `HTTP ${response.status}`); }
+    if (!response.ok) {
+      const e = await response.json().catch(() => ({}));
+      const err = new Error(e.error || e.message || `HTTP ${response.status}`);
+      err.status = response.status;
+      err.body = e;
+      throw err;
+    }
     return await response.json();
   }
 

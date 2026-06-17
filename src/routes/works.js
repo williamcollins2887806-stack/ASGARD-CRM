@@ -374,6 +374,33 @@ async function routes(fastify, options) {
     const workId = request.params.id;
     const hard = request.query.hard === 'true';
 
+    // Wave-5 H4 helper: общая логика закрытия orphan-карт + SSE.
+    const closeKanbanOrphans = async (reason) => {
+      try {
+        const personalKanban = require('./personal-kanban');
+        const sse = require('./sse');
+        const wid = parseInt(workId, 10);
+        const { closed_card_ids, rows } = await personalKanban.closeKanbanCardsForEntity(
+          db, 'work', wid, request.user.id, reason);
+        if (Array.isArray(closed_card_ids) && closed_card_ids.length) {
+          for (const card of rows) {
+            try {
+              sse.broadcast('personal_kanban:card_closed', {
+                card_id: card.id,
+                owner_user_id: card.owner_user_id,
+                entity_kind: 'work',
+                entity_id: wid,
+                reason,
+                by_user_id: request.user.id
+              });
+            } catch (_) {}
+          }
+        }
+      } catch (pkErr) {
+        request.log.error({ err: pkErr }, '[work DELETE] close kanban cards failed');
+      }
+    };
+
     try {
       if (!hard) {
         // Soft delete
@@ -382,6 +409,7 @@ async function routes(fastify, options) {
           [request.user.id, workId]
         );
         if (!result.rows[0]) return reply.code(404).send({ error: 'Работа не найдена или уже удалена' });
+        await closeKanbanOrphans('work soft-deleted');
         return { message: 'Работа помечена как удалённая', soft: true };
       }
 
@@ -397,6 +425,10 @@ async function routes(fastify, options) {
         await db.query('DELETE FROM staff_request_messages WHERE staff_request_id = ANY($1)', [ids]);
         await db.query('DELETE FROM staff_replacements WHERE staff_request_id = ANY($1)', [ids]);
       }
+
+      // Wave-5 H4: закрыть карты ПЕРЕД hard DELETE (FK на personal_kanban_cards нет, но запись —
+      // полиморфная). Закрываем сначала чтобы получить snapshot owner_user_id для SSE.
+      await closeKanbanOrphans('work hard-deleted');
 
       const result = await db.query('DELETE FROM works WHERE id = $1 RETURNING id', [workId]);
       if (!result.rows[0]) return reply.code(404).send({ error: 'Работа не найдена' });
