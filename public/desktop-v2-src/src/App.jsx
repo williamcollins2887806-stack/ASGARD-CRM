@@ -329,6 +329,7 @@ export default function App() {
               <Route path="/analytics"              element={<Navigate to="/kpi-works" replace />} />
               <Route path="/command-map-flat"       element={<Navigate to="/command-map" replace />} />
               <Route path="/gantt"                  element={<Navigate to="/gantt-objects" replace />} />
+              <Route path="/todo"                   element={<Navigate to="/tasks" replace />} />
               <Route path="/system-panel"           element={<Protected title="Панель сервера" roles={['ADMIN']}><SystemPanel /></Protected>} />
               <Route path="/equipment"              element={<Navigate to="/warehouse-v2" replace />} />
               <Route path="/customer"               element={<Navigate to="/customers" replace />} />

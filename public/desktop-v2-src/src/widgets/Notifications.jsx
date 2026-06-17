@@ -19,7 +19,7 @@ export default function Notifications() {
   return (
     <div>
       {items.map((x) => (
-        <div key={x.id} className="row-item">
+        <div key={x.id} className="row-item" style={{ borderLeft: '3px solid var(--gold)', paddingLeft: 10 }}>
           <div className="t1">{x.title}</div>
           {x.message && <div className="t2">{String(x.message).slice(0, 60)}</div>}
         </div>
