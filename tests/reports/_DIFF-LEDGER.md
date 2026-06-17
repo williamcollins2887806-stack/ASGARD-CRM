@@ -2501,4 +2501,132 @@ D-15-candidate из A-29 (correspondence RBAC расширен) и A-31 (custome
 
 ---
 
-**Конец файла. Готов к разносу в `_DIFF-LEDGER.md` после блока D-51.**
+## D-134 — cash_operations + kpi_snapshots не существуют на проде (cron'ы тихо валятся)
+
+- **Тип:** prod-500 / schema-drift / missing-table
+- **Серьёзность:** **CRITICAL** (потеря всех KPI-метрик кассы и всех ежедневных снимков)
+- **Дата находки:** 2026-06-17 (ШАГ 1A фикс-конвейера, диагностика прода)
+- **Backend, где ссылка на отсутствующие таблицы:**
+
+  - `src/services/cash-limit-cron.js:32-34`
+    ```sql
+    COALESCE((SELECT SUM(amount) FROM cash_operations WHERE user_id=u.id AND kind='issue'), 0)
+    - COALESCE((SELECT SUM(amount) FROM cash_operations WHERE user_id=u.id AND kind='return'), 0)
+    - COALESCE((SELECT SUM(amount) FROM cash_operations WHERE user_id=u.id AND kind='spend'), 0) AS balance
+    ```
+  - `src/services/kpi-snapshot-cron.js:30`
+    ```sql
+    SELECT ... FROM cash_operations ...
+    ```
+    + INSERT INTO `kpi_snapshots`.
+
+- **Прод-evidence (read-only SELECT через SSH):**
+  ```
+  SELECT
+    EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='cash_operations'),
+    EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='kpi_snapshots'),
+    EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='cash_documents');
+  → f | f | f
+  ```
+  На проде нет ни `cash_operations`, ни `kpi_snapshots`, ни `cash_documents`. Зато есть `cash_expenses`, `cash_requests`, `cash_returns`, `cash_balance_log`, `cash_messages`.
+
+- **Эффект:** Сron-сервис `cash-limit-cron` падает на SELECT (или внешний COALESCE даёт 0 → балансы пользователей всегда 0). Cron-сервис `kpi-snapshot-cron` падает на FROM cash_operations и/или на INSERT INTO kpi_snapshots — снапшоты KPI **никогда не пишутся**. Пользовательский фидбек: «KPI cash = 0».
+- **Решение по схеме (на выбор):**
+  - **(A) Создать таблицы.** Миграция V221:
+    ```sql
+    CREATE TABLE IF NOT EXISTS cash_operations (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      kind VARCHAR(20) NOT NULL CHECK (kind IN ('issue','return','spend')),
+      amount NUMERIC(14,2) NOT NULL,
+      reason TEXT,
+      ref_type VARCHAR(40),
+      ref_id INTEGER,
+      created_by INTEGER REFERENCES users(id),
+      created_at TIMESTAMP DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_cash_ops_user ON cash_operations(user_id, kind);
+    -- + аналогично kpi_snapshots по сигнатуре insert в kpi-snapshot-cron.js
+    ```
+    Скрипт backfill: исторически данные взять из cash_expenses+cash_requests+cash_returns (если решение A).
+  - **(B) Переписать cron-сервисы** на актуальные cash_expenses/cash_requests/cash_returns. Никаких новых таблиц.
+- **Verify-метод:**
+  1. На клоне применить миграцию V221 (если A) → запустить cron вручную → SELECT FROM cash_operations должен вернуть >0 строк для users с кассой.
+  2. Если B → запустить cron на клоне → SELECT FROM kpi_snapshots должен вернуть свежий снимок.
+- **Статус:** FOUND (требует решения Никиты A/B перед фиксом)
+
+---
+
+## D-135 — tkp: 15 ALTER-колонок на проде без миграций (свежий клон/деплой упадёт)
+
+- **Тип:** migration-backfill / schema-drift
+- **Серьёзность:** high (рантайм-падения 500 на любом GET/POST tkp при деплое на свежий клон или fresh-prod восстановление)
+- **Дата находки:** 2026-06-17 (ШАГ 1A)
+- **V001 объявляет tkp с ~22 колонками (`migrations/V001__initial_schema.sql`).**
+- **Прод-evidence (SSH read-only, `information_schema.columns`):**
+  ```
+  Колонки на проде, отсутствующие в V001 (15):
+    pre_tender_id, attachment_size, parsed_from_attachment, client_decision_at,
+    client_decision_by, attachment_path, attachment_mime, attachment_original_name,
+    mimir_quick_session_uid, tkp_type, payment_terms, link_type,
+    purpose_reason, client_decision, client_decision_comment
+  ```
+- **Эффект:** На проде всё работает (ALTER'ы наложены вручную). НО: новый клон через `pg_dump asgard_crm` тоже работает (т.к. дамп берёт колонки). А **новая установка через `psql -f V001__initial_schema.sql` запустит код, который сразу попытается INSERT INTO tkp(client_decision,…) → ERROR: column does not exist**. То есть `migrations/` ≠ источник правды по схеме.
+- **Решение по схеме:** миграция V221 (или V222 если V221 займём под D-134) с серией `ALTER TABLE tkp ADD COLUMN IF NOT EXISTS …` для всех 15 колонок. Типы — те же, что на проде (`information_schema.columns` → `data_type`). На проде применять идемпотентно, в `migrations` записать вручную (`INSERT INTO migrations(version, …) VALUES('V221', …)`).
+- **Verify-метод:**
+  1. На клоне (`pg_dump asgard_crm | psql -d asgard_crm_test`) — все 15 колонок уже есть.
+  2. Создать чистый клон через `psql -f migrations/V001__initial_schema.sql` + applied migrations. Применить новую миграцию. SELECT column_name FROM information_schema.columns WHERE table_name='tkp' → должны быть все 15.
+- **Статус:** FOUND
+
+---
+
+## D-136 — employee_assignments: 21 ALTER-колонка на проде без миграций
+
+- **Тип:** migration-backfill / schema-drift
+- **Серьёзность:** **CRITICAL** (employee_assignments — центральная таблица персонала; на свежей установке всё, что трогает её, упадёт)
+- **Дата находки:** 2026-06-17 (ШАГ 1A)
+- **V001 объявляет (`migrations/V001__initial_schema.sql:742-747`):**
+  ```sql
+  CREATE TABLE IF NOT EXISTS employee_assignments (
+    id          SERIAL PRIMARY KEY,
+    employee_id INTEGER REFERENCES employees(id),
+    work_id     INTEGER REFERENCES works(id) ON DELETE CASCADE,
+    created_at  TIMESTAMP DEFAULT NOW()
+  );
+  ```
+- **Прод-evidence (SSH read-only):**
+  ```
+  Колонки на проде, отсутствующие в V001 (21):
+    date_from, date_to, role, updated_at, field_role, tariff_id, tariff_points,
+    combination_tariff_id, per_diem, shift_type, is_active, sms_sent, sms_sent_at,
+    departure_date, departure_reason,
+    max_invite_sent_at, max_joined_at, max_user_id, max_invite_status,
+    wa_invite_sent_at, wa_joined_at, wa_invite_status
+  ```
+- **Эффект:** На проде работает. На свежем клоне (V001 + миграции без ALTER'ов) — любые SELECT/UPDATE/INSERT с этими колонками валятся.
+- **Решение:** миграция V222 (или V223) ALTER TABLE employee_assignments ADD COLUMN IF NOT EXISTS для всех 22 колонок (включая `updated_at` если его нет). Триггер update_updated_at — тоже миграцией.
+- **Verify-метод:** как у D-135.
+- **Статус:** FOUND
+
+---
+
+## Обновление к D-003 — прод-evidence: score_1_10 на проде отсутствует, есть `score`
+
+- **Контекст:** ledger строки 19, 40-45, 404 — было противоречие (строка 19 «нет колонки», строка 404 «есть»). Прод-evidence закрывает спор.
+- **Прод-evidence (2026-06-17, SSH read-only `information_schema.columns`):**
+  ```
+  employee_reviews колонки на проде:
+    id, employee_id, work_id, pm_id, rating, comment, created_at, score, updated_at
+  ```
+  Колонки `score_1_10` НЕТ. Колонка `score` есть (в V001 её НЕ было).
+- **Источник истины:** V001:521 объявляет `score_1_10 INTEGER`. Прод — отдельным путём (ALTER ADD score; и `score_1_10` либо никогда не накатилась, либо была удалена).
+- **Эффект (подтверждён):** `staff.js:228` `SELECT AVG(COALESCE(score_1_10, rating)) FROM employee_reviews` падает с `ERROR: column "score_1_10" does not exist`. POST `/review` обёрнут в try/catch — ошибка проглатывается, rating_avg НЕ обновляется.
+- **Решение по схеме (на выбор):**
+  - **(A) Канонизировать `score` (рекомендация).** Миграция V223 ALTER TABLE employee_reviews ADD COLUMN IF NOT EXISTS score INTEGER (на проде уже есть, idempotent). Заменить SQL `staff.js:228` на `SELECT AVG(COALESCE(score, rating))`. Удалить `score_1_10` из v2 ReviewModal.jsx payload — отправлять только `score`. Добавить `score` в `REVIEW_COLS`.
+  - **(B) Канонизировать `score_1_10`.** Миграция V223 ALTER TABLE employee_reviews ADD COLUMN IF NOT EXISTS score_1_10 INTEGER + backfill из `score` если есть → UPDATE SET score_1_10=score. Добавить score_1_10 в `REVIEW_COLS`. Удалить отдельную колонку `score` отдельной миграцией позже.
+- **Группа в _FIX-QUEUE:** теперь не A (silent-drop), а **B (migration-backfill)** — нужна миграция перед тем как можно править allowlist/SQL.
+- **Связано с:** D-136 (тот же класс прод-схема-drift).
+
+---
+
+**Конец файла.**
