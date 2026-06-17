@@ -12,8 +12,8 @@
  * Фильтры: поиск, тип (objects), активные/завершённые, РП, статус, период, масштаб, диапазон дат.
  * Не PM — видит свои; ADMIN / DIRECTOR_* — все.
  */
-import { useState, useEffect, useMemo } from 'react';
-import { useParams, useLocation } from 'react-router-dom';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/api/useAuth';
 import { useModal } from '@/modals';
 import { toast } from '@/modals/Notifications';
@@ -59,6 +59,22 @@ export default function GanttPage() {
 
   const { user } = useAuth();
   const modal = useModal();
+  const navigate = useNavigate();
+  const containerRef = useRef(null);
+
+  const onFullscreen = () => {
+    const el = containerRef.current;
+    if (!el) return;
+    if (document.fullscreenElement) {
+      document.exitFullscreen?.();
+    } else {
+      el.requestFullscreen?.();
+    }
+  };
+  const onBack = () => {
+    if (window.history.length > 1) navigate(-1);
+    else window.history.back();
+  };
   const isDir = user?.role === 'ADMIN' || String(user?.role || '').startsWith('DIRECTOR') || user?.role === 'HEAD_PM' || user?.role === 'HEAD_TO';
 
   /* ─── Данные ─── */
@@ -267,7 +283,7 @@ export default function GanttPage() {
   };
 
   return (
-    <div className="col gap-12">
+    <div ref={containerRef} className="col gap-12">
       <div className="gantt-page-head">
         <div>
           <div className="gantt-page-eyebrow">Диаграмма Гантта</div>
@@ -278,6 +294,8 @@ export default function GanttPage() {
           </div>
         </div>
         <div className="u-flex gap-8">
+          <Btn variant="ghost" onClick={onBack} title="Назад">← Назад</Btn>
+          <Btn variant="ghost" onClick={onFullscreen} title="На весь экран">⛶ На весь экран</Btn>
           <Btn variant="ghost" onClick={onReset}>↺ Сбросить</Btn>
         </div>
       </div>

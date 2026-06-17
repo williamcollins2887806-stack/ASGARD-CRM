@@ -683,6 +683,20 @@ try {
   fastify.log.warn('[CashLimitCron] Init skipped: ' + cronErr.message);
 }
 
+// ── Reminder Cron: каждый час — напоминания по тендерам/работам/счетам (D-44) ──
+// Гард IS_PROD_DB как у tasks-deadlines-cron: на тест-БД шлёт реальные уведомления юзерам клона.
+if ((process.env.DB_NAME || 'asgard_crm') !== 'asgard_crm' && process.env.NODE_ENV !== 'test') {
+  fastify.log.warn(`[ReminderCron] Skipped — non-prod DB (${process.env.DB_NAME})`);
+} else {
+  try {
+    const reminderCron = require('./services/reminder-cron');
+    fastify.addHook('onReady', async () => { reminderCron.start(fastify.db, fastify.log); });
+    fastify.addHook('onClose', async () => { reminderCron.stop(); });
+  } catch (cronErr) {
+    fastify.log.warn('[ReminderCron] Init skipped: ' + cronErr.message);
+  }
+}
+
 // ── Personal Kanban Reminders Cron: every minute — пуш напоминаний по картам ──
 try {
   const personalKanbanRemindersCron = require('./services/personal-kanban-reminders-cron');

@@ -19,6 +19,7 @@
  */
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/api/useAuth';
+import { api } from '@/api/client';
 import { useModal, PickerModal, ConfirmModal } from '@/modals';
 import { toast } from '@/modals/Notifications';
 import { Btn } from '@/modals/parts';
@@ -91,7 +92,11 @@ function layoutFor(role) {
   return DEFAULT_LAYOUTS[role] || DEFAULT_LAYOUTS.DEFAULT;
 }
 
+// LS — кеш-зеркало (для оффлайна и мгновенного first paint).
+// SSoT — БД через /api/settings/dash_layout_<userId> (тот же ключ, что в vanilla custom_dashboard.js,
+// благодаря этому layout синхронизируется между устройствами и vanilla v1 ↔ React v2).
 const LS_KEY = (uid) => 'asgard_v2_home_layout_' + uid;
+const API_KEY = (uid) => 'dash_layout_' + uid;
 
 /**
  * Виджет на главной — поддерживает HTML5 drag&drop.
@@ -155,19 +160,52 @@ export default function Home() {
   const { open } = useModal();
   const [layout, setLayout] = useState(() => layoutFor(user?.role));
 
-  // Загрузка кастомного layout из localStorage (потом будет API: GET /api/data/settings dash_layout_USER)
+  // Загрузка кастомного layout: SSoT — API (GET /api/settings/dash_layout_<userId>),
+  // LS — кеш-зеркало для оффлайна и мгновенного first paint (до ответа API).
+  // 1) Сначала пытаемся LS — чтобы экран не мигал пустым на медленном API.
+  // 2) Затем дергаем API — если value есть, переписываем layout (SSoT побеждает).
+  // 3) Если API отдал null/упал — остаёмся на LS-значении (или role-default).
   useEffect(() => {
     if (!user?.id) return;
+    let cancelled = false;
+
+    // (1) LS-fallback — мгновенно.
+    let lsLayout = null;
     try {
       const saved = JSON.parse(localStorage.getItem(LS_KEY(user.id)) || 'null');
-      if (Array.isArray(saved) && saved.length) setLayout(saved);
-      else setLayout(layoutFor(user.role));
-    } catch { setLayout(layoutFor(user.role)); }
+      if (Array.isArray(saved) && saved.length) lsLayout = saved;
+    } catch { /* noop */ }
+    setLayout(lsLayout || layoutFor(user.role));
+
+    // (2) API — авторитетный источник. Sync с других устройств.
+    api('/api/settings/' + API_KEY(user.id), { silent: true })
+      .then((resp) => {
+        if (cancelled) return;
+        const v = resp?.value;
+        if (Array.isArray(v) && v.length) {
+          setLayout(v);
+          // Подновляем LS-кеш на случай, если он отстал от другого устройства.
+          try { localStorage.setItem(LS_KEY(user.id), JSON.stringify(v)); } catch { /* noop */ }
+        }
+        // value === null/[] → используем LS-fallback или role-default (уже выставлено выше).
+      })
+      .catch(() => { /* offline/5xx — остаёмся на LS, см. (1) */ });
+
+    return () => { cancelled = true; };
   }, [user?.id, user?.role]);
 
   const saveLayout = (next) => {
     setLayout(next);
+    // Параллельно: API (SSoT) + LS (кеш-зеркало). LS даёт мгновенный first paint
+    // при следующем заходе, API синхронизирует с другими устройствами того же user_id.
     try { localStorage.setItem(LS_KEY(user.id), JSON.stringify(next)); } catch { /* noop */ }
+    if (user?.id) {
+      api('/api/settings/' + API_KEY(user.id), {
+        method: 'PUT',
+        body: { value: next },
+        silent: true
+      }).catch(() => { /* offline/5xx — LS-кеш сохранится, синхронизация на следующем входе */ });
+    }
   };
 
   const handleAddWidget = () => {

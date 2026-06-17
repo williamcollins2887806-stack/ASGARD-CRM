@@ -29,9 +29,10 @@ import {
 import './help.css';
 
 const TABS = [
-  { key: 'inbox',    label: '📥 Входящие',    icon: '📥' },
-  { key: 'outbox',   label: '📤 Отправленные', icon: '📤' },
-  { key: 'watching', label: '👁 Наблюдаю',    icon: '👁' }
+  { key: 'inbox',     label: '📥 Входящие',    icon: '📥' },
+  { key: 'outbox',    label: '📤 Отправленные', icon: '📤' },
+  { key: 'watching',  label: '👁 Наблюдаю',    icon: '👁' },
+  { key: 'analytics', label: '📊 Аналитика',   icon: '📊' }
 ];
 
 const STATUS_FILTERS = [
@@ -89,7 +90,7 @@ export default function HelpPage() {
     return () => window.removeEventListener('hashchange', checkHash);
   }, [inbox, outbox]);
 
-  const activeList = tab === 'inbox' ? inbox : tab === 'outbox' ? outbox : watching;
+  const activeList = tab === 'inbox' ? inbox : tab === 'outbox' ? outbox : tab === 'watching' ? watching : [];
 
   const visible = useMemo(() => {
     const norm = dq.trim().toLowerCase();
@@ -159,7 +160,10 @@ export default function HelpPage() {
 
       <div className="help-tabs">
         {TABS.map(t => {
-          const count = t.key === 'inbox' ? inbox.length : t.key === 'outbox' ? outbox.length : watching.length;
+          const count = t.key === 'inbox' ? inbox.length
+                      : t.key === 'outbox' ? outbox.length
+                      : t.key === 'watching' ? watching.length
+                      : null;
           const badge = t.key === 'inbox' && inboxNew > 0
             ? <span className="help-tab-badge help-tab-badge--new">{inboxNew}</span>
             : (t.key === 'outbox' && outDeclined > 0
@@ -171,19 +175,23 @@ export default function HelpPage() {
               className={`help-tab ${tab === t.key ? 'is-active' : ''}`}
               onClick={() => { setTab(t.key); setStatus(''); }}>
               <span className="help-tab-label">{t.label}</span>
-              <span className="help-tab-count">{count}</span>
+              {count !== null && <span className="help-tab-count">{count}</span>}
               {badge}
             </button>
           );
         })}
       </div>
 
-      <div className="help-toolbar">
-        <SearchInput value={q} onChange={setQ} placeholder="Поиск по названию, описанию, имени…" />
-        <SelectInput value={status} onChange={setStatus} options={STATUS_FILTERS} placeholder="Все статусы" />
-      </div>
+      {tab !== 'analytics' && (
+        <div className="help-toolbar">
+          <SearchInput value={q} onChange={setQ} placeholder="Поиск по названию, описанию, имени…" />
+          <SelectInput value={status} onChange={setStatus} options={STATUS_FILTERS} placeholder="Все статусы" />
+        </div>
+      )}
 
-      {loading ? (
+      {tab === 'analytics' ? (
+        <div className="empty-state">Аналитика по обращениям — в разработке (Phase 8)</div>
+      ) : loading ? (
         <div className="help-list">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="help-card help-card--skeleton">

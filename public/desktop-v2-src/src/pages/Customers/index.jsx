@@ -11,7 +11,8 @@
  *   • Создавать/редактировать: ADMIN, PM, HEAD_PM, TO, HEAD_TO, DIRECTOR_GEN, DIRECTOR_COMM
  *   • Удалять: только ADMIN (см. backend customers.js)
  */
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/api/useAuth';
 import { useModal } from '@/modals';
 import { toast } from '@/modals/Notifications';
@@ -22,7 +23,7 @@ import { useDebounce } from '@/api/useListHelpers';
 
 import { CustomerEditModal } from './CustomerEditModal';
 import { CustomerDetailModal } from './CustomerDetailModal';
-import { loadCustomers, filterByQuery } from './api';
+import { loadCustomers, loadCustomer, filterByQuery } from './api';
 import './customers.css';
 
 const PAGE = 30;
@@ -64,6 +65,7 @@ function initialsOf(name) {
 export default function CustomersPage() {
   const { user } = useAuth();
   const modal = useModal();
+  const location = useLocation();
 
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -71,6 +73,10 @@ export default function CustomersPage() {
   const dQuery = useDebounce(query, 300);  // G-11: debounce 300мс
   const [category, setCategory] = useState('');
   const [page, setPage] = useState(1);
+
+  // D-23: реестр уже открытых ИНН в этой сессии — чтобы при перезагрузке списка
+  // (asgard:customers:changed) модалка не открывалась повторно поверх себя.
+  const openedInnRef = useRef(new Set());
 
   const refresh = () => {
     setLoading(true);
@@ -88,22 +94,55 @@ export default function CustomersPage() {
     return () => window.removeEventListener('asgard:customers:changed', onChanged);
   }, []);
 
-  // Поддержка hash-параметра ?inn=… (открыть конкретного контрагента)
+  // D-23: deep-link ?inn=X — автооткрытие CustomerDetailModal.
+  // Vanilla customers.js делал это через `#/customer?inn=…`. В v2 паттерн —
+  // `#/customers?inn=…`: useLocation() из react-router-dom + URLSearchParams(location.search).
+  //
+  // 1) если customers загружены и контрагент в списке — открываем сразу;
+  // 2) если в списке нет — fetch `/api/customers/<inn>` и открываем с возвращённым;
+  // 3) реестр openedInnRef защищает от повторного открытия после refresh списка.
   useEffect(() => {
-    const checkHash = () => {
-      const hash = window.location.hash || '';
-      const m = hash.match(/[?&]inn=([0-9]+)/);
-      if (m && m[1]) {
-        modal.open(<CustomerDetailModal inn={m[1]} />, { size: 'wide' });
-        // снимаем параметр чтобы не открывать повторно
-        window.location.hash = '#/customers';
-      }
-    };
-    checkHash();
-    window.addEventListener('hashchange', checkHash);
-    return () => window.removeEventListener('hashchange', checkHash);
+    const params = new URLSearchParams(location.search || '');
+    const innParam = (params.get('inn') || '').replace(/\D/g, '');
+    if (!innParam) return;
+    if (openedInnRef.current.has(innParam)) return;
+    // ждём пока список загрузится, чтобы попытаться найти локально
+    if (loading) return;
+
+    const local = list.find((c) => String(c.inn) === innParam);
+    if (local) {
+      openedInnRef.current.add(innParam);
+      modal.open(<CustomerDetailModal inn={local.inn} />, { size: 'wide' });
+      return;
+    }
+
+    // нет в списке — подтягиваем напрямую по ИНН (бэк: GET /api/customers/:inn)
+    let cancelled = false;
+    openedInnRef.current.add(innParam);
+    loadCustomer(innParam)
+      .then((d) => {
+        if (cancelled) return;
+        const c = d?.customer || d;
+        if (c?.inn) {
+          modal.open(<CustomerDetailModal inn={c.inn} />, { size: 'wide' });
+        } else {
+          toast.warn('Контрагент с ИНН ' + innParam + ' не найден');
+        }
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        // 404 → дружелюбное сообщение, не красный error
+        const msg = e?.message || String(e);
+        if (/404|не найден/i.test(msg)) {
+          toast.warn('Контрагент с ИНН ' + innParam + ' не найден');
+        } else {
+          toast.error('Не удалось открыть контрагента: ' + msg);
+        }
+      });
+
+    return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [location.search, loading, list]);
 
   const filtered = useMemo(() => {
     let v = list;
