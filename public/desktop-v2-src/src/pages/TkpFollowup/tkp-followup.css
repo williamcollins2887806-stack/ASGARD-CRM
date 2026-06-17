@@ -1,0 +1,156 @@
+/* TKP Followup — контроль решения клиента по отправленным ТКП. */
+
+.tfu-filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tfu-chip {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-sm);
+  font-size: 12.5px;
+  cursor: pointer;
+  color: var(--t-1);
+  transition: background 120ms, border-color 120ms;
+}
+
+.tfu-chip:hover {
+  background: var(--bg-hover, color-mix(in srgb, var(--inner-bg) 80%, var(--gold) 12%));
+}
+
+.tfu-chip.is-active {
+  background: var(--gold-bg);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.tfu-chip__count {
+  font-size: 11px;
+  opacity: .75;
+  margin-left: 2px;
+}
+
+.tfu-card {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-md);
+  background: var(--card-bg, var(--bg-2));
+  transition: border-color 120ms;
+}
+
+.tfu-card + .tfu-card { margin-top: 8px; }
+
+.tfu-card:hover {
+  border-color: color-mix(in srgb, var(--gold) 40%, var(--brd-2));
+}
+
+.tfu-card.tfu-card--stale {
+  border-color: color-mix(in srgb, var(--err) 35%, var(--brd-2));
+  background: color-mix(in srgb, var(--err) 4%, var(--bg-2));
+}
+
+.tfu-days {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-sm);
+  padding: 8px 6px;
+  background: var(--inner-bg);
+  font-variant-numeric: tabular-nums;
+}
+
+.tfu-days__n {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.tfu-days__lbl {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--t-3);
+  margin-top: 2px;
+}
+
+.tfu-days.tone-rejected { color: var(--err); background: color-mix(in srgb, var(--err) 12%, var(--inner-bg)); }
+.tfu-days.tone-question { color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, var(--inner-bg)); }
+.tfu-days.tone-approved { color: var(--ok); }
+.tfu-days.tone-draft    { color: var(--t-3); }
+
+.tfu-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 12px;
+  color: var(--t-3);
+  margin-top: 4px;
+}
+
+.tfu-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
+  min-width: 120px;
+}
+
+.tfu-actions .m-btn { white-space: nowrap; }
+
+.tfu-log {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.tfu-log__row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+  font-size: 12.5px;
+}
+
+.tfu-log__when { color: var(--t-3); font-size: 11px; }
+.tfu-log__actor { color: var(--t-3); font-size: 11px; }
+.tfu-log__action { font-weight: 600; }
+.tfu-log__details { color: var(--t-2); grid-column: 2 / span 1; }
+
+.tfu-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.tfu-summary__tile {
+  padding: 10px 12px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--brd-2);
+}
+
+.tfu-summary__tile strong { font-size: 18px; }
+.tfu-summary__tile .lbl { font-size: 11px; color: var(--t-3); text-transform: uppercase; letter-spacing: .5px; }
+
+@media (max-width: 900px) {
+  .tfu-card { grid-template-columns: 48px 1fr; }
+  .tfu-actions { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; }
+  .tfu-summary { grid-template-columns: repeat(2, 1fr); }
+}

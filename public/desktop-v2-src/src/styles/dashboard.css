@@ -1,0 +1,321 @@
+/* Dashboard 2.0 styles — те же блоки что в оригинале, но сочнее */
+
+.dash-2 { display: flex; flex-direction: column; gap: 26px; }
+
+/* ─── Hero / заголовок ─── */
+.dash-hero {
+  position: relative;
+  padding: 24px 28px;
+  border-radius: var(--r-xl);
+  background: var(--card-bg-hero);
+  border: 1px solid var(--brd-1);
+  box-shadow: var(--sh-card);
+  overflow: hidden;
+}
+.dash-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(40% 100% at 0% 0%, var(--gold-bg), transparent 60%),
+    radial-gradient(40% 100% at 100% 100%, var(--red-bg), transparent 60%);
+  pointer-events: none;
+}
+.dash-hero > * { position: relative; }
+.dash-hero h1 {
+  margin: 0 0 6px;
+  font-size: 28px;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  background: var(--brand-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.dash-hero .meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 13px;
+  color: var(--t-3);
+  align-items: center;
+}
+.dash-hero .meta .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  background: var(--inner-bg);
+  border: var(--inner-border);
+  color: var(--t-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* ─── Alerts ─── */
+.dash-alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, var(--err-bg), transparent 70%);
+  border: 1px solid color-mix(in srgb, var(--err) 25%, transparent);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-sm);
+}
+.dash-alerts-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--err);
+  font-weight: 800;
+}
+.dash-alert-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13.5px;
+  padding: 6px 0;
+  border-top: 1px dashed color-mix(in srgb, var(--err) 18%, transparent);
+}
+.dash-alert-item:first-of-type { border-top: 0; }
+
+/* ─── KPI Grid ─── */
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: 18px;
+}
+
+.kpi {
+  position: relative;
+  padding: 22px 22px 18px;
+  border-radius: var(--r-lg);
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  box-shadow: var(--sh-card);
+  overflow: hidden;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.kpi:hover {
+  transform: translateY(-3px);
+  border-color: var(--brd-glow);
+  box-shadow: var(--sh-md), var(--gold-glow);
+}
+.kpi::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--kpi-gradient, linear-gradient(90deg, var(--gold), var(--red)));
+  opacity: 0.85;
+}
+.kpi::after {
+  /* мягкое свечение под полоской */
+  content: '';
+  position: absolute;
+  top: -30px; left: -30px; right: -30px;
+  height: 80px;
+  background: var(--kpi-gradient, linear-gradient(90deg, var(--gold), var(--red)));
+  opacity: 0.10;
+  filter: blur(40px);
+  pointer-events: none;
+}
+
+.kpi-title {
+  font-size: 10.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--gold);
+  margin-bottom: 10px;
+}
+.kpi-value {
+  font-size: 34px;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+  margin-bottom: 4px;
+}
+.kpi-sub {
+  font-size: 12.5px;
+  color: var(--t-3);
+}
+.kpi-icon {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 56px;
+  opacity: 0.10;
+  pointer-events: none;
+}
+.kpi-row {
+  display: flex;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--brd-2);
+}
+.kpi-mini { flex: 1; }
+.kpi-mini-label {
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--t-3);
+  font-weight: 700;
+}
+.kpi-mini-value {
+  font-size: 17px;
+  font-weight: 800;
+  margin-top: 2px;
+}
+
+.kpi-progress {
+  margin-top: 10px;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--bar-bg);
+  overflow: hidden;
+}
+.kpi-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--ok), color-mix(in srgb, var(--ok) 50%, var(--cyan)));
+  border-radius: var(--r-pill);
+  transition: width 0.5s ease;
+}
+
+/* Цвета значений */
+.c-gold { color: var(--gold-l); }
+.c-blue { color: var(--blue-l); }
+.c-green { color: var(--ok); }
+.c-red { color: var(--err); }
+.c-amber { color: var(--amber); }
+.c-purple { color: var(--purple-l); }
+.c-cyan { color: var(--cyan-l); }
+
+/* Override для светлой темы — насыщеннее для контраста на белом */
+[data-theme='light'] .c-gold { color: var(--gold); }
+[data-theme='light'] .c-blue { color: var(--blue); }
+[data-theme='light'] .c-purple { color: var(--purple); }
+[data-theme='light'] .c-cyan { color: var(--cyan); }
+
+/* Градиентные верхние полоски */
+.kpi-tenders  { --kpi-gradient: linear-gradient(90deg, var(--info), var(--purple)); }
+.kpi-works    { --kpi-gradient: linear-gradient(90deg, var(--ok), var(--cyan)); }
+.kpi-revenue  { --kpi-gradient: linear-gradient(90deg, var(--gold), var(--amber)); }
+.kpi-profit-p { --kpi-gradient: linear-gradient(90deg, var(--ok), color-mix(in srgb, var(--ok) 60%, var(--cyan))); }
+.kpi-profit-n { --kpi-gradient: linear-gradient(90deg, var(--err), var(--orange)); }
+.kpi-expense  { --kpi-gradient: linear-gradient(90deg, var(--err), var(--orange)); }
+.kpi-team     { --kpi-gradient: linear-gradient(90deg, var(--purple), var(--purple-l)); }
+.kpi-calls    { --kpi-gradient: linear-gradient(90deg, var(--cyan), var(--info)); }
+
+/* ─── Charts ─── */
+.dash-charts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+@media (max-width: 1100px) { .dash-charts { grid-template-columns: 1fr; } }
+
+.chart-card {
+  position: relative;
+  padding: 18px 20px 14px;
+  border-radius: var(--r-lg);
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  box-shadow: var(--sh-card);
+  overflow: hidden;
+}
+.chart-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--blue-l), var(--gold));
+  opacity: 0.7;
+}
+.chart-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.chart-title h3 {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--gold);
+  font-weight: 800;
+}
+.chart-legend {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--t-3);
+  font-weight: 600;
+}
+.chart-legend .swatch {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 3px;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+.chart-canvas { width: 100%; height: 200px; }
+
+/* ─── Section / quick links ─── */
+.dash-section { display: flex; flex-direction: column; gap: 12px; }
+.dash-section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--gold);
+  font-weight: 800;
+  padding-bottom: 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--gold) 14%, transparent);
+}
+.dash-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.dash-quick a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: var(--r-md);
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  color: var(--t-2);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.16s ease;
+  box-shadow: var(--sh-sm);
+}
+.dash-quick a:hover {
+  background: var(--hover-brand);
+  color: var(--gold);
+  border-color: var(--brd-glow);
+  transform: translateY(-2px);
+  box-shadow: var(--sh-md);
+}
+
+/* ─── Skeleton ─── */
+.skel {
+  background: var(--skel-grad);
+  background-size: 200% 100%;
+  animation: skel-shimmer 1.4s ease-in-out infinite;
+  border-radius: var(--r-md);
+}
+@keyframes skel-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}

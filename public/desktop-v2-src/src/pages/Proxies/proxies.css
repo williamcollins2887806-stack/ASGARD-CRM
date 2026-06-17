@@ -1,0 +1,122 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * Proxies — реестр доверенностей
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.prx-filter {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) minmax(160px, 1fr) minmax(160px, 1fr);
+  gap: 8px;
+}
+.prx-filter > * { min-width: 0; }
+
+.prx-kpi {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+.prx-kpi-card {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  box-shadow: var(--sh-card);
+}
+.prx-kpi-lab {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--t-3);
+  font-weight: 700;
+}
+.prx-kpi-val {
+  margin-top: 6px;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--t-1);
+}
+
+.prx-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.prx-table thead tr {
+  background: var(--inner-bg);
+  border-bottom: 1px solid var(--brd-1);
+}
+.prx-table th {
+  text-align: left;
+  padding: 10px 12px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--t-3);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.prx-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--brd-2);
+  vertical-align: middle;
+}
+.prx-row {
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.prx-row:hover { background: var(--hover-bg); }
+.prx-num {
+  font-weight: 700;
+  color: var(--t-1);
+}
+.prx-dim {
+  color: var(--t-3);
+  font-size: 12.5px;
+}
+.prx-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+.prx-actions .m-btn {
+  margin-left: 4px;
+}
+
+.prx-typegrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+.prx-typecard {
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  padding: 18px 14px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+  color: var(--t-1);
+}
+.prx-typecard:hover {
+  border-color: var(--gold);
+  transform: translateY(-2px);
+  box-shadow: var(--sh-md);
+}
+.prx-typecard-ic {
+  font-size: 30px;
+  margin-bottom: 8px;
+  line-height: 1;
+}
+.prx-typecard-ttl {
+  font-weight: 700;
+  color: var(--t-1);
+  margin-bottom: 4px;
+}
+.prx-typecard-desc {
+  color: var(--t-3);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+@media (max-width: 900px) {
+  .prx-filter { grid-template-columns: 1fr; }
+}

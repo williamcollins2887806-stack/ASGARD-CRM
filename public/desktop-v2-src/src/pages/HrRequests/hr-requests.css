@@ -1,0 +1,181 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * HR Requests — Заявки персонала v2
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.hr-filter {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(220px, 2fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.hr-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.hr-table thead tr {
+  background: var(--inner-bg);
+  border-bottom: 1px solid var(--brd-1);
+}
+.hr-table th {
+  text-align: left;
+  padding: 10px 12px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--t-3);
+  font-weight: 700;
+}
+.hr-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--brd-2);
+  vertical-align: middle;
+}
+.hr-row {
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.hr-row:hover { background: var(--hover-bg); }
+.hr-id { font-family: ui-monospace, monospace; font-weight: 700; color: var(--t-1); }
+.hr-work { font-weight: 700; color: var(--t-1); }
+.hr-customer { font-size: 11px; color: var(--t-3); margin-top: 2px; }
+.hr-positions { font-size: 12px; color: var(--t-2); }
+.hr-dim { color: var(--t-3); font-size: 12px; }
+
+/* Split-screen — HR детальный экран */
+.hr-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  min-height: 480px;
+  max-height: 70vh;
+  overflow: hidden;
+}
+.hr-split-left, .hr-split-right {
+  overflow-y: auto;
+  padding-right: 6px;
+}
+.hr-split-right {
+  border-left: 1px solid var(--brd-2);
+  padding-left: 14px;
+}
+
+/* Прогресс по позициям */
+.hr-pos {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.hr-pos-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.hr-pos-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--t-1);
+}
+.hr-pos-fill {
+  background: var(--bar-bg);
+  border-radius: var(--r-sm);
+  height: 6px;
+  overflow: hidden;
+}
+.hr-pos-fill > div {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+.hr-pos-row--full .hr-pos-fill > div { background: var(--ok); }
+.hr-pos-row--part .hr-pos-fill > div { background: var(--amber); }
+
+/* Назначенные рабочие */
+.hr-assign-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--brd-2);
+  font-size: 13px;
+}
+
+/* Доступные рабочие */
+.hr-worker-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px;
+  border-bottom: 1px solid var(--brd-2);
+}
+.hr-worker-row:last-child { border-bottom: none; }
+.hr-worker-fio { font-weight: 700; color: var(--t-1); }
+.hr-worker-meta { font-size: 11px; color: var(--t-3); margin-top: 2px; }
+
+/* Создание/редактирование */
+.hr-form-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+.hr-perm-block {
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-md);
+  padding: 12px;
+  background: var(--inner-bg);
+}
+.hr-perm-role {
+  margin-bottom: 10px;
+}
+.hr-perm-role--missing {
+  border: 1px solid var(--err);
+  border-radius: var(--r-sm);
+  padding: 6px;
+}
+.hr-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 2px;
+  padding: 3px 8px;
+  background: var(--bar-bg);
+  border-radius: var(--r-pill);
+  font-size: 12px;
+  color: var(--t-1);
+}
+.hr-chip button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--err);
+  font-size: 14px;
+  line-height: 1;
+}
+
+@media (max-width: 900px) {
+  .hr-filter { grid-template-columns: 1fr; }
+  .hr-form-grid { grid-template-columns: repeat(2, 1fr); }
+  .hr-split { grid-template-columns: 1fr; max-height: none; }
+  .hr-split-right { border-left: none; border-top: 1px solid var(--brd-2); padding-left: 0; padding-top: 14px; }
+}
+
+.hr-split-eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 800;
+  color: var(--t-3);
+  margin-bottom: 8px;
+}
+
+.hr-split-search-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.hr-italic { font-style: italic; }

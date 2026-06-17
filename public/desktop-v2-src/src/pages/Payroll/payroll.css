@@ -1,0 +1,657 @@
+/* Payroll — page-specific styles.
+ * Используется в PayrollGrid, PayrollSheet, Payroll/index.jsx
+ */
+
+/* ─── Period bar (top filters) ─── */
+.pyr-period-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 12px;
+}
+
+/* ─── KPI cells ─── */
+.pyr-label {
+  font-size: 11px;
+  color: var(--t-3);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.pyr-kpi {
+  padding: 14px;
+}
+.pyr-kpi-label {
+  font-size: 11px;
+  color: var(--t-3);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  font-weight: 700;
+}
+.pyr-kpi-value {
+  font-size: 22px;
+  font-weight: 900;
+  margin-top: 6px;
+}
+
+/* ─── KPI cells small (Sheet) ─── */
+.pyr-kpi-cell {
+  padding: 12px;
+}
+.pyr-kpi-cell-label {
+  font-size: 11px;
+  color: var(--t-3);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  font-weight: 700;
+}
+.pyr-kpi-cell-value {
+  font-size: 20px;
+  font-weight: 800;
+  margin-top: 4px;
+}
+
+/* ─── Grid: wrapper ─── */
+.pyr-grid-wrap {
+  padding: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.pyr-grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+/* ─── Grid: th ─── */
+.pyr-th {
+  padding: 8px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--t-2);
+  text-align: center;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--bar-bg);
+}
+.pyr-th-fio {
+  text-align: left;
+  min-width: 200px;
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: var(--inner-bg);
+}
+.pyr-th-day { min-width: 32px; }
+.pyr-th-r { text-align: right; }
+
+/* ─── Grid: td ─── */
+.pyr-td {
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--bar-bg);
+  vertical-align: middle;
+}
+.pyr-td-fio {
+  padding: 6px 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+.pyr-row-even > .pyr-td-fio { background: var(--bg-0); }
+.pyr-row-odd  > .pyr-td-fio { background: var(--inner-bg); }
+.pyr-row-even > .pyr-td { background: var(--bg-0); }
+.pyr-row-odd  > .pyr-td { background: var(--inner-bg); }
+/* Specific cells overrides may set their own bg via inline (pts) */
+.pyr-td-pts {
+  padding: 4px 2px;
+  text-align: center;
+  font-weight: 800;
+  font-size: 12px;
+}
+.pyr-td-zero {
+  padding: 4px 2px;
+  text-align: center;
+  color: var(--t-3);
+  font-size: 11px;
+}
+.pyr-td-edit {
+  padding: 2px;
+  text-align: center;
+}
+.pyr-cell-input {
+  width: 32px;
+  padding: 3px 0;
+  text-align: center;
+  background: transparent;
+  border: 1px dashed var(--gold);
+  border-radius: var(--r-xs);
+  color: var(--t-1);
+  font-size: 12px;
+  font-weight: 700;
+}
+.pyr-td-c { text-align: center; }
+.pyr-td-r { text-align: right; }
+.pyr-td-bold { font-weight: 600; }
+.pyr-td-pts-tot { font-weight: 800; color: var(--info); }
+.pyr-td-pd { color: var(--blue); }
+.pyr-td-itog { font-weight: 800; color: var(--gold); }
+.pyr-td-pos {
+  font-size: 10px;
+  color: var(--t-3);
+  margin-top: 2px;
+}
+
+/* ─── Grid: tfoot ─── */
+.pyr-tfoot {
+  background: var(--inner-bg);
+  border-top: 2px solid var(--gold);
+}
+.pyr-tfoot > .pyr-td { background: var(--inner-bg); }
+.pyr-tfoot-fio {
+  font-weight: 800;
+  padding: 8px 10px;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  color: var(--gold);
+}
+.pyr-tfoot-c {
+  text-align: center;
+  font-weight: 800;
+  color: var(--gold);
+  font-size: 11px;
+}
+.pyr-tfoot-r {
+  text-align: right;
+  font-weight: 800;
+  color: var(--gold);
+}
+.pyr-tfoot-grand {
+  font-weight: 900;
+}
+
+/* ─── Легенда ─── */
+.pyr-legend {
+  padding: 10px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: 12px;
+}
+.pyr-legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: var(--r-sm);
+  background: var(--inner-bg);
+}
+.pyr-legend-sw {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--r-xs);
+}
+
+/* ─── PayrollSheet — section header ─── */
+.pyr-sheet-head {
+  padding: 12px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--bar-bg);
+}
+.pyr-empty-text {
+  padding: 32px;
+  text-align: center;
+  color: var(--t-3);
+}
+.pyr-table-wrap {
+  overflow-x: auto;
+}
+.pyr-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.pyr-table-th {
+  padding: 8px 6px;
+  font-size: 11px;
+  color: var(--t-3);
+  text-transform: uppercase;
+  font-weight: 700;
+  border-bottom: 1px solid var(--bar-bg);
+  white-space: nowrap;
+  text-align: center;
+}
+.pyr-table-th--gold { color: var(--gold); }
+.pyr-table-th--left { text-align: left; }
+.pyr-table-td {
+  padding: 6px 6px;
+  border-bottom: 1px solid var(--bar-bg);
+  vertical-align: middle;
+  text-align: center;
+}
+.pyr-table-td--left { text-align: left; min-width: 200px; }
+.pyr-table-td--rt-3 { text-align: right; color: var(--t-3); }
+.pyr-table-td--rgold { text-align: right; font-weight: 800; color: var(--gold); }
+.pyr-tf-td {
+  padding: 8px 6px;
+  font-weight: 700;
+  color: var(--gold);
+  text-align: center;
+}
+.pyr-tf-td--r { text-align: right; }
+.pyr-tf-row {
+  background: var(--inner-bg);
+  border-top: 2px solid var(--gold);
+}
+
+.pyr-inline-num {
+  padding: 4px 6px;
+  text-align: right;
+  background: var(--inner-bg);
+  border: 1px solid var(--bar-bg);
+  border-radius: var(--r-xs);
+  color: var(--t-1);
+  font-size: 13px;
+}
+.pyr-inline-num--60 { width: 60px; }
+.pyr-inline-num--80 { width: 80px; }
+
+.pyr-del-btn {
+  background: transparent;
+  border: none;
+  color: var(--err);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px;
+}
+
+.pyr-director-comment {
+  padding: 14px;
+  border-left: 4px solid var(--err);
+}
+.pyr-eyebrow {
+  font-size: 11px;
+  color: var(--t-3);
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.pyr-pay-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+}
+.pyr-pay-amt {
+  min-width: 110px;
+  text-align: right;
+}
+
+/* ─── Payroll/index list / report styles ─── */
+.pyr-search-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+}
+.pyr-search-q {
+  flex: 1;
+  max-width: 380px;
+  min-width: 220px;
+}
+.pyr-search-work { width: 260px; }
+
+.pyr-pager {
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.pyr-sheet-card {
+  padding: 14px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pyr-sheet-head-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.pyr-sheet-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  flex-wrap: wrap;
+  color: var(--t-2);
+}
+
+.pyr-rep-totals-row {
+  padding: 8px 14px;
+  background: var(--inner-bg);
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--t-2);
+  border-bottom: 1px solid var(--bar-bg);
+}
+.pyr-rep-overflow { padding: 0; }
+.pyr-rep-tail {
+  padding: 8px 14px;
+  text-align: center;
+  color: var(--t-3);
+  font-size: 12px;
+}
+.pyr-rep-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 12px;
+}
+.pyr-rep-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.pyr-rep-th {
+  padding: 8px 6px;
+  font-size: 11px;
+  color: var(--t-3);
+  text-transform: uppercase;
+  font-weight: 700;
+  border-bottom: 1px solid var(--bar-bg);
+  white-space: nowrap;
+  text-align: center;
+}
+.pyr-rep-th--left { text-align: left; }
+.pyr-rep-th--right { text-align: right; }
+.pyr-rep-row { border-bottom: 1px solid var(--bar-bg); }
+.pyr-rep-td {
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--bar-bg);
+  vertical-align: middle;
+  text-align: center;
+}
+.pyr-rep-td--left { text-align: left; }
+.pyr-rep-td--rgold {
+  text-align: right;
+  font-weight: 700;
+  color: var(--gold);
+}
+
+/* ─── KPI cell отчёта ─── */
+.pyr-kpi-rep {
+  padding: 14px;
+}
+.pyr-kpi-rep-label {
+  font-size: 11px;
+  color: var(--t-3);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  font-weight: 700;
+}
+.pyr-kpi-rep-value {
+  font-size: 22px;
+  font-weight: 900;
+  margin-top: 6px;
+}
+
+/* ─── Month bars ─── */
+.pyr-month-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+.pyr-month-lbl { width: 90px; color: var(--t-3); }
+.pyr-month-bar {
+  flex: 1;
+  height: 22px;
+  background: var(--bar-bg);
+  border-radius: var(--r-xs);
+  overflow: hidden;
+  position: relative;
+}
+.pyr-month-fill-acc {
+  height: 100%;
+  background: var(--info-bg);
+}
+.pyr-month-fill-paid {
+  height: 100%;
+  background: var(--ok);
+  position: absolute;
+  top: 0;
+  left: 0;
+  opacity: 0.7;
+}
+.pyr-month-val-acc {
+  min-width: 110px;
+  text-align: right;
+  color: var(--gold);
+  font-weight: 700;
+}
+.pyr-month-val-paid {
+  min-width: 110px;
+  text-align: right;
+  color: var(--ok);
+}
+
+/* ─── Top-row work ─── */
+.pyr-work-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 13px;
+}
+.pyr-work-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pyr-work-paid {
+  color: var(--ok);
+  font-weight: 700;
+  min-width: 130px;
+  text-align: right;
+}
+
+.pyr-worker-rank {
+  width: 24px;
+  color: var(--t-3);
+  font-weight: 700;
+}
+.pyr-worker-name { flex: 1; min-width: 0; }
+.pyr-worker-amt {
+  color: var(--gold);
+  font-weight: 700;
+  min-width: 130px;
+  text-align: right;
+}
+
+/* ─── PayrollDashboard ─── */
+.pyd-card {
+  padding: 16px;
+}
+.pyd-card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.pyd-card-h3 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--t-1);
+}
+.pyd-card-sub {
+  font-size: 12px;
+  color: var(--t-3);
+  margin-top: 2px;
+}
+.pyd-overflow-x { overflow-x: auto; }
+.pyd-loading {
+  text-align: center;
+  padding: 32px;
+  color: var(--t-3);
+}
+.pyd-tab-bar-totals {
+  padding: 8px 12px;
+  background: var(--inner-bg);
+  border-radius: 0 0 var(--r-md) var(--r-md);
+  margin-top: 8px;
+  display: flex;
+  gap: 20px;
+  font-size: 13px;
+  color: var(--t-2);
+  flex-wrap: wrap;
+}
+.pyd-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.pyd-table-head-tr {
+  background: var(--inner-bg);
+  border-bottom: 2px solid var(--brd-1);
+}
+.pyd-row {
+  border-bottom: 1px solid var(--brd-1);
+}
+.pyd-cell {
+  padding: 10px 12px;
+}
+.pyd-cell-r { text-align: right; }
+.pyd-cell-fw7 { font-weight: 700; }
+.pyd-cell-fw6 { font-weight: 600; }
+.pyd-cell-mut { color: var(--t-2); }
+.pyd-foot-tr {
+  background: var(--inner-bg);
+  border-top: 2px solid var(--brd-1);
+  font-weight: 700;
+}
+.pyd-foot-tot-row {
+  background: var(--inner-bg);
+}
+.pyd-foot-tot-cell {
+  padding: 8px 12px;
+  font-weight: 800;
+}
+.pyd-action-row {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+.pyd-th {
+  padding: 10px 12px;
+  text-align: left;
+  color: var(--t-2);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pyd-th-r { text-align: right; }
+
+.pyd-bar {
+  background: var(--bar-bg);
+  border-radius: var(--r-sm);
+  height: 8px;
+  overflow: hidden;
+}
+.pyd-bar-fill {
+  height: 100%;
+  transition: width 0.3s;
+}
+.pyd-bar-pct {
+  font-size: 10px;
+  color: var(--t-3);
+  margin-top: 2px;
+}
+.pyd-low-row { background: var(--err-bg); }
+
+.pyd-access-locked {
+  padding: 32px;
+  text-align: center;
+}
+.pyd-locked-icon {
+  font-size: 36px;
+  opacity: 0.6;
+  margin-bottom: 12px;
+}
+.pyd-locked-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.pyd-kpi-box {
+  padding: 14px 16px;
+  border-radius: var(--r-md);
+}
+.pyd-kpi-label {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+.pyd-kpi-value {
+  font-size: 22px;
+  font-weight: 800;
+  margin-top: 4px;
+}
+
+.pyd-quick-card {
+  padding: 12px;
+}
+.pyd-quick-head {
+  font-size: 11px;
+  color: var(--t-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.pyd-quick-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--inner-bg);
+  border-radius: var(--r-md);
+  text-decoration: none;
+  color: inherit;
+  transition: background .15s;
+}
+.pyd-quick-nav:hover {
+  background: var(--hover-bg);
+}
+.pyd-quick-nav-icon { font-size: 24px; }
+.pyd-quick-nav-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--t-1);
+}
+.pyd-quick-nav-sub {
+  font-size: 11px;
+  color: var(--t-3);
+}
+.pyd-quick-nav-arrow { color: var(--t-3); }

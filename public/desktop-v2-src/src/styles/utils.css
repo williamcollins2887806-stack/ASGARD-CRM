@@ -1,0 +1,1309 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * Asgard CRM v2 — UTILITY-классы для замены inline-стилей
+ *
+ * Цель: вытащить из JSX повторяющиеся style={{...}} в семантичные CSS-классы.
+ * Покрывают ~80% паттернов из vanilla-наследия (flex/grid/gap/padding/colors).
+ *
+ * Префиксы:
+ *   .u-     — generic utility (display/spacing/text)
+ *   .row-   — горизонтальные flex-layouts
+ *   .col-   — вертикальные flex-layouts
+ *   .grid-  — grid-layouts
+ *   .num-   — числовые ячейки (tabular-nums, right-align)
+ *   .muted  — приглушённые подписи (var(--t-3))
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─── Display / flex / grid ─── */
+.u-flex { display: flex; }
+.u-iflex { display: inline-flex; }
+.u-grid { display: grid; }
+.u-block { display: block; }
+.u-iblock { display: inline-block; }
+.u-hidden { display: none; }
+
+.u-wrap { flex-wrap: wrap; }
+.u-nowrap { flex-wrap: nowrap; white-space: nowrap; }
+
+/* Направления flex */
+.col   { display: flex; flex-direction: column; }
+.row   { display: flex; flex-direction: row; align-items: center; }
+.row-top    { display: flex; flex-direction: row; align-items: flex-start; }
+.row-bottom { display: flex; flex-direction: row; align-items: flex-end; }
+.row-baseline { display: flex; flex-direction: row; align-items: baseline; }
+.row-stretch  { display: flex; flex-direction: row; align-items: stretch; }
+.row-wrap   { display: flex; flex-direction: row; align-items: center; flex-wrap: wrap; }
+.col-stretch { display: flex; flex-direction: column; align-items: stretch; }
+.col-center  { display: flex; flex-direction: column; align-items: center; }
+.col-start   { display: flex; flex-direction: column; align-items: flex-start; }
+
+/* Spread = space-between по горизонтали */
+.row-spread { display: flex; flex-direction: row; align-items: center; justify-content: space-between; }
+.row-end    { display: flex; flex-direction: row; align-items: center; justify-content: flex-end; }
+.row-center { display: flex; flex-direction: row; align-items: center; justify-content: center; }
+.row-start  { display: flex; flex-direction: row; align-items: center; justify-content: flex-start; }
+.row-around { display: flex; flex-direction: row; align-items: center; justify-content: space-around; }
+
+/* Gap */
+.gap-2  { gap: 2px; }
+.gap-4  { gap: 4px; }
+.gap-6  { gap: 6px; }
+.gap-8  { gap: 8px; }
+.gap-10 { gap: 10px; }
+.gap-12 { gap: 12px; }
+.gap-14 { gap: 14px; }
+.gap-16 { gap: 16px; }
+.gap-20 { gap: 20px; }
+.gap-24 { gap: 24px; }
+.gap-32 { gap: 32px; }
+
+/* Flex grow */
+.flex-1 { flex: 1; min-width: 0; }
+.flex-auto { flex: 0 1 auto; }
+.flex-none { flex: 0 0 auto; }
+.flex-grow { flex-grow: 1; }
+.flex-shrink-0 { flex-shrink: 0; }
+
+/* Align self */
+.self-start  { align-self: flex-start; }
+.self-end    { align-self: flex-end; }
+.self-center { align-self: center; }
+
+/* ─── Margin/Padding ─── */
+.m-0 { margin: 0; }
+.mt-0 { margin-top: 0; }
+.mt-2 { margin-top: 2px; }
+.mt-4 { margin-top: 4px; }
+.mt-6 { margin-top: 6px; }
+.mt-8 { margin-top: 8px; }
+.mt-10 { margin-top: 10px; }
+.mt-12 { margin-top: 12px; }
+.mt-14 { margin-top: 14px; }
+.mt-16 { margin-top: 16px; }
+.mt-20 { margin-top: 20px; }
+.mt-22 { margin-top: 22px; }
+.mt-24 { margin-top: 24px; }
+.mt-32 { margin-top: 32px; }
+
+.mb-0 { margin-bottom: 0; }
+.mb-2 { margin-bottom: 2px; }
+.mb-4 { margin-bottom: 4px; }
+.mb-6 { margin-bottom: 6px; }
+.mb-8 { margin-bottom: 8px; }
+.mb-10 { margin-bottom: 10px; }
+.mb-12 { margin-bottom: 12px; }
+.mb-16 { margin-bottom: 16px; }
+.mb-20 { margin-bottom: 20px; }
+.mb-24 { margin-bottom: 24px; }
+
+.ml-2 { margin-left: 2px; }
+.ml-4 { margin-left: 4px; }
+.ml-6 { margin-left: 6px; }
+.ml-8 { margin-left: 8px; }
+.ml-12 { margin-left: 12px; }
+.ml-auto { margin-left: auto; }
+
+.mr-2 { margin-right: 2px; }
+.mr-4 { margin-right: 4px; }
+.mr-6 { margin-right: 6px; }
+.mr-8 { margin-right: 8px; }
+.mr-12 { margin-right: 12px; }
+.mr-auto { margin-right: auto; }
+
+.p-0 { padding: 0; }
+.p-4 { padding: 4px; }
+.p-6 { padding: 6px; }
+.p-8 { padding: 8px; }
+.p-10 { padding: 10px; }
+.p-12 { padding: 12px; }
+.p-14 { padding: 14px; }
+.p-16 { padding: 16px; }
+.p-20 { padding: 20px; }
+.p-24 { padding: 24px; }
+.p-32 { padding: 32px; }
+.p-48 { padding: 48px; }
+
+.px-4  { padding-left: 4px;  padding-right: 4px; }
+.px-6  { padding-left: 6px;  padding-right: 6px; }
+.px-8  { padding-left: 8px;  padding-right: 8px; }
+.px-10 { padding-left: 10px; padding-right: 10px; }
+.px-12 { padding-left: 12px; padding-right: 12px; }
+.px-14 { padding-left: 14px; padding-right: 14px; }
+.px-16 { padding-left: 16px; padding-right: 16px; }
+.px-20 { padding-left: 20px; padding-right: 20px; }
+.px-24 { padding-left: 24px; padding-right: 24px; }
+
+.py-2  { padding-top: 2px;  padding-bottom: 2px; }
+.py-4  { padding-top: 4px;  padding-bottom: 4px; }
+.py-6  { padding-top: 6px;  padding-bottom: 6px; }
+.py-8  { padding-top: 8px;  padding-bottom: 8px; }
+.py-10 { padding-top: 10px; padding-bottom: 10px; }
+.py-12 { padding-top: 12px; padding-bottom: 12px; }
+.py-14 { padding-top: 14px; padding-bottom: 14px; }
+.py-16 { padding-top: 16px; padding-bottom: 16px; }
+.py-20 { padding-top: 20px; padding-bottom: 20px; }
+
+.pt-8  { padding-top: 8px; }
+.pt-12 { padding-top: 12px; }
+.pt-16 { padding-top: 16px; }
+.pb-8  { padding-bottom: 8px; }
+.pb-12 { padding-bottom: 12px; }
+.pb-16 { padding-bottom: 16px; }
+
+/* ─── Text ─── */
+.t-left   { text-align: left; }
+.t-right  { text-align: right; }
+.t-center { text-align: center; }
+
+.fw-400 { font-weight: 400; }
+.fw-500 { font-weight: 500; }
+.fw-600 { font-weight: 600; }
+.fw-700 { font-weight: 700; }
+.fw-800 { font-weight: 800; }
+.fw-900 { font-weight: 900; }
+
+.fs-10 { font-size: 10px; }
+.fs-11 { font-size: 11px; }
+.fs-12 { font-size: 12px; }
+.fs-13 { font-size: 13px; }
+.fs-14 { font-size: 14px; }
+.fs-15 { font-size: 15px; }
+.fs-16 { font-size: 16px; }
+.fs-18 { font-size: 18px; }
+.fs-20 { font-size: 20px; }
+.fs-22 { font-size: 22px; }
+.fs-24 { font-size: 24px; }
+.fs-26 { font-size: 26px; }
+.fs-28 { font-size: 28px; }
+.fs-32 { font-size: 32px; }
+.fs-40 { font-size: 40px; }
+.fs-48 { font-size: 48px; }
+
+/* Цветовые токены текста */
+.c-t1   { color: var(--t-1); }
+.c-t2   { color: var(--t-2); }
+.c-t3   { color: var(--t-3); }
+.c-t4   { color: var(--t-4); }
+.c-gold { color: var(--gold); }
+.c-red  { color: var(--red); }
+.c-ok   { color: var(--ok); }
+.c-err  { color: var(--err); }
+.c-info { color: var(--info); }
+.c-blue { color: var(--blue-l); }
+.c-purple { color: var(--purple); }
+.c-orange { color: var(--orange); }
+.c-amber  { color: var(--amber); }
+.c-cyan   { color: var(--cyan); }
+
+/* Семантичные «приглушёнки» */
+.muted   { color: var(--t-3); }
+.muted-2 { color: var(--t-2); }
+
+/* Number cell: tabular-nums + right-align */
+.num-cell { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.num-mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, monospace; }
+
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lh-1  { line-height: 1; }
+.lh-12 { line-height: 1.2; }
+.lh-13 { line-height: 1.3; }
+.lh-14 { line-height: 1.4; }
+.lh-15 { line-height: 1.5; }
+
+.upper { text-transform: uppercase; letter-spacing: 0.08em; }
+
+/* ─── Overflow ─── */
+.ov-hidden { overflow: hidden; }
+.ov-auto   { overflow: auto; }
+.ov-x-auto { overflow-x: auto; }
+.ov-y-auto { overflow-y: auto; }
+.ov-x-hidden { overflow-x: hidden; }
+.ov-y-hidden { overflow-y: hidden; }
+
+/* ─── Cursor ─── */
+.cur-p   { cursor: pointer; }
+.cur-d   { cursor: default; }
+.cur-na  { cursor: not-allowed; }
+.no-sel  { user-select: none; }
+
+/* ─── Border/radius ─── */
+.brd     { border: 1px solid var(--brd-1); }
+.brd-b   { border-bottom: 1px solid var(--brd-1); }
+.brd-t   { border-top: 1px solid var(--brd-1); }
+.brd-2   { border: 1px solid var(--brd-2); }
+.brd-2-b { border-bottom: 1px solid var(--brd-2); }
+.brd-2-t { border-top: 1px solid var(--brd-2); }
+
+.r-sm   { border-radius: var(--r-sm); }
+.r-md   { border-radius: var(--r-md); }
+.r-lg   { border-radius: var(--r-lg); }
+.r-pill { border-radius: var(--r-pill); }
+
+/* ─── Backgrounds ─── */
+.bg-inner   { background: var(--inner-bg); }
+.bg-card    { background: var(--card-bg); }
+.bg-hover   { background: var(--hover-bg); }
+.bg-gold    { background: var(--gold-bg); }
+.bg-red     { background: var(--red-bg); }
+.bg-ok      { background: var(--ok-bg); }
+.bg-err     { background: var(--err-bg); }
+.bg-info    { background: var(--info-bg); }
+.bg-purple  { background: var(--purple-bg); }
+.bg-orange  { background: var(--orange-bg); }
+.bg-transparent { background: transparent; }
+
+/* ─── Sizing ─── */
+.w-full   { width: 100%; }
+.w-auto   { width: auto; }
+.w-fit    { width: fit-content; }
+.h-full   { height: 100%; }
+.h-auto   { height: auto; }
+.min-w-0  { min-width: 0; }
+
+.w-60  { width: 60px; }
+.w-70  { width: 70px; }
+.w-80  { width: 80px; }
+.w-90  { width: 90px; }
+.w-100 { width: 100px; }
+.w-110 { width: 110px; }
+.w-120 { width: 120px; }
+.w-130 { width: 130px; }
+.w-140 { width: 140px; }
+.w-150 { width: 150px; }
+.w-160 { width: 160px; }
+.w-170 { width: 170px; }
+.w-180 { width: 180px; }
+.w-200 { width: 200px; }
+.w-220 { width: 220px; }
+.w-240 { width: 240px; }
+.w-260 { width: 260px; }
+.w-280 { width: 280px; }
+.w-300 { width: 300px; }
+
+/* ─── Position ─── */
+.pos-rel { position: relative; }
+.pos-abs { position: absolute; }
+.pos-stk { position: sticky; top: 0; z-index: 5; }
+
+/* ─── Card-state helpers ─── */
+.card-empty {
+  text-align: center;
+  padding: 48px;
+  color: var(--t-3);
+}
+.card-pad-0  { padding: 0; }
+.card-pad-12 { padding: 12px; }
+.card-pad-16 { padding: 16px; }
+
+/* ─── Grid templates ─── */
+.grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); }
+.grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); }
+.grid-6 { display: grid; grid-template-columns: repeat(6, 1fr); }
+.grid-2-2-1 { display: grid; grid-template-columns: 2fr 2fr 1fr; }
+.grid-1-2 { display: grid; grid-template-columns: 1fr 2fr; }
+.grid-2-1 { display: grid; grid-template-columns: 2fr 1fr; }
+.grid-1-3 { display: grid; grid-template-columns: 1fr 3fr; }
+.grid-3-1 { display: grid; grid-template-columns: 3fr 1fr; }
+.grid-auto-200 { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+.grid-auto-240 { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.grid-auto-280 { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+
+/* ─── Filter bar — типовая раскладка фильтров ─── */
+.filter-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) repeat(4, minmax(140px, 1fr));
+  gap: 8px;
+}
+.filter-grid-3 {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) repeat(2, minmax(160px, 1fr));
+  gap: 8px;
+}
+.filter-grid-2 {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) minmax(160px, 1fr);
+  gap: 8px;
+}
+.filter-grid-4 {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+/* ─── Pagination ─── */
+.pager {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+.pager-info { color: var(--t-3); font-size: 13px; }
+
+/* ─── Sortable table header ─── */
+.th-sort { cursor: pointer; user-select: none; }
+.th-sort-arrow { margin-left: 4px; color: var(--gold); }
+
+/* display:contents для fragmentless обёрток */
+.contents { display: contents; }
+.m-step-wrap { display: contents; }
+
+/* ─── Empty-state inline ─── */
+.empty-inline {
+  text-align: center;
+  padding: 24px;
+  color: var(--t-3);
+}
+
+/* ─── Modal body sections ─── */
+.modal-section { display: flex; flex-direction: column; gap: 12px; }
+.modal-section + .modal-section { margin-top: 16px; }
+.modal-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.modal-footer-end {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+.modal-footer-spread {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+/* ─── Опасные/предупреждающие блоки ─── */
+.alert-warn {
+  padding: 10px 12px;
+  background: var(--orange-bg);
+  color: var(--orange);
+  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in srgb, var(--orange) 25%, transparent);
+}
+.alert-err {
+  padding: 10px 12px;
+  background: var(--err-bg);
+  color: var(--err);
+  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in srgb, var(--err) 25%, transparent);
+}
+.alert-info {
+  padding: 10px 12px;
+  background: var(--info-bg);
+  color: var(--info);
+  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in srgb, var(--info) 25%, transparent);
+}
+.alert-ok {
+  padding: 10px 12px;
+  background: var(--ok-bg);
+  color: var(--ok);
+  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in srgb, var(--ok) 25%, transparent);
+}
+
+/* Мягкие алёрты с side-border (часто встречаются в формах) */
+.alert-err-soft {
+  background: var(--err-bg);
+  padding: 10px 14px;
+  border-radius: var(--r-sm);
+  border-left: 3px solid var(--err);
+  font-size: 12px;
+  color: var(--t-2);
+}
+.alert-info-soft {
+  background: var(--info-bg);
+  padding: 10px 14px;
+  border-radius: var(--r-sm);
+  border-left: 3px solid var(--info);
+  font-size: 12px;
+  color: var(--t-2);
+}
+.alert-warn-soft {
+  background: var(--orange-bg);
+  padding: 10px 14px;
+  border-radius: var(--r-sm);
+  border-left: 3px solid var(--orange);
+  font-size: 12px;
+  color: var(--t-2);
+}
+.alert-ok-soft {
+  background: var(--ok-bg);
+  padding: 10px 14px;
+  border-radius: var(--r-sm);
+  border-left: 3px solid var(--ok);
+  font-size: 12px;
+  color: var(--t-2);
+}
+
+/* Подсказка под полем, прижата к нему сверху */
+.hint-tight { margin-top: -8px; }
+
+/* ─── Скроллируемый список с чекбоксами ─── */
+.pick-list {
+  margin-top: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-sm);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pick-list-empty {
+  color: var(--t-3);
+  font-size: 12px;
+  padding: 12px;
+  text-align: center;
+}
+.pick-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.pick-row:hover { background: var(--hover-bg); }
+.pick-row.is-active { background: var(--gold-bg); }
+.pick-row-main { flex: 1; min-width: 0; }
+.pick-row-name { font-size: 13px; font-weight: 500; }
+.pick-row-sub  { font-size: 11px; color: var(--t-3); }
+
+/* Заголовок секции внутри модалки */
+.modal-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t-2);
+  margin-bottom: 6px;
+}
+
+/* Прикреплённые файлы (в формах) */
+.files-attach-box {
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+  padding: 10px;
+}
+.files-attach-head {
+  font-size: 11.5px;
+  color: var(--t-3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+.files-attach-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--brd-2);
+}
+.files-attach-row:last-child { border-bottom: none; }
+.files-attach-name { color: var(--t-1); font-size: 13px; }
+.files-attach-size { color: var(--t-3); font-size: 11px; margin-left: 8px; }
+.files-attach-rm { padding: 2px 8px; font-size: 16px; }
+
+/* Карточка загрузки/спиннера */
+.loading-card {
+  background: var(--card-bg);
+  padding: 48px;
+  text-align: center;
+  border-radius: var(--r-md);
+}
+
+/* Key-value строка (сводки, итоги) */
+.kv-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.kv-key { color: var(--t-3); }
+.kv-val { color: var(--t-1); }
+
+/* Mimir-banner — фиолетовая плашка-подсказка про эталоны */
+.mimir-banner {
+  padding: 10px;
+  background: var(--purple-bg);
+  border-radius: var(--r-sm);
+  color: var(--t-2);
+  font-size: 12.5px;
+  margin-bottom: 14px;
+}
+
+/* Брови секций (Eyebrow) — маленький заголовок */
+.section-eyebrow {
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: var(--t-3);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* Скроллируемый список карточек (оборудование, позиции) */
+.scroll-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+.scroll-list-tight {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Универсальная row-карточка элемента (оборудование, позиция счёта и т.п.) */
+.item-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px;
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-sm);
+  font-size: 13px;
+}
+.item-pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-size: 13px;
+}
+.item-pick.is-selected {
+  background: var(--gold-bg);
+  border-color: var(--gold);
+}
+.item-pick-main { flex: 1; }
+.item-pick-sub {
+  font-size: 11.5px;
+  color: var(--t-3);
+}
+.item-pick-meta {
+  color: var(--t-3);
+  margin-left: 8px;
+}
+
+/* Inline-loader */
+.loader-inline {
+  padding: 24px;
+  text-align: center;
+  color: var(--t-3);
+}
+
+/* Soft-card с padding 12/16 и radius md (форма внутри модалки) */
+.card-soft-md {
+  padding: 12px;
+  background: var(--inner-bg);
+  border-radius: var(--r-md);
+  display: flex;
+  flex-direction: column;
+}
+.card-soft-lg {
+  padding: 16px;
+  background: var(--inner-bg);
+  border-radius: var(--r-md);
+  display: flex;
+  flex-direction: column;
+}
+.mb-14 { margin-bottom: 14px; }
+
+/* Период бронирования / даты «с»–«по» */
+.dates-box {
+  margin-top: 14px;
+  padding: 12px;
+  background: var(--inner-bg);
+  border-radius: var(--r-md);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+/* Уже оформленный список (внутри модалок: акты/счета/etc) */
+.existing-box {
+  padding: 10px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+}
+.existing-box-title {
+  font-size: 11px;
+  color: var(--t-3);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 6px;
+}
+.existing-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+  padding: 4px 0;
+}
+
+/* Внутренняя сводка-блок */
+.summary-box {
+  padding: 10px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.summary-box-title {
+  font-size: 11.5px;
+  color: var(--t-3);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+/* Превью-блок (например, итоги позиций) */
+.preview-box {
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-sm);
+  padding: 10px;
+}
+.preview-box-label {
+  font-size: 12px;
+  color: var(--t-3);
+  margin-bottom: 8px;
+}
+.preview-table {
+  width: 100%;
+  font-size: 12px;
+  border-collapse: collapse;
+}
+.preview-table thead tr { color: var(--t-3); }
+.preview-table th,
+.preview-table td { padding: 4px 6px; }
+.preview-table th { text-align: left; }
+.preview-table th.t-right,
+.preview-table td.t-right { text-align: right; }
+.preview-table tbody tr { border-top: 1px solid var(--brd-1); }
+.preview-table tfoot tr {
+  border-top: 1px solid var(--brd-1);
+  font-weight: 700;
+}
+.preview-table tfoot td.total-cell {
+  padding: 6px;
+  text-align: right;
+  color: var(--gold);
+}
+.preview-table tfoot td.total-label {
+  padding: 6px;
+  text-align: right;
+}
+
+/* ─── Опции/чипы ─── */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: var(--r-pill);
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-1);
+  font-size: 11.5px;
+  color: var(--t-2);
+}
+
+/* KPI-блок с заголовком и подсказками */
+.kpi-box {
+  padding: 14px;
+  background: var(--inner-bg);
+  border-radius: var(--r-md);
+  border: 1px solid var(--brd-2);
+}
+.kpi-box-title {
+  font-size: 11px;
+  color: var(--t-3);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+.kpi-mini-label {
+  font-size: 10.5px;
+  color: var(--t-3);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.kpi-mini-value {
+  font-size: 18px;
+  font-weight: 800;
+  margin-top: 2px;
+}
+.kpi-warn-err {
+  margin-top: 10px;
+  padding: 8px;
+  background: var(--err-bg);
+  border-radius: var(--r-sm);
+  color: var(--err);
+  font-size: 12px;
+}
+.kpi-warn-ok {
+  margin-top: 10px;
+  padding: 8px;
+  background: var(--ok-bg);
+  border-radius: var(--r-sm);
+  color: var(--ok);
+  font-size: 12px;
+}
+
+/* ─── Card-state (warn/err/info карточки-сообщения) ─── */
+.card-state-warn {
+  padding: 24px;
+  text-align: center;
+  color: var(--t-3);
+}
+.card-state-err {
+  padding: 24px;
+  text-align: center;
+  color: var(--err);
+}
+
+/* ─── EstimateReport — action bars ─── */
+.er-action-bar {
+  padding: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.er-action-bar--gold { background: linear-gradient(135deg, var(--gold-bg), transparent 70%); }
+.er-action-bar--info { background: linear-gradient(135deg, var(--info-bg), transparent 70%); }
+.er-action-hint {
+  font-size: 12px;
+  color: var(--t-3);
+  margin-top: 2px;
+}
+
+/* ─── EstimateReport — SummaryCards ─── */
+.er-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+}
+.er-summary-card { padding: 14px; }
+.er-summary-card-label {
+  font-size: 11.5px;
+  color: var(--t-3);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.er-summary-card-value {
+  font-size: 22px;
+  font-weight: 800;
+}
+
+/* ─── EstimateReport — CostBar ─── */
+.er-costbar-card { padding: 14px; }
+.er-costbar {
+  display: flex;
+  height: 24px;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+.er-costbar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+}
+.er-costbar-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.er-costbar-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+/* ─── EstimateReport — AttachedFiles ─── */
+.er-files-card { padding: 14px; }
+.er-files-title { font-weight: 600; margin-bottom: 8px; }
+.er-file-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px solid var(--brd-1);
+  border-radius: 6px;
+}
+.er-file-icon { font-size: 18px; }
+.er-file-size { font-size: 11px; color: var(--t-3); }
+.er-file-link { font-size: 12px; }
+
+/* ─── Дополнительные паддинги/маржины ─── */
+.mt-28 { margin-top: 28px; }
+.mb-28 { margin-bottom: 28px; }
+.mt-40 { margin-top: 40px; }
+.mb-32 { margin-bottom: 32px; }
+.p-2 { padding: 2px; }
+.p-40 { padding: 40px; }
+.py-24 { padding-top: 24px; padding-bottom: 24px; }
+.py-32 { padding-top: 32px; padding-bottom: 32px; }
+.py-48 { padding-top: 48px; padding-bottom: 48px; }
+
+.ml-16 { margin-left: 16px; }
+.ml-10 { margin-left: 10px; }
+.mr-10 { margin-right: 10px; }
+.mr-16 { margin-right: 16px; }
+.mt-1 { margin-top: 1px; }
+.mb-1 { margin-bottom: 1px; }
+
+/* ─── min-width helpers ─── */
+.mw-90  { min-width: 90px; }
+.mw-100 { min-width: 100px; }
+.mw-110 { min-width: 110px; }
+.mw-120 { min-width: 120px; }
+.mw-130 { min-width: 130px; }
+.mw-140 { min-width: 140px; }
+.mw-150 { min-width: 150px; }
+.mw-160 { min-width: 160px; }
+.mw-170 { min-width: 170px; }
+.mw-200 { min-width: 200px; }
+.mw-220 { min-width: 220px; }
+.mw-260 { min-width: 260px; }
+.mw-380 { min-width: 380px; }
+
+/* ─── max-width helpers ─── */
+.mxw-200 { max-width: 200px; }
+.mxw-300 { max-width: 300px; }
+.mxw-380 { max-width: 380px; }
+
+/* ─── height helpers ─── */
+.h-8   { height: 8px; }
+.h-14  { height: 14px; }
+.h-18  { height: 18px; }
+.h-22  { height: 22px; }
+.h-24  { height: 24px; }
+.h-100 { height: 100px; }
+.h-160 { height: 160px; }
+.h-200 { height: 200px; }
+.minh-120 { min-height: 120px; }
+.minh-60  { min-height: 60px; }
+
+/* ─── Grid template-helpers ─── */
+.grid-auto-160 { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.grid-auto-170 { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+.grid-auto-220 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.grid-auto-150 { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+
+/* ─── transitions ─── */
+.tr-bar    { transition: width 0.4s ease; }
+.tr-bar-s  { transition: width 0.3s; }
+.tr-bar-l  { transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* ─── progress-bar (общий) ─── */
+.progress-bar {
+  background: var(--bar-bg);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+}
+.progress-bar-fill {
+  height: 100%;
+  border-radius: var(--r-pill);
+}
+
+/* ─── tabular monospace для time-display ─── */
+.font-mono { font-family: ui-monospace, monospace; }
+
+/* ─── card-loader ─── */
+.card-loader {
+  text-align: center;
+  padding: 48px;
+  color: var(--t-3);
+}
+.card-loader-32 {
+  text-align: center;
+  padding: 32px;
+  color: var(--t-3);
+}
+
+/* ─── Section-card (типовая card с padding) ─── */
+.section-card {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  padding: 16px;
+}
+
+/* ─── Mini-KPI cell (inner-bg, padding 14, label-uppercase + value) ─── */
+.mini-kpi {
+  background: var(--inner-bg);
+  border-radius: var(--r-md);
+  padding: 14px;
+}
+.mini-kpi-label {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--t-3);
+  font-weight: 700;
+}
+.mini-kpi-value {
+  font-size: 28px;
+  font-weight: 800;
+  margin-top: 6px;
+}
+.mini-kpi-value--text {
+  font-size: 20px;
+  font-weight: 800;
+  margin-top: 6px;
+}
+
+/* ─── Хэдеры таблиц (typed) ─── */
+.tab-th {
+  padding: 10px 8px;
+  text-align: left;
+  font-weight: 700;
+  color: var(--t-3);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.tab-td {
+  padding: 10px 8px;
+  vertical-align: middle;
+}
+
+/* ─── Сетки рядов «label - bar - value» ─── */
+.lbv-row {
+  display: grid;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+.lbv-row-160 { grid-template-columns: 160px 1fr 200px; }
+.lbv-row-90  { grid-template-columns: 90px 1fr 180px; }
+.lbv-row-90-220 { grid-template-columns: 90px 1fr 220px; }
+
+/* ─── Status badge SE (СЗ) ─── */
+.badge-se {
+  margin-left: 6px;
+  font-size: 10px;
+  background: var(--info-bg);
+  color: var(--info);
+  padding: 1px 5px;
+  border-radius: var(--r-xs);
+  font-weight: 700;
+}
+
+/* ─── Простая таблица (TeamTable, etc) — border-collapse separate ─── */
+.ta-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+}
+.brd-2-b-row { border-bottom: 1px solid var(--brd-2); }
+.brd-bar-b-row { border-bottom: 1px solid var(--bar-bg); }
+
+/* Padding left/right (доп. к существующим pt/pb) */
+.pl-4  { padding-left: 4px; }
+.pl-6  { padding-left: 6px; }
+.pl-8  { padding-left: 8px; }
+.pl-10 { padding-left: 10px; }
+.pl-12 { padding-left: 12px; }
+.pl-16 { padding-left: 16px; }
+.pr-4  { padding-right: 4px; }
+.pr-6  { padding-right: 6px; }
+.pr-8  { padding-right: 8px; }
+.pr-10 { padding-right: 10px; }
+.pr-12 { padding-right: 12px; }
+.pr-16 { padding-right: 16px; }
+
+/* Margin-top/-bottom: добавили mt-14 и mb-14 */
+.mt-14 { margin-top: 14px; }
+
+/* Min-width helpers */
+.min-w-120 { min-width: 120px; }
+.min-w-140 { min-width: 140px; }
+.min-w-160 { min-width: 160px; }
+.min-w-180 { min-width: 180px; }
+.min-w-200 { min-width: 200px; }
+
+/* Max-width helpers */
+.max-w-full { max-width: 100%; }
+
+/* Pre-wrap */
+.u-prewrap { white-space: pre-wrap; }
+
+/* ─── Дополнительные utility-классы для финального sweep (14.06.2026) ─── */
+
+/* Margin/padding — short alias */
+.mt-18 { margin-top: 18px; }
+.mb-18 { margin-bottom: 18px; }
+.mt-30 { margin-top: 30px; }
+.mb-30 { margin-bottom: 30px; }
+
+.p-18 { padding: 18px; }
+.p-30 { padding: 30px; }
+.px-18 { padding-left: 18px; padding-right: 18px; }
+.py-18 { padding-top: 18px; padding-bottom: 18px; }
+
+/* Padding варианты для ячеек таблиц */
+.pad-cell-sm { padding: 6px 8px; }
+.pad-cell    { padding: 8px 10px; }
+.pad-cell-md { padding: 8px 12px; }
+.pad-cell-lg { padding: 10px 12px; }
+.pad-cell-y6 { padding: 6px 0; }
+
+/* Font + tabular */
+.fs-12-5 { font-size: 12.5px; }
+.fs-11-5 { font-size: 11.5px; }
+.fs-10-5 { font-size: 10.5px; }
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* Цвета value */
+.val-gold { color: var(--gold); font-weight: 800; }
+.val-ok   { color: var(--ok); font-weight: 800; }
+.val-err  { color: var(--err); font-weight: 800; }
+.val-info { color: var(--info); font-weight: 800; }
+
+/* Заголовки uppercase-метки */
+.label-cap {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--t-3);
+  font-weight: 600;
+}
+.label-cap-lg {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--t-3);
+  font-weight: 700;
+}
+
+/* Простые таблицы — общие паттерны */
+.tbl-base {
+  width: 100%;
+  border-collapse: collapse;
+}
+.tbl-head-row th {
+  background: var(--inner-bg);
+  border-bottom: 2px solid var(--brd-1);
+  text-align: left;
+  font-weight: 600;
+}
+.tbl-row-brd { border-bottom: 1px solid var(--brd-1); }
+.tbl-row-brd-2 { border-bottom: 1px solid var(--brd-2); }
+
+/* Whitespace */
+.u-nowrap-cell { white-space: nowrap; }
+
+/* Grid auto-fit (минимум NNNpx) — недостающие */
+.grid-auto-140 { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+.grid-auto-150f { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.grid-auto-160f { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+.grid-auto-220f { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.grid-auto-300 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+
+/* Bar (progress) */
+.bar-bg-pill {
+  background: var(--bar-bg);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+}
+.bar-fill-gold {
+  height: 100%;
+  background: var(--gold);
+  transition: width 0.3s;
+}
+
+/* KPI-tone helpers (выражают цвет + bg для типовых tone='ok|info|warn|err|gold') */
+.tone-ok    { background: var(--ok-bg);    color: var(--ok); }
+.tone-info  { background: var(--info-bg);  color: var(--info); }
+.tone-warn  { background: var(--orange-bg); color: var(--amber); }
+.tone-err   { background: var(--err-bg);   color: var(--err); }
+.tone-gold  { background: var(--gold-bg);  color: var(--gold); }
+.tone-mute  { background: var(--inner-bg); color: var(--t-2); }
+
+/* Сводные KPI-карточки с padding-12-16 */
+.kpi-tile {
+  padding: 12px 16px;
+  border-radius: var(--r-md);
+}
+.kpi-tile-lbl {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.85;
+  margin-bottom: 4px;
+}
+.kpi-tile-val {
+  font-size: 18px;
+  font-weight: 800;
+}
+.kpi-tile-val-lg {
+  font-size: 22px;
+  font-weight: 800;
+}
+
+/* Карточка инфо-шапки (с фоном + inner-bg) */
+.info-row-card {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  background: var(--inner-bg);
+  border-radius: var(--r-md);
+}
+
+/* Compact кoл-секции (KV inline 140px / 120px) */
+.kv-row-140 {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 8px;
+  padding: 4px 0;
+}
+.kv-row-120 {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+/* Spread/Sticky bar (фильтр или topbar) */
+.bar-sticky-12 { position: sticky; top: 12px; z-index: 5; }
+
+/* Section heading с разделителем */
+.sec-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--brd-1);
+}
+.sec-head-2 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2px solid var(--brd-1);
+  padding-bottom: 6px;
+  margin-bottom: 8px;
+}
+
+/* Card variants ext */
+.card-pad-overflow {
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Empty/loading inline-cell */
+.empty-cell {
+  text-align: center;
+  padding: 14px;
+  color: var(--t-3);
+}
+.empty-cell-lg {
+  text-align: center;
+  padding: 20px;
+  color: var(--t-3);
+}
+
+/* Опасное состояние - red badge */
+.dot-err { width: 10px; height: 10px; border-radius: 50%; background: var(--err); display: inline-block; }
+.dot-ok  { width: 10px; height: 10px; border-radius: 50%; background: var(--ok); display: inline-block; }
+
+/* Margin variants extra */
+.mt-5 { margin-top: 5px; }
+.mb-5 { margin-bottom: 5px; }
+.ml-14 { margin-left: 14px; }
+.mr-14 { margin-right: 14px; }
+
+/* Wide modal */
+.mw-560 { max-width: 560px; }
+.mw-360 { max-width: 360px; }
+.mw-240 { max-width: 240px; }
+
+/* Border styles */
+.brd-err  { border: 1px solid var(--err); }
+.brd-ok   { border: 1px solid var(--ok); }
+.brd-info { border: 1px solid var(--info); }
+.brd-2-l { border-left: 1px solid var(--brd-2); }
+.brd-2-r { border-right: 1px solid var(--brd-2); }
+
+/* Width helpers extra */
+.w-20 { width: 20px; }
+.w-36 { width: 36px; }
+.w-40 { width: 40px; }
+.w-50 { width: 50px; }
+
+/* min/max-content для table-col-driven */
+.col-fit { width: fit-content; }
+
+/* Кнопка-полная-ширина */
+.btn-block { width: 100%; }
+
+/* progress-bar 8px */
+.progress-8 {
+  height: 8px;
+  background: var(--bar-bg);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+}
+.progress-18 {
+  height: 18px;
+  background: var(--bar-bg);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+  position: relative;
+}
+
+/* ─── Sweep-2: дополнительные классы (14.06.2026) ─── */
+.col-span-2 { grid-column: span 2; }
+.opacity-half { opacity: 0.6; }
+.op-half { opacity: 0.5; }
+.grid-2-1-1 { display: grid; grid-template-columns: 2fr 1fr 1fr; }
+.brd-top-ok  { border-top: 2px solid var(--ok); }
+.brd-top-err { border-top: 2px solid var(--err); }
+.pad-cell-sm-l { padding: 7px 10px; }
+.upper-tight { text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* ─── Sweep-3 extras ─── */
+.v-mid { vertical-align: middle; }
+.r-8 { border-radius: 8px; }
+.h-240 { height: 240px; }
+.ls-wide { letter-spacing: 0.18em; }
+.u-no-decor { text-decoration: none; }
+.brd-row-2 { border-bottom: 2px solid var(--brd-1); }
+
+/* Sweep4 extras */
+.brd-top-t3   { border-top: 2px solid var(--t-3); }
+.brd-top-info { border-top: 2px solid var(--info); }
+.brd-top-gold { border-top: 2px solid var(--gold); }
+.mh-380 { max-height: 380px; }
+.mh-200 { max-height: 200px; }
+.op-4 { opacity: 0.4; }
+.ls-1 { letter-spacing: 0.1em; }
+.min-w-240 { min-width: 240px; }
+.mxw-420 { max-width: 420px; }
+.items-end { align-items: end; }
+.grid-1-auto { display: grid; grid-template-columns: 1fr auto; }
+.grid-140-1fr { display: grid; grid-template-columns: 140px 1fr; }

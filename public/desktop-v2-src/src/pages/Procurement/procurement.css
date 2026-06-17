@@ -1,0 +1,1150 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * Procurement — реестр заявок на закупку, канбан, деталь
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Dashboard KPI ───────────────────────────────────────────────────── */
+.proc-dash {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+}
+.proc-dash-card {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-card);
+  padding: 12px 16px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+.proc-dash-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--sh-md);
+}
+.proc-dash-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--gold);
+}
+.proc-dash-card--pending::before  { background: var(--info); }
+.proc-dash-card--overdue::before  { background: var(--err); }
+.proc-dash-card--upcoming::before { background: var(--amber); }
+.proc-dash-card__count {
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1.1;
+  color: var(--t-1);
+  margin-bottom: 4px;
+}
+.proc-dash-card__label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+  color: var(--t-3);
+}
+
+/* ── Kanban ──────────────────────────────────────────────────────────── */
+.proc-kanban {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(260px, 1fr);
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+.proc-kcol {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-card);
+  display: flex;
+  flex-direction: column;
+  min-height: 320px;
+}
+.proc-kcol__h {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--brd-1);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--t-1);
+  background: var(--inner-bg);
+  border-radius: var(--r-md) var(--r-md) 0 0;
+}
+.proc-kcol__cnt {
+  margin-left: auto;
+  background: var(--bar-bg);
+  color: var(--t-2);
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 700;
+}
+.proc-kcol__body {
+  flex: 1;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: background 0.15s;
+  min-height: 100px;
+}
+.proc-kcol__body--over {
+  background: var(--hover-bg);
+  outline: 2px dashed var(--gold);
+  outline-offset: -4px;
+}
+.proc-kcol__empty {
+  text-align: center;
+  color: var(--t-4);
+  font-size: 12px;
+  padding: 16px 8px;
+  font-style: italic;
+}
+
+.proc-kcard {
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-sm);
+  padding: 10px;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: transform 0.12s, box-shadow 0.12s, border-color 0.12s;
+}
+.proc-kcard:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--sh-sm);
+  border-color: var(--gold);
+}
+.proc-kcard--urgent {
+  border-left: 3px solid var(--err);
+}
+.proc-kcard--drag {
+  opacity: 0.45;
+  transform: rotate(-2deg);
+}
+.proc-kcard__top {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t-1);
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+.proc-kcard__top b {
+  color: var(--gold);
+  font-weight: 800;
+}
+.proc-kcard__work {
+  font-size: 11.5px;
+  color: var(--t-3);
+}
+.proc-kcard__meta {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--t-3);
+  flex-wrap: wrap;
+}
+.proc-kcard__badges {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* ── Status pill ─────────────────────────────────────────────────────── */
+.proc-pill {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.proc-pill--draft         { background: var(--bar-bg);                 color: var(--t-2); }
+.proc-pill--sent          { background: rgba(91, 141, 239, 0.16);      color: var(--info); }
+.proc-pill--question      { background: rgba(200, 168, 78, 0.18);      color: var(--amber); }
+.proc-pill--approved      { background: rgba(46, 204, 113, 0.18);      color: var(--ok); }
+.proc-pill--rework        { background: rgba(230, 126, 34, 0.18);      color: var(--orange); }
+.proc-pill--rejected      { background: rgba(231, 76, 60, 0.18);       color: var(--err); }
+
+.proc-kbadge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  background: var(--bar-bg);
+  color: var(--t-2);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+.proc-kbadge--warn { background: rgba(230, 126, 34, 0.18); color: var(--orange); }
+.proc-kbadge--over { background: rgba(231, 76, 60, 0.22);  color: var(--err); }
+
+/* ── Toolbar ─────────────────────────────────────────────────────────── */
+.proc-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  padding: 10px 12px;
+  box-shadow: var(--sh-card);
+}
+.proc-toolbar .proc-viewtoggle {
+  display: inline-flex;
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-sm);
+  padding: 2px;
+  gap: 2px;
+}
+.proc-toolbar .proc-vt {
+  padding: 5px 12px;
+  font-size: 12px;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  color: var(--t-2);
+  font-weight: 600;
+  cursor: pointer;
+}
+.proc-toolbar .proc-vt--on {
+  background: var(--gold);
+  color: var(--bg-0);
+}
+
+/* ── Detail modal: items table ───────────────────────────────────────── */
+.proc-items-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.proc-items-table th {
+  text-align: left;
+  padding: 8px;
+  background: var(--inner-bg);
+  border-bottom: 1px solid var(--brd-1);
+  color: var(--t-3);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+.proc-items-table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--brd-1);
+  vertical-align: middle;
+}
+.proc-items-table tr:hover { background: var(--hover-bg); }
+.proc-items-table__input {
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-xs);
+  background: var(--card-bg);
+  color: var(--t-1);
+  font-size: 13px;
+}
+.proc-items-table__input:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: var(--sh-sm);
+}
+.proc-row-child {
+  background: var(--inner-bg);
+  font-style: italic;
+}
+.proc-row-child td:first-child {
+  padding-left: 22px;
+  color: var(--t-3);
+}
+.proc-grp-row {
+  background: var(--bar-bg);
+  font-weight: 700;
+}
+.proc-grp-row td { padding-top: 10px; }
+
+.proc-hint {
+  font-size: 11.5px;
+  color: var(--t-3);
+  margin-top: 2px;
+}
+.proc-hint__use {
+  color: var(--gold);
+  cursor: pointer;
+  text-decoration: underline;
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+/* ── Detail meta dl ──────────────────────────────────────────────────── */
+.proc-meta {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 6px 12px;
+  margin: 0;
+  padding: 12px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+  font-size: 13px;
+}
+.proc-meta dt {
+  color: var(--t-3);
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+.proc-meta dd { margin: 0; color: var(--t-1); }
+.proc-overdue {
+  color: var(--err);
+  font-weight: 700;
+}
+
+/* ── Detail sections ─────────────────────────────────────────────────── */
+.proc-section {
+  margin-top: 16px;
+}
+.proc-section__title {
+  font-size: 11px;
+  color: var(--t-3);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 800;
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--brd-1);
+}
+
+.proc-actions-bar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 12px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+  margin-top: 12px;
+}
+
+/* ── Timeline (history) ──────────────────────────────────────────────── */
+.proc-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.proc-timeline__entry {
+  padding: 8px 10px;
+  background: var(--inner-bg);
+  border-left: 2px solid var(--gold);
+  border-radius: 0 var(--r-xs) var(--r-xs) 0;
+  font-size: 13px;
+}
+.proc-timeline__date {
+  font-size: 11px;
+  color: var(--t-3);
+  font-family: ui-monospace, monospace;
+  margin-bottom: 2px;
+}
+.proc-timeline__actor {
+  color: var(--gold);
+  font-weight: 700;
+}
+
+/* ── Invoice preview ─────────────────────────────────────────────────── */
+.proc-row-new td:first-child {
+  border-left: 3px solid var(--amber);
+}
+
+/* ── Showcase / Catalog ──────────────────────────────────────────────── */
+.proc-showcase {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 600px;
+  max-width: 820px;
+}
+.proc-showcase__search {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 0 2px;
+}
+.proc-showcase__list {
+  max-height: 360px;
+  overflow: auto;
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-sm);
+  background: var(--card-bg);
+}
+.proc-showcase__list table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.proc-showcase__list th {
+  position: sticky;
+  top: 0;
+  background: var(--inner-bg);
+  padding: 8px 10px;
+  font-size: 11px;
+  color: var(--t-3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  z-index: 1;
+}
+.proc-showcase__list td {
+  padding: 7px 10px;
+  border-top: 1px solid var(--brd-1);
+}
+.proc-showcase__cart {
+  border-top: 2px solid var(--brd-1);
+  padding-top: 12px;
+}
+
+/* ── Split form ──────────────────────────────────────────────────────── */
+.proc-split-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.proc-split-row select,
+.proc-split-row input {
+  padding: 6px 8px;
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-xs);
+  background: var(--card-bg);
+  color: var(--t-1);
+  font-size: 13px;
+}
+
+/* ── Skeleton ────────────────────────────────────────────────────────── */
+.proc-skel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.proc-skel-row {
+  height: 56px;
+  background: linear-gradient(90deg, var(--bar-bg) 0%, var(--inner-bg) 50%, var(--bar-bg) 100%);
+  background-size: 200% 100%;
+  animation: proc-skel-shimmer 1.4s linear infinite;
+  border-radius: var(--r-sm);
+}
+@keyframes proc-skel-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .proc-kanban { grid-auto-columns: minmax(220px, 1fr); }
+  .proc-meta   { grid-template-columns: 1fr; }
+  .proc-meta dt { margin-top: 6px; }
+  .proc-showcase { min-width: auto; }
+}
+
+/* ─── Procurement toolbar — отдельные классы для выбора/поиска ─── */
+.proc-toolbar-select { min-width: 180px; }
+.proc-toolbar-search { flex: 1; min-width: 200px; max-width: 360px; }
+
+/* ─── Procurement Table — стилизация ячеек ─── */
+.proc-id-cell {
+  font-weight: 700;
+  color: var(--gold);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * ProcurementDetail modal — внутренние классы
+ * ═══════════════════════════════════════════════════════════════════════ */
+.proc-detail-empty {
+  padding: 30px;
+  text-align: center;
+  color: var(--t-3);
+}
+.proc-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.proc-detail-head-spacer { flex: 1; }
+.proc-detail-kbadge--lock {
+  background: var(--orange-bg);
+  color: var(--amber);
+}
+.proc-detail-sum {
+  color: var(--gold);
+  font-size: 15px;
+}
+.proc-detail-group-tag {
+  margin-left: 8px;
+  color: var(--gold);
+}
+.proc-detail-items-empty {
+  padding: 16px;
+  color: var(--t-3);
+  text-align: center;
+}
+.proc-detail-items-scroll {
+  overflow-x: auto;
+}
+.proc-detail-grp-count { color: var(--t-3); }
+.proc-detail-actions {
+  white-space: nowrap;
+}
+.proc-detail-tinybtn {
+  font-size: 11px;
+  padding: 2px 5px;
+}
+.proc-detail-tinybtn--attach {
+  font-size: 11px;
+  padding: 2px 6px;
+}
+.proc-detail-tinybtn--del { color: var(--err); }
+.proc-detail-mlbadge { margin-left: 6px; }
+.proc-detail-mlchip  { margin-left: 4px; }
+.proc-detail-w-70  { width: 70px; }
+.proc-detail-w-90  { width: 90px; }
+.proc-detail-itembadge--ok {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.proc-detail-invoice-row {
+  padding: 10px;
+  border-bottom: 1px solid var(--brd-1);
+  font-size: 13px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.proc-detail-invoice-cnt { color: var(--t-3); }
+.proc-detail-invoice-meta {
+  color: var(--t-4);
+  margin-left: auto;
+  font-size: 11px;
+}
+
+.proc-detail-payment-row {
+  padding: 8px;
+  border-bottom: 1px solid var(--brd-1);
+  font-size: 13px;
+}
+.proc-detail-payment-link { margin-left: 8px; }
+.proc-detail-payment-meta {
+  color: var(--t-4);
+  margin-left: 8px;
+  font-size: 11px;
+}
+
+.proc-detail-history-comment {
+  margin-top: 4px;
+  color: var(--t-3);
+  font-style: italic;
+}
+
+.proc-detail-comment-input { width: 100%; }
+
+.proc-detail-actions-foot {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* AddItemModal */
+.proc-add-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.proc-add-label-sub {
+  font-size: 12px;
+  color: var(--t-3);
+}
+.proc-add-row {
+  display: flex;
+  gap: 8px;
+}
+.proc-add-row > label {
+  flex: 1;
+}
+.proc-add-row > label input { width: 100%; }
+.proc-add-hint {
+  min-height: 24px;
+  font-size: 13px;
+  color: var(--t-3);
+}
+.proc-add-hint-stats {
+  margin-top: 2px;
+  color: var(--t-4);
+}
+.proc-add-hint-date { color: var(--t-4); }
+.proc-add-hint-empty { color: var(--t-4); }
+.proc-add-input { width: 100%; }
+
+/* ─── общие классы для модалок Procurement ─── */
+.proc-modal-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.proc-modal-stack-12 {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.proc-modal-row {
+  display: flex;
+  gap: 8px;
+}
+.proc-modal-row-10 {
+  display: flex;
+  gap: 10px;
+}
+.proc-modal-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.proc-modal-label-sub {
+  font-size: 12px;
+  color: var(--t-3);
+}
+.proc-modal-input { width: 100%; }
+.proc-modal-info-box {
+  padding: 12px;
+  margin-bottom: 14px;
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-sm);
+}
+.proc-modal-info-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+.proc-modal-info-hint {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--t-4);
+}
+.proc-modal-tpl-btn {
+  margin-top: 8px;
+  font-size: 13px;
+}
+.proc-modal-work-locked {
+  padding: 10px 12px;
+  background: var(--ok-bg);
+  border: 1px solid var(--ok);
+  border-radius: var(--r-sm);
+  font-weight: 600;
+}
+.proc-modal-work-locked-sub {
+  font-size: 11px;
+  color: var(--ok);
+  margin-top: 2px;
+}
+
+/* ShowcaseModal */
+.proc-showcase-empty {
+  text-align: center;
+  padding: 30px;
+  color: var(--t-3);
+}
+.proc-showcase-search { width: 100%; }
+.proc-showcase-cat-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0;
+}
+.proc-showcase-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+.proc-showcase-empty-list {
+  padding: 20px;
+  color: var(--t-3);
+  text-align: center;
+}
+.proc-showcase-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-sm);
+}
+.proc-showcase-row-main { flex: 1; min-width: 0; }
+.proc-showcase-row-name { font-weight: 600; font-size: 13px; }
+.proc-showcase-row-sub { font-size: 11px; color: var(--t-3); }
+.proc-showcase-row-qty {
+  width: 80px;
+  padding: 4px 6px;
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-sm);
+  background: var(--card-bg);
+  color: var(--t-1);
+}
+.proc-showcase-toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding-bottom: 10px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--brd-1);
+}
+.proc-showcase-toolbar-r {
+  flex: 1;
+  text-align: right;
+  font-size: 13px;
+  color: var(--t-3);
+}
+.proc-showcase-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+}
+
+/* DeliverModal */
+.proc-deliver-summary {
+  font-size: 13px;
+  color: var(--t-2);
+  margin-bottom: 10px;
+}
+.proc-deliver-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.proc-deliver-row {
+  padding: 10px;
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-sm);
+}
+.proc-deliver-row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.proc-deliver-row-sub {
+  font-size: 11px;
+  color: var(--t-3);
+}
+.proc-deliver-row-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  align-items: center;
+}
+.proc-deliver-sub-input {
+  padding: 5px 8px;
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-sm);
+  background: var(--card-bg);
+  color: var(--t-1);
+  font-size: 12px;
+}
+
+/* InvoiceImportModal */
+.proc-invoice-step {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.proc-invoice-file-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-sm);
+}
+.proc-invoice-file-icon { font-size: 24px; }
+.proc-invoice-file-name { font-weight: 600; }
+.proc-invoice-file-sub { font-size: 11px; color: var(--t-3); }
+.proc-invoice-supplier {
+  display: grid;
+  grid-template-columns: 1fr 120px;
+  gap: 10px;
+}
+.proc-invoice-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+}
+.proc-invoice-stat {
+  padding: 10px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+  text-align: center;
+}
+.proc-invoice-stat-num { font-size: 18px; font-weight: 800; }
+.proc-invoice-stat-lbl { font-size: 11px; color: var(--t-3); text-transform: uppercase; letter-spacing: 0.08em; }
+.proc-invoice-mlist {
+  max-height: 300px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.proc-invoice-mrow {
+  padding: 6px 8px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  display: grid;
+  grid-template-columns: 1fr 80px 90px 60px;
+  gap: 6px;
+  align-items: center;
+}
+.proc-invoice-mrow--good { border-left: 3px solid var(--ok); }
+.proc-invoice-mrow--maybe { border-left: 3px solid var(--amber); }
+.proc-invoice-mrow--no { border-left: 3px solid var(--err); }
+
+/* SplitItemModal */
+.proc-split-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.proc-split-header {
+  font-size: 13px;
+  color: var(--t-2);
+}
+.proc-split-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.proc-split-input-sm {
+  padding: 6px 8px;
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-xs);
+  background: var(--card-bg);
+  color: var(--t-1);
+  font-size: 13px;
+}
+.proc-split-input-name  { flex: 1; }
+.proc-split-input-qty   { width: 80px; }
+.proc-split-input-price { width: 100px; }
+
+.proc-split-summary {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--t-3);
+  padding-top: 6px;
+  border-top: 1px solid var(--brd-2);
+}
+
+/* ImportExcelModal */
+.proc-imp-zone {
+  border: 2px dashed var(--brd-1);
+  border-radius: var(--r-md);
+  padding: 30px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.proc-imp-zone:hover {
+  border-color: var(--gold);
+  background: var(--gold-bg);
+}
+.proc-imp-icon { font-size: 48px; margin-bottom: 10px; }
+.proc-imp-title { font-weight: 700; margin-bottom: 6px; }
+.proc-imp-hint { font-size: 12px; color: var(--t-3); }
+.proc-imp-busy {
+  text-align: center;
+  padding: 24px;
+  color: var(--t-3);
+}
+
+/* ShowcaseModal extra inline classes */
+.proc-showcase-search-input { flex: 1; }
+.proc-showcase-th-center { text-align: center; }
+.proc-showcase-loading-row {
+  padding: 20px;
+  text-align: center;
+  color: var(--t-3);
+}
+.proc-showcase-name-article {
+  opacity: 0.5;
+  margin-left: 4px;
+}
+.proc-showcase-name-sub {
+  font-size: 11px;
+  color: var(--t-3);
+}
+.proc-showcase-cell-center { text-align: center; }
+.proc-showcase-cell-right { text-align: right; }
+.proc-showcase-supplier {
+  font-size: 10px;
+  color: var(--t-3);
+}
+.proc-showcase-pickbtn {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+.proc-showcase-cart-title {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.proc-showcase-cart-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.proc-showcase-cart-row {
+  border-top: 1px solid var(--brd-1);
+}
+.proc-showcase-cart-row td { padding: 6px; }
+.proc-showcase-cart-qty {
+  width: 80px;
+}
+.proc-showcase-unit { color: var(--t-3); }
+.proc-showcase-empty-hint {
+  margin-top: 12px;
+  color: var(--t-3);
+  font-size: 13px;
+}
+.proc-showcase-rmbtn {
+  font-size: 12px;
+  padding: 2px 8px;
+}
+.proc-showcase-foot-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* DeliverModal extra */
+.proc-deliver-done {
+  text-align: center;
+  padding: 20px;
+}
+.proc-deliver-done-icon { font-size: 48px; }
+.proc-deliver-done-title {
+  font-weight: 700;
+  font-size: 16px;
+  margin: 8px 0;
+}
+.proc-deliver-done-stats {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  margin-top: 14px;
+}
+.proc-deliver-done-stat-num {
+  font-size: 28px;
+  font-weight: 800;
+}
+.proc-deliver-done-stat-lbl {
+  font-size: 11px;
+  color: var(--t-3);
+}
+.proc-deliver-done-link {
+  display: inline-block;
+  margin-top: 14px;
+  color: var(--gold);
+}
+
+.proc-deliver-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--t-3);
+}
+.proc-deliver-pbar {
+  height: 4px;
+  background: var(--bar-bg);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+.proc-deliver-pbar-fill {
+  height: 100%;
+  background: var(--ok);
+  transition: width 0.2s;
+}
+
+.proc-deliver-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.proc-deliver-card {
+  display: flex;
+  gap: 12px;
+  padding: 10px;
+  align-items: center;
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.proc-deliver-card.is-checked { border-color: var(--ok); }
+.proc-deliver-card.is-dim { opacity: 0.5; }
+.proc-deliver-card.is-busy { cursor: default; }
+.proc-deliver-card-icon { font-size: 28px; }
+.proc-deliver-card-main { flex: 1; }
+.proc-deliver-card-name { font-weight: 600; }
+.proc-deliver-card-meta {
+  font-size: 11.5px;
+  color: var(--t-3);
+  display: flex;
+  gap: 10px;
+  margin-top: 2px;
+}
+.proc-deliver-card-loc { margin-top: 6px; }
+.proc-deliver-card-loc-label {
+  font-size: 11px;
+  color: var(--t-3);
+}
+.proc-deliver-card-loc-sel {
+  font-size: 12px;
+  padding: 2px 6px;
+}
+.proc-deliver-check {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--bar-bg);
+  color: var(--t-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+.proc-deliver-check.is-on {
+  background: var(--ok);
+  color: #fff;
+}
+
+/* InvoiceImportModal extra */
+.proc-inv-supplier-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  margin-bottom: 10px;
+}
+.proc-inv-supplier-sel  { flex: 1; min-width: 180px; }
+.proc-inv-supplier-name { flex: 1; min-width: 140px; }
+.proc-inv-supplier-days { width: 120px; }
+.proc-inv-help {
+  font-size: 12px;
+  color: var(--t-3);
+  margin-bottom: 8px;
+}
+.proc-inv-file-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.proc-inv-hidden-file { display: none; }
+.proc-inv-status {
+  font-size: 12px;
+  color: var(--gold);
+}
+.proc-inv-ai-down {
+  margin-top: 14px;
+  padding: 12px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+}
+.proc-inv-preview { margin-top: 14px; }
+.proc-inv-preview-title {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.proc-inv-table-wrap {
+  max-height: 360px;
+  overflow: auto;
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-sm);
+}
+.proc-inv-empty-row {
+  padding: 14px;
+  text-align: center;
+  color: var(--t-3);
+}
+.proc-inv-mlbadge { margin-left: 6px; }
+.proc-inv-link-sel { min-width: 200px; }
+.proc-inv-price-input { width: 100px; }
+
+/* SplitItemModal extra */
+.proc-split-intro {
+  font-size: 13px;
+  color: var(--t-3);
+  margin-bottom: 10px;
+}
+.proc-split-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.proc-split-qty { width: 90px; }
+.proc-split-sup-sel {
+  flex: 1;
+  min-width: 140px;
+}
+.proc-split-price { width: 100px; }
+.proc-split-days  { width: 90px; }
+.proc-split-rmbtn { padding: 2px 8px; }
+.proc-split-add { margin-top: 8px; }
+.proc-split-total {
+  margin-top: 12px;
+  font-size: 13px;
+}
+.proc-split-money {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--t-3);
+}
+
+/* ImportExcelModal */
+.proc-imp-intro {
+  font-size: 13px;
+  color: var(--t-3);
+  margin-bottom: 12px;
+}
+.proc-imp-spec {
+  padding: 12px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  line-height: 1.6;
+  margin-bottom: 16px;
+}
+.proc-imp-spec-row { margin-top: 4px; }
+.proc-imp-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}

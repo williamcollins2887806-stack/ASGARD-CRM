@@ -1,0 +1,57 @@
+/* Стили /suppliers-catalog: таблица поставщиков и база цен. */
+
+.sup-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.sup-table thead tr {
+  background: var(--inner-bg);
+  border-bottom: 1px solid var(--brd-1);
+}
+.sup-table th {
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--t-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.sup-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--brd-1);
+}
+.sup-table tbody tr {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.sup-table tbody tr:hover {
+  background: var(--hover-bg);
+}
+
+.sup-stars {
+  display: inline-flex;
+  gap: 1px;
+  color: var(--t-4);
+}
+.sup-stars__star--on {
+  color: var(--gold);
+}
+
+.sup-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) minmax(140px, 1fr) minmax(140px, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+.sup-toolbar.sup-toolbar--prices {
+  grid-template-columns: minmax(220px, 2fr) minmax(140px, 1fr) 140px 140px;
+}
+
+@media (max-width: 720px) {
+  .sup-toolbar,
+  .sup-toolbar.sup-toolbar--prices {
+    grid-template-columns: 1fr;
+  }
+}

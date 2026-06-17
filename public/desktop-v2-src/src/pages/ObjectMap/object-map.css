@@ -1,0 +1,332 @@
+/* Object Map — Leaflet + drawer + add modal styles.
+ * Использует CSS-vars для тем.
+ */
+
+.map-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: calc(100vh - 120px);
+  min-height: 500px;
+}
+
+/* Toolbar */
+.map-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.map-filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.map-filter {
+  background: var(--inner-bg);
+  color: var(--t-2);
+  border: 1px solid var(--brd-1);
+  padding: 6px 12px;
+  border-radius: var(--r-pill);
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.map-filter:hover {
+  background: var(--hover-bg);
+  color: var(--t-1);
+}
+
+.map-filter.active {
+  background: var(--gold);
+  color: var(--bg-0);
+  border-color: var(--gold);
+}
+
+.map-filter .cnt {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+  background: var(--bar-bg);
+  color: var(--t-2);
+}
+
+.map-filter.active .cnt {
+  /* На активной (золотой) кнопке: полупрозрачная подложка через color-mix */
+  background: color-mix(in srgb, var(--bg-0) 30%, transparent);
+  color: var(--bg-0);
+}
+
+/* Map container */
+.map-container {
+  flex: 1;
+  position: relative;
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  min-height: 400px;
+}
+
+.map-leaflet {
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
+}
+
+.map-loading,
+.map-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--card-bg);
+  color: var(--t-3);
+  z-index: 500;
+}
+
+/* Marker cluster (override defaults) */
+.leaflet-popup-content-wrapper {
+  background: var(--card-bg);
+  color: var(--t-1);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-card);
+}
+
+.leaflet-popup-tip {
+  background: var(--card-bg);
+}
+
+/* Drawer: site card */
+.site-card {
+  background: var(--inner-bg);
+  border-radius: var(--r-md);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.site-card-status {
+  font-size: 12px;
+  color: var(--t-3);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 6px;
+}
+
+.site-card-name {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--t-1);
+  margin-bottom: 6px;
+}
+
+.site-card-customer {
+  font-size: 14px;
+  color: var(--t-2);
+  margin-bottom: 4px;
+}
+
+.site-card-region {
+  font-size: 13px;
+  color: var(--t-3);
+  margin-bottom: 4px;
+}
+
+.site-card-address {
+  font-size: 13px;
+  color: var(--t-3);
+}
+
+/* Drawer: KPI summary */
+.site-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.site-summary-item {
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+  padding: 12px;
+  text-align: center;
+}
+
+.ssi-val {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--t-1);
+}
+
+.ssi-label {
+  font-size: 11px;
+  color: var(--t-3);
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Drawer: geocode warning */
+.site-geocode-warning {
+  background: var(--amber-bg, rgba(251, 191, 36, 0.1));
+  border: 1px solid var(--amber);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+/* Drawer: section header */
+.drawer-section {
+  font-size: 12px;
+  color: var(--t-3);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin: 16px 0 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--brd-2);
+}
+
+/* Drawer: work card */
+.site-work-card {
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.site-work-card:hover {
+  background: var(--hover-bg);
+}
+
+.swc-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.swc-icon {
+  font-size: 14px;
+}
+
+.swc-title {
+  flex: 1;
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--t-1);
+}
+
+.swc-meta {
+  display: flex;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--t-3);
+  align-items: center;
+}
+
+.swc-money {
+  margin-left: auto;
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.swc-pm,
+.swc-dates {
+  font-size: 11px;
+  color: var(--t-3);
+  margin-top: 2px;
+}
+
+/* Drawer: list view */
+.site-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.site-list-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.site-list-item:hover {
+  background: var(--hover-bg);
+}
+
+.sli-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sli-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.sli-name {
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--t-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sli-meta {
+  font-size: 11.5px;
+  color: var(--t-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sli-stats {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.sli-badge {
+  font-size: 11px;
+  color: var(--t-2);
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  background: var(--bg-0);
+  border: 1px solid var(--brd-2);
+}
+
+.sli-badge.green {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+@media (max-width: 768px) {
+  .site-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

@@ -1,0 +1,457 @@
+/* Home / Зал Ярла — сетка виджетов */
+
+.home-head {
+  position: relative;
+  padding: 22px 26px;
+  border-radius: var(--r-xl);
+  background: var(--card-bg-hero);
+  border: 1px solid var(--brd-1);
+  box-shadow: var(--sh-card);
+  overflow: hidden;
+  margin-bottom: 22px;
+}
+.home-head::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(60% 100% at 0% 0%, var(--gold-bg), transparent 70%),
+    radial-gradient(60% 100% at 100% 100%, var(--red-bg), transparent 70%);
+  pointer-events: none;
+}
+.home-head > * { position: relative; }
+.home-head h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  background: var(--brand-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.home-head .runes {
+  font-size: 12px;
+  color: var(--t-3);
+  letter-spacing: 0.6em;
+  margin-top: 4px;
+}
+
+/* Сетка */
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 18px;
+}
+.home-grid .widget {
+  grid-column: span 4;
+  min-height: 140px;
+}
+.home-grid .widget.wide {
+  grid-column: span 8;
+}
+@media (max-width: 1400px) {
+  .home-grid .widget { grid-column: span 6; }
+  .home-grid .widget.wide { grid-column: span 12; }
+}
+@media (max-width: 900px) {
+  .home-grid .widget,
+  .home-grid .widget.wide { grid-column: span 12; }
+}
+
+/* Карточка виджета */
+.widget {
+  position: relative;
+  padding: 0;
+  border-radius: var(--r-lg);
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  box-shadow: var(--sh-card);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.widget:hover {
+  transform: translateY(-2px);
+  border-color: var(--brd-glow);
+  box-shadow: var(--sh-md);
+}
+.widget::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--w-grad, linear-gradient(90deg, var(--gold), var(--red)));
+  opacity: 0.7;
+}
+.widget-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid var(--brd-2);
+}
+/* Ручка для drag&drop — пользователь хватает за «≡» в шапке */
+.widget-grip {
+  cursor: grab;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--t-4);
+  padding: 2px 4px;
+  border-radius: var(--r-sm);
+  user-select: none;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.widget-grip:hover { color: var(--gold); background: var(--inner-bg); }
+.widget-grip:active { cursor: grabbing; }
+
+/* Состояния перетаскивания */
+.widget.widget--drag {
+  opacity: 0.45;
+  border-color: var(--gold);
+}
+.widget.widget--drop-target {
+  outline: 2px dashed var(--gold);
+  outline-offset: -4px;
+  background: var(--gold-bg);
+}
+.widget-head .ico {
+  font-size: 18px;
+  width: 28px;
+  text-align: center;
+}
+.widget-head .name {
+  flex: 1;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--t-1);
+  letter-spacing: 0.02em;
+}
+.widget-head .soon {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  background: var(--bar-bg);
+  color: var(--t-3);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.widget-body {
+  padding: 14px 18px 16px;
+  flex: 1;
+  font-size: 13px;
+  color: var(--t-1);
+}
+.widget-body .empty {
+  text-align: center;
+  color: var(--t-3);
+  padding: 18px 0;
+  font-size: 12.5px;
+}
+.widget-body .row-item {
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  background: var(--inner-bg);
+  border: var(--inner-border);
+  border-left: 3px solid var(--gold);
+  border-radius: var(--r-sm);
+}
+.widget-body .row-item .t1 { font-weight: 600; font-size: 13px; color: var(--t-1); }
+.widget-body .row-item .t2 { font-size: 12px; color: var(--t-3); margin-top: 2px; }
+
+.widget-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--t-3);
+  letter-spacing: 0.06em;
+  text-decoration: none;
+  margin-top: 8px;
+  padding: 6px 12px;
+  border-radius: var(--r-pill);
+  border: var(--inner-border);
+  background: var(--inner-bg);
+  transition: all 0.15s ease;
+}
+.widget-link:hover {
+  color: var(--gold);
+  border-color: var(--gold);
+  background: var(--gold-bg);
+}
+
+/* Градиенты по типу виджета */
+.w-welcome { --w-grad: linear-gradient(90deg, var(--gold), var(--orange)); }
+.w-notif { --w-grad: linear-gradient(90deg, var(--info), var(--cyan)); }
+.w-works { --w-grad: linear-gradient(90deg, var(--red), var(--orange)); }
+.w-funnel { --w-grad: linear-gradient(90deg, var(--info), var(--purple)); }
+.w-money { --w-grad: linear-gradient(90deg, var(--gold), var(--amber)); }
+.w-bday { --w-grad: linear-gradient(90deg, var(--purple), var(--purple-l)); }
+.w-cal { --w-grad: linear-gradient(90deg, var(--cyan), var(--info)); }
+.w-quick { --w-grad: linear-gradient(90deg, var(--ok), var(--cyan)); }
+.w-appr { --w-grad: linear-gradient(90deg, var(--gold), var(--amber)); }
+.w-todo { --w-grad: linear-gradient(90deg, var(--amber), var(--orange)); }
+.w-stub { --w-grad: linear-gradient(90deg, var(--t-4), var(--t-3)); }
+
+/* Welcome widget */
+.welcome-w {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: center;
+  padding: 6px 0 4px;
+}
+.welcome-w .rune {
+  font-size: 32px;
+  color: var(--gold);
+  text-shadow: var(--gold-glow);
+}
+.welcome-w .greet {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--t-1);
+  line-height: 1.35;
+}
+.welcome-w .role-row {
+  font-size: 11.5px;
+  color: var(--t-3);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.welcome-w .saga {
+  margin-top: 6px;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, var(--gold-bg), transparent);
+  border: 1px solid color-mix(in srgb, var(--gold) 20%, transparent);
+  border-radius: var(--r-md);
+}
+.welcome-w .saga-lab {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--gold);
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+.welcome-w .saga-txt {
+  font-style: italic;
+  color: var(--t-2);
+  font-size: 12.5px;
+}
+.welcome-w .runes-bottom {
+  letter-spacing: 0.4em;
+  color: var(--t-4);
+  font-size: 12px;
+}
+
+/* Calendar widget */
+.cal-w {
+  text-align: center;
+  padding: 4px 0 6px;
+}
+.cal-w .month {
+  font-size: 12.5px;
+  color: var(--gold);
+  font-weight: 700;
+  text-transform: capitalize;
+  letter-spacing: 0.06em;
+}
+.cal-w .day {
+  font-size: 64px;
+  font-weight: 900;
+  line-height: 1.05;
+  margin: 8px 0;
+  background: linear-gradient(135deg, var(--gold-l), var(--red-l));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.cal-w .wd {
+  font-size: 12px;
+  color: var(--t-3);
+  text-transform: capitalize;
+}
+
+/* Money widget */
+.money-w {
+  text-align: center;
+  padding: 8px 0 4px;
+}
+.money-w .big {
+  font-size: 28px;
+  font-weight: 900;
+  color: var(--gold-l);
+  letter-spacing: -0.01em;
+}
+.money-w .sub {
+  font-size: 11.5px;
+  color: var(--t-3);
+  margin-top: 6px;
+}
+
+/* Approvals widget */
+.appr-w {
+  text-align: center;
+  padding: 6px 0;
+}
+.appr-w .num {
+  font-size: 48px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+.appr-w .num.zero { color: var(--ok); }
+.appr-w .num.has { color: var(--gold-l); }
+.appr-w .lab {
+  font-size: 12px;
+  color: var(--t-3);
+  margin-top: 6px;
+}
+
+/* Funnel widget */
+.funnel-w {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.funnel-w .top {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--t-2);
+}
+.funnel-w .top b { color: var(--gold); }
+.funnel-w .top .conv { color: var(--ok); }
+.funnel-w .row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.funnel-w .row .label {
+  width: 130px;
+  font-size: 11.5px;
+  color: var(--t-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.funnel-w .row .bar {
+  flex: 1;
+  background: var(--bar-bg);
+  border-radius: var(--r-pill);
+  height: 18px;
+  overflow: hidden;
+  border: 1px solid var(--brd-2);
+}
+.funnel-w .row .bar > div {
+  height: 100%;
+  border-radius: var(--r-pill);
+  transition: width 0.4s ease;
+}
+.funnel-w .row .cnt {
+  width: 34px;
+  text-align: right;
+  font-weight: 800;
+  font-size: 12.5px;
+  color: var(--t-1);
+}
+
+/* Quick actions */
+.quick-w {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
+  gap: 8px;
+}
+.quick-w a {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 14px 8px;
+  background: var(--inner-bg);
+  border: var(--inner-border);
+  border-radius: var(--r-md);
+  text-decoration: none;
+  color: var(--t-2);
+  transition: all 0.15s ease;
+}
+.quick-w a:hover {
+  background: var(--hover-brand);
+  color: var(--gold);
+  border-color: var(--brd-glow);
+  transform: translateY(-2px);
+}
+.quick-w .ic { font-size: 22px; margin-bottom: 4px; }
+.quick-w .qa-lb { font-size: 11px; font-weight: 600; }
+
+/* Birthdays */
+.bday-w .item {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--brd-2);
+}
+.bday-w .item:last-child { border: 0; }
+.bday-w .ic { font-size: 22px; }
+.bday-w .nm { font-weight: 600; font-size: 13px; }
+.bday-w .dt { font-size: 11.5px; color: var(--t-3); }
+
+/* Todo */
+.todo-w .head {
+  font-size: 12.5px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--t-2);
+}
+.todo-w .it {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 12.5px;
+  color: var(--t-1);
+}
+.todo-w .dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--amber);
+}
+
+/* Stub */
+.stub-w {
+  text-align: center;
+  padding: 14px 6px;
+}
+.stub-w .ic {
+  font-size: 32px;
+  margin-bottom: 8px;
+  opacity: 0.6;
+}
+.stub-w .txt {
+  font-size: 12px;
+  color: var(--t-3);
+  line-height: 1.4;
+  max-width: 220px;
+  margin: 0 auto 10px;
+}
+
+/* ═══ Светло-темные override-ы для конкретных цветовых акцентов ═══
+ * На светлом фоне --gold-l (#D4A843) недостаточно контрастен для крупных цифр —
+ * используем глубокий --gold (#B8922E). */
+[data-theme='light'] .money-w .big { color: var(--gold); }
+[data-theme='light'] .appr-w .num.has { color: var(--gold); }
+[data-theme='light'] .funnel-w .top b { color: var(--gold); }
+[data-theme='light'] .welcome-w .rune { color: var(--gold); }
+[data-theme='light'] .cal-w .month { color: var(--gold); }
+/* widget-link: для контраста */
+[data-theme='light'] .widget-link { color: var(--t-2); }
+[data-theme='light'] .widget-link:hover { color: var(--gold); background: var(--gold-bg); border-color: var(--gold); }

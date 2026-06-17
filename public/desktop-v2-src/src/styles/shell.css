@@ -1,0 +1,441 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * V2 Shell — новый layout с полноценным Sidebar
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─── Accessibility — skip-link и focus-visible ──────────────────────────
+ * skip-link: позволяет пользователю клавиатуры миновать сайдбар и сразу
+ * перейти к main. Видим только при :focus (WCAG 2.4.1 «Bypass Blocks»).
+ *
+ * focus-visible: глобальный outline на gold для всех интерактивных
+ * элементов когда фокус пришёл через клавиатуру (а не мышь). Контраст
+ * gold ~7:1 на любом фоне — AAA.
+ *
+ * .visually-hidden: скрывает от глаз, оставляет для screen-reader.
+ * ────────────────────────────────────────────────────────────────────── */
+.skip-link {
+  position: absolute;
+  top: -100px;
+  left: 8px;
+  z-index: 99999;
+  padding: 10px 16px;
+  background: var(--gold);
+  color: var(--on-gold);
+  border-radius: var(--r-sm);
+  font-weight: 700;
+  font-size: 14px;
+  text-decoration: none;
+  transition: top 0.18s ease;
+  box-shadow: 0 4px 14px rgba(212,168,67,0.4);
+}
+.skip-link:focus {
+  top: 8px;
+  outline: 3px solid var(--gold);
+  outline-offset: 2px;
+}
+
+/* Глобальный focus-visible — keyboard-only outline gold.
+   Браузеры показывают :focus-visible только при keyboard-навигации,
+   обычные клики мышью не триггерят (UX как в нативных приложениях). */
+*:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+/* Для инпутов и form-полей — у них уже есть свой box-shadow focus.
+   Не дублируем outline (получился бы двойной обвод). */
+.m-input:focus-visible,
+.m-textarea:focus-visible,
+.m-select:focus-visible,
+.inp-text:focus-visible,
+.inp-textarea:focus-visible {
+  outline: none;
+}
+
+/* sr-only — текст для screen-reader, визуально скрыт.
+   Реализация по паттерну https://www.tpgi.com/the-anatomy-of-visually-hidden/
+   Используется в Field/parts.jsx через `<span className="u-hidden"> (обязательно)</span>`.
+   Внимание: легаси .u-hidden = display:none (визуально и для AT). Если нужно
+   только для AT — используйте .sr-only. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.shell-v2 {
+  display: flex;
+  min-height: 100vh;
+  background: var(--bg-0);
+}
+.shell-v2-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.shell-v2-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28px;
+  height: 56px;
+  background: var(--bg-glass);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border-bottom: 1px solid var(--brd-1);
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+/* Пустые промежутки header'a пропускают клики вниз. Точечно: только
+   ИНТЕРАКТИВНЫЕ элементы ловят события; контейнеры-обёртки (h1, div.actions)
+   pointer-events: none, иначе sticky-полоса блокирует клики на content,
+   scrolled под неё (баг «карточка работы не открывается + страницы лочат»). */
+.shell-v2-top,
+.shell-v2-top .shell-v2-title,
+.shell-v2-top .shell-v2-actions { pointer-events: none; }
+.shell-v2-top button,
+.shell-v2-top a,
+.shell-v2-top input,
+.shell-v2-top select,
+.shell-v2-top label { pointer-events: auto; }
+.shell-v2-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--t-2);
+  letter-spacing: 0.04em;
+}
+.shell-v2-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Ссылка обратно на старый интерфейс — на случай если что-то не работает в v2.
+   Подчёркнуто-сдержанный стиль, не отвлекает от основного UI. */
+.v2-back-to-legacy {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px; height: 32px;
+  background: transparent;
+  color: var(--t-2, #8d8a82);
+  border: 1px solid var(--brd, #2a2620);
+  border-radius: 6px;
+  text-decoration: none;
+  font-size: 12px; font-weight: 500;
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+.v2-back-to-legacy:hover {
+  background: var(--bg-2, #1c1814);
+  color: var(--t, #d7d2c5);
+  border-color: var(--brd-2, #3a3328);
+}
+.v2-back-arrow { font-size: 13px; line-height: 1; opacity: 0.7; }
+.v2-back-label { line-height: 1; }
+@media (max-width: 720px) { .v2-back-label { display: none; } .v2-back-to-legacy { padding: 6px 8px; } }
+.shell-v2-content {
+  flex: 1;
+  padding: 28px;
+  max-width: 100%;
+  width: 100%;
+}
+
+/* ─────────── (старый shell оставлен ниже на всякий случай) ─────────── */
+
+/* AppShell — layout с sidebar + topbar */
+
+.shell {
+  display: grid;
+  grid-template-columns: 248px 1fr;
+  grid-template-rows: 56px 1fr;
+  grid-template-areas:
+    'sidebar topbar'
+    'sidebar main';
+  min-height: 100vh;
+}
+
+.shell-sidebar {
+  grid-area: sidebar;
+  background: var(--bg-1);
+  border-right: 1px solid var(--brd-1);
+  /* на светлой теме без тени sidebar сливается с фоном страницы */
+  box-shadow: var(--sh-sm);
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  z-index: 4;
+}
+
+.shell-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 10px;
+  border-bottom: 1px solid var(--brd-2);
+}
+.shell-brand-mark {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--gold), var(--red));
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  color: var(--on-gold);
+  box-shadow: var(--gold-glow);
+  font-size: 14px;
+  letter-spacing: 0.05em;
+}
+.shell-brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+.shell-brand-text strong {
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  background: var(--brand-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.shell-brand-text small {
+  font-size: 10px;
+  color: var(--t-3);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.shell-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.shell-nav-group {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--t-3);
+  text-transform: uppercase;
+  padding: 14px 10px 6px;
+  font-weight: 700;
+}
+.shell-nav a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: var(--r-sm);
+  color: var(--t-2);
+  text-decoration: none;
+  font-size: 13.5px;
+  font-weight: 500;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  border-left: 2px solid transparent;
+}
+.shell-nav a:hover {
+  background: var(--hover-bg);
+  color: var(--gold);
+}
+.shell-nav a.active {
+  background: linear-gradient(90deg, var(--gold-bg), transparent);
+  color: var(--gold);
+  border-left-color: var(--gold);
+  font-weight: 700;
+}
+.shell-nav a .ico {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+  flex: 0 0 20px;
+}
+
+.shell-topbar {
+  grid-area: topbar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  background: var(--bg-glass);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border-bottom: 1px solid var(--brd-1);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+.shell-topbar-left { display: flex; align-items: center; gap: 14px; }
+.shell-topbar-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--t-2);
+  letter-spacing: 0.04em;
+}
+.shell-topbar-right { display: flex; align-items: center; gap: 10px; }
+
+.tb-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  background: var(--inner-bg);
+  border: var(--inner-border);
+  border-radius: var(--r-pill);
+  color: var(--t-2);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-decoration: none;
+}
+.tb-btn:hover {
+  background: var(--hover-bg);
+  color: var(--gold);
+  border-color: var(--gold);
+}
+.tb-btn.icon { padding: 7px 10px; }
+
+.tb-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 10px 5px 6px;
+  background: var(--inner-bg);
+  border: var(--inner-border);
+  border-radius: var(--r-pill);
+}
+.tb-user .ava {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--gold), var(--red));
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 11px;
+  color: var(--on-gold);
+}
+.tb-user .meta { display: flex; flex-direction: column; line-height: 1.15; }
+.tb-user .meta strong { font-size: 12.5px; color: var(--t-1); font-weight: 600; }
+.tb-user .meta small { font-size: 10px; color: var(--t-3); letter-spacing: 0.06em; text-transform: uppercase; }
+
+.shell-main {
+  grid-area: main;
+  padding: 28px 28px 60px;
+  max-width: 1600px;
+  width: 100%;
+}
+
+@media (max-width: 1100px) {
+  .shell { grid-template-columns: 72px 1fr; }
+  .shell-brand-text, .shell-nav-group, .shell-nav a span.label { display: none; }
+  .shell-nav a { justify-content: center; padding: 10px 0; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Печать (G-15) — единые правила для всех отчётных страниц v2.
+ *
+ * Источник: vanilla `public/assets/css/layout.css:1082` + `my-mail.css:991`.
+ * Скрываем chrome (sidebar/topbar/notifications/toasts/skip-link),
+ * убираем тени и градиенты, нормализуем цвета на бумаге.
+ *
+ * Универсально работает на ВСЕХ страницах под AppShell — в т.ч. на
+ * Tenders, PmWorks, AllWorks, BuhRegistry, Cash, Payroll, EstimateReport,
+ * PreTenders, Tkp и пр. Дополнительные правила страницы делают через
+ * класс `.no-print` (скрыть кнопку) или `.print-only` (показать только в печати).
+ * ─────────────────────────────────────────────────────────────────── */
+@media print {
+  /* 1. Глобальный фон/цвет — бумага */
+  html, body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  /* 2. Скрываем все элементы хрома */
+  .shell-v2-top,
+  .shell-sidebar,
+  .shell-topbar,
+  .shell-v2 > aside,            /* Sidebar component без класса */
+  .skip-link,
+  .toast-stack,
+  .toastwrap,
+  .notif-bell,
+  .bellpop,
+  .no-print,
+  .m-back,                       /* модальная подложка — если открыта */
+  .modal-back,
+  .modalback {
+    display: none !important;
+  }
+
+  /* 3. Растягиваем layout на всю страницу */
+  .shell-v2 {
+    display: block !important;
+    min-height: auto !important;
+  }
+  .shell-v2-main,
+  .shell-v2-content,
+  .shell-main {
+    margin: 0 !important;
+    padding: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  /* 4. Карточки/панели — без теней, без градиентов, тонкая рамка */
+  .card,
+  .panel,
+  .er-action-bar,
+  .pmw-kpi,
+  .pyr-kpi {
+    box-shadow: none !important;
+    background: #fff !important;
+    border: 1px solid #ccc !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* 5. Таблицы — не разрывать строки, чёрно-белый текст */
+  table { break-inside: auto; }
+  tr    { break-inside: avoid; page-break-inside: avoid; }
+  thead { display: table-header-group; }
+  tfoot { display: table-footer-group; }
+
+  /* 6. Ссылки печатаются как обычный текст (не синие подчёркнутые) */
+  a, a:visited {
+    color: #000 !important;
+    text-decoration: none !important;
+  }
+
+  /* 7. Кнопки/инпуты на бумаге не нужны */
+  .m-btn,
+  .m-input,
+  .m-textarea,
+  .m-select,
+  button,
+  input,
+  select,
+  textarea {
+    display: none !important;
+  }
+
+  /* 8. Класс-маркер: оставить кнопку в выводе (например, штрих-код) */
+  .print-keep,
+  .print-keep * { display: revert !important; }
+
+  /* 9. Печатать только обозначенное */
+  .print-only { display: block !important; }
+
+  /* 10. Поля страницы */
+  @page { margin: 12mm; }
+}

@@ -1,0 +1,468 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * Settings — настройки системы
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─── Hero «Текущий профиль системы» ─── */
+.sett-hero {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 18px;
+  padding: 20px 24px;
+  background: var(--card-bg-hero);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-card);
+  position: relative;
+  overflow: hidden;
+}
+.sett-hero::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--gold), var(--red), var(--blue-l));
+}
+.sett-hero-ic {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--r-lg);
+  background: var(--gold-bg);
+  border: 1.5px solid color-mix(in srgb, var(--gold) 30%, transparent);
+  display: grid;
+  place-items: center;
+  font-size: 32px;
+  color: var(--gold);
+  box-shadow: var(--gold-glow);
+}
+.sett-hero-body { min-width: 0; }
+.sett-hero-kicker {
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--t-3);
+  font-weight: 700;
+}
+.sett-hero-title {
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--t-1);
+  margin: 2px 0 6px;
+  letter-spacing: 0.01em;
+}
+.sett-hero-sub {
+  font-size: 13px;
+  color: var(--t-2);
+  line-height: 1.6;
+}
+.sett-hero-sub b { color: var(--gold); font-weight: 700; }
+.sett-hero-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 16px;
+  background: var(--inner-bg);
+  border-radius: var(--r-md);
+  border: 1px solid var(--brd-2);
+  min-width: 200px;
+}
+.sett-hero-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.sett-hero-meta-lab {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--t-3);
+  font-weight: 700;
+}
+.sett-hero-meta-val {
+  font-size: 13px;
+  color: var(--t-1);
+  font-weight: 700;
+}
+
+/* Подсказка над контентом таба */
+.sett-tab-hint {
+  padding: 10px 14px;
+  background: var(--info-bg);
+  border-left: 3px solid var(--info);
+  border-radius: var(--r-sm);
+  font-size: 12.5px;
+  color: var(--t-2);
+  line-height: 1.5;
+}
+
+.sett-page-content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sett-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 16px;
+}
+
+.sett-card {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-lg);
+  padding: 20px 22px;
+  box-shadow: var(--sh-card);
+  position: relative;
+  overflow: hidden;
+  transition: all 0.18s ease;
+}
+.sett-card::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, var(--gold), color-mix(in srgb, var(--gold) 30%, transparent));
+  opacity: 0.55;
+  border-radius: 0 var(--r-pill) var(--r-pill) 0;
+}
+.sett-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--sh-md);
+  border-color: color-mix(in srgb, var(--gold) 24%, var(--brd-1));
+}
+
+.sett-card h3 {
+  margin: 0 0 4px 0;
+  font-size: 15.5px;
+  font-weight: 800;
+  color: var(--t-1);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  letter-spacing: 0.01em;
+}
+
+.sett-card .sett-hint {
+  color: var(--t-3);
+  font-size: 12.5px;
+  margin: 4px 0 16px 0;
+  line-height: 1.55;
+}
+
+.sett-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.sett-row--single {
+  grid-template-columns: 1fr;
+}
+
+.sett-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sett-field label {
+  font-size: 12px;
+  color: var(--t-2);
+  font-weight: 600;
+}
+
+.sett-field .sett-help {
+  font-size: 11px;
+  color: var(--t-3);
+  margin-top: 2px;
+}
+
+.sett-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  color: var(--t-1);
+  font-size: 13px;
+}
+
+.sett-checkbox-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--gold);
+}
+
+.sett-preview {
+  padding: 10px;
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-sm);
+  font-family: ui-monospace, monospace;
+  color: var(--gold);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.sett-textarea {
+  width: 100%;
+  min-height: 120px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  padding: 10px 12px;
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-sm);
+  color: var(--t-1);
+  resize: vertical;
+}
+
+.sett-textarea:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: var(--sh-sm);
+}
+
+.sett-customers-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.sett-customers-table th,
+.sett-customers-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--brd-2);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.sett-customers-table th {
+  background: var(--inner-bg);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--t-3);
+  font-weight: 700;
+}
+
+.sett-customers-table code {
+  font-family: ui-monospace, monospace;
+  color: var(--t-1);
+}
+
+.sett-customers-scroll {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-sm);
+}
+
+.sett-color-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.sett-color-row label {
+  flex: 1;
+  color: var(--t-1);
+  font-size: 13px;
+}
+
+.sett-color-row .muted {
+  color: var(--t-3);
+  font-size: 11px;
+  margin-left: 4px;
+}
+
+.sett-color-row input[type="color"] {
+  width: 44px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-xs);
+  background: transparent;
+  cursor: pointer;
+}
+
+.sett-color-row input[type="text"] {
+  width: 100px;
+  padding: 6px 8px;
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-xs);
+  color: var(--t-1);
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.sett-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sett-denied {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--t-3);
+}
+
+.sett-denied .ic {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 900px) {
+  .sett-grid {
+    grid-template-columns: 1fr;
+  }
+  .sett-hero {
+    grid-template-columns: auto 1fr;
+  }
+  .sett-hero-meta {
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
+  .sett-hero-ic { width: 48px; height: 48px; font-size: 24px; }
+  .sett-hero-title { font-size: 18px; }
+}
+
+/* ── Личный кабинет (для не-ADMIN) ─────────────────────────────────────── */
+.sett-account-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+  background: var(--bg-1);
+  border: 1px solid var(--brd-1);
+  border-radius: 16px;
+}
+.sett-account-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.sett-account-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: var(--bg-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+}
+.sett-account-name { font-size: 18px; font-weight: 700; color: var(--t-1); }
+.sett-account-role { font-size: 13px; color: var(--t-3); margin-top: 2px; }
+.sett-account-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+@media (max-width: 600px) {
+  .sett-account-actions { flex-direction: column; }
+  .sett-account-actions button { width: 100%; }
+}
+
+/* ── SecurityTab ───────────────────────────────────────────────────────── */
+.sett-fieldset {
+  border: 1px solid var(--brd);
+  border-radius: 10px;
+  padding: 12px 14px 6px;
+  margin-top: 14px;
+  background: var(--bg2);
+}
+.sett-fieldset > legend {
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--t-2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.sett-fieldset .sett-hint { margin: 4px 0 10px; }
+.sett-fieldset code {
+  background: var(--bg3, rgba(255,255,255,0.04));
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.sett-field-action {
+  align-self: end;
+  padding-bottom: 4px;
+}
+.sett-warn {
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: var(--t-1);
+  font-size: 13px;
+  margin: 8px 0 12px;
+}
+.sett-sep {
+  border: none;
+  border-top: 1px solid var(--brd);
+  margin: 16px 0;
+}
+.sett-pill-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.sett-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--bg3, rgba(255,255,255,0.04));
+  border: 1px solid var(--brd);
+  font-size: 13px;
+  font-weight: 600;
+}
+.sett-pill.ok  { background: rgba(34, 197, 94, 0.12);  color: #22c55e; border-color: rgba(34,197,94,0.3); }
+.sett-pill.off { background: rgba(148, 163, 184, 0.1); color: var(--t-2); }
+.sett-pill-meta { font-size: 12px; color: var(--t-3); }
+.sett-empty {
+  text-align: center;
+  padding: 24px 16px;
+  border: 1px dashed var(--brd);
+  border-radius: 10px;
+  background: var(--bg2);
+}
+.sett-empty-ic { font-size: 32px; margin-bottom: 8px; }
+.sett-empty-title { font-size: 14px; font-weight: 700; color: var(--t-1); }
+.sett-empty-hint { font-size: 12px; color: var(--t-3); margin-top: 4px; }
+.sett-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+}
+.sett-tbl th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--t-3);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--brd);
+}
+.sett-tbl td {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  font-size: 13px;
+  color: var(--t-2);
+}
+.sett-ai-test.ok  { color: var(--t-1); }
+.sett-ai-test.err { color: var(--t-1); }
+

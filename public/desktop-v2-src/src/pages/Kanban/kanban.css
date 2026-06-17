@@ -1,0 +1,271 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * Kanban — канбан-доска задач
+ * Цвета и тени через CSS-переменные (поддержка тёмной/светлой темы).
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Тулбар фильтров ────────────────────────────────────────────────── */
+.kb-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(180px, 1fr) minmax(180px, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+@media (max-width: 900px) {
+  .kb-toolbar { grid-template-columns: 1fr; }
+}
+
+.kb-toolbar > div { min-width: 0; }
+
+/* ── Доска ──────────────────────────────────────────────────────────── */
+.kb-board {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(280px, 1fr);
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  min-height: 60vh;
+}
+
+@media (max-width: 1100px) {
+  .kb-board { grid-auto-columns: minmax(260px, 300px); }
+}
+
+/* ── Колонка ────────────────────────────────────────────────────────── */
+.kb-col {
+  display: flex;
+  flex-direction: column;
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-card);
+  overflow: hidden;
+  min-width: 280px;
+}
+
+.kb-col-h {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--brd-2);
+  background: var(--inner-bg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.kb-col[data-col="new"]         .kb-col-h { border-top: 3px solid var(--info); }
+.kb-col[data-col="in_progress"] .kb-col-h { border-top: 3px solid var(--orange); }
+.kb-col[data-col="review"]      .kb-col-h { border-top: 3px solid var(--purple); }
+.kb-col[data-col="done"]        .kb-col-h { border-top: 3px solid var(--ok); }
+
+.kb-col-ttl {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--t-1);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  letter-spacing: 0.02em;
+}
+
+.kb-col-ic { font-size: 14px; }
+
+.kb-col-cnt {
+  padding: 3px 10px;
+  font-size: 11.5px;
+  font-weight: 800;
+  background: var(--bar-bg);
+  color: var(--t-2);
+  border-radius: var(--r-pill);
+  min-width: 28px;
+  text-align: center;
+}
+
+.kb-col-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  overflow-y: auto;
+  max-height: 72vh;
+  transition: background 0.15s ease;
+}
+
+.kb-col-body.is-over {
+  background: var(--gold-bg);
+  outline: 2px dashed var(--gold);
+  outline-offset: -6px;
+}
+
+.kb-col-empty {
+  text-align: center;
+  color: var(--t-4);
+  font-size: 12px;
+  padding: 22px 8px;
+  font-style: italic;
+}
+
+/* ── Карточка задачи ─────────────────────────────────────────────────── */
+.kb-card {
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-1);
+  border-left: 3px solid var(--brd-1);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  cursor: grab;
+  transition: transform 0.12s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kb-card:hover {
+  border-color: var(--gold);
+  transform: translateY(-1px);
+  box-shadow: var(--sh-sm);
+}
+.kb-card:active { cursor: grabbing; }
+.kb-card.p-urgent { border-left-color: var(--err); }
+.kb-card.p-high   { border-left-color: var(--orange); }
+.kb-card.p-normal { border-left-color: var(--info); }
+.kb-card.p-low    { border-left-color: var(--t-3); }
+
+.kb-card-ttl {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--t-1);
+  line-height: 1.35;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.kb-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: var(--t-3);
+}
+
+.kb-card-ava {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--gold-bg);
+  color: var(--gold);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  flex: 0 0 auto;
+}
+
+.kb-card-dl {
+  color: var(--t-3);
+  font-weight: 600;
+}
+.kb-card-dl.overdue { color: var(--err); }
+.kb-card-dl.soon    { color: var(--amber); }
+
+.kb-card-cmt {
+  margin-left: auto;
+  color: var(--t-3);
+  font-weight: 600;
+}
+
+.kb-card-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.kb-tag {
+  padding: 2px 8px;
+  font-size: 10.5px;
+  background: var(--bar-bg);
+  color: var(--t-2);
+  border-radius: var(--r-pill);
+  font-weight: 600;
+}
+
+/* ── Детали задачи ───────────────────────────────────────────────────── */
+.kb-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--brd-2);
+  font-size: 13px;
+  color: var(--t-2);
+}
+.kb-info-row:last-child { border-bottom: none; }
+
+.kb-section-h {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--t-3);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.kb-file {
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  background: var(--inner-bg);
+  color: var(--info);
+  font-size: 11.5px;
+  text-decoration: none;
+  border: 1px solid var(--brd-2);
+}
+.kb-file:hover { background: var(--hover-bg); }
+
+.kb-comments {
+  max-height: 280px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-right: 4px;
+}
+
+.kb-cmt {
+  padding: 8px 10px;
+  background: var(--inner-bg);
+  border-left: 3px solid var(--info);
+  border-radius: var(--r-sm);
+}
+
+.kb-cmt.is-sys {
+  border-left-color: var(--t-4);
+  background: var(--bar-bg);
+  font-style: italic;
+}
+
+.kb-cmt-h {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: var(--t-3);
+  margin-bottom: 4px;
+}
+
+.kb-cmt-tm {
+  font-family: ui-monospace, monospace;
+  font-size: 10.5px;
+}
+
+.kb-cmt-tx {
+  font-size: 13px;
+  color: var(--t-2);
+  white-space: pre-wrap;
+  line-height: 1.45;
+}

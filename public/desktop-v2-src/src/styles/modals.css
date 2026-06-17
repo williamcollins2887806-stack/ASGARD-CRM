@@ -1,0 +1,848 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * АСГАРД CRM 2.0 — Модалки
+ *
+ * Z-INDEX ИЕРАРХИЯ (источник истины для всего приложения):
+ *   3-5      — shell/topbar/sidebar (sticky-зоны фрейма)
+ *   500-501  — Mimir FAB + панель (глобальный чат-виджет)
+ *   600-701  — Warehouse FAB + cart drawer (page-level)
+ *   9999     — BigScreen (fullscreen-route оверлей)
+ *   10000+   — Модалки: 10000 + index*30 (level1 10000, level2 10030, level3 10060…)
+ *   20000    — Popover/DatePicker/Select dropdown (через React Portal в document.body)
+ *              → всегда поверх любой модалки, не обрезается overflow
+ *   30000    — Toast / Tooltip / Sidebar popup (всегда видимы)
+ *   99999    — Skip-link (accessibility — keyboard skip-to-content)
+ *
+ * Все модалки рендерятся ОДНИМ createPortal в document.body из ModalProvider
+ * (а не каждая своим), что гарантирует:
+ *   • правильный stack (N-уровневая вложенность)
+ *   • body не обрезает overflow
+ *   • ESC закрывает только верхнюю
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* CRIT: modal-stack-root должен быть ВЫШЕ ВСЕГО.
+   Без z-index здесь stacking context определяется родителем (document.body).
+   Если где-то на странице есть transform/filter/backdrop-filter/will-change/opacity<1
+   на родительском контейнере — он создаёт isolation, и z-index 10000 ModalLayer'ов
+   сравнивается ВНУТРИ этого контейнера, а не глобально. Модалка тогда уходит «под»
+   sticky header (.shell-v2-top z:3 + backdrop-filter) или sidebar.
+   Фикс: ставим максимальный z-index + isolation:isolate чтобы получить корневой
+   stacking context, выше любых других на странице. */
+.modal-stack-root {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2147483000; /* почти int32-max — выше любых page-level z-index */
+  isolation: isolate;
+}
+.modal-stack-root > .modal-layer { pointer-events: auto; }
+
+.modal-layer {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;          /* центрируем по вертикали */
+  justify-content: center;       /* центрируем по горизонтали */
+  padding: 16px;                 /* воздух у краёв */
+  animation: modal-layer-in 0.18s ease both;
+}
+.modal-layer.leaving { animation: modal-layer-out 0.18s ease both; pointer-events: none; }
+/* Drawer / sheet — без центрирования (доп. класс на ModalLayer) */
+.modal-layer.shape-drawer-right,
+.modal-layer.shape-drawer-left { padding: 0; justify-content: stretch; align-items: stretch; }
+.modal-layer.shape-sheet-bottom { padding: 0; align-items: flex-end; justify-content: center; }
+
+.modal-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 12, 22, calc(0.55 * var(--dim, 1)));
+  backdrop-filter: blur(calc(8px * var(--dim, 1))) saturate(140%);
+  -webkit-backdrop-filter: blur(calc(8px * var(--dim, 1))) saturate(140%);
+  transition: background 0.18s ease;
+}
+[data-theme='light'] .modal-overlay {
+  background: rgba(31, 56, 110, calc(0.32 * var(--dim, 1)));
+}
+.modal-overlay.transparent { background: transparent; backdrop-filter: none; }
+
+.modal-frame {
+  position: relative;
+  margin: 0;                              /* убрано — теперь центрируем через flex */
+  max-width: 100%;
+  max-height: 100%;                        /* помещается в padded .modal-layer */
+  display: flex;
+  flex-direction: column;
+  pointer-events: auto;
+  flex: 0 1 auto;                          /* не растягивается на всю высоту */
+}
+
+/* ─── Shape: center modal ─── */
+/* Ширины 1:1 с vanilla cr-modal.css: default 900/95vw, wide 1200/96vw, full 1600/98vw + h95vh. */
+.frame-center {
+  width: min(900px, 95vw);
+  animation: modal-pop-in 0.22s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.modal-layer.leaving .frame-center { animation: modal-pop-out 0.18s ease-in both; }
+
+/* ─── Shape: wide ─── */
+.frame-wide {
+  width: min(1200px, 96vw);
+  animation: modal-pop-in 0.22s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* ─── Shape: full ─── */
+.frame-full {
+  width: min(1600px, 98vw);
+  height: 95vh;
+  animation: modal-pop-in 0.22s ease both;
+}
+
+/* ─── Shape: drawer right ─── */
+.frame-drawer-right {
+  position: fixed;
+  top: 0; right: 0;
+  margin: 0;
+  width: min(520px, 100vw);
+  height: 100vh;
+  max-height: none;
+  animation: modal-drawer-in-right 0.24s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.modal-layer.leaving .frame-drawer-right { animation: modal-drawer-out-right 0.2s ease-in both; }
+
+.frame-drawer-right.wide { width: min(720px, 100vw); }
+
+/* ─── Shape: drawer left ─── */
+.frame-drawer-left {
+  position: fixed;
+  top: 0; left: 0;
+  margin: 0;
+  width: min(520px, 100vw);
+  height: 100vh;
+  max-height: none;
+  animation: modal-drawer-in-left 0.24s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ─── Maximize on demand ─── */
+/* Любая модалка с .is-maximized разворачивается на весь экран,
+   независимо от shape (center/wide/full/drawer/sheet). */
+.modal-frame.is-maximized {
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: none !important;
+  max-height: 100vh !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  inset: 0 !important;
+  transform: none !important;
+  animation: none !important;
+}
+.modal-frame.is-maximized .m-card {
+  border-radius: 0;
+  max-height: 100vh;
+  height: 100vh;
+}
+.modal-layer.shape-center:has(.is-maximized),
+.modal-layer.shape-wide:has(.is-maximized),
+.modal-layer.shape-full:has(.is-maximized),
+.modal-layer.shape-drawer-right:has(.is-maximized),
+.modal-layer.shape-drawer-left:has(.is-maximized),
+.modal-layer.shape-sheet-bottom:has(.is-maximized) {
+  padding: 0;                            /* убираем 16px воздух у краёв */
+}
+
+/* Кнопка ⛶ в шапке модалки */
+.m-head .maximize-btn {
+  background: transparent;
+  border: 1px solid var(--brd-1);
+  color: var(--t-2);
+  width: 32px; height: 32px;
+  border-radius: var(--r-sm);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  margin-right: 6px;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.m-head .maximize-btn:hover {
+  background: var(--gold-bg);
+  color: var(--gold);
+  border-color: var(--gold);
+}
+.m-head .maximize-btn:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 1px;
+}
+
+/* ─── Shape: bottom-sheet ─── */
+.frame-sheet-bottom {
+  position: fixed;
+  bottom: 0; left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  width: min(640px, 100vw);
+  max-height: 85vh;
+  animation: modal-sheet-in 0.26s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.modal-layer.leaving .frame-sheet-bottom { animation: modal-sheet-out 0.2s ease-in both; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Универсальная карточка модалки (Surface)
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.m-card {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-lg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: inherit;
+}
+[data-theme='light'] .m-card { border-color: var(--brd-1); box-shadow: 0 24px 64px rgba(31, 56, 110, 0.18); }
+
+.frame-drawer-right .m-card,
+.frame-drawer-left .m-card { border-radius: 0; height: 100vh; }
+.frame-sheet-bottom .m-card { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+
+.m-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid var(--brd-2);
+  position: relative;
+}
+.m-head::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; top: 0; height: 3px;
+  background: var(--m-accent, linear-gradient(90deg, var(--gold), var(--red)));
+  opacity: 0.8;
+}
+.m-head .ico {
+  font-size: 22px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 36px; height: 36px;
+  border-radius: var(--r-md);
+  background: var(--m-accent-bg, var(--gold-bg));
+}
+.m-head .ttl-wrap { flex: 1; min-width: 0; }
+.m-head h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--t-1);
+  letter-spacing: 0.01em;
+  line-height: 1.25;
+}
+.m-head .subt {
+  font-size: 12.5px;
+  color: var(--t-3);
+  margin-top: 3px;
+  line-height: 1.4;
+}
+.m-head .close-btn {
+  flex: 0 0 auto;
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  border: var(--inner-border);
+  background: var(--inner-bg);
+  color: var(--t-3);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0;
+  transition: all 0.15s ease;
+}
+.m-head .close-btn:hover { background: var(--hover-bg); color: var(--gold); border-color: var(--gold); }
+
+.m-body {
+  padding: 18px 22px;
+  overflow: auto;
+  flex: 1;
+  color: var(--t-1);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.m-body p { margin: 0 0 10px; color: var(--t-2); }
+
+.m-foot {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 14px 22px 18px;
+  border-top: 1px solid var(--brd-2);
+  background: var(--card-bg);
+}
+.m-foot.start { justify-content: flex-start; }
+.m-foot.center { justify-content: center; }
+.m-foot.spread { justify-content: space-between; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Цвета акцентов (по типу модалки)
+ * ═══════════════════════════════════════════════════════════════════════ */
+.m-acc-default { --m-accent: linear-gradient(90deg, var(--gold), var(--red)); --m-accent-bg: var(--gold-bg); }
+.m-acc-info    { --m-accent: linear-gradient(90deg, var(--info), var(--cyan)); --m-accent-bg: var(--info-bg); }
+.m-acc-success { --m-accent: linear-gradient(90deg, var(--ok), color-mix(in srgb, var(--ok) 50%, var(--cyan))); --m-accent-bg: var(--ok-bg); }
+.m-acc-warn    { --m-accent: linear-gradient(90deg, var(--amber), var(--orange)); --m-accent-bg: var(--orange-bg); }
+.m-acc-danger  { --m-accent: linear-gradient(90deg, var(--red), var(--orange)); --m-accent-bg: var(--red-bg); }
+.m-acc-purple  { --m-accent: linear-gradient(90deg, var(--purple), var(--purple-l)); --m-accent-bg: var(--purple-bg); }
+.m-acc-gold    { --m-accent: linear-gradient(90deg, var(--gold), var(--amber)); --m-accent-bg: var(--gold-bg); }
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Кнопки
+ * ═══════════════════════════════════════════════════════════════════════ */
+.m-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: var(--r-md);
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.16s ease;
+  border: 1px solid transparent;
+  text-decoration: none;
+  font-family: inherit;
+  letter-spacing: 0.02em;
+}
+.m-btn:disabled { opacity: 0.5; pointer-events: none; }
+.m-btn.ghost {
+  background: var(--inner-bg);
+  border-color: var(--brd-1);
+  color: var(--t-2);
+}
+.m-btn.ghost:hover { background: var(--hover-bg); border-color: var(--gold); color: var(--gold); }
+
+.m-btn.primary {
+  background: linear-gradient(135deg, var(--gold), var(--gold-h));
+  color: var(--on-gold);
+  box-shadow: 0 4px 14px rgba(212,168,67,0.30);
+}
+.m-btn.primary:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(212,168,67,0.40); }
+
+.m-btn.danger {
+  background: linear-gradient(135deg, var(--red), var(--red-h));
+  color: white;
+  box-shadow: 0 4px 14px rgba(200,41,59,0.30);
+}
+.m-btn.danger:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(200,41,59,0.40); }
+
+.m-btn.success {
+  background: linear-gradient(135deg, var(--ok), color-mix(in srgb, var(--ok) 60%, var(--cyan)));
+  color: white;
+  box-shadow: 0 4px 14px rgba(74,222,128,0.30);
+}
+.m-btn.success:hover { transform: translateY(-1px); }
+
+.m-btn.warn {
+  background: linear-gradient(135deg, var(--amber), var(--orange));
+  color: white;
+}
+
+.m-btn.info {
+  background: linear-gradient(135deg, var(--info), var(--cyan));
+  color: white;
+}
+
+.m-btn.outline {
+  background: transparent;
+  border-color: var(--brd-1);
+  color: var(--t-1);
+}
+.m-btn.outline:hover { border-color: var(--gold); color: var(--gold); background: var(--gold-bg); }
+
+.m-btn.sm { padding: 7px 12px; font-size: 12px; }
+.m-btn.lg { padding: 13px 22px; font-size: 14px; }
+.m-btn.block { width: 100%; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Формы
+ * ═══════════════════════════════════════════════════════════════════════ */
+.m-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.m-field label { font-size: 12px; font-weight: 600; color: var(--t-2); letter-spacing: 0.04em; text-transform: uppercase; }
+.m-field .help { font-size: 11.5px; color: var(--t-3); }
+.m-field .req { color: var(--err); margin-left: 3px; }
+
+.m-input, .m-textarea, .m-select {
+  width: 100%;
+  background: var(--inner-bg);
+  border: 1.5px solid var(--brd-1);
+  border-radius: var(--r-sm);
+  padding: 10px 14px;
+  font-size: 14px;
+  color: var(--t-1);
+  font-family: inherit;
+  transition: all 0.15s ease;
+}
+.m-input::placeholder, .m-textarea::placeholder { color: var(--t-4); }
+.m-input:focus, .m-textarea:focus, .m-select:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px var(--gold-bg);
+  background: var(--card-bg);
+}
+.m-textarea { min-height: 90px; resize: vertical; font-family: inherit; }
+
+/* Двухколоночная сетка для формы */
+.m-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.m-grid-2 .m-field { margin-bottom: 0; }
+@media (max-width: 640px) { .m-grid-2 { grid-template-columns: 1fr; } }
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Анимации
+ * ═══════════════════════════════════════════════════════════════════════ */
+@keyframes modal-layer-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modal-layer-out { from { opacity: 1; } to { opacity: 0; } }
+
+@keyframes modal-pop-in {
+  from { opacity: 0; transform: scale(0.94) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes modal-pop-out {
+  from { opacity: 1; transform: scale(1) translateY(0); }
+  to { opacity: 0; transform: scale(0.96); }
+}
+
+@keyframes modal-drawer-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+@keyframes modal-drawer-out-right {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+@keyframes modal-drawer-in-left {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes modal-sheet-in {
+  from { transform: translate(-50%, 100%); }
+  to { transform: translate(-50%, 0); }
+}
+@keyframes modal-sheet-out {
+  from { transform: translate(-50%, 0); }
+  to { transform: translate(-50%, 100%); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Wizard
+ * ═══════════════════════════════════════════════════════════════════════ */
+.m-stepper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--brd-2);
+  overflow-x: auto;
+}
+.m-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: var(--r-pill);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--t-3);
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-2);
+  white-space: nowrap;
+}
+.m-step .num {
+  display: grid;
+  place-items: center;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: var(--brd-1);
+  color: var(--t-2);
+  font-size: 10px;
+  font-weight: 800;
+}
+.m-step.active {
+  background: var(--gold-bg);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+[data-theme='light'] .m-step.active { color: var(--gold); }
+.m-step.active .num { background: var(--gold); color: var(--on-gold); }
+.m-step.done { background: var(--ok-bg); border-color: var(--ok); color: var(--ok); }
+.m-step.done .num { background: var(--ok); color: white; }
+.m-step-sep { flex: 0 0 12px; height: 1px; background: var(--brd-1); }
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Action menu (контекстное)
+ * ═══════════════════════════════════════════════════════════════════════ */
+.m-menu { padding: 8px; display: flex; flex-direction: column; gap: 2px; }
+.m-menu .item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 14px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  color: var(--t-1);
+  font-size: 13.5px;
+  font-weight: 500;
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
+  text-decoration: none;
+  transition: background 0.12s ease;
+}
+.m-menu .item:hover { background: var(--hover-bg); color: var(--gold); }
+.m-menu .item.danger:hover { background: var(--red-bg); color: var(--err); }
+.m-menu .item .ic { font-size: 16px; width: 20px; text-align: center; }
+.m-menu .item .desc { color: var(--t-3); font-size: 11.5px; font-weight: 400; }
+.m-menu .item .meta { margin-left: auto; font-size: 11px; color: var(--t-3); }
+.m-menu .sep { height: 1px; background: var(--brd-2); margin: 6px 0; }
+.m-menu .grp { font-size: 10px; letter-spacing: 0.18em; color: var(--t-3); text-transform: uppercase; padding: 8px 14px 4px; font-weight: 700; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Picker
+ * ═══════════════════════════════════════════════════════════════════════ */
+.m-picker-search {
+  position: sticky; top: 0;
+  background: var(--card-bg);
+  padding: 12px 22px;
+  border-bottom: 1px solid var(--brd-2);
+  z-index: 2;
+}
+.m-picker-search input { width: 100%; }
+.m-picker-list { display: flex; flex-direction: column; gap: 4px; padding: 8px 14px; }
+.m-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background 0.12s ease;
+  border: 1.5px solid transparent;
+}
+.m-picker-item:hover { background: var(--hover-bg); }
+.m-picker-item.selected { border-color: var(--gold); background: var(--gold-bg); }
+.m-picker-item .ava {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--gold), var(--red));
+  display: grid;
+  place-items: center;
+  color: white;
+  font-weight: 800;
+  font-size: 13px;
+  flex: 0 0 auto;
+}
+.m-picker-item .nm { font-weight: 600; font-size: 13.5px; color: var(--t-1); }
+.m-picker-item .ro { font-size: 11.5px; color: var(--t-3); }
+.m-picker-item .check {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--brd-1);
+  display: grid;
+  place-items: center;
+  color: white;
+  font-size: 13px;
+  margin-left: auto;
+}
+.m-picker-item.selected .check { background: var(--gold); border-color: var(--gold); color: var(--on-gold); }
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Method picker (2 крупных карточки)
+ * ═══════════════════════════════════════════════════════════════════════ */
+.m-methods { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 4px 0; }
+@media (max-width: 640px) { .m-methods { grid-template-columns: 1fr; } }
+.m-method {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  padding: 22px 20px 18px;
+  background: var(--inner-bg);
+  border: 1.5px solid var(--brd-1);
+  border-radius: var(--r-lg);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  color: var(--t-1);
+  font-family: inherit;
+}
+.m-method:hover {
+  border-color: var(--gold);
+  background: var(--card-bg);
+  transform: translateY(-3px);
+  box-shadow: var(--sh-md), var(--gold-glow);
+}
+.m-method.featured { border-color: var(--gold); background: var(--card-bg); box-shadow: 0 0 0 1px var(--gold-bg) inset; }
+.m-method .ic { font-size: 40px; margin-bottom: 12px; }
+.m-method .ttl { font-size: 16px; font-weight: 800; margin-bottom: 4px; color: var(--t-1); }
+.m-method .desc { font-size: 12.5px; color: var(--t-3); margin-bottom: 12px; line-height: 1.4; }
+.m-method .meta {
+  font-size: 11px;
+  color: var(--ok);
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  background: var(--ok-bg);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Approval (4 кнопки) — компактный grid
+ * ═══════════════════════════════════════════════════════════════════════ */
+.m-approval { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.m-approval-row { display: contents; }
+.m-approval .m-btn { padding: 12px 16px; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Alert content
+ * ═══════════════════════════════════════════════════════════════════════ */
+.m-alert {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 10px 6px 4px;
+}
+.m-alert .big-icon {
+  font-size: 54px;
+  margin-bottom: 12px;
+  filter: drop-shadow(0 4px 14px var(--m-accent-bg, var(--gold-bg)));
+}
+.m-alert h3 { margin: 0 0 8px; font-size: 18px; font-weight: 800; color: var(--t-1); }
+.m-alert p { margin: 0; color: var(--t-2); font-size: 13.5px; line-height: 1.5; max-width: 380px; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Loader / Progress
+ * ═══════════════════════════════════════════════════════════════════════ */
+.m-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 18px 8px 10px;
+}
+.m-loader .ring {
+  width: 64px; height: 64px;
+  border-radius: 50%;
+  border: 4px solid var(--brd-1);
+  border-top-color: var(--gold);
+  animation: m-spin 0.9s linear infinite;
+  margin-bottom: 16px;
+}
+@keyframes m-spin { to { transform: rotate(360deg); } }
+.m-loader .t { font-size: 14px; font-weight: 700; color: var(--t-1); margin-bottom: 4px; }
+.m-loader .s { font-size: 12px; color: var(--t-3); }
+
+.m-progress-row {
+  width: 100%;
+  height: 10px;
+  border-radius: var(--r-pill);
+  background: var(--bar-bg);
+  overflow: hidden;
+  margin-top: 14px;
+}
+.m-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold), var(--red));
+  border-radius: var(--r-pill);
+  transition: width 0.3s ease;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Details (карточка с табами/секциями)
+ * ═══════════════════════════════════════════════════════════════════════ */
+.m-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 22px;
+  border-bottom: 1px solid var(--brd-2);
+}
+.m-tab {
+  padding: 12px 16px;
+  border: 0;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t-3);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+.m-tab:hover { color: var(--t-1); }
+.m-tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+
+.m-kv { display: grid; grid-template-columns: 140px 1fr; gap: 10px 16px; font-size: 13.5px; }
+.m-kv .k { color: var(--t-3); font-size: 12px; padding-top: 2px; }
+.m-kv .v { color: var(--t-1); font-weight: 500; }
+
+.m-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  font-size: 11.5px;
+  font-weight: 700;
+  background: var(--inner-bg);
+  border: var(--inner-border);
+  color: var(--t-2);
+}
+.m-pill.ok { color: var(--ok); background: var(--ok-bg); border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
+.m-pill.danger { color: var(--err); background: var(--err-bg); border-color: color-mix(in srgb, var(--err) 30%, transparent); }
+.m-pill.warn { color: var(--amber); background: var(--orange-bg); border-color: color-mix(in srgb, var(--amber) 30%, transparent); }
+.m-pill.gold { color: var(--gold); background: var(--gold-bg); border-color: color-mix(in srgb, var(--gold) 30%, transparent); }
+[data-theme='light'] .m-pill.ok { color: var(--ok); }
+
+/* Timeline */
+.m-timeline { display: flex; flex-direction: column; gap: 0; }
+.m-timeline .ev {
+  display: flex;
+  gap: 14px;
+  position: relative;
+  padding: 6px 0 14px;
+}
+.m-timeline .ev::before {
+  content: '';
+  position: absolute;
+  left: 7px; top: 22px; bottom: -2px;
+  width: 2px;
+  background: var(--brd-1);
+}
+.m-timeline .ev:last-child::before { display: none; }
+.m-timeline .dot {
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  border: 3px solid var(--card-bg);
+  background: var(--gold);
+  margin-top: 4px;
+  flex: 0 0 auto;
+  box-shadow: 0 0 0 2px var(--gold);
+}
+.m-timeline .dot.ok { background: var(--ok); box-shadow: 0 0 0 2px var(--ok); }
+.m-timeline .dot.err { background: var(--err); box-shadow: 0 0 0 2px var(--err); }
+.m-timeline .dot.info { background: var(--info); box-shadow: 0 0 0 2px var(--info); }
+.m-timeline .when { font-size: 11px; color: var(--t-3); margin-bottom: 2px; }
+.m-timeline .what { font-size: 13.5px; color: var(--t-1); font-weight: 600; }
+.m-timeline .by { font-size: 12px; color: var(--t-3); margin-top: 2px; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Action Grid (меню действий с секциями)
+ * ═══════════════════════════════════════════════════════════════════════ */
+.aag-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  min-height: 56px;
+  text-align: left;
+  font-family: inherit;
+  color: var(--t-1);
+}
+.aag-card:hover {
+  background: var(--gold-bg);
+  border-color: color-mix(in srgb, var(--gold) 40%, transparent);
+  transform: translateY(-1px);
+}
+.aag-card:active { transform: translateY(0); }
+.aag-card.aag-danger:hover {
+  background: var(--err-bg);
+  border-color: color-mix(in srgb, var(--err) 40%, transparent);
+}
+.aag-card.aag-success:hover {
+  background: var(--ok-bg);
+  border-color: color-mix(in srgb, var(--ok) 40%, transparent);
+}
+.aag-card.aag-primary:hover {
+  background: var(--info-bg);
+  border-color: color-mix(in srgb, var(--info) 40%, transparent);
+}
+.aag-card.aag-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.aag-ic {
+  font-size: 22px;
+  line-height: 1;
+  flex-shrink: 0;
+  width: 28px;
+  text-align: center;
+  padding-top: 1px;
+}
+.aag-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.aag-l {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--t-1);
+  line-height: 1.3;
+}
+.aag-d {
+  font-size: 11px;
+  color: var(--t-3);
+  line-height: 1.3;
+  margin-top: 2px;
+}
+.aag-b {
+  position: absolute;
+  top: 8px; right: 10px;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.3px;
+}
+.aag-b-new { background: var(--info-bg); color: var(--info); }
+.aag-b-count { background: var(--gold-bg); color: var(--gold); }
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Field meta (help + error) — S-002
+ * ═══════════════════════════════════════════════════════════════════════ */
+/* Объединённый блок: help-текст ИЛИ сообщение об ошибке под полем.
+   Класс `.m-field-meta` заменил старый `.help`. Рендерится из parts.jsx Field. */
+.m-field-meta { font-size: 11.5px; color: var(--t-3); margin-top: 4px; line-height: 1.4; }
+.m-field-meta.err { color: var(--err); }
+.m-field-meta.err span { margin-right: 4px; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Oops bubble (S-001) — клик вне модалки = подсказка вместо закрытия
+ * ═══════════════════════════════════════════════════════════════════════ */
+/* Появляется в (clientX, clientY) клика, висит 1.8s, всплывает + растворяется.
+   Источник правды поведения: public/assets/js/ui.js:179-181, 695-727 (vanilla). */
+.oops-bubble {
+  position: fixed;
+  z-index: 2147483647;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  background: var(--gold);
+  color: var(--on-gold);
+  padding: 8px 14px;
+  border-radius: var(--r-pill);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4), 0 0 0 1px var(--gold-h);
+  animation: oops-bubble 1.8s ease forwards;
+}
+[data-theme='light'] .oops-bubble { box-shadow: 0 8px 24px rgba(31,56,110,0.25), 0 0 0 1px var(--gold-h); }
+@keyframes oops-bubble {
+  0%   { opacity: 0; transform: translate(-50%, calc(-50% + 8px)) scale(0.8); }
+  15%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  80%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, calc(-50% - 12px)) scale(0.95); }
+}

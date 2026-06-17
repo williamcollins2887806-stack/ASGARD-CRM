@@ -1,0 +1,191 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * SelfEmployed — Самозанятые: вкладка «Ведомость-сетка»
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.se-grid-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.se-grid-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 12px;
+}
+.se-grid-toolbar-month { min-width: 160px; }
+.se-grid-toolbar-year  { min-width: 110px; }
+
+.se-grid-label {
+  font-size: 11px;
+  color: var(--t-3);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.se-grid-loading {
+  text-align: center;
+  padding: 48px;
+  color: var(--t-3);
+}
+.se-grid-empty {
+  padding: 32px;
+  text-align: center;
+  color: var(--t-3);
+}
+
+.se-grid-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+.se-grid-kpi {
+  padding: 14px;
+}
+.se-grid-kpi-label {
+  font-size: 11px;
+  color: var(--t-3);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  font-weight: 700;
+}
+.se-grid-kpi-value {
+  font-size: 22px;
+  font-weight: 900;
+  margin-top: 6px;
+}
+
+.se-grid-table-wrap {
+  padding: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.se-grid-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.se-grid-table thead tr { background: var(--inner-bg); }
+.se-grid-table th {
+  padding: 8px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--t-2);
+  text-align: center;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--bar-bg);
+  min-width: 32px;
+}
+.se-grid-table th.se-grid-th-fio {
+  text-align: left;
+  min-width: 200px;
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: var(--inner-bg);
+}
+.se-grid-table th.se-grid-th-right { text-align: right; }
+.se-grid-table th.se-grid-th-total { text-align: right; color: var(--ok); }
+
+.se-grid-table td {
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--bar-bg);
+  vertical-align: middle;
+}
+.se-grid-cell-fio {
+  padding: 6px 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+.se-grid-cell-pos {
+  font-size: 10px;
+  color: var(--t-3);
+  margin-top: 2px;
+}
+.se-grid-cell-edit { padding: 2px; text-align: center; }
+.se-grid-cell-pts {
+  padding: 4px 2px;
+  text-align: center;
+  font-weight: 800;
+  font-size: 12px;
+}
+.se-grid-cell-empty {
+  padding: 4px 2px;
+  text-align: center;
+  color: var(--t-3);
+  font-size: 11px;
+}
+
+.se-grid-cell-input {
+  width: 32px;
+  padding: 3px 0;
+  text-align: center;
+  background: transparent;
+  border: 1px dashed var(--gold);
+  border-radius: var(--r-xs);
+  color: var(--t-1);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.se-grid-cell-days   { text-align: center; font-weight: 600; }
+.se-grid-cell-points { text-align: center; font-weight: 800; color: var(--info); }
+.se-grid-cell-amt    { text-align: right; color: var(--ok); }
+.se-grid-cell-pd     { text-align: right; color: var(--blue); }
+.se-grid-cell-total  { text-align: right; font-weight: 800; color: var(--gold); }
+
+.se-grid-foot-row {
+  background: var(--inner-bg);
+  border-top: 2px solid var(--gold);
+}
+.se-grid-foot-cell {
+  font-weight: 800;
+  color: var(--gold);
+}
+.se-grid-foot-fio {
+  padding: 8px 10px;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--inner-bg);
+}
+.se-grid-foot-day {
+  text-align: center;
+  font-weight: 700;
+  font-size: 11px;
+}
+.se-grid-foot-center { text-align: center; }
+.se-grid-foot-right  { text-align: right; }
+.se-grid-foot-total  { text-align: right; font-weight: 900; }
+
+.se-grid-legend {
+  padding: 10px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: 12px;
+}
+.se-grid-legend-title { font-weight: 700; color: var(--t-2); }
+.se-grid-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: var(--r-sm);
+  background: var(--inner-bg);
+}
+.se-grid-legend-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--r-xs);
+}
+.se-grid-legend-label { color: var(--t-2); }

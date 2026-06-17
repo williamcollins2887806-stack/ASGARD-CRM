@@ -1,0 +1,215 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * MailSettings — настройки почты
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.ms-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.ms-toolbar .lab {
+  color: var(--t-3);
+  font-size: 13px;
+}
+
+/* ─── Аккаунты ─── */
+
+.ms-acc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ms-acc {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  box-shadow: var(--sh-card);
+}
+
+.ms-acc .head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.ms-acc .name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--t-1);
+}
+
+.ms-acc .email {
+  font-size: 12px;
+  color: var(--t-3);
+  font-family: ui-monospace, monospace;
+  margin-left: 6px;
+}
+
+.ms-acc .meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--t-3);
+  margin-top: 6px;
+}
+
+.ms-acc .meta b {
+  color: var(--t-2);
+  font-weight: 600;
+}
+
+.ms-acc .err {
+  font-size: 11.5px;
+  color: var(--err);
+  background: var(--err-bg, rgba(244,67,54,.08));
+  padding: 4px 8px;
+  border-radius: var(--r-xs);
+  margin-top: 8px;
+}
+
+.ms-acc .acts {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* ─── Pill ─── */
+
+.ms-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.ms-pill.success { background: var(--ok-bg, rgba(76,175,80,.15)); color: var(--ok); }
+.ms-pill.danger  { background: var(--err-bg, rgba(244,67,54,.15)); color: var(--err); }
+.ms-pill.warn    { background: var(--amber-bg, rgba(255,193,7,.15)); color: var(--amber); }
+.ms-pill.info    { background: var(--info-bg, rgba(33,150,243,.15)); color: var(--info); }
+
+/* ─── Таблица правил ─── */
+
+.ms-rules-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.ms-rules-table th,
+.ms-rules-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--brd-2);
+  text-align: left;
+}
+
+.ms-rules-table th {
+  background: var(--inner-bg);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--t-3);
+  font-weight: 700;
+}
+
+.ms-rules-table td.mono {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.ms-rules-table td.right {
+  text-align: right;
+}
+
+.ms-rules-table td.center {
+  text-align: center;
+}
+
+/* ─── Шаблоны ─── */
+
+.ms-tpl {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-sm);
+  padding: 10px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.ms-tpl .name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t-1);
+}
+
+.ms-tpl .code {
+  font-size: 11px;
+  color: var(--t-3);
+  font-family: ui-monospace, monospace;
+  margin-left: 6px;
+}
+
+.ms-tpl .cat {
+  font-size: 11px;
+  color: var(--t-3);
+  margin-left: 6px;
+}
+
+.ms-tpl .badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+  margin-left: 4px;
+  font-weight: 600;
+}
+
+.ms-tpl .badge.system { background: var(--info-bg, rgba(33,150,243,.15)); color: var(--info); }
+.ms-tpl .badge.letter { background: var(--gold-bg, rgba(212,175,55,.15)); color: var(--gold); }
+
+.ms-empty {
+  text-align: center;
+  padding: 30px 12px;
+  color: var(--t-3);
+  font-size: 13px;
+}
+
+.ms-formgrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.ms-formgrid > .span-2 {
+  grid-column: span 2;
+}
+
+.ms-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--t-2);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin: 14px 0 6px 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--brd-2);
+}
+
+@media (max-width: 700px) {
+  .ms-formgrid { grid-template-columns: 1fr; }
+  .ms-formgrid > .span-2 { grid-column: span 1; }
+}

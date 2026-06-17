@@ -1,0 +1,160 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * ToCalcs — «Просчёты ТО» (inbox для тендерного отдела)
+ * Стиль повторяет PmCalcs (KPI-ряд + бакеты-секции).
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.toc-hero {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+.toc-hero-card {
+  position: relative;
+  padding: 16px 18px;
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-card);
+  overflow: hidden;
+  transition: all 0.18s ease;
+}
+.toc-hero-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--sh-md);
+}
+.toc-hero-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--gold), var(--red));
+}
+.toc-hero-card.info::before { background: linear-gradient(90deg, var(--info), var(--purple)); }
+.toc-hero-card.ok::before   { background: linear-gradient(90deg, var(--ok), var(--cyan)); }
+.toc-hero-card.gold::before { background: linear-gradient(90deg, var(--gold), var(--amber)); }
+.toc-hero-card.err::before  { background: linear-gradient(90deg, var(--err), var(--orange)); }
+.toc-hero-ic {
+  font-size: 22px;
+  opacity: 0.55;
+  position: absolute;
+  right: 16px;
+  top: 16px;
+}
+.toc-hero-val {
+  font-size: 26px;
+  font-weight: 900;
+  line-height: 1.1;
+  margin-bottom: 4px;
+  letter-spacing: -0.01em;
+  color: var(--t-1);
+}
+.toc-hero-card.info .toc-hero-val { color: var(--info); }
+.toc-hero-card.ok   .toc-hero-val { color: var(--ok); }
+.toc-hero-card.gold .toc-hero-val { color: var(--gold); }
+.toc-hero-card.err  .toc-hero-val { color: var(--err); }
+.toc-hero-lab {
+  font-size: 11px;
+  color: var(--t-3);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+/* ─── Бакет (секция воронки) ─── */
+.toc-bucket {
+  margin-top: 8px;
+}
+.toc-bucket-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 12px;
+  padding: 8px 12px;
+  background: var(--card-bg);
+  border-left: 3px solid var(--info);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+}
+.toc-bucket-head.calc { border-left-color: var(--info); }
+.toc-bucket-head.tkp  { border-left-color: var(--gold); }
+.toc-bucket-head.send { border-left-color: var(--cyan); }
+.toc-bucket-head.other { border-left-color: var(--t-4); }
+.toc-bucket-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--t-1);
+}
+.toc-bucket-cnt {
+  margin-left: auto;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--brd-1);
+  font-size: 12px;
+  color: var(--t-2);
+  font-weight: 700;
+}
+
+/* ─── Карточка тендера ─── */
+.toc-card {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 14px;
+  transition: all 0.16s ease;
+}
+.toc-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--sh-md);
+  border-color: color-mix(in srgb, var(--gold) 30%, var(--brd-1));
+}
+.toc-card-meta {
+  min-width: 0;
+}
+.toc-card-title {
+  font-weight: 800;
+  font-size: 14.5px;
+  color: var(--t-1);
+  margin-bottom: 4px;
+}
+.toc-card-sub {
+  font-size: 12.5px;
+  color: var(--t-3);
+  margin-bottom: 10px;
+}
+.toc-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.toc-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+  min-width: 220px;
+}
+.toc-card-actions .m-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+/* ─── Hero пустого состояния ─── */
+.toc-empty-hero {
+  padding: 36px 22px;
+  text-align: center;
+  border: 1.5px dashed var(--brd-1);
+  border-radius: var(--r-lg);
+  background: var(--card-bg);
+  color: var(--t-3);
+}
+.toc-empty-hero h3 {
+  margin: 12px 0 6px;
+  color: var(--t-1);
+  font-size: 17px;
+}

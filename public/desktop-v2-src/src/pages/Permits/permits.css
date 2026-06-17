@@ -1,0 +1,389 @@
+/* Permits page styles */
+
+/* ─── Hero «Готовность всей дружины к работам» ─── */
+.pmt-hero {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 18px;
+  padding: 20px 24px;
+  background: var(--card-bg-hero);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-card);
+  position: relative;
+  overflow: hidden;
+}
+.pmt-hero::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+}
+.pmt-hero--ok::before   { background: linear-gradient(90deg, var(--ok), var(--cyan)); }
+.pmt-hero--warn::before { background: linear-gradient(90deg, var(--amber), var(--orange)); }
+.pmt-hero--err::before  { background: linear-gradient(90deg, var(--err), var(--orange)); }
+.pmt-hero-ic {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--r-lg);
+  display: grid;
+  place-items: center;
+  font-size: 32px;
+  border: 1.5px solid;
+  flex: 0 0 auto;
+}
+.pmt-hero--ok .pmt-hero-ic   { background: var(--ok-bg);   color: var(--ok);   border-color: color-mix(in srgb, var(--ok) 32%, transparent); }
+.pmt-hero--warn .pmt-hero-ic { background: var(--gold-bg); color: var(--gold); border-color: color-mix(in srgb, var(--gold) 32%, transparent); }
+.pmt-hero--err .pmt-hero-ic  { background: var(--err-bg);  color: var(--err);  border-color: color-mix(in srgb, var(--err) 32%, transparent); }
+.pmt-hero-body { min-width: 0; }
+.pmt-hero-kicker {
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--t-3);
+  font-weight: 700;
+}
+.pmt-hero-title {
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--t-1);
+  margin: 2px 0 4px;
+  letter-spacing: 0.01em;
+}
+.pmt-hero--ok .pmt-hero-title   { color: var(--ok); }
+.pmt-hero--warn .pmt-hero-title { color: var(--gold); }
+.pmt-hero--err .pmt-hero-title  { color: var(--err); }
+.pmt-hero-sub {
+  font-size: 13px;
+  color: var(--t-2);
+  line-height: 1.6;
+}
+.pmt-hero-sub b { color: var(--t-1); font-weight: 800; }
+.pmt-hero-bar {
+  margin-top: 10px;
+  height: 8px;
+  background: var(--bar-bg);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+}
+.pmt-hero-bar-fill {
+  height: 100%;
+  border-radius: var(--r-pill);
+  transition: width 0.4s ease;
+}
+.pmt-hero-bar-fill.ok   { background: linear-gradient(90deg, var(--ok), var(--cyan)); }
+.pmt-hero-bar-fill.warn { background: linear-gradient(90deg, var(--amber), var(--orange)); }
+.pmt-hero-bar-fill.err  { background: linear-gradient(90deg, var(--err), var(--orange)); }
+
+.pmt-hero-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--inner-bg);
+  border-radius: var(--r-md);
+  border: 1px solid var(--brd-2);
+  min-width: 180px;
+}
+.pmt-hero-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.pmt-hero-meta-lab {
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--t-3);
+  font-weight: 700;
+}
+.pmt-hero-meta-val { font-size: 14px; font-weight: 800; }
+.pmt-hero-meta-row.err    .pmt-hero-meta-val { color: var(--err); }
+.pmt-hero-meta-row.amber  .pmt-hero-meta-val { color: var(--amber); }
+.pmt-hero-meta-row.muted  .pmt-hero-meta-val { color: var(--t-3); }
+
+.pmt-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+.pmt-stat {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  padding: 16px;
+  text-align: center;
+  box-shadow: var(--sh-card);
+  transition: all 0.18s ease;
+  position: relative;
+  overflow: hidden;
+}
+.pmt-stat:hover { transform: translateY(-2px); box-shadow: var(--sh-md); }
+.pmt-stat.blue   { border-left: 4px solid var(--info); }
+.pmt-stat.green  { border-left: 4px solid var(--ok); }
+.pmt-stat.amber  { border-left: 4px solid var(--amber); }
+.pmt-stat.red    { border-left: 4px solid var(--err); }
+
+/* Анимация pulse — для секций с горящими дедлайнами */
+.pmt-stat.pulse::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: var(--r-md);
+  pointer-events: none;
+  animation: pmt-stat-pulse 2.4s ease-in-out infinite;
+}
+.pmt-stat.amber.pulse::after { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 40%, transparent); }
+.pmt-stat.red.pulse::after   { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--err) 40%, transparent); }
+@keyframes pmt-stat-pulse {
+  0%, 100% { opacity: 0.4; }
+  50%      { opacity: 1; }
+}
+
+.pmt-stat .v {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.pmt-stat.green .v { color: var(--ok); }
+.pmt-stat.amber .v { color: var(--amber); }
+.pmt-stat.blue  .v { color: var(--info); }
+.pmt-stat .l {
+  font-size: 12px;
+  color: var(--t-3);
+}
+
+/* Кастомные табы оставлены для обратной совместимости */
+.pmt-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--brd-1);
+}
+.pmt-tab {
+  padding: 10px 18px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--t-3);
+  font-size: 14px;
+  font-weight: 600;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.pmt-tab:hover { color: var(--t-1); }
+.pmt-tab.active {
+  color: var(--gold);
+  border-bottom-color: var(--gold);
+}
+
+.pmt-filters {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+.pmt-filters > * { min-width: 180px; }
+
+.pmt-tbl-wrap {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.pmt-tbl-scroll { overflow-x: auto; }
+
+.pmt-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.pmt-tbl th, .pmt-tbl td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--brd-1);
+  white-space: nowrap;
+}
+.pmt-tbl th {
+  background: var(--inner-bg);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--t-3);
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.pmt-tbl tbody tr:hover { background: var(--hover-bg); }
+
+.pmt-cat-mark {
+  display: inline-block;
+  width: 6px;
+  height: 22px;
+  border-radius: 2px;
+  vertical-align: middle;
+  margin-right: 8px;
+}
+
+.pmt-status-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 600;
+}
+.pmt-status-pill.ok   { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+.pmt-status-pill.warn { background: color-mix(in srgb, var(--amber) 16%, transparent); color: var(--amber); }
+.pmt-status-pill.err  { background: color-mix(in srgb, var(--err) 16%, transparent); color: var(--err); }
+
+.pmt-row-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+/* Матрица */
+.pmt-matrix {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  overflow: auto;
+  max-height: calc(100vh - 320px);
+  box-shadow: var(--sh-card);
+}
+.pmt-matrix table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
+}
+.pmt-matrix th, .pmt-matrix td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--brd-2);
+  text-align: center;
+}
+.pmt-matrix thead th {
+  position: sticky;
+  top: 0;
+  background: var(--inner-bg);
+  z-index: 3;
+  border-bottom: 2px solid var(--brd-1);
+  box-shadow: 0 2px 4px rgba(31, 56, 110, 0.06);
+}
+.pmt-matrix th:first-child, .pmt-matrix td:first-child {
+  position: sticky;
+  left: 0;
+  background: var(--card-bg);
+  z-index: 2;
+  white-space: nowrap;
+  text-align: left;
+}
+.pmt-matrix thead th:first-child {
+  z-index: 4;
+  background: var(--inner-bg);
+}
+.pmt-matrix-cell.ok   { background: color-mix(in srgb, var(--ok) 12%, transparent); color: var(--ok); }
+.pmt-matrix-cell.warn { background: color-mix(in srgb, var(--amber) 12%, transparent); color: var(--amber); }
+.pmt-matrix-cell.err  { background: color-mix(in srgb, var(--err) 12%, transparent); color: var(--err); }
+.pmt-matrix th.diag {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  padding: 8px 4px;
+  border-left: 3px solid var(--brd-1);
+}
+
+/* Проекты */
+.pmt-card {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pmt-card h3 { margin: 0; font-size: 15px; font-weight: 700; }
+.pmt-card h4 { margin: 0 0 8px; font-size: 14px; font-weight: 700; }
+
+.pmt-req-group {
+  margin-bottom: 14px;
+}
+.pmt-req-group .ttl {
+  font-weight: 600;
+  color: var(--t-1);
+  margin-bottom: 6px;
+}
+
+.pmt-team-ready {
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 700;
+  margin-left: 8px;
+}
+.pmt-team-ready.ok  { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+.pmt-team-ready.err { background: color-mix(in srgb, var(--err) 18%, transparent); color: var(--err); }
+
+.pmt-check-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 600;
+  margin-right: 4px;
+  margin-bottom: 2px;
+}
+.pmt-check-badge.has    { background: color-mix(in srgb, var(--ok)  20%, transparent); color: var(--ok); }
+.pmt-check-badge.miss   { background: color-mix(in srgb, var(--err) 20%, transparent); color: var(--err); }
+.pmt-check-badge.must   { font-weight: 800; }
+
+.pmt-bulk-bar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.pmt-file-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px;
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-sm);
+  color: var(--t-1);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* Управление типами */
+.pmt-types-list {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.pmt-type-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--brd-1);
+}
+.pmt-type-row .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.pmt-type-row .nm   { font-size: 13px; font-weight: 500; }
+.pmt-type-row .meta { font-size: 11px; color: var(--t-3); }
+.pmt-type-row .sys  { font-size: 10px; opacity: 0.5; padding: 2px 8px; border-radius: var(--r-pill); background: var(--inner-bg); }
+
+/* Responsive — hero на узких экранах */
+@media (max-width: 900px) {
+  .pmt-hero { grid-template-columns: auto 1fr; }
+  .pmt-hero-meta { grid-column: 1 / -1; min-width: 0; }
+  .pmt-hero-ic { width: 48px; height: 48px; font-size: 24px; }
+  .pmt-hero-title { font-size: 18px; }
+}

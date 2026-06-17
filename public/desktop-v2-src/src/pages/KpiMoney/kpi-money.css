@@ -1,0 +1,153 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * KpiMoney — Аналитика денег
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.km-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.km-year-sel { min-width: 120px; }
+
+.km-loading {
+  text-align: center;
+  padding: 48px;
+  color: var(--t-3);
+}
+
+.km-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.km-section {
+  padding: 16px;
+}
+.km-section-title {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.km-table-scroll { overflow-x: auto; }
+.km-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.km-table thead tr { border-bottom: 1px solid var(--brd-1); }
+.km-table tbody tr { border-bottom: 1px solid var(--brd-2); }
+.km-th {
+  padding: 10px 8px;
+  text-align: left;
+  font-weight: 700;
+  color: var(--t-3);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.km-td {
+  padding: 10px 8px;
+  vertical-align: middle;
+}
+.km-pm-name { font-weight: 700; }
+.km-pm-role {
+  font-size: 11px;
+  color: var(--t-3);
+}
+
+.km-top {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.km-top-empty {
+  color: var(--t-3);
+  padding: 14px;
+  text-align: center;
+}
+.km-top-row {
+  padding: 10px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: 1fr 130px 110px 80px;
+  gap: 10px;
+  align-items: center;
+}
+.km-top-title {
+  font-weight: 700;
+  font-size: 13px;
+}
+.km-top-sub {
+  font-size: 11px;
+  color: var(--t-3);
+}
+.km-top-contract {
+  text-align: right;
+  font-size: 12px;
+}
+.km-top-profit {
+  text-align: right;
+  font-size: 12px;
+  color: var(--ok);
+  font-weight: 700;
+}
+.km-top-pct {
+  text-align: right;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.km-month-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.km-month-row {
+  display: grid;
+  grid-template-columns: 50px 1fr 220px;
+  gap: 10px;
+  align-items: center;
+  font-size: 13px;
+}
+.km-month-label { color: var(--t-2); }
+.km-month-bar {
+  background: var(--bar-bg);
+  height: 18px;
+  border-radius: var(--r-pill);
+  overflow: hidden;
+}
+.km-month-bar-fill {
+  height: 100%;
+  background: var(--gold);
+  border-radius: var(--r-pill);
+}
+.km-month-vals {
+  text-align: right;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.km-month-contract { color: var(--gold); }
+
+.km-kpi {
+  background: var(--inner-bg);
+  border-radius: var(--r-md);
+  padding: 14px;
+}
+.km-kpi-label {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--t-3);
+  font-weight: 700;
+}
+.km-kpi-value {
+  font-size: 28px;
+  font-weight: 800;
+  margin-top: 6px;
+}
+.km-kpi-value--text { font-size: 18px; }

@@ -1,0 +1,386 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * PmWorks — «Походы» / Мои работы (визуальная прокачка)
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─── KPI ряд ─── */
+.pmw-kpi {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+.pmw-kpi-card {
+  position: relative;
+  padding: 16px 18px;
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-card);
+  overflow: hidden;
+  transition: all 0.18s ease;
+}
+.pmw-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--sh-md);
+}
+.pmw-kpi-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--gold);
+}
+.pmw-kpi-card.info::before { background: linear-gradient(90deg, var(--info), var(--purple)); }
+.pmw-kpi-card.ok::before   { background: linear-gradient(90deg, var(--ok), var(--cyan)); }
+.pmw-kpi-card.gold::before { background: linear-gradient(90deg, var(--gold), var(--amber)); }
+.pmw-kpi-card.warn::before { background: linear-gradient(90deg, var(--orange), var(--amber)); }
+.pmw-kpi-card.err::before  { background: linear-gradient(90deg, var(--err), var(--orange)); }
+.pmw-kpi-ic {
+  font-size: 22px;
+  opacity: 0.55;
+  position: absolute;
+  right: 16px;
+  top: 16px;
+}
+.pmw-kpi-val {
+  font-size: 26px;
+  font-weight: 900;
+  line-height: 1.1;
+  margin-bottom: 4px;
+  letter-spacing: -0.01em;
+  color: var(--t-1);
+}
+.pmw-kpi-card.info .pmw-kpi-val { color: var(--info); }
+.pmw-kpi-card.ok   .pmw-kpi-val { color: var(--ok); }
+.pmw-kpi-card.gold .pmw-kpi-val { color: var(--gold); }
+.pmw-kpi-card.warn .pmw-kpi-val { color: var(--orange); }
+.pmw-kpi-card.err  .pmw-kpi-val { color: var(--err); }
+.pmw-kpi-lab {
+  font-size: 11px;
+  color: var(--t-3);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+/* ─── Таблица + цветные борды по статусу ─── */
+.pmw-row {
+  cursor: pointer;
+  position: relative;
+  transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+.pmw-row > td:first-child {
+  position: relative;
+  padding-left: 18px;
+}
+.pmw-row > td:first-child::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 0 var(--r-pill) var(--r-pill) 0;
+  background: var(--brd-1);
+  transition: background 0.15s ease, width 0.15s ease;
+}
+.pmw-row:hover {
+  background: var(--hover-bg);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(31, 56, 110, 0.08);
+}
+.pmw-row:hover > td:first-child::before { width: 4px; }
+
+.pmw-row[data-tone="info"]    > td:first-child::before { background: var(--info); }
+.pmw-row[data-tone="ok"]      > td:first-child::before { background: var(--ok); }
+.pmw-row[data-tone="warning"] > td:first-child::before { background: var(--amber); }
+.pmw-row[data-tone="danger"]  > td:first-child::before { background: var(--err); }
+.pmw-row[data-tone="muted"]   > td:first-child::before { background: var(--t-4); }
+
+.pmw-id {
+  font-family: ui-monospace, monospace;
+  color: var(--t-3);
+  font-size: 12px;
+}
+.pmw-customer {
+  font-weight: 700;
+  color: var(--t-1);
+  font-size: 13.5px;
+}
+.pmw-title {
+  font-size: 11.5px;
+  color: var(--t-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 340px;
+  margin-top: 2px;
+}
+.pmw-price {
+  font-weight: 700;
+  color: var(--t-1);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pmw-dates { font-size: 12.5px; color: var(--t-2); }
+.pmw-dates .lab { color: var(--t-3); font-size: 11.5px; }
+.pmw-dates .fact { font-size: 11px; color: var(--ok); }
+
+.pmw-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+.pmw-actions-wrap { display: inline-flex; gap: 4px; }
+
+/* ─── Mini ring готовности ─── */
+.pmw-ring-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 110px;
+}
+.pmw-ring {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+}
+.pmw-ring svg { display: block; }
+.pmw-ring-val {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.pmw-ring-blocker {
+  font-size: 10.5px;
+  color: var(--err);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 70px;
+}
+
+/* ─── Дедлайн-пилюли (если будут) ─── */
+.pmw-deadline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  font-size: 11.5px;
+  font-weight: 700;
+  border: 1px solid;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pmw-deadline.hot  {
+  background: var(--err-bg);
+  color: var(--err);
+  border-color: color-mix(in srgb, var(--err) 32%, transparent);
+  animation: pmw-pulse 2.5s ease-in-out infinite;
+}
+.pmw-deadline.soon { background: var(--orange-bg); color: var(--orange); border-color: color-mix(in srgb, var(--orange) 30%, transparent); }
+.pmw-deadline.ok   { background: var(--ok-bg);     color: var(--ok);     border-color: color-mix(in srgb, var(--ok) 28%, transparent); }
+
+@keyframes pmw-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--err) 28%, transparent); }
+  50%      { box-shadow: 0 0 0 5px transparent; }
+}
+
+/* ─── AssemblyModal — карточки ведомостей ─── */
+.asm-card {
+  cursor: pointer;
+  padding: 12px;
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-md);
+}
+.asm-card-meta {
+  font-size: 11.5px;
+  color: var(--t-3);
+  margin-top: 4px;
+}
+.asm-bar {
+  margin-top: 8px;
+  background: var(--card-bg);
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.asm-bar-fill {
+  height: 100%;
+  background: var(--gold);
+}
+.asm-bar-lab {
+  font-size: 11px;
+  color: var(--t-3);
+  margin-top: 4px;
+}
+
+/* ─── WorkHistoryModal — лента аудита ─── */
+.audit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.audit-row {
+  padding: 10px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+  border-left: 3px solid var(--info);
+}
+.audit-row.tone-ok    { border-left-color: var(--ok); }
+.audit-row.tone-err   { border-left-color: var(--err); }
+.audit-row.tone-info  { border-left-color: var(--info); }
+.audit-row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.audit-row-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.audit-row-icon { font-size: 16px; }
+.audit-row-label { font-size: 13px; }
+.audit-row-when {
+  font-size: 11.5px;
+  color: var(--t-3);
+}
+.audit-row-actor {
+  font-size: 12px;
+  color: var(--t-3);
+  margin-top: 4px;
+}
+.audit-row-payload {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--t-2);
+}
+.audit-payload-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.audit-pill-k { color: var(--t-3); }
+.audit-pill-v { color: var(--t-1); }
+
+/* ─── CloseoutWizard — шаги и блоки ─── */
+.co-box {
+  padding: 20px;
+  border-radius: var(--r-md);
+}
+.co-box--err  { background: var(--err-bg); }
+.co-box--ok   { background: var(--ok-bg); text-align: center; }
+.co-box--gold { background: var(--gold-bg); text-align: center; }
+.co-box--ok-md { background: var(--ok-bg); border-radius: var(--r-md); padding: 20px; }
+.co-banner-warn {
+  padding: 14px;
+  background: var(--err-bg);
+  border-radius: var(--r-md);
+  margin-bottom: 12px;
+}
+.co-big-emoji {
+  font-size: 40px;
+  text-align: center;
+  margin-bottom: 12px;
+}
+.co-big-emoji-sm { font-size: 40px; }
+.co-title {
+  display: block;
+  text-align: center;
+  font-size: 16px;
+}
+.co-title--err { color: var(--err); }
+.co-text {
+  color: var(--t-2);
+  margin-top: 12px;
+  text-align: center;
+}
+.co-hint {
+  color: var(--t-3);
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.co-section-eyebrow {
+  font-size: 12px;
+  color: var(--t-3);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.co-block-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+.co-block-row {
+  padding: 8px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+  display: flex;
+  justify-content: space-between;
+}
+.co-rating-row {
+  padding: 10px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+}
+.co-rating-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.co-conf-icon {
+  font-size: 32px;
+  text-align: center;
+  margin-bottom: 12px;
+}
+.co-conf-list {
+  color: var(--t-2);
+  margin-top: 12px;
+  font-size: 13.5px;
+  line-height: 1.8;
+  padding-left: 24px;
+}
+.co-conf-warn {
+  color: var(--err);
+  margin-top: 12px;
+  font-size: 12px;
+  text-align: center;
+}
+
+.co-cust-box {
+  padding: 14px;
+  background: var(--inner-bg);
+  border-radius: var(--r-md);
+}
+.co-rating-label {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--t-3);
+}
+
+/* ─── FieldTabModal — табы внутри полевого модуля ─── */
+.field-tabs-bar {
+  padding: 0 16px;
+  border-bottom: 1px solid var(--brd-1);
+}
+
+/* v2 BONUS: sticky table header — при скролле длинных списков шапка остаётся видимой
+   (vanilla не имеет; pm_works.js использует обычные <th>). */
+.pmw-row + .pmw-row, .pmw-row { /* sentinel — на случай если не была определена */ }
+.t-list thead th {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: var(--card-bg, var(--inner-bg));
+  box-shadow: inset 0 -1px 0 var(--brd-1);
+}

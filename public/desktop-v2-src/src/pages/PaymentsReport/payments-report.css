@@ -1,0 +1,108 @@
+/* PaymentsReport — отчёты по выплатам рабочим. */
+
+.pr-filters {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.pr-filter-w { min-width: 140px; }
+
+.pr-kpi {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.pr-kpi-card {
+  background: var(--bg-2);
+  border: 1px solid var(--brd);
+  border-radius: 10px;
+  padding: 14px;
+  text-align: center;
+}
+.pr-kpi-label {
+  font-size: 10px;
+  color: var(--t-2);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.pr-kpi-val {
+  font-size: 22px;
+  font-weight: 800;
+  margin-top: 4px;
+  color: var(--gold);
+}
+.pr-kpi-val.info { color: var(--info); }
+.pr-kpi-val.err  { color: var(--err); }
+.pr-kpi-val.ok   { color: var(--ok); }
+
+.pr-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-3);
+  padding: 4px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+.pr-tab {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--t-2);
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all .2s;
+}
+.pr-tab:hover { color: var(--t-1); }
+.pr-tab.active {
+  background: linear-gradient(135deg, rgba(59,130,246,.3), rgba(34,197,94,.2));
+  color: var(--t-1);
+}
+
+.pr-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.pr-tbl th {
+  text-align: left;
+  padding: 9px 8px;
+  border-bottom: 2px solid var(--brd);
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--t-2);
+  font-weight: 700;
+  letter-spacing: .3px;
+}
+.pr-tbl td {
+  padding: 8px;
+  border-bottom: 1px solid var(--brd-2);
+}
+.pr-tbl tr:hover td { background: var(--bg-3); }
+.pr-tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
+.pr-tbl .bold { font-weight: 700; }
+.pr-tbl .gold { color: var(--gold); }
+.pr-tbl .totals-row td {
+  font-weight: 700;
+  border-top: 2px solid var(--brd);
+  background: var(--bg-3);
+}
+.pr-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--t-2);
+  font-size: 14px;
+}
+
+.pr-pill {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--r-pill, 14px);
+  background: var(--bg-3);
+  color: var(--t-2);
+}

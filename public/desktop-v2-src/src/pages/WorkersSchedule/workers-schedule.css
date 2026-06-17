@@ -1,0 +1,90 @@
+/* Стили /workers-schedule. */
+
+.ws-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 8px 14px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+  font-size: 12px;
+}
+
+.ws-legend-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--r-xs);
+  display: inline-block;
+}
+
+.ws-table-wrap {
+  padding: 0;
+  overflow: auto;
+  max-height: 70vh;
+}
+
+.ws-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.ws-th-name {
+  position: sticky;
+  left: 0;
+  background: var(--inner-bg);
+  z-index: 3;
+  text-align: left;
+  padding: 10px 12px;
+  font-weight: 700;
+  color: var(--t-3);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  min-width: 200px;
+  border-right: 1px solid var(--brd-2);
+}
+
+.ws-th-day {
+  text-align: center;
+  padding: 6px 4px;
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--t-3);
+  min-width: 32px;
+}
+
+.ws-th-day--we   { color: var(--err); }
+.ws-th-day--today { border: 2px solid var(--gold); }
+
+.ws-row { border-top: 1px solid var(--brd-2); }
+
+.ws-td-name {
+  position: sticky;
+  left: 0;
+  background: var(--card-bg);
+  z-index: 1;
+  padding: 8px 12px;
+  border-right: 1px solid var(--brd-2);
+  min-width: 200px;
+}
+
+.ws-name-fio { font-weight: 700; font-size: 12.5px; }
+.ws-name-sub { font-size: 10.5px; color: var(--t-3); }
+
+.ws-cell {
+  padding: 0;
+  cursor: pointer;
+  text-align: center;
+  min-width: 32px;
+  height: 30px;
+  border: 1px solid var(--brd-2);
+}
+
+.ws-cell--we { background: var(--inner-bg); }
+
+.ws-cell-mark {
+  font-size: 9px;
+  color: var(--card-bg);
+  font-weight: 700;
+}

@@ -1,0 +1,187 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * MyDashboard — Личный кабинет РП
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.mydash-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.mydash-loading {
+  text-align: center;
+  padding: 48px;
+  color: var(--t-3);
+}
+
+.mydash-alerts {
+  background: var(--inner-bg);
+  border: 1px solid var(--err);
+  border-radius: var(--r-md);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mydash-alerts-title {
+  font-weight: 700;
+  color: var(--err);
+  font-size: 13px;
+}
+.mydash-alert-row { font-size: 12.5px; }
+
+.mydash-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+.mydash-kpis--narrow {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.mydash-section {
+  padding: 16px;
+}
+.mydash-section-title {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 700;
+}
+.mydash-section-title--err { color: var(--err); }
+
+.mydash-calls-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.mydash-calls-link {
+  font-size: 12px;
+  color: var(--t-3);
+}
+.mydash-calls-card {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.mydash-calls-card--hot {
+  border: 1px solid var(--gold);
+}
+.mydash-calls-newrep {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--gold);
+}
+.mydash-calls-summary {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--t-3);
+  line-height: 1.4;
+}
+
+.mydash-top {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.mydash-top-row {
+  padding: 12px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: 1fr 120px 100px;
+  gap: 10px;
+  align-items: center;
+}
+.mydash-top-title {
+  font-weight: 700;
+  font-size: 13.5px;
+}
+.mydash-top-sub {
+  font-size: 11px;
+  color: var(--t-3);
+}
+.mydash-top-r {
+  text-align: right;
+}
+.mydash-top-r-val {
+  font-weight: 700;
+  font-size: 13px;
+}
+.mydash-top-r-lbl {
+  font-size: 11px;
+  color: var(--t-3);
+}
+
+.mydash-burn {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mydash-burn-row {
+  padding: 10px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.mydash-burn-title {
+  font-weight: 700;
+  font-size: 13px;
+}
+.mydash-burn-sub {
+  font-size: 11px;
+  color: var(--t-3);
+}
+.mydash-burn-pill {
+  color: var(--card-bg);
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.mydash-kpi {
+  background: var(--inner-bg);
+  border-radius: var(--r-md);
+  padding: 14px;
+}
+.mydash-kpi-label {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--t-3);
+  font-weight: 700;
+}
+.mydash-kpi-value {
+  font-size: 28px;
+  font-weight: 800;
+  margin-top: 6px;
+}
+.mydash-kpi-value--text { font-size: 20px; }
+
+/* ─── 7 виджетов из vanilla custom_dashboard.js ─── */
+.mydash-mini-section { padding: 16px 18px; }
+.mydash-w-link { margin-top: 10px; text-align: right; font-size: 12px; }
+.mydash-w-link a { color: var(--gold); text-decoration: none; }
+.mydash-w-link a:hover { text-decoration: underline; }
+
+/* Кольца готовности (виджет #1) */
+.mydash-readiness { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.mydash-rdy-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: var(--bg-2); border-radius: 8px; cursor: pointer; transition: background .15s ease; }
+.mydash-rdy-row:hover { background: var(--bg-3, var(--bg-2)); }
+.mydash-rdy-ring { width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; position: relative; flex-shrink: 0; }
+.mydash-rdy-ring::before { content: ''; position: absolute; inset: 5px; background: var(--bg); border-radius: 50%; }
+.mydash-rdy-ring span { position: relative; font-size: 12px; font-weight: 700; color: var(--t); z-index: 1; }
+.mydash-rdy-info { min-width: 0; flex: 1; }
+.mydash-rdy-title { font-size: 13px; font-weight: 600; color: var(--t); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mydash-rdy-sub { font-size: 11px; color: var(--t-2); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Todo / списки виджетов (#3, #6, #7) */
+.mydash-todo { display: flex; flex-direction: column; gap: 4px; }
+.mydash-todo-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 10px; background: var(--bg-2); border-radius: 6px; cursor: pointer; font-size: 13px; transition: background .15s ease; }
+.mydash-todo-row:hover { background: var(--bg-3, var(--bg-2)); }
+.mydash-todo-row.is-urgent { border-left: 3px solid var(--err); padding-left: 7px; }
+.mydash-todo-title { color: var(--t); min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mydash-todo-due { color: var(--t-2); font-size: 11px; flex-shrink: 0; }

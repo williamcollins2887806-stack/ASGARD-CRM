@@ -1,0 +1,286 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * АСГАРД CRM 2.0 — Темы
+ *
+ * Принцип: вместо «инверсии» — у каждой темы СВОЯ логика UI-паттернов.
+ *   --card-bg     — фон карточек (тёмная: gradient bg-2→bg-3; светлая: чистый белый)
+ *   --inner-bg    — фон вложенных блоков (row-item, pill, bar trough)
+ *   --hover-bg    — фон при hover на кнопках/линках (НЕ серый, а бренд)
+ *   --brand-text  — градиент акцентного заголовка
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+:root[data-theme='dark'] {
+  /* ─── Фоны ─── */
+  --bg-0:  #0A0E18;       /* фон страницы */
+  --bg-1:  #0D1320;       /* sidebar / topbar */
+  --bg-2:  #131A2A;       /* карточки (база) */
+  --bg-3:  #1B2336;       /* row-item, pill */
+  --bg-4:  #232C45;       /* progress trough, hover */
+  --bg-glass: rgba(19, 26, 42, 0.65);
+
+  /* ─── Текст ─── */
+  --t-1: rgba(255,255,255,0.96);
+  --t-2: rgba(255,255,255,0.72);
+  --t-3: rgba(255,255,255,0.50);
+  --t-4: rgba(255,255,255,0.30);
+
+  /* ─── Бренд (как в design-tokens.css оригинала) ─── */
+  --gold:    #D4A843;
+  --gold-h:  #B8922E;
+  --gold-l:  #E8C35A;
+  --gold-bg: rgba(212,168,67,0.10);
+  --gold-glow: 0 0 28px rgba(212,168,67,0.35);
+  --on-gold: #1a1000;
+
+  --red:    #C8293B;
+  --red-h:  #A82233;
+  --red-l:  #E8475A;
+  --red-bg: rgba(200,41,59,0.10);
+  --red-glow: 0 0 28px rgba(200,41,59,0.35);
+
+  --blue:   #1E4D8C;
+  --blue-h: #163E72;
+  --blue-l: #4A90D9;
+  --blue-bg: rgba(74,144,217,0.10);
+
+  /* ─── Акценты ─── */
+  --ok:     #4ADE80;
+  --err:    #F87171;
+  --info:   #60A5FA;
+  --purple: #8B5CF6;
+  --purple-l: #A78BFA;
+  --cyan:   #06B6D4;
+  --cyan-l: #22D3EE;
+  --orange: #F97316;
+  --amber:  #FBBF24;
+
+  --ok-bg:    rgba(74,222,128,0.10);
+  --err-bg:   rgba(248,113,113,0.10);
+  --info-bg:  rgba(96,165,250,0.10);
+  --purple-bg:rgba(139,92,246,0.12);
+  --cyan-bg:  rgba(6,182,212,0.12);
+  --orange-bg:rgba(249,115,22,0.12);
+
+  /* ─── Границы ─── */
+  --brd-1: rgba(255,255,255,0.10);
+  --brd-2: rgba(255,255,255,0.06);
+  --brd-glow: rgba(212,168,67,0.30);
+
+  /* ─── Тени ─── */
+  --sh-sm: 0 2px 8px rgba(0,0,0,0.20);
+  --sh-md: 0 6px 24px rgba(0,0,0,0.30);
+  --sh-lg: 0 16px 48px rgba(0,0,0,0.45);
+  --sh-card: 0 8px 32px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.04);
+
+  /* ─── UI-паттерны (тёмная: всё как было — градиенты дают «глубину») ─── */
+  --card-bg: linear-gradient(160deg, var(--bg-2), var(--bg-3) 140%);
+  --card-bg-hero: linear-gradient(135deg, var(--bg-2), var(--bg-3));
+  --inner-bg: var(--bg-3);          /* row-item, pill */
+  --inner-border: 1px solid var(--brd-2);
+  --bar-bg: var(--bg-4);             /* progress trough, funnel bar bg */
+  --hover-bg: var(--bg-4);
+  --hover-brand: linear-gradient(135deg, var(--gold-bg), var(--red-bg));
+  --brand-text: linear-gradient(135deg, var(--gold-l), var(--red-l) 60%, var(--blue-l));
+  --skel-grad: linear-gradient(90deg, var(--bg-2) 0%, var(--bg-3) 50%, var(--bg-2) 100%);
+
+  /* ─── Радиусы ─── */
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+  --r-pill: 9999px;
+
+  /* ─── Алиасы для совместимости (страницы используют -t/-bg варианты) ─── */
+  --ok-t: var(--ok);
+  --err-t: var(--err);
+  --warn-t: var(--amber);
+  --warn-bg: var(--orange-bg);
+  --info-t: var(--info);
+  --gold-t: var(--gold);
+  --amber-t: var(--amber);
+  --amber-bg: rgba(251,191,36,0.10);
+  --purple-t: var(--purple);
+  --cyan-t: var(--cyan);
+  --orange-t: var(--orange);
+  --blue-t: var(--blue-l);
+  --brd: var(--brd-1);
+  --bg-accent: var(--inner-bg);
+  --gold-bg-strong: rgba(212,168,67,0.18);
+
+  color-scheme: dark;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * СВЕТЛАЯ ТЕМА — проектируется С НУЛЯ.
+ * Принципы:
+ *   • Фон страницы — холодно-кремовый (#F2F5FB), карточки — чисто-белые.
+ *   • Никаких «белое-на-сером градиентом» внутри карточек.
+ *   • Тени более выраженные и цветные (slate-blue tint), чтобы дать глубину.
+ *   • Hover — НЕ серый, а золотой/синий tint.
+ *   • Row-items: белые с лёгкой синеватой подсветкой и тонкий border, без grey-fill.
+ * ═══════════════════════════════════════════════════════════════════════ */
+:root[data-theme='light'] {
+  /* ─── Фоны ─── */
+  --bg-0:  #F2F5FB;       /* фон страницы — кремово-голубой */
+  --bg-1:  #FFFFFF;       /* sidebar / topbar — чистый белый */
+  --bg-2:  #FFFFFF;       /* карточки — белый */
+  --bg-3:  #F7F9FE;       /* row-item, pill — еле заметно с blue-tint */
+  --bg-4:  #E8EEF8;       /* progress trough — светло-голубоватый */
+  --bg-glass: rgba(255,255,255,0.82);
+
+  /* ─── Текст (глубокий slate, не чёрный — мягче для глаз) ─── */
+  --t-1: #0F1F3D;
+  --t-2: #3A4868;
+  --t-3: #6B7796;
+  --t-4: #9AA4BD;
+
+  /* ─── Бренд (на свету слегка глубже для контраста) ─── */
+  --gold:    #B8922E;
+  --gold-h:  #9A7A26;
+  --gold-l:  #D4A843;
+  --gold-bg: rgba(212,168,67,0.12);
+  --gold-glow: 0 6px 24px rgba(212,168,67,0.22);
+  --on-gold: #1a1000;
+
+  --red:    #B0233A;
+  --red-h:  #921E33;
+  --red-l:  #C8293B;
+  --red-bg: rgba(200,41,59,0.08);
+  --red-glow: 0 6px 24px rgba(200,41,59,0.18);
+
+  --blue:   #1E4D8C;
+  --blue-h: #163E72;
+  --blue-l: #2563EB;
+  --blue-bg: rgba(30,77,140,0.08);
+
+  /* ─── Акценты (более насыщенные для контраста на белом) ─── */
+  --ok:     #16A34A;
+  --err:    #DC2626;
+  --info:   #2563EB;
+  --purple: #7C3AED;
+  --purple-l: #8B5CF6;
+  --cyan:   #0891B2;
+  --cyan-l: #06B6D4;
+  --orange: #EA580C;
+  --amber:  #D97706;
+
+  --ok-bg:    rgba(22,163,74,0.08);
+  --err-bg:   rgba(220,38,38,0.08);
+  --info-bg:  rgba(37,99,235,0.08);
+  --purple-bg:rgba(124,58,237,0.08);
+  --cyan-bg:  rgba(8,145,178,0.08);
+  --orange-bg:rgba(234,88,12,0.08);
+
+  /* ─── Границы (slate-blue tint вместо черного) ─── */
+  --brd-1: rgba(31, 56, 110, 0.12);
+  --brd-2: rgba(31, 56, 110, 0.07);
+  --brd-glow: rgba(184, 146, 46, 0.35);
+
+  /* ─── Тени (выраженные, с blue-tint вместо чёрного) ─── */
+  --sh-sm: 0 1px 3px rgba(31, 56, 110, 0.06), 0 1px 2px rgba(31, 56, 110, 0.04);
+  --sh-md: 0 4px 16px rgba(31, 56, 110, 0.10), 0 2px 6px rgba(31, 56, 110, 0.05);
+  --sh-lg: 0 16px 48px rgba(31, 56, 110, 0.18), 0 6px 18px rgba(31, 56, 110, 0.08);
+  --sh-card: 0 4px 16px rgba(31, 56, 110, 0.08), 0 1px 3px rgba(31, 56, 110, 0.04);
+
+  /* ─── UI-паттерны для светлой темы (НЕ инверсия) ─── */
+  --card-bg: #FFFFFF;                                                       /* чистый белый, никаких градиентов */
+  --card-bg-hero: linear-gradient(135deg, #FFFFFF, #FBFCFF);                /* едва уловимый top-light */
+  --inner-bg: #F7F9FE;                                                      /* row-item — синеватый off-white */
+  --inner-border: 1px solid rgba(31, 56, 110, 0.08);
+  --bar-bg: #E8EEF8;                                                        /* progress trough */
+  --hover-bg: rgba(212, 168, 67, 0.10);                                     /* hover — золотой tint */
+  --hover-brand: linear-gradient(135deg, rgba(212,168,67,0.14), rgba(200,41,59,0.08));
+  --brand-text: linear-gradient(135deg, #B8922E, #C8293B 60%, #1E4D8C);
+  --skel-grad: linear-gradient(90deg, #EEF2F8 0%, #F7F9FE 50%, #EEF2F8 100%);
+
+  /* ─── Радиусы ─── */
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+  --r-pill: 9999px;
+
+  /* ─── Алиасы для совместимости ─── */
+  --ok-t: var(--ok);
+  --err-t: var(--err);
+  --warn-t: var(--amber);
+  --warn-bg: var(--orange-bg);
+  --info-t: var(--info);
+  --gold-t: var(--gold);
+  --amber-t: var(--amber);
+  --amber-bg: rgba(217,119,6,0.10);
+  --purple-t: var(--purple);
+  --cyan-t: var(--cyan);
+  --orange-t: var(--orange);
+  --blue-t: var(--blue);
+  --brd: var(--brd-1);
+  --bg-accent: var(--inner-bg);
+  --gold-bg-strong: rgba(212,168,67,0.22);
+
+  color-scheme: light;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Базовая типографика
+ * ═══════════════════════════════════════════════════════════════════════ */
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; padding: 0; height: 100%; }
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  background: var(--bg-0);
+  color: var(--t-1);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+/* Эпический шрифт для заголовков (викинг-эстетика) */
+.ff-norse, h1, h2, .saga, .home-head h1, .sb-brand-text strong,
+.sb-grp-h, .sb-saga-lab, .sb-saga-text {
+  font-family: 'Cinzel', 'Times New Roman', serif;
+  letter-spacing: 0.02em;
+}
+.runic {
+  font-family: 'Cinzel', serif;
+  font-feature-settings: 'liga' 1, 'dlig' 1;
+}
+
+/* Фоновое сияние */
+[data-theme='dark'] body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(60vw 50vh at 12% -10%, rgba(212,168,67,0.10), transparent 60%),
+    radial-gradient(60vw 50vh at 88% 110%, rgba(30,77,140,0.10), transparent 60%);
+  pointer-events: none;
+}
+[data-theme='light'] body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(50vw 40vh at 12% -10%, rgba(212,168,67,0.10), transparent 65%),
+    radial-gradient(50vw 40vh at 88% 110%, rgba(30,77,140,0.06), transparent 65%),
+    radial-gradient(40vw 30vh at 50% 50%, rgba(124, 58, 237, 0.03), transparent 70%);
+  pointer-events: none;
+}
+
+#root { position: relative; z-index: 1; }
+
+::selection { background: var(--gold); color: var(--on-gold); }
+
+/* Скроллбары — двухтемные */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--brd-1);
+  border-radius: 999px;
+  border: 2px solid var(--bg-0);
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--gold); }

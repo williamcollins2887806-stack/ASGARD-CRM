@@ -1,0 +1,97 @@
+/* ─── TenderCalcModal — двухколоночная раскладка ─── */
+.tcm-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 16px;
+}
+.tcm-tender-card {
+  padding: 12px;
+  background: var(--inner-bg);
+  border-radius: var(--r-md);
+}
+.tcm-tender-meta {
+  font-size: 12px;
+  color: var(--t-3);
+}
+.tcm-comment {
+  margin-top: 8px;
+  padding: 8px;
+  background: var(--card-bg);
+  border-radius: var(--r-sm);
+  font-size: 12.5px;
+  color: var(--t-2);
+}
+.tcm-files-empty {
+  margin-top: 6px;
+  color: var(--t-3);
+  font-size: 12px;
+  padding: 8px;
+}
+.tcm-files-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.tcm-file-row {
+  padding: 6px 10px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  text-decoration: none;
+  color: var(--t-1);
+  display: flex;
+  justify-content: space-between;
+}
+.tcm-file-row:hover { background: var(--hover-bg); }
+
+.tcm-ro-label { font-size: 11px; color: var(--t-3); }
+.tcm-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--t-3);
+}
+.tcm-versions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 380px;
+  overflow-y: auto;
+}
+.tcm-version-row {
+  padding: 10px;
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.tcm-version-row.is-active {
+  background: var(--gold-bg);
+  border-color: var(--gold);
+}
+.tcm-version-meta {
+  font-size: 12px;
+  color: var(--t-2);
+  margin-top: 4px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.tcm-edit-form {
+  padding: 12px;
+  background: var(--inner-bg);
+  border-radius: var(--r-md);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.tcm-kpi-preview {
+  padding: 8px;
+  background: var(--card-bg);
+  border-radius: var(--r-sm);
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+}

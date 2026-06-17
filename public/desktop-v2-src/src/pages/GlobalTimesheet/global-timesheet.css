@@ -1,0 +1,176 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * GlobalTimesheet — общий табель
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.gts-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.gts-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+}
+
+.gts-period-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gts-period {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--t-1);
+  min-width: 180px;
+  text-align: center;
+}
+
+.gts-stats {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.gts-stats-pill {
+  padding: 7px 14px;
+  border-radius: var(--r-pill);
+  background: var(--inner-bg);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t-2);
+}
+
+.gts-stats-pill.ok    { background: var(--ok-bg);   color: var(--ok-t); }
+.gts-stats-pill.info  { background: var(--info-bg); color: var(--info-t); }
+.gts-stats-pill.gold  { background: var(--gold-bg, var(--inner-bg)); color: var(--gold); }
+
+.gts-wrap {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  overflow: auto;
+  max-height: calc(100vh - 240px);
+}
+
+.gts-table {
+  border-collapse: collapse;
+  font-size: 12px;
+  width: max-content;
+  min-width: 100%;
+}
+
+.gts-table th,
+.gts-table td {
+  padding: 5px 8px;
+  border: 1px solid var(--brd-2);
+  white-space: nowrap;
+  text-align: center;
+}
+
+.gts-table thead th {
+  background: var(--inner-bg);
+  color: var(--t-2);
+  font-weight: 700;
+  font-size: 11px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.gts-table thead th:first-child {
+  z-index: 3;
+}
+
+.gts-table th:first-child,
+.gts-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--card-bg);
+  text-align: left;
+  min-width: 200px;
+  max-width: 240px;
+}
+
+.gts-table thead th:first-child {
+  background: var(--inner-bg);
+}
+
+.gts-table tbody tr:hover td {
+  background: var(--hover-bg);
+}
+
+.gts-table tbody tr:hover td:first-child {
+  background: var(--hover-bg);
+}
+
+.gts-group-header td {
+  background: var(--bar-bg) !important;
+  font-weight: 700;
+  color: var(--t-1);
+  font-size: 13px;
+  text-align: left;
+  letter-spacing: 0.04em;
+}
+
+.gts-cell {
+  width: 28px;
+  height: 24px;
+  border-radius: var(--r-xs);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.gts-cell.editable {
+  cursor: pointer;
+  border: 1px dashed var(--brd-2);
+}
+
+.gts-cell.editable:hover {
+  background: var(--hover-bg);
+  border-color: var(--gold);
+}
+
+.gts-th-weekend {
+  color: var(--err-t) !important;
+}
+
+.gts-total {
+  font-weight: 700;
+  color: var(--t-1);
+}
+
+.gts-sum {
+  color: var(--ok-t);
+  font-weight: 700;
+}
+
+.gts-empty {
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--t-3);
+  font-size: 13px;
+}
+
+.gts-fio {
+  font-weight: 600;
+  color: var(--t-1);
+}
+
+.gts-role {
+  font-size: 10px;
+  color: var(--t-3);
+  margin-top: 2px;
+}

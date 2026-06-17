@@ -1,0 +1,59 @@
+/* Стили для /assembly. */
+
+.asm-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.asm-card {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  padding: 16px;
+  cursor: pointer;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+.asm-card:hover {
+  border-color: var(--gold);
+  box-shadow: var(--sh-md);
+}
+
+.asm-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  gap: 10px;
+}
+.asm-card__title {
+  font-weight: 700;
+  font-size: 14px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.asm-card__meta {
+  font-size: 12px;
+  color: var(--t-3);
+  margin-top: 4px;
+}
+.asm-card__progress {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.asm-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--bar-bg);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+}
+.asm-bar__fill {
+  height: 100%;
+  background: var(--gold);
+  transition: width 0.3s;
+}

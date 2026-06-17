@@ -1,0 +1,415 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * Customers — справочник контрагентов (v2 upgrade)
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─── KPI ряд ─── */
+.cust-kpi {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+.cust-kpi-card {
+  position: relative;
+  padding: 16px 18px;
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-card);
+  overflow: hidden;
+  transition: all 0.18s ease;
+}
+.cust-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--sh-md);
+}
+.cust-kpi-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--gold);
+}
+.cust-kpi-card.gold::before { background: linear-gradient(90deg, var(--gold), var(--amber)); }
+.cust-kpi-card.ok::before   { background: linear-gradient(90deg, var(--ok), var(--cyan)); }
+.cust-kpi-card.info::before { background: linear-gradient(90deg, var(--info), var(--purple)); }
+.cust-kpi-card.cyan::before { background: linear-gradient(90deg, var(--cyan), var(--info)); }
+.cust-kpi-ic {
+  font-size: 22px;
+  opacity: 0.55;
+  position: absolute;
+  right: 16px;
+  top: 16px;
+}
+.cust-kpi-val {
+  font-size: 26px;
+  font-weight: 900;
+  line-height: 1.1;
+  margin-bottom: 4px;
+  letter-spacing: -0.01em;
+  color: var(--t-1);
+}
+.cust-kpi-card.gold .cust-kpi-val { color: var(--gold); }
+.cust-kpi-card.ok   .cust-kpi-val { color: var(--ok); }
+.cust-kpi-card.info .cust-kpi-val { color: var(--info); }
+.cust-kpi-card.cyan .cust-kpi-val { color: var(--cyan); }
+.cust-kpi-lab {
+  font-size: 11px;
+  color: var(--t-3);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+/* ─── Hero-поиск ─── */
+.cust-hero {
+  display: grid;
+  grid-template-columns: minmax(280px, 2fr) minmax(180px, 1fr);
+  gap: 10px;
+  padding: 16px 18px;
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-card);
+}
+.cust-hero-search,
+.cust-hero-cat { min-width: 0; }
+.cust-hero .inp-field { margin: 0; }
+
+/* ─── Старые фильтры (на случай если где-то используются) ─── */
+.cust-filter {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) minmax(160px, 1fr);
+  gap: 8px;
+}
+.cust-filter-search,
+.cust-filter-cat { min-width: 0; }
+
+/* ─── Таблица ─── */
+.cust-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.cust-table thead tr {
+  background: var(--inner-bg);
+  border-bottom: 1px solid var(--brd-1);
+}
+.cust-table th {
+  text-align: left;
+  padding: 12px 14px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--t-3);
+  font-weight: 700;
+}
+.cust-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--brd-2);
+  vertical-align: middle;
+}
+.cust-row {
+  cursor: pointer;
+  transition: background 0.12s ease, transform 0.12s ease;
+}
+.cust-row:hover {
+  background: var(--hover-bg);
+  transform: translateX(2px);
+}
+.cust-inn {
+  font-family: ui-monospace, monospace;
+  font-weight: 700;
+  color: var(--t-1);
+  font-size: 12.5px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Имя + аватарка ─── */
+.cust-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.cust-name-wrap {
+  min-width: 0;
+  flex: 1;
+}
+.cust-ava {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 12.5px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  flex: 0 0 auto;
+  color: white;
+  border: 1.5px solid color-mix(in srgb, var(--gold) 30%, transparent);
+  box-shadow: var(--sh-sm);
+}
+.cust-ava.tone-gold   { background: linear-gradient(135deg, var(--gold), var(--gold-h)); border-color: color-mix(in srgb, var(--gold) 36%, transparent); }
+.cust-ava.tone-blue   { background: linear-gradient(135deg, var(--info), var(--blue));   border-color: color-mix(in srgb, var(--info) 36%, transparent); }
+.cust-ava.tone-cyan   { background: linear-gradient(135deg, var(--cyan), var(--cyan-l)); border-color: color-mix(in srgb, var(--cyan) 36%, transparent); }
+.cust-ava.tone-purple { background: linear-gradient(135deg, var(--purple), var(--purple-l)); border-color: color-mix(in srgb, var(--purple) 36%, transparent); }
+.cust-ava.tone-orange { background: linear-gradient(135deg, var(--orange), var(--amber)); border-color: color-mix(in srgb, var(--orange) 36%, transparent); }
+.cust-ava.tone-gray   { background: linear-gradient(135deg, var(--bg-4), var(--bg-3)); color: var(--t-2); border-color: var(--brd-1); }
+
+.cust-name {
+  font-weight: 700;
+  color: var(--t-1);
+  font-size: 13.5px;
+}
+.cust-full {
+  font-size: 11.5px;
+  color: var(--t-3);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
+
+/* ─── Цветные пилюли категорий ─── */
+.cust-cat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 8px;
+  border-radius: var(--r-pill);
+  font-size: 11.5px;
+  font-weight: 700;
+  border: 1px solid;
+  white-space: nowrap;
+}
+.cust-cat-pill .cust-cat-ic { font-size: 13px; line-height: 1; }
+.cust-cat-pill.tone-gold   { background: var(--gold-bg);   color: var(--gold);   border-color: color-mix(in srgb, var(--gold) 32%, transparent); }
+.cust-cat-pill.tone-blue   { background: var(--info-bg);   color: var(--info);   border-color: color-mix(in srgb, var(--info) 32%, transparent); }
+.cust-cat-pill.tone-cyan   { background: var(--cyan-bg);   color: var(--cyan);   border-color: color-mix(in srgb, var(--cyan) 32%, transparent); }
+.cust-cat-pill.tone-purple { background: var(--purple-bg); color: var(--purple); border-color: color-mix(in srgb, var(--purple) 32%, transparent); }
+.cust-cat-pill.tone-orange { background: var(--orange-bg); color: var(--orange); border-color: color-mix(in srgb, var(--orange) 32%, transparent); }
+.cust-cat-pill.tone-gray   { background: var(--inner-bg); color: var(--t-3); border-color: var(--brd-1); }
+
+/* ─── Старый класс (обратная совместимость с DetailModal) ─── */
+.cust-cat {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  background: var(--bar-bg);
+  color: var(--t-2);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.cust-dim {
+  color: var(--t-3);
+  font-size: 12.5px;
+}
+.cust-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+.cust-actions .m-btn {
+  margin-left: 4px;
+}
+
+@media (max-width: 900px) {
+  .cust-filter { grid-template-columns: 1fr; }
+  .cust-hero   { grid-template-columns: 1fr; }
+  .cust-kpi    { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* Detail modal: rows for tender list */
+.cust-tender-row {
+  display: grid;
+  grid-template-columns: 60px 1fr auto auto;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+  text-decoration: none;
+  color: var(--t-1);
+  font-size: 13px;
+  align-items: center;
+  border: 1px solid var(--brd-2);
+}
+
+.cust-kpi-block {
+  padding: 10px 12px;
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-sm);
+}
+.cust-kpi-val { font-size: 18px; font-weight: 800; line-height: 1.1; }
+.cust-kpi-lbl {
+  font-size: 10px;
+  color: var(--t-3);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+.cust-sec-label {
+  font-size: 11px;
+  color: var(--t-3);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.cust-kv-row {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--brd-2);
+  font-size: 13px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * CustomerEditModal — DaData autocomplete dropdown
+ * ═══════════════════════════════════════════════════════════════════════ */
+.cust-name-field {
+  position: relative;
+}
+.cust-name-dd {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  margin-top: 4px;
+  z-index: 30;
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-sm);
+  box-shadow: var(--sh-md);
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.cust-name-dd-empty {
+  padding: 14px 16px;
+  color: var(--t-3);
+  font-size: 13px;
+}
+.cust-name-dd-i {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 14px;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--brd-2);
+  cursor: pointer;
+  color: var(--t-1);
+  transition: background 0.1s ease;
+}
+.cust-name-dd-i:last-child { border-bottom: 0; }
+.cust-name-dd-i:hover,
+.cust-name-dd-i.active {
+  background: var(--hover-bg);
+}
+.cust-name-dd-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--t-1);
+  margin-bottom: 3px;
+}
+.cust-name-dd-meta {
+  font-size: 11.5px;
+  color: var(--t-3);
+}
+.cust-name-dd-inn {
+  font-family: ui-monospace, monospace;
+  color: var(--t-2);
+  font-weight: 600;
+}
+.cust-name-dd-addr {
+  display: inline-block;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * CustomerEditModal — Multi-contact section
+ * ═══════════════════════════════════════════════════════════════════════ */
+.cust-contacts-sec {
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+}
+.cust-contacts-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.cust-contacts-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--t-1);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.cust-contacts-count {
+  margin-left: 8px;
+  color: var(--t-3);
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11.5px;
+}
+.cust-contacts-empty {
+  padding: 16px;
+  color: var(--t-3);
+  font-size: 13px;
+  text-align: center;
+  border: 1px dashed var(--brd-2);
+  border-radius: var(--r-sm);
+}
+.cust-contacts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cust-contact-row {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.cust-contact-row.is-primary {
+  border-color: color-mix(in srgb, var(--gold) 50%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--gold) 20%, transparent);
+}
+.cust-contact-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 10px;
+}
+.cust-contact-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 130px;
+  align-items: flex-start;
+  padding-top: 18px;
+}
+
+@media (max-width: 720px) {
+  .cust-contact-grid { grid-template-columns: 1fr; }
+  .cust-contact-row { flex-direction: column; }
+  .cust-contact-actions { flex-direction: row; padding-top: 0; align-items: center; }
+}

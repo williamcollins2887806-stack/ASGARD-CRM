@@ -1,0 +1,266 @@
+/* Стили страницы /correspondence — реестр переписки с заказчиками. */
+
+.corr-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.corr-kpi-card {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-md);
+  padding: 18px;
+  position: relative;
+  overflow: hidden;
+  transition: transform .2s, box-shadow .2s;
+}
+
+.corr-kpi-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--red), var(--gold), var(--blue));
+  opacity: .55;
+}
+
+.corr-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--sh-md);
+}
+
+.corr-kpi-label {
+  font-size: 11px;
+  color: var(--t-3);
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  font-weight: 700;
+}
+
+.corr-kpi-value {
+  font-size: 30px;
+  font-weight: 800;
+  color: var(--gold);
+  margin-top: 6px;
+}
+
+.corr-kpi-value.tone-info { color: var(--info); }
+.corr-kpi-value.tone-ok   { color: var(--ok); }
+
+.corr-kpi-icon {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 38px;
+  opacity: .15;
+}
+
+/* ── Фильтры ── */
+.corr-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  padding: 14px;
+  background: var(--card-bg);
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-md);
+  align-items: end;
+}
+
+.corr-filters .filter-label {
+  font-size: 10px;
+  color: var(--t-3);
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  font-weight: 700;
+  margin-bottom: 5px;
+  display: block;
+}
+
+/* ── Таблица ── */
+.corr-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 6px;
+  font-size: 13px;
+}
+
+.corr-table th {
+  font-size: 10px;
+  color: var(--t-3);
+  font-weight: 700;
+  text-align: left;
+  padding: 8px 12px;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  border-bottom: 2px solid var(--brd-2);
+}
+
+.corr-table th.center { text-align: center; }
+.corr-table th.right  { text-align: right; }
+
+.corr-table td {
+  padding: 12px;
+  background: var(--card-bg);
+  border-top: 1px solid var(--brd-2);
+  border-bottom: 1px solid var(--brd-2);
+}
+
+.corr-table tr td:first-child {
+  border-left: 1px solid var(--brd-2);
+  border-radius: var(--r-md) 0 0 var(--r-md);
+  border-left: 3px solid transparent;
+}
+
+.corr-table tr td:last-child {
+  border-right: 1px solid var(--brd-2);
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+}
+
+.corr-table tr.has-tone-in  td:first-child { border-left-color: var(--info); }
+.corr-table tr.has-tone-out td:first-child { border-left-color: var(--ok); }
+
+.corr-table tr:hover td {
+  background: var(--hover-bg);
+}
+
+.corr-dir-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: var(--r-xs);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.corr-dir-pill.tone-info { background: rgba(59,130,246,.13); color: var(--info); }
+.corr-dir-pill.tone-ok   { background: rgba(34,197,94,.13);  color: var(--ok); }
+
+.corr-number {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gold);
+  background: var(--gold-bg);
+  padding: 3px 8px;
+  border-radius: var(--r-sm);
+  display: inline-block;
+}
+
+.corr-subject {
+  font-weight: 600;
+  color: var(--t-1);
+}
+
+.corr-counterparty {
+  font-size: 12px;
+  color: var(--t-3);
+  margin-top: 3px;
+}
+
+.corr-date-cell {
+  color: var(--t-2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.corr-actions-row {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.corr-link-block {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--t-3);
+  margin-top: 4px;
+}
+
+.corr-link-block a {
+  color: var(--gold);
+  text-decoration: none;
+}
+
+.corr-link-block a:hover { text-decoration: underline; }
+
+/* ── Карточка детализации ── */
+.corr-view-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 4px 0 16px;
+  border-bottom: 1px solid var(--brd-2);
+  margin-bottom: 16px;
+}
+
+.corr-view-head .icon { font-size: 32px; }
+
+.corr-view-head h3 {
+  font-weight: 800;
+  font-size: 18px;
+  color: var(--t-1);
+  margin: 0;
+}
+
+.corr-view-head .subtitle {
+  color: var(--t-3);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.corr-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.corr-form-grid .span-2 { grid-column: 1 / -1; }
+
+.corr-attachment-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  color: var(--t-2);
+  margin: 8px 0;
+}
+
+.corr-attachment-row .file-link {
+  color: var(--gold);
+  text-decoration: none;
+}
+
+.corr-attachment-row .file-link:hover { text-decoration: underline; }
+
+.corr-kv {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 8px 16px;
+  font-size: 13px;
+  align-items: baseline;
+}
+
+.corr-kv .lbl {
+  color: var(--t-3);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  font-weight: 700;
+}
+
+.corr-kv .val { color: var(--t-1); }
+
+@media (max-width: 720px) {
+  .corr-form-grid { grid-template-columns: 1fr; }
+  .corr-form-grid .span-2 { grid-column: 1; }
+  .corr-kv { grid-template-columns: 1fr; gap: 2px 0; }
+}

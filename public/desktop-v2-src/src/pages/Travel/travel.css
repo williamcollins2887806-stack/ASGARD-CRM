@@ -1,0 +1,175 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * Travel — командировки/логистика сотрудников
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.tl-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.tl-kpi {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.tl-kpi-card {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  position: relative;
+  overflow: hidden;
+}
+
+.tl-kpi-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--tl-acc, var(--gold));
+}
+
+.tl-kpi-lab {
+  font-size: 10px;
+  color: var(--t-3);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+}
+
+.tl-kpi-val {
+  font-size: 22px;
+  font-weight: 900;
+  margin-top: 6px;
+  color: var(--t-1);
+}
+
+.tl-kpi-card.gold .tl-kpi-val { color: var(--gold); }
+.tl-kpi-card.blue .tl-kpi-val { color: var(--blue, var(--info)); }
+.tl-kpi-card.ok .tl-kpi-val { color: var(--ok); }
+.tl-kpi-card.warn .tl-kpi-val { color: var(--amber, var(--warn-t)); }
+
+.tl-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tl-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tl-card:hover {
+  border-color: var(--gold);
+  box-shadow: var(--sh-md);
+}
+
+.tl-card-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  background: var(--inner-bg);
+  color: var(--gold);
+  font-size: 11px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.tl-card-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--t-1);
+}
+
+.tl-card-sub {
+  font-size: 12px;
+  color: var(--t-3);
+  margin-top: 3px;
+}
+
+.tl-card-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--t-3);
+}
+
+.tl-card-amount {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--gold);
+  white-space: nowrap;
+}
+
+.tl-card-vat {
+  font-size: 10px;
+  color: var(--ok);
+  font-weight: 700;
+}
+
+.tl-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+  min-width: 130px;
+}
+
+.tl-card-actions .m-btn {
+  white-space: nowrap;
+}
+
+.tl-file-link {
+  font-size: 11px;
+  color: var(--blue, var(--info));
+  text-decoration: none;
+}
+
+.tl-file-link:hover {
+  text-decoration: underline;
+}
+
+.tl-empty {
+  text-align: center;
+  padding: 56px 24px;
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  color: var(--t-3);
+}
+
+.tl-empty-ic {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+.tl-empty-ttl {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--t-1);
+  margin-bottom: 6px;
+}
+
+@media (max-width: 800px) {
+  .tl-card {
+    grid-template-columns: 1fr;
+  }
+  .tl-card-actions {
+    align-items: stretch;
+    min-width: 0;
+  }
+}

@@ -1,0 +1,546 @@
+/* Business Widgets — стили для главной страницы.
+ * Используется в src/widgets/BusinessWidgets.jsx
+ */
+
+/* ─── Empty / NotConfigured ─── */
+.bw-not-configured {
+  padding: 14px;
+}
+.bw-not-configured-icon {
+  font-size: 22px;
+  margin-bottom: 6px;
+  opacity: 0.5;
+}
+.bw-empty-icon {
+  font-size: 28px;
+  margin-bottom: 6px;
+}
+
+/* ─── Loading ─── */
+.bw-load-tall { min-height: 120px; }
+.bw-load-default { min-height: 60px; }
+
+/* ─── MyReadiness ─── */
+.bw-ready-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.bw-ready-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+}
+.bw-ready-main { flex: 1; min-width: 0; }
+.bw-ready-name { font-weight: 600; font-size: 13px; }
+.bw-ready-blocker { font-size: 11px; color: var(--err); }
+
+/* ─── DirectorReadiness ─── */
+.bw-dir-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.bw-dir-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+}
+.bw-dir-main { flex: 1; min-width: 0; }
+.bw-dir-name {
+  font-weight: 600;
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bw-dir-sub {
+  font-size: 11px;
+  color: var(--t-3);
+}
+
+/* ─── EquipmentValue ─── */
+.bw-equip-head {
+  text-align: center;
+  padding: 8px 0 12px;
+}
+.bw-equip-val {
+  font-size: 28px;
+  font-weight: 900;
+  color: var(--gold);
+}
+.bw-equip-cap {
+  font-size: 11.5px;
+  color: var(--t-3);
+}
+.bw-equip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.bw-equip-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  padding: 6px 10px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+}
+
+/* ─── ReceiptScanner ─── */
+.bw-rs-wrap {
+  text-align: center;
+  padding: 12px 0;
+}
+.bw-rs-icon {
+  font-size: 42px;
+  margin-bottom: 10px;
+}
+.bw-rs-btn {
+  background: linear-gradient(135deg, var(--gold), var(--gold-h));
+  color: var(--on-gold);
+  border: 0;
+  padding: 10px 22px;
+  border-radius: var(--r-pill);
+  font-weight: 800;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.bw-rs-cap {
+  font-size: 11px;
+  color: var(--t-3);
+  margin-top: 8px;
+}
+
+/* ─── TelephonyStatus ─── */
+.bw-tel-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  margin-bottom: 10px;
+}
+.bw-tel-status--on { background: var(--ok-bg); }
+.bw-tel-status--off { background: var(--err-bg); }
+.bw-tel-status-lbl {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.bw-tel-eyebrow {
+  font-size: 11.5px;
+  color: var(--t-3);
+  margin-bottom: 6px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.bw-tel-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--brd-2);
+  font-size: 12px;
+}
+.bw-tel-when {
+  color: var(--t-3);
+  font-family: ui-monospace, monospace;
+}
+.bw-tel-from { flex: 1; }
+.bw-tel-arrow--in { color: var(--ok); }
+.bw-tel-arrow--out { color: var(--info); }
+
+/* ─── OverdueWorks ─── */
+.bw-overdue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bw-overdue-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  background: var(--err-bg);
+  border-left: 3px solid var(--err);
+  border-radius: var(--r-sm);
+}
+.bw-overdue-title {
+  font-weight: 600;
+  font-size: 13px;
+}
+.bw-overdue-customer {
+  font-size: 11.5px;
+  color: var(--t-3);
+}
+.bw-overdue-pm {
+  font-size: 12px;
+  color: var(--t-2);
+}
+
+/* ─── PermitsExpiry ─── */
+.bw-permits-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+.bw-permit-card {
+  padding: 10px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+}
+.bw-permit-name {
+  font-weight: 600;
+  font-size: 13px;
+}
+.bw-permit-type {
+  font-size: 11.5px;
+  color: var(--t-3);
+  margin-bottom: 6px;
+}
+
+/* ─── TeamWorkload ─── */
+.bw-team-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bw-team-row {
+  display: grid;
+  grid-template-columns: 160px 1fr 40px;
+  gap: 10px;
+  align-items: center;
+  font-size: 12.5px;
+}
+.bw-team-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bw-team-bar {
+  height: 14px;
+  background: var(--bar-bg);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+}
+.bw-team-bar-fill {
+  height: 100%;
+  transition: width 0.4s ease;
+}
+.bw-team-count {
+  text-align: right;
+}
+
+/* ─── TenderDynamics ─── */
+.bw-td-tot {
+  display: flex;
+  justify-content: space-around;
+  margin-bottom: 14px;
+  font-size: 13px;
+}
+.bw-td-chart {
+  display: flex;
+  justify-content: space-around;
+  align-items: flex-end;
+  height: 100px;
+  padding: 0 8px;
+}
+.bw-td-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.bw-td-bar {
+  width: 70%;
+  background: var(--info);
+  border-radius: 3px 3px 0 0;
+  position: relative;
+}
+.bw-td-bar-won {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--ok);
+}
+.bw-td-month {
+  font-size: 10px;
+  color: var(--t-3);
+}
+
+/* ─── KpiSummary ─── */
+.bw-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+.bw-kpi-card {
+  padding: 12px;
+  border-radius: var(--r-md);
+  text-align: center;
+}
+.bw-kpi-card--info { background: var(--info-bg); }
+.bw-kpi-card--ok { background: var(--ok-bg); }
+.bw-kpi-card--gold { background: var(--gold-bg); }
+.bw-kpi-card--purple { background: var(--purple-bg); }
+.bw-kpi-card--orange { background: var(--orange-bg); }
+.bw-kpi-card--err { background: var(--err-bg); }
+.bw-kpi-card--inner { background: var(--inner-bg); }
+.bw-kpi-val {
+  font-size: 22px;
+  font-weight: 900;
+}
+.bw-kpi-val-sm {
+  font-size: 16px;
+  font-weight: 900;
+}
+.bw-kpi-lbl {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--t-3);
+}
+
+/* ─── GanttMini ─── */
+.bw-gantt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bw-gantt-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+}
+.bw-gantt-title {
+  flex: 1;
+  font-size: 12.5px;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── CashBalance / MyCashBalance ─── */
+.bw-cash-wrap {
+  text-align: center;
+  padding: 10px 0;
+}
+.bw-cash-val {
+  font-size: 30px;
+  font-weight: 900;
+}
+.bw-cash-cap {
+  font-size: 11.5px;
+  color: var(--t-3);
+  margin-top: 4px;
+}
+.bw-mini-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.bw-mini {
+  padding: 8px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+}
+.bw-mini-lbl {
+  font-size: 10px;
+  color: var(--t-3);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.bw-mini-val {
+  font-size: 14px;
+  font-weight: 800;
+  margin-top: 2px;
+}
+
+/* ─── EquipmentAlerts ─── */
+.bw-alerts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bw-alert-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: var(--orange-bg);
+  border-left: 3px solid var(--amber);
+  border-radius: var(--r-sm);
+}
+.bw-alert-icon { font-size: 16px; }
+.bw-alert-main { flex: 1; min-width: 0; }
+.bw-alert-name {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.bw-alert-meta {
+  font-size: 10.5px;
+  color: var(--t-3);
+}
+
+/* ─── PayrollPending ─── */
+.bw-pp-wrap {
+  text-align: center;
+  padding: 8px 0;
+}
+.bw-pp-val {
+  font-size: 48px;
+  font-weight: 900;
+}
+.bw-pp-lbl {
+  font-size: 12px;
+  color: var(--t-3);
+  margin-top: 4px;
+}
+
+/* ─── PreTenders ─── */
+.bw-pt-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.bw-pt-cell {
+  text-align: center;
+  padding: 8px;
+  border-radius: var(--r-sm);
+}
+.bw-pt-cell--info { background: var(--info-bg); }
+.bw-pt-cell--orange { background: var(--orange-bg); }
+.bw-pt-cell--inner { background: var(--inner-bg); }
+.bw-pt-val {
+  font-size: 22px;
+  font-weight: 900;
+}
+.bw-pt-lbl {
+  font-size: 10px;
+  color: var(--t-3);
+}
+
+/* ─── BankSummary ─── */
+.bw-bs-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.bw-bs-cell {
+  text-align: center;
+  padding: 10px;
+  border-radius: var(--r-sm);
+}
+.bw-bs-cell--ok { background: var(--ok-bg); }
+.bw-bs-cell--err { background: var(--err-bg); }
+.bw-bs-cell--orange {
+  text-align: center;
+  font-size: 12px;
+  padding: 6px;
+  background: var(--orange-bg);
+  border-radius: var(--r-sm);
+}
+
+/* ─── PlatformAlerts ─── */
+.bw-pa-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bw-pa-row {
+  padding: 8px;
+  background: var(--inner-bg);
+  border-left: 3px solid var(--info);
+  border-radius: var(--r-sm);
+}
+.bw-pa-name {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.bw-pa-src {
+  font-size: 10.5px;
+  color: var(--t-3);
+}
+
+/* ─── MyMail ─── */
+.bw-mail-unread {
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--gold);
+  font-weight: 700;
+}
+.bw-mail-row {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--brd-2);
+}
+.bw-mail-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+.bw-mail-when {
+  color: var(--t-3);
+  font-family: ui-monospace, monospace;
+}
+.bw-mail-sub {
+  font-size: 12px;
+  color: var(--t-2);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── Academy ─── */
+.bw-ac-head {
+  text-align: center;
+  margin-bottom: 10px;
+}
+.bw-ac-val {
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--gold);
+}
+.bw-ac-cap {
+  font-size: 11;
+  color: var(--t-3);
+}
+.bw-ac-bar {
+  height: 8px;
+  background: var(--bar-bg);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+.bw-ac-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold), var(--gold-h));
+  border-radius: var(--r-pill);
+}
+.bw-ac-curr {
+  font-size: 12px;
+  color: var(--t-2);
+}
+
+/* ─── Ring SVG ─── */
+.bw-ring {
+  transform: rotate(-90deg);
+  flex: 0 0 auto;
+}

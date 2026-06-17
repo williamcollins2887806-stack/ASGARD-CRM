@@ -1,0 +1,74 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * HR Rating — Рейтинг дружины
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.rt-filter {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) minmax(180px, 1fr);
+  gap: 8px;
+}
+
+.rt-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.rt-table thead tr {
+  background: var(--inner-bg);
+  border-bottom: 1px solid var(--brd-1);
+}
+.rt-table th {
+  text-align: left;
+  padding: 10px 12px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--t-3);
+  font-weight: 700;
+}
+.rt-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--brd-2);
+  vertical-align: middle;
+}
+.rt-row {
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.rt-row:hover { background: var(--hover-bg); }
+.rt-pos { font-family: ui-monospace, monospace; color: var(--t-3); font-weight: 700; }
+.rt-fio { font-weight: 700; color: var(--t-1); }
+.rt-dim { color: var(--t-3); font-size: 12px; }
+
+/* Rating pill */
+.rt-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: var(--r-pill);
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-2);
+  font-weight: 800;
+  font-size: 14px;
+}
+.rt-rating .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.rt-rating--high { color: var(--ok); }
+.rt-rating--high .dot { background: var(--ok); }
+.rt-rating--mid { color: var(--gold); }
+.rt-rating--mid .dot { background: var(--gold); }
+.rt-rating--low { color: var(--err); }
+.rt-rating--low .dot { background: var(--err); }
+.rt-rating--none { color: var(--t-3); }
+.rt-rating--none .dot { background: var(--t-3); }
+
+/* Top-3 trophies */
+.rt-trophy { font-size: 18px; margin-right: 4px; }
+
+@media (max-width: 900px) {
+  .rt-filter { grid-template-columns: 1fr; }
+}

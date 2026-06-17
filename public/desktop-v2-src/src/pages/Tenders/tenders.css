@@ -1,0 +1,513 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * Tenders — Сага Тендеров (визуальная прокачка)
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─── Таблица ─── */
+.t-list {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.t-list thead tr {
+  border-bottom: 1px solid var(--brd-1);
+  background: var(--inner-bg);
+}
+
+.t-list th {
+  text-align: left;
+  padding: 12px 14px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--t-3);
+  font-weight: 700;
+}
+
+.t-list td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--brd-2);
+  vertical-align: middle;
+}
+
+/* ─── Строка ─── */
+.tnd-row {
+  cursor: pointer;
+  position: relative;
+  transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+.tnd-row > td:first-child {
+  position: relative;
+  padding-left: 18px;
+}
+.tnd-row > td:first-child::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 0 var(--r-pill) var(--r-pill) 0;
+  background: var(--brd-1);
+  transition: background 0.15s ease, width 0.15s ease;
+}
+.tnd-row:hover {
+  background: var(--hover-bg);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(31, 56, 110, 0.10);
+}
+.tnd-row:hover > td:first-child::before { width: 4px; }
+
+/* Цветные борды по статусу — через data-status */
+.tnd-row[data-status="draft"]      > td:first-child::before { background: var(--t-4); }
+.tnd-row[data-status="in_calc"]    > td:first-child::before { background: var(--info); }
+.tnd-row[data-status="kp_ready"]   > td:first-child::before,
+.tnd-row[data-status="kp_sent"]    > td:first-child::before { background: var(--gold); }
+.tnd-row[data-status="won"]        > td:first-child::before { background: var(--ok); }
+.tnd-row[data-status="lost"]       > td:first-child::before,
+.tnd-row[data-status="cancelled"]  > td:first-child::before { background: var(--err); }
+.tnd-row[data-status="archived"]   > td:first-child::before { background: var(--t-3); }
+
+/* ─── ID ─── */
+.tnd-id {
+  font-family: ui-monospace, monospace;
+  color: var(--t-3);
+  font-size: 12px;
+}
+
+/* ─── Заказчик / Тендер ─── */
+.tnd-customer {
+  font-weight: 700;
+  color: var(--t-1);
+  font-size: 13.5px;
+}
+.tnd-title {
+  font-size: 11.5px;
+  color: var(--t-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 360px;
+  margin-top: 2px;
+}
+
+/* ─── Тип тендера ─── */
+.tnd-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px 3px 7px;
+  border-radius: var(--r-pill);
+  font-size: 11.5px;
+  font-weight: 700;
+  border: 1px solid;
+  white-space: nowrap;
+}
+.tnd-type-ic { font-size: 12px; line-height: 1; }
+.tnd-type.state      { background: var(--info-bg);   color: var(--info);   border-color: color-mix(in srgb, var(--info) 30%, transparent); }
+.tnd-type.addendum   { background: var(--purple-bg); color: var(--purple); border-color: color-mix(in srgb, var(--purple) 30%, transparent); }
+.tnd-type.commercial { background: var(--gold-bg);   color: var(--gold);   border-color: color-mix(in srgb, var(--gold) 30%, transparent); }
+.tnd-type.other      { background: var(--inner-bg);  color: var(--t-3);    border-color: var(--brd-1); }
+
+/* ─── Цена ─── */
+.tnd-price {
+  font-weight: 700;
+  color: var(--t-1);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-align: right;
+}
+.t-list th.tnd-price-h { text-align: right; }
+
+/* ─── Дедлайн-пилюли ─── */
+.tnd-deadline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  font-size: 11.5px;
+  font-weight: 700;
+  border: 1px solid;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.tnd-deadline.hot    { background: var(--err-bg);   color: var(--err);   border-color: color-mix(in srgb, var(--err) 32%, transparent); animation: tnd-pulse 2.5s ease-in-out infinite; }
+.tnd-deadline.soon   { background: var(--orange-bg); color: var(--orange); border-color: color-mix(in srgb, var(--orange) 30%, transparent); }
+.tnd-deadline.ok     { background: var(--ok-bg);    color: var(--ok);    border-color: color-mix(in srgb, var(--ok) 28%, transparent); }
+.tnd-deadline.none   { color: var(--t-3); }
+
+@keyframes tnd-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--err) 28%, transparent); }
+  50%      { box-shadow: 0 0 0 5px transparent; }
+}
+
+/* ─── РП ─── */
+.tnd-pm {
+  color: var(--t-2);
+  font-size: 12.5px;
+}
+
+/* ─── Действия ─── */
+.tnd-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+.tnd-actions-wrap {
+  display: inline-flex;
+  gap: 4px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Tenders — Distribution / WinAssign / KpReady — оперативные панели
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* Базовый стиль панели */
+.tnd-panel {
+  padding: 12px;
+}
+.tnd-panel--cyan { background: linear-gradient(135deg, var(--cyan-bg), transparent 70%); }
+.tnd-panel--gold { background: linear-gradient(135deg, var(--gold-bg), transparent 70%); }
+.tnd-panel--ok   { background: linear-gradient(135deg, var(--ok-bg),   transparent 70%); }
+.tnd-panel--info { background: linear-gradient(135deg, var(--info-bg), transparent 70%); }
+
+.tnd-panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.tnd-panel-title {
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.tnd-panel-title--cyan { color: var(--cyan); }
+.tnd-panel-title--gold { color: var(--gold); }
+.tnd-panel-title--ok   { color: var(--ok); }
+.tnd-panel-title--info { color: var(--info); }
+
+.tnd-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 8px;
+}
+
+.tnd-panel-card {
+  padding: 10px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tnd-panel-card-id { color: var(--t-3); font-size: 11px; }
+.tnd-panel-card-name { font-size: 13px; }
+.tnd-panel-card-sub { font-size: 11.5px; color: var(--t-3); }
+.tnd-panel-card-sub-inline { color: var(--t-3); font-size: 11.5px; margin-left: 8px; }
+
+.tnd-panel-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tnd-panel-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+}
+
+/* ─── Action-menu list (вертикальные btn-ghost кнопки) ─── */
+.tnd-actions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tnd-actions-list .btn-ghost {
+  text-align: left;
+  padding: 8px 10px;
+}
+.tnd-panel-card-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Карточка тендера с табами (TenderCardModal)
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.tnd-card-modal {
+  display: flex;
+  flex-direction: column;
+  min-height: 60vh;
+}
+
+.tnd-card-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--brd-1);
+  padding: 0 16px;
+  flex-wrap: wrap;
+}
+
+.tnd-card-tab {
+  background: transparent;
+  border: 0;
+  padding: 10px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--t-3);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.tnd-card-tab:hover { color: var(--t-1); }
+.tnd-card-tab.active {
+  color: var(--gold, var(--t-1));
+  border-bottom-color: var(--gold, var(--accent));
+  font-weight: 600;
+}
+
+.tnd-card-actions-bar {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--brd-2);
+  background: var(--inner-bg, transparent);
+}
+
+.tnd-card-loading {
+  padding: 32px;
+  text-align: center;
+  color: var(--t-3);
+}
+
+.tnd-card-summary {
+  padding: 12px 4px;
+}
+
+.tnd-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px 18px;
+}
+
+.tnd-card-fullrow { grid-column: 1 / -1; }
+.tnd-card-label { font-size: 11px; color: var(--t-3); text-transform: uppercase; letter-spacing: 0.05em; }
+.tnd-card-val { font-size: 13.5px; color: var(--t-1); margin-top: 2px; }
+
+/* ─── Лента комментариев ─── */
+.tnd-comments {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 320px;
+  gap: 12px;
+}
+
+.tnd-comments-feed {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 360px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tnd-comments-empty {
+  text-align: center;
+  color: var(--t-3);
+  padding: 36px 12px;
+  font-size: 13px;
+}
+
+.tnd-comment {
+  display: flex;
+  gap: 10px;
+  padding: 10px;
+  background: var(--inner-bg, rgba(0,0,0,0.02));
+  border-radius: var(--r-sm);
+}
+
+.tnd-comment-avatar {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: var(--gold, #c9a35b);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+
+.tnd-comment-body { flex: 1; min-width: 0; }
+.tnd-comment-head {
+  display: flex; gap: 8px; align-items: baseline;
+  font-size: 11.5px; color: var(--t-3);
+}
+.tnd-comment-author { color: var(--t-1); font-weight: 600; }
+.tnd-comment-role { padding: 1px 6px; border: 1px solid var(--brd-2); border-radius: 8px; font-size: 10px; }
+.tnd-comment-time { margin-left: auto; }
+.tnd-comment-del {
+  background: transparent; border: 0; cursor: pointer;
+  color: var(--red, #e74c3c); font-size: 11px; padding: 0 4px;
+}
+.tnd-comment-text { margin-top: 4px; font-size: 13px; white-space: pre-wrap; word-wrap: break-word; }
+
+.tnd-comments-form {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  border-top: 1px solid var(--brd-2);
+  padding-top: 10px;
+}
+.tnd-comments-form > :first-child { flex: 1; }
+
+/* ─── История изменений ─── */
+.tnd-history {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 2px;
+}
+
+.tnd-history-empty {
+  text-align: center;
+  color: var(--t-3);
+  padding: 36px 12px;
+  font-size: 13px;
+}
+
+.tnd-history-row {
+  display: flex;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--inner-bg, rgba(0,0,0,0.02));
+  border-radius: var(--r-sm);
+}
+
+.tnd-history-ic {
+  font-size: 18px;
+  width: 24px; text-align: center;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.tnd-history-body { flex: 1; min-width: 0; }
+.tnd-history-head {
+  display: flex; gap: 8px; align-items: baseline;
+  font-size: 13px;
+}
+.tnd-history-time { margin-left: auto; color: var(--t-3); font-size: 11.5px; }
+.tnd-history-actor { font-size: 11.5px; color: var(--t-3); }
+.tnd-history-payload { font-size: 11.5px; color: var(--t-3); margin-top: 4px; word-wrap: break-word; }
+
+/* ─── Доп. соглашения ─── */
+.tnd-addenda { padding: 6px 2px; display: flex; flex-direction: column; gap: 12px; }
+.tnd-addenda-head { display: flex; justify-content: space-between; align-items: center; }
+.tnd-addenda-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.tnd-addenda-sum-box {
+  background: var(--inner-bg, rgba(0,0,0,0.02));
+  border-radius: var(--r-sm);
+  padding: 8px 10px;
+}
+.tnd-addenda-sum-label {
+  font-size: 10px;
+  color: var(--t-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.tnd-addenda-sum-val { font-weight: 700; font-size: 14px; }
+.tnd-addenda-sum-total .tnd-addenda-sum-val { color: var(--blue, var(--accent, #3a82f7)); }
+
+.tnd-addenda-empty {
+  color: var(--t-3);
+  font-size: 12px;
+  padding: 16px;
+  text-align: center;
+}
+
+.tnd-addenda-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.tnd-addenda-table th { color: var(--t-3); border-bottom: 1px solid var(--brd-2); text-align: left; padding: 6px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+.tnd-addenda-table td { padding: 6px; border-bottom: 1px solid var(--brd-2); }
+.tnd-addenda-num { font-weight: 600; }
+
+/* ─── Inline-документы ─── */
+.tnd-docs-bar { display: flex; flex-direction: column; gap: 10px; padding: 6px 2px; }
+.tnd-docs-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.tnd-docs-empty {
+  color: var(--t-3);
+  font-size: 12px;
+  padding: 12px;
+  text-align: center;
+  background: var(--inner-bg, rgba(0,0,0,0.02));
+  border-radius: var(--r-sm);
+}
+.tnd-docs-list { display: flex; flex-direction: column; gap: 4px; }
+.tnd-docs-head { font-size: 11px; color: var(--t-3); text-transform: uppercase; letter-spacing: 0.05em; padding: 4px 4px 0; }
+.tnd-docs-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 10px;
+  background: var(--inner-bg, rgba(0,0,0,0.02));
+  border-radius: var(--r-sm);
+}
+.tnd-docs-name { flex: 1; min-width: 0; font-size: 13px; }
+.tnd-docs-name a { color: var(--gold, var(--accent)); text-decoration: none; }
+.tnd-docs-size { color: var(--t-3); font-size: 11px; margin-left: 8px; }
+
+/* ─── Workflow-кнопки ─── */
+.tnd-workflow {
+  align-items: center;
+}
+
+/* ─── Bulk-bar над таблицей ─── */
+.tnd-bulk-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 14px;
+  background: var(--gold-bg, rgba(201, 163, 91, 0.1));
+  border: 1px solid var(--gold, rgba(201, 163, 91, 0.4));
+  border-radius: var(--r-sm);
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tnd-bulk-info { font-size: 13px; }
+.tnd-row-selected { background: var(--gold-bg, rgba(201, 163, 91, 0.08)) !important; }
+.tnd-checkbox-cell { width: 40px; }
+.tnd-checkbox-cell input[type="checkbox"] {
+  cursor: pointer;
+  width: 16px; height: 16px;
+}
+
+/* ─── WinAssign — конфликты ─── */
+.tnd-panel-conflict {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  background: rgba(255, 166, 0, 0.08);
+  border: 1px solid rgba(255, 166, 0, 0.3);
+  border-radius: var(--r-sm);
+}
+.tnd-panel-conflict-list {
+  margin: 0; padding-left: 18px;
+  font-size: 11.5px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.tnd-panel-conflict-list li { display: flex; gap: 4px; }
+.tnd-panel-card-dates { white-space: nowrap; }

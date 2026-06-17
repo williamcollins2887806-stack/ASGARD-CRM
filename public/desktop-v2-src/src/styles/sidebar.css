@@ -1,0 +1,571 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * АСГАРД 2.0 — Полный sidebar (90+ пунктов меню)
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.sb {
+  width: 280px;
+  flex: 0 0 280px;
+  background: var(--bg-1);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  transition: width 0.22s ease;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  /* Никаких контуров, теней, скруглений — простая панель,
+     отделена от main только разницей фона (--bg-1 vs --bg-0) */
+}
+/* В тёмной теме делаем сайдбар чуть глубже фона топбара для разделения */
+[data-theme='dark'] .sb { background: #0B1020; }
+/* В светлой теме var(--bg-1) уже = #FFFFFF — отдельный override не нужен */
+.sb.sb-narrow { width: 64px; flex: 0 0 64px; }
+
+/* ─── BRAND + collapse ─── */
+.sb-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 12px 12px 14px;
+  border-bottom: 1px solid var(--brd-2);
+}
+.sb-brand-mark {
+  width: 40px; height: 40px; flex: 0 0 40px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, var(--gold), var(--red));
+  display: grid; place-items: center;
+  font-weight: 700;
+  color: var(--on-gold);
+  box-shadow: var(--gold-glow), inset 0 0 0 1px rgba(255,255,255,0.15);
+  font-size: 22px;
+  font-family: 'Cinzel', serif;
+  position: relative;
+}
+.sb-brand-mark::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border: 1px solid var(--gold);
+  border-radius: 6px;
+  opacity: 0.4;
+  pointer-events: none;
+}
+.sb-brand-logo {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  display: block;
+  filter: drop-shadow(0 0 4px rgba(212,168,67,0.3));
+}
+.sb-brand-rune {
+  display: none;
+  font-size: 22px;
+  /* Не Cinzel: в нём нет рун Старшего Футарка — браузер показывал tofu/F-fallback (UI-audit 14.06.2026) */
+  font-family: 'Segoe UI Historic', 'Noto Sans Runic', system-ui, serif;
+  color: var(--on-gold);
+}
+.sb-brand-text {
+  display: flex; flex-direction: column; line-height: 1.1; flex: 1; min-width: 0;
+}
+.sb-brand-text strong {
+  font-family: 'Cinzel', serif;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  background: var(--brand-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.sb-brand-text small { font-size: 9px; color: var(--gold); letter-spacing: 0.32em; text-transform: uppercase; font-weight: 700; margin-top: 2px; }
+.sb-toggle {
+  border: 1px solid var(--brd-1);
+  background: var(--inner-bg);
+  width: 26px; height: 26px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--t-3);
+  font-size: 16px;
+  font-weight: 800;
+  display: grid; place-items: center;
+  flex: 0 0 26px;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+.sb-toggle:hover { background: var(--gold-bg); color: var(--gold); }
+
+.sb-narrow .sb-brand { justify-content: center; padding: 12px 10px; }
+.sb-narrow .sb-toggle { position: absolute; right: -10px; top: 22px; background: var(--card-bg); border: 1px solid var(--brd-1); }
+
+/* ─── SEARCH ─── */
+.sb-search { padding: 10px 12px; border-bottom: 1px solid var(--brd-2); }
+.sb-search .inp-field { margin: 0; }
+
+/* ─── NAV / Groups ─── */
+.sb-nav {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px 0 16px;
+  min-height: 0;          /* критично для flex+overflow корректной работы */
+  scrollbar-width: thin;
+  scrollbar-color: var(--brd-1) transparent;
+}
+.sb-nav::-webkit-scrollbar { width: 8px; }
+.sb-nav::-webkit-scrollbar-track { background: transparent; }
+.sb-nav::-webkit-scrollbar-thumb {
+  background: var(--brd-1);
+  border-radius: 4px;
+  border: 2px solid var(--bg-1);
+}
+.sb-nav::-webkit-scrollbar-thumb:hover { background: var(--gold); }
+
+.sb-grp { padding: 0 8px; margin-bottom: 2px; }
+.sb-grp-h {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 10px;
+  border: 0;
+  background: transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: 'Cinzel', serif;
+  color: var(--gold);
+  font-size: 12px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  font-weight: 700;
+  transition: all 0.12s ease;
+  position: relative;
+}
+.sb-grp-h:hover { color: var(--gold-l); }
+.sb-grp-h::after {
+  content: '';
+  position: absolute;
+  left: 10px; right: 30px; bottom: 4px;
+  height: 1px;
+  background: linear-gradient(90deg, var(--gold), transparent);
+  opacity: 0.25;
+}
+.sb-grp-rune {
+  font-size: 18px;
+  flex: 0 0 18px;
+  color: var(--gold);
+  text-shadow: 0 0 8px var(--gold-bg);
+  font-family: 'Cinzel', serif;
+}
+.sb-grp-ic { font-size: 14px; flex: 0 0 14px; }
+.sb-grp-t { flex: 1; text-align: left; }
+.sb-grp-c {
+  font-size: 9.5px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--inner-bg);
+  color: var(--t-3);
+  font-weight: 700;
+}
+.sb-grp.open .sb-grp-c { background: var(--gold-bg); color: var(--gold); }
+.sb-grp-a { font-size: 9px; color: var(--t-3); }
+.sb-grp.open .sb-grp-a { color: var(--gold); }
+
+.sb-grp-list { display: flex; flex-direction: column; gap: 1px; padding: 2px 0 6px; }
+
+/* ─── ITEMS ─── */
+.sb-it {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  border-radius: var(--r-sm);
+  /* Базовый текст — полная яркость (var(--t-1)), а не приглушённая var(--t-2):
+     раньше выглядело «серым пока не наведёшь». */
+  color: var(--t-1);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.12s ease;
+  border-left: 2px solid transparent;
+  position: relative;
+}
+.sb-it:hover {
+  background: var(--hover-bg);
+  color: var(--gold);
+}
+.sb-it.on {
+  background: linear-gradient(90deg, var(--gold-bg), transparent);
+  color: var(--gold);
+  border-left-color: var(--gold);
+  font-weight: 700;
+}
+.sb-it-ic {
+  font-size: 14px;
+  width: 20px;
+  text-align: center;
+  flex: 0 0 20px;
+  /* Иконки всегда в золотом — даже без наведения, как акцент. */
+  color: var(--gold);
+  opacity: 0.78;
+  transition: opacity 0.12s ease;
+}
+.sb-it:hover .sb-it-ic,
+.sb-it.on .sb-it-ic {
+  opacity: 1;
+}
+.sb-it-l {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.sb-it-b {
+  background: var(--red);
+  color: white;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 3px;
+  min-width: 18px;
+  text-align: center;
+}
+/* ─── NARROW MODE ─── */
+.sb-narrow .sb-grp-h { display: none; }
+.sb-narrow .sb-search { display: none; }
+.sb-narrow .sb-grp { padding: 0 6px; }
+.sb-narrow .sb-grp:not(:first-child) { border-top: 1px dashed var(--brd-2); padding-top: 4px; margin-top: 4px; }
+.sb-narrow .sb-it { padding: 10px 8px; justify-content: center; border-left: 0; border-radius: var(--r-sm); }
+.sb-narrow .sb-it.on { border-left: 0; box-shadow: inset 3px 0 0 var(--gold); }
+
+/* ─── FOOTER ─── */
+.sb-foot {
+  padding: 10px;
+  border-top: 1px solid var(--brd-2);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sb-foot-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--t-2);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.sb-foot-btn:hover { background: var(--gold-bg); color: var(--gold); }
+.sb-narrow .sb-foot-btn { justify-content: center; padding: 8px; }
+
+.sb-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--inner-bg);
+  border-radius: var(--r-md);
+}
+.sb-user-ava {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--gold), var(--red));
+  color: white;
+  display: grid; place-items: center;
+  font-weight: 800;
+  font-size: 11px;
+  flex: 0 0 30px;
+  border: 0;
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+button.sb-user-ava:hover { transform: scale(1.06); }
+.sb-user-meta {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; line-height: 1.15;
+}
+.sb-user-meta--btn {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+.sb-user-meta--btn:hover strong { color: var(--gold); }
+.sb-user-meta strong { font-size: 12.5px; color: var(--t-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-user-meta small { font-size: 10px; color: var(--t-3); letter-spacing: 0.06em; text-transform: uppercase; }
+.sb-user-exit {
+  border: 0;
+  background: transparent;
+  color: var(--t-3);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-family: inherit;
+}
+.sb-user-exit:hover { background: var(--err-bg); color: var(--err); }
+.sb-narrow .sb-user { justify-content: center; padding: 6px; }
+
+/* ─── Saga of the Day ─── */
+.sb-saga {
+  padding: 10px 12px;
+  background: linear-gradient(135deg, var(--gold-bg), transparent 70%);
+  border: 1px solid color-mix(in srgb, var(--gold) 25%, transparent);
+  border-radius: 4px;
+  position: relative;
+  overflow: hidden;
+}
+.sb-saga::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 3px; height: 100%;
+  background: linear-gradient(180deg, var(--gold), var(--red));
+}
+.sb-saga-lab {
+  font-family: 'Cinzel', serif;
+  font-size: 9px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--gold);
+  font-weight: 700;
+  margin-bottom: 4px;
+  text-shadow: 0 0 6px var(--gold-bg);
+}
+.sb-saga-text {
+  font-family: 'Cinzel', serif;
+  font-size: 11.5px;
+  color: var(--t-1);
+  line-height: 1.45;
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.sb-empty {
+  text-align: center;
+  padding: 24px 18px;
+  color: var(--t-3);
+  font-size: 12.5px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Свёрнутая группа (без подпунктов, hover открывает popup)
+ * ═══════════════════════════════════════════════════════════════════════ */
+.sb-grp-collapsed {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  margin: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--t-2);
+  font-family: 'Cinzel', serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  transition: all 0.15s ease;
+  position: relative;
+  border: 1px solid transparent;
+}
+.sb-grp-collapsed:hover,
+.sb-grp-collapsed.hover {
+  background: var(--gold-bg);
+  color: var(--gold);
+  border-color: color-mix(in srgb, var(--gold) 35%, transparent);
+  box-shadow: inset 3px 0 0 var(--gold);
+}
+.sb-grp-collapsed.has-active {
+  background: linear-gradient(90deg, var(--gold-bg), transparent);
+  color: var(--gold);
+  box-shadow: inset 3px 0 0 var(--gold);
+  font-weight: 700;
+}
+.sb-grp-collapsed .sb-grp-rune {
+  font-size: 20px;
+  flex: 0 0 24px;
+  color: var(--gold);
+  text-shadow: 0 0 10px var(--gold-bg);
+  font-family: 'Cinzel', serif;
+}
+.sb-grp-collapsed .sb-grp-title {
+  flex: 1;
+  font-family: 'Cinzel', serif;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 11px;
+  font-weight: 700;
+}
+.sb-grp-collapsed .sb-grp-count {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--inner-bg);
+  color: var(--t-3);
+  font-weight: 700;
+  border: 1px solid var(--brd-2);
+  font-family: ui-monospace, monospace;
+}
+.sb-grp-collapsed:hover .sb-grp-count {
+  background: var(--gold);
+  color: var(--on-gold);
+  border-color: var(--gold);
+}
+
+/* В свёрнутом sidebar — только руна */
+.sb-narrow .sb-grp-collapsed {
+  justify-content: center;
+  padding: 12px 8px;
+  margin: 2px 4px;
+}
+.sb-narrow .sb-grp-collapsed .sb-grp-title,
+.sb-narrow .sb-grp-collapsed .sb-grp-count { display: none; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Hover popup со списком пунктов группы
+ * ═══════════════════════════════════════════════════════════════════════ */
+.sb-popup {
+  position: fixed;
+  z-index: 30000;
+  width: 320px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  background: var(--card-bg);
+  border: 1px solid color-mix(in srgb, var(--gold) 30%, transparent);
+  border-radius: 6px;
+  box-shadow:
+    0 24px 64px rgba(0,0,0,0.45),
+    0 0 0 1px var(--brd-1),
+    var(--gold-glow);
+  animation: pop-slide-in 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
+  padding: 6px;
+}
+[data-theme='light'] .sb-popup {
+  box-shadow:
+    0 24px 64px rgba(31, 56, 110, 0.20),
+    0 0 0 1px var(--brd-1),
+    var(--gold-glow);
+}
+@keyframes pop-slide-in { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
+
+.sb-popup-h {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--gold) 20%, transparent);
+  font-family: 'Cinzel', serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gold);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  position: relative;
+}
+.sb-popup-h::after {
+  content: '⚔';
+  position: absolute;
+  right: 12px;
+  top: 50%; transform: translateY(-50%);
+  color: var(--gold);
+  opacity: 0.35;
+  font-size: 16px;
+}
+.sb-popup-rune {
+  font-size: 22px;
+  color: var(--gold);
+  text-shadow: 0 0 12px var(--gold-bg);
+  font-family: 'Cinzel', serif;
+}
+.sb-popup-count {
+  margin-left: auto;
+  margin-right: 22px;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--gold);
+  color: var(--on-gold);
+  font-weight: 800;
+  font-family: ui-monospace, monospace;
+}
+.sb-popup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 0 4px;
+}
+.sb-popup .sb-it { font-size: 12.5px; padding: 8px 12px; }
+.sb-popup .sb-it.on {
+  background: linear-gradient(90deg, var(--gold-bg), transparent);
+  color: var(--gold);
+  border-left-color: var(--gold);
+  font-weight: 700;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Результаты поиска (плоский список с группировкой по заголовкам)
+ * ═══════════════════════════════════════════════════════════════════════ */
+.sb-search-group { padding: 0 8px; margin-top: 6px; }
+.sb-search-group-h {
+  font-family: 'Cinzel', serif;
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--gold);
+  font-weight: 700;
+  padding: 6px 10px 4px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  border-bottom: 1px solid color-mix(in srgb, var(--gold) 18%, transparent);
+  margin-bottom: 4px;
+  text-shadow: 0 0 6px var(--gold-bg);
+}
+
+/* Адаптив: на узких экранах фиксированный narrow */
+@media (max-width: 1100px) {
+  .sb { width: 64px; flex: 0 0 64px; }
+  /* Применяем визуально narrow-режим даже если класс .sb-narrow не выставлен (по media-query),
+     иначе sb-brand (40 + 14+12 padding + 26 toggle) переполняет 64px на 17px (UI-audit 14.06.2026). */
+  .sb .sb-brand { justify-content: center; padding: 12px 10px; }
+  .sb .sb-toggle { position: absolute; right: -10px; top: 22px; background: var(--card-bg); border: 1px solid var(--brd-1); }
+  .sb .sb-brand-text { display: none; }
+  .sb .sb-grp-collapsed .sb-grp-title,
+  .sb .sb-grp-collapsed .sb-grp-count { display: none; }
+  .sb .sb-grp-collapsed { justify-content: center; padding: 12px 8px; margin: 2px 4px; }
+  .sb .sb-grp { padding: 0 6px; }
+  .sb .sb-it { padding: 10px 8px; justify-content: center; border-left: 0; border-radius: var(--r-sm); }
+  .sb .sb-it.on { border-left: 0; box-shadow: inset 3px 0 0 var(--gold); }
+  .sb .sb-search { display: none; }
+  .sb .sb-saga { display: none; }
+  .sb .sb-foot-btn { justify-content: center; padding: 8px; }
+  .sb .sb-foot-btn span, .sb .sb-user-meta, .sb .sb-user-exit { display: none; }
+  .sb .sb-user { justify-content: center; padding: 6px; }
+}
+
+/* Light theme — WCAG AA контраст для заголовков групп / рун / счётчиков.
+   Глобально не углубляем --gold (это сломает брендинг и hover-stripes) — точечно перекрашиваем. */
+:root[data-theme='light'] .sb-grp-rune,
+:root[data-theme='light'] .sb-grp-collapsed .sb-grp-rune {
+  color: #7A6020; /* было var(--gold)=#B8922E, ratio 2.92 → 4.62 на белом */
+  text-shadow: none;
+}
+:root[data-theme='light'] .sb-grp-collapsed .sb-grp-title {
+  color: #5C4818; /* ratio ≥ 5 на белом для uppercase 11px */
+}
+:root[data-theme='light'] .sb-grp-collapsed .sb-grp-count {
+  color: #4A5572; /* было var(--t-3)=#6B7796 ratio 4.24 → 6.1 */
+}

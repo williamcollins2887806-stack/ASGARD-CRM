@@ -1,0 +1,387 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * Gamification Leaderboard — Зал Одина
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.gl-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.gl-stat {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  padding: 14px 18px;
+  text-align: center;
+  box-shadow: var(--sh-card);
+}
+.gl-stat-ico {
+  font-size: 20px;
+  margin-bottom: 4px;
+}
+.gl-stat-v {
+  font-size: 22px;
+  font-weight: 900;
+  line-height: 1;
+}
+.gl-stat-l {
+  font-size: 11px;
+  color: var(--t-3);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-top: 6px;
+  font-weight: 600;
+}
+
+.gl-sort-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.gl-sort-row > span {
+  font-size: 12px;
+  color: var(--t-3);
+}
+.gl-sort-btn {
+  padding: 6px 14px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--brd-1);
+  background: transparent;
+  color: var(--t-3);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.gl-sort-btn:hover {
+  background: var(--hover-bg);
+  color: var(--t-1);
+}
+.gl-sort-btn.active {
+  border-color: var(--gold);
+  background: var(--gold-bg, rgba(200, 168, 75, 0.12));
+  color: var(--gold);
+}
+
+/* ── Podium ── */
+.gl-podium-wrap {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-lg);
+  padding: 18px 16px 6px;
+  box-shadow: var(--sh-card);
+}
+.gl-podium-title {
+  font-size: 11px;
+  color: var(--gold);
+  opacity: 0.55;
+  text-align: center;
+  letter-spacing: 0.25em;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+}
+.gl-podium {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  justify-content: center;
+}
+.gl-podium-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+  min-width: 80px;
+}
+.gl-podium-medal { font-size: 22px; }
+.gl-podium-medal.big { font-size: 28px; }
+.gl-podium-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--bg-0);
+}
+.gl-podium-avatar.big {
+  width: 56px;
+  height: 56px;
+  font-size: 18px;
+}
+.gl-podium-card {
+  text-align: center;
+  border-radius: var(--r-md);
+  padding: 8px 10px;
+  width: 100%;
+  border: 1px solid var(--brd-1);
+}
+.gl-podium-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--t-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gl-podium-val {
+  font-size: 14px;
+  font-weight: 800;
+  margin: 3px 0;
+}
+.gl-podium-rank {
+  font-size: 10px;
+  display: inline-block;
+  border-radius: var(--r-sm);
+  padding: 1px 6px;
+}
+.gl-podium-bar {
+  width: 85%;
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  border: 1px solid var(--brd-1);
+}
+
+/* ── Table ── */
+.gl-table-wrap {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-lg);
+  padding: 16px;
+  box-shadow: var(--sh-card);
+  overflow-x: auto;
+}
+.gl-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.gl-table th {
+  color: var(--t-3);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--brd-1);
+  text-align: left;
+}
+.gl-table td {
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--brd-2);
+  vertical-align: middle;
+}
+.gl-table tr:hover td { background: var(--hover-bg); }
+
+.gl-rank-cell {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--t-3);
+  text-align: center;
+  width: 40px;
+}
+.gl-rank-cell.top { font-size: 18px; }
+
+.gl-warrior-cell { display: flex; align-items: center; gap: 10px; }
+.gl-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 800;
+  flex-shrink: 0;
+  color: var(--bg-0);
+}
+.gl-avatar.idle {
+  background: var(--inner-bg);
+  color: var(--t-2);
+  border: 1px solid var(--brd-1);
+}
+.gl-warrior-info { flex: 1; min-width: 0; }
+.gl-warrior-name {
+  font-weight: 700;
+  color: var(--t-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+.gl-warrior-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  flex-wrap: wrap;
+}
+.gl-warrior-rank {
+  font-size: 10px;
+  border-radius: var(--r-sm);
+  padding: 1px 6px;
+  font-weight: 600;
+}
+.gl-warrior-level {
+  font-size: 10px;
+  color: var(--t-3);
+}
+.gl-warrior-streak {
+  font-size: 10px;
+  color: var(--orange);
+}
+
+.gl-bar {
+  height: 6px;
+  border-radius: 4px;
+  background: var(--bar-bg);
+  overflow: hidden;
+  margin-top: 4px;
+  max-width: 160px;
+}
+.gl-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--gold), var(--amber));
+  transition: width 0.5s ease;
+}
+
+.gl-num-cell {
+  text-align: right;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.gl-num-cell.gold { color: var(--gold); font-weight: 800; }
+.gl-num-cell.month { color: var(--orange); }
+.gl-num-cell.xp { color: var(--purple); }
+.gl-num-cell.shifts { color: var(--blue); }
+
+/* ── Tournament ── */
+.gl-tourney-title {
+  text-align: center;
+  margin-bottom: 18px;
+}
+.gl-tourney-title h3 {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--gold);
+  margin: 0;
+}
+.gl-tourney-sub {
+  font-size: 12px;
+  color: var(--t-3);
+  margin-top: 4px;
+}
+.gl-tourney-champ {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.gl-bracket-wrap {
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+.gl-bracket {
+  display: flex;
+  gap: 0;
+  min-width: max-content;
+}
+.gl-round {
+  display: flex;
+  flex-direction: column;
+}
+.gl-round-title {
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--t-3);
+  padding: 0 8px;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.gl-round-col {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  flex: 1;
+  padding: 0 4px;
+}
+.gl-match-pair {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.gl-match {
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  min-width: 130px;
+  background: var(--inner-bg);
+}
+.gl-match-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  gap: 8px;
+}
+.gl-match-row.winner {
+  background: var(--gold-bg, rgba(200, 168, 75, 0.12));
+  border-left: 2px solid var(--gold);
+}
+.gl-match-name {
+  font-size: 11px;
+  color: var(--t-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100px;
+}
+.gl-match-name.winner-name { font-weight: 800; color: var(--gold); }
+.gl-match-val {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--t-3);
+  flex-shrink: 0;
+}
+.gl-match-val.winner-val { color: var(--gold); }
+.gl-match-tbd {
+  color: var(--t-3);
+  font-size: 11px;
+  font-style: italic;
+}
+.gl-match-arrow {
+  color: var(--t-3);
+  font-size: 12px;
+  padding: 0 2px;
+}
+.gl-divider {
+  height: 1px;
+  background: var(--brd-1);
+}
+
+.gl-tourney-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--t-3);
+}
+
+.gl-tourney-note {
+  font-size: 11px;
+  color: var(--t-3);
+  text-align: center;
+  margin-top: 12px;
+}
+
+@media (max-width: 700px) {
+  .gl-warrior-name { max-width: 110px; }
+  .gl-table th, .gl-table td { padding: 6px 2px; }
+}

@@ -1,0 +1,348 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * TasksAdmin — управление задачами всех РП (директора)
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.tadm-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.tadm-kpi {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-left: 4px solid var(--info);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  box-shadow: var(--sh-card);
+  position: relative;
+}
+
+.tadm-kpi--amber  { border-left-color: var(--amber); }
+.tadm-kpi--orange { border-left-color: var(--orange); }
+.tadm-kpi--ok     { border-left-color: var(--ok); }
+.tadm-kpi--err    { border-left-color: var(--err); }
+
+.tadm-kpi__ic {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  font-size: 18px;
+  opacity: 0.6;
+}
+
+.tadm-kpi__v {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--t-1);
+  line-height: 1.1;
+}
+
+.tadm-kpi__l {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--t-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tadm-toolbar {
+  display: grid;
+  grid-template-columns: minmax(260px, 2fr) repeat(3, minmax(150px, 1fr)) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+@media (max-width: 1100px) {
+  .tadm-toolbar { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 700px) {
+  .tadm-toolbar { grid-template-columns: 1fr; }
+}
+
+.tadm-toolbar > div { min-width: 0; }
+
+/* ── Таблица задач ───────────────────────────────────────────────── */
+
+.tadm-table-wrap {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-card);
+  overflow: hidden;
+}
+
+.tadm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.tadm-table thead th {
+  text-align: left;
+  padding: 11px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--t-3);
+  background: var(--inner-bg);
+  border-bottom: 1px solid var(--brd-2);
+  white-space: nowrap;
+}
+
+.tadm-table tbody td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--brd-2);
+  color: var(--t-1);
+  vertical-align: middle;
+}
+
+.tadm-table tbody tr {
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.tadm-table tbody tr:hover td {
+  background: var(--hover-bg);
+}
+
+.tadm-table tbody tr.row-overdue td {
+  background: color-mix(in srgb, var(--err) 9%, transparent);
+}
+
+.tadm-table tbody tr.row-overdue:hover td {
+  background: color-mix(in srgb, var(--err) 14%, transparent);
+}
+
+.tadm-table tbody tr:last-child td { border-bottom: none; }
+
+.tadm-id {
+  color: var(--t-3);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.tadm-title-cell { min-width: 260px; }
+.tadm-title-cell strong {
+  display: block;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--t-1);
+}
+
+.tadm-title-cell .desc {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--t-3);
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tadm-deadline { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tadm-deadline.is-overdue { color: var(--err); font-weight: 700; }
+
+.tadm-actions-cell {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.tadm-icon-btn {
+  border: 0;
+  background: transparent;
+  color: var(--t-2);
+  cursor: pointer;
+  padding: 5px 8px;
+  border-radius: var(--r-sm);
+  font-size: 14px;
+  line-height: 1;
+}
+.tadm-icon-btn:hover { background: var(--hover-bg); color: var(--t-1); }
+.tadm-icon-btn.danger:hover { background: var(--err-bg, var(--hover-bg)); color: var(--err); }
+
+/* ── Бейджи статуса ─────────────────────────────────────────────── */
+
+.tadm-st {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.st-new       { background: var(--amber-bg, var(--bar-bg));  color: var(--amber); }
+.st-accepted  { background: var(--info-bg,  var(--bar-bg));  color: var(--info);  }
+.st-progress  { background: var(--orange-bg, var(--bar-bg)); color: var(--orange); }
+.st-done      { background: var(--ok-bg,    var(--bar-bg));  color: var(--ok);    }
+.st-overdue   { background: var(--err-bg,   var(--bar-bg));  color: var(--err);   }
+.st-cancelled { background: var(--bar-bg); color: var(--t-3); }
+
+/* ── Бейджи приоритета ──────────────────────────────────────────── */
+
+.tadm-prio {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.p-urgent { background: var(--err-bg,    var(--bar-bg)); color: var(--err);    }
+.p-high   { background: var(--orange-bg, var(--bar-bg)); color: var(--orange); }
+.p-normal { background: var(--info-bg,   var(--bar-bg)); color: var(--info);   }
+.p-low    { background: var(--bar-bg);                    color: var(--t-3);    }
+
+/* ── Матрица РП × статус ────────────────────────────────────────── */
+
+.tadm-matrix {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-card);
+  overflow: hidden;
+}
+
+.tadm-matrix h3 {
+  margin: 0;
+  padding: 14px 16px;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--t-1);
+  border-bottom: 1px solid var(--brd-2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tadm-matrix h3 .hint { font-size: 11.5px; color: var(--t-3); font-weight: 600; }
+
+.tadm-matrix table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tadm-matrix thead th {
+  text-align: center;
+  padding: 9px 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--t-3);
+  background: var(--inner-bg);
+  border-bottom: 1px solid var(--brd-2);
+}
+.tadm-matrix thead th:first-child { text-align: left; padding-left: 16px; }
+
+.tadm-matrix tbody td {
+  text-align: center;
+  padding: 9px 8px;
+  border-bottom: 1px solid var(--brd-2);
+  font-variant-numeric: tabular-nums;
+  color: var(--t-2);
+}
+.tadm-matrix tbody td:first-child { text-align: left; padding-left: 16px; color: var(--t-1); }
+.tadm-matrix tbody tr:hover td { background: var(--hover-bg); cursor: pointer; }
+.tadm-matrix tbody tr:last-child td { border-bottom: none; }
+
+.tadm-matrix tbody td.is-zero { color: var(--t-4); }
+.tadm-matrix tbody td.is-hot  { color: var(--err); font-weight: 700; }
+.tadm-matrix tbody td.is-cold { color: var(--ok);  font-weight: 700; }
+.tadm-matrix tbody td.is-warm { color: var(--orange); font-weight: 700; }
+
+.tadm-matrix .role {
+  font-size: 11px;
+  color: var(--t-3);
+  margin-left: 6px;
+}
+
+/* ── Просмотр задачи (модалка) ──────────────────────────────────── */
+
+.tadm-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+  background: var(--inner-bg);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+
+.tadm-meta .row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tadm-meta .label {
+  font-size: 11px;
+  color: var(--t-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tadm-meta .value {
+  font-weight: 600;
+  color: var(--t-1);
+  font-size: 13px;
+}
+
+.tadm-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tadm-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  background: var(--inner-bg);
+  color: var(--info);
+  font-size: 12px;
+  text-decoration: none;
+  border: 1px solid var(--brd-2);
+}
+
+.tadm-file:hover { background: var(--hover-bg); }
+
+.tadm-section {
+  margin-top: 14px;
+}
+
+.tadm-section h4 {
+  margin: 0 0 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--t-3);
+}
+
+.tadm-section p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--t-1);
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.tadm-section .quote {
+  font-style: italic;
+  background: var(--inner-bg);
+  border-left: 3px solid var(--info);
+  border-radius: var(--r-sm);
+  padding: 8px 12px;
+  color: var(--t-2);
+}

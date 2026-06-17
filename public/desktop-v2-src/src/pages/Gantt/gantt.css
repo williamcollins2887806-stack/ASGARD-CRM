@@ -1,0 +1,215 @@
+/* ─── Шапка страницы ─── */
+.gantt-page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 20px;
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-card);
+}
+.gantt-page-eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--t-3);
+  font-weight: 700;
+}
+.gantt-page-title {
+  margin: 2px 0 0;
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--t-1);
+}
+.gantt-page-motto {
+  font-size: 13px;
+  color: var(--t-3);
+  margin-top: 4px;
+}
+.gantt-page-count {
+  font-size: 12px;
+  color: var(--t-3);
+  margin-top: 6px;
+}
+
+/* ─── Фильтры ─── */
+.gantt-filters {
+  padding: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.gantt-date-inp {
+  background: var(--inner-bg);
+  color: var(--t-1);
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-sm);
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  width: 150px;
+}
+.gantt-date-inp:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: var(--sh-sm);
+}
+
+/* ─── Сама диаграмма ─── */
+.gantt-box {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-card);
+  overflow: auto;
+  max-width: 100%;
+}
+.gantt-empty {
+  padding: 48px 20px;
+  text-align: center;
+}
+.gantt-empty-msg {
+  color: var(--t-3);
+  font-size: 14px;
+}
+
+.gantt-head {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  border-bottom: 1px solid var(--brd-2);
+  background: var(--inner-bg);
+  min-width: 100%;
+}
+.gantt-head-left {
+  padding: 10px 14px;
+  font-weight: 800;
+  color: var(--gold);
+  font-size: 13px;
+}
+.gantt-head-right {
+  display: grid;
+  min-width: 0;
+}
+.gantt-week {
+  padding: 10px 4px;
+  font-size: 11px;
+  color: var(--t-3);
+  text-align: center;
+  border-right: 1px solid var(--brd-2);
+  font-family: ui-monospace, monospace;
+}
+
+.gantt-body {
+  background: var(--card-bg);
+}
+.gantt-row {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  border-bottom: 1px solid var(--brd-2);
+  min-height: 52px;
+}
+.gantt-row:last-child {
+  border-bottom: 0;
+}
+.gantt-row:hover {
+  background: var(--hover-bg);
+}
+.gantt-name {
+  padding: 10px 14px;
+  min-width: 0;
+}
+.gantt-name-main {
+  font-weight: 700;
+  font-size: 13.5px;
+  color: var(--t-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gantt-name-sub {
+  font-size: 11.5px;
+  color: var(--t-3);
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gantt-track {
+  position: relative;
+  height: 52px;
+  padding: 8px 0;
+  min-width: 0;
+}
+.gantt-grid {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  pointer-events: none;
+}
+.gantt-grid > div {
+  border-right: 1px solid var(--brd-2);
+  opacity: 0.5;
+}
+
+.gantt-today {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--gold);
+  opacity: 0.9;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.gantt-bar {
+  position: absolute;
+  top: 12px;
+  height: 28px;
+  border-radius: var(--r-pill);
+  box-shadow: var(--sh-md);
+  border: 0;
+  cursor: pointer;
+  display: block;
+  padding: 0;
+  min-width: 6px;
+  z-index: 1;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  font-family: inherit;
+}
+.gantt-bar:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--sh-lg);
+  z-index: 3;
+}
+.gantt-bar:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.gantt-bar--tender {
+  border: 2px dashed color-mix(in srgb, var(--info) 70%, transparent);
+}
+
+.gantt-bar--cut-left {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-left: 2px dashed var(--t-3);
+}
+.gantt-bar--cut-right {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right: 2px dashed var(--t-3);
+}
+
+@media (max-width: 980px) {
+  .gantt-head, .gantt-row {
+    grid-template-columns: 200px 1fr;
+  }
+  .gantt-name-main { font-size: 12.5px; }
+  .gantt-name-sub  { font-size: 10.5px; }
+}

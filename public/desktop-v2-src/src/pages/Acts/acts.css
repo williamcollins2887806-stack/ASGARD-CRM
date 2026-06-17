@@ -1,0 +1,77 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * Acts — акты выполненных работ
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.act-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) minmax(160px, 1fr);
+  gap: 10px;
+}
+
+.act-tbl-wrap {
+  background: var(--card-bg);
+  border-radius: var(--r-md);
+  border: 1px solid var(--brd-2);
+  overflow: hidden;
+}
+.act-tbl-scroll { overflow-x: auto; }
+
+.act-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.act-table thead tr {
+  background: var(--inner-bg);
+  border-bottom: 1px solid var(--brd-1);
+}
+.act-table th {
+  padding: 10px 12px;
+  text-align: left;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--t-3);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.act-table th.num { text-align: right; }
+.act-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--brd-2);
+  vertical-align: middle;
+}
+.act-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.act-table tr.row-clickable { cursor: pointer; transition: background 0.15s ease; }
+.act-table tr.row-clickable:hover td { background: var(--hover-bg); }
+.act-table tr:last-child td { border-bottom: none; }
+
+.act-num {
+  font-family: ui-monospace, monospace;
+  font-weight: 700;
+  color: var(--t-1);
+  font-size: 12.5px;
+}
+.act-pill {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid;
+  white-space: nowrap;
+}
+.act-row-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .act-toolbar { grid-template-columns: 1fr; }
+}

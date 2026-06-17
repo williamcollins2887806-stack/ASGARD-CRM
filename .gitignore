@@ -60,9 +60,14 @@ WEBHOOK_SECRETS.txt
 .eslintrc.frontend.json
 .eslintrc.react.json
 
-# Desktop v2 — исходники React-приложения только для разработки;
-# на прод выкатывается готовый билд public/v2/ через rsync/scp, не через git
-public/desktop-v2-src/
+# Desktop v2 — исходники в git (src/, configs, public/, scripts/, *.md).
+# На прод выкатывается готовый билд public/v2/ через rsync/scp, не через git.
+# Игнорим node_modules, билд-артефакты и одноразовые audit-скрипты внутри desktop-v2-src.
+public/desktop-v2-src/node_modules/
+public/desktop-v2-src/dist/
+public/desktop-v2-src/audit-reports/
+public/desktop-v2-src/audit_loading*.cjs
+public/desktop-v2-src/_vite_*.log
 public/v2/
 
 # WIP исследовательские артефакты (не для прода)

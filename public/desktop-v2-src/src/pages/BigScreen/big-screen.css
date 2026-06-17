@@ -1,0 +1,656 @@
+/* Big Screen — full-screen Director's TV Dashboard.
+ * Overlays the AppShell using fixed position + body.bs-fullscreen.
+ * Uses CSS variables so it adapts to dark/light themes.
+ */
+
+body.bs-fullscreen {
+  overflow: hidden;
+}
+
+.bs {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-0);
+  z-index: 9999;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+.bs * { box-sizing: border-box; }
+
+/* ── Header ── */
+.bs-hdr {
+  padding: 20px 40px;
+  display: flex;
+  align-items: center;
+  background: linear-gradient(180deg, var(--gold-bg, rgba(242, 208, 138, 0.06)) 0%, transparent 100%);
+  border-bottom: 1px solid var(--brd-1);
+  flex-shrink: 0;
+  gap: 20px;
+}
+
+.bs-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
+
+.bs-brand-icon {
+  font-size: 28px;
+  color: var(--gold);
+}
+.bs-brand-img {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 12px rgba(212, 168, 67, 0.5));
+}
+
+.bs-brand-name {
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--gold);
+  letter-spacing: 3px;
+  text-transform: uppercase;
+}
+
+.bs-brand-sub {
+  font-size: 11px;
+  color: var(--t-3);
+  letter-spacing: 1px;
+  margin-top: 2px;
+}
+
+.bs-hdr-spacer { flex: 1; }
+
+.bs-clock { text-align: right; flex-shrink: 0; }
+
+.bs-clock-time {
+  font-size: 32px;
+  font-weight: 300;
+  color: var(--t-1);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 1px;
+}
+
+.bs-clock-date {
+  font-size: 13px;
+  color: var(--t-3);
+  margin-top: 2px;
+}
+
+.bs-exit {
+  flex-shrink: 0;
+  margin-left: 16px;
+  background: none;
+  border: 1px solid var(--brd-1);
+  color: var(--t-3);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 16px;
+  transition: all 0.3s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+}
+
+.bs-exit:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+/* ── Body ── */
+.bs-body {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px 40px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.bs-slide {
+  width: 100%;
+  max-width: 1600px;
+  animation: bsIn 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  max-height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+@keyframes bsIn {
+  from { opacity: 0; transform: translateY(30px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ── Slide title ── */
+.bs-title {
+  text-align: center;
+  margin-bottom: 28px;
+  flex-shrink: 0;
+}
+
+.bs-title h2 {
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--gold);
+  margin: 0 0 4px;
+  letter-spacing: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bs-title .bs-subtitle {
+  font-size: 13px;
+  color: var(--t-3);
+}
+
+/* ── Footer (dots + nav) ── */
+.bs-foot {
+  padding: 16px 40px 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+  flex-shrink: 0;
+}
+
+.bs-nav-btn {
+  background: none;
+  border: 1px solid var(--brd-1);
+  color: var(--t-3);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 18px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+}
+
+.bs-nav-btn:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.bs-dots {
+  display: flex;
+  gap: 8px;
+}
+
+.bs-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brd-2);
+  transition: all 0.4s;
+  cursor: pointer;
+}
+
+.bs-dot:hover { background: var(--t-3); }
+
+.bs-dot.active {
+  background: var(--gold);
+  width: 24px;
+  border-radius: 4px;
+}
+
+.bs-page {
+  font-size: 11px;
+  color: var(--t-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.bs-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--gold), var(--err));
+  transition: width linear;
+}
+
+/* ── KPI Cards ── */
+.bs-kpi {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  background: var(--brd-1);
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--brd-1);
+}
+
+.bs-kpi-card {
+  background: var(--card-bg);
+  border: none;
+  border-radius: 0;
+  padding: 28px 24px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.bs-kpi-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+}
+
+.bs-kpi-card.c-blue::before { background: var(--info); }
+.bs-kpi-card.c-gold::before { background: var(--gold); }
+.bs-kpi-card.c-green::before { background: var(--ok); }
+.bs-kpi-card.c-purple::before { background: var(--purple); }
+.bs-kpi-card.c-red::before { background: var(--err); }
+.bs-kpi-card.c-amber::before { background: var(--amber); }
+.bs-kpi-card.c-cyan::before { background: var(--cyan); }
+.bs-kpi-card.c-pink::before { background: var(--purple); }
+
+.bs-kpi-lbl {
+  font-size: 11px;
+  color: var(--t-3);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  font-weight: 800;
+  margin-bottom: 12px;
+}
+
+.bs-kpi-val {
+  font-size: 48px;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.bs-kpi-val.c-blue { color: var(--info); }
+.bs-kpi-val.c-gold { color: var(--gold); }
+.bs-kpi-val.c-green { color: var(--ok); }
+.bs-kpi-val.c-purple { color: var(--purple); }
+.bs-kpi-val.c-red { color: var(--err); }
+.bs-kpi-val.c-amber { color: var(--amber); }
+.bs-kpi-val.c-cyan { color: var(--cyan); }
+.bs-kpi-val.c-pink { color: var(--purple); }
+
+.bs-kpi-sub {
+  font-size: 13px;
+  color: var(--t-3);
+  margin-top: 10px;
+}
+
+/* ── Table ── */
+.bs-tbl {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 6px;
+  table-layout: fixed;
+}
+
+.bs-tbl th {
+  font-size: 11px;
+  color: var(--t-3);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  text-align: left;
+  padding: 8px 16px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bs-tbl td {
+  padding: 14px 16px;
+  background: var(--card-bg);
+  font-size: 15px;
+  color: var(--t-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 0;
+}
+
+.bs-tbl tr td:first-child { border-radius: 8px 0 0 8px; }
+.bs-tbl tr td:last-child { border-radius: 0 8px 8px 0; }
+
+.bs-tbl .rank {
+  font-size: 13px;
+  color: var(--t-3);
+  font-weight: 700;
+  width: 40px;
+}
+
+.bs-tbl .highlight {
+  color: var(--gold);
+  font-weight: 700;
+}
+
+/* ── Bar chart ── */
+.bs-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 10px 0;
+}
+
+.bs-bar-lbl {
+  width: 140px;
+  font-size: 14px;
+  color: var(--t-2);
+  text-align: right;
+}
+
+.bs-bar-track {
+  flex: 1;
+  background: var(--bar-bg);
+  border-radius: 6px;
+  height: 28px;
+  overflow: hidden;
+}
+
+.bs-bar-fill {
+  height: 100%;
+  border-radius: 6px;
+  transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  align-items: center;
+  padding-left: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--t-1);
+}
+
+.bs-bar-val {
+  width: 70px;
+  text-align: right;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+/* ── Two-column layout ── */
+.bs-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.bs-col-title {
+  font-size: 13px;
+  color: var(--t-3);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  font-weight: 800;
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--brd-2);
+}
+
+/* ── Status dot ── */
+.bs-status {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 8px;
+}
+
+/* ── Подготовка проектов ── */
+.bs-prep-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+.bs-prep-card {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: 14px;
+  padding: 18px 14px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.bs-prep-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--t-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  margin-top: 6px;
+}
+
+.bs-prep-sub {
+  font-size: 12px;
+  color: var(--t-3);
+}
+
+.bs-prep-meta {
+  font-size: 12px;
+  color: var(--t-2);
+  margin-top: 4px;
+}
+
+.bs-prep-dl {
+  font-size: 12px;
+  color: var(--t-3);
+  margin-top: 2px;
+}
+
+@media (max-width: 1200px) {
+  .bs-kpi { grid-template-columns: repeat(2, 1fr); }
+  .bs-cols { grid-template-columns: 1fr; }
+  .bs-kpi-val { font-size: 36px; }
+  .bs-hdr { padding: 16px 24px; }
+  .bs-body { padding: 16px 24px; }
+  .bs-prep-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ─── Дополнительные классы для замены inline-стилей ─── */
+
+/* Состояния загрузки/пустое */
+.bs-msg {
+  text-align: center;
+  color: var(--t-3);
+  font-size: 20px;
+  padding: 80px;
+}
+
+/* slideFinance — карточки на 2 колонки + Ring */
+.bs-kpi-card--span-2 { grid-column: span 2; }
+.bs-kpi-sub-ring { margin-top: 10px; }
+
+/* slideFunnel — диаграмма за 6 мес */
+.bs-funnel-chart {
+  display: flex;
+  align-items: flex-end;
+  height: 200px;
+  gap: 14px;
+  padding: 12px 8px;
+}
+.bs-funnel-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.bs-funnel-col-bar-box {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 160px;
+  width: 100%;
+  position: relative;
+}
+.bs-funnel-bar {
+  width: 100%;
+  background: var(--info);
+  border-radius: 4px 4px 0 0;
+  position: relative;
+}
+.bs-funnel-bar-won {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--ok);
+  border-radius: 4px 4px 0 0;
+}
+.bs-funnel-month {
+  font-size: 12px;
+  color: var(--t-3);
+}
+.bs-funnel-counts {
+  font-size: 11px;
+  color: var(--t-2);
+}
+
+/* slidePreparation — empty + горящие */
+.bs-prep-empty {
+  text-align: center;
+  padding: 80px 0;
+  color: var(--t-3);
+}
+.bs-prep-empty-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+}
+.bs-prep-empty-text {
+  font-size: 22px;
+}
+.bs-prep-hot {
+  color: var(--err);
+  font-weight: 700;
+  margin-left: 6px;
+}
+.bs-prep-dl-err { color: var(--err); }
+
+/* slidePM/Active — нет данных */
+.bs-no-data {
+  text-align: center;
+  color: var(--t-3);
+  font-size: 18px;
+  padding: 40px;
+}
+
+/* slideOverdue — empty */
+.bs-overdue-ok {
+  text-align: center;
+  padding: 60px 0;
+}
+.bs-overdue-ok-icon {
+  font-size: 80px;
+  margin-bottom: 20px;
+}
+.bs-overdue-ok-text {
+  font-size: 28px;
+  color: var(--ok);
+  font-weight: 700;
+}
+.bs-overdue-ok-sub {
+  font-size: 14px;
+  color: var(--t-3);
+  margin-top: 12px;
+}
+
+/* slideActiveWorks — клетки таблицы */
+.bs-tbl-fw-6 { font-weight: 600; }
+.bs-tbl-fw-7 { font-weight: 700; font-size: 18px; }
+.bs-tbl-cell--col-300 { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bs-tbl-cell--col-200 { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* slideOverdue — серьёзность */
+.bs-overdue-days {
+  font-weight: 900;
+  font-size: 20px;
+}
+
+/* slideTeamAndPermits — пустое */
+.bs-team-empty {
+  text-align: center;
+  padding: 40px;
+  color: var(--t-3);
+}
+.bs-team-empty-icon {
+  font-size: 40px;
+  margin-bottom: 8px;
+}
+
+/* slidePreTendersAndEquipment — кассовые статусы */
+.bs-cash-row {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.bs-cash-cell {
+  text-align: center;
+  min-width: 100px;
+}
+.bs-cash-val {
+  font-size: 32px;
+  font-weight: 900;
+}
+.bs-cash-lbl {
+  font-size: 11px;
+  color: var(--t-3);
+  margin-top: 4px;
+}
+.bs-mt-24 { margin-top: 24px; }
+.bs-col-title--center { text-align: center; }
+
+/* Ring inner */
+.bs-ring-wrap {
+  position: relative;
+  display: inline-block;
+}
+.bs-ring-svg {
+  transform: rotate(-90deg);
+}
+.bs-ring-inner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.bs-ring-val {
+  font-weight: 900;
+  color: var(--t-1);
+  line-height: 1;
+}
+.bs-ring-lbl {
+  font-size: 10px;
+  color: var(--t-3);
+  margin-top: 2px;
+}
+
+/* Light theme — WCAG AA для бренда и KPI-подписей.
+   Только в светлой; в тёмной бренд должен оставаться неон-золотым. */
+:root[data-theme='light'] .bs-brand-name {
+  color: #7A6020;             /* было var(--gold)=#B8922E ratio 2.67 → 4.62 */
+  text-shadow: none;
+}
+:root[data-theme='light'] .bs-kpi-lbl,
+:root[data-theme='light'] .bs-ring-lbl {
+  color: #3D4866;             /* было var(--t-3)=#6B7796 ratio 4.46 → 7.2 */
+}

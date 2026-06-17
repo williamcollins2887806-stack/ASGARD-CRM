@@ -1,0 +1,239 @@
+/* Каталог модалок */
+
+.mc {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 20px;
+  min-height: calc(100vh - 120px);
+}
+@media (max-width: 900px) { .mc { grid-template-columns: 1fr; } }
+
+.mc-side {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-lg);
+  padding: 14px;
+  box-shadow: var(--sh-card);
+  position: sticky;
+  top: 80px;
+  align-self: flex-start;
+  max-height: calc(100vh - 100px);
+  overflow: auto;
+}
+.mc-side .grp {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--t-3);
+  font-weight: 700;
+  padding: 12px 8px 6px;
+}
+.mc-side .item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  color: var(--t-2);
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: all 0.15s ease;
+  font-weight: 500;
+}
+.mc-side .item .ic { font-size: 14px; width: 18px; text-align: center; }
+.mc-side .item .badge {
+  margin-left: auto;
+  font-size: 9px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--inner-bg);
+  color: var(--t-3);
+  letter-spacing: 0.06em;
+}
+.mc-side .item:hover { background: var(--hover-bg); color: var(--gold); }
+.mc-side .item.active {
+  background: var(--gold-bg);
+  color: var(--gold);
+  border-left-color: var(--gold);
+  font-weight: 700;
+}
+
+.mc-main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.mc-hero {
+  position: relative;
+  padding: 22px 26px;
+  border-radius: var(--r-xl);
+  background: var(--card-bg-hero);
+  border: 1px solid var(--brd-1);
+  box-shadow: var(--sh-card);
+  overflow: hidden;
+}
+.mc-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(50% 100% at 0% 0%, var(--gold-bg), transparent 70%),
+    radial-gradient(50% 100% at 100% 100%, var(--purple-bg), transparent 70%);
+  pointer-events: none;
+}
+.mc-hero > * { position: relative; }
+.mc-hero h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 900;
+  background: var(--brand-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.mc-hero .lead {
+  font-size: 13.5px;
+  color: var(--t-2);
+  margin-top: 8px;
+  max-width: 720px;
+  line-height: 1.5;
+}
+
+.mc-section {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-card);
+  padding: 22px 24px;
+}
+.mc-section .h {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.mc-section .h .ico {
+  font-size: 22px;
+  width: 38px; height: 38px;
+  display: grid; place-items: center;
+  background: var(--m-accent-bg, var(--gold-bg));
+  border-radius: var(--r-md);
+}
+.mc-section .h h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+.mc-section .lead {
+  font-size: 13px;
+  color: var(--t-3);
+  margin-bottom: 18px;
+  line-height: 1.5;
+  max-width: 760px;
+}
+
+.mc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.mc-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 16px;
+  border-radius: var(--r-md);
+  background: var(--inner-bg);
+  border: var(--inner-border);
+  cursor: pointer;
+  transition: all 0.16s ease;
+  text-align: left;
+  font-family: inherit;
+  color: var(--t-1);
+  position: relative;
+  overflow: hidden;
+}
+.mc-card:hover {
+  border-color: var(--gold);
+  background: var(--card-bg);
+  transform: translateY(-2px);
+  box-shadow: var(--sh-md);
+}
+.mc-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--mc-grad, linear-gradient(90deg, var(--gold), var(--red)));
+}
+.mc-card .ic { font-size: 24px; margin-bottom: 8px; }
+.mc-card .ttl { font-weight: 700; font-size: 13.5px; }
+.mc-card .desc {
+  font-size: 11.5px;
+  color: var(--t-3);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.mc-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.mc-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  background: var(--inner-bg);
+  border: var(--inner-border);
+  color: var(--t-3);
+}
+.mc-tag.danger { color: var(--err); border-color: color-mix(in srgb, var(--err) 30%, transparent); background: var(--err-bg); }
+.mc-tag.gold { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 30%, transparent); background: var(--gold-bg); }
+.mc-tag.info { color: var(--info); border-color: color-mix(in srgb, var(--info) 30%, transparent); background: var(--info-bg); }
+.mc-tag.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 30%, transparent); background: var(--ok-bg); }
+
+/* Tabs верхнего уровня */
+.mc-tabs-vert { display: flex; flex-direction: column; gap: 4px; }
+.mc-tab-vert {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--brd-1);
+  background: var(--inner-bg);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  color: var(--t-1);
+  transition: all 0.15s ease;
+}
+.mc-tab-vert:hover { border-color: var(--gold); background: var(--gold-bg); }
+.mc-tab-vert.on {
+  background: var(--gold-bg);
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px var(--gold-bg);
+}
+.mc-tab-vert .mc-tab-ic { font-size: 18px; width: 24px; text-align: center; }
+.mc-tab-vert .mc-tab-n { font-size: 13.5px; font-weight: 700; }
+.mc-tab-vert .mc-tab-d { font-size: 11px; color: var(--t-3); margin-top: 2px; }
+.mc-tab-vert .badge {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  background: var(--card-bg);
+  color: var(--gold);
+}

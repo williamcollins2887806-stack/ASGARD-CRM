@@ -1,0 +1,133 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * OfficialEmployees — справочник официально устроенных
+ * Префикс .ofe-* (НЕ .oe-* — коллизия с OfficeExpenses)
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.ofe-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ofe-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ofe-summary-pill {
+  padding: 7px 14px;
+  border-radius: var(--r-pill);
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-2);
+  font-size: 12.5px;
+  color: var(--t-2);
+}
+
+.ofe-summary-pill b {
+  color: var(--t-1);
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+.ofe-summary-pill.ok    { background: var(--ok-bg); color: var(--ok); }
+.ofe-summary-pill.ok b  { color: var(--ok); }
+.ofe-summary-pill.warn  { background: var(--amber-bg, var(--bar-bg)); color: var(--amber); }
+.ofe-summary-pill.warn b{ color: var(--amber); }
+.ofe-summary-pill.err   { background: var(--err-bg); color: var(--err); }
+.ofe-summary-pill.err b { color: var(--err); }
+
+.ofe-table-wrap {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.ofe-table-scroll {
+  overflow-x: auto;
+}
+
+.ofe-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.ofe-table thead tr {
+  background: var(--inner-bg);
+  border-bottom: 1px solid var(--brd-1);
+}
+
+.ofe-table th {
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--t-3);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ofe-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--brd-2);
+  vertical-align: middle;
+}
+
+.ofe-row {
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.ofe-row:hover {
+  background: var(--hover-bg);
+}
+
+.ofe-name {
+  font-weight: 600;
+  color: var(--t-1);
+}
+
+.ofe-pos {
+  font-size: 11px;
+  color: var(--t-3);
+  margin-top: 2px;
+}
+
+.ofe-num {
+  font-weight: 700;
+  color: var(--t-1);
+  white-space: nowrap;
+}
+
+.ofe-debt-pos { color: var(--err); }
+.ofe-debt-neg { color: var(--ok); }
+
+.ofe-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ofe-pii-warn {
+  background: var(--amber-bg, var(--bar-bg));
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-md);
+  padding: 10px 14px;
+  font-size: 12.5px;
+  color: var(--amber);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.ofe-empty {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--t-3);
+  font-size: 14px;
+}

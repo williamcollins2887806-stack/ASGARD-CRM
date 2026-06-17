@@ -1,0 +1,211 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * Funnel — Канбан-доска тендеров
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── KPI ──────────────────────────────────────────────────────────────── */
+.fnl-kpi {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 4px;
+}
+.fnl-kpi-card {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-card);
+  padding: 14px 18px;
+  position: relative;
+}
+.fnl-kpi-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--gold), var(--red));
+  border-radius: var(--r-md) var(--r-md) 0 0;
+}
+.fnl-kpi-card--won::before { background: linear-gradient(90deg, var(--ok), var(--cyan)); }
+.fnl-kpi-card--won .fnl-kpi-val { color: var(--ok); }
+.fnl-kpi-val {
+  font-size: 22px;
+  font-weight: 900;
+  line-height: 1.1;
+  margin-bottom: 4px;
+  color: var(--t-1);
+}
+.fnl-kpi-lab {
+  font-size: 11px;
+  color: var(--t-3);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+/* ── Доска ────────────────────────────────────────────────────────────── */
+.fnl-board {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(260px, 1fr);
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  min-height: 60vh;
+}
+
+/* ── Колонка ──────────────────────────────────────────────────────────── */
+.fnl-col {
+  display: flex;
+  flex-direction: column;
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-card);
+  overflow: hidden;
+  min-width: 260px;
+}
+.fnl-col-h {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--brd-2);
+  background: var(--inner-bg);
+  border-top: 3px solid var(--stage-color, var(--gold));
+}
+.fnl-col-ttl {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--t-1);
+  margin-bottom: 4px;
+}
+.fnl-col-stats {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.fnl-col-cnt {
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--stage-color, var(--gold));
+  line-height: 1;
+}
+.fnl-col-sum {
+  font-size: 11px;
+  color: var(--t-3);
+  font-weight: 600;
+}
+.fnl-col-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  overflow-y: auto;
+  max-height: 70vh;
+  transition: background 0.15s ease;
+}
+.fnl-col-body.over {
+  background: var(--gold-bg);
+  outline: 2px dashed var(--gold);
+  outline-offset: -6px;
+}
+.fnl-col-empty {
+  text-align: center;
+  color: var(--t-4);
+  font-size: 12px;
+  padding: 22px 8px;
+  font-style: italic;
+}
+.fnl-col-more {
+  display: block;
+  width: 100%;
+  text-align: center;
+  font-size: 11px;
+  color: var(--t-3);
+  padding: 8px 6px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: transparent;
+  border: 1px dashed var(--brd-1);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  margin-top: 4px;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+.fnl-col-more:hover {
+  color: var(--gold);
+  border-color: var(--gold);
+  background: var(--gold-bg, rgba(200, 168, 78, 0.08));
+}
+
+/* ── Карточка ─────────────────────────────────────────────────────────── */
+.fnl-card {
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  cursor: grab;
+  transition: all 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fnl-card:hover {
+  border-color: var(--gold);
+  transform: translateY(-1px);
+  box-shadow: var(--sh-sm);
+}
+.fnl-card:active { cursor: grabbing; }
+.fnl-card--drag {
+  opacity: 0.5;
+  transform: rotate(2deg);
+}
+.fnl-card-h {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.fnl-card-cust {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--gold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+.fnl-card-sum {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--t-1);
+  flex: 0 0 auto;
+}
+.fnl-card-ttl {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t-1);
+  line-height: 1.35;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.fnl-card-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10.5px;
+  color: var(--t-3);
+  font-weight: 500;
+}
+
+/* Mobile-адаптация: на узких экранах канбан горизонтальный скролл */
+@media (max-width: 1100px) {
+  .fnl-board {
+    grid-auto-columns: minmax(240px, 280px);
+  }
+}

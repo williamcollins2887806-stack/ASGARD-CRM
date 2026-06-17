@@ -1,0 +1,87 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * Seals — реестр печатей
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.seal-filter {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) minmax(160px, 1fr) minmax(160px, 1fr);
+  gap: 8px;
+}
+.seal-filter > * { min-width: 0; }
+
+.seal-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.seal-table thead tr {
+  background: var(--inner-bg);
+  border-bottom: 1px solid var(--brd-1);
+}
+.seal-table th {
+  text-align: left;
+  padding: 10px 12px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--t-3);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.seal-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--brd-2);
+  vertical-align: middle;
+}
+.seal-row {
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.seal-row:hover {
+  background: var(--hover-bg);
+}
+.seal-name {
+  font-weight: 700;
+  color: var(--t-1);
+}
+.seal-dim {
+  color: var(--t-3);
+  font-size: 12.5px;
+}
+.seal-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+.seal-actions .m-btn {
+  margin-left: 4px;
+}
+
+.seal-kpi {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+.seal-kpi-card {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  box-shadow: var(--sh-card);
+}
+.seal-kpi-lab {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--t-3);
+  font-weight: 700;
+}
+.seal-kpi-val {
+  margin-top: 6px;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--t-1);
+}
+
+@media (max-width: 900px) {
+  .seal-filter { grid-template-columns: 1fr; }
+}

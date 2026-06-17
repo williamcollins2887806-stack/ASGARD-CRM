@@ -1,0 +1,580 @@
+/* Visual Pallet Builder — DnD-эффекты, деревянные паллеты, stretch film, ripple, overfill. */
+
+.vpb {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 16px;
+  min-height: 360px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+@media (max-width: 900px) {
+  .vpb { grid-template-columns: 1fr; }
+}
+
+/* ── Pool (неразмещённые позиции) ─────────────────────────── */
+.vpb__pool {
+  background: var(--card-bg, #1d1f24);
+  border: 2px dashed var(--brd-1, #3a3d44);
+  border-radius: var(--r-md, 8px);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color 0.2s, background 0.2s;
+  position: relative;
+  min-height: 200px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.vpb__pool.is-over {
+  border-color: var(--gold, #d4a13c);
+  background: rgba(212, 161, 60, 0.08);
+}
+.vpb__pool-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t-2, #b8bcc4);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--brd-1, #3a3d44);
+}
+.vpb__pool-badge {
+  background: var(--gold, #d4a13c);
+  color: #1a1a1a;
+  font-weight: 700;
+  border-radius: 10px;
+  padding: 2px 8px;
+  font-size: 12px;
+  transition: transform 0.2s;
+}
+.vpb__pool-badge.pop {
+  animation: vpb-pop 0.4s ease;
+}
+.vpb__pool-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 24px 8px;
+  color: var(--t-3, #7a7e87);
+  font-size: 12px;
+  opacity: 0.7;
+}
+.vpb__pool-empty svg { width: 56px; height: 56px; }
+
+/* ── Карточка позиции ─────────────────────────────────────── */
+.vpb__card {
+  background: var(--bg-inner, #14161a);
+  border: 1px solid var(--brd-1, #3a3d44);
+  border-radius: var(--r-sm, 6px);
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: grab;
+  position: relative;
+  animation: vpb-fade-in 0.3s ease both;
+  transition: box-shadow 0.15s, transform 0.15s, border-color 0.15s;
+  overflow: hidden;
+}
+.vpb__card:hover {
+  border-color: var(--gold, #d4a13c);
+  box-shadow: 0 0 0 1px var(--gold, #d4a13c) inset;
+}
+.vpb__card:active { cursor: grabbing; }
+.vpb__card.is-dragging {
+  opacity: 0.35;
+  transform: scale(0.98);
+}
+.vpb__card.is-packed { opacity: 0.55; }
+.vpb__card-grip {
+  color: var(--t-3, #7a7e87);
+  font-size: 13px;
+  line-height: 1;
+}
+.vpb__card-body { flex: 1; min-width: 0; }
+.vpb__card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t-1, #e3e6ed);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vpb__card-meta {
+  font-size: 11px;
+  color: var(--t-3, #7a7e87);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 1px;
+}
+.vpb__card-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.vpb__card-qty {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--t-2, #b8bcc4);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 2px 6px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+/* ── Ripple-эффект клика по карточке ──────────────────────── */
+.vpb__click-ripple {
+  position: absolute;
+  border-radius: 50%;
+  width: 12px;
+  height: 12px;
+  background: rgba(212, 161, 60, 0.5);
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(1);
+  animation: vpb-ripple-pulse 0.55s ease-out forwards;
+}
+@keyframes vpb-ripple-pulse {
+  0%   { opacity: 0.7; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0;   transform: translate(-50%, -50%) scale(18); }
+}
+
+/* ── Pallets контейнер ────────────────────────────────────── */
+.vpb__pallets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+  align-content: start;
+}
+
+/* ── Палет: «деревянный поддон» ───────────────────────────── */
+.vpb__pallet {
+  position: relative;
+  border-radius: 10px;
+  padding: 12px 12px 16px;
+  background:
+    linear-gradient(180deg, rgba(0,0,0,0.18) 0%, transparent 12%),
+    repeating-linear-gradient(
+      90deg,
+      #8b5a2b 0px, #8b5a2b 14px,
+      #6f4521 14px, #6f4521 16px,
+      #8b5a2b 16px, #8b5a2b 30px,
+      #5c3a1a 30px, #5c3a1a 32px
+    ),
+    linear-gradient(180deg, #8b5a2b 0%, #6f4521 100%);
+  border: 1px solid #4a3014;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 230, 180, 0.15),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.3),
+    0 4px 8px rgba(0, 0, 0, 0.35);
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+  animation: vpb-pallet-drop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  overflow: hidden;
+}
+.vpb__pallet::before {
+  /* верхняя «доска» поддона */
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 6px;
+  background: linear-gradient(180deg, rgba(255,230,180,0.2) 0%, transparent 100%);
+  pointer-events: none;
+}
+.vpb__pallet::after {
+  /* нижняя «опора» */
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 8px;
+  background: repeating-linear-gradient(
+    90deg,
+    #3d2810 0px, #3d2810 18px,
+    transparent 18px, transparent 32px,
+    #3d2810 32px, #3d2810 50px,
+    transparent 50px, transparent 64px,
+    #3d2810 64px, #3d2810 82px
+  );
+  pointer-events: none;
+}
+.vpb__pallet.is-over {
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 230, 180, 0.2),
+    0 0 0 2px var(--gold, #d4a13c),
+    0 8px 16px rgba(212, 161, 60, 0.4);
+  border-color: var(--gold, #d4a13c);
+}
+.vpb__pallet.is-packed { animation: none; }
+.vpb__pallet.is-warning { box-shadow: inset 0 0 0 1px rgba(255, 170, 40, 0.5), 0 4px 8px rgba(0,0,0,0.35); }
+.vpb__pallet.is-full,
+.vpb__pallet.is-overfill {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 70, 70, 0.7),
+    0 0 0 2px rgba(255, 70, 70, 0.4),
+    0 4px 10px rgba(255, 70, 70, 0.3);
+  animation: vpb-overfill-pulse 1.2s ease-in-out infinite;
+}
+@keyframes vpb-overfill-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 1px rgba(255, 70, 70, 0.7), 0 0 0 2px rgba(255, 70, 70, 0.4), 0 4px 10px rgba(255, 70, 70, 0.3); }
+  50%      { box-shadow: inset 0 0 0 1px rgba(255, 70, 70, 0.9), 0 0 0 3px rgba(255, 70, 70, 0.7), 0 4px 16px rgba(255, 70, 70, 0.6); }
+}
+.vpb__pallet.is-shake { animation: vpb-shake 0.5s ease; }
+@keyframes vpb-shake {
+  0%, 100% { transform: translateX(0); }
+  20%      { transform: translateX(-6px); }
+  40%      { transform: translateX(6px); }
+  60%      { transform: translateX(-4px); }
+  80%      { transform: translateX(4px); }
+}
+
+@keyframes vpb-pallet-drop {
+  0%   { opacity: 0; transform: translateY(-12px) scale(0.96); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ── Шапка паллета ────────────────────────────────────────── */
+.vpb__pallet-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 6px;
+  position: relative;
+  z-index: 2;
+}
+.vpb__pallet-num {
+  font-weight: 800;
+  font-size: 15px;
+  color: #ffe6b8;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  line-height: 1.1;
+}
+.vpb__pallet-lbl {
+  font-size: 11px;
+  color: #f5e0b5;
+  opacity: 0.85;
+  margin-top: 2px;
+}
+.vpb__pallet-tools {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.vpb__pallet-tools button,
+.vpb__pallet-cap-edit {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 230, 180, 0.2);
+  color: #ffe6b8;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 12px;
+  cursor: pointer;
+  line-height: 1;
+}
+.vpb__pallet-tools button:hover,
+.vpb__pallet-cap-edit:hover {
+  background: rgba(212, 161, 60, 0.4);
+  border-color: var(--gold, #d4a13c);
+}
+
+/* capacity input в шапке */
+.vpb__cap-input {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 230, 180, 0.3);
+  color: #ffe6b8;
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  width: 50px;
+  text-align: center;
+}
+.vpb__cap-input:focus {
+  outline: none;
+  border-color: var(--gold, #d4a13c);
+}
+
+/* ── Бейдж capacity ───────────────────────────────────────── */
+.vpb__cap {
+  position: relative;
+  z-index: 2;
+  font-size: 11px;
+  font-weight: 600;
+  color: #f5e0b5;
+  background: rgba(0,0,0,0.3);
+  padding: 3px 8px;
+  border-radius: 10px;
+  align-self: flex-start;
+}
+.vpb__cap.vpb__cap-warn { color: #ffd87a; background: rgba(180, 130, 0, 0.5); }
+.vpb__cap.vpb__cap-full { color: #ffd2d2; background: rgba(180, 0, 0, 0.5); }
+
+/* ── Стопка позиций на паллете ────────────────────────────── */
+.vpb__pallet-items {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0;
+  position: relative;
+  z-index: 2;
+  min-height: 60px;
+}
+.vpb__stacked {
+  background: linear-gradient(180deg, #e8c074 0%, #c89945 100%);
+  border: 1px solid #5c3a1a;
+  border-radius: 4px;
+  padding: 5px 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #2a1908;
+  font-weight: 600;
+  box-shadow: 0 2px 3px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.3);
+  cursor: grab;
+  position: relative;
+  transition: transform 0.15s, box-shadow 0.15s;
+  overflow: hidden;
+}
+.vpb__stacked:hover {
+  transform: translateX(2px);
+  box-shadow: 0 3px 5px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.4);
+}
+.vpb__stacked.is-dragging { opacity: 0.4; }
+.vpb__stacked.just-landed { animation: vpb-bounce 0.45s ease; }
+.vpb__stacked-color {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.3);
+}
+.vpb__stacked-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vpb__stacked-qty {
+  font-size: 10px;
+  background: rgba(0,0,0,0.2);
+  padding: 1px 5px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.vpb__stacked-x {
+  cursor: pointer;
+  color: #5c3a1a;
+  opacity: 0.5;
+  padding: 0 2px;
+  transition: opacity 0.15s, color 0.15s;
+}
+.vpb__stacked-x:hover { opacity: 1; color: #b00; }
+@keyframes vpb-bounce {
+  0%   { transform: translateY(-8px) scale(1.04); }
+  60%  { transform: translateY(2px) scale(0.98); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+/* ── Drop-ripple на палете ────────────────────────────────── */
+.vpb__ripple {
+  position: absolute;
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  background: radial-gradient(circle, rgba(255, 230, 180, 0.7) 0%, rgba(255, 230, 180, 0) 70%);
+  transform: translate(-50%, -50%) scale(1);
+  animation: vpb-drop-ripple 0.6s ease-out forwards;
+  pointer-events: none;
+  z-index: 5;
+}
+@keyframes vpb-drop-ripple {
+  0%   { opacity: 0.9; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0;   transform: translate(-50%, -50%) scale(25); }
+}
+
+/* ── Stretch film overlay ─────────────────────────────────── */
+.vpb__film {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.05) 35%, rgba(255,255,255,0.18) 70%, rgba(255,255,255,0.04) 100%),
+    repeating-linear-gradient(45deg, rgba(255,255,255,0.06) 0px, rgba(255,255,255,0.06) 8px, transparent 8px, transparent 14px);
+  backdrop-filter: blur(0.5px);
+  border-radius: 10px;
+  z-index: 3;
+  animation: vpb-wrap 0.7s ease both;
+}
+@keyframes vpb-wrap {
+  0%   { opacity: 0; transform: scale(1.05); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.vpb__stamp {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  background: rgba(0, 80, 0, 0.85);
+  color: #d4ffe0;
+  font-weight: 800;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  border: 1px dashed #d4ffe0;
+  transform: rotate(8deg);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  animation: vpb-stamp 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes vpb-stamp {
+  0%   { opacity: 0; transform: rotate(8deg) scale(2); }
+  100% { opacity: 1; transform: rotate(8deg) scale(1); }
+}
+
+/* ── Footer паллета ───────────────────────────────────────── */
+.vpb__pallet-foot {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: #f5e0b5;
+  margin-top: auto;
+  padding-top: 4px;
+  border-top: 1px dashed rgba(255, 230, 180, 0.25);
+}
+.vpb__pallet-foot-count.pop { animation: vpb-pop 0.4s ease; }
+
+/* ── Кнопка «новое паллетоместо» ──────────────────────────── */
+.vpb__add {
+  border: 2px dashed var(--brd-1, #3a3d44);
+  border-radius: 10px;
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  color: var(--t-3, #7a7e87);
+  font-size: 12px;
+  transition: border-color 0.2s, color 0.2s, background 0.2s;
+  animation: vpb-fade-in 0.3s ease both;
+}
+.vpb__add:hover {
+  border-color: var(--gold, #d4a13c);
+  color: var(--gold, #d4a13c);
+  background: rgba(212, 161, 60, 0.05);
+}
+.vpb__add-icon {
+  font-size: 32px;
+  line-height: 1;
+  font-weight: 300;
+}
+
+/* ── Drag ghost (полупрозрачный preview за курсором) ──────── */
+.vpb__ghost {
+  position: fixed;
+  z-index: 99999;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(45, 47, 54, 0.95) 0%, rgba(20, 22, 26, 0.95) 100%);
+  border: 1px solid var(--gold, #d4a13c);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--t-1, #e3e6ed);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(212, 161, 60, 0.3);
+  opacity: 0.92;
+  max-width: 240px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  backdrop-filter: blur(2px);
+}
+.vpb__ghost-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.vpb__ghost-qty {
+  font-size: 10px;
+  color: var(--t-3, #7a7e87);
+  margin-left: 4px;
+}
+
+/* ── Легенда ──────────────────────────────────────────────── */
+.vpb__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--t-3, #7a7e87);
+  padding: 6px 0;
+  margin-bottom: 6px;
+}
+.vpb__legend-item { display: inline-flex; align-items: center; gap: 4px; }
+.vpb__legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* ── FLIP transition ──────────────────────────────────────── */
+.vpb__flip {
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes vpb-fade-in {
+  0%   { opacity: 0; transform: translateY(4px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes vpb-pop {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+
+/* ── Заголовок секции с переключателем View ───────────────── */
+.vpb__toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.vpb__view-toggle {
+  display: inline-flex;
+  background: var(--bg-inner, #14161a);
+  border: 1px solid var(--brd-1, #3a3d44);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.vpb__view-toggle button {
+  background: transparent;
+  border: none;
+  color: var(--t-3, #7a7e87);
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.vpb__view-toggle button.is-active {
+  background: var(--gold, #d4a13c);
+  color: #1a1a1a;
+  font-weight: 600;
+}

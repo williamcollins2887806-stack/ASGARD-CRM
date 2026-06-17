@@ -1,0 +1,47 @@
+/* Стили /meetings. */
+
+.mtg-rsvp-btn {
+  padding: 6px 12px;
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.mtg-rsvp-btn--active {
+  background: var(--gold-bg);
+  border-color: var(--gold);
+}
+
+.mtg-dot { margin: 0 6px; }
+
+.mtg-task-btn {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+.mtg-section-h3 {
+  margin: 8px 0 10px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.mtg-card {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  padding: 16px;
+  cursor: pointer;
+}
+
+.mtg-rsvp-mini {
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--brd-2);
+  color: var(--t-2);
+  border-radius: var(--r-sm);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}

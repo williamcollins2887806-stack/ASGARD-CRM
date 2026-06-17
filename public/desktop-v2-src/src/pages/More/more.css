@@ -1,0 +1,197 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * /more — меню «Ещё» для мобильных пользователей десктоп-CRM
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.more-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.more-profile {
+  background: linear-gradient(135deg, var(--card-bg) 0%, var(--inner-bg) 100%);
+  border-radius: var(--r-xl);
+  padding: 22px 22px;
+  border: 1px solid var(--brd-1);
+  box-shadow: var(--sh-card);
+  position: relative;
+  overflow: hidden;
+}
+.more-profile::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--gold), var(--red), var(--gold));
+  opacity: 0.7;
+}
+.more-profile::after {
+  content: 'ᚦ';
+  position: absolute;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 80px;
+  opacity: 0.05;
+  color: var(--gold);
+  pointer-events: none;
+  font-family: 'Cinzel', serif;
+}
+
+.more-user-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  position: relative;
+  z-index: 1;
+}
+.more-avatar {
+  width: 60px; height: 60px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--gold), var(--red));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 900;
+  color: #1a1000;
+  box-shadow: 0 4px 16px rgba(212,168,67,0.4);
+  position: relative;
+  flex-shrink: 0;
+}
+.more-avatar::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 2px solid rgba(212,168,67,0.25);
+}
+.more-user-info { flex: 1; min-width: 0; }
+.more-user-name {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--t-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.more-user-role {
+  font-size: 12px;
+  color: var(--gold);
+  font-weight: 700;
+  margin-top: 3px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.more-quick {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-top: 18px;
+  position: relative;
+  z-index: 1;
+}
+.more-quick-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 8px;
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-md);
+  color: var(--t-2);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-decoration: none;
+}
+.more-quick-btn:hover {
+  background: var(--hover-bg);
+  border-color: var(--gold);
+  color: var(--t-1);
+}
+.more-quick-btn-ic { font-size: 22px; }
+
+.more-section { display: flex; flex-direction: column; }
+.more-section-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--gold);
+  padding: 4px 4px 10px;
+}
+.more-section-list {
+  background: var(--card-bg);
+  border-radius: var(--r-lg);
+  border: 1px solid var(--brd-1);
+  overflow: hidden;
+}
+
+.more-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 16px;
+  color: var(--t-1);
+  text-decoration: none;
+  border-bottom: 1px solid var(--brd-2);
+  transition: background 0.15s;
+  background: transparent;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.more-item:last-child { border-bottom: none; }
+.more-item:hover { background: var(--hover-bg); }
+
+.more-item-ic {
+  width: 38px; height: 38px;
+  border-radius: var(--r-sm);
+  background: var(--inner-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.more-item-label { flex: 1; font-size: 14.5px; font-weight: 500; }
+.more-item-desc { font-size: 11.5px; color: var(--t-3); margin-top: 2px; }
+.more-item-arrow { color: var(--t-3); font-size: 18px; }
+
+.more-logout {
+  width: 100%;
+  min-height: 48px;
+  border-radius: var(--r-lg);
+  border: 1.5px solid var(--err);
+  background: rgba(239,68,68,0.08);
+  color: var(--err);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+.more-logout:hover {
+  background: rgba(239,68,68,0.16);
+}
+
+.more-search-wrap {
+  margin-bottom: 4px;
+}
+
+@media (max-width: 480px) {
+  .more-quick { grid-template-columns: repeat(2, 1fr); }
+}
