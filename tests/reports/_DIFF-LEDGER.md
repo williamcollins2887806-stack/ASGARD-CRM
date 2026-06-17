@@ -1035,7 +1035,11 @@ const WORK_EXP_COLS = new Set([
 - **Суть:** 3 INSERT-а в site_inspections.js нужно либо (a) перевести с колонки `url` на `link` (если колонка `url` в notifications не существует вообще), либо (b) дополнить allowlist Alerts на чтение `n.url || n.link || n.link_hash`. Решение зависит от того, есть ли `url`-колонка в схеме `notifications` (нужна одна команда `\d notifications` на проде/клоне).
 - **Verify-метод:** `\d notifications` → если `url`-колонка есть, INSERT-ы корректны на запись, но фронт их теряет → фикс на фронте. Если колонки нет → INSERT-ы падают с ошибкой "column url does not exist" → backend silently logs + skip → фикс на бэке (заменить `url` → `link`).
 - **Статус:** FOUND
-- **Plan:** проверить схему `notifications` (read-only) → решить (a/b) → отдельная сессия.
+- **FIXED:** 2026-06-17 batch-A (`src/routes/site_inspections.js`, коммит 7f975f6) — 3 INSERT'а (строки 238, 575, 616): `url` → `link`. Прод-схема имеет ОБЕ колонки, но активный канон — `link` (v2 Alerts/index.jsx:102 читает только `n.link`).
+- **VERIFIED:** 2026-06-17 batch-A независимым аудит-агентом на клоне asgard_crm_test
+- **Sentinel test:** `INSERT INTO notifications (user_id, type, title, message, link, created_at) VALUES (1, 'site_inspection_audit', 'auditZ-D014', 'audit', '#/site-inspections', NOW()) RETURNING id, link` → `105806|#/site-inspections`, cleanup DELETE 1
+- **Result:** PASS
+- **Plan:** проверить схему `notifications` (read-only) → решить (a/b) → отдельная сессия. (закрыто)
 
 ---
 
@@ -1144,6 +1148,10 @@ customers, works (кроме D-001), staff/EMPLOYEE_COLS+EmployeeExtraFields (п
 - **Суть:** после согласования премий ваниль автоматически проводит расходы в work_expenses как fot_bonus; v2 этого не делает → ФОТ-расходы по премиям молча выпадают из учёта, отчёты ФОТ/маржа недосчитают.
 - **Plan:** перенести side-effect в backend handler POST `/api/bonus-approval/:id/approve` (надёжнее, чем в фронте). Бэк сейчас не делает — добавить транзакцию INSERT work_expenses для каждого item в request.bonuses.
 - **Статус:** FOUND
+- **FIXED:** 2026-06-17 batch-A. **Actual endpoint найден:** `POST /api/approval/:entityType/:id/approve` → `approvalService.directorApprove` в `src/services/approvalService.js:294` (выделенного `bonus-approval.js` нет — bonus_requests идут через generic approval). Side-effect добавлен внутри уже существующей транзакции (BEGIN на :324, COMMIT на :451/481). **Канонические колонки V219:** `category='fot'` (а НЕ 'fot_bonus' — V219 CHECK блокирует), признак премии трассируется через `bonus_request_id`, `fot_bonus=amount`, `fot_employee_id=employee_id`, `source='bonus_approval'`. Невалидные бонусы (null employee_id, amount<=0) пропускаются. Коммит 7f975f6.
+- **VERIFIED:** 2026-06-17 batch-A независимым аудит-агентом на клоне через :3100
+- **Sentinel test:** seed `bonus_requests id=118` с 4 бонусами (2 валидных + 2 невалидных) → `POST /api/approval/bonus_requests/118/approve` под test_director → `{status:"approved", payment_status:"pending_payment"}` → `SELECT category, amount, fot_bonus, source FROM work_expenses WHERE bonus_request_id=118` → 2 строки: emp=1/amount=5000, emp=2/amount=7500, обе `category='fot'`, `source='bonus_approval'`, `fot_bonus=amount`. Атомарность: ROLLBACK в catch откатывает INSERT'ы.
+- **Result:** PASS
 
 ## D-20 — calendar-participants-missing (источник: A-18 /calendar)
 
@@ -2554,6 +2562,11 @@ D-15-candidate из A-29 (correspondence RBAC расширен) и A-31 (custome
   1. На клоне применить миграцию V221 (если A) → запустить cron вручную → SELECT FROM cash_operations должен вернуть >0 строк для users с кассой.
   2. Если B → запустить cron на клоне → SELECT FROM kpi_snapshots должен вернуть свежий снимок.
 - **Статус:** FOUND (требует решения Никиты A/B перед фиксом)
+- **РЕШЕНИЕ:** **B** (пользователь, 2026-06-17). `kpi_snapshots` оказался НЕ таблицей, а ключом в `settings.value_json` (jsonb-массив 30 дней) — переписали ТОЛЬКО SQL, без новых таблиц.
+- **FIXED:** 2026-06-17 batch-A. `cash-limit-cron.js:27-40` — SQL зеркалит `GET /api/cash/my-balance` (`src/routes/cash.js:226-244`): issued = SUM(cash_requests) WHERE status IN ('money_issued','received','reporting') AND user; spent = SUM(cash_expenses) JOIN cash_requests WHERE status IN ('received','reporting'); returned = SUM(cash_returns) WHERE confirmed_at NOT NULL JOIN cash_requests. `kpi-snapshot-cron.js:27-33` — 3 раздельных SUM: cash_requests (issued_at >= today-1d), cash_returns (confirmed_at >= today-1d), cash_expenses (created_at >= today-1d). **Убраны `.catch()` маскировки** (раньше ERROR от FROM cash_operations глотался → cash всегда 0). Коммит 7f975f6.
+- **VERIFIED:** 2026-06-17 batch-A независимым аудит-агентом на клоне asgard_crm_test
+- **Sentinel test:** BEGIN на клоне: создан user, cash_request 100k received, cash_expense 30k, cash_return 20k confirmed → новый SQL вернул balance=**50000.00** для тест-пользователя; KPI {issued:100k, returned:20k, spent:30k}. node -e require() обоих модулей возвращает {start, stop, runOnce/takeSnapshot} как function. ROLLBACK clean.
+- **Result:** PASS
 
 ---
 

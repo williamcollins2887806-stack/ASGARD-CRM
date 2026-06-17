@@ -19,7 +19,7 @@
 
 | Группа | Кол-во | Состав (D-NN) |
 |---|---|---|
-| A. Прод-500 хотфиксы | 3 | **D-134** (cash_operations+kpi_snapshots cron-failure), D-14, D-19 |
+| A. Прод-500 хотфиксы | **0** (✅ закрыт коммитом 7f975f6, 3/3 VERIFIED) | ~~D-134, D-14, D-19~~ |
 | B. Migration-backfill | 13 | **D-003** (score_1_10 drift), **D-135** (tkp 15 ALTER), **D-136** (employee_assignments 22 ALTER), D-004, D-20, D-58, D-77, D-78, D-79, D-83, D-84, D-93, D-94 |
 | C. Крупные пересборки | 7 | D-15, D-21, D-24, D-53, D-54, D-55, D-56 |
 | D. Обязательные средние | 55 | D-13, D-16, D-17, D-18, D-22, D-23, D-26, D-27, D-30, D-31, D-34, D-35, D-36, D-42, D-43, D-44, D-45, D-48, D-49, D-50, D-51, D-52, D-57, D-59, D-60, D-61, D-62, D-63, D-64, D-65, D-66, D-67, D-68, D-69, D-70, D-71, D-72, D-73, D-74, D-75, D-76, D-80, D-91, D-103, D-106, D-111, D-115, D-116, D-117, D-118, D-119, D-120, D-121, D-122, D-123 |
@@ -31,13 +31,13 @@
 
 ---
 
-## A. Прод-500 хотфиксы
+## A. Прод-500 хотфиксы — ✅ ЗАКРЫТ batch-A (3/3 VERIFIED, коммит 7f975f6)
 
 | D-NN | severity | type | файл(ы) | как чинить | чем verify | статус |
 | --- | --- | --- | --- | --- | --- | --- |
-| D-134 | CRITICAL | prod-500 / missing-table | `src/services/cash-limit-cron.js:32-34` \| `src/services/kpi-snapshot-cron.js:30` \| migrations | Прод-evidence: `cash_operations`, `kpi_snapshots`, `cash_documents` НЕ существуют (SSH `\dt` подтвердил). Решение Никиты A/B: (A) миграция V221 — CREATE TABLE `cash_operations(user_id, kind, amount, …)` + `kpi_snapshots`, backfill из cash_expenses/requests/returns; ИЛИ (B) переписать оба cron-сервиса на актуальные cash_expenses/cash_requests/cash_returns без новых таблиц. | A: migration up-down + запуск cron на клоне → SELECT FROM cash_operations возвращает строки + SELECT FROM kpi_snapshots возвращает свежий снимок. B: SELECT всё ещё пуст, но cron логи без ERROR. | FOUND (ждёт буквы A/B) |
-| D-14 | medium | missing-field / replaced-regression | `src/routes/site_inspections.js:238-240` \| `:575-576` \| `:616-617` \| `public/desktop-v2-src/src/pages/Alerts/index.jsx:100` | Сначала `\d notifications` на проде/клоне. Если колонки `url` нет — backend INSERT-ы рушатся, заменить `url` → `link` в 3 местах site_inspections.js. Если колонка есть — дополнить fallback в Alerts: `n.url \|\| n.link \|\| n.link_hash`. | sentinel POST `/api/site-inspections` → notification row → GET `/api/notifications` ассертит link не дефолтный `#/home`; миграция up-down если добавляем колонку | FOUND |
-| D-19 | high | missing-feature (side-effect) | `public/assets/js/bonus_approval.js:480-497` \| `src/routes/bonus-approval.js POST /:id/approve` | Перенести vanilla side-effect в backend transaction: при `newStatus='approved'` для каждого item в request.bonuses INSERT INTO work_expenses{category:'fot_bonus', amount, employee_id, comment, bonus_request_id, created_by}. Атомарно с UPDATE bonus_request.status. **NB:** в `src/routes` файла `bonus-approval.js` НЕТ — выясни актуальный endpoint (approval.js?) и реализуй там. | sentinel POST `/api/<actual-route>` (премия с 3 бонусами) → SELECT COUNT(*) FROM work_expenses WHERE bonus_request_id=:id → ассертит 3; SUM(amount) ассертит сумму bonuses | FOUND |
+| D-134 | CRITICAL | prod-500 / missing-table | `src/services/cash-limit-cron.js:32-34` \| `src/services/kpi-snapshot-cron.js:30` | Решение B (пользователь): SQL зеркалит GET /api/cash/my-balance (cash_requests/returns/expenses); `kpi_snapshots` — это ключ в settings.value_json, не таблица. Убраны `.catch()` маскировки. | sentinel клон: 100k req + 30k exp + 20k return → balance=50000 ✓; KPI {issued:100k, returned:20k, spent:30k} ✓ | ✅ **VERIFIED** |
+| D-14 | medium | missing-field / replaced-regression | `src/routes/site_inspections.js:238/575/616` | 3 INSERT'а: `url` → `link` (прод-схема имеет обе колонки, активный канон — `link`). | sentinel клон: INSERT с link → id=105806 ✓, DELETE 1 | ✅ **VERIFIED** |
+| D-19 | high | missing-feature (side-effect) | `src/services/approvalService.js:352-388` (actual endpoint найден; bonus-approval.js не существовал) | INSERT work_expenses внутри той же транзакции BEGIN/COMMIT (категория канон `'fot'` по V219 CHECK, признак премии `bonus_request_id + fot_bonus + source='bonus_approval'`). Skip invalid (null emp / amount<=0). | sentinel клон через :3100: 4 бонуса (2 валидных + 2 невалидных) → POST approve → 2 work_expenses ✓ | ✅ **VERIFIED** |
 
 ---
 
