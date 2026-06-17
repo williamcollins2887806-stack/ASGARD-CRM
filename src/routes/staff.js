@@ -175,6 +175,29 @@ async function routes(fastify, options) {
     return { employee: formatDates(result.rows[0]), reviews: reviews.rows };
   });
 
+  // GET /employees/:id/photo — фото/аватар сотрудника. v2 EmployeeDetailModal.jsx:204
+  // запрашивает этот URL, без endpoint'а возвращался 404 на каждое открытие карточки.
+  // Колонка на проде называется `active_avatar` (URL/путь). Если её нет — 404.
+  fastify.get('/employees/:id/photo', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const { rows } = await db.query('SELECT active_avatar FROM employees WHERE id = $1', [request.params.id]);
+    if (!rows[0]) return reply.code(404).send({ error: 'Сотрудник не найден' });
+    const src = rows[0].active_avatar;
+    if (!src) return reply.code(404).send({ error: 'Фото не задано' });
+    // Если значение — относительный путь, отдаём редирект на статику.
+    if (/^https?:\/\//.test(src)) return reply.redirect(src);
+    if (src.startsWith('/')) return reply.redirect(src);
+    // Если data: URL — отдаём как base64.
+    if (src.startsWith('data:')) {
+      const m = src.match(/^data:([^;]+);base64,(.+)$/);
+      if (m) {
+        reply.header('Content-Type', m[1]);
+        return reply.send(Buffer.from(m[2], 'base64'));
+      }
+    }
+    // Иначе пытаемся найти в uploads.
+    return reply.redirect('/uploads/' + src);
+  });
+
   // SECURITY: SQL injection fix + B3 role check
   fastify.post('/employees', { preHandler: [fastify.requireRoles(['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN'])] }, async (request, reply) => {
     const body = request.body || {};

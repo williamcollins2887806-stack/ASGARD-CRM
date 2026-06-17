@@ -124,6 +124,23 @@
   cursor: pointer;
   background: transparent;
 }
+/* Опции нативного <select> не наследуют CSS из родителя — стилизуем явно,
+   иначе в тёмной теме браузер рисует их в системной светлой палитре
+   (белый фон + чёрный текст невидим на тёмной странице). */
+.inp-select option,
+select option {
+  background: var(--card-bg);
+  color: var(--t-1);
+}
+.inp-select option:checked,
+select option:checked {
+  background: var(--gold-bg);
+  color: var(--t-1);
+}
+.inp-select option:disabled,
+select option:disabled {
+  color: var(--t-3);
+}
 
 /* ─── Popover (через React Portal, fixed-positioned) ─── */
 .pop {
