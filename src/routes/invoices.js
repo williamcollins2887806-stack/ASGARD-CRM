@@ -185,7 +185,16 @@ async function invoicesRoutes(fastify, options) {
     preHandler: [fastify.requireRoles(WRITE_ROLES)]
   }, async (request, reply) => {
     const { id } = request.params;
-    const { amount, payment_date, comment } = request.body;
+    const body = request.body || {};
+    // Accept both legacy {payment_date, comment} and spec {paid_at, payment_method, note}
+    const amount = body.amount;
+    const payment_date = body.payment_date || body.paid_at;
+    const payment_method = body.payment_method || null;
+    const comment = body.comment || body.note || null;
+
+    if (amount == null || !(parseFloat(amount) > 0)) {
+      return reply.code(400).send({ success: false, message: 'amount must be > 0' });
+    }
 
     const invoice = await db.query('SELECT * FROM invoices WHERE id = $1', [id]);
     if (invoice.rows.length === 0) {
@@ -193,10 +202,10 @@ async function invoicesRoutes(fastify, options) {
     }
 
     const payment = await db.query(`
-      INSERT INTO invoice_payments (invoice_id, amount, payment_date, comment, created_by, created_at)
-      VALUES ($1, $2, $3, $4, $5, NOW())
+      INSERT INTO invoice_payments (invoice_id, amount, payment_date, payment_method, comment, created_by, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, NOW())
       RETURNING *
-    `, [id, amount, payment_date || new Date().toISOString().slice(0, 10), comment, request.user?.id]);
+    `, [id, amount, payment_date || new Date().toISOString().slice(0, 10), payment_method, comment, request.user?.id]);
 
     const newPaidAmount = parseFloat(invoice.rows[0].paid_amount || 0) + parseFloat(amount);
     const totalAmount = parseFloat(invoice.rows[0].total_amount || 0);

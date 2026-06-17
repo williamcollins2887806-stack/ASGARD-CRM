@@ -58,10 +58,11 @@ export function SealTransferModal({ seal, users = [], currentUserId, onDone }) {
         });
         toast.success('Печать возвращена в офис');
       } else {
+        const toIdNum = parseInt(toId, 10);
         const transfer = await createTransfer({
           seal_id: seal.id,
           from_id: seal.holder_id || null,
-          to_id: parseInt(toId, 10),
+          to_id: toIdNum,
           transfer_date: transferDate || todayIso(),
           return_date: indefinite ? null : (returnDate || null),
           is_indefinite: !!indefinite,
@@ -71,11 +72,29 @@ export function SealTransferModal({ seal, users = [], currentUserId, onDone }) {
         });
         await updateSeal(seal.id, {
           status: 'transfer',
-          holder_id: parseInt(toId, 10),
+          holder_id: toIdNum,
           return_date: indefinite ? null : (returnDate || null),
           is_indefinite: !!indefinite,
           pending_transfer_id: transfer?.id || null
         });
+        // graceful notification — если упадёт, передача всё равно создана
+        try {
+          const sealLabel = seal?.number || seal?.name || seal?.id;
+          await fetch('/api/notifications', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              user_id: toIdNum,
+              type: 'seal_transfer',
+              title: 'Печать передана вам',
+              message: `Печать №${sealLabel} передана. Подтвердите получение.`,
+              link: `#/seals?id=${seal.id}`
+            })
+          });
+        } catch (notifyErr) {
+          console.warn('[SealTransferModal] notification failed', notifyErr);
+        }
         toast.success('Запрос на передачу создан');
       }
       emit();

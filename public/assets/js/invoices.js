@@ -312,18 +312,26 @@ window.AsgardInvoicesPage = (function(){
     
     $('#btnSavePay')?.addEventListener('click', async () => {
       const payAmount = parseFloat($('#pay_amount').value) || 0;
-      const newPaid = (inv.paid_amount || 0) + payAmount;
-      const newStatus = newPaid >= inv.total_amount ? 'paid' : 'partial';
-      
-      const data = { ...inv, paid_amount: newPaid, status: newStatus };
-      const result = await saveInvoice(data);
-      
-      if (result.success) {
-        closeModal();
-        toast('Оплата', 'Платёж внесён', 'ok');
-        location.reload();
-      } else {
-        toast('Ошибка', result.message, 'err');
+      if (!(payAmount > 0)) { toast('Ошибка', 'Сумма должна быть > 0', 'err'); return; }
+      const payDate = $('#pay_date').value || new Date().toISOString().slice(0,10);
+
+      const auth = await AsgardAuth.getAuth();
+      try {
+        const resp = await fetch('/api/invoices/' + invoiceId + '/payments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + auth.token },
+          body: JSON.stringify({ amount: payAmount, payment_date: payDate, paid_at: payDate })
+        });
+        const result = await resp.json();
+        if (result.success) {
+          closeModal();
+          toast('Оплата', 'Платёж внесён', 'ok');
+          location.reload();
+        } else {
+          toast('Ошибка', result.message || 'Не удалось внести платёж', 'err');
+        }
+      } catch (e) {
+        toast('Ошибка', e?.message || 'Сбой запроса', 'err');
       }
     });
   }

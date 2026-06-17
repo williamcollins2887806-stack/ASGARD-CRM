@@ -44,8 +44,21 @@ export function PassRequestModal({ tender }) {
   const [dateTo, setDateTo] = useState(takeIso(tender?.work_end_plan));
   const [contactPerson, setContactPerson] = useState('');
   const [contactPhone, setContactPhone] = useState('');
+  const [clientEmail, setClientEmail] = useState(tender?.client_email || '');
   const [notes, setNotes] = useState(tender?.tender_comment_to || '');
   const [busy, setBusy] = useState(false);
+
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const validateEmail = (val) => {
+    const v = String(val || '').trim();
+    if (!v) return true; // пусто допустимо (поле опциональное)
+    return EMAIL_RE.test(v);
+  };
+  const onEmailBlur = () => {
+    if (!validateEmail(clientEmail)) {
+      toast.error('Некорректный email клиента');
+    }
+  };
 
   useEffect(() => {
     api('/api/users?limit=500')
@@ -78,6 +91,10 @@ export function PassRequestModal({ tender }) {
   const submit = async () => {
     if (!objectName.trim()) return toast('Проверка', 'Укажите объект', 'warn');
     if (!dateFrom || !dateTo) return toast('Проверка', 'Укажите даты пропуска', 'warn');
+    if (!validateEmail(clientEmail)) {
+      toast.error('Некорректный email клиента');
+      return;
+    }
 
     const employees = [];
     selected.forEach((id) => {
@@ -105,6 +122,7 @@ export function PassRequestModal({ tender }) {
       pass_date_to: dateTo,
       contact_person: contactPerson.trim(),
       contact_phone: contactPhone.trim(),
+      client_email: clientEmail.trim(),
       employees_json: employees,
       vehicles_json: parsedVehicles,
       notes: (notes || '') + tenderTag
@@ -161,6 +179,16 @@ export function PassRequestModal({ tender }) {
               <TextInput value={contactPhone} onChange={setContactPhone} placeholder="+7…" />
             </Field>
           </div>
+
+          <Field label="Email клиента" help="Для отправки PDF-пропуска заказчику">
+            <TextInput
+              value={clientEmail}
+              onChange={setClientEmail}
+              onBlur={onEmailBlur}
+              placeholder="client@example.com"
+              type="email"
+            />
+          </Field>
 
           <div>
             <div className="modal-section-title">

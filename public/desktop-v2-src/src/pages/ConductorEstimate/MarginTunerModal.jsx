@@ -1,11 +1,11 @@
 /**
  * MarginTunerModal — настройка маржи / цены клиента (live-предпросмотр).
  */
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useModal } from '@/modals';
 import { toast } from '@/modals/Notifications';
 import { MCard, MHead, MBody, MFoot, Btn, Field } from '@/modals/parts';
-import { Slider, NumberInput } from '@/inputs/Inputs';
+import { Slider, NumberInput, MoneyInput } from '@/inputs/Inputs';
 
 import { adjustMargin, fmtRub } from './api';
 
@@ -18,7 +18,41 @@ export function MarginTunerModal({ runId, ssr, onApplied }) {
   const origRevenue = Number(ssr?.total_with_margin) || 0;
 
   const [margin, setMargin] = useState(origMargin);
+  // Прибыль ₽ — производное состояние, синхронизируется двусторонне с margin.
+  const initProfit = useMemo(() => {
+    const m = Math.max(0.1, Math.min(79.9, origMargin)) / 100;
+    return cost > 0 ? Math.round(cost / (1 - m) - cost) : 0;
+  }, [cost, origMargin]);
+  const [profitInput, setProfitInput] = useState(initProfit);
   const [busy, setBusy] = useState(false);
+
+  // Защита от рекурсии: когда margin изменяет profitInput через эффект (или наоборот),
+  // не пересчитываем обратно. Источник изменения помечается в ref.
+  const skipNextSync = useRef(false);
+
+  // margin → profit (sliders / NumberInput двигают margin)
+  const onMarginChange = (next) => {
+    const m = Math.max(0.1, Math.min(79.9, Number(next))) / 100;
+    skipNextSync.current = true;
+    setMargin(Number(next));
+    if (cost > 0) {
+      const revenue = cost / (1 - m);
+      setProfitInput(Math.round(revenue - cost));
+    }
+  };
+
+  // profit → margin (MoneyInput двигает прибыль). cost=0 → не реактивно.
+  const onProfitChange = (raw) => {
+    const p = Number(raw) || 0;
+    skipNextSync.current = true;
+    setProfitInput(p);
+    if (cost > 0) {
+      const revenue = cost + p;
+      const newMargin = revenue > 0 ? (p / revenue * 100) : 0;
+      const clamped = Math.max(0.1, Math.min(79.9, newMargin));
+      setMargin(clamped);
+    }
+  };
 
   const preview = useMemo(() => {
     const m = Math.max(0.1, Math.min(79.9, Number(margin))) / 100;
@@ -57,10 +91,14 @@ export function MarginTunerModal({ runId, ssr, onApplied }) {
       />
       <MBody>
         <Field label="Маржа (gross-profit, % от выручки)">
-          <Slider value={Number(margin)} onChange={setMargin} min={0} max={80} step={0.5} showValue />
+          <Slider value={Number(margin)} onChange={onMarginChange} min={0} max={80} step={0.5} showValue />
           <div className="mt-8">
-            <NumberInput value={margin} onChange={setMargin} min={0} max={80} step={0.1} />
+            <NumberInput value={margin} onChange={onMarginChange} min={0} max={80} step={0.1} />
           </div>
+        </Field>
+
+        <Field label="Прибыль (₽)" help={cost <= 0 ? 'Себестоимость = 0, поле неактивно' : undefined}>
+          <MoneyInput value={profitInput} onChange={onProfitChange} disabled={cost <= 0} />
         </Field>
 
         <div style={{
@@ -102,7 +140,7 @@ export function MarginTunerModal({ runId, ssr, onApplied }) {
       </MBody>
       <MFoot>
         <Btn variant="ghost" onClick={() => close()}>Отмена</Btn>
-        <Btn variant="ghost" onClick={() => setMargin(origMargin)}>Вернуть Mimir-маржу</Btn>
+        <Btn variant="ghost" onClick={() => onMarginChange(origMargin)}>Вернуть Mimir-маржу</Btn>
         <Btn variant="primary" disabled={busy} onClick={onApply}>
           {busy ? 'Применяем…' : '✓ Применить новую цену'}
         </Btn>
