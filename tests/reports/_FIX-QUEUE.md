@@ -21,7 +21,7 @@
 |---|---|---|
 | A. Прод-500 хотфиксы | **0** (✅ закрыт коммитом 7f975f6, 3/3 VERIFIED) | ~~D-134, D-14, D-19~~ |
 | B. Migration-backfill | **0 активных** (7 ✅ коммит b71f786, 3 ✅ коммит e29fec5, 3 → AWAITING-RETARGET) | ~~D-003, D-004, D-20, D-58, D-77, D-79, D-93, D-94, D-135, D-136~~ ✅ + D-78/D-83/D-84 retarget |
-| C. Крупные пересборки | 7 | D-15, D-21, D-24, D-53, D-54, D-55, D-56 |
+| C. Крупные пересборки | **2** (5 ✅ C-vol1 коммит 26b8ba0: D-15/21/24/53/55+D-131; ост. D-54 CallDetail, D-56 Compose) | D-54, D-56 |
 | D. Обязательные средние | **2** (40 closed; D-44 staged; D-45 AWAITING-BACKEND) | D-43, D-44*, D-45* |
 | E. v2-extension round-trip | **0** | ВСЕ 9 ALREADY-DONE (D-vol10) |
 | RETARGET | **0** | D-78 NO-OP, D-83 V229, D-84 FOREVER_ISO |
