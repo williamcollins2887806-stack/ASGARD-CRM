@@ -253,7 +253,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/cash-admin",l:"Касса (управление)",d:"Согласование и контроль",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"cash_admin",g:"finance"},
     {r:"/approval-payment",l:"Очередь оплаты",d:"Оплата согласованных заявок",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"approval_payment",g:"finance"},
     {r:"/payroll",l:"Расчёты с рабочими",d:"Ведомости и выплаты",roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO","PROC","BUH",...DIRECTOR_ROLES],i:"finances",p:"payroll",g:"finance"},
-    {r:"/payroll-grid",l:"Ведомость (табель)",d:"Сетка баллов по дням, авто из табелей",roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO","PROC","BUH",...DIRECTOR_ROLES],i:"finances",p:"payroll_grid",g:"finance"},
+    {r:"/payroll-grid",l:"Мой табель",d:"Свой табель РП по своим работам: смены, баллы, суточные",roles:["PM","HEAD_PM"],i:"finances",p:"payroll_grid",g:"finance"},
     {r:"/self-employed",l:"Самозанятые",d:"Реестр СЗ и договора",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"payroll",g:"finance"},
     {r:"/one-time-pay",l:"Разовые оплаты",d:"Такси, топливо, разовые",roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES],i:"finances",p:"payroll",g:"finance"},
     {r:"/reports/payroll",l:"Отчёты по выплатам",d:"Сводный табель, ФОТ, суточные, Excel",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"reports-payroll",g:"finance"},
@@ -292,7 +292,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/workers-schedule",l:"График: Рабочие",d:"Бронь и доступность",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"workers",p:"workers_schedule",g:"personnel"},
     {r:"/hr-rating",l:"Рейтинг Дружины",d:"Оценки и средний балл",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"rating",p:"hr_rating",g:"personnel"},
     {r:"/travel",l:"Логистика дружины",d:"Жильё, билеты, направления, обучение",roles:["ADMIN","OFFICE_MANAGER","HR","HR_MANAGER","PM",...DIRECTOR_ROLES],i:"travel",p:"travel",g:"personnel"},
-    {r:"/global-timesheet",l:"Общий табель",d:"Все рабочие за месяц",roles:["ADMIN","TO","HEAD_TO","WAREHOUSE","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"calendar",p:"global_timesheet",g:"personnel"},
+    {r:"/global-timesheet",l:"Табель",d:"Все рабочие за месяц: клеточный табель, отметки склад/медосмотр, Excel",roles:["ADMIN","TO","HEAD_TO","WAREHOUSE","PROC","BUH","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"calendar",p:"global_timesheet",g:"personnel"},
     {r:"/payroll-dashboard",l:"Финансы персонала",d:"Дашборд выплат",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"money",p:"payroll_dashboard",g:"personnel"},
     {r:"/official-employees",l:"Официально устроенные",d:"Оклады и статусы",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"workers",p:"official_employees",g:"personnel"},
     {r:"/training-board",l:"Обучение и допуски",d:"Допуски и обучение рабочих",roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES],i:"school",p:"training_board",g:"personnel"},
@@ -2235,7 +2235,7 @@ var _setupPinKeypad = null;
     AsgardRouter.add("/hr-requests", () => {
       AsgardHrRequestsPage.render({layout, title:"Заявки персонала"});
     }, {auth:true, roles:["ADMIN","HR","HR_MANAGER","PM","HEAD_PM",...DIRECTOR_ROLES]});
-    AsgardRouter.add("/global-timesheet", ()=>AsgardGlobalTimesheetPage.render({layout, title:"Общий табель"}), {auth:true, roles:["ADMIN","TO","HEAD_TO","WAREHOUSE","HR","HR_MANAGER",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/global-timesheet", ()=>AsgardGlobalTimesheetPage.render({layout, title:"Табель"}), {auth:true, roles:["ADMIN","TO","HEAD_TO","WAREHOUSE","PROC","BUH","HR","HR_MANAGER",...DIRECTOR_ROLES]});
     AsgardRouter.add("/payroll-dashboard", ()=>AsgardPayrollDashboard.render({layout, title:"Финансы персонала"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/official-employees", ()=>AsgardOfficialEmployeesPage.render({layout, title:"Официально устроенные"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/training-board", ()=>AsgardTrainingBoard.render({layout, title:"Обучение и допуски"}), {auth:true, roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES]});
@@ -2279,7 +2279,7 @@ AsgardRouter.add("/assembly", ()=>AsgardAssemblyPage.render({layout, title:"Сб
 
     AsgardRouter.add("/payroll", ()=>AsgardPayrollPage.render({layout, title:"Расчёты с рабочими"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO","PROC","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/payroll-sheet", ({query})=>AsgardPayrollPage.renderSheet({layout, title:"Ведомость", query}), {auth:true, roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES]});
-    AsgardRouter.add("/payroll-grid", ()=>AsgardPayrollPage.renderPayrollGrid({layout}), {auth:true, roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO","PROC","BUH",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/payroll-grid", ()=>AsgardPayrollPage.renderPayrollGrid({layout, title:"Мой табель"}), {auth:true, roles:["PM","HEAD_PM"]});
     AsgardRouter.add("/self-employed", ()=>AsgardPayrollPage.renderSelfEmployed({layout, title:"Самозанятые"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/one-time-pay", ()=>AsgardPayrollPage.renderOneTimePay({layout, title:"Разовые оплаты"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/reports/payroll", ()=>AsgardPaymentsReportPage.render({layout, title:"Отчёты по выплатам"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
