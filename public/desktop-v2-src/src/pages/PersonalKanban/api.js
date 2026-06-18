@@ -267,3 +267,71 @@ export function sourceInfo(entityKind) {
     default:                  return { icon: '•',  label: entityKind || '' };
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * v3 API — 8-колоночный канбан, ТКП-конструктор, Quick/Conductor/References
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+export const V3_COLUMNS = ['new', 'calc', 'approval', 'kp_prep', 'sent', 'win', 'lose', 'work'];
+export const V3_COL_META = {
+  new:      { ic: '📥', title: 'Новые' },
+  calc:     { ic: '🧮', title: 'Просчёт ТКП' },
+  approval: { ic: '⚖️', title: 'На согласовании' },
+  kp_prep:  { ic: '📋', title: 'КП готовится' },
+  sent:     { ic: '📤', title: 'КП отправлено' },
+  win:      { ic: '🏆', title: 'Выиграно' },
+  lose:     { ic: '❌', title: 'Проиграно' },
+  work:     { ic: '🏗', title: 'В работе' },
+};
+export const V3_STAGE_LABELS = ['📥 Новая', '🧮 Просчёт', '⚖️ Согл. дир', '📋 КП готов', '📤 КП ушло', '🏆 Выигр.', '❌ Проигр.', '🏗 В работе'];
+
+export async function loadV3Board(flowFilter) {
+  return await api(`/api/personal-kanban/board?flow_filter=${encodeURIComponent(flowFilter || 'all')}`) || { columns: {}, total: 0 };
+}
+export async function loadV3Counts(flowFilter) {
+  return await api(`/api/personal-kanban/columns/counts?flow_filter=${encodeURIComponent(flowFilter || 'all')}`) || {};
+}
+export async function v3Transition(cardId, toCol, note, confirm) {
+  return await api(`/api/personal-kanban/cards/${cardId}/transition`, {
+    method: 'POST',
+    body: { to_v3_column: toCol, note: note || null, confirm: !!confirm },
+  });
+}
+export async function v3StartQuick(cardId) {
+  return await api(`/api/personal-kanban/cards/${cardId}/start-quick`, { method: 'POST', body: {} });
+}
+export async function v3StartConductor(cardId) {
+  return await api(`/api/personal-kanban/cards/${cardId}/start-conductor`, { method: 'POST', body: {} });
+}
+export async function v3ConvertToPretender(cardId) {
+  return await api(`/api/personal-kanban/cards/${cardId}/convert-to-pretender`, { method: 'POST', body: {} });
+}
+export async function v3SearchReferences(params) {
+  const q = new URLSearchParams();
+  if (params.work_type)  q.set('work_type', params.work_type);
+  if (params.volume_min) q.set('volume_min', String(params.volume_min));
+  if (params.volume_max) q.set('volume_max', String(params.volume_max));
+  q.set('limit', String(params.limit || 10));
+  return await api(`/api/mimir/references/search?${q.toString()}`);
+}
+export async function tkpFromCard(cardId, templateKind) {
+  return await api(`/api/tkp/from-card/${cardId}`, {
+    method: 'POST',
+    body: { template_kind: templateKind || 'universal' },
+  });
+}
+export async function tkpLoadBlocks(tkpId) {
+  return await api(`/api/tkp/${tkpId}/blocks`);
+}
+export async function tkpSaveBlocks(tkpId, blocks) {
+  return await api(`/api/tkp/${tkpId}/blocks`, { method: 'PUT', body: { blocks } });
+}
+export async function tkpRenderPdf(tkpId) {
+  return await api(`/api/tkp/${tkpId}/render-pdf`, { method: 'POST', body: {} });
+}
+export async function tkpAttachToCard(tkpId, cardId) {
+  return await api(`/api/tkp/${tkpId}/attach-to-card/${cardId}`, { method: 'POST', body: {} });
+}
+export async function tkpSendToClient(cardId, payload) {
+  return await api(`/api/tkp/${cardId}/send-tkp-to-client`, { method: 'POST', body: payload });
+}

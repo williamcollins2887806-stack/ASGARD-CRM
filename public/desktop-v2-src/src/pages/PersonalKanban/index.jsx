@@ -34,15 +34,24 @@ import ConfiguratorModal from './ConfiguratorModal';
 import CardDetailModal from './DetailModal';
 import DirectApplicationModal from './DirectApplicationModal';
 import './personal-kanban.css';
+import BoardV3 from './BoardV3';
 
 const STORAGE_FLOW = 'asgard_v2_pk_flow_type';
 const STORAGE_STATUS = 'asgard_v2_pk_main_status_';
+const STORAGE_VIEW = 'asgard_v2_pk_view_mode'; // 'substages' | 'v3'
 
 export default function PersonalKanbanPage() {
   const { user } = useAuth();
   const modal = useModal();
 
   const allowed = !!user && ['PM', 'HEAD_PM', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(user.role);
+
+  const [viewMode, setViewMode] = useState(() => {
+    try { return localStorage.getItem(STORAGE_VIEW) || 'v3'; } catch { return 'v3'; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_VIEW, viewMode); } catch { /* noop */ }
+  }, [viewMode]);
 
   const [flowType, setFlowType] = useState(() => {
     try { return localStorage.getItem(STORAGE_FLOW) || 'application'; } catch { return 'application'; }
@@ -262,6 +271,11 @@ export default function PersonalKanbanPage() {
     { size: 'lg' }
   );
 
+  // Если viewMode='v3' — рендерим BoardV3 (8 колонок воронки)
+  if (allowed && viewMode === 'v3') {
+    return <BoardV3 onSwitchToSubstages={() => setViewMode('substages')} />;
+  }
+
   // Гейт прав
   if (user && !allowed) {
     return (
@@ -283,6 +297,7 @@ export default function PersonalKanbanPage() {
         subtitle="Подэтапы внутри основного статуса. Перетащите карту между подэтапами."
         actions={
           <>
+            <Btn variant="ghost" onClick={() => setViewMode('v3')}>📊 По воронке (v3)</Btn>
             <Btn variant="ghost" onClick={refresh}>↻ Обновить</Btn>
             <Btn variant="ghost" onClick={openConfigure} title="Настроить подэтапы">⚙ Подэтапы</Btn>
             {isApplicationFlow && (

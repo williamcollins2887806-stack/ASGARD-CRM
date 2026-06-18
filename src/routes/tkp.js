@@ -2039,4 +2039,1015 @@ module.exports = async function routesWithExtensions(fastify, options) {
     reply.header('Content-Disposition', `attachment; filename*=UTF-8''${dispName}`);
     return reply.send(fsLib.createReadStream(absPath));
   });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // БЛОЧНЫЙ ТКП-КОНСТРУКТОР (V237: tkp_blocks)
+  // Был вынесен в отдельный tkp-constructor.js (~853 строки), теперь вмержен
+  // обратно в tkp.js, чтобы не плодить файлы. Расширяет существующий /api/tkp.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // SSE broadcast (мягкая зависимость — если sse.js нет, broadcast = no-op)
+  let _sseBroadcast = () => {};
+  try {
+    const sseMod = require('./sse');
+    if (sseMod && typeof sseMod.broadcast === 'function') _sseBroadcast = sseMod.broadcast;
+  } catch (_) {}
+
+  // Доступ к ТКП (автор / руководство / директора / ADMIN)
+  function _canAccessTkp(user, tkpRow) {
+    if (!tkpRow) return false;
+    if (['ADMIN','HEAD_PM','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','HEAD_TO'].includes(user.role)) return true;
+    return Number(tkpRow.author_id) === Number(user.id);
+  }
+
+  // Дефолтные ключи блоков по template_kind (универсальный набор + хим/монтаж/антикор/диагностика/вентиляция)
+  function _defaultBlocksForKind(kind) {
+    const base = ['title','preamble','smeta','terms','warranty','attach','sign'];
+    switch ((kind || 'universal').toLowerCase()) {
+      case 'chemcleaning':
+        return ['title','preamble','smeta','terms','safety','warranty','logistics','team','attach','sign'];
+      case 'assembly':
+        return ['title','preamble','smeta','schedule','terms','warranty','logistics','team','safety','attach','sign'];
+      case 'anticor':
+        return ['title','preamble','smeta','terms','warranty','safety','attach','sign'];
+      case 'diagnostics':
+        return ['title','preamble','smeta','schedule','terms','warranty','attach','sign'];
+      case 'vent':
+        return ['title','preamble','smeta','terms','warranty','attach','sign'];
+      case 'universal':
+      default:
+        return base;
+    }
+  }
+
+  // Заголовок и иконка по ключу блока
+  function _blockMeta(key) {
+    const m = {
+      title:    { title: 'Заголовок и шапка',      icon: '🛡', required: true  },
+      preamble: { title: 'Преамбула / приветствие', icon: '📜', required: false },
+      smeta:    { title: 'Смета',                   icon: '📊', required: false },
+      terms:    { title: 'Условия и оплата',        icon: '💰', required: false },
+      warranty: { title: 'Гарантии',                icon: '✅', required: false },
+      logistics:{ title: 'Логистика и мобилизация', icon: '🚚', required: false },
+      safety:   { title: 'Безопасность',            icon: '⚠️', required: false },
+      schedule: { title: 'График работ',            icon: '🗓', required: false },
+      team:     { title: 'Команда',                 icon: '👥', required: false },
+      attach:   { title: 'Приложения',              icon: '📎', required: false },
+      sign:     { title: 'Подпись',                 icon: '✒️', required: true  }
+    };
+    return m[key] || { title: key, icon: '◆', required: false };
+  }
+
+  // Дефолтные данные блока — пустой каркас (JSONB)
+  function _defaultBlockData(key, ctx) {
+    ctx = ctx || {};
+    switch (key) {
+      case 'title':
+        return {
+          company_name: ctx.company_name || 'ООО «Асгард-Сервис»',
+          customer_name: ctx.customer_name || '',
+          customer_inn: ctx.customer_inn || '',
+          subject: ctx.subject || '',
+          tkp_number: ctx.tkp_number || '',
+          date: new Date().toISOString().slice(0, 10)
+        };
+      case 'preamble':
+        return { text: '' };
+      case 'smeta':
+        // если есть estimate_draft — подставим items
+        return {
+          items: Array.isArray(ctx.items) ? ctx.items : [],
+          vat_pct: ctx.vat_pct != null ? Number(ctx.vat_pct) : 20,
+          subtotal: ctx.subtotal != null ? Number(ctx.subtotal) : null,
+          total_with_vat: ctx.total_with_vat != null ? Number(ctx.total_with_vat) : null
+        };
+      case 'terms':
+        return { payment_preset: 'avans_postpay', avans_pct: 30, postpay_days: 14, custom: '' };
+      case 'warranty':
+        return { months: 12, text: '' };
+      case 'logistics':
+        return { mobilization_days: null, demobilization_days: null, transport: '' };
+      case 'safety':
+        return { naks_required: false, snils_required: false, ppe_required: true, text: '' };
+      case 'schedule':
+        return { start_date: null, end_date: null, milestones: [] };
+      case 'team':
+        return { lead: '', members: [] };
+      case 'attach':
+        return { files: [] };
+      case 'sign':
+        return {
+          author_name: ctx.author_name || '',
+          author_position: ctx.author_position || 'Руководитель проекта',
+          with_signature: false,
+          with_stamp: false
+        };
+      default:
+        return {};
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // POST /api/tkp/from-card/:cardId — создать ТКП из карты канбана + дефолтные блоки
+  // body: { template_kind? }
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.post('/from-card/:cardId', {
+    preHandler: [fastify.requireRoles(EDIT_ROLES)]
+  }, async (request, reply) => {
+    const cardId = parseInt(request.params.cardId);
+    if (!cardId || isNaN(cardId)) return reply.code(400).send({ error: 'Bad cardId' });
+    const template_kind = (request.body && request.body.template_kind) || 'universal';
+
+    // 1) Карта канбана
+    const { rows: cardRows } = await db.query(
+      `SELECT id, owner_user_id, flow_type, entity_kind, entity_id, current_main_status
+         FROM personal_kanban_cards
+        WHERE id = $1`,
+      [cardId]
+    );
+    if (!cardRows[0]) return reply.code(404).send({ error: 'Card not found' });
+    const card = cardRows[0];
+
+    // 2) Источник: тендер или pre-тендер — для prefill контактов
+    let tenderId = null, preTenderId = null, workId = null;
+    let prefill = { customer_name: null, customer_inn: null, customer_address: null,
+                    contact_person: null, contact_phone: null, contact_email: null,
+                    subject: null, work_description: null };
+    if (card.entity_kind === 'tender' || card.flow_type === 'tender') {
+      tenderId = card.entity_id;
+      try {
+        const r = await db.query(
+          `SELECT customer_name, customer_inn, tender_title, customer_address,
+                  contact_name AS contact_person, contact_phone, contact_email
+             FROM tenders WHERE id = $1`,
+          [tenderId]
+        );
+        if (r.rows[0]) {
+          prefill.customer_name    = r.rows[0].customer_name;
+          prefill.customer_inn     = r.rows[0].customer_inn;
+          prefill.customer_address = r.rows[0].customer_address;
+          prefill.contact_person   = r.rows[0].contact_person;
+          prefill.contact_phone    = r.rows[0].contact_phone;
+          prefill.contact_email    = r.rows[0].contact_email;
+          prefill.subject          = r.rows[0].tender_title;
+        }
+      } catch (_) {}
+    } else if (card.entity_kind === 'pre_tender' || card.flow_type === 'pre_tender') {
+      preTenderId = card.entity_id;
+      try {
+        const r = await db.query(
+          `SELECT customer_name, customer_inn, request_description,
+                  contact_person, contact_phone, contact_email
+             FROM pre_tender_requests WHERE id = $1`,
+          [preTenderId]
+        );
+        if (r.rows[0]) {
+          prefill.customer_name    = r.rows[0].customer_name;
+          prefill.customer_inn     = r.rows[0].customer_inn;
+          prefill.contact_person   = r.rows[0].contact_person;
+          prefill.contact_phone    = r.rows[0].contact_phone;
+          prefill.contact_email    = r.rows[0].contact_email;
+          prefill.subject          = (r.rows[0].request_description || '').slice(0, 200) || null;
+          prefill.work_description = r.rows[0].request_description;
+        }
+      } catch (_) {}
+    } else if (card.entity_kind === 'work' || card.flow_type === 'work') {
+      workId = card.entity_id;
+    }
+
+    // 3) Прежняя сессия tkp_quick_sessions (finalized) → prefill блока smeta
+    let smetaPrefill = null;
+    try {
+      const q = await db.query(
+        `SELECT estimate_draft
+           FROM tkp_quick_sessions
+          WHERE author_id = $1
+            AND status = 'finalized'
+            AND ( (pre_tender_id IS NOT NULL AND pre_tender_id = $2)
+               OR (tender_id     IS NOT NULL AND tender_id     = $3) )
+          ORDER BY finalized_at DESC NULLS LAST, id DESC
+          LIMIT 1`,
+        [request.user.id, preTenderId, tenderId]
+      );
+      if (q.rows[0] && q.rows[0].estimate_draft) {
+        const ed = typeof q.rows[0].estimate_draft === 'string'
+          ? JSON.parse(q.rows[0].estimate_draft)
+          : q.rows[0].estimate_draft;
+        if (ed && (Array.isArray(ed.items) || Array.isArray(ed.rows))) {
+          smetaPrefill = {
+            items: ed.items || ed.rows || [],
+            vat_pct: ed.vat_pct || 20,
+            subtotal: ed.subtotal || null,
+            total_with_vat: ed.total_with_vat || null
+          };
+        }
+      }
+    } catch (_) {}
+
+    // 4) RBAC: PM может создать ТКП только для своего тендера
+    try {
+      await assertCanCreateTkpForTender(db, request.user, tenderId);
+    } catch (err) {
+      return reply.code(err.statusCode || 500).send({ error: err.message });
+    }
+
+    // 5) Транзакция: INSERT tkp + дефолтные блоки
+    const client = await db.pool.connect();
+    let newTkp;
+    try {
+      await client.query('BEGIN');
+
+      const subj = prefill.subject || 'Технико-коммерческое предложение';
+      const linkType =
+        tenderId    ? 'tender'         :
+        preTenderId ? 'direct_request' :
+        workId      ? 'work'           : 'standalone';
+
+      const insRes = await client.query(`
+        INSERT INTO tkp (
+          subject, tender_id, work_id, pre_tender_id, link_type,
+          customer_name, customer_inn, customer_address, work_description,
+          contact_person, contact_phone, contact_email,
+          items, total_sum, validity_days,
+          author_id, source, status,
+          template_kind, constructor_version, last_autosaved_at
+        ) VALUES (
+          $1, $2, $3, $4, $5,
+          $6, $7, $8, $9,
+          $10, $11, $12,
+          '{}'::jsonb, 0, 30,
+          $13, 'kanban_constructor', 'draft',
+          $14, 1, NOW()
+        ) RETURNING *
+      `, [
+        subj, tenderId, workId, preTenderId, linkType,
+        prefill.customer_name, prefill.customer_inn, prefill.customer_address, prefill.work_description,
+        prefill.contact_person, prefill.contact_phone, prefill.contact_email,
+        request.user.id,
+        template_kind
+      ]);
+      newTkp = insRes.rows[0];
+
+      // Дефолтные блоки
+      const keys = _defaultBlocksForKind(template_kind);
+      let order = 100;
+      for (const key of keys) {
+        const meta = _blockMeta(key);
+        const ctx = {
+          company_name: 'ООО «Асгард-Сервис»',
+          customer_name: prefill.customer_name,
+          customer_inn:  prefill.customer_inn,
+          subject:       subj,
+          author_name:   request.user.name || '',
+          ...(key === 'smeta' && smetaPrefill ? smetaPrefill : {})
+        };
+        const data = _defaultBlockData(key, ctx);
+        await client.query(`
+          INSERT INTO tkp_blocks
+            (tkp_id, block_key, block_order, block_title, block_icon, block_data, is_required, is_active)
+          VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, TRUE)
+        `, [
+          newTkp.id, key, order, meta.title, meta.icon,
+          JSON.stringify(data), meta.required
+        ]);
+        order += 100;
+      }
+
+      await client.query('COMMIT');
+    } catch (e) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+      request.log.error({ err: e }, '[TKP from-card] failed');
+      return reply.code(500).send({ error: 'from_card_failed', message: e.message });
+    } finally {
+      client.release();
+    }
+
+    try {
+      _sseBroadcast('tkp_constructor:created', {
+        tkp_id: newTkp.id, card_id: cardId,
+        template_kind, author_id: request.user.id,
+        tender_id: tenderId, pre_tender_id: preTenderId
+      });
+    } catch (_) {}
+
+    return { item: newTkp, template_kind, blocks_created: _defaultBlocksForKind(template_kind).length };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // GET /api/tkp/:tkpId/blocks — список активных блоков
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.get('/:tkpId/blocks', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const tkpId = parseInt(request.params.tkpId);
+    if (!tkpId || isNaN(tkpId)) return reply.code(400).send({ error: 'Bad tkpId' });
+
+    const { rows: tkpRows } = await db.query('SELECT id, author_id FROM tkp WHERE id = $1', [tkpId]);
+    if (!tkpRows[0]) return reply.code(404).send({ error: 'TKP not found' });
+    if (!_canAccessTkp(request.user, tkpRows[0])) {
+      return reply.code(403).send({ error: 'Доступ запрещён' });
+    }
+
+    const { rows } = await db.query(
+      `SELECT id, tkp_id, block_key, block_order, block_title, block_icon,
+              block_data, is_required, is_active, created_at, updated_at
+         FROM tkp_blocks
+        WHERE tkp_id = $1 AND is_active = TRUE
+        ORDER BY block_order ASC, id ASC`,
+      [tkpId]
+    );
+    return { items: rows };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // PUT /api/tkp/:tkpId/blocks — UPSERT блоков (autosave)
+  // body: { blocks: [ { block_key, block_order?, block_title?, block_icon?, block_data, is_required?, is_active? }, ... ] }
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.put('/:tkpId/blocks', {
+    preHandler: [fastify.requireRoles(EDIT_ROLES)]
+  }, async (request, reply) => {
+    const tkpId = parseInt(request.params.tkpId);
+    if (!tkpId || isNaN(tkpId)) return reply.code(400).send({ error: 'Bad tkpId' });
+
+    const blocks = (request.body && Array.isArray(request.body.blocks)) ? request.body.blocks : null;
+    if (!blocks) return reply.code(400).send({ error: 'blocks[] required' });
+
+    const { rows: tkpRows } = await db.query('SELECT id, author_id FROM tkp WHERE id = $1', [tkpId]);
+    if (!tkpRows[0]) return reply.code(404).send({ error: 'TKP not found' });
+    if (!_canAccessTkp(request.user, tkpRows[0])) {
+      return reply.code(403).send({ error: 'Доступ запрещён' });
+    }
+
+    // Транзакция: для каждого блока — SELECT-then-UPDATE/INSERT (без ON CONFLICT,
+    // чтобы корректно работать с partial unique index uq_tkp_blocks_tkp_key_active).
+    const client = await db.pool.connect();
+    const upserted = [];
+    try {
+      await client.query('BEGIN');
+
+      for (const b of blocks) {
+        const key = String(b.block_key || '').trim();
+        if (!key) continue;
+        const meta = _blockMeta(key);
+        const order = b.block_order != null ? Number(b.block_order) : 1000;
+        const title = b.block_title != null ? String(b.block_title) : meta.title;
+        const icon  = b.block_icon  != null ? String(b.block_icon)  : meta.icon;
+        const data  = b.block_data != null ? b.block_data : {};
+        const isReq = b.is_required != null ? !!b.is_required : meta.required;
+        const isActive = b.is_active != null ? !!b.is_active : true;
+
+        // Найти существующий активный блок (по partial unique)
+        const ex = await client.query(
+          `SELECT id FROM tkp_blocks
+            WHERE tkp_id = $1 AND block_key = $2 AND is_active = TRUE
+            LIMIT 1 FOR UPDATE`,
+          [tkpId, key]
+        );
+        if (ex.rows[0]) {
+          const upd = await client.query(
+            `UPDATE tkp_blocks
+                SET block_order  = $1,
+                    block_title  = $2,
+                    block_icon   = $3,
+                    block_data   = $4::jsonb,
+                    is_required  = $5,
+                    is_active    = $6,
+                    updated_at   = NOW()
+              WHERE id = $7
+              RETURNING *`,
+            [order, title, icon, JSON.stringify(data), isReq, isActive, ex.rows[0].id]
+          );
+          upserted.push(upd.rows[0]);
+        } else {
+          const ins = await client.query(
+            `INSERT INTO tkp_blocks
+               (tkp_id, block_key, block_order, block_title, block_icon, block_data, is_required, is_active)
+             VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
+             RETURNING *`,
+            [tkpId, key, order, title, icon, JSON.stringify(data), isReq, isActive]
+          );
+          upserted.push(ins.rows[0]);
+        }
+      }
+
+      // Обновим ТКП: last_autosaved_at и constructor_version++
+      const upd = await client.query(
+        `UPDATE tkp
+            SET last_autosaved_at   = NOW(),
+                constructor_version = COALESCE(constructor_version, 1) + 1,
+                updated_at          = NOW()
+          WHERE id = $1
+          RETURNING constructor_version, last_autosaved_at`,
+        [tkpId]
+      );
+
+      await client.query('COMMIT');
+
+      try {
+        _sseBroadcast('tkp_constructor:updated', {
+          tkp_id: tkpId,
+          version: upd.rows[0] ? upd.rows[0].constructor_version : null,
+          last_autosaved_at: upd.rows[0] ? upd.rows[0].last_autosaved_at : null,
+          author_id: request.user.id,
+          block_keys: upserted.map(x => x.block_key)
+        });
+      } catch (_) {}
+
+      return {
+        items: upserted,
+        constructor_version: upd.rows[0] ? upd.rows[0].constructor_version : null,
+        last_autosaved_at:   upd.rows[0] ? upd.rows[0].last_autosaved_at   : null
+      };
+    } catch (e) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+      request.log.error({ err: e }, '[TKP put blocks] failed');
+      return reply.code(500).send({ error: 'blocks_upsert_failed', message: e.message });
+    } finally {
+      client.release();
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // POST /api/tkp/:tkpId/attach-to-card/:cardId
+  // Зарегистрировать PDF-файл ТКП в documents и привязать к тендеру карты.
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.post('/:tkpId/attach-to-card/:cardId', {
+    preHandler: [fastify.requireRoles(EDIT_ROLES)]
+  }, async (request, reply) => {
+    const tkpId  = parseInt(request.params.tkpId);
+    const cardId = parseInt(request.params.cardId);
+    if (!tkpId || !cardId || isNaN(tkpId) || isNaN(cardId)) {
+      return reply.code(400).send({ error: 'Bad ids' });
+    }
+
+    const { rows: tkpRows } = await db.query(
+      `SELECT id, author_id, pdf_path, subject FROM tkp WHERE id = $1`, [tkpId]
+    );
+    if (!tkpRows[0]) return reply.code(404).send({ error: 'TKP not found' });
+    if (!_canAccessTkp(request.user, tkpRows[0])) {
+      return reply.code(403).send({ error: 'Доступ запрещён' });
+    }
+    const tkp = tkpRows[0];
+    if (!tkp.pdf_path) {
+      return reply.code(400).send({ error: 'PDF не сгенерирован для этого ТКП. Сначала вызовите /render-pdf' });
+    }
+
+    const { rows: cardRows } = await db.query(
+      `SELECT id, flow_type, entity_kind, entity_id FROM personal_kanban_cards WHERE id = $1`,
+      [cardId]
+    );
+    if (!cardRows[0]) return reply.code(404).send({ error: 'Card not found' });
+    const card = cardRows[0];
+    let tenderId = null;
+    if (card.entity_kind === 'tender' || card.flow_type === 'tender') {
+      tenderId = card.entity_id;
+    }
+
+    const pdfBase = pathLib.basename(tkp.pdf_path);
+    const downloadUrl = `/uploads/${tkp.pdf_path.replace(/^[\\\/]+/, '')}`;
+
+    // Попытка узнать реальный размер файла на диске (мягко)
+    let sizeBytes = 0;
+    try {
+      const abs = pathLib.resolve(UPLOAD_DIR, tkp.pdf_path);
+      if (fsLib.existsSync(abs)) sizeBytes = fsLib.statSync(abs).size;
+    } catch (_) {}
+
+    const { rows: docRows } = await db.query(`
+      INSERT INTO documents (filename, original_name, mime_type, size, type, tender_id, uploaded_by, download_url, created_at)
+      VALUES ($1, $2, 'application/pdf', $3, 'tkp', $4, $5, $6, NOW())
+      RETURNING id, filename, download_url
+    `, [
+      pdfBase,
+      `ТКП_${tkpId}.pdf`,
+      sizeBytes,
+      tenderId,
+      request.user.id,
+      downloadUrl
+    ]);
+
+    try {
+      _sseBroadcast('personal_kanban:card_document_added', {
+        card_id: cardId,
+        owner_user_id: card.entity_id ? null : null,
+        document_id: docRows[0] ? docRows[0].id : null,
+        tkp_id: tkpId,
+        filename: pdfBase
+      });
+    } catch (_) {}
+
+    return { success: true, document: docRows[0], tender_id: tenderId };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // POST /api/tkp/:cardId/send-tkp-to-client
+  // Отправить ТКП клиенту через crm-mailer + перевод карты в "КП отправлено".
+  // body: { tkp_id, to, cc?, subject, body_text, body_html?, attach_pdf, attach_estimate?, extra_files? }
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.post('/:cardId/send-tkp-to-client', {
+    preHandler: [fastify.requireRoles(EDIT_ROLES)]
+  }, async (request, reply) => {
+    const cardId = parseInt(request.params.cardId);
+    if (!cardId || isNaN(cardId)) return reply.code(400).send({ error: 'Bad cardId' });
+
+    const b = request.body || {};
+    const tkpId = parseInt(b.tkp_id);
+    if (!tkpId || isNaN(tkpId)) return reply.code(400).send({ error: 'tkp_id required' });
+    const to = b.to;
+    if (!to) return reply.code(400).send({ error: 'to required' });
+    const subject = String(b.subject || '').trim();
+    if (!subject) return reply.code(400).send({ error: 'subject required' });
+    const bodyText = String(b.body_text || '').trim();
+    const bodyHtml = b.body_html ? String(b.body_html) : null;
+    if (!bodyText && !bodyHtml) return reply.code(400).send({ error: 'body_text or body_html required' });
+
+    // ТКП
+    const { rows: tkpRows } = await db.query(
+      `SELECT id, author_id, pdf_path, attachment_path, tender_id, subject AS tkp_subject
+         FROM tkp WHERE id = $1`,
+      [tkpId]
+    );
+    if (!tkpRows[0]) return reply.code(404).send({ error: 'TKP not found' });
+    if (!_canAccessTkp(request.user, tkpRows[0])) {
+      return reply.code(403).send({ error: 'Доступ запрещён' });
+    }
+    const tkp = tkpRows[0];
+
+    // Карта
+    const { rows: cardRows } = await db.query(
+      `SELECT id, owner_user_id, flow_type, entity_kind, entity_id, current_main_status, current_substage_id, version
+         FROM personal_kanban_cards WHERE id = $1`,
+      [cardId]
+    );
+    if (!cardRows[0]) return reply.code(404).send({ error: 'Card not found' });
+    const card = cardRows[0];
+
+    // Собираем вложения
+    const attachments = [];
+    const absUploadDir = pathLib.resolve(UPLOAD_DIR);
+
+    // PDF ТКП
+    if (b.attach_pdf !== false && tkp.pdf_path) {
+      try {
+        const abs = pathLib.resolve(absUploadDir, tkp.pdf_path);
+        if (abs.startsWith(absUploadDir + pathLib.sep) && fsLib.existsSync(abs)) {
+          attachments.push({
+            filename: `ТКП_${tkp.id}.pdf`,
+            content: fsLib.readFileSync(abs),
+            contentType: 'application/pdf'
+          });
+        }
+      } catch (e) {
+        request.log.warn(`[TKP send-to-client] pdf read failed: ${e.message}`);
+      }
+    }
+
+    // Оригинальный attachment (если есть и запрошен в extra_files / attach_estimate)
+    if (b.attach_estimate === true && tkp.attachment_path) {
+      try {
+        const abs = pathLib.resolve(absUploadDir, tkp.attachment_path);
+        if (abs.startsWith(absUploadDir + pathLib.sep) && fsLib.existsSync(abs)) {
+          attachments.push({
+            filename: pathLib.basename(tkp.attachment_path),
+            content: fsLib.readFileSync(abs)
+          });
+        }
+      } catch (e) {
+        request.log.warn(`[TKP send-to-client] estimate read failed: ${e.message}`);
+      }
+    }
+
+    // Произвольные файлы (массив относительных путей внутри UPLOAD_DIR)
+    if (Array.isArray(b.extra_files)) {
+      for (const rel of b.extra_files) {
+        if (!rel || typeof rel !== 'string') continue;
+        try {
+          const abs = pathLib.resolve(absUploadDir, rel);
+          // path-traversal guard: с trailing-sep
+          if (!abs.startsWith(absUploadDir + pathLib.sep)) {
+            request.log.warn(`[TKP send-to-client] path-traversal blocked: ${rel}`);
+            continue;
+          }
+          if (!fsLib.existsSync(abs)) continue;
+          attachments.push({
+            filename: pathLib.basename(rel),
+            content: fsLib.readFileSync(abs)
+          });
+        } catch (e) {
+          request.log.warn(`[TKP send-to-client] extra_file read failed: ${e.message}`);
+        }
+      }
+    }
+
+    // Отправка через CRM Mailer
+    const crmMailer = require('../services/crm-mailer');
+    try {
+      await crmMailer.sendCrmEmail(db.pool || db, request.user.id, {
+        to,
+        cc: b.cc || undefined,
+        subject,
+        text: bodyText,
+        html: bodyHtml || undefined,
+        attachments
+      });
+    } catch (e) {
+      request.log.error({ err: e }, '[TKP send-to-client] mailer failed');
+      return reply.code(500).send({ error: 'send_failed', message: e.message });
+    }
+
+    // Обновляем ТКП
+    await db.query(
+      `UPDATE tkp
+          SET status        = 'sent',
+              sent_at       = COALESCE(sent_at, NOW()),
+              sent_by       = $1,
+              contact_email = COALESCE(contact_email, $2),
+              updated_at    = NOW()
+        WHERE id = $3`,
+      [request.user.id, Array.isArray(to) ? to[0] : to, tkpId]
+    );
+
+    // Если тендер — обновляем tenders.kp_sent_at и tender_status
+    if (tkp.tender_id) {
+      try {
+        await db.query(
+          `UPDATE tenders
+              SET kp_sent_at    = NOW(),
+                  tender_status = 'КП отправлено',
+                  updated_at    = NOW()
+            WHERE id = $1
+              AND tender_status IN ('Готово к отправке КП','ТКП согласовано','Согласование ТКП')`,
+          [tkp.tender_id]
+        );
+      } catch (_) {}
+    }
+
+    // Перевод карты в main_status 'КП отправлено' (для tender-flow) — мягко, в отдельной транзакции.
+    let cardMoved = false;
+    if (card.flow_type === 'tender') {
+      try {
+        await db.query(
+          `UPDATE personal_kanban_cards
+              SET current_main_status = 'КП отправлено',
+                  current_substage_id = NULL,
+                  last_moved_at       = NOW(),
+                  version             = version + 1,
+                  updated_at          = NOW()
+            WHERE id = $1`,
+          [cardId]
+        );
+        // History
+        try {
+          await db.query(
+            `INSERT INTO personal_kanban_card_history
+               (card_id, from_substage_id, to_substage_id, from_main_status, to_main_status, moved_by, action)
+             VALUES ($1, $2, NULL, $3, 'КП отправлено', $4, 'tkp_sent')`,
+            [cardId, card.current_substage_id, card.current_main_status, request.user.id]
+          );
+        } catch (_) {}
+        cardMoved = true;
+      } catch (e) {
+        request.log.warn(`[TKP send-to-client] card move failed: ${e.message}`);
+      }
+    }
+
+    try {
+      _sseBroadcast('tkp_constructor:sent', {
+        tkp_id: tkpId,
+        card_id: cardId,
+        to: Array.isArray(to) ? to[0] : to,
+        sent_by: request.user.id,
+        card_moved: cardMoved
+      });
+    } catch (_) {}
+
+    // Уведомим автора, если отправил не он
+    if (tkp.author_id && tkp.author_id !== request.user.id) {
+      createNotification(db, {
+        user_id: tkp.author_id,
+        title: '📨 ТКП отправлено клиенту',
+        message: `«${tkp.tkp_subject || ('ТКП #' + tkpId)}» → ${Array.isArray(to) ? to[0] : to}`,
+        type: 'tkp',
+        link: `#/tkp?id=${tkpId}`
+      });
+    }
+
+    return { success: true, tkp_id: tkpId, card_id: cardId, card_moved: cardMoved };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // POST /api/tkp/:tkpId/render-pdf
+  // Рендер PDF из блоков (если есть) ИЛИ из items JSONB (обратная совместимость).
+  // Сохраняет PDF в uploads/tkp/ и обновляет tkp.pdf_path.
+  // body: { signature?, stamp? }
+  // ─────────────────────────────────────────────────────────────────────────────
+  fastify.post('/:tkpId/render-pdf', {
+    preHandler: [fastify.requireRoles(EDIT_ROLES)]
+  }, async (request, reply) => {
+    const tkpId = parseInt(request.params.tkpId);
+    if (!tkpId || isNaN(tkpId)) return reply.code(400).send({ error: 'Bad tkpId' });
+
+    const { rows: tkpRows } = await db.query(
+      `SELECT t.*, te.tender_title AS tender_number
+         FROM tkp t
+         LEFT JOIN tenders te ON t.tender_id = te.id
+        WHERE t.id = $1`,
+      [tkpId]
+    );
+    if (!tkpRows[0]) return reply.code(404).send({ error: 'TKP not found' });
+    if (!_canAccessTkp(request.user, tkpRows[0])) {
+      return reply.code(403).send({ error: 'Доступ запрещён' });
+    }
+    const tkp = tkpRows[0];
+
+    const b = request.body || {};
+    const pdfOpts = {
+      signature: b.signature === true || b.signature === '1',
+      stamp:     b.stamp     === true || b.stamp     === '1'
+    };
+
+    // 1) Проверим — есть ли блоки конструктора?
+    const blocksRes = await db.query(
+      `SELECT block_key, block_order, block_title, block_icon, block_data
+         FROM tkp_blocks
+        WHERE tkp_id = $1 AND is_active = TRUE
+        ORDER BY block_order ASC, id ASC`,
+      [tkpId]
+    );
+    const blocks = blocksRes.rows;
+
+    let pdfBuffer = null;
+
+    if (blocks.length > 0) {
+      // Рендер из блоков: HTML → puppeteer (если доступен), иначе — мерж в items JSONB и старый PDFKit-рендер.
+      try {
+        const html = _renderBlocksHtml(tkp, blocks);
+        if (pdfGenerator && pdfGenerator.htmlToPdfBuffer) {
+          // если есть универсальный HTML→PDF — используем
+          pdfBuffer = await pdfGenerator.htmlToPdfBuffer(html, { format: 'A4' });
+        } else {
+          // inline-адаптер: запускаем puppeteer прямо здесь
+          pdfBuffer = await _htmlToPdfInline(html, fastify);
+        }
+      } catch (err) {
+        fastify.log.warn(`[TKP render-pdf] blocks→html→pdf failed: ${err.message}, fallback to items-based PDFKit`);
+      }
+
+      // Если puppeteer упал — fallback: сольём smeta-блок в tkp.items и сгенерим PDFKit
+      if (!pdfBuffer) {
+        const smetaBlock = blocks.find(x => x.block_key === 'smeta');
+        const synthTkp = Object.assign({}, tkp);
+        if (smetaBlock && smetaBlock.block_data) {
+          const sd = typeof smetaBlock.block_data === 'string'
+            ? JSON.parse(smetaBlock.block_data) : smetaBlock.block_data;
+          synthTkp.items = JSON.stringify({
+            items: Array.isArray(sd.items) ? sd.items : [],
+            vat_pct: sd.vat_pct != null ? sd.vat_pct : 20,
+            subtotal: sd.subtotal || null,
+            total_with_vat: sd.total_with_vat || null
+          });
+        }
+        pdfBuffer = await generateTkpPdfKit(synthTkp, db, pdfOpts);
+      }
+    } else {
+      // Старый путь: блоков нет — рендерим как раньше (puppeteer → PDFKit fallback)
+      if (pdfGenerator) {
+        try { pdfBuffer = await pdfGenerator.generateTkpPdf(tkp.id, pdfOpts); }
+        catch (err) {
+          fastify.log.warn(`[TKP render-pdf] Puppeteer failed for TKP ${tkp.id}: ${err.message}`);
+          pdfBuffer = null;
+        }
+      }
+      if (!pdfBuffer) {
+        pdfBuffer = await generateTkpPdfKit(tkp, db, pdfOpts);
+      }
+    }
+
+    // Сохраняем PDF на диск + обновляем tkp.pdf_path
+    const pdfDir = pathLib.join(UPLOAD_DIR, 'tkp');
+    fsLib.mkdirSync(pdfDir, { recursive: true });
+    const filename = `tkp_${tkp.id}_${Date.now()}.pdf`;
+    fsLib.writeFileSync(pathLib.join(pdfDir, filename), pdfBuffer);
+    await db.query('UPDATE tkp SET pdf_path = $1, updated_at = NOW() WHERE id = $2',
+      [`tkp/${filename}`, tkp.id]);
+
+    return {
+      success: true,
+      tkp_id: tkp.id,
+      pdf_path: `tkp/${filename}`,
+      download_url: `/uploads/tkp/${filename}`,
+      bytes: pdfBuffer.length,
+      rendered_from: blocks.length > 0 ? 'blocks' : 'legacy_items'
+    };
+  });
+
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Хелперы блочного рендера (вне routes — чтобы не плодить closure)
+// ═══════════════════════════════════════════════════════════════════════════
+
+function _escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function _fmtMoneyHtml(n) {
+  const v = Number(n || 0);
+  return v.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// HTML-рендер набора блоков. Возвращает полную страницу для puppeteer.
+function _renderBlocksHtml(tkp, blocks) {
+  const parts = [];
+  for (const b of blocks) {
+    const data = (typeof b.block_data === 'string') ? (JSON.parse(b.block_data || '{}')) : (b.block_data || {});
+    parts.push(_renderBlock(b.block_key, data, tkp));
+  }
+  return `<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<title>${_escapeHtml(tkp.subject || 'ТКП')}</title>
+<style>
+  @page { size: A4; margin: 18mm 15mm; }
+  body { font-family: 'Segoe UI','DejaVu Sans',Arial,sans-serif; font-size: 10.5pt; color:#1a1a1a; line-height:1.45; }
+  h1,h2,h3 { color:#1E4D8C; margin:0 0 8px; }
+  h1 { font-size: 18pt; text-align:center; }
+  h2 { font-size: 13pt; margin-top: 14px; border-bottom: 1px solid #E5E7EB; padding-bottom: 4px; }
+  .muted { color:#6B7280; }
+  .row { margin: 4px 0; }
+  table { width:100%; border-collapse: collapse; margin: 8px 0; }
+  th, td { border:1px solid #D1D5DB; padding: 5px 8px; font-size: 9.5pt; }
+  th { background:#1E4D8C; color:#fff; text-align: center; }
+  td.num { text-align: right; }
+  .totals { width: 50%; margin-left: auto; }
+  .totals td { border:none; padding: 3px 8px; }
+  .totals .grand { border-top:2px solid #1E4D8C; font-weight:700; color:#1E4D8C; font-size:12pt; }
+  .block { margin-top: 14px; }
+  .sign { margin-top: 32px; display:flex; justify-content: space-between; }
+</style></head><body>
+${parts.join('\n')}
+</body></html>`;
+}
+
+function _renderBlock(key, d, tkp) {
+  switch (key) {
+    case 'title': {
+      const cust = d.customer_name || tkp.customer_name || '';
+      const inn  = d.customer_inn  || tkp.customer_inn  || '';
+      const subj = d.subject       || tkp.subject       || '';
+      const num  = d.tkp_number    || tkp.tkp_number    || ('№ ' + tkp.id);
+      const date = d.date          || (tkp.created_at ? new Date(tkp.created_at).toLocaleDateString('ru-RU') : new Date().toLocaleDateString('ru-RU'));
+      return `<div class="block">
+        <h1>КОММЕРЧЕСКОЕ ПРЕДЛОЖЕНИЕ</h1>
+        <div class="muted" style="text-align:center;">${_escapeHtml(num)} от ${_escapeHtml(date)}</div>
+        <div class="row"><b>Заказчик:</b> ${_escapeHtml(cust)}${inn ? ' (ИНН ' + _escapeHtml(inn) + ')' : ''}</div>
+        <div class="row"><b>Предмет:</b> ${_escapeHtml(subj)}</div>
+      </div>`;
+    }
+    case 'preamble':
+      return d.text
+        ? `<div class="block"><h2>Преамбула</h2><div>${_escapeHtml(d.text).replace(/\n/g, '<br>')}</div></div>`
+        : '';
+    case 'smeta': {
+      const items = Array.isArray(d.items) ? d.items : [];
+      const vatPct = d.vat_pct != null ? Number(d.vat_pct) : 20;
+      let subtotal = 0;
+      const rows = items.map((it, i) => {
+        const qty = Number(it.qty || it.quantity || 1);
+        const price = Number(it.price || it.unit_price || 0);
+        const total = Number(it.total != null ? it.total : (qty * price));
+        subtotal += total;
+        return `<tr>
+          <td style="text-align:center;">${i + 1}</td>
+          <td>${_escapeHtml(it.name || '')}</td>
+          <td style="text-align:center;">${_escapeHtml(it.unit || 'усл.')}</td>
+          <td class="num">${qty.toLocaleString('ru-RU')}</td>
+          <td class="num">${_fmtMoneyHtml(price)}</td>
+          <td class="num">${_fmtMoneyHtml(total)}</td>
+        </tr>`;
+      }).join('');
+      const subTotal = d.subtotal != null ? Number(d.subtotal) : subtotal;
+      const vatSum   = Math.round(subTotal * vatPct) / 100;
+      const grand    = d.total_with_vat != null ? Number(d.total_with_vat) : (subTotal + vatSum);
+      return `<div class="block">
+        <h2>Состав работ и стоимость</h2>
+        <table>
+          <thead><tr>
+            <th style="width:6%;">№</th><th>Наименование</th>
+            <th style="width:8%;">Ед.</th><th style="width:9%;">Кол.</th>
+            <th style="width:15%;">Цена, ₽</th><th style="width:17%;">Сумма, ₽</th>
+          </tr></thead>
+          <tbody>${rows || ''}</tbody>
+        </table>
+        <table class="totals">
+          <tr><td>Итого без НДС:</td><td class="num">${_fmtMoneyHtml(subTotal)} ₽</td></tr>
+          <tr><td>НДС ${vatPct}%:</td><td class="num">${_fmtMoneyHtml(vatSum)} ₽</td></tr>
+          <tr class="grand"><td>ИТОГО:</td><td class="num">${_fmtMoneyHtml(grand)} ₽</td></tr>
+        </table>
+      </div>`;
+    }
+    case 'terms': {
+      const lines = [];
+      if (d.payment_preset || d.avans_pct != null || d.postpay_days != null || d.custom) {
+        const parts = [];
+        if (d.avans_pct != null) parts.push(`аванс ${d.avans_pct}%`);
+        if (d.postpay_days != null) parts.push(`постоплата в течение ${d.postpay_days} дн.`);
+        if (d.custom) parts.push(String(d.custom));
+        if (parts.length) lines.push(`<div class="row"><b>Условия оплаты:</b> ${_escapeHtml(parts.join(', '))}</div>`);
+      }
+      if (tkp.validity_days) lines.push(`<div class="row"><b>Срок действия:</b> ${tkp.validity_days} дн.</div>`);
+      if (tkp.deadline)      lines.push(`<div class="row"><b>Срок исполнения:</b> ${_escapeHtml(tkp.deadline)}</div>`);
+      if (!lines.length) return '';
+      return `<div class="block"><h2>Условия</h2>${lines.join('')}</div>`;
+    }
+    case 'warranty': {
+      const months = d.months != null ? Number(d.months) : null;
+      const txt = d.text || '';
+      if (!months && !txt) return '';
+      return `<div class="block"><h2>Гарантии</h2>
+        ${months ? `<div class="row">Гарантийный срок: <b>${months} мес.</b></div>` : ''}
+        ${txt ? `<div class="row">${_escapeHtml(txt).replace(/\n/g, '<br>')}</div>` : ''}
+      </div>`;
+    }
+    case 'logistics': {
+      const lines = [];
+      if (d.mobilization_days   != null) lines.push(`<div class="row">Мобилизация: ${Number(d.mobilization_days)} дн.</div>`);
+      if (d.demobilization_days != null) lines.push(`<div class="row">Демобилизация: ${Number(d.demobilization_days)} дн.</div>`);
+      if (d.transport)                    lines.push(`<div class="row">Транспорт: ${_escapeHtml(d.transport)}</div>`);
+      return lines.length ? `<div class="block"><h2>Логистика</h2>${lines.join('')}</div>` : '';
+    }
+    case 'safety': {
+      const flags = [];
+      if (d.naks_required) flags.push('Сертификаты НАКС');
+      if (d.snils_required) flags.push('СНИЛС/допуска');
+      if (d.ppe_required)  flags.push('СИЗ');
+      const txt = d.text || '';
+      if (!flags.length && !txt) return '';
+      return `<div class="block"><h2>Безопасность</h2>
+        ${flags.length ? `<div class="row">${_escapeHtml(flags.join(' · '))}</div>` : ''}
+        ${txt ? `<div class="row">${_escapeHtml(txt).replace(/\n/g, '<br>')}</div>` : ''}
+      </div>`;
+    }
+    case 'schedule': {
+      const ms = Array.isArray(d.milestones) ? d.milestones : [];
+      if (!d.start_date && !d.end_date && !ms.length) return '';
+      const rows = ms.map(x => `<tr><td>${_escapeHtml(x.title || x.name || '')}</td><td>${_escapeHtml(x.date || '')}</td></tr>`).join('');
+      return `<div class="block"><h2>График работ</h2>
+        ${d.start_date ? `<div class="row">Начало: ${_escapeHtml(d.start_date)}</div>` : ''}
+        ${d.end_date   ? `<div class="row">Окончание: ${_escapeHtml(d.end_date)}</div>` : ''}
+        ${ms.length ? `<table><thead><tr><th>Этап</th><th style="width:30%;">Дата</th></tr></thead><tbody>${rows}</tbody></table>` : ''}
+      </div>`;
+    }
+    case 'team': {
+      const members = Array.isArray(d.members) ? d.members : [];
+      if (!d.lead && !members.length) return '';
+      return `<div class="block"><h2>Команда</h2>
+        ${d.lead ? `<div class="row"><b>Руководитель:</b> ${_escapeHtml(d.lead)}</div>` : ''}
+        ${members.length ? `<ul>${members.map(x => `<li>${_escapeHtml(x.name || x)}${x.role ? ' — ' + _escapeHtml(x.role) : ''}</li>`).join('')}</ul>` : ''}
+      </div>`;
+    }
+    case 'attach': {
+      const files = Array.isArray(d.files) ? d.files : [];
+      if (!files.length) return '';
+      return `<div class="block"><h2>Приложения</h2>
+        <ul>${files.map(f => `<li>${_escapeHtml(f.name || f.filename || f)}</li>`).join('')}</ul>
+      </div>`;
+    }
+    case 'sign': {
+      const name = d.author_name || '';
+      const pos  = d.author_position || 'Руководитель проекта';
+      return `<div class="block sign">
+        <div><div class="muted">${_escapeHtml(pos)}</div><div>_________________</div></div>
+        <div style="text-align:right;"><div class="muted">М.П.</div><div><b>${_escapeHtml(name)}</b></div></div>
+      </div>`;
+    }
+    default:
+      return '';
+  }
+}
+
+// Inline-адаптер HTML→PDF (puppeteer). Используется если у pdf-generator нет
+// универсального htmlToPdfBuffer. Запускает свой headless-Chrome.
+async function _htmlToPdfInline(html, fastify) {
+  let puppeteer;
+  try { puppeteer = require('puppeteer'); }
+  catch (e) {
+    if (fastify && fastify.log) fastify.log.warn('[TKP render-pdf] puppeteer not available: ' + e.message);
+    throw new Error('puppeteer_unavailable');
+  }
+  const browser = await puppeteer.launch({
+    headless: 'new',
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+  });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: 'domcontentloaded' });
+    const buf = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: { top: '18mm', bottom: '18mm', left: '15mm', right: '15mm' }
+    });
+    return buf;
+  } finally {
+    try { await browser.close(); } catch (_) {}
+  }
+}

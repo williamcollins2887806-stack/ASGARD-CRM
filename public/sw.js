@@ -2,7 +2,7 @@
 // Shell caching + Push Notifications + Offline Support + Background Sync
 // Session 15: PWA + Push Actions + Badge + Offline
 
-const SHELL_VERSION = '20.14.16';
+const SHELL_VERSION = '20.14.27';
 const CACHE_NAME = `asgard-crm-shell-${SHELL_VERSION}`;
 const API_CACHE_NAME = 'asgard-crm-api-v2';
 
@@ -173,7 +173,11 @@ async function networkFirstAPI(request) {
 // ── Network First for HTML with offline.html fallback ──
 async function networkFirstWithOffline(request) {
   try {
-    var response = await fetch(request);
+    // cache:'no-store' заставляет SW обходить browser HTTP cache —
+    // иначе для navigate-запросов browser мог отдавать кэшированный
+    // index.html (даже с Cache-Control: no-cache на сервере, если
+    // браузер делал 304-revalidation против устаревшего ETag).
+    var response = await fetch(request, { cache: 'no-store' });
     if (response && response.ok) {
       var cache = await caches.open(CACHE_NAME);
       cache.put(request, response.clone()).catch(function() {});

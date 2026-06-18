@@ -109,6 +109,9 @@ import OfficeAcademyAdmin from '@/pages/OfficeAcademyAdmin';
 import Integrations from '@/pages/Integrations';
 import More from '@/pages/More';
 import GlobalTimesheet from '@/pages/GlobalTimesheet';
+import TimesheetWarehouse from '@/pages/TimesheetWarehouse';
+import TimesheetMedical from '@/pages/TimesheetMedical';
+import TimesheetTravel from '@/pages/TimesheetTravel';
 import PayrollDashboard from '@/pages/PayrollDashboard';
 import OfficialEmployees from '@/pages/OfficialEmployees';
 import TrainingBoard from '@/pages/TrainingBoard';
@@ -124,6 +127,7 @@ import { usePushSubscription } from '@/hooks/usePushSubscription';
 
 const PersonalKanban       = lazy(() => import('@/pages/PersonalKanban'));
 const PersonalKanbanConfig = lazy(() => import('@/pages/PersonalKanbanConfig'));
+const PersonalKanbanV3     = lazy(() => import('@/pages/PersonalKanbanV3'));
 const DirectorsInbox       = lazy(() => import('@/pages/DirectorsInbox'));
 
 // Роли, получающие office push (web-push на /api/push/subscribe).
@@ -274,7 +278,14 @@ function AppLayout() {
           <Route path="/assembly" element={<ProtectedRoute section="works"><PinGuard><Assembly /></PinGuard></ProtectedRoute>} />
           <Route path="/gantt" element={<ProtectedRoute section="works"><PinGuard><Gantt /></PinGuard></ProtectedRoute>} />
           <Route path="/workers-schedule" element={<ProtectedRoute section="personnel"><PinGuard><WorkersSchedule /></PinGuard></ProtectedRoute>} />
-          <Route path="/global-timesheet" element={<ProtectedRoute section="personnel"><PinGuard><GlobalTimesheet /></PinGuard></ProtectedRoute>} />
+          {/* Старый /global-timesheet → редирект на новый /timesheet */}
+          <Route path="/global-timesheet" element={<Navigate to="/timesheet" replace />} />
+          {/* Новые v2-роуты табелей по ролям (агент E) */}
+          <Route path="/timesheet" element={<ProtectedRoute section="personnel"><PinGuard><GlobalTimesheet /></PinGuard></ProtectedRoute>} />
+          <Route path="/timesheet-warehouse" element={<ProtectedRoute section="personnel"><PinGuard><TimesheetWarehouse /></PinGuard></ProtectedRoute>} />
+          <Route path="/timesheet-medical" element={<ProtectedRoute section="personnel"><PinGuard><TimesheetMedical /></PinGuard></ProtectedRoute>} />
+          <Route path="/timesheet-travel" element={<ProtectedRoute section="personnel"><PinGuard><TimesheetTravel /></PinGuard></ProtectedRoute>} />
+          <Route path="/my-timesheet" element={<ProtectedRoute section="works"><PinGuard><PmTimesheet /></PinGuard></ProtectedRoute>} />
           <Route path="/training-board" element={<ProtectedRoute section="personnel"><PinGuard><TrainingBoard /></PinGuard></ProtectedRoute>} />
           <Route path="/payroll-dashboard" element={<ProtectedRoute section="finances"><PinGuard><PayrollDashboard /></PinGuard></ProtectedRoute>} />
           <Route path="/official-employees" element={<ProtectedRoute section="finances"><PinGuard><OfficialEmployees /></PinGuard></ProtectedRoute>} />
@@ -319,6 +330,18 @@ function AppLayout() {
                 <PinGuard>
                   <Suspense fallback={<div style={{ padding: 20, color: 'var(--text-secondary)' }}>Загрузка…</div>}>
                     <PersonalKanbanConfig />
+                  </Suspense>
+                </PinGuard>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/personal-kanban-v3"
+            element={
+              <ProtectedRoute section="personal_kanban">
+                <PinGuard>
+                  <Suspense fallback={<div style={{ padding: 20, color: 'var(--text-secondary)' }}>Загрузка…</div>}>
+                    <PersonalKanbanV3 onSwitchToSubstages={() => { window.location.hash = '#/personal-kanban'; }} />
                   </Suspense>
                 </PinGuard>
               </ProtectedRoute>

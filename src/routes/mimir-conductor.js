@@ -1286,6 +1286,112 @@ async function mimirConductorRoutes(fastify, options) {
     }
   });
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GET /references/search?q=&work_type=&volume_min=&volume_max=&limit=10
+  // ─────────────────────────────────────────────────────────────────────────
+  // Поиск похожих эталонов из mimir_reference_projects для Quick/Conductor.
+  // Размещён в этом файле (а не в /conductor/*) намеренно: используется и
+  // Quick-сессией ТКП (V129), и Conductor'ом (V133), и канбан-витриной.
+  //
+  // RBAC: PM/HEAD_PM/TO/HEAD_TO/ADMIN/DIRECTOR_* (через requireRoles).
+  //
+  // Возвращает массив записей с similarity_pct =
+  //   100 - abs(volume - target_volume) / target_volume * 100  (если задан target),
+  //   иначе 100 (по умолчанию все «совпадают»).
+  // ═══════════════════════════════════════════════════════════════════════════
+  fastify.get('/references/search', {
+    preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
+  }, async (request, reply) => {
+    const db = fastify.db;
+    const q = request.query || {};
+    const qText = (q.q || '').toString().trim();
+    const workType = (q.work_type || '').toString().trim();
+    const volMin = q.volume_min != null && q.volume_min !== '' ? Number(q.volume_min) : null;
+    const volMax = q.volume_max != null && q.volume_max !== '' ? Number(q.volume_max) : null;
+    let limit = parseInt(q.limit, 10);
+    if (!Number.isFinite(limit) || limit <= 0) limit = 10;
+    if (limit > 100) limit = 100;
+
+    const where = ['is_active = TRUE', 'COALESCE(quality_score, 0) >= 5'];
+    const params = [];
+    let idx = 1;
+
+    if (qText) {
+      where.push(`(
+        object_name   ILIKE $${idx} OR
+        customer_name ILIKE $${idx} OR
+        work_type     ILIKE $${idx}
+      )`);
+      params.push(`%${qText}%`);
+      idx++;
+    }
+    if (workType) {
+      where.push(`work_type ILIKE $${idx}`);
+      params.push(`%${workType}%`);
+      idx++;
+    }
+    if (Number.isFinite(volMin)) {
+      where.push(`duration_actual_workshifts >= $${idx}`);
+      params.push(volMin);
+      idx++;
+    }
+    if (Number.isFinite(volMax)) {
+      where.push(`duration_actual_workshifts <= $${idx}`);
+      params.push(volMax);
+      idx++;
+    }
+
+    params.push(limit);
+    const sql = `
+      SELECT id, customer_name, object_name, work_type, work_subtype, industry_sector,
+             contract_value_planned, contract_value_actual,
+             cost_planned, cost_actual,
+             margin_planned_pct, margin_actual_pct,
+             duration_planned_workshifts, duration_actual_workshifts,
+             duration_planned_calendar_days, duration_actual_calendar_days,
+             crew_size_planned, crew_size_actual,
+             quality_score, notes, created_at
+        FROM mimir_reference_projects
+       WHERE ${where.join(' AND ')}
+       ORDER BY quality_score DESC NULLS LAST,
+                contract_value_actual DESC NULLS LAST,
+                id DESC
+       LIMIT $${idx}
+    `;
+
+    try {
+      const { rows } = await db.query(sql, params);
+      // Целевой volume для similarity: середина диапазона, либо одна граница.
+      let target = null;
+      if (Number.isFinite(volMin) && Number.isFinite(volMax)) target = (volMin + volMax) / 2;
+      else if (Number.isFinite(volMin)) target = volMin;
+      else if (Number.isFinite(volMax)) target = volMax;
+
+      const items = rows.map((r) => {
+        let similarity_pct = 100;
+        if (target != null && target > 0) {
+          const v = Number(r.duration_actual_workshifts);
+          if (Number.isFinite(v)) {
+            const diffPct = Math.abs(v - target) / target * 100;
+            similarity_pct = Math.max(0, Math.round(100 - diffPct));
+          }
+        }
+        return { ...r, similarity_pct };
+      });
+
+      // Если задан target — пересортируем по similarity (без потери первичного ORDER BY качества).
+      if (target != null) {
+        items.sort((a, b) => (b.similarity_pct - a.similarity_pct) ||
+                            ((b.quality_score || 0) - (a.quality_score || 0)));
+      }
+
+      return { success: true, items, total: items.length };
+    } catch (e) {
+      request.log.error({ err: e }, '[mimir-conductor] /references/search failed');
+      return reply.code(500).send({ error: 'search_failed', message: e.message });
+    }
+  });
+
   // GET /conductor/awaiting-customer — просчёты в ожидании заказчика для PM
   fastify.get('/conductor/awaiting-customer', {
     preHandler: [fastify.authenticate]

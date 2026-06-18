@@ -16,6 +16,13 @@
  *   POST   /cards/:id/reminders
  *   PATCH  /cards/:id/reminders/:rid
  *   DELETE /cards/:id/reminders/:rid
+ *
+ *   v3 (8 колонок, V238 view):
+ *   GET    /board?flow_filter=             — alias /cards-by-column
+ *   GET    /cards-by-column?flow_filter=   — { columns:{new,calc,approval,kp_prep,sent,win,lose,work}, total }
+ *   GET    /columns/counts?flow_filter=    — { counts:{...}, total } cache 10s
+ *   POST   /cards/:id/transition           — { to_v3_column, note?, confirm? } + side effects
+ *   POST   /cards/:cardId/convert-to-pretender — inbox_application → pre_tender_request
  */
 
 'use strict';
@@ -91,15 +98,22 @@ async function loadEntitySnapshot(entityKind, entityId) {
            FROM tenders WHERE id = $1`, [entityId]);
       return r.rows[0] || null;
     } else if (entityKind === 'pre_tender') {
-      // F2: в pre_tender_requests нет колонки title — используем COALESCE из реальных полей
-      // (work_description / work_location / customer_name). Alias=title для единого фронт-API.
+      // F2 + Wave B: расширенный snapshot — customer + work details + AI + financials,
+      // чтобы карта канбана могла нарисовать богатую деталь без второго запроса.
       const r = await db.query(
         `SELECT id,
                 COALESCE(NULLIF(work_description, ''),
                          NULLIF(work_location, ''),
                          NULLIF(customer_name, ''),
                          'Запрос #' || id::text) AS title,
-                customer_name, status, created_at,
+                customer_name, customer_email, customer_inn,
+                contact_person, contact_phone,
+                work_description, work_location, work_deadline,
+                estimated_sum,
+                ai_summary, ai_color, ai_recommendation, ai_work_match_score,
+                has_documents, manual_documents,
+                status, created_tender_id, assigned_to, decision_comment, reject_reason,
+                created_at,
                 EXTRACT(EPOCH FROM (NOW() - created_at))/86400 AS days_since_created
            FROM pre_tender_requests WHERE id = $1`, [entityId]);
       return r.rows[0] || null;
@@ -142,7 +156,14 @@ async function loadEntitySnapshotsBatch(entityKind, ids) {
                              NULLIF(work_location, ''),
                              NULLIF(customer_name, ''),
                              'Запрос #' || id::text) AS title,
-                    customer_name, status, created_at,
+                    customer_name, customer_email, customer_inn,
+                    contact_person, contact_phone,
+                    work_description, work_location, work_deadline,
+                    estimated_sum,
+                    ai_summary, ai_color, ai_recommendation, ai_work_match_score,
+                    has_documents, manual_documents,
+                    status, created_tender_id, assigned_to,
+                    created_at,
                     EXTRACT(EPOCH FROM (NOW() - created_at))/86400 AS days_since_created
                FROM pre_tender_requests WHERE id = ANY($1::int[])`;
     } else if (entityKind === 'work') {
@@ -170,6 +191,66 @@ async function loadFirstActiveSubstage(client, ownerUserId, flowType, mainStatus
       ORDER BY sort_order ASC, id ASC LIMIT 1`,
     [ownerUserId, flowType, mainStatus]);
   return r.rows[0]?.id || null;
+}
+
+// Wave D — BUG-7: дефолтные наборы подэтапов по (flow_type, main_status).
+// Цель: PM не должен начинать с пустой колонки «Не размещено».
+// При первом получении карты — авто-создание 3 подэтапов из шаблона.
+const DEFAULT_SUBSTAGE_TEMPLATES = {
+  'application': {
+    'assigned':         ['📥 Изучить заявку',     '📞 Связаться с клиентом',   '📤 Передать в просчёт'],
+    'under_review':     ['📋 Анализ',              '💭 Обсуждение',             '✓ Решение'],
+    'new':              ['📥 Новые',               '🔍 На просмотре',           '📋 К работе'],
+  },
+  'pre_tender': {
+    'new':              ['🔍 Изучить ТЗ',          '📞 Уточнить детали',        '📊 К расчёту'],
+    'in_review':        ['📊 Расчёт',              '💰 Согласование суммы',     '✓ Готов к согласованию'],
+    'need_docs':        ['📄 Запрошены доки',      '🔄 Доки получены',          '✓ Готов'],
+    'pending_approval': ['⏳ Ожидает директора',   '💬 На обсуждении',          '✓ Согласовано'],
+    'approved':         ['🏆 Создать тендер',      '⏰ В ожидании',             '✓ Передан в тендер'],
+  },
+  'tender': {
+    'Новый':                  ['🎯 Принять',         '👥 Команда',             '📋 К просчёту'],
+    'Согласование ТКП':       ['📊 Расчёт ТКП',      '🧮 Проверка',           '💼 С директором'],
+    'Готово к отправке КП':   ['📝 Подготовка КП',   '✓ Проверка',            '📤 Отправить'],
+    'КП отправлено':          ['⏳ Ожидание ответа', '📞 Дозвон клиента',      '🏆 Победа/проигрыш'],
+  },
+  'work': {
+    'Подготовка':       ['📄 Документы',           '🚚 Мобилизация',            '👷 Команда готова'],
+    'Мобилизация':      ['🛒 Закупки',             '🚚 Перевозка',              '✓ На месте'],
+    'В работе':         ['📊 Контроль',            '📞 Связь с клиентом',       '⚠ Риски'],
+    'Подписание акта':  ['📝 Подготовка акта',     '🤝 Согласование',           '✓ Подписан'],
+  },
+};
+
+async function ensureDefaultSubstages(client, ownerUserId, flowType, mainStatus) {
+  const existing = await client.query(
+    `SELECT id FROM kanban_substages
+      WHERE owner_user_id=$1 AND flow_type=$2 AND main_status=$3 AND is_active=TRUE
+      ORDER BY sort_order ASC, id ASC LIMIT 1`,
+    [ownerUserId, flowType, mainStatus]);
+  if (existing.rows[0]) return existing.rows[0].id;
+
+  // Нет подэтапов — пробуем дефолтный шаблон.
+  const template = DEFAULT_SUBSTAGE_TEMPLATES[flowType]?.[mainStatus];
+  if (!template || !template.length) return null;
+
+  let firstId = null;
+  const colors = ['#5b8def', '#f39c12', '#27ae60', '#9b59b6', '#e74c3c', '#c8a84e'];
+  for (let i = 0; i < template.length; i++) {
+    try {
+      const ins = await client.query(
+        `INSERT INTO kanban_substages (owner_user_id, flow_type, main_status, title, sort_order, color, is_active)
+         VALUES ($1, $2, $3, $4, $5, $6, TRUE)
+         RETURNING id`,
+        [ownerUserId, flowType, mainStatus, template[i], 1000 * (i + 1), colors[i % colors.length]]);
+      if (i === 0) firstId = ins.rows[0].id;
+    } catch (e) {
+      // не валим вызывающий код — substages best-effort
+      try { console.warn(`[personal-kanban] ensureDefaultSubstages insert failed:`, e.message); } catch (_) {}
+    }
+  }
+  return firstId;
 }
 
 // Wave-5 H4: helper для закрытия orphan-карт при удалении/архивации источника.
@@ -204,6 +285,68 @@ async function closeKanbanCardsForEntity(runner, entityKind, entityId, actorUser
   // 3. SSE — НЕ внутри транзакции вызывающего; вызывающий пусть пушит сам по closed_card_ids.
   return { closed_card_ids: upd.rows.map(r => r.id), rows: upd.rows };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v3 канбан: 8 каноничных колонок (V238 миграция, pk_v3_column())
+//   new       — поступление (application:new/under_review/assigned, pre_tender:new/need_docs, tender:Черновик/Новый/На анализе)
+//   calc      — расчёт   (application:accepted, pre_tender:in_review, tender:Отправлено на просчёт/Согласование ТКП)
+//   approval  — согласование (pre_tender:pending_approval, tender:ТКП согласовано)
+//   kp_prep   — подготовка КП (pre_tender:approved, tender:Готово к отправке КП)
+//   sent      — КП отправлено (tender:КП отправлено)
+//   win       — выигран (tender:Выиграли)
+//   lose      — проигран/отклонён (application:rejected/archived, pre_tender:rejected/expired, tender:Проиграли/Не подходит)
+//   work      — в работе (всегда для flow_type='work')
+// ─────────────────────────────────────────────────────────────────────────────
+const V3_COLUMNS = ['new', 'calc', 'approval', 'kp_prep', 'sent', 'win', 'lose', 'work'];
+
+// Маппинг (toColumn, flow_type) → canonical main_status (целевой при transition).
+// Возвращает строку или null если переход недопустим для данного flow.
+// Логика отражает обратное соответствие к pk_v3_column() из V238.
+// Для work — в колонку 'work' не меняем статус (любой work-статус остаётся), null = «keep current».
+function v3ColumnToMainStatus(toColumn, flowType, currentMainStatus) {
+  if (!V3_COLUMNS.includes(toColumn)) return undefined;
+
+  if (flowType === 'application') {
+    switch (toColumn) {
+      case 'new':      return 'new';
+      case 'calc':     return 'accepted';
+      case 'lose':     return 'rejected';
+      default:         return null; // approval/kp_prep/sent/win/work — не применимо к application
+    }
+  }
+  if (flowType === 'pre_tender') {
+    switch (toColumn) {
+      case 'new':      return 'new';
+      case 'calc':     return 'in_review';
+      case 'approval': return 'pending_approval';
+      case 'kp_prep':  return 'approved';
+      case 'lose':     return 'rejected';
+      default:         return null; // sent/win/work — не применимо к pre_tender (тендер уже)
+    }
+  }
+  if (flowType === 'tender') {
+    switch (toColumn) {
+      case 'new':      return 'Новый';
+      case 'calc':     return 'Согласование ТКП';
+      case 'approval': return 'ТКП согласовано';
+      case 'kp_prep':  return 'Готово к отправке КП';
+      case 'sent':     return 'КП отправлено';
+      case 'win':      return 'Выиграли';
+      case 'lose':     return 'Проиграли';
+      default:         return null; // work — не применимо к tender (только после конверсии в work)
+    }
+  }
+  if (flowType === 'work') {
+    // BUG-W1-01: НЕ затирать work_status. work-колонка = noop для work-flow.
+    // Возврат null = «оставить текущий main_status», а transition по-прежнему
+    // обновит карту (substage может смениться) + history запись.
+    if (toColumn === 'work') return null;
+    return undefined; // другие колонки для work-flow не допускаются
+  }
+  return undefined;
+}
+
+const DIRECTOR_ROLES = ['HEAD_PM', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 
 module.exports = async function (fastify) {
 
@@ -967,6 +1110,691 @@ module.exports = async function (fastify) {
     return { success: true };
   });
 
+  // ═══════════════════════════════════════════════════════════════════
+  // POST /cards/:cardId/start-quick — открыть Quick-сессию ТКП из карты
+  // ─────────────────────────────────────────────────────────────────
+  // Создаёт tkp_quick_sessions (V129) с session_uid=uuid и привязкой к
+  // entity-источнику карты (pre_tender/tender/inbox_application). Возвращает
+  // { session_uid, session_id }. RBAC: владелец карты ИЛИ TO/HEAD_TO/HEAD_PM/
+  // ADMIN/DIRECTOR_*. Идемпотентности нет — каждый клик = новая сессия
+  // (Quick-сессии короткоживущие, повторное создание это нормально).
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.post('/cards/:cardId/start-quick', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const userId = request.user.id;
+    const userRole = request.user.role;
+    const cardId = asInt(request.params.cardId);
+    if (cardId === null) return reply.code(400).send({ error: 'invalid_id' });
+
+    // 1. Карта + entity.
+    const cardRes = await db.query(
+      `SELECT id, owner_user_id, entity_kind, entity_id, flow_type, is_closed
+         FROM personal_kanban_cards WHERE id = $1`,
+      [cardId]);
+    if (!cardRes.rows[0]) return reply.code(404).send({ error: 'card_not_found' });
+    const card = cardRes.rows[0];
+
+    const isOwner = card.owner_user_id === userId;
+    const isManager = ['HEAD_PM', 'HEAD_TO', 'TO', 'ADMIN',
+                       'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(userRole);
+    if (!isOwner && !isManager) return reply.code(403).send({ error: 'forbidden' });
+    if (card.is_closed) return reply.code(409).send({ error: 'card_closed' });
+
+    // 2. Подтягиваем customer/tz из источника (best-effort).
+    let customerInn = null;
+    let customerName = null;
+    let tzText = null;
+    let preTenderId = null;
+    let tenderId = null;
+    try {
+      if (card.entity_kind === 'pre_tender' && card.entity_id) {
+        const r = await db.query(
+          `SELECT customer_inn, customer_name, work_description
+             FROM pre_tender_requests WHERE id = $1`, [card.entity_id]);
+        if (r.rows[0]) {
+          customerInn = r.rows[0].customer_inn || null;
+          customerName = r.rows[0].customer_name || null;
+          tzText = r.rows[0].work_description || null;
+          preTenderId = card.entity_id;
+        }
+      } else if (card.entity_kind === 'tender' && card.entity_id) {
+        const r = await db.query(
+          `SELECT customer_inn, customer_name, tender_title
+             FROM tenders WHERE id = $1`, [card.entity_id]);
+        if (r.rows[0]) {
+          customerInn = r.rows[0].customer_inn || null;
+          customerName = r.rows[0].customer_name || null;
+          tzText = r.rows[0].tender_title || null;
+          tenderId = card.entity_id;
+        }
+      } else if (card.entity_kind === 'inbox_application' && card.entity_id) {
+        const r = await db.query(
+          `SELECT subject, source_name FROM inbox_applications WHERE id = $1`, [card.entity_id]);
+        if (r.rows[0]) {
+          customerName = r.rows[0].source_name || null;
+          tzText = r.rows[0].subject || null;
+        }
+      }
+    } catch (e) {
+      request.log.warn({ err: e }, '[personal-kanban] start-quick: entity snapshot failed');
+    }
+
+    // 3. INSERT tkp_quick_sessions.
+    const sessionUid = require('crypto').randomUUID();
+    try {
+      const ins = await db.query(
+        `INSERT INTO tkp_quick_sessions
+          (session_uid, author_id, customer_inn, customer_name,
+           pre_tender_id, tender_id, tz_text, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'draft')
+         RETURNING id, session_uid`,
+        [sessionUid, card.owner_user_id, customerInn, customerName,
+         preTenderId, tenderId, tzText]);
+      return {
+        success: true,
+        session_uid: ins.rows[0].session_uid,
+        session_id: ins.rows[0].id
+      };
+    } catch (e) {
+      request.log.error({ err: e }, '[personal-kanban] start-quick failed');
+      return reply.code(500).send({ error: 'start_quick_failed', message: e.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // POST /cards/:cardId/start-conductor — запустить Conductor из карты
+  // ─────────────────────────────────────────────────────────────────
+  // Создаёт mimir_conductor_runs (V133) status='DRAFT'. Если по этому
+  // tender_id уже есть активный run (status NOT IN терминальных) — возвращает
+  // существующий run_id (idempotency). Связки card_id / pre_tender_id /
+  // entity пишем в complexity_flags JSONB (отдельных колонок в V133 нет).
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.post('/cards/:cardId/start-conductor', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const userId = request.user.id;
+    const userRole = request.user.role;
+    const cardId = asInt(request.params.cardId);
+    if (cardId === null) return reply.code(400).send({ error: 'invalid_id' });
+
+    // 1. Карта + entity.
+    const cardRes = await db.query(
+      `SELECT id, owner_user_id, entity_kind, entity_id, flow_type, is_closed
+         FROM personal_kanban_cards WHERE id = $1`,
+      [cardId]);
+    if (!cardRes.rows[0]) return reply.code(404).send({ error: 'card_not_found' });
+    const card = cardRes.rows[0];
+
+    const isOwner = card.owner_user_id === userId;
+    const isManager = ['HEAD_PM', 'HEAD_TO', 'TO', 'ADMIN',
+                       'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(userRole);
+    if (!isOwner && !isManager) return reply.code(403).send({ error: 'forbidden' });
+    if (card.is_closed) return reply.code(409).send({ error: 'card_closed' });
+
+    // 2. Разворачиваем entity_kind в (tender_id, work_id) + сохраняем pre_tender_id для flags.
+    let tenderId = null;
+    let workId = null;
+    let preTenderId = null;
+    if (card.entity_kind === 'tender') tenderId = card.entity_id;
+    else if (card.entity_kind === 'work') workId = card.entity_id;
+    else if (card.entity_kind === 'pre_tender') {
+      preTenderId = card.entity_id;
+      // pre_tender мог уже породить tender → подцепляем для дедупа.
+      try {
+        const r = await db.query(
+          `SELECT created_tender_id FROM pre_tender_requests WHERE id = $1`, [card.entity_id]);
+        if (r.rows[0] && r.rows[0].created_tender_id) tenderId = r.rows[0].created_tender_id;
+      } catch (_) {}
+    }
+
+    // 3. Проверяем активный run по (tender_id | work_id).
+    if (tenderId || workId) {
+      const dedupeCol = tenderId ? 'tender_id' : 'work_id';
+      const dedupeVal = tenderId || workId;
+      try {
+        const exist = await db.query(
+          `SELECT id, status FROM mimir_conductor_runs
+            WHERE ${dedupeCol} = $1
+              AND status NOT IN ('READY_FOR_REVIEW','ERROR','APPROVED','REJECTED','CANCELLED')
+            ORDER BY id DESC LIMIT 1`,
+          [dedupeVal]);
+        if (exist.rows[0]) {
+          return {
+            success: true,
+            run_id: Number(exist.rows[0].id),
+            status: 'existing',
+            run_status: exist.rows[0].status
+          };
+        }
+      } catch (e) {
+        request.log.warn({ err: e }, '[personal-kanban] start-conductor: dedupe lookup failed');
+      }
+    }
+
+    // 4. INSERT нового run'a.
+    const complexityFlags = {
+      card_id: cardId,
+      entity_kind: card.entity_kind,
+      entity_id: card.entity_id,
+      ...(preTenderId ? { pre_tender_id: preTenderId } : {})
+    };
+    try {
+      const ins = await db.query(
+        `INSERT INTO mimir_conductor_runs
+          (work_id, tender_id, initiated_by, status, profile, complexity_flags)
+         VALUES ($1, $2, $3, 'DRAFT', 'STANDARD', $4::jsonb)
+         RETURNING id, status`,
+        [workId, tenderId, userId, JSON.stringify(complexityFlags)]);
+      return {
+        success: true,
+        run_id: Number(ins.rows[0].id),
+        status: 'created',
+        run_status: ins.rows[0].status
+      };
+    } catch (e) {
+      request.log.error({ err: e }, '[personal-kanban] start-conductor failed');
+      return reply.code(500).send({ error: 'start_conductor_failed', message: e.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // v3 endpoints: 8-колоночный канбан (V238 view + pk_v3_column())
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Внутренний handler для /board и /cards-by-column (один и тот же ответ).
+  // flow_filter: 'all' (по умолч.) | 'application' | 'tender' | 'pre_tender' | 'work'.
+  // RBAC: owner-only по умолчанию (директор/HEAD видит свои; чужие — отдельным endpoint в будущей волне).
+  async function _v3LoadBoard(request, reply) {
+    const userId = request.user.id;
+    const userRole = request.user.role;
+    const flowFilter = (request.query && request.query.flow_filter) ? String(request.query.flow_filter) : 'all';
+
+    const where = ['c.is_closed = FALSE', 'c.owner_user_id = $1'];
+    const params = [userId];
+    let idx = 2;
+
+    if (flowFilter !== 'all') {
+      if (!VALID_FLOW_TYPES.includes(flowFilter)) {
+        return reply.code(400).send({ error: 'invalid_flow_filter', valid: ['all', ...VALID_FLOW_TYPES] });
+      }
+      where.push(`c.flow_type = $${idx++}`);
+      params.push(flowFilter);
+    }
+
+    let rows;
+    try {
+      const r = await db.query(
+        `SELECT c.id, c.owner_user_id, c.flow_type, c.entity_kind, c.entity_id,
+                c.current_main_status, c.current_substage_id,
+                c.v3_column, c.is_closed, c.version,
+                c.last_moved_at, c.created_at, c.updated_at,
+                c.substage_title, c.substage_color, c.substage_sort_order
+           FROM v_unified_kanban_cards c
+          WHERE ${where.join(' AND ')}
+          ORDER BY c.v3_column, c.substage_sort_order NULLS FIRST, c.last_moved_at DESC`,
+        params);
+      rows = r.rows;
+    } catch (e) {
+      // VIEW отсутствует (миграция V238 не накатана) → честная 503, не 500.
+      if (e && (e.code === '42P01' || /v_unified_kanban_cards/i.test(e.message || ''))) {
+        request.log.warn('[personal-kanban v3] view v_unified_kanban_cards missing, run V238 migration');
+        return reply.code(503).send({ error: 'v3_view_missing', message: 'apply migration V238' });
+      }
+      throw e;
+    }
+
+    // Батч-загрузка snapshot по entity_kind (переиспользуем существующий helper).
+    const idsByKind = {};
+    for (const row of rows) {
+      if (!row.entity_id) continue;
+      const k = row.entity_kind;
+      if (!idsByKind[k]) idsByKind[k] = new Set();
+      idsByKind[k].add(row.entity_id);
+    }
+    const snapshotsByKind = {};
+    for (const kind of Object.keys(idsByKind)) {
+      const ids = Array.from(idsByKind[kind]);
+      snapshotsByKind[kind] = await loadEntitySnapshotsBatch(kind, ids);
+    }
+
+    // Группировка по 8 колонкам.
+    const columns = { new: [], calc: [], approval: [], kp_prep: [], sent: [], win: [], lose: [], work: [] };
+    for (const row of rows) {
+      const map = snapshotsByKind[row.entity_kind];
+      const snap = (map && row.entity_id != null) ? (map.get(row.entity_id) || null) : null;
+      const card = { ...row, entity: snap };
+      const col = V3_COLUMNS.includes(row.v3_column) ? row.v3_column : 'new';
+      columns[col].push(card);
+    }
+
+    return {
+      success: true,
+      columns,
+      total: rows.length,
+      flow_filter: flowFilter,
+      viewer_role: userRole
+    };
+  }
+
+  // GET /board?flow_filter=
+  fastify.get('/board', { preHandler: [fastify.authenticate] }, _v3LoadBoard);
+
+  // GET /cards-by-column?flow_filter=  (alias /board, оба возвращают одинаковую структуру)
+  fastify.get('/cards-by-column', { preHandler: [fastify.authenticate] }, _v3LoadBoard);
+
+  // ═══════════════════════════════════════════════════════════════════
+  // GET /columns/counts?flow_filter=
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.get('/columns/counts', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const userId = request.user.id;
+    const flowFilter = (request.query && request.query.flow_filter) ? String(request.query.flow_filter) : 'all';
+
+    const where = ['is_closed = FALSE', 'owner_user_id = $1'];
+    const params = [userId];
+    let idx = 2;
+
+    if (flowFilter !== 'all') {
+      if (!VALID_FLOW_TYPES.includes(flowFilter)) {
+        return reply.code(400).send({ error: 'invalid_flow_filter', valid: ['all', ...VALID_FLOW_TYPES] });
+      }
+      where.push(`flow_type = $${idx++}`);
+      params.push(flowFilter);
+    }
+
+    try {
+      const r = await db.query(
+        `SELECT v3_column, COUNT(*)::int AS cnt
+           FROM v_unified_kanban_cards
+          WHERE ${where.join(' AND ')}
+          GROUP BY v3_column`,
+        params);
+      const counts = { new: 0, calc: 0, approval: 0, kp_prep: 0, sent: 0, win: 0, lose: 0, work: 0 };
+      let total = 0;
+      for (const row of r.rows) {
+        if (V3_COLUMNS.includes(row.v3_column)) {
+          counts[row.v3_column] = row.cnt;
+          total += row.cnt;
+        }
+      }
+      reply.header('Cache-Control', 'private, max-age=10');
+      return { success: true, counts, total, flow_filter: flowFilter };
+    } catch (e) {
+      if (e && (e.code === '42P01' || /v_unified_kanban_cards/i.test(e.message || ''))) {
+        return reply.code(503).send({ error: 'v3_view_missing', message: 'apply migration V238' });
+      }
+      throw e;
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // POST /cards/:id/transition  { to_v3_column, note?, confirm?, version? }
+  //
+  // Маппит v3-колонку → канонический main_status по (flow_type),
+  // обновляет карту + main_status в source-entity (tenders/pre_tender_requests/
+  // inbox_applications), пишет history(action='move'), делает SSE-broadcast.
+  // Cross-column переход требует confirm:true (как и /cards/:id/move).
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.post('/cards/:id/transition', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const userId = request.user.id;
+    const userRole = request.user.role;
+    const id = asInt(request.params.id);
+    if (id === null) return reply.code(400).send({ error: 'invalid_id' });
+    const body = request.body || {};
+    const toCol = body.to_v3_column ? String(body.to_v3_column) : null;
+    const note = body.note ? String(body.note).slice(0, 2000) : null;
+    const confirm = body.confirm === true;
+    if (!toCol || !V3_COLUMNS.includes(toCol)) {
+      return reply.code(400).send({ error: 'invalid_to_v3_column', valid: V3_COLUMNS });
+    }
+
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const cur = await client.query(
+        `SELECT id, owner_user_id, flow_type, entity_kind, entity_id,
+                current_substage_id, current_main_status, version, is_closed
+           FROM personal_kanban_cards WHERE id = $1 FOR UPDATE`, [id]);
+      if (!cur.rows[0]) {
+        await client.query('ROLLBACK');
+        return reply.code(404).send({ error: 'not_found' });
+      }
+      const card = cur.rows[0];
+
+      const isOwner = card.owner_user_id === userId;
+      const isManager = DIRECTOR_ROLES.includes(userRole);
+      if (!isOwner && !isManager) {
+        await client.query('ROLLBACK');
+        return reply.code(403).send({ error: 'forbidden' });
+      }
+      if (card.is_closed) {
+        await client.query('ROLLBACK');
+        return reply.code(409).send({ error: 'card_closed' });
+      }
+      // Version check опциональный (для оптимистической блокировки фронта).
+      const reqVersion = asInt(body.version);
+      if (reqVersion !== null && card.version !== reqVersion) {
+        await client.query('ROLLBACK');
+        return reply.code(409).send({ error: 'version_conflict', current_version: card.version });
+      }
+
+      // Маппинг колонки → main_status.
+      const mapped = v3ColumnToMainStatus(toCol, card.flow_type, card.current_main_status);
+      if (mapped === undefined) {
+        await client.query('ROLLBACK');
+        return reply.code(409).send({
+          error: 'transition_not_allowed',
+          message: `flow_type=${card.flow_type} → column=${toCol} недопустимо`,
+          flow_type: card.flow_type, to_v3_column: toCol
+        });
+      }
+      // mapped === null → keep current main_status (work→work no-op для main_status,
+      // BUG-W1-01: НЕ ставим 'Новая' для work-flow, чтобы не затирать 'В работе' и т.п.
+      // карта всё равно обновится (last_moved_at, version), history запишется.
+      const newMainStatus = mapped === null ? card.current_main_status : mapped;
+
+      // Текущая колонка (для cross-column гарда). Используем функцию pk_v3_column из V238.
+      const curColRes = await client.query(
+        `SELECT pk_v3_column($1, $2) AS col`,
+        [card.flow_type, card.current_main_status]);
+      const currentCol = curColRes.rows[0]?.col || null;
+      if (currentCol !== toCol && !confirm) {
+        await client.query('ROLLBACK');
+        return reply.code(409).send({
+          error: 'confirm_required',
+          code: 'cross_v3_column',
+          message: 'Переход между колонками требует confirm:true',
+          from_v3_column: currentCol,
+          to_v3_column: toCol
+        });
+      }
+
+      // Перенос substage: если main_status поменялся — берём первый активный
+      // подэтап у текущего owner (с auto-default если нет), иначе оставляем.
+      let newSubstageId = card.current_substage_id;
+      if (newMainStatus !== card.current_main_status) {
+        newSubstageId = await ensureDefaultSubstages(client, card.owner_user_id, card.flow_type, newMainStatus);
+        // ensureDefaultSubstages может вернуть null если шаблона нет — оставляем NULL (unplaced).
+      }
+
+      // UPDATE карты.
+      const upd = await client.query(
+        `UPDATE personal_kanban_cards
+            SET current_substage_id = $1, current_main_status = $2,
+                last_moved_at = now(), version = version + 1, updated_at = now()
+          WHERE id = $3
+          RETURNING id, owner_user_id, flow_type, current_main_status, current_substage_id, version`,
+        [newSubstageId, newMainStatus, id]);
+
+      // INSERT history (action='move').
+      await client.query(
+        `INSERT INTO personal_kanban_card_history
+          (card_id, from_substage_id, to_substage_id, from_main_status, to_main_status, moved_by, note, action)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'move')`,
+        [id, card.current_substage_id, newSubstageId, card.current_main_status, newMainStatus, userId,
+         note ? `v3:${toCol} ${note}` : `v3:${toCol}`]);
+
+      // Side effects: синхронизируем main_status в source-entity (best-effort).
+      const sideEffects = { updated_entity: false };
+      if (newMainStatus !== card.current_main_status && card.entity_id) {
+        try {
+          if (card.entity_kind === 'tender') {
+            // Tenders: tender_status + кэш дат (kp_sent_at, won_at, lost_at — V117/V236).
+            const sets = ['tender_status = $1', 'updated_at = now()'];
+            const ps = [newMainStatus];
+            if (newMainStatus === 'КП отправлено') sets.push(`kp_sent_at = COALESCE(kp_sent_at, now())`);
+            if (newMainStatus === 'Выиграли')     sets.push(`won_at      = COALESCE(won_at, now())`);
+            if (newMainStatus === 'Проиграли')    sets.push(`lost_at     = COALESCE(lost_at, now())`);
+            ps.push(card.entity_id);
+            const eu = await client.query(
+              `UPDATE tenders SET ${sets.join(', ')} WHERE id = $${ps.length}`,
+              ps);
+            sideEffects.updated_entity = eu.rowCount > 0;
+          } else if (card.entity_kind === 'pre_tender') {
+            const eu = await client.query(
+              `UPDATE pre_tender_requests SET status = $1, updated_at = now() WHERE id = $2`,
+              [newMainStatus, card.entity_id]);
+            sideEffects.updated_entity = eu.rowCount > 0;
+          } else if (card.entity_kind === 'inbox_application') {
+            const eu = await client.query(
+              `UPDATE inbox_applications SET status = $1, updated_at = now() WHERE id = $2`,
+              [newMainStatus, card.entity_id]);
+            sideEffects.updated_entity = eu.rowCount > 0;
+          }
+          // work: main_status не меняется (mapped===null для work→work), works.work_status не трогаем.
+        } catch (e) {
+          // Side effect не блокирует transition — карта уже UPDATEd. Логируем.
+          request.log.warn({ err: e, card_id: id, kind: card.entity_kind, status: newMainStatus },
+            '[personal-kanban v3] entity status sync failed');
+          sideEffects.entity_error = e.message;
+        }
+      }
+
+      await client.query('COMMIT');
+
+      try {
+        broadcast('personal_kanban:card_moved', {
+          card_id: id,
+          owner_user_id: card.owner_user_id,
+          to_substage_id: newSubstageId,
+          to_main_status: newMainStatus,
+          to_v3_column: toCol,
+          from_v3_column: currentCol,
+          by_user_id: userId,
+          v3: true
+        });
+      } catch (_) {}
+
+      return { success: true, item: upd.rows[0], to_v3_column: toCol, side_effects: sideEffects };
+    } catch (e) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+      request.log.error({ err: e }, '[personal-kanban v3] transition failed');
+      return reply.code(500).send({ error: 'transition_failed', message: e.message });
+    } finally {
+      client.release();
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // POST /cards/:cardId/convert-to-pretender  { note? }
+  //
+  // Конверсия карты inbox_application → pre_tender. Создаёт pre_tender_request,
+  // переключает карту на новый entity (kind='pre_tender'), пишет history(action='convert'),
+  // помечает inbox_application как 'accepted' с decision_notes.
+  // ВНИМАНИЕ: inbox_applications.linked_pre_tender_id в схеме НЕТ (есть только linked_tender_id),
+  // UPDATE сделан в try/catch — если колонка появится миграцией, заработает автоматически.
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.post('/cards/:cardId/convert-to-pretender', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const userId = request.user.id;
+    const userRole = request.user.role;
+    const cardId = asInt(request.params.cardId);
+    if (cardId === null) return reply.code(400).send({ error: 'invalid_id' });
+    const body = request.body || {};
+    const note = body.note ? String(body.note).slice(0, 2000) : null;
+
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // 1. Lock карты.
+      const curRes = await client.query(
+        `SELECT id, owner_user_id, flow_type, entity_kind, entity_id,
+                current_substage_id, current_main_status, version, is_closed
+           FROM personal_kanban_cards WHERE id = $1 FOR UPDATE`, [cardId]);
+      const card = curRes.rows[0];
+      if (!card) { await client.query('ROLLBACK'); return reply.code(404).send({ error: 'not_found' }); }
+      if (card.is_closed) { await client.query('ROLLBACK'); return reply.code(409).send({ error: 'card_closed' }); }
+      if (card.entity_kind !== 'inbox_application') {
+        await client.query('ROLLBACK');
+        return reply.code(409).send({
+          error: 'invalid_entity_kind',
+          message: 'convert-to-pretender работает только для entity_kind=inbox_application',
+          current_entity_kind: card.entity_kind
+        });
+      }
+
+      // RBAC: owner или директор.
+      const isOwner = card.owner_user_id === userId;
+      const isManager = DIRECTOR_ROLES.includes(userRole);
+      if (!isOwner && !isManager) {
+        await client.query('ROLLBACK');
+        return reply.code(403).send({ error: 'forbidden' });
+      }
+
+      // 2. Lock inbox_application (для дубль-проверки и UPDATE).
+      const appRes = await client.query(
+        `SELECT id, email_id, subject, body_preview, source_kind, source_email, source_name,
+                forwarded_from_email, original_sender_email, original_sender_name,
+                ai_summary, ai_color, ai_classification, ai_recommendation,
+                ai_estimated_budget, ai_keywords,
+                assigned_pm_id, status, attachment_count
+           FROM inbox_applications WHERE id = $1 FOR UPDATE`,
+        [card.entity_id]);
+      const app = appRes.rows[0];
+      if (!app) {
+        await client.query('ROLLBACK');
+        return reply.code(404).send({ error: 'application_not_found' });
+      }
+
+      // 3. Дубль pre_tender по email_id?
+      if (app.email_id) {
+        const dup = await client.query(
+          `SELECT id FROM pre_tender_requests WHERE email_id = $1 LIMIT 1`, [app.email_id]);
+        if (dup.rows[0]) {
+          await client.query('ROLLBACK');
+          return reply.code(409).send({ error: 'pre_tender_exists', pre_tender_id: dup.rows[0].id });
+        }
+      }
+
+      // 4. Customer detection (forward-aware, как в inbox_applications_ai.to-pre-tender).
+      const customerName  = (app.source_kind === 'corporate_forward' && app.original_sender_name)
+        ? app.original_sender_name
+        : (app.source_name || app.original_sender_name || '');
+      const customerEmail = (app.source_kind === 'corporate_forward' && app.original_sender_email)
+        ? app.original_sender_email
+        : (app.source_email || app.original_sender_email || '');
+      const workDescription = [
+        app.ai_summary || '',
+        '',
+        (app.body_preview || '').slice(0, 1500)
+      ].filter(Boolean).join('\n');
+
+      // 5. INSERT pre_tender_request.
+      const ptIns = await client.query(`
+        INSERT INTO pre_tender_requests
+          (email_id, source_type,
+           customer_name, customer_email,
+           work_description,
+           estimated_sum,
+           ai_summary, ai_color, ai_recommendation,
+           has_documents,
+           status, assigned_to, created_by)
+        VALUES ($1, 'email', $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11)
+        RETURNING id, status, customer_name`,
+        [
+          app.email_id || null,
+          (customerName || '').slice(0, 255),
+          (customerEmail || '').slice(0, 255),
+          workDescription,
+          app.ai_estimated_budget || null,
+          app.ai_summary || null,
+          app.ai_color || 'yellow',
+          app.ai_recommendation || null,
+          (app.attachment_count || 0) > 0,
+          app.assigned_pm_id || card.owner_user_id || null,
+          userId,
+        ]);
+      const preTenderId = ptIns.rows[0].id;
+
+      // 6. Обратная ссылка emails.pre_tender_id (best-effort, поле может отсутствовать).
+      if (app.email_id) {
+        try { await client.query(`UPDATE emails SET pre_tender_id = $1 WHERE id = $2`, [preTenderId, app.email_id]); }
+        catch (_) {}
+      }
+
+      // 7. UPDATE inbox_application: status='accepted', decision_notes, попытка linked_pre_tender_id.
+      await client.query(
+        `UPDATE inbox_applications
+            SET status = 'accepted',
+                decision_by = $1, decision_at = now(),
+                decision_notes = $2,
+                updated_at = now()
+          WHERE id = $3`,
+        [userId,
+         `Конвертирована в pre_tender_request #${preTenderId} (kanban)` + (note ? '. ' + note : ''),
+         app.id]);
+      try {
+        // best-effort: если колонка существует — заполнить.
+        await client.query(
+          `UPDATE inbox_applications SET linked_pre_tender_id = $1 WHERE id = $2`,
+          [preTenderId, app.id]);
+      } catch (_) { /* колонки нет — игнор */ }
+
+      // 8. Конвертим саму карту: kind→pre_tender, entity_id→preTenderId, main_status='new',
+      //    substage = первый активный/auto-default для (pre_tender,'new').
+      const newSubstageId = await ensureDefaultSubstages(
+        client, card.owner_user_id, 'pre_tender', 'new');
+
+      const upd = await client.query(
+        `UPDATE personal_kanban_cards
+            SET entity_kind = 'pre_tender', entity_id = $1, flow_type = 'pre_tender',
+                current_main_status = 'new', current_substage_id = $2,
+                last_moved_at = now(), version = version + 1, updated_at = now()
+          WHERE id = $3
+          RETURNING id, owner_user_id, flow_type, entity_kind, entity_id,
+                    current_main_status, current_substage_id, version`,
+        [preTenderId, newSubstageId, cardId]);
+
+      // 9. history запись (action='convert', разрешён CHECK V221:117).
+      await client.query(
+        `INSERT INTO personal_kanban_card_history
+          (card_id, from_substage_id, to_substage_id, from_main_status, to_main_status, moved_by, action, note)
+         VALUES ($1, $2, $3, $4, 'new', $5, 'convert', $6)`,
+        [cardId, card.current_substage_id, newSubstageId, card.current_main_status, userId,
+         `inbox_application #${app.id} → pre_tender_request #${preTenderId}` + (note ? '. ' + note : '')]);
+
+      await client.query('COMMIT');
+
+      // 10. SSE broadcast (после commit).
+      try {
+        broadcast('personal_kanban:card_converted', {
+          card_id: cardId,
+          owner_user_id: card.owner_user_id,
+          flow_type: 'pre_tender',
+          entity_kind: 'pre_tender',
+          entity_id: preTenderId,
+          from_entity_kind: 'inbox_application',
+          from_entity_id: app.id,
+          by_user_id: userId
+        });
+      } catch (_) {}
+
+      // 11. Notification владельцу (если не сам конвертил).
+      if (card.owner_user_id && card.owner_user_id !== userId) {
+        try {
+          Promise.resolve(createNotification(db, {
+            user_id: card.owner_user_id,
+            title: `Заявка №${app.id} → Pre-tender #${preTenderId}`,
+            message: `Конвертирована в просчёт: ${customerName || 'клиент не указан'}`,
+            type: 'pre_tender_created',
+            link: `#/personal-kanban?card=${cardId}`,
+          })).catch(() => {});
+        } catch (_) {}
+      }
+
+      return {
+        success: true,
+        card: upd.rows[0],
+        pre_tender_id: preTenderId,
+        from_application_id: app.id,
+        customer_name: ptIns.rows[0].customer_name
+      };
+    } catch (e) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+      request.log.error({ err: e }, '[personal-kanban v3] convert-to-pretender failed');
+      return reply.code(500).send({ error: 'convert_failed', message: e.message });
+    } finally {
+      client.release();
+    }
+  });
+
 };
 
 // Экспорт констант для тестов и других модулей (assign-pm берёт каноник)
@@ -975,4 +1803,5 @@ module.exports.VALID_FLOW_TYPES = VALID_FLOW_TYPES;
 module.exports.VALID_ENTITY_KINDS = VALID_ENTITY_KINDS;
 module.exports.isValidMainStatus = isValidMainStatus;
 module.exports.loadFirstActiveSubstage = loadFirstActiveSubstage;
+module.exports.ensureDefaultSubstages = ensureDefaultSubstages;
 module.exports.closeKanbanCardsForEntity = closeKanbanCardsForEntity;
