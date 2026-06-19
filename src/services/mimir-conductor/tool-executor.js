@@ -239,6 +239,15 @@ async function raiseClarification(runId, agentRunId, channel, input = {}) {
   const blocking = ch === 'CUSTOMER' ? (input.blocking !== false) : !!input.blocking;
   const status = ch === 'AUTO' ? 'RESOLVED' : 'OPEN';
 
+  // default_assumption — jsonb-колонка; принимаем и строку, и объект.
+  // Сырая строка "Будем исходить..." без JSON-кавычек ломала INSERT
+  // (PG 22P02 "Token Будем is invalid"). Опус-фикс 19.06.2026.
+  const daRaw = input.default_assumption;
+  const daJson = (daRaw == null) ? null : JSON.stringify(daRaw);
+  const answerText = (ch === 'AUTO' && daRaw != null)
+    ? (typeof daRaw === 'string' ? daRaw : JSON.stringify(daRaw))
+    : null;
+
   const res = await db.query(
     `INSERT INTO mimir_clarifications
        (conductor_run_id, raised_by_agent_run_id, channel, category,
@@ -256,9 +265,9 @@ async function raiseClarification(runId, agentRunId, channel, input = {}) {
         expected_inputs: input.expected_inputs || []
       }),
       input.impact_rub != null ? input.impact_rub : null,
-      blocking, input.default_assumption || null, status,
+      blocking, daJson, status,
       ch === 'AUTO' ? 'AUTO_ASSUMPTION' : null,
-      ch === 'AUTO' ? (input.default_assumption || null) : null,
+      answerText,
       ch === 'AUTO' ? new Date() : null
     ]
   );
