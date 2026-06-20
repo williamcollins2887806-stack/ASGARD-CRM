@@ -218,7 +218,7 @@ const ANALYSIS_SYSTEM_PROMPT = `Ты — AI-ассистент компании 
 
 Верни ответ СТРОГО в JSON формате:
 {
-  "classification": "direct_request" | "platform_tender" | "commercial_offer" | "information" | "spam" | "personal" | "other",
+  "classification": "direct_request" | "platform_tender" | "tender_invitation" | "commercial_offer" | "information" | "spam" | "personal" | "other",
   "color": "green" | "yellow" | "red",
   "summary": "Краткое описание сути письма (1-2 предложения)",
   "recommendation": "Рекомендация действий (1-2 предложения)",
@@ -237,6 +237,7 @@ const ANALYSIS_SYSTEM_PROMPT = `Ты — AI-ассистент компании 
 Правила классификации:
 - direct_request: Прямой запрос на выполнение работ от заказчика
 - platform_tender: Тендер с площадки (Закупки44, ЕИС, Сбербанк-АСТ и т.д.)
+- tender_invitation: Письмо-приглашение принять участие в тендере от заказчика напрямую (НЕ с площадки ЭТП). Email обычно от организации с реквизитами, содержит описание объёмов работ или НМЦК, требует подачу КП в указанный срок. Триггеры: «Приглашаем принять участие», «Объявляется закупка», «Прошу направить КП на участие в тендере», «Запрос предложений на тендер», «Приглашение к участию в закупке». ОТЛИЧИЕ от direct_request: явная формулировка о тендере/закупке + срок подачи КП. ОТЛИЧИЕ от platform_tender: пришло почтой напрямую, без ссылки на площадку ЕИС/Сбер-АСТ/Roseltorg.
 - commercial_offer: Входящее коммерческое предложение (нам предлагают)
 - information: Информационное письмо, уведомление
 - spam: Спам, рассылка
@@ -870,16 +871,31 @@ function fallbackResult() {
 function fallbackClassification({ subject, bodyText, fromEmail }) {
   const text = ((subject || '') + ' ' + (bodyText || '')).toLowerCase();
 
+  // Приоритет: invitation > platform_tender > direct_request. invitation проверяется ПЕРВЫМ
+  // потому что фразы вроде «приглашаем принять участие в тендере» матчат и tenderKeywords
+  // («тендер»), и invitationKeywords — но invitation точнее (запрос КП напрямую от заказчика).
+  const invitationKeywords = [
+    'приглашаем принять участие', 'приглашаем вас принять участие',
+    'объявляется закупка', 'объявляется тендер',
+    'участие в тендере', 'участие в закупке',
+    'запрос предложений на тендер', 'запрос предложений на участие',
+    'направить кп на участие', 'направить коммерческое на тендер',
+    'приглашение к участию в закупке', 'приглашение к участию в тендере'
+  ];
   const tenderKeywords = ['тендер', 'конкурс', 'закупк', 'аукцион', 'котировк', 'запрос предложений', 'запрос цен'];
   const workKeywords = ['промывк', 'химическ', 'монтаж', 'демонтаж', 'сварк', 'изоляц', 'антикорроз', 'такелаж', 'строп'];
   const spamKeywords = ['unsubscribe', 'рассылк', 'реклам', 'акция', 'скидк'];
 
+  const isInvitation = invitationKeywords.some(k => text.includes(k));
   const isTender = tenderKeywords.some(k => text.includes(k));
   const isWork = workKeywords.some(k => text.includes(k));
   const isSpam = spamKeywords.some(k => text.includes(k));
 
   if (isSpam) {
     return { classification: 'spam', color: 'red', summary: 'Возможный спам/рассылка', recommendation: 'Архивировать', work_type: null, estimated_budget: null, estimated_days: null, keywords: [], confidence: 0.3 };
+  }
+  if (isInvitation) {
+    return { classification: 'tender_invitation', color: 'green', summary: 'Возможное приглашение в тендер от заказчика', recommendation: 'Передать в тендерный отдел', work_type: null, estimated_budget: null, estimated_days: null, keywords: [], confidence: 0.4 };
   }
   if (isTender) {
     return { classification: 'platform_tender', color: 'yellow', summary: 'Возможный тендер', recommendation: 'Проверить условия', work_type: null, estimated_budget: null, estimated_days: null, keywords: [], confidence: 0.3 };

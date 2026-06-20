@@ -593,6 +593,110 @@ async function analyzeOneEmail(email) {
     );
     console.log(`[IMAP-AI] #${emailId} step 4: update done`);
 
+    // S-5: tender_invitation (приглашение в тендер от заказчика напрямую, не с площадки)
+    // создаёт тендер СРАЗУ, минуя inbox_applications/pre_tender_requests. На канбане ТО
+    // карта появляется в колонке «Новый» (через VIEW v_unified_kanban_cards, V238+V250).
+    // Существующий поток inbox_application для другой классификации не затрагивается.
+    if (analysis.classification === 'tender_invitation' && !analysis._skipped) {
+      try {
+        const confidence = parseFloat(analysis.confidence) || 0;
+
+        const customerName = (analysis.extracted_customer_name
+          || originalSender?.name
+          || email.from_name
+          || '(без названия)').slice(0, 500);
+        const customerInn = (analysis.extracted_customer_inn || null);
+        const tenderTitle = (email.subject || '(без темы)').slice(0, 1000);
+        const tenderDescription = ((email.body_text || '').slice(0, 2000)) || null;
+        const commentTo = (analysis.summary || '').slice(0, 2000) || null;
+
+        // AI-системный пользователь: mimir_bot если есть, иначе первый активный ADMIN.
+        // created_by_user_id в tenders nullable — NULL допустим как фоллбэк.
+        const aiUserRes = await db.query(`
+          SELECT COALESCE(
+            (SELECT id FROM users WHERE login='mimir_bot' AND is_active=true LIMIT 1),
+            (SELECT id FROM users WHERE role='ADMIN' AND is_active=true ORDER BY id LIMIT 1)
+          ) AS uid
+        `);
+        const aiUserId = aiUserRes.rows[0]?.uid || null;
+
+        const insRes = await db.query(`
+          INSERT INTO tenders (
+            customer_name, customer_inn, tender_title, tender_description,
+            tender_status, tender_type,
+            source, source_kind, platform, link,
+            comment_to, ai_report,
+            docs_deadline,
+            created_by, created_by_user_id, created_at, updated_at
+          ) VALUES (
+            $1, $2, $3, $4,
+            'Новый', 'Тендер',
+            'email_invitation', 'email_invite', NULL, NULL,
+            $5, $6,
+            $7,
+            $8, $8, NOW(), NOW()
+          )
+          RETURNING id, customer_name, tender_title
+        `, [
+          customerName, customerInn, tenderTitle, tenderDescription,
+          commentTo,
+          (analysis.recommendation || '').slice(0, 4000) || null,
+          analysis.extracted_deadline || null,
+          aiUserId
+        ]);
+
+        const newTenderId = insRes.rows[0].id;
+        console.log(`[IMAP-AI] tender_invitation: создан tender #${newTenderId} из email #${emailId} (customer="${insRes.rows[0].customer_name}", confidence=${confidence})`);
+
+        // Audit log
+        try {
+          await db.query(`
+            INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, details, created_at)
+            VALUES ($1, 'tender', $2, 'ai_created_from_email_invitation', $3::jsonb, NOW())
+          `, [
+            aiUserId,
+            newTenderId,
+            JSON.stringify({
+              email_id: emailId,
+              classification: 'tender_invitation',
+              ai_confidence: confidence,
+              ai_model: analysis._raw?.model || null,
+              source_kind: 'email_invite',
+              extracted_customer_inn: customerInn,
+              extracted_deadline: analysis.extracted_deadline || null
+            })
+          ]);
+        } catch (auditErr) {
+          console.warn(`[IMAP-AI] audit_log INSERT failed for tender_invitation #${newTenderId}:`, auditErr.message);
+        }
+
+        // Уведомление HEAD_TO + DIRECTOR_GEN/COMM
+        try {
+          const { createNotification } = require('./notify');
+          const recipients = await db.query(
+            `SELECT id FROM users
+               WHERE role = ANY($1::text[]) AND is_active = true`,
+            [['HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM']]);
+          const titleLine = `AI создал тендер #${newTenderId} из приглашения`;
+          const msgLine = `${insRes.rows[0].customer_name}: ${(insRes.rows[0].tender_title || '').slice(0, 120)}`;
+          for (const u of recipients.rows) {
+            Promise.resolve(createNotification(db, {
+              user_id: u.id,
+              title: titleLine,
+              message: msgLine,
+              type: 'tender_invitation_ai_created',
+              link: `#/tenders?id=${newTenderId}`
+            })).catch(err => console.warn(`[IMAP-AI] tender-invitation notify rejection (user #${u.id}, tender #${newTenderId}):`, err.message));
+          }
+        } catch (notifyErr) {
+          console.warn(`[IMAP-AI] tender-invitation notify error:`, notifyErr.message);
+        }
+      } catch (tenderErr) {
+        console.error(`[IMAP-AI] tender_invitation INSERT error for email #${emailId}:`, tenderErr.message);
+        // Не падаем — AI-анализ уже сохранён в updateEmailAiClassification
+      }
+    }
+
     // Create inbox_application ONLY for genuine work proposals/tenders
     const applicationTypes = ['direct_request', 'platform_tender', 'commercial_offer'];
     if (applicationTypes.includes(analysis.classification) && !analysis._skipped) {
