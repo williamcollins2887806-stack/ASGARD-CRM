@@ -297,7 +297,9 @@ async function closeKanbanCardsForEntity(runner, entityKind, entityId, actorUser
 //   lose      — проигран/отклонён (application:rejected/archived, pre_tender:rejected/expired, tender:Проиграли/Не подходит)
 //   work      — в работе (всегда для flow_type='work')
 // ─────────────────────────────────────────────────────────────────────────────
-const V3_COLUMNS = ['new', 'calc', 'approval', 'kp_prep', 'sent', 'win', 'lose', 'work'];
+// S-2/V250: добавлена 9-я колонка 'addendum' (статус «Дозапрос» — заказчик
+// прислал дозапрос после «КП отправлено», карта временно туда до ответа).
+const V3_COLUMNS = ['new', 'calc', 'approval', 'kp_prep', 'sent', 'addendum', 'win', 'lose', 'work'];
 
 // Маппинг (toColumn, flow_type) → canonical main_status (целевой при transition).
 // Возвращает строку или null если переход недопустим для данного flow.
@@ -331,6 +333,7 @@ function v3ColumnToMainStatus(toColumn, flowType, currentMainStatus) {
       case 'approval': return 'ТКП согласовано';
       case 'kp_prep':  return 'Готово к отправке КП';
       case 'sent':     return 'КП отправлено';
+      case 'addendum': return 'Дозапрос';   // S-2/V250: дозапрос от заказчика
       case 'win':      return 'Выиграли';
       case 'lose':     return 'Проиграли';
       default:         return null; // work — не применимо к tender (только после конверсии в work)
@@ -347,6 +350,135 @@ function v3ColumnToMainStatus(toColumn, flowType, currentMainStatus) {
 }
 
 const DIRECTOR_ROLES = ['HEAD_PM', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// S-9: scope-режимы канбана.
+//   auto         — резолвится из роли (PM/HEAD_PM→owner, TO→to_personal,
+//                  HEAD_TO→to_team, DIRECTOR/ADMIN→all)
+//   owner        — карты конкретного пользователя (по умолчанию request.user.id;
+//                  HEAD_TO+ могут указать ?owner_id=N чтобы посмотреть чей-то канбан)
+//   to_personal  — только tender-карты, где tender.calculator_user_id=user.id
+//                  OR tender.created_by_user_id=user.id
+//   to_team      — только tender-карты всего тендерного отдела (TO + HEAD_TO active)
+//   all          — без owner-фильтра (для директоров и аудита)
+// ─────────────────────────────────────────────────────────────────────────────
+const VALID_SCOPES = ['auto', 'owner', 'to_personal', 'to_team', 'all'];
+const ADMIN_LIKE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+
+function resolveAutoScope(userRole) {
+  if (ADMIN_LIKE_ROLES.includes(userRole)) return 'all';
+  if (userRole === 'HEAD_TO') return 'to_team';
+  if (userRole === 'TO') return 'to_personal';
+  // HEAD_PM, PM, остальные — свой персональный канбан
+  return 'owner';
+}
+
+// RBAC: можно ли роли userRole запросить scope (помимо auto).
+// Возвращает {ok: true} или {ok: false, code, error}.
+//   PM: только owner для себя (owner_id игнорируется в RBAC — но 403 если не = self ниже)
+//   TO: owner (только себя) + to_personal
+//   HEAD_TO: owner (с любым owner_id), to_personal, to_team, all (анализ отдела)
+//   HEAD_PM: owner + all (видит свою команду PM)
+//   ADMIN, DIRECTOR_*: всё
+function canUserUseScope(userRole, scope) {
+  if (!VALID_SCOPES.includes(scope)) {
+    return { ok: false, code: 400, error: 'invalid_scope', valid: VALID_SCOPES };
+  }
+  if (scope === 'auto') return { ok: true };
+  if (ADMIN_LIKE_ROLES.includes(userRole)) return { ok: true };
+  if (userRole === 'HEAD_TO') {
+    // HEAD_TO видит всё (owner/to_personal/to_team/all)
+    return { ok: true };
+  }
+  if (userRole === 'HEAD_PM') {
+    if (scope === 'to_team' || scope === 'to_personal') {
+      return { ok: false, code: 403, error: 'forbidden_scope_for_role', role: userRole, scope };
+    }
+    return { ok: true }; // owner + all
+  }
+  if (userRole === 'TO') {
+    if (scope === 'to_team' || scope === 'all') {
+      return { ok: false, code: 403, error: 'forbidden_scope_for_role', role: userRole, scope };
+    }
+    return { ok: true }; // owner + to_personal
+  }
+  // PM, прочие
+  if (scope !== 'owner') {
+    return { ok: false, code: 403, error: 'forbidden_scope_for_role', role: userRole, scope };
+  }
+  return { ok: true };
+}
+
+// Для scope='owner' с owner_id: проверить что request.user может смотреть на чей-то канбан.
+//   Свой канбан (owner_id == user.id) — всегда ok.
+//   Чужой канбан — только ADMIN/DIRECTOR_*/HEAD_TO/HEAD_PM.
+function canUserViewOwnerBoard(user, requestedOwnerId) {
+  if (requestedOwnerId === user.id) return true;
+  if (ADMIN_LIKE_ROLES.includes(user.role)) return true;
+  if (user.role === 'HEAD_TO' || user.role === 'HEAD_PM') return true;
+  return false;
+}
+
+// Строит WHERE-фрагмент для personal_kanban_cards (или для view).
+// Возвращает { where: ['...', '...'], params: [...] }.
+// tableAlias — 'c' для view-aliased v_unified_kanban_cards, '' для прямого
+// personal_kanban_cards (без JOIN).
+async function buildScopeWhere(db, user, scope, ownerId, tableAlias = 'c') {
+  const a = tableAlias ? tableAlias + '.' : '';
+  const where = [];
+  const params = [];
+
+  if (scope === 'all') {
+    // Без owner-фильтра — только базовое условие (is_closed добавляется отдельно)
+    return { where, params };
+  }
+
+  if (scope === 'owner') {
+    const uid = (typeof ownerId === 'number' && ownerId > 0) ? ownerId : user.id;
+    params.push(uid);
+    where.push(`${a}owner_user_id = $${params.length}`);
+    return { where, params };
+  }
+
+  if (scope === 'to_personal') {
+    // Только тендерные карты, где tender.calculator_user_id=$ OR created_by_user_id=$
+    params.push(user.id);
+    where.push(`${a}entity_kind = 'tender'`);
+    where.push(`EXISTS (
+      SELECT 1 FROM tenders t_scope
+        WHERE t_scope.id = ${a}entity_id
+          AND (t_scope.calculator_user_id = $${params.length} OR t_scope.created_by_user_id = $${params.length})
+    )`);
+    return { where, params };
+  }
+
+  if (scope === 'to_team') {
+    // Только тендерные карты всего отдела (TO + HEAD_TO active users).
+    // Считаем «отделом» всех активных пользователей с ролью TO или HEAD_TO.
+    const teamRes = await db.query(
+      `SELECT id FROM users WHERE role IN ('TO','HEAD_TO') AND is_active = true`);
+    const teamIds = teamRes.rows.map(r => r.id);
+    if (teamIds.length === 0) {
+      // Пустая команда → ничего не показываем
+      params.push(-1);
+      where.push(`1 = $${params.length}`); // never true
+      return { where, params };
+    }
+    params.push(teamIds);
+    where.push(`${a}entity_kind = 'tender'`);
+    where.push(`EXISTS (
+      SELECT 1 FROM tenders t_scope
+        WHERE t_scope.id = ${a}entity_id
+          AND (t_scope.calculator_user_id = ANY($${params.length}::int[])
+            OR t_scope.created_by_user_id = ANY($${params.length}::int[])
+            OR t_scope.responsible_pm_id   = ANY($${params.length}::int[]))
+    )`);
+    return { where, params };
+  }
+
+  // Не должен сюда попасть — VALID_SCOPES уже проверен.
+  return { where: [], params: [] };
+}
 
 module.exports = async function (fastify) {
 
@@ -1299,23 +1431,61 @@ module.exports = async function (fastify) {
   // ═══════════════════════════════════════════════════════════════════════════
 
   // Внутренний handler для /board и /cards-by-column (один и тот же ответ).
-  // flow_filter: 'all' (по умолч.) | 'application' | 'tender' | 'pre_tender' | 'work'.
-  // RBAC: owner-only по умолчанию (директор/HEAD видит свои; чужие — отдельным endpoint в будущей волне).
+  //
+  // Параметры:
+  //   flow_filter: 'all' (по умолч.) | 'application' | 'tender' | 'pre_tender' | 'work'.
+  //   scope:       'auto' (default) | 'owner' | 'to_personal' | 'to_team' | 'all'.
+  //                Auto резолвится в зависимости от роли (см. resolveAutoScope).
+  //   owner_id:    integer, только при scope='owner' — смотрим чей-то канбан.
+  //                Свой = всегда ok. Чужой — только ADMIN/DIRECTOR_*/HEAD_TO/HEAD_PM.
+  //
+  // Для scope='to_personal'/'to_team' автоматически фильтруется flow_type='tender'
+  // (это требование S-9: канбан ТО показывает только тендеры, заявки и работы — в общем
+  // списке хаба).
   async function _v3LoadBoard(request, reply) {
-    const userId = request.user.id;
-    const userRole = request.user.role;
+    const user = request.user;
+    const userId = user.id;
+    const userRole = user.role;
     const flowFilter = (request.query && request.query.flow_filter) ? String(request.query.flow_filter) : 'all';
+    let scope = (request.query && request.query.scope) ? String(request.query.scope) : 'auto';
 
-    const where = ['c.is_closed = FALSE', 'c.owner_user_id = $1'];
-    const params = [userId];
-    let idx = 2;
+    // Резолвим auto → конкретный scope.
+    if (scope === 'auto') scope = resolveAutoScope(userRole);
 
-    if (flowFilter !== 'all') {
-      if (!VALID_FLOW_TYPES.includes(flowFilter)) {
+    // RBAC: может ли роль использовать этот scope?
+    const rbac = canUserUseScope(userRole, scope);
+    if (!rbac.ok) return reply.code(rbac.code).send({ error: rbac.error, role: rbac.role, scope: rbac.scope, valid: rbac.valid });
+
+    // owner_id: только осмысленно при scope='owner'.
+    let ownerId = null;
+    if (scope === 'owner' && request.query && request.query.owner_id !== undefined) {
+      const oid = parseInt(request.query.owner_id, 10);
+      if (isNaN(oid) || oid <= 0) {
+        return reply.code(400).send({ error: 'invalid_owner_id' });
+      }
+      if (!canUserViewOwnerBoard(user, oid)) {
+        return reply.code(403).send({ error: 'forbidden_owner_board', owner_id: oid });
+      }
+      ownerId = oid;
+    }
+
+    // Строим WHERE по scope.
+    const scopeRes = await buildScopeWhere(db, user, scope, ownerId, 'c');
+    const where = ['c.is_closed = FALSE', ...scopeRes.where];
+    const params = [...scopeRes.params];
+
+    // flow_filter: пользовательский. Для to_personal/to_team всегда форсим 'tender'
+    // (S-9 требование: канбан ТО показывает только тендеры).
+    let effectiveFlowFilter = flowFilter;
+    if (scope === 'to_personal' || scope === 'to_team') {
+      effectiveFlowFilter = 'tender';
+    }
+    if (effectiveFlowFilter !== 'all') {
+      if (!VALID_FLOW_TYPES.includes(effectiveFlowFilter)) {
         return reply.code(400).send({ error: 'invalid_flow_filter', valid: ['all', ...VALID_FLOW_TYPES] });
       }
-      where.push(`c.flow_type = $${idx++}`);
-      params.push(flowFilter);
+      params.push(effectiveFlowFilter);
+      where.push(`c.flow_type = $${params.length}`);
     }
 
     let rows;
@@ -1354,8 +1524,8 @@ module.exports = async function (fastify) {
       snapshotsByKind[kind] = await loadEntitySnapshotsBatch(kind, ids);
     }
 
-    // Группировка по 8 колонкам.
-    const columns = { new: [], calc: [], approval: [], kp_prep: [], sent: [], win: [], lose: [], work: [] };
+    // Группировка по 9 колонкам (V250 добавил 'addendum').
+    const columns = { new: [], calc: [], approval: [], kp_prep: [], sent: [], addendum: [], win: [], lose: [], work: [] };
     for (const row of rows) {
       const map = snapshotsByKind[row.entity_kind];
       const snap = (map && row.entity_id != null) ? (map.get(row.entity_id) || null) : null;
@@ -1368,7 +1538,9 @@ module.exports = async function (fastify) {
       success: true,
       columns,
       total: rows.length,
-      flow_filter: flowFilter,
+      flow_filter: effectiveFlowFilter,
+      scope,                       // S-9: явный scope в ответе для фронта
+      owner_id: ownerId,           // null если scope!='owner' или owner_id не указан
       viewer_role: userRole
     };
   }
@@ -1380,32 +1552,53 @@ module.exports = async function (fastify) {
   fastify.get('/cards-by-column', { preHandler: [fastify.authenticate] }, _v3LoadBoard);
 
   // ═══════════════════════════════════════════════════════════════════
-  // GET /columns/counts?flow_filter=
+  // GET /columns/counts?flow_filter=&scope=&owner_id=
+  // S-9: тот же scope-механизм что и в /board (RBAC + WHERE по scope).
   // ═══════════════════════════════════════════════════════════════════
   fastify.get('/columns/counts', { preHandler: [fastify.authenticate] }, async (request, reply) => {
-    const userId = request.user.id;
+    const user = request.user;
+    const userId = user.id;
+    const userRole = user.role;
     const flowFilter = (request.query && request.query.flow_filter) ? String(request.query.flow_filter) : 'all';
+    let scope = (request.query && request.query.scope) ? String(request.query.scope) : 'auto';
+    if (scope === 'auto') scope = resolveAutoScope(userRole);
 
-    const where = ['is_closed = FALSE', 'owner_user_id = $1'];
-    const params = [userId];
-    let idx = 2;
+    const rbac = canUserUseScope(userRole, scope);
+    if (!rbac.ok) return reply.code(rbac.code).send({ error: rbac.error, role: rbac.role, scope: rbac.scope, valid: rbac.valid });
 
-    if (flowFilter !== 'all') {
-      if (!VALID_FLOW_TYPES.includes(flowFilter)) {
+    let ownerId = null;
+    if (scope === 'owner' && request.query && request.query.owner_id !== undefined) {
+      const oid = parseInt(request.query.owner_id, 10);
+      if (isNaN(oid) || oid <= 0) return reply.code(400).send({ error: 'invalid_owner_id' });
+      if (!canUserViewOwnerBoard(user, oid)) return reply.code(403).send({ error: 'forbidden_owner_board', owner_id: oid });
+      ownerId = oid;
+    }
+
+    // VIEW v_unified_kanban_cards без алиаса — используем 'c.' для совместимости с buildScopeWhere.
+    // (counts работает на view, как и /board, потому что нужна вычисляемая v3_column через функцию.)
+    const scopeRes = await buildScopeWhere(db, user, scope, ownerId, 'c');
+    const where = ['c.is_closed = FALSE', ...scopeRes.where];
+    const params = [...scopeRes.params];
+
+    let effectiveFlowFilter = flowFilter;
+    if (scope === 'to_personal' || scope === 'to_team') effectiveFlowFilter = 'tender';
+    if (effectiveFlowFilter !== 'all') {
+      if (!VALID_FLOW_TYPES.includes(effectiveFlowFilter)) {
         return reply.code(400).send({ error: 'invalid_flow_filter', valid: ['all', ...VALID_FLOW_TYPES] });
       }
-      where.push(`flow_type = $${idx++}`);
-      params.push(flowFilter);
+      params.push(effectiveFlowFilter);
+      where.push(`c.flow_type = $${params.length}`);
     }
 
     try {
       const r = await db.query(
-        `SELECT v3_column, COUNT(*)::int AS cnt
-           FROM v_unified_kanban_cards
+        `SELECT c.v3_column, COUNT(*)::int AS cnt
+           FROM v_unified_kanban_cards c
           WHERE ${where.join(' AND ')}
-          GROUP BY v3_column`,
+          GROUP BY c.v3_column`,
         params);
-      const counts = { new: 0, calc: 0, approval: 0, kp_prep: 0, sent: 0, win: 0, lose: 0, work: 0 };
+      // 9 колонок (V250 добавил 'addendum').
+      const counts = { new: 0, calc: 0, approval: 0, kp_prep: 0, sent: 0, addendum: 0, win: 0, lose: 0, work: 0 };
       let total = 0;
       for (const row of r.rows) {
         if (V3_COLUMNS.includes(row.v3_column)) {
@@ -1414,7 +1607,15 @@ module.exports = async function (fastify) {
         }
       }
       reply.header('Cache-Control', 'private, max-age=10');
-      return { success: true, counts, total, flow_filter: flowFilter };
+      return {
+        success: true,
+        counts,
+        total,
+        flow_filter: effectiveFlowFilter,
+        scope,
+        owner_id: ownerId,
+        viewer_role: userRole
+      };
     } catch (e) {
       if (e && (e.code === '42P01' || /v_unified_kanban_cards/i.test(e.message || ''))) {
         return reply.code(503).send({ error: 'v3_view_missing', message: 'apply migration V238' });
