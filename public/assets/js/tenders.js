@@ -379,7 +379,8 @@ window.AsgardTendersPage = (function(){
     'Согласование ТКП':      ['ТКП согласовано', 'Отправлено на просчёт', 'Проиграли'],
     'ТКП согласовано':       ['Готово к отправке КП', 'Согласование ТКП', 'Проиграли'],
     'Готово к отправке КП':  ['КП отправлено', 'ТКП согласовано', 'Проиграли'],
-    'КП отправлено':         ['Выиграли', 'Проиграли'],
+    'КП отправлено':         ['Выиграли', 'Проиграли', 'Дозапрос'],
+    'Дозапрос':              ['КП отправлено', 'Выиграли', 'Проиграли', 'Не подходит'],
     'Выиграли':              [],
     'Проиграли':             ['Новый']
   };
@@ -390,8 +391,63 @@ window.AsgardTendersPage = (function(){
     'Согласование ТКП': '#e67e22', 'ТКП согласовано': '#27ae60',
     'Готово к отправке КП': '#c8a84e',
     'КП отправлено': '#17a2b8',
+    'Дозапрос': '#D4A843',
     'Выиграли': '#2ecc71', 'Проиграли': '#e74c3c', 'Не подходит': '#95a5a6'
   };
+
+  // ═══ Tenders-Hub: Источник (source_kind) ═══
+  // Цвета через CSS-классы (.src-*) в app.css — поэтому здесь только label+cls maps.
+  const SOURCE_LABELS = {
+    'platform':      '📡 Площадка',
+    'email_invite':  '📧 Приглашение',
+    'email_request': '📧 Письмо',
+    'phone':         '📞 Звонок',
+    'pm_manual':     '👤 От РП',
+    'manual':        '🖐 Вручную'
+  };
+  const SOURCE_CLS = {
+    'platform':      'src-platform',
+    'email_invite':  'src-email',
+    'email_request': 'src-email',
+    'phone':         'src-phone',
+    'pm_manual':     'src-manual',
+    'manual':        'src-manual'
+  };
+  function srcBadge(kind){
+    const k = kind || 'manual';
+    const lbl = SOURCE_LABELS[k] || SOURCE_LABELS.manual;
+    const cls = SOURCE_CLS[k] || SOURCE_CLS.manual;
+    return `<span class="src-badge ${cls}">${esc(lbl)}</span>`;
+  }
+
+  // ═══ Tenders-Hub: Контекст-чувствительные действия по статусу ═══
+  // data-act → branch в tb.addEventListener click (см. ниже). Существующие модалки
+  // (openWonModal/openLostModal/openCancelModal/openArchiveModal/openTenderEditor) реюзаются.
+  function actionsForStatus(status){
+    const map = {
+      'Новый':                 [{t:'📋', title:'На анализ',     act:'handoff', cls:'btn'}, {t:'❌', title:'Не подходит', act:'archive'}],
+      'На анализе':            [{t:'👁', title:'Открыть',        act:'open',    cls:'btn'}],
+      'Отправлено на просчёт': [{t:'👁', title:'Открыть ТКП',    act:'open',    cls:'btn'}],
+      'Согласование ТКП':      [{t:'👁', title:'Открыть',        act:'open',    cls:'btn'}],
+      'ТКП согласовано':       [{t:'👁', title:'Готовить КП',    act:'open',    cls:'btn'}],
+      'Готово к отправке КП':  [{t:'📤', title:'Отправить КП',   act:'open',    cls:'btn'}],
+      'КП отправлено':         [{t:'🏆', title:'Выиграли',       act:'win',     cls:'btn'},
+                                {t:'❌', title:'Проиграли',      act:'lose',    cls:'btn ghost'},
+                                {t:'❓', title:'Дозапрос',       act:'addendum',cls:'btn ghost'}],
+      'Дозапрос':              [{t:'📤', title:'Ответили',       act:'back_to_sent', cls:'btn'},
+                                {t:'🏆', title:'Выиграли',       act:'win',     cls:'btn ghost'},
+                                {t:'❌', title:'Проиграли',      act:'lose',    cls:'btn ghost'}],
+      'Выиграли':              [{t:'🏗', title:'Создать работу', act:'open',    cls:'btn'}],
+      'Проиграли':             [{t:'↩',  title:'Переоткрыть',    act:'open',    cls:'btn ghost'}],
+      'Не подходит':           [{t:'↩',  title:'Из архива',      act:'unarchive', cls:'btn ghost'}]
+    };
+    return map[status] || [{t:'Открыть', act:'open', cls:'btn'}];
+  }
+
+  function actionsForStatusHtml(status){
+    const acts = actionsForStatus(status);
+    return acts.map(a => `<button class="${a.cls||'btn'}" style="padding:6px 10px;margin-left:4px" data-act="${a.act}" title="${esc(a.title||a.t)}">${a.t}</button>`).join('');
+  }
 
   function tenderStatusBadge(status) {
     const bg = TENDER_STATUS_COLORS[status] || '#6c757d';
@@ -400,7 +456,7 @@ window.AsgardTendersPage = (function(){
 
   async function getRefs(){
     const refs = await AsgardDB.get("settings","refs");
-    const defaultStatuses = ['Черновик','Новый','На анализе','Отправлено на просчёт','Согласование ТКП','ТКП согласовано','Готово к отправке КП','КП отправлено','Выиграли','Проиграли','Не подходит'];
+    const defaultStatuses = ['Черновик','Новый','На анализе','Отправлено на просчёт','Согласование ТКП','ТКП согласовано','Готово к отправке КП','КП отправлено','Дозапрос','Выиграли','Проиграли','Не подходит'];
     if(refs && refs.tender_statuses && refs.tender_statuses.length) return refs;
     return { tender_statuses: defaultStatuses, reject_reasons: (refs && refs.reject_reasons) || [] };
   }
@@ -472,7 +528,23 @@ window.AsgardTendersPage = (function(){
     const link = t.purchase_url ? `<a class="btn ghost" style="padding:6px 10px" target="_blank" href="${esc(t.purchase_url)}">Ссылка</a>` : "—";
     const ddl = fmtDate(t.docs_deadline);
     const archiveInfo = t.tender_status === 'Не подходит' ? `<div class="help" style="color:var(--t3);margin-top:4px">📁 ${esc(t.archive_reason||'—')} · ${esc((t.archive_comment||'').substring(0,60))}${(t.archive_comment||'').length>60?'...':''}</div>` : '';
-    return `<tr data-id="${t.id}">
+    // Срочность: подсветка левой границы строки (см. .hub-row-burn/soon в app.css)
+    let urgencyCls = '';
+    if (t.docs_deadline) {
+      const days = Math.floor((new Date(t.docs_deadline).getTime() - Date.now()) / 86400000);
+      if (days <= 3) urgencyCls = 'hub-row-burn';
+      else if (days <= 7) urgencyCls = 'hub-row-soon';
+    }
+    // Контекст-чувствительные действия по статусу (см. actionsForStatus)
+    const ctxActions = actionsForStatusHtml(t.tender_status);
+    const autoEstBtn = _showAutoEstBtn ? (function(){
+      const st = t.tender_status||'';
+      if(st === 'Новый') return '<button class="btn" style="padding:6px 10px;background:linear-gradient(135deg,#C8293B,#1E4D8C);color:#fff;border:none;margin-right:6px" data-act="auto_estimate" title="Авто-просчёт Мимиром">⚡</button>';
+      if(st === 'Отправлено на просчёт' || st === 'Согласование ТКП' || st === 'ТКП согласовано') return '<button class="btn ghost" style="padding:6px 10px;opacity:0.5;margin-right:6px" disabled title="Тендер у РП">⚡ У РП</button>';
+      if(st === 'Выиграли' || st === 'Проиграли' || st === 'Не подходит') return '';
+      return '<button class="btn ghost" style="padding:6px 10px;opacity:0.5;margin-right:6px" disabled title="Тендер просчитан">⚡</button>';
+    })() : '';
+    return `<tr data-id="${t.id}"${urgencyCls?` class="${urgencyCls}"`:''}>
       <td><input type="checkbox" class="tender-check" value="${t.id}" onchange="window._asgTenderBulkCount&&window._asgTenderBulkCount()"/></td>
       <td>${fmtPeriod(t.period)}</td>
       <td>
@@ -483,6 +555,7 @@ window.AsgardTendersPage = (function(){
       </td>
       <td>${esc(pmName||"—")}</td>
       <td>${esc(t.tender_type||"—")}</td>
+      <td>${srcBadge(t.source_kind)}</td>
       <td>${tenderStatusBadge(t.tender_status)}</td>
       <td>${ddl}</td>
       <td>${esc(createdByName||"—")}</td>
@@ -490,14 +563,7 @@ window.AsgardTendersPage = (function(){
       <td>${ds} → ${de}</td>
       <td>${link}</td>
       <td style="white-space:nowrap">
-        ${_showAutoEstBtn ? (function(){
-          const st = t.tender_status||'';
-          if(st === 'Новый') return '<button class="btn" style="padding:6px 10px;background:linear-gradient(135deg,#C8293B,#1E4D8C);color:#fff;border:none;margin-right:6px" data-act="auto_estimate" title="Авто-просчёт Мимиром">⚡ Просчитать</button>';
-          if(st === 'Отправлено на просчёт' || st === 'Согласование ТКП' || st === 'ТКП согласовано') return '<button class="btn ghost" style="padding:6px 10px;opacity:0.5;margin-right:6px" disabled title="Тендер у РП">⚡ У РП</button>';
-          if(st === 'Выиграли' || st === 'Проиграли' || st === 'Не подходит') return '';
-          return '<button class="btn ghost" style="padding:6px 10px;opacity:0.5;margin-right:6px" disabled title="Тендер просчитан">⚡ Просчитан</button>';
-        })() : ''}
-        <button class="btn" style="padding:6px 10px" data-act="open">Открыть</button>
+        ${autoEstBtn}${ctxActions}
       </td>
     </tr>`;
   }
@@ -525,6 +591,7 @@ window.AsgardTendersPage = (function(){
     return '<div class="m-tender-card" data-id="' + t.id + '">' +
       '<div class="m-tc-header">' +
         '<div class="m-tc-customer">' + esc(t.customer_name || '—') + '</div>' +
+        srcBadge(t.source_kind) +
         '<span class="m-tc-badge m-tc-' + statusCls + '">' + esc(st || '—') + '</span>' +
       '</div>' +
       '<div class="m-tc-title">' + esc(t.tender_title || '') + '</div>' +
@@ -610,6 +677,15 @@ window.AsgardTendersPage = (function(){
 
     let archiveMode = false; // true = показываем архив (Не подходит)
 
+    // ═══ Tenders-Hub state (главные табы + sub-tabs) ═══
+    // currentMainTab: 'tenders' | 'applications' | 'all'
+    // currentSubTab:  для 'tenders' → 'platforms'|'in_work' (default 'in_work');
+    //                 для 'applications' → 'mail'|'phone'|'pm' (default 'mail');
+    //                 для 'all' → null
+    let currentMainTab = 'tenders';
+    let currentSubTab = 'in_work';
+    let feedCache = null; // последний результат /api/tenders-hub/feed (для applications/all)
+
     const body = `
       ${tableCSS()}
       <style>
@@ -623,14 +699,63 @@ window.AsgardTendersPage = (function(){
       </style>
       <div class="panel">
         <div class="help">
-          Реестр тендеров и передача в просчёт. После передачи ТО ограничен: документы/ссылка/тег/комментарий ТО.
-          Переназначение РП — только директор/админ, с причиной и записью в журнал.
+          Хаб тендеров: приглашения с площадок, заявки с почты/звонков/от РП и активные тендеры ТО — в одном реестре.
+          Каждое ТО видит только свои тендеры; HEAD_TO/Директор — весь отдел. Канбан ТО — на странице «Личный канбан».
         </div>
+
+        <!-- ═══ KPI-карточки ═══ -->
+        <div class="hub-kpi-grid">
+          <div class="hub-kpi"><div class="hub-kpi-l">Входящих сегодня</div><div class="hub-kpi-v gold" id="kpi-today">—</div></div>
+          <div class="hub-kpi"><div class="hub-kpi-l">В работе ТО</div><div class="hub-kpi-v" id="kpi-in-work">—</div></div>
+          <div class="hub-kpi hub-kpi-warn"><div class="hub-kpi-l">Дедлайн ≤ 3 дней</div><div class="hub-kpi-v err" id="kpi-burn">—</div></div>
+          <div class="hub-kpi hub-kpi-gold"><div class="hub-kpi-l">Дозапрос ждёт</div><div class="hub-kpi-v warn" id="kpi-addendum">—</div></div>
+          <div class="hub-kpi"><div class="hub-kpi-l">Конверсия мес.</div><div class="hub-kpi-v" id="kpi-win-pct">—</div></div>
+        </div>
+
+        <!-- ═══ Alert-bar (горящие дедлайны) ═══ -->
+        <div class="hub-alert-bar" id="hub-alert-bar" style="display:none">
+          <span class="hub-alert-icon">🔥</span>
+          <span class="hub-alert-text">Горящие дедлайны: <b id="hub-alert-cnt">0</b> на этой неделе</span>
+          <button class="btn mini ghost" id="hub-alert-jump" style="margin-left:auto">Показать</button>
+        </div>
+
         <hr class="hr"/>
-        <div class="tender-tabs">
+
+        <!-- ═══ 3 главных таба ═══ -->
+        <div class="hub-main-tabs" role="tablist">
+          <button class="hub-tab active" data-mtab="tenders" type="button">🛡 Тендеры <span class="hub-tab-cnt" id="cnt-tenders">—</span></button>
+          <button class="hub-tab" data-mtab="applications" type="button">📥 Заявки <span class="hub-tab-cnt" id="cnt-apps">—</span></button>
+          <button class="hub-tab" data-mtab="all" type="button">🌐 Все <span class="hub-tab-cnt" id="cnt-all">—</span></button>
+        </div>
+
+        <!-- ═══ Sub-tabs (chips) ═══ -->
+        <div class="hub-sub-tabs" data-for="tenders">
+          <button class="hub-sub-pill" data-sub="platforms" type="button">📡 С площадок <span class="hub-sub-cnt" id="sub-cnt-platforms">—</span></button>
+          <button class="hub-sub-pill active" data-sub="in_work" type="button">🧮 В работе ТО <span class="hub-sub-cnt" id="sub-cnt-in_work">—</span></button>
+        </div>
+        <div class="hub-sub-tabs" data-for="applications" style="display:none">
+          <button class="hub-sub-pill active" data-sub="mail" type="button">📧 Почта <span class="hub-sub-cnt" id="sub-cnt-mail">—</span></button>
+          <button class="hub-sub-pill" data-sub="phone" type="button">📞 Телефония <span class="hub-sub-cnt" id="sub-cnt-phone">—</span></button>
+          <button class="hub-sub-pill" data-sub="pm" type="button">👤 От РП <span class="hub-sub-cnt" id="sub-cnt-pm">—</span></button>
+        </div>
+
+        <!-- Stub площадок (показывается только на sub-tab 'platforms') -->
+        <div id="platformStub" style="display:none">
+          <div class="hub-platform-stub">
+            <div class="hub-platform-stub-ic">🛰</div>
+            <div class="hub-platform-stub-txt">
+              <div class="hub-platform-stub-h">Парсинг ЭТП — в разработке</div>
+              <div class="hub-platform-stub-p">Интеграция с zakupki.gov.ru, B2B-Center, РТС-Тендер и другими площадками будет подключена позже. Сейчас тендеры с площадок приходят так: AI распознаёт письмо-приглашение и сразу создаёт тендер ниже.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sub-фильтр «Активные / Архив» — показывается только в «🛡 Тендеры → 🧮 В работе ТО» -->
+        <div class="tender-tabs" id="archive-toggle">
           <div class="tender-tab active" id="tabActive">Активные</div>
           <div class="tender-tab" id="tabArchive">📁 Архив <span class="tab-badge" id="archiveBadge" style="display:none">0</span></div>
         </div>
+
         <div class="tools m-tender-tools">
           <div class="field">
             <label>Период</label>
@@ -647,6 +772,10 @@ window.AsgardTendersPage = (function(){
           <div class="field">
             <label>Статус</label>
             <div id="f_status_w"></div>
+          </div>
+          <div class="field">
+            <label>Источник</label>
+            <div id="f_source_w"></div>
           </div>
           <div class="field">
             <label>Ответственный РП</label>
@@ -671,6 +800,7 @@ window.AsgardTendersPage = (function(){
                 <th><button class="btn ghost" style="padding:6px 10px" data-sort="customer_name">Заказчик / Тендер</button></th>
                 <th><button class="btn ghost" style="padding:6px 10px" data-sort="responsible_pm_id">РП</button></th>
                 <th><button class="btn ghost" style="padding:6px 10px" data-sort="tender_type">Тип</button></th>
+                <th><button class="btn ghost" style="padding:6px 10px" data-sort="source_kind">Источник</button></th>
                 <th><button class="btn ghost" style="padding:6px 10px" data-sort="tender_status">Статус</button></th>
                 <th><button class="btn ghost" style="padding:6px 10px" data-sort="docs_deadline">Дедлайн</button></th>
                 <th><button class="btn ghost" style="padding:6px 10px" data-sort="created_by_user_id">Внёс</button></th>
@@ -704,6 +834,16 @@ window.AsgardTendersPage = (function(){
     $('#f_type_w')?.appendChild(CRSelect.create({ id: 'f_type', options: [{ value: '', label: 'Все' }, ...TENDER_TYPES.map(tp => ({ value: tp, label: tp }))], onChange: () => applyAndRender() }));
     $('#f_status_w')?.appendChild(CRSelect.create({ id: 'f_status', options: [{ value: '', label: 'Все' }, ...refs.tender_statuses.map(s => ({ value: s, label: s }))], onChange: () => applyAndRender() }));
     $('#f_pm_w')?.appendChild(CRSelect.create({ id: 'f_pm', options: [{ value: '', label: 'Все' }, ...pms.map(p => ({ value: String(p.id), label: p.name }))], searchable: true, onChange: () => applyAndRender() }));
+    // Источник — новый фильтр для Tenders-Hub
+    $('#f_source_w')?.appendChild(CRSelect.create({ id: 'f_source', options: [
+      { value: '', label: 'Все источники' },
+      { value: 'platform',      label: '📡 Площадки' },
+      { value: 'email_invite',  label: '📧 Приглашения' },
+      { value: 'email_request', label: '📧 Письма' },
+      { value: 'phone',         label: '📞 Звонки' },
+      { value: 'pm_manual',     label: '👤 От РП' },
+      { value: 'manual',        label: '🖐 Вручную' }
+    ], onChange: () => applyAndRender() }));
 
     const tb=$("#tb");
     const cnt=$("#cnt");
@@ -1345,11 +1485,19 @@ window.AsgardTendersPage = (function(){
 
     function applyAndRender(){
 
+      // На главных табах applications/all — рендерим через feed-агрегатор
+      if (currentMainTab === 'applications' || currentMainTab === 'all') {
+        applyAndRenderFromFeed();
+        updateKpi();
+        return;
+      }
+
       const periodVal = CRSelect.getValue('f_period')||"";
       const q = norm($("#f_q")?.value||"");
       const tp = CRSelect.getValue('f_type')||"";
       const st = CRSelect.getValue('f_status')||"";
       const pm = CRSelect.getValue('f_pm')||"";
+      const src = CRSelect.getValue('f_source')||"";
 
       let list = tenders.filter(t=>{
         // Режим архива: только "Не подходит"
@@ -1358,6 +1506,21 @@ window.AsgardTendersPage = (function(){
         } else {
           // Активные: исключаем "Не подходит"
           if(t.tender_status === 'Не подходит') return false;
+        }
+        // Sub-tab «🛡 Тендеры → 📡 С площадок» — только source_kind='platform'|'email_invite'
+        if (currentMainTab === 'tenders' && currentSubTab === 'platforms') {
+          const sk = t.source_kind || 'manual';
+          if (sk !== 'platform' && sk !== 'email_invite') return false;
+        }
+        // Sub-tab «🛡 Тендеры → 🧮 В работе ТО» — фильтр по моим/ТО (active activity)
+        if (currentMainTab === 'tenders' && currentSubTab === 'in_work') {
+          if (user.role === 'TO') {
+            // TO видит только свои: calculator_user_id=me OR created_by_user_id=me
+            const me = user.id;
+            const mine = (Number(t.calculator_user_id) === Number(me)) || (Number(t.created_by_user_id) === Number(me));
+            if (!mine) return false;
+          }
+          // HEAD_TO/ADMIN/DIRECTOR_* — видят всё (toggle Мои/Отдел придёт в S-15)
         }
         // Фильтр по периоду
         if(periodVal) {
@@ -1373,6 +1536,7 @@ window.AsgardTendersPage = (function(){
         if(tp && String(t.tender_type||"")!==String(tp)) return false;
         if(!archiveMode && st && t.tender_status!==st) return false;
         if(pm && String(t.responsible_pm_id||"")!==String(pm)) return false;
+        if(src && String(t.source_kind||'manual')!==String(src)) return false;
         if(q){
           const hay = `${t.customer_inn||""} ${t.customer_name||""} ${t.tender_title||""} ${t.purchase_url||""} ${t.group_tag||""} ${t.tender_type||""} ${t.archive_reason||""} ${t.archive_comment||""}`.toLowerCase();
           if(!hay.includes(q)) return false;
@@ -1442,6 +1606,182 @@ window.AsgardTendersPage = (function(){
         archiveBadge.textContent = archiveCount;
         archiveBadge.style.display = archiveCount > 0 ? '' : 'none';
       }
+      updateKpi();
+    }
+
+    // ═══ KPI + alert-bar обновление (вычисление на клиенте из snapshot tenders) ═══
+    function updateKpi(){
+      const now = Date.now();
+      const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+      const tsToday = todayStart.getTime();
+      // Входящих сегодня (created_at >= today)
+      let kpiToday = 0;
+      // В работе ТО (status in активных рабочих стадиях)
+      const inWorkStatuses = new Set(['Новый','На анализе','Отправлено на просчёт','Согласование ТКП','ТКП согласовано','Готово к отправке КП','КП отправлено','Дозапрос']);
+      let kpiInWork = 0;
+      // Burning ≤3 дней
+      let kpiBurn = 0;
+      // Дозапрос ждёт
+      let kpiAddendum = 0;
+      // Конверсия мес: won / (won + lost) за текущий месяц
+      const ymCur = ymNow();
+      let monWin = 0, monLose = 0;
+      // sub-tab counts (для бейджей в hub-sub-tabs)
+      let cPlatforms = 0, cInWork = 0;
+      tenders.forEach(t => {
+        const ca = t.created_at ? new Date(t.created_at).getTime() : 0;
+        if (ca >= tsToday) kpiToday++;
+        if (inWorkStatuses.has(t.tender_status)) kpiInWork++;
+        if (t.docs_deadline) {
+          const days = Math.floor((new Date(t.docs_deadline).getTime() - now) / 86400000);
+          if (days <= 3 && days >= 0 && inWorkStatuses.has(t.tender_status)) kpiBurn++;
+        }
+        if (t.tender_status === 'Дозапрос') kpiAddendum++;
+        if (t.period === ymCur) {
+          if (t.tender_status === 'Выиграли') monWin++;
+          if (t.tender_status === 'Проиграли') monLose++;
+        }
+        const sk = t.source_kind || 'manual';
+        if (sk === 'platform' || sk === 'email_invite') cPlatforms++;
+        if (inWorkStatuses.has(t.tender_status)) cInWork++;
+      });
+      const setTxt = (id,v)=>{ const el=document.getElementById(id); if(el) el.textContent = String(v); };
+      setTxt('kpi-today', kpiToday);
+      setTxt('kpi-in-work', kpiInWork);
+      setTxt('kpi-burn', kpiBurn);
+      setTxt('kpi-addendum', kpiAddendum);
+      const winPct = (monWin + monLose) > 0 ? Math.round(100 * monWin / (monWin + monLose)) + '%' : '—';
+      setTxt('kpi-win-pct', winPct);
+      // Главные табы — counters
+      setTxt('cnt-tenders', tenders.filter(t => t.tender_status !== 'Не подходит').length);
+      // Заявок и all — придут из feed (apply feedCache если есть)
+      if (feedCache && Array.isArray(feedCache.items)) {
+        setTxt('cnt-apps', feedCache.applications_total != null ? feedCache.applications_total : (feedCache.items.filter(x=>x.kind==='application').length));
+        setTxt('cnt-all', feedCache.all_total != null ? feedCache.all_total : feedCache.items.length);
+      }
+      setTxt('sub-cnt-platforms', cPlatforms);
+      setTxt('sub-cnt-in_work', cInWork);
+      // Alert-bar
+      const bar = document.getElementById('hub-alert-bar');
+      const cntEl = document.getElementById('hub-alert-cnt');
+      if (bar && cntEl) {
+        if (kpiBurn > 0) {
+          cntEl.textContent = String(kpiBurn);
+          bar.style.display = 'flex';
+        } else {
+          bar.style.display = 'none';
+        }
+      }
+    }
+
+    // ═══ Feed: applications/all через /api/tenders-hub/feed ═══
+    // Эндпоинт ожидается от S-7 (бэкенд). При отсутствии — показываем пустое состояние с подсказкой.
+    async function loadFeed(tab, subtab){
+      try {
+        const a = await AsgardAuth.getAuth();
+        const params = new URLSearchParams({ tab });
+        if (subtab) params.set('subtab', subtab);
+        const periodVal = CRSelect.getValue('f_period')||"";
+        if (periodVal) params.set('period', periodVal);
+        const q = ($("#f_q")?.value||"").trim();
+        if (q) params.set('search', q);
+        const res = await fetch('/api/tenders-hub/feed?' + params.toString(), { headers: { 'Authorization': 'Bearer ' + a.token } });
+        if (!res.ok) { return { items: [], _error: 'HTTP ' + res.status }; }
+        const data = await res.json();
+        return { items: Array.isArray(data.items) ? data.items : (Array.isArray(data) ? data : []), applications_total: data.applications_total, all_total: data.all_total };
+      } catch(e) {
+        return { items: [], _error: e.message };
+      }
+    }
+
+    // Универсальный рендер для feed-элементов (applications / all)
+    // Использует ту же table.asg структуру (12 колонок), но строки — упрощённые.
+    function feedRow(x){
+      const fmtDate = AsgardUI.formatDate || (d => d ? new Date(d).toLocaleDateString('ru-RU') : '—');
+      const sk = (x.source && x.source.kind) || x.source_kind || (x.kind === 'application' ? 'email_request' : 'manual');
+      const title = x.tender_title || x.title || '—';
+      const customer = x.customer_name || '—';
+      const inn = x.customer_inn || x.inn || '';
+      const status = x.tender_status || (x.kind === 'application' ? 'Новый' : '—');
+      const ddl = fmtDate(x.docs_deadline || x.deadline);
+      const nmck = x.tender_price || x.nmck || null;
+      const sub = x.submission_price || x.submission || null;
+      const period = x.period || (x.received_at ? String(x.received_at).slice(0,7) : '');
+      const responsible = x.responsible_pm || x.responsible || '—';
+      const author = x.created_by_name || x.author || '—';
+      const link = x.purchase_url ? `<a class="btn ghost" style="padding:6px 10px" target="_blank" href="${esc(x.purchase_url)}">Ссылка</a>` : '—';
+      // Срочность
+      let urgencyCls = '';
+      if (x.docs_deadline || x.deadline_days != null) {
+        const days = x.deadline_days != null ? Number(x.deadline_days) : Math.floor((new Date(x.docs_deadline).getTime() - Date.now()) / 86400000);
+        if (days <= 3) urgencyCls = 'hub-row-burn';
+        else if (days <= 7) urgencyCls = 'hub-row-soon';
+      }
+      // Действия: для applications — «Принять / Отклонить», для tender — open
+      const actionsBtns = x.kind === 'application'
+        ? `<button class="btn" style="padding:6px 10px" data-feed-act="to-tender" data-kind="${esc(x.kind)}" data-fid="${esc(x.id)}" title="Создать тендер">⚔ В тендер</button>
+           <button class="btn ghost" style="padding:6px 10px;margin-left:4px" data-feed-act="reject" data-kind="${esc(x.kind)}" data-fid="${esc(x.id)}" title="Отклонить">❌</button>`
+        : `<button class="btn" style="padding:6px 10px" data-feed-act="open" data-kind="${esc(x.kind||'tender')}" data-fid="${esc(x.id)}">Открыть</button>`;
+      const priceCell = (nmck || sub)
+        ? `${nmck?'<div style="font-size:11px"><span style="font-size:10px;color:var(--t3)">НМЦ</span> '+money(nmck)+'</div>':''}${sub?'<div style="font-size:11px;margin-top:3px"><span style="font-size:10px;color:#4cd964">Подача</span> '+money(sub)+'</div>':''}`
+        : '—';
+      return `<tr data-feed-id="${esc(x.id)}" data-feed-kind="${esc(x.kind||'tender')}"${urgencyCls?` class="${urgencyCls}"`:''}>
+        <td><input type="checkbox" class="tender-check" value="${esc(x.id)}" disabled title="Bulk недоступен на этом табе"/></td>
+        <td>${esc(period ? fmtPeriod(period) : '—')}</td>
+        <td>
+          <b>${esc(customer)}</b>
+          ${inn ? `<div class="help">${esc(inn)}</div>` : ''}
+          <div class="help">${esc(title)}</div>
+        </td>
+        <td>${esc(responsible)}</td>
+        <td>${esc(x.tender_type || (x.kind === 'application' ? 'Заявка' : '—'))}</td>
+        <td>${srcBadge(sk)}</td>
+        <td>${tenderStatusBadge(status)}</td>
+        <td>${ddl}</td>
+        <td>${esc(author)}</td>
+        <td>${priceCell}</td>
+        <td>—</td>
+        <td>${link}</td>
+        <td style="white-space:nowrap">${actionsBtns}</td>
+      </tr>`;
+    }
+
+    async function applyAndRenderFromFeed(){
+      // Для applications — учитываем sub-tab, для all — без sub-tab.
+      const tab = currentMainTab; // 'applications' | 'all'
+      const sub = (tab === 'applications') ? currentSubTab : null;
+      tb.innerHTML = `<tr><td colspan="13" style="padding:20px;text-align:center;color:var(--t3)">Загрузка…</td></tr>`;
+      const feed = await loadFeed(tab, sub);
+      feedCache = feed;
+      const items = Array.isArray(feed.items) ? feed.items : [];
+      // Локальный поиск по уже полученному списку (server тоже умеет, но дублируем для UX)
+      const q = norm($("#f_q")?.value||"");
+      const src = CRSelect.getValue('f_source')||"";
+      const filtered = items.filter(x => {
+        if (src) {
+          const sk = (x.source && x.source.kind) || x.source_kind || '';
+          if (sk !== src) return false;
+        }
+        if (!q) return true;
+        const hay = `${x.customer_name||''} ${x.customer_inn||x.inn||''} ${x.tender_title||x.title||''} ${x.tender_type||''}`.toLowerCase();
+        return hay.includes(q);
+      });
+      if (!filtered.length) {
+        const errLine = feed._error ? `<div class="help" style="margin-top:8px;color:var(--err-t)">⚠ ${esc(feed._error)} — endpoint /api/tenders-hub/feed недоступен (ждёт S-7 backend)</div>` : '';
+        tb.innerHTML = `<tr><td colspan="13" style="padding:40px;text-align:center;color:var(--t3)">
+          <div>Нет данных по этому фильтру.</div>${errLine}
+        </td></tr>`;
+      } else {
+        tb.innerHTML = filtered.map(feedRow).join('');
+      }
+      cnt.textContent = `Показано: ${filtered.length} из ${items.length}.`;
+      // Sub-tab бейджи для applications (если backend вернул разрезы)
+      if (tab === 'applications' && feed.subtab_counts) {
+        ['mail','phone','pm'].forEach(k => {
+          const el = document.getElementById('sub-cnt-'+k);
+          if (el && feed.subtab_counts[k] != null) el.textContent = String(feed.subtab_counts[k]);
+        });
+      }
     }
 
     applyAndRender();
@@ -1464,6 +1804,68 @@ window.AsgardTendersPage = (function(){
       applyAndRender();
     });
 
+    // ═══ Hub: главные табы + sub-tabs ═══
+    function refreshHubTabsUI(){
+      $$(".hub-tab").forEach(b => b.classList.toggle('active', b.dataset.mtab === currentMainTab));
+      // sub-tabs видимость (один блок на main-tab; для 'all' — скрыты оба)
+      $$(".hub-sub-tabs").forEach(blk => {
+        blk.style.display = (blk.dataset.for === currentMainTab) ? '' : 'none';
+      });
+      // активный sub-pill
+      const activeBlk = document.querySelector(`.hub-sub-tabs[data-for="${currentMainTab}"]`);
+      if (activeBlk) {
+        activeBlk.querySelectorAll('.hub-sub-pill').forEach(p => p.classList.toggle('active', p.dataset.sub === currentSubTab));
+      }
+      // Sub-фильтр «Активные/Архив» — показывается только в 🛡 Тендеры → 🧮 В работе ТО
+      const archToggle = document.getElementById('archive-toggle');
+      if (archToggle) archToggle.style.display = (currentMainTab === 'tenders' && currentSubTab === 'in_work') ? 'flex' : 'none';
+      // Stub площадок — только в 🛡 Тендеры → 📡 С площадок
+      const stub = document.getElementById('platformStub');
+      if (stub) stub.style.display = (currentMainTab === 'tenders' && currentSubTab === 'platforms') ? '' : 'none';
+      // distPanel/winPanel/tkpReadyPanel — только в 🛡 Тендеры → 🧮 В работе ТО (на других табах прячем)
+      const showAux = (currentMainTab === 'tenders' && currentSubTab === 'in_work');
+      ['dist_panel','win_panel','tkp_ready_panel'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = showAux ? '' : 'none';
+      });
+    }
+    // Дефолты sub-tab по main-tab
+    function defaultSubFor(mtab){
+      if (mtab === 'tenders') return 'in_work';
+      if (mtab === 'applications') return 'mail';
+      return null;
+    }
+    document.querySelectorAll('.hub-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mtab = btn.dataset.mtab;
+        if (!mtab || mtab === currentMainTab) return;
+        currentMainTab = mtab;
+        currentSubTab = defaultSubFor(mtab);
+        currentPage = 1;
+        refreshHubTabsUI();
+        applyAndRender();
+      });
+    });
+    document.querySelectorAll('.hub-sub-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        const blk = pill.closest('.hub-sub-tabs');
+        if (!blk || blk.dataset.for !== currentMainTab) return;
+        currentSubTab = pill.dataset.sub;
+        currentPage = 1;
+        refreshHubTabsUI();
+        applyAndRender();
+      });
+    });
+    refreshHubTabsUI();
+
+    // Alert-bar «Показать» → проставляем фильтр статусов на активные дедлайны и сбрасываем search
+    const alertJumpBtn = document.getElementById('hub-alert-jump');
+    if (alertJumpBtn) alertJumpBtn.addEventListener('click', () => {
+      // На текущем табе просто скроллим к таблице (фильтр уже учитывает срочность через урgencyCls)
+      const tbl = tb && tb.closest('table');
+      if (tbl) tbl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
     // Мобильные карточки
     if (window.AsgardUI?.makeResponsiveTable) {
       AsgardUI.makeResponsiveTable('.asg');
@@ -1478,6 +1880,7 @@ window.AsgardTendersPage = (function(){
       CRSelect.setValue('f_type', '');
       CRSelect.setValue('f_status', '');
       CRSelect.setValue('f_pm', '');
+      CRSelect.setValue('f_source', '');
       applyAndRender();
     });
 
@@ -1656,6 +2059,23 @@ window.AsgardTendersPage = (function(){
     }
 
     tb.addEventListener("click", async (e)=>{
+      // ── Feed-строки (applications / all): отдельный делегат ──
+      const feedTr = e.target.closest('tr[data-feed-id]');
+      if (feedTr) {
+        const fact = e.target.getAttribute('data-feed-act');
+        if (fact === 'open') {
+          const kind = e.target.getAttribute('data-kind');
+          const fid = e.target.getAttribute('data-fid');
+          if (kind === 'tender') openTenderEditor(Number(fid));
+          else toast('Открытие заявки', 'Drawer для заявок появится в S-18/S-22 (мобайл/React)', 'ok');
+        } else if (fact === 'to-tender') {
+          toast('В тендер', 'Создание тендера из заявки выполняется через AI-классификатор (S-3/S-10). Ручное действие пока недоступно.', 'ok');
+        } else if (fact === 'reject') {
+          toast('Отклонение', 'Действие отклонения заявки появится в S-7 (backend endpoint).', 'ok');
+        }
+        return;
+      }
+      // ── Tender-строки (основной таб) ──
       const tr=e.target.closest("tr[data-id]");
       if(!tr) return;
       const id=Number(tr.getAttribute("data-id"));
@@ -1674,6 +2094,57 @@ window.AsgardTendersPage = (function(){
         }
       }
       if(act==="handoff") { openTenderEditor(id); setTimeout(()=>{ const b=document.getElementById("btnDist")||document.getElementById("btnCreateTkp"); if(b) b.scrollIntoView({block:"center"}); }, 50); }
+      // ── Контекст-чувствительные кнопки (actionsForStatus) ──
+      if (act === 'win') {
+        const t = tenders.find(x => Number(x.id) === id);
+        if (t && typeof openWonModal === 'function') openWonModal(id, t);
+        else openTenderEditor(id);
+      }
+      if (act === 'lose') {
+        const t = tenders.find(x => Number(x.id) === id);
+        if (t && typeof openLostModal === 'function') openLostModal(id, t);
+        else openTenderEditor(id);
+      }
+      if (act === 'addendum') {
+        // Перевод КП отправлено → Дозапрос
+        try {
+          const a = await AsgardAuth.getAuth();
+          const r = await fetch('/api/tenders/' + id + '/status', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + a.token },
+            body: JSON.stringify({ tender_status: 'Дозапрос', reason: 'Заказчик прислал дозапрос' })
+          });
+          if (r.ok) { toast('Статус', 'Тендер переведён в «Дозапрос»', 'ok'); render({ layout, title }); }
+          else {
+            const err = await r.json().catch(()=>({}));
+            toast('Ошибка', err.error || ('HTTP ' + r.status), 'err');
+          }
+        } catch (err) { toast('Ошибка', String(err.message||err), 'err'); }
+      }
+      if (act === 'back_to_sent') {
+        // Перевод Дозапрос → КП отправлено
+        try {
+          const a = await AsgardAuth.getAuth();
+          const r = await fetch('/api/tenders/' + id + '/status', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + a.token },
+            body: JSON.stringify({ tender_status: 'КП отправлено', reason: 'Ответили на дозапрос' })
+          });
+          if (r.ok) { toast('Статус', 'Тендер возвращён в «КП отправлено»', 'ok'); render({ layout, title }); }
+          else {
+            const err = await r.json().catch(()=>({}));
+            toast('Ошибка', err.error || ('HTTP ' + r.status), 'err');
+          }
+        } catch (err) { toast('Ошибка', String(err.message||err), 'err'); }
+      }
+      if (act === 'archive') {
+        if (typeof openArchiveModal === 'function') openArchiveModal(id);
+        else openTenderEditor(id);
+      }
+      if (act === 'unarchive') {
+        if (typeof openUnarchiveModal === 'function') openUnarchiveModal(id);
+        else openTenderEditor(id);
+      }
     });
 
     async function openTenderEditor(tenderId){
