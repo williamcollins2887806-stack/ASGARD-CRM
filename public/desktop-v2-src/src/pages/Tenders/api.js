@@ -16,6 +16,7 @@ export const TENDER_TYPES = [
 // TENDER_TRANSITIONS + :403 defaultStatuses + :477 VALID_TENDER_STATUSES).
 // До этого фикса React слал english (won/lost/kp_sent) — backend отклонял 400,
 // бейджи рендерились без tone (fallback 'info'), архив-фильтр не работал.
+// 'Дозапрос' добавлен в S-13 (vanilla d97b6056) + backend S-13.1 (83287577).
 export const TENDER_STATUSES = [
   { value: 'Черновик',                    label: 'Черновик' },
   { value: 'Новый',                       label: 'Новый' },
@@ -25,9 +26,58 @@ export const TENDER_STATUSES = [
   { value: 'ТКП согласовано',             label: 'ТКП согласовано' },
   { value: 'Готово к отправке КП',        label: 'Готово к отправке КП' },
   { value: 'КП отправлено',               label: 'КП отправлено' },
+  { value: 'Дозапрос',                    label: 'Дозапрос' },
   { value: 'Выиграли',                    label: 'Выиграли' },
   { value: 'Проиграли',                   label: 'Проиграли' },
   { value: 'Не подходит',                 label: 'Не подходит (архив)' }
+];
+
+// Карта статус → CSS-токен для цветной полоски/бейджа (хаб тендеров).
+// Используем токены темы (без хардкод-цветов). 'Дозапрос' → var(--gold)
+// (соответствует vanilla TENDER_STATUS_COLORS['Дозапрос'] = '#D4A843').
+export const TENDER_STATUS_COLORS = {
+  'Черновик':              'var(--t-4)',
+  'Новый':                 'var(--info)',
+  'На анализе':            'var(--purple)',
+  'Отправлено на просчёт': 'var(--warn-t)',
+  'Согласование ТКП':      'var(--warn-t)',
+  'ТКП согласовано':       'var(--ok)',
+  'Готово к отправке КП':  'var(--gold)',
+  'КП отправлено':         'var(--info)',
+  'Дозапрос':              'var(--gold)',
+  'Выиграли':              'var(--ok)',
+  'Проиграли':             'var(--err)',
+  'Не подходит':           'var(--t-3)'
+};
+
+// Источник заявки/тендера (новое поле tenders.source_kind после V250 S-2).
+// Лейблы и CSS-классы 1:1 с vanilla S-13 (tenders.js SOURCE_LABELS/SOURCE_CLS).
+export const SOURCE_LABELS = {
+  'platform':      '📡 Площадка',
+  'email_invite':  '📧 Приглашение',
+  'email_request': '📧 Письмо',
+  'phone':         '📞 Звонок',
+  'pm_manual':     '👤 От РП',
+  'manual':        '🖐 Вручную'
+};
+
+export const SOURCE_CLS = {
+  'platform':      'tnd-src-platform',
+  'email_invite':  'tnd-src-email',
+  'email_request': 'tnd-src-email',
+  'phone':         'tnd-src-phone',
+  'pm_manual':     'tnd-src-manual',
+  'manual':        'tnd-src-manual'
+};
+
+export const SOURCE_OPTIONS = [
+  { value: '', label: 'Все источники' },
+  { value: 'platform',      label: '📡 Площадки' },
+  { value: 'email_invite',  label: '📧 Приглашения' },
+  { value: 'email_request', label: '📧 Письма' },
+  { value: 'phone',         label: '📞 Звонки' },
+  { value: 'pm_manual',     label: '👤 От РП' },
+  { value: 'manual',        label: '🖐 Вручную' }
 ];
 
 export const PERIOD_PRESETS = [
@@ -37,6 +87,16 @@ export const PERIOD_PRESETS = [
   { value: 'quarter',   label: 'Квартал' },
   { value: 'year',      label: 'Год' },
   { value: 'all',       label: 'Всё время' }
+];
+
+// Backend /api/tenders-hub/feed принимает свой формат периода (3d/7d/30d/year/all).
+// Используется для feed-запросов в applications/all табах.
+export const HUB_PERIOD_PRESETS = [
+  { value: 'all',  label: 'Все обращения' },
+  { value: '3d',   label: '3 дня' },
+  { value: '7d',   label: '7 дней' },
+  { value: '30d',  label: '30 дней' },
+  { value: 'year', label: 'За год' }
 ];
 
 export function loadTenders(params = {}) {
@@ -375,6 +435,47 @@ export function createCustomerFromTender(payload) {
       phone: String(payload?.phone || '').trim() || null,
       address: String(payload?.address || '').trim() || null,
       contact_person: String(payload?.contact_person || '').trim() || null
+    }
+  });
+}
+
+/* ─── Tenders-Hub feed (S-7 backend /api/tenders-hub/feed) ─────────────────
+   UNION ALL по 4 источникам: tenders + pre_tender_requests +
+   inbox_applications + call_history. Контракт см. INV-4 §2.
+   Все params опциональны, backend применяет RBAC по роли. */
+export function loadHubFeed(params = {}) {
+  const q = new URLSearchParams();
+  if (params.tab)     q.set('tab', String(params.tab));
+  if (params.subtab)  q.set('subtab', String(params.subtab));
+  if (params.period)  q.set('period', String(params.period));
+  if (params.search)  q.set('search', String(params.search));
+  if (params.status)  q.set('status', String(params.status));
+  if (params.type)    q.set('type', String(params.type));
+  if (params.source)  q.set('source', String(params.source));
+  if (params.resp)    q.set('resp', String(params.resp));
+  q.set('limit',  String(params.limit  ?? 200));
+  q.set('offset', String(params.offset ?? 0));
+  return api('/api/tenders-hub/feed?' + q.toString())
+    .then((d) => ({
+      items:  d.items  || [],
+      total:  Number(d.total) || 0,
+      limit:  Number(d.limit) || 0,
+      offset: Number(d.offset) || 0,
+      role:   d.role || ''
+    }))
+    .catch(() => ({ items: [], total: 0, limit: 0, offset: 0, role: '' }));
+}
+
+/* PUT /api/tenders/:id/status — state-machine переход (S-13.1 backend 83287577).
+   Используется для кнопок «❓ Дозапрос» / «📤 Ответили» в новом ContextActions
+   (vanilla actionsForStatus). Старый PUT /:id тоже работает для смены статуса,
+   но /status валидирует TENDER_TRANSITIONS на сервере. */
+export function putTenderStatus(tenderId, newStatus, note) {
+  return api(`/api/tenders/${tenderId}/status`, {
+    method: 'PUT',
+    body: {
+      tender_status: newStatus,
+      note: note || null
     }
   });
 }

@@ -1,5 +1,5 @@
 import { SearchInput, SelectInput } from '@/inputs/Inputs';
-import { PERIOD_PRESETS, TENDER_TYPES, TENDER_STATUSES } from './api';
+import { PERIOD_PRESETS, TENDER_TYPES, TENDER_STATUSES, SOURCE_OPTIONS } from './api';
 
 export default function TendersFilter({ filters, onChange, pms = [] }) {
   const set = (k, v) => onChange({ ...filters, [k]: v });
@@ -32,6 +32,11 @@ export default function TendersFilter({ filters, onChange, pms = [] }) {
         value={filters.status || ''}
         onChange={(v) => set('status', v)}
         options={[{ value: '', label: 'Все статусы' }, ...TENDER_STATUSES]}
+      />
+      <SelectInput
+        value={filters.source || ''}
+        onChange={(v) => set('source', v)}
+        options={SOURCE_OPTIONS}
       />
       <SelectInput
         value={filters.pm || ''}

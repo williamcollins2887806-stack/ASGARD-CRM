@@ -511,3 +511,346 @@
 }
 .tnd-panel-conflict-list li { display: flex; gap: 4px; }
 .tnd-panel-card-dates { white-space: nowrap; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * TENDERS-HUB — S-19 IMP-19 (3 главных таба + sub-tabs + KPI + источник)
+ * Стили намеренно через токены темы (var(--gold), var(--err) и т.п.).
+ * Никаких хардкод-цветов — соответствие CLAUDE.md «color-gate».
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* ─── 3 главных таба ─── */
+.tnd-hub-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid var(--brd-1);
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+.tnd-hub-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border: 0;
+  background: transparent;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  color: var(--t-3);
+  font: inherit;
+  font-weight: 600;
+  font-size: 13.5px;
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.tnd-hub-tab:hover { color: var(--t-1); }
+.tnd-hub-tab.on {
+  color: var(--gold-l);
+  border-bottom-color: var(--gold);
+  font-family: 'Cinzel', 'Inter', sans-serif;
+  letter-spacing: 0.04em;
+}
+.tnd-hub-tab-ic { font-size: 15px; }
+.tnd-hub-tab-cnt {
+  background: var(--bg-3);
+  color: var(--t-2);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  min-width: 18px;
+  text-align: center;
+}
+.tnd-hub-tab.on .tnd-hub-tab-cnt {
+  background: var(--gold);
+  color: var(--bg-0);
+}
+
+/* ─── Sub-табы (chips) ─── */
+.tnd-sub-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 4px 0 0;
+}
+.tnd-sub-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: var(--bg-3);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-pill);
+  color: var(--t-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.tnd-sub-pill:hover {
+  color: var(--t-1);
+  border-color: var(--brd-1);
+}
+.tnd-sub-pill.on {
+  background: var(--gold-bg);
+  border-color: var(--gold);
+  color: var(--gold-l);
+  font-weight: 600;
+}
+.tnd-sub-pill-ic { font-size: 13px; }
+.tnd-sub-pill-cnt {
+  background: var(--bg-4);
+  color: var(--t-3);
+  padding: 0 6px;
+  border-radius: var(--r-pill);
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 16px;
+  text-align: center;
+}
+.tnd-sub-pill.on .tnd-sub-pill-cnt {
+  background: var(--gold);
+  color: var(--bg-0);
+}
+
+/* Подсказка под sub-табом */
+.tnd-sub-hint {
+  margin: 8px 0 4px;
+  padding: 8px 12px;
+  background: var(--info-bg);
+  border-left: 3px solid var(--info);
+  border-radius: var(--r-sm);
+  color: var(--info-t);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+/* ─── Бейдж источника ─── */
+.tnd-src-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: var(--r-sm);
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid var(--brd-1);
+  white-space: nowrap;
+}
+.tnd-src-platform {
+  background: var(--gold-bg);
+  color: var(--gold-l);
+  border-color: var(--gold);
+}
+.tnd-src-email {
+  background: var(--info-bg);
+  color: var(--info-t);
+  border-color: var(--info);
+}
+.tnd-src-phone {
+  background: var(--ok-bg);
+  color: var(--ok-t);
+  border-color: var(--ok);
+}
+.tnd-src-manual {
+  background: var(--purple-bg);
+  color: var(--purple-l);
+  border-color: var(--purple);
+}
+
+/* ─── KPI-карточки ─── */
+.tnd-hub-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+.tnd-hub-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.tnd-hub-kpi:hover {
+  transform: translateY(-1px);
+  border-color: var(--brd-glow);
+}
+.tnd-hub-kpi.alert {
+  background: var(--err-bg);
+  border-color: var(--err);
+}
+.tnd-hub-kpi-l {
+  font-size: 11px;
+  color: var(--t-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.tnd-hub-kpi-v {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--t-1);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.tnd-hub-kpi-v.gold { color: var(--gold-l); }
+.tnd-hub-kpi-v.ok   { color: var(--ok); }
+.tnd-hub-kpi-v.err  { color: var(--err); }
+.tnd-hub-kpi-v.warn { color: var(--gold-l); }
+.tnd-hub-kpi-s {
+  font-size: 10.5px;
+  color: var(--t-3);
+}
+
+/* ─── Алёрт-бар ─── */
+.tnd-hub-alert-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--err-bg);
+  border: 1px solid var(--err);
+  border-radius: var(--r-md);
+  color: var(--err);
+  font-size: 13px;
+  font-weight: 500;
+}
+.tnd-hub-alert-ic {
+  font-size: 18px;
+  filter: drop-shadow(0 0 4px var(--err));
+}
+.tnd-hub-alert-text {
+  flex: 1;
+  color: var(--t-1);
+}
+.tnd-hub-alert-btn {
+  padding: 5px 12px;
+  background: transparent;
+  border: 1px solid var(--err);
+  color: var(--err);
+  border-radius: var(--r-sm);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.tnd-hub-alert-btn:hover {
+  background: var(--err-bg);
+}
+
+/* ─── CTA-карточка перехода в канбан ─── */
+.tnd-kanban-cta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  background: linear-gradient(135deg, var(--bg-2), var(--bg-3));
+  border: 1px solid var(--gold);
+  border-radius: var(--r-md);
+  box-shadow: var(--gold-glow);
+}
+.tnd-kanban-cta-ic { font-size: 28px; color: var(--gold); }
+.tnd-kanban-cta-text { flex: 1; }
+.tnd-kanban-cta-h {
+  font-family: 'Cinzel', 'Inter', sans-serif;
+  font-size: 15px;
+  color: var(--gold-l);
+  margin-bottom: 2px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+.tnd-kanban-cta-p { color: var(--t-2); font-size: 12.5px; }
+.tnd-kanban-cta-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 18px;
+  background: linear-gradient(135deg, var(--gold), var(--gold-h));
+  color: var(--bg-0);
+  border: 1px solid var(--gold-h);
+  border-radius: var(--r-md);
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  transition: filter 0.15s ease, transform 0.15s ease;
+}
+.tnd-kanban-cta-btn:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+/* ─── Stub-баннер площадок ─── */
+.tnd-platform-stub {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 16px 20px;
+  background: var(--gold-bg);
+  border: 1px dashed var(--gold);
+  border-radius: var(--r-md);
+}
+.tnd-platform-stub-ic { font-size: 36px; opacity: 0.8; }
+.tnd-platform-stub-txt { flex: 1; }
+.tnd-platform-stub-h {
+  font-family: 'Cinzel', 'Inter', sans-serif;
+  font-size: 14px;
+  color: var(--gold-l);
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+  font-weight: 700;
+}
+.tnd-platform-stub-p {
+  color: var(--t-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+/* ─── Urgency полоска слева у строки (data-urgency) ─── */
+.tnd-row[data-urgency="burn"] > td:first-child::before { background: var(--err); }
+.tnd-row[data-urgency="soon"] > td:first-child::before { background: var(--gold); }
+
+/* ─── Цветная полоска слева по статусу — кириллические значения
+   (исправляет существующий баг tenders.css:62-69, где были английские коды,
+   которые НИКОГДА не срабатывали в DOM — см. INV-18 R-6). ─── */
+.tnd-row[data-status="Новый"]                  > td:first-child::before { background: var(--info); }
+.tnd-row[data-status="На анализе"]             > td:first-child::before { background: var(--purple); }
+.tnd-row[data-status="Отправлено на просчёт"]  > td:first-child::before,
+.tnd-row[data-status="Согласование ТКП"]       > td:first-child::before { background: var(--gold-h); }
+.tnd-row[data-status="ТКП согласовано"]        > td:first-child::before { background: var(--ok); }
+.tnd-row[data-status="Готово к отправке КП"]   > td:first-child::before { background: var(--gold); }
+.tnd-row[data-status="КП отправлено"]          > td:first-child::before { background: var(--info); }
+.tnd-row[data-status="Дозапрос"]               > td:first-child::before { background: var(--gold); }
+.tnd-row[data-status="Выиграли"]               > td:first-child::before { background: var(--ok); }
+.tnd-row[data-status="Проиграли"]              > td:first-child::before { background: var(--err); }
+.tnd-row[data-status="Не подходит"]            > td:first-child::before { background: var(--t-3); }
+
+/* ─── Светлая тема: KPI/alert/badge — отдельные цвета (не инверсия) ─── */
+:root[data-theme='light'] .tnd-hub-kpi {
+  /* Мягкая тень через CSS-токен бордера темы (нет нужды хардкодить rgba). */
+  box-shadow: 0 1px 3px var(--brd-1);
+}
+:root[data-theme='light'] .tnd-hub-kpi.alert {
+  background: var(--err-bg);
+}
+:root[data-theme='light'] .tnd-hub-tab.on {
+  color: var(--gold-h);
+}
+:root[data-theme='light'] .tnd-sub-pill.on {
+  color: var(--gold-h);
+}
+
+/* ─── Адаптив ≤768px ─── */
+@media (max-width: 768px) {
+  .tnd-hub-tabs { gap: 0; overflow-x: auto; flex-wrap: nowrap; }
+  .tnd-hub-tab { padding: 9px 12px; font-size: 12.5px; white-space: nowrap; flex: 0 0 auto; }
+  .tnd-sub-tabs { gap: 4px; }
+  .tnd-sub-pill { padding: 5px 10px; font-size: 11px; }
+  .tnd-hub-kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .tnd-hub-kpi-v { font-size: 20px; }
+  .tnd-kanban-cta { flex-direction: column; align-items: flex-start; }
+  .tnd-kanban-cta-ic { font-size: 22px; }
+}

@@ -136,12 +136,13 @@ export default function TendersList({ tenders, pmsById, onOpen, onAction, sort, 
   const bulkExportCsv = () => {
     const list = selectedTenders.length ? selectedTenders : tenders;
     if (!list.length) { toast.warn('Нет данных'); return; }
-    const rows = [['ID', 'Заказчик', 'Тендер', 'Тип', 'Цена', 'Статус', 'РП', 'Дедлайн', 'Создан']];
+    const rows = [['ID', 'Заказчик', 'Тендер', 'Источник', 'Тип', 'Цена', 'Статус', 'РП', 'Дедлайн', 'Создан']];
     for (const t of list) {
       rows.push([
         t.id,
         t.customer_name || '',
         (t.tender_title || '').replace(/[\r\n]+/g, ' '),
+        t.source_kind || '',
         t.tender_type || '',
         t.tender_price || t.contract_value || '',
         t.tender_status || '',
@@ -222,6 +223,7 @@ export default function TendersList({ tenders, pmsById, onOpen, onAction, sort, 
                 </th>
                 <Th k="id" label="ID" wCls="w-70" />
                 <Th k="customer_name" label="Заказчик / Тендер" />
+                <Th k="source_kind" label="Источник" wCls="w-130" />
                 <Th k="tender_type" label="Тип" wCls="w-130" />
                 <Th k="tender_price" label="Цена" wCls="w-130" num />
                 <Th k="deadline_at" label="Дедлайн" wCls="w-120" />
