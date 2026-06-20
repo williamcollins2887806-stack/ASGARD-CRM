@@ -1,44 +1,50 @@
 /**
- * PersonalKanbanV3 — Мобильный канбан 8-колоночный (полный цикл от заявки до закрытия).
+ * PersonalKanbanV3 — Мобильный канбан 9-колоночный (полный цикл от заявки до закрытия).
  *
  * Структура:
  *   PageShell
  *     ├─ Header: switch вид (substages ↔ v3) + flow_filter
- *     ├─ Горизонтальный свайп между 8 колонками (1 экран = 1 колонка)
+ *     ├─ Scope toggle (HEAD_TO: Мои/Отдел) — для tender flow
+ *     ├─ Горизонтальный свайп между 9 колонками (1 экран = 1 колонка)
  *     ├─ Карта → fullscreen BottomSheet (8 секций с аккордеоном)
  *     └─ Контекстные actions по этапу
  *
- * Backend: те же endpoints что у React 2.0:
- *   GET  /api/personal-kanban/board?flow_filter=
- *   POST /api/personal-kanban/cards/:id/transition
- *   GET  /api/tkp/:tkpId/blocks  ... и т.д.
+ * Backend (S-9 + V250): /api/personal-kanban/board?flow_filter=&scope=&owner_id=
+ *   POST /api/personal-kanban/cards/:id/transition (9 значений to_v3_column).
+ *
+ * IMP-24: добавлены 9-я колонка addendum (между sent и win), scope param + auto-scope
+ * по роли (PM→owner, TO→to_personal, HEAD_TO→to_team по умолчанию + toggle).
  */
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { toast } from 'sonner';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, X, Send, FileText,
-  Calculator, Scale, Inbox, Trophy, Hammer, CircleX, Mail,
+  Calculator, Scale, Inbox, Trophy, Hammer, CircleX, Mail, HelpCircle,
   Search, Filter, RotateCcw,
 } from 'lucide-react';
 import { api } from '@/api/client';
+import { useAuthStore } from '@/stores/authStore';
+import { useHaptic } from '@/hooks/useHaptic';
 import { PageShell } from '@/components/layout/PageShell';
 import { BottomSheet } from '@/components/shared/BottomSheet';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 
+// 9 колонок: addendum вставлен МЕЖДУ sent и win — INV-18 §B.5 / HANDOFF.md §3.6.
 const COLS = [
   { id: 'new',      ic: '📥', title: 'Новые',          tone: 'gold' },
   { id: 'calc',     ic: '🧮', title: 'Просчёт ТКП',    tone: 'info' },
   { id: 'approval', ic: '⚖️', title: 'На согласовании', tone: 'warn' },
   { id: 'kp_prep',  ic: '📋', title: 'КП готовится',   tone: 'amber' },
   { id: 'sent',     ic: '📤', title: 'КП отправлено',  tone: 'info' },
+  { id: 'addendum', ic: '❓', title: 'Дозапрос',        tone: 'gold' },
   { id: 'win',      ic: '🏆', title: 'Выиграно',        tone: 'ok' },
   { id: 'lose',     ic: '❌', title: 'Проиграно',       tone: 'err' },
   { id: 'work',     ic: '🏗', title: 'В работе',        tone: 'gold' },
 ];
-const STAGE_LABELS = ['📥 Новая', '🧮 Просчёт', '⚖️ Согл.', '📋 КП готов', '📤 КП ушло', '🏆 Выигр.', '❌ Проигр.', '🏗 В работе'];
-const COL_TO_STAGE = { new: 0, calc: 1, approval: 2, kp_prep: 3, sent: 4, win: 5, lose: 6, work: 7 };
+const STAGE_LABELS = ['📥 Новая', '🧮 Просчёт', '⚖️ Согл.', '📋 КП готов', '📤 КП ушло', '❓ Дозапрос', '🏆 Выигр.', '❌ Проигр.', '🏗 В работе'];
+const COL_TO_STAGE = { new: 0, calc: 1, approval: 2, kp_prep: 3, sent: 4, addendum: 5, win: 6, lose: 7, work: 8 };
 
 const FLOW_TABS = [
   { id: 'all',         label: 'Все' },
@@ -49,23 +55,52 @@ const FLOW_TABS = [
 ];
 
 const STORAGE_KEY = 'asgard_mobile_pk_view_mode';
+// Сохраняем выбор HEAD_TO между сессиями: 'to_personal' | 'to_team'.
+const SCOPE_STORAGE_KEY = 'asgard_mobile_pk_scope_to';
+
+// Auto-scope по роли (S-9 backend matrix, INV-18 §D для IMP-21).
+function autoScopeForRole(role) {
+  if (role === 'PM' || role === 'HEAD_PM') return 'owner';
+  if (role === 'TO') return 'to_personal';
+  if (role === 'HEAD_TO') return 'to_team';
+  if (role === 'ADMIN' || role === 'DIRECTOR_GEN' || role === 'DIRECTOR_COMM' || role === 'DIRECTOR_DEV') return 'all';
+  return 'auto';
+}
 
 export default function PersonalKanbanV3({ onSwitchToSubstages }) {
+  const user = useAuthStore((s) => s.user);
+  const haptic = useHaptic();
+  const role = user?.role;
+  const isHeadTo = role === 'HEAD_TO';
+  const initialScope = useMemo(() => {
+    if (isHeadTo) {
+      const saved = localStorage.getItem(SCOPE_STORAGE_KEY);
+      if (saved === 'to_personal' || saved === 'to_team') return saved;
+    }
+    return autoScopeForRole(role);
+  }, [role, isHeadTo]);
+
   const [columns, setColumns] = useState({});
   const [counts, setCounts]   = useState({});
   const [colIdx, setColIdx]   = useState(0);
   const [flowFilter, setFlowFilter] = useState('all');
+  const [scope, setScope]     = useState(initialScope);
   const [loading, setLoading] = useState(true);
   const [drawerCard, setDrawerCard] = useState(null);
   const touchStartX = useRef(null);
   const touchStartY = useRef(null);
 
+  // При смене user/role подтягиваем правильный scope (если ещё не сохранён выбор HEAD_TO).
+  useEffect(() => { setScope(initialScope); }, [initialScope]);
+
   async function reload() {
     setLoading(true);
     try {
+      // scope передаём ВСЕГДА, кроме 'auto' (бэкенд сам решит).
+      const scopeQs = scope && scope !== 'auto' ? `&scope=${encodeURIComponent(scope)}` : '';
       const [b, c] = await Promise.all([
-        api(`/api/personal-kanban/board?flow_filter=${encodeURIComponent(flowFilter)}`),
-        api(`/api/personal-kanban/columns/counts?flow_filter=${encodeURIComponent(flowFilter)}`),
+        api(`/api/personal-kanban/board?flow_filter=${encodeURIComponent(flowFilter)}${scopeQs}`),
+        api(`/api/personal-kanban/columns/counts?flow_filter=${encodeURIComponent(flowFilter)}${scopeQs}`),
       ]);
       setColumns((b && b.columns) || {});
       setCounts((c) || {});
@@ -75,11 +110,18 @@ export default function PersonalKanbanV3({ onSwitchToSubstages }) {
       setLoading(false);
     }
   }
-  useEffect(() => { reload(); /* eslint-disable-next-line */ }, [flowFilter]);
+  useEffect(() => { reload(); /* eslint-disable-next-line */ }, [flowFilter, scope]);
 
   const currentCol = COLS[colIdx];
   const cardsHere = (columns[currentCol.id] || []);
   const totalCount = counts.total || Object.values(counts).reduce((s, n) => s + (typeof n === 'number' ? n : 0), 0);
+
+  function switchScope(next) {
+    if (next === scope) return;
+    haptic && haptic.light && haptic.light();
+    if (isHeadTo) localStorage.setItem(SCOPE_STORAGE_KEY, next);
+    setScope(next);
+  }
 
   function onTouchStart(e) {
     if (e.touches.length !== 1) return;
@@ -137,15 +179,59 @@ export default function PersonalKanbanV3({ onSwitchToSubstages }) {
         </div>
       </div>
 
-      <div style={{display:'flex',gap:4,padding:'8px 14px',borderBottom:'1px solid rgba(255,255,255,0.07)'}}>
-        {COLS.map((c, i) => (
-          <button key={c.id} onClick={() => setColIdx(i)} style={{
-            flex:1, padding:'5px 0', background:'transparent', border:0,
-            color: i === colIdx ? 'var(--gold-l, #E8C35A)' : 'rgba(255,255,255,0.35)',
-            fontSize:16, cursor:'pointer',
-            borderBottom: i === colIdx ? '2px solid var(--gold, #D4A843)' : '2px solid transparent',
-          }}>{c.ic}</button>
-        ))}
+      {/* Scope toggle для HEAD_TO: Мои/Отдел. Видим, только если HEAD_TO. */}
+      {isHeadTo && (
+        <div style={{
+          display:'flex',gap:6,padding:'6px 14px 8px',
+          borderBottom:'1px solid rgba(255,255,255,0.07)',
+        }}>
+          <button
+            onClick={() => switchScope('to_personal')}
+            style={{
+              flex:1, padding:'7px 10px', borderRadius:8,
+              background: scope === 'to_personal' ? 'var(--gold)' : 'rgba(255,255,255,0.06)',
+              color: scope === 'to_personal' ? 'var(--bg-1)' : 'var(--text-secondary)',
+              border:0, fontSize:12, fontWeight:600, cursor:'pointer',
+            }}
+          >🟦 Мои</button>
+          <button
+            onClick={() => switchScope('to_team')}
+            style={{
+              flex:1, padding:'7px 10px', borderRadius:8,
+              background: scope === 'to_team' ? 'var(--gold)' : 'rgba(255,255,255,0.06)',
+              color: scope === 'to_team' ? 'var(--bg-1)' : 'var(--text-secondary)',
+              border:0, fontSize:12, fontWeight:600, cursor:'pointer',
+            }}
+          >👑 Отдел</button>
+        </div>
+      )}
+
+      <div style={{display:'flex',gap:2,padding:'8px 10px',borderBottom:'1px solid rgba(255,255,255,0.07)',overflowX:'auto'}}>
+        {COLS.map((c, i) => {
+          const isAddendumCol = c.id === 'addendum';
+          // У addendum-колонки — золотая пульсирующая «подкова» как акцент.
+          return (
+            <button key={c.id} onClick={() => { haptic && haptic.light && haptic.light(); setColIdx(i); }} aria-label={c.title} style={{
+              flex:1, minWidth:32, padding:'5px 0', background:'transparent', border:0,
+              color: i === colIdx
+                ? 'var(--gold-l, #E8C35A)'
+                : (isAddendumCol ? 'var(--gold, #D4A843)' : 'rgba(255,255,255,0.35)'),
+              fontSize:16, cursor:'pointer',
+              borderBottom: i === colIdx ? '2px solid var(--gold, #D4A843)' : '2px solid transparent',
+              position: 'relative',
+            }}>
+              {c.ic}
+              {isAddendumCol && (counts.addendum || (columns.addendum || []).length) > 0 && (
+                <span style={{
+                  position:'absolute', top:1, right:'30%',
+                  width:6, height:6, borderRadius:'50%',
+                  background:'var(--gold, #D4A843)',
+                  boxShadow:'0 0 4px var(--gold, #D4A843)',
+                }}/>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       <PullToRefresh onRefresh={reload}>
@@ -181,19 +267,35 @@ function MobileCard({ card, onClick }) {
   const kind = (card.kind || card.entity_kind || '').split('_')[0];
   const color = card.color || 'green';
   const meta = card.meta || [];
-  const progress = card.progress || [0,0,0,0,0,0,0,0];
+  // 9 dots вместо 8 (после добавления addendum колонки).
+  const progress = card.progress || [0,0,0,0,0,0,0,0,0];
   const borderColor = color === 'yellow' ? '#FBBF24' : (color === 'red' ? '#F87171' : '#4ADE80');
+  const isInAddendum = card.col === 'addendum';
   return (
     <div
       onClick={onClick}
       style={{
         background:'linear-gradient(160deg, var(--bg-2, #131A2A), var(--bg-3, #1B2336) 140%)',
-        border:'1px solid rgba(255,255,255,0.08)',
-        borderLeft:`3px solid ${borderColor}`,
+        border: isInAddendum ? '1px solid var(--gold, #D4A843)' : '1px solid rgba(255,255,255,0.08)',
+        borderLeft: isInAddendum ? '3px solid var(--gold, #D4A843)' : `3px solid ${borderColor}`,
         borderRadius:10, padding:'12px 14px', marginBottom:8,
-        cursor:'pointer', boxShadow:'0 2px 6px rgba(0,0,0,0.16)',
+        cursor:'pointer',
+        boxShadow: isInAddendum ? '0 0 12px rgba(212,168,67,0.18)' : '0 2px 6px rgba(0,0,0,0.16)',
+        position: 'relative',
       }}
     >
+      {/* «Свайп-handle» / маркер дозапроса — золотая метка дней в углу. */}
+      {isInAddendum && (
+        <div style={{
+          position:'absolute', top:8, right:10,
+          fontSize:10, fontWeight:700,
+          padding:'2px 7px', borderRadius:999,
+          background:'rgba(212,168,67,0.18)', color:'var(--gold-l, #E8C35A)',
+          letterSpacing:.4,
+        }}>
+          ❓ {card.addendum_days_left != null ? `${card.addendum_days_left}д` : 'нов.'}
+        </div>
+      )}
       <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:5}}>
         <span style={{
           fontSize:9,fontWeight:700,padding:'2px 6px',borderRadius:4,letterSpacing:.4,textTransform:'uppercase',
@@ -225,21 +327,39 @@ function MobileCard({ card, onClick }) {
 }
 
 function CardDetail({ card, onClose, onChanged }) {
+  const haptic = useHaptic();
   const activeStage = COL_TO_STAGE[card.col] ?? 0;
   const [sending, setSending] = useState(false);
   const fin = card.finance || {};
   async function doTransition(toCol) {
     let note = null;
-    if (toCol === 'lose' || toCol === 'kp_prep' || toCol === 'approval') {
+    if (toCol === 'lose' || toCol === 'kp_prep' || toCol === 'approval' || toCol === 'addendum') {
       note = window.prompt('Комментарий (опц.):') || null;
     }
     setSending(true);
-    const r = await api(`/api/personal-kanban/cards/${card.id}/transition`, {
-      method: 'POST', body: { to_v3_column: toCol, note, confirm: true }
-    });
-    setSending(false);
-    if (r && r.error) toast.error(r.message || r.error);
-    else { toast.success('Перемещено'); onChanged(); }
+    try {
+      const r = await api(`/api/personal-kanban/cards/${card.id}/transition`, {
+        method: 'POST', body: { to_v3_column: toCol, note, confirm: true }
+      });
+      if (r && r.error) {
+        haptic && haptic.error && haptic.error();
+        toast.error(r.message || r.error);
+      } else {
+        // Тактильный отклик: для addendum — heavy (новый дозапрос), иначе success.
+        if (toCol === 'addendum') {
+          haptic && haptic.heavy && haptic.heavy();
+        } else {
+          haptic && haptic.success && haptic.success();
+        }
+        toast.success('Перемещено');
+        onChanged();
+      }
+    } catch (e) {
+      haptic && haptic.error && haptic.error();
+      toast.error('Ошибка: ' + (e?.body?.message || e?.message || 'неизвестная'));
+    } finally {
+      setSending(false);
+    }
   }
 
   function ctxButtons() {
@@ -261,9 +381,18 @@ function CardDetail({ card, onClose, onChanged }) {
       <Btn full onClick={() => toast.info('ТКП-конструктор откроется на десктопе')} primary>🛠 Открыть ТКП</Btn>
     );
     if (card.col === 'sent') return (
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-        <Btn onClick={() => doTransition('lose')} danger>❌ Проиграли</Btn>
-        <Btn onClick={() => doTransition('win')} primary>🏆 Выиграли</Btn>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
+        <Btn onClick={() => doTransition('lose')} danger>❌</Btn>
+        <Btn onClick={() => doTransition('addendum')}>❓ Дозапрос</Btn>
+        <Btn onClick={() => doTransition('win')} primary>🏆</Btn>
+      </div>
+    );
+    // 9-я колонка addendum: вернуть в КП отправлено / Выиграли / Проиграли.
+    if (card.col === 'addendum') return (
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
+        <Btn onClick={() => doTransition('sent')}>↩ К КП</Btn>
+        <Btn onClick={() => doTransition('lose')} danger>❌</Btn>
+        <Btn onClick={() => doTransition('win')} primary>🏆</Btn>
       </div>
     );
     if (card.col === 'win')  return <Btn full onClick={() => doTransition('work')} primary>🏗 В работу</Btn>;
@@ -307,6 +436,28 @@ function CardDetail({ card, onClose, onChanged }) {
           )}
         </div>
       </Section>
+
+      {/* Блок дозапроса — рендерится только когда карта в колонке addendum или
+          backend прислал card.addendum_note. Источник правды — mobile.html прототип. */}
+      {(card.col === 'addendum' || card.addendum_note) && (
+        <Section title="❓ Дозапрос от клиента" defaultOpen>
+          <div style={{
+            background:'rgba(212,168,67,0.08)',
+            borderLeft:'3px solid var(--gold, #D4A843)',
+            padding:'11px 13px', borderRadius:'0 10px 10px 0',
+            fontSize:13, lineHeight:1.55,
+          }}>
+            {card.addendum_days_left != null && (
+              <div style={{fontSize:11, color:'var(--gold-l, #E8C35A)', fontWeight:600, marginBottom:5}}>
+                Получен {card.addendum_days_left} {card.addendum_days_left === 1 ? 'день' : 'дн.'} назад
+              </div>
+            )}
+            <div style={{color:'rgba(255,255,255,0.88)'}}>
+              {card.addendum_note || 'Клиент запросил уточнения. Ответь — карта вернётся в «КП отправлено».'}
+            </div>
+          </div>
+        </Section>
+      )}
 
       <Section title="👤 Клиент">
         <Field label="Заказчик" value={card.customer_name || card.customer || '—'}/>

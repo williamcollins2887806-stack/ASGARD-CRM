@@ -22,6 +22,7 @@ function getStatusColor(status) {
   if (['выиграли', 'контракт', 'клиент согласился', 'ткп согласовано'].some((k) => s.includes(k))) return 'var(--green)';
   if (['в просчёте', 'на просчёте', 'в работе', 'выполняется', 'мобилизация', 'на согласовании', 'согласование'].some((k) => s.includes(k))) return 'var(--blue)';
   if (['кп отправлено', 'ткп отправлено', 'переговоры', 'истекает'].some((k) => s.includes(k))) return 'var(--gold)';
+  if (['дозапрос'].some((k) => s.includes(k))) return 'var(--gold)';
   if (['проиграли', 'отказ', 'клиент отказался'].some((k) => s.includes(k))) return 'var(--red-soft)';
   return 'var(--text-tertiary)';
 }
@@ -31,6 +32,45 @@ const LOST_STATUSES = ['проиграли', 'отказ', 'клиент отк�
 
 function isWon(s)  { return s && WON_STATUSES.some((k)  => s.toLowerCase().includes(k)); }
 function isLost(s) { return s && LOST_STATUSES.some((k) => s.toLowerCase().includes(k)); }
+function isKpSent(s) { return s && s.toLowerCase().includes('кп отправлено'); }
+function isAddendum(s) { return s && s.toLowerCase().includes('дозапрос'); }
+
+// SourceBadge — компактный бейдж источника (по INV-18 D §для IMP-19).
+// Карта source_kind → {ic, label, fg, bg}. Только токены, без хардкод-цветов.
+const SOURCE_META = {
+  platform:      { ic: '📡',  label: 'С площадки',   fg: 'var(--blue)',  bg: 'rgba(74,144,217,0.13)' },
+  email_invite:  { ic: '📧✨', label: 'AI-письмо',    fg: 'var(--gold)',  bg: 'rgba(200,168,78,0.13)' },
+  email_request: { ic: '📧',  label: 'Письмо',       fg: 'var(--blue)',  bg: 'rgba(74,144,217,0.10)' },
+  phone:         { ic: '📞',  label: 'Звонок',       fg: 'var(--green)', bg: 'rgba(48,209,88,0.11)' },
+  pm_manual:     { ic: '👤',  label: 'От РП',        fg: 'var(--gold)',  bg: 'rgba(200,168,78,0.10)' },
+  manual:        { ic: '✍️',  label: 'Вручную',      fg: 'var(--text-tertiary)', bg: 'rgba(142,142,147,0.10)' },
+};
+
+function SourceBadge({ kind, label }) {
+  const meta = SOURCE_META[kind] || (label ? { ic: '·', label, fg: 'var(--text-tertiary)', bg: 'rgba(142,142,147,0.10)' } : null);
+  if (!meta) return null;
+  return (
+    <span
+      className="inline-flex items-center"
+      style={{
+        gap: 3,
+        padding: '2px 6px',
+        borderRadius: 999,
+        fontSize: 10,
+        fontWeight: 600,
+        color: meta.fg,
+        background: meta.bg,
+        letterSpacing: '0.01em',
+        whiteSpace: 'nowrap',
+        lineHeight: 1.2,
+      }}
+      title={meta.label}
+    >
+      <span style={{ fontSize: 10 }}>{meta.ic}</span>
+      {meta.label}
+    </span>
+  );
+}
 
 const FILTERS = [
   { id: 'all',  label: 'Все' },
@@ -265,6 +305,9 @@ export default function Tenders() {
 
                   <div className="flex items-center gap-2 mt-2 flex-wrap">
                     {tender.tender_status && <StatusBadge status={tender.tender_status} />}
+                    {(tender.source_kind || tender.source_label) && (
+                      <SourceBadge kind={tender.source_kind} label={tender.source_label} />
+                    )}
                     {price > 0 && (
                       <span className="flex items-center gap-0.5 text-[11px]" style={{ color: 'var(--gold)' }}>
                         <DollarSign size={11} />
@@ -284,6 +327,20 @@ export default function Tenders() {
                       </span>
                     )}
                   </div>
+
+                  {/* Полоса-маркер «Дозапрос N дн.» — золотой акцент над контент-карточкой */}
+                  {isAddendum(tender.tender_status) && (
+                    <div
+                      className="mt-2 px-2 py-1 rounded text-[11px] font-semibold"
+                      style={{
+                        background: 'color-mix(in srgb, var(--gold) 12%, transparent)',
+                        borderLeft: '3px solid var(--gold)',
+                        color: 'var(--gold)',
+                      }}
+                    >
+                      ❓ Дозапрос{tender.addendum_days_left != null ? ` · ${tender.addendum_days_left}д.` : ''}
+                    </div>
+                  )}
                 </button>
               );
             })}
@@ -291,7 +348,7 @@ export default function Tenders() {
         )}
       </PullToRefresh>
 
-      <TenderDetailSheet tender={detail} onClose={() => setDetail(null)} />
+      <TenderDetailSheet tender={detail} onClose={() => setDetail(null)} onChanged={fetchTenders} />
       {canCreate && (
         <CreateTenderSheet open={showCreate} onClose={() => setShowCreate(false)} onCreated={fetchTenders} />
       )}
@@ -299,9 +356,11 @@ export default function Tenders() {
   );
 }
 
-function TenderDetailSheet({ tender, onClose }) {
+function TenderDetailSheet({ tender, onClose, onChanged }) {
+  const haptic = useHaptic();
   const [full, setFull]           = useState(null);
   const [loadingFull, setLoading] = useState(false);
+  const [acting, setActing]       = useState(false);
 
   useEffect(() => {
     if (!tender) { setFull(null); return; }
@@ -318,6 +377,33 @@ function TenderDetailSheet({ tender, onClose }) {
   const price     = Number(t.tender_price) || 0;
   const estimates = full?.estimates || [];
   const works     = full?.works || [];
+
+  // Контекст-действия по статусу — мобильный аналог desktop ctxActions/runCommand.
+  // PUT /api/tenders/:id с новым tender_status (тот же путь, что markTenderSentToClient
+  // и WonModal/LostModal — INV-18 A.7 api.js:240-245).
+  async function setStatus(nextStatus, opts = {}) {
+    setActing(true);
+    haptic.light();
+    try {
+      const body = { tender_status: nextStatus };
+      if (opts.note) body.comment_dir = opts.note;
+      await api.request(`/tenders/${t.id}`, { method: 'PUT', body: JSON.stringify(body) });
+      haptic.success();
+      if (onChanged) onChanged();
+      onClose();
+    } catch (e) {
+      haptic.error && haptic.error();
+      // eslint-disable-next-line no-alert
+      window.alert('Не получилось обновить статус: ' + (e?.body?.message || e?.message || 'ошибка'));
+    } finally {
+      setActing(false);
+    }
+  }
+  function askNote(prompt) {
+    // eslint-disable-next-line no-alert
+    const n = window.prompt(prompt);
+    return n == null ? null : (n.trim() || null);
+  }
 
   const fields = [
     t.customer_name && { label: 'Заказчик',  value: t.customer_name },
@@ -428,10 +514,103 @@ function TenderDetailSheet({ tender, onClose }) {
                 </div>
               </div>
             )}
+
+            {/* Контекст-действия по статусу. Mobile-вариант desktop ctxActions */}
+            {isKpSent(t.tender_status) && (
+              <div className="flex flex-col gap-2 mt-1">
+                <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                  Действия по КП
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  <ActionBtn
+                    label="🏆 Выиграли"
+                    bg="color-mix(in srgb, var(--green) 18%, transparent)"
+                    fg="var(--green)"
+                    disabled={acting}
+                    onClick={() => setStatus('Выиграли')}
+                  />
+                  <ActionBtn
+                    label="❌ Проиграли"
+                    bg="color-mix(in srgb, var(--red-soft) 18%, transparent)"
+                    fg="var(--red-soft)"
+                    disabled={acting}
+                    onClick={() => {
+                      const note = askNote('Причина проигрыша (опц.):');
+                      setStatus('Проиграли', { note });
+                    }}
+                  />
+                  <ActionBtn
+                    label="❓ Дозапрос"
+                    bg="color-mix(in srgb, var(--gold) 18%, transparent)"
+                    fg="var(--gold)"
+                    disabled={acting}
+                    onClick={() => {
+                      const note = askNote('Суть дозапроса от клиента:');
+                      setStatus('Дозапрос', { note });
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {isAddendum(t.tender_status) && (
+              <div className="flex flex-col gap-2 mt-1">
+                <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                  Дозапрос — действия
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  <ActionBtn
+                    label="📨 Ответил"
+                    bg="color-mix(in srgb, var(--blue) 18%, transparent)"
+                    fg="var(--blue)"
+                    disabled={acting}
+                    onClick={() => setStatus('КП отправлено')}
+                  />
+                  <ActionBtn
+                    label="🏆 Выиграли"
+                    bg="color-mix(in srgb, var(--green) 18%, transparent)"
+                    fg="var(--green)"
+                    disabled={acting}
+                    onClick={() => setStatus('Выиграли')}
+                  />
+                  <ActionBtn
+                    label="❌ Проиграли"
+                    bg="color-mix(in srgb, var(--red-soft) 18%, transparent)"
+                    fg="var(--red-soft)"
+                    disabled={acting}
+                    onClick={() => {
+                      const note = askNote('Причина проигрыша (опц.):');
+                      setStatus('Проиграли', { note });
+                    }}
+                  />
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
     </BottomSheet>
+  );
+}
+
+function ActionBtn({ label, bg, fg, onClick, disabled }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="rounded-xl text-[12px] font-semibold spring-tap"
+      style={{
+        background: bg,
+        color: fg,
+        border: '0.5px solid color-mix(in srgb, currentColor 30%, transparent)',
+        padding: '10px 8px',
+        minHeight: 44,
+        opacity: disabled ? 0.55 : 1,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+      }}
+    >
+      {label}
+    </button>
   );
 }
 
