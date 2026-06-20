@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Briefcase, MapPin, ChevronRight, Clock } from 'lucide-react';
+import { ArrowLeft, Briefcase, MapPin, ChevronRight, Clock, Check, AlertCircle, Inbox } from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
+import { api } from '@/api/client';
 import { useHaptic } from '@/hooks/useHaptic';
+import { BottomSheet } from '@/components/shared/BottomSheet';
 
 function fmt(n) { return (n || 0).toLocaleString('ru-RU'); }
 function fmtDate(d) { return d ? new Date(d).toLocaleDateString('ru-RU') : '—'; }
@@ -586,6 +588,9 @@ export default function FieldMoney() {
         История выплат →
       </button>
 
+      {/* ─── Передачи от рабочих (PM-режим, Stage W) ─────── */}
+      <WorkerHandoversSection />
+
       {/* ─── Projects history ────────────────────────────────── */}
       {sortedWorks.length > 1 && (
         <div className="space-y-2">
@@ -615,3 +620,296 @@ export default function FieldMoney() {
     </div>
   );
 }
+
+/* ══════════════════════════════════════════════════════════════
+   WorkerHandoversSection — «Передачи от рабочих» (Stage W)
+
+   Бизнес-логика:
+   1. Бухгалтер выплатил рабочему через СЗ-перевод (worker_payments.payment_method='se_transfer').
+   2. Рабочий получил на карту → передал РП налом.
+   3. РП открывает /field/money или /m/cash, видит секцию «Передачи от рабочих»,
+      по каждому рабочему: «Ожидается X ₽ за месяц Y».
+   4. РП тапает «Получил полностью» / «Частично» / «Не получено» →
+      POST /api/handovers/ создаёт worker_to_pm_handovers запись,
+      статус идёт в pm-balance и timesheet.
+
+   ВАЖНО — секция работает ТОЛЬКО для пользователя с CRM-токеном (PM).
+   У чистого field-рабочего нет CRM-токена → секция тихо скрыта.
+   ══════════════════════════════════════════════════════════════ */
+function WorkerHandoversSection() {
+  const haptic = useHaptic();
+  const [items,    setItems]    = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [opened,   setOpened]   = useState(null);
+  const [busy,     setBusy]     = useState(false);
+
+  // Текущий месяц/год для запроса
+  const now   = new Date();
+  const year  = now.getFullYear();
+  const month = now.getMonth() + 1;
+
+  // Hide-if-not-PM: проверяем CRM-токен (asgard_token)
+  const hasCrmToken = typeof localStorage !== 'undefined' && !!localStorage.getItem('asgard_token');
+
+  const load = useCallback(async () => {
+    if (!hasCrmToken) { setLoading(false); return; }
+    setLoading(true);
+    try {
+      const res = await api.get(`/timesheet/v2/handovers/${year}/${month}`);
+      // Формат: [{worker_id, fio, work_id, expected_amount, source_se_transfer_id, existing_handover?}]
+      const rows = api.extractRows(res) || [];
+      setItems(rows);
+    } catch {
+      setItems([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [year, month, hasCrmToken]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (!hasCrmToken) return null;       // workers don't see this
+  if (loading) return null;             // skeleton не делаем — секция опциональная
+  if (items.length === 0) return null;  // нечего показывать — скрываем секцию
+
+  const handleConfirm = async (action, partialAmount = null) => {
+    if (!opened || busy) return;
+    setBusy(true);
+    try {
+      const expected = Number(opened.expected_amount || 0);
+      let payload = {
+        worker_id: opened.worker_id,
+        work_id:   opened.work_id,
+        year, month,
+        source_se_transfer_id: opened.source_se_transfer_id || null,
+        expected_amount: expected,
+      };
+      if (action === 'full') {
+        payload.received_amount = expected;
+        payload.status = 'received';
+        haptic.success();
+      } else if (action === 'partial') {
+        const v = Number(partialAmount);
+        if (!Number.isFinite(v) || v < 0) { setBusy(false); return; }
+        payload.received_amount = v;
+        payload.status = v >= expected ? 'received' : 'partial';
+        haptic.medium();
+      } else if (action === 'none') {
+        payload.received_amount = 0;
+        payload.status = 'not_received';
+        const note = window.prompt('Причина (необязательно)?', '');
+        if (note) payload.note = note;
+        haptic.light();
+      }
+      await api.post('/handovers/', payload);
+      setItems((prev) => prev.filter((r) => r.worker_id !== opened.worker_id || r.work_id !== opened.work_id));
+      setOpened(null);
+    } catch (e) {
+      haptic.error();
+      window.alert('Ошибка: ' + (e.message || 'не удалось'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl p-4" style={{
+      backgroundColor: 'var(--bg-elevated)',
+      // золотисто-оранжевый акцент (Stage W)
+      border: '1px solid rgba(255,152,0,0.25)',
+      background: 'linear-gradient(135deg, rgba(255,152,0,0.07) 0%, var(--bg-elevated) 100%)',
+    }}>
+      <div className="flex items-center gap-2 mb-3">
+        <Inbox size={16} style={{ color: '#FF9800' }} />
+        <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
+          Передачи от рабочих
+        </span>
+        <span
+          className="ml-auto px-2 py-0.5 rounded-full"
+          style={{
+            background: 'rgba(255,152,0,0.18)',
+            color: '#FF9800',
+            fontSize: 11, fontWeight: 700,
+          }}
+        >
+          {items.length}
+        </span>
+      </div>
+
+      <div className="space-y-2">
+        {items.map((h) => (
+          <button
+            key={`${h.worker_id}-${h.work_id}-${h.source_se_transfer_id || 'x'}`}
+            onClick={() => { haptic.light(); setOpened(h); }}
+            className="w-full rounded-xl text-left flex items-center gap-3"
+            style={{
+              padding: '12px 14px',
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid rgba(255,152,0,0.18)',
+            }}
+          >
+            <div
+              style={{
+                width: 36, height: 36, borderRadius: 10,
+                background: 'rgba(255,152,0,0.18)',
+                color: '#FF9800',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 16, fontWeight: 800, flexShrink: 0,
+              }}
+            >
+              {(h.fio || 'Р').slice(0, 1).toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+                {h.fio || `Рабочий #${h.worker_id}`}
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                Ожидается {fmt(h.expected_amount)} ₽
+                {h.work_title && ` · ${h.work_title}`}
+              </p>
+            </div>
+            <ChevronRight size={16} style={{ color: '#FF9800', flexShrink: 0 }} />
+          </button>
+        ))}
+      </div>
+
+      {opened && (
+        <HandoverConfirmSheet
+          handover={opened}
+          busy={busy}
+          onConfirm={handleConfirm}
+          onClose={() => setOpened(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function HandoverConfirmSheet({ handover, busy, onConfirm, onClose }) {
+  const expected = Number(handover.expected_amount || 0);
+  const [partial, setPartial] = useState('');
+  const [showPartial, setShowPartial] = useState(false);
+
+  return (
+    <BottomSheet open onClose={onClose} title={`Получил от ${handover.fio || '—'}`}>
+      <div className="flex flex-col gap-3 pb-4">
+        <div
+          className="rounded-xl px-4 py-3 flex items-center justify-between"
+          style={{
+            background: 'rgba(255,152,0,0.08)',
+            border: '1px solid rgba(255,152,0,0.25)',
+          }}
+        >
+          <div>
+            <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>
+              Ожидаемая сумма
+            </p>
+            <p style={{ fontSize: 22, fontWeight: 800, color: '#FF9800', marginTop: 2 }}>
+              {fmt(expected)} ₽
+            </p>
+          </div>
+          {handover.work_title && (
+            <div style={{ textAlign: 'right' }}>
+              <p style={{ fontSize: 11, color: 'var(--text-tertiary)', fontWeight: 600 }}>Проект</p>
+              <p style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 600 }}>{handover.work_title}</p>
+            </div>
+          )}
+        </div>
+
+        {!showPartial ? (
+          <>
+            <button
+              onClick={() => onConfirm('full')}
+              disabled={busy}
+              className="spring-tap"
+              style={{
+                minHeight: 56, borderRadius: 14, fontSize: 16, fontWeight: 700,
+                background: 'color-mix(in srgb, var(--green) 18%, transparent)',
+                color: 'var(--green)',
+                border: '0.5px solid color-mix(in srgb, var(--green) 30%, var(--border-norse))',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                opacity: busy ? 0.6 : 1,
+              }}
+            >
+              <Check size={20} /> Получил полностью ({fmt(expected)} ₽)
+            </button>
+
+            <button
+              onClick={() => setShowPartial(true)}
+              disabled={busy}
+              className="spring-tap"
+              style={{
+                minHeight: 56, borderRadius: 14, fontSize: 16, fontWeight: 700,
+                background: 'color-mix(in srgb, var(--gold) 14%, transparent)',
+                color: 'var(--gold)',
+                border: '0.5px solid color-mix(in srgb, var(--gold) 28%, var(--border-norse))',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                opacity: busy ? 0.6 : 1,
+              }}
+            >
+              <AlertCircle size={20} /> Получил частично
+            </button>
+
+            <button
+              onClick={() => onConfirm('none')}
+              disabled={busy}
+              className="spring-tap"
+              style={{
+                minHeight: 56, borderRadius: 14, fontSize: 16, fontWeight: 700,
+                background: 'color-mix(in srgb, var(--red-soft) 12%, transparent)',
+                color: 'var(--red)',
+                border: '0.5px solid color-mix(in srgb, var(--red-soft) 25%, var(--border-norse))',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                opacity: busy ? 0.6 : 1,
+              }}
+            >
+              ✗ Не получено
+            </button>
+          </>
+        ) : (
+          <>
+            <label className="input-label">Сколько получили (₽)</label>
+            <input
+              type="number"
+              value={partial}
+              onChange={(e) => setPartial(e.target.value)}
+              placeholder={String(expected)}
+              className="input-field"
+              autoFocus
+            />
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setShowPartial(false); setPartial(''); }}
+                className="spring-tap"
+                style={{
+                  flex: 1, minHeight: 50, borderRadius: 12, fontSize: 14, fontWeight: 600,
+                  background: 'var(--bg-surface)',
+                  color: 'var(--text-secondary)',
+                  border: '0.5px solid var(--border-norse)',
+                }}
+              >
+                Назад
+              </button>
+              <button
+                onClick={() => onConfirm('partial', partial)}
+                disabled={busy || !partial}
+                className="spring-tap"
+                style={{
+                  flex: 2, minHeight: 50, borderRadius: 12, fontSize: 14, fontWeight: 700,
+                  background: 'color-mix(in srgb, var(--gold) 18%, transparent)',
+                  color: 'var(--gold)',
+                  border: '0.5px solid color-mix(in srgb, var(--gold) 30%, var(--border-norse))',
+                  opacity: (busy || !partial) ? 0.5 : 1,
+                }}
+              >
+                Подтвердить
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </BottomSheet>
+  );
+}
+

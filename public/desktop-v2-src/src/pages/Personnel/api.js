@@ -73,6 +73,9 @@ export const EDIT_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTO
 // PII (паспорт, ИНН, СНИЛС, банк) видят HR/ADMIN/директора
 export const PII_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM'];
 
+// Импорт остатков СЗ — финансовая операция. Зеркалит src/routes/staff.js FIN_ROLES.
+export const FIN_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH'];
+
 export function canView(role) {
   return VIEW_ROLES.includes(role) || isDirectorRole(role);
 }
@@ -82,6 +85,9 @@ export function canEdit(role) {
 export function canSeePII(role) {
   return PII_ROLES.includes(role) || isDirectorRole(role);
 }
+export function canImportSeLimits(role) {
+  return FIN_ROLES.includes(role) || isDirectorRole(role);
+}
 
 /* ─── API ─────────────────────────────────────────────────────────────────── */
 export function loadReadiness() {
@@ -89,6 +95,17 @@ export function loadReadiness() {
     employees: d.employees || [],
     groups: d.groups || { on_site: 0, approved: 0, ready: 0, not_ready: 0, archive: 0 },
   }));
+}
+
+/**
+ * Последняя синхронизация остатков СЗ — отдаёт когда и кто импортировал.
+ *   GET /api/staff/se-limits/last-import → { last_import_at, last_import_by_fio }
+ * RBAC: FIN_ROLES. Silent — не критично если 401/недоступно.
+ */
+export function loadSeLastImport() {
+  return api('/api/staff/se-limits/last-import', { silent: true })
+    .then((d) => d || null)
+    .catch(() => null);
 }
 
 export function loadEmployee(id) {
@@ -117,6 +134,27 @@ export function updateEmployee(id, payload) {
     method: 'PUT',
     body: payload,
   }).then((d) => d.employee || d);
+}
+
+/* ─── Получатели НПД-выплат (V240) ────────────────────────────────────────
+ * Иногда рабочий получает оплату через РОДСТВЕННИКА (жена/брат/отец как СЗ).
+ *   GET  /api/staff/payees?search=Q&limit=20  — поиск среди is_se_payee=true
+ *   POST /api/staff/payees                    — создать нового получателя (FIN_ROLES only)
+ * Связь: employees.se_payee_id указывает на employees.id (получателя).
+ */
+export function searchPayees(q, limit = 20) {
+  const qs = '?search=' + encodeURIComponent(q || '') + '&limit=' + Number(limit || 20);
+  return api('/api/staff/payees' + qs)
+    .then((d) => d.payees || d.items || d.rows || [])
+    .catch(() => []);
+}
+
+export function createPayee(payload) {
+  // { fio (required), phone, inn }
+  return api('/api/staff/payees', {
+    method: 'POST',
+    body: payload,
+  }).then((d) => d.payee || d.employee || d);
 }
 
 export function createReview(employeeId, payload) {

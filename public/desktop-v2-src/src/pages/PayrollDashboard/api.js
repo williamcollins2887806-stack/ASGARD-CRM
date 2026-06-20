@@ -18,7 +18,7 @@
 import { api } from '@/api/client';
 
 export const ACCESS_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'BUH'];
-export const LIMIT_EDITORS = ['ADMIN', 'DIRECTOR_GEN'];
+export const LIMIT_EDITORS = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH'];
 
 export const TRANSFER_STATUSES = {
   planned:     { label: 'Запланировано',  tone: 'draft' },

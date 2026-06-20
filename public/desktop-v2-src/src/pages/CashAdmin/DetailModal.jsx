@@ -10,6 +10,7 @@ import { PromptModal } from '@/modals/Prompt';
 import { MCard, MHead, MBody, MFoot, Btn } from '@/modals/parts';
 import {
   loadRequest, approveRequest, issueMoney, rejectRequest, askQuestion, confirmReturn,
+  loadCashBalance,
   STATUS_LABELS, TYPE_LABELS, ADVANCE_STEPS, LOAN_STEPS, STEP_LABELS,
   fmtMoney, fmtDate, fmtDateTime, deadlineMeta, openReceipt
 } from './api';
@@ -19,12 +20,18 @@ export default function DetailModal({ requestId, onChanged }) {
   const { open, close } = useModal();
   const [req, setReq] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Stage W — баланс кассы (для блока «сейчас → после»)
+  const [cashBalance, setCashBalance] = useState(null);
 
   const refresh = async () => {
     setLoading(true);
     try {
-      const r = await loadRequest(requestId);
+      const [r, b] = await Promise.all([
+        loadRequest(requestId),
+        loadCashBalance().catch(() => null)
+      ]);
       setReq(r);
+      setCashBalance(b);
     } catch (e) {
       toast.error('Не удалось загрузить: ' + (e?.message || e));
     } finally {
@@ -231,6 +238,42 @@ export default function DetailModal({ requestId, onChanged }) {
             )}
           </div>
         </div>
+
+        {/* Stage W — Касса сейчас → После выдачи (показываем когда заявка ещё ждёт выдачи) */}
+        {cashBalance != null && ['requested', 'approved'].includes(req.status) && !req.use_se_payee && (() => {
+          const currentBalance = Number(cashBalance.balance) || 0;
+          const reqAmount = Number(req.amount) || 0;
+          const afterIssue = currentBalance - reqAmount;
+          const willBeNegative = afterIssue < 0;
+          return (
+            <div className={'cash-balance-preview' + (willBeNegative ? ' warn' : '')}>
+              <div className="cbp-block">
+                <div className="cbp-label">🏦 Касса сейчас</div>
+                <div className="cbp-now">{fmtMoney(currentBalance)}</div>
+              </div>
+              <div className="cbp-arrow" aria-hidden="true">→</div>
+              <div className="cbp-block">
+                <div className="cbp-label">После выдачи</div>
+                <div className={'cbp-after' + (willBeNegative ? ' negative' : '')}>
+                  {fmtMoney(afterIssue)}
+                </div>
+              </div>
+              {willBeNegative && (
+                <div className="cbp-error" role="alert">
+                  ⚠ Не хватит налом! Дефицит {fmtMoney(Math.abs(afterIssue))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* Stage W — если заявка через СЗ — показываем плашку */}
+        {req.use_se_payee && ['requested', 'approved'].includes(req.status) && (
+          <div className="cash-alert info">
+            🏦 <b>Через СЗ-перевод.</b> Бухгалтерия переведёт сумму
+            на самозанятого{req.se_payee_name ? ` (${req.se_payee_name})` : ''} — баланс кассы не уменьшится.
+          </div>
+        )}
 
         {/* Дедлайн */}
         {dl && (

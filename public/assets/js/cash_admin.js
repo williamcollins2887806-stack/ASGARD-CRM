@@ -20,19 +20,62 @@ window.AsgardCashAdminPage = (function() {
     question: 'Вопрос'
   };
 
+  // Stage W — тип loan УБРАН
   const TYPE_LABELS = {
     advance: 'Аванс на проект',
-    loan: 'Долг до ЗП'
+    office:  'Офисный расход',
+    other:   'Прочее'
   };
 
   const TYPE_COLORS = {
     advance: 'info',
-    loan: 'warning'
+    office:  'info',
+    other:   'info'
   };
 
   const ADVANCE_STEPS = ['requested', 'approved', 'money_issued', 'received', 'reporting', 'closed'];
-  const LOAN_STEPS = ['requested', 'approved', 'money_issued', 'received', 'closed'];
   const STEP_LABELS = { requested: 'Заявка', approved: 'Согласов.', money_issued: 'Выдано', received: 'Получено', reporting: 'Отчёт', closed: 'Закрыто' };
+
+  // ─────────────────────────────────────────────────────────────────
+  // STAGE W — стили блока «Касса сейчас → После выдачи» (DetailModal)
+  // ─────────────────────────────────────────────────────────────────
+  (function injectCashAdminStageWStyles() {
+    if (document.getElementById('cash-admin-stagew-styles')) return;
+    const s = document.createElement('style');
+    s.id = 'cash-admin-stagew-styles';
+    s.textContent = `
+      .ca-balance-preview {
+        display:grid;
+        grid-template-columns: 1fr auto 1fr;
+        align-items:center;
+        gap:14px;
+        margin:16px 0;
+        padding:14px 18px;
+        border-radius:12px;
+        background: var(--blue-bg, rgba(33,150,243,.10));
+        border:1px solid var(--blue, #3b82f6);
+      }
+      .ca-balance-preview.ca-ok    { background: var(--ok-bg, rgba(76,175,80,.10));    border-color: var(--ok-t, #4CAF50); }
+      .ca-balance-preview.ca-warn  { background: var(--warn-bg, rgba(255,152,0,.10));  border-color: var(--warn-t, #F59E0B); }
+      .ca-bp-label { font-size:11px; color: var(--t3, var(--text-muted)); text-transform:uppercase; letter-spacing:.06em; font-weight:600; }
+      .ca-bp-now   { font-size:22px; font-weight:800; color: var(--t1, var(--text-primary)); }
+      .ca-bp-after { font-size:22px; font-weight:800; color: var(--ok-t, #4CAF50); }
+      .ca-bp-after.ca-negative { color: var(--err-t, var(--danger)); }
+      .ca-bp-arrow { font-size:24px; color: var(--t3, var(--text-muted)); font-weight:700; }
+      .ca-bp-error { grid-column: 1 / -1; text-align:center; color: var(--err-t, var(--danger)); font-weight:700; margin-top:6px; font-size:13px; }
+      .ca-balance-preview > div { min-width:0; }
+      .ca-balance-preview .ca-bp-left  { text-align:left; }
+      .ca-balance-preview .ca-bp-right { text-align:right; }
+
+      html[data-theme="light"] .ca-balance-preview        { background: #E8F4FD; border-color: #1565C0; }
+      html[data-theme="light"] .ca-balance-preview.ca-ok  { background: #E8F5E9; border-color: #2E7D32; }
+      html[data-theme="light"] .ca-balance-preview.ca-warn{ background: #FFF3E0; border-color: #EF6C00; }
+      html[data-theme="light"] .ca-bp-after               { color: #2E7D32; }
+      html[data-theme="light"] .ca-bp-after.ca-negative   { color: #C62828; }
+      html[data-theme="light"] .ca-bp-error               { color: #C62828; }
+    `;
+    document.head.appendChild(s);
+  })();
 
   let currentRequests = [];
   let currentSummary = [];
@@ -67,8 +110,8 @@ window.AsgardCashAdminPage = (function() {
   // PROGRESS STEPS
   // ─────────────────────────────────────────────────────────────────
   function renderProgressSteps(r) {
-    const isLoan = r.type === 'loan';
-    const steps = isLoan ? LOAN_STEPS : ADVANCE_STEPS;
+    // Stage W — единые steps для всех типов (loan убран)
+    const steps = ADVANCE_STEPS;
     const currentStep = steps.indexOf(r.status);
     const isRejected = r.status === 'rejected';
     const isQuestion = r.status === 'question';
@@ -154,14 +197,15 @@ window.AsgardCashAdminPage = (function() {
       </div>
     `;
 
-    // CRSelect init — type filter
+    // CRSelect init — type filter (Stage W — loan убран)
     document.getElementById('crselect-cashAdminFilterType').appendChild(
       CRSelect.create({
         id: 'cashAdminFilterType',
         options: [
           { value: '', label: 'Все типы' },
           { value: 'advance', label: 'Аванс' },
-          { value: 'loan', label: 'Долг до ЗП' },
+          { value: 'office',  label: 'Офисный расход' },
+          { value: 'other',   label: 'Прочее' },
         ],
         placeholder: 'Все типы',
         onChange: () => onFilterChange(),
@@ -410,8 +454,9 @@ window.AsgardCashAdminPage = (function() {
   }
 
   function renderIssueCard(r) {
-    const isLoan = r.type === 'loan';
-    const typeColor = isLoan ? 'var(--warning)' : 'var(--info)';
+    // Stage W — loan убран
+    const isLoan = false;
+    const typeColor = 'var(--info)';
     const typeIcon = isLoan ? '\uD83E\uDE99' : '\uD83D\uDCCB';
     const projectName = r.work_title || (r.work_id ? '#' + r.work_id : (isLoan ? 'Личные средства' : '-'));
 
@@ -461,8 +506,9 @@ window.AsgardCashAdminPage = (function() {
   }
 
   function renderPendingCard(r) {
-    const isLoan = r.type === 'loan';
-    const typeColor = isLoan ? 'var(--warning)' : 'var(--info)';
+    // Stage W — loan убран
+    const isLoan = false;
+    const typeColor = 'var(--info)';
     const typeIcon = isLoan ? '\uD83E\uDE99' : '\uD83D\uDCCB';
     const projectName = r.work_title || (r.work_id ? '#' + r.work_id : (isLoan ? 'Личные средства' : '-'));
 
@@ -630,8 +676,9 @@ window.AsgardCashAdminPage = (function() {
   }
 
   function renderAdminCard(r) {
-    const isLoan = r.type === 'loan';
-    const typeColor = isLoan ? 'var(--warning)' : 'var(--info)';
+    // Stage W — loan убран
+    const isLoan = false;
+    const typeColor = 'var(--info)';
     const typeIcon = isLoan ? '\uD83E\uDE99' : '\uD83D\uDCCB';
     const projectName = r.work_title || (r.work_id ? '#' + r.work_id : (isLoan ? 'Личные средства' : ''));
     const balanceVal = r.balance ? r.balance.remainder : 0;
@@ -771,24 +818,60 @@ window.AsgardCashAdminPage = (function() {
     });
 
     try {
-      const resp = await fetch('/api/cash/' + id, { headers: getHeaders() });
-      if (!resp.ok) throw new Error('Ошибка загрузки');
-      const req = await resp.json();
+      // Stage W — параллельно тянем заявку и текущий баланс кассы для «сейчас → после»
+      const [reqResp, balResp] = await Promise.all([
+        fetch('/api/cash/' + id, { headers: getHeaders() }),
+        fetch('/api/cash/balance', { headers: getHeaders() }).catch(() => null)
+      ]);
+      if (!reqResp.ok) throw new Error('Ошибка загрузки');
+      const req = await reqResp.json();
+      let currentBalance = null;
+      try { if (balResp && balResp.ok) currentBalance = await balResp.json(); } catch (_) {}
       const body = document.getElementById('modalBody');
-      if (body) body.innerHTML = renderDetail(req);
+      if (body) body.innerHTML = renderDetail(req, currentBalance);
     } catch (e) {
       const body = document.getElementById('modalBody');
       if (body) body.innerHTML = `<div style="text-align:center; padding:24px; color:var(--danger)">${esc(e.message)}</div>`;
     }
   }
 
-  function renderDetail(req) {
+  function renderBalancePreview(req, currentBalance) {
+    // Stage W — «🏦 Касса сейчас → После выдачи»
+    if (!currentBalance || typeof currentBalance.balance === 'undefined') return '';
+    // Показывать только пока деньги ещё не выданы (полезно бухгалтеру/директору перед issue)
+    const showFor = ['requested', 'approved', 'question'];
+    if (!showFor.includes(req.status)) return '';
+
+    const now = Number(currentBalance.balance) || 0;
+    const amt = Number(req.amount) || 0;
+    const after = now - amt;
+    const willBeNegative = after < 0;
+    const cls = willBeNegative ? 'ca-warn' : 'ca-ok';
+
+    return `
+      <div class="ca-balance-preview ${cls}">
+        <div class="ca-bp-left">
+          <div class="ca-bp-label">🏦 Касса сейчас</div>
+          <div class="ca-bp-now">${fmtMoney(now)}</div>
+        </div>
+        <div class="ca-bp-arrow">→</div>
+        <div class="ca-bp-right">
+          <div class="ca-bp-label">После выдачи</div>
+          <div class="ca-bp-after ${willBeNegative ? 'ca-negative' : ''}">${fmtMoney(after)}</div>
+        </div>
+        ${willBeNegative ? '<div class="ca-bp-error">⚠ Не хватит налом!</div>' : ''}
+      </div>
+    `;
+  }
+
+  function renderDetail(req, currentBalance) {
     const canApprove = req.status === 'requested';
     const canReject = ['requested', 'approved'].includes(req.status);
     const canQuestion = ['requested', 'received', 'reporting'].includes(req.status);
     const canClose = ['received', 'reporting'].includes(req.status);
     const canIssue = req.status === 'approved';
-    const isLoan = req.type === 'loan';
+    // Stage W — loan убран
+    const isLoan = false;
 
     // Progress steps at top
     let html = `
@@ -815,6 +898,9 @@ window.AsgardCashAdminPage = (function() {
         </div>
       </div>
     `;
+
+    // Stage W — «🏦 Касса сейчас → После выдачи» (только до выдачи)
+    html += renderBalancePreview(req, currentBalance);
 
     // Deadline timer for money_issued
     if (req.status === 'money_issued' && req.receipt_deadline) {

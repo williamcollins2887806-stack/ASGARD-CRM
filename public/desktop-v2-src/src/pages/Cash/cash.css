@@ -306,6 +306,187 @@
   cursor: pointer;
 }
 
+/* ╔══════════════════════════════════════════════════════════════
+   ║ Stage W — CategoryGrid (12 плиток 3×4) + СЗ-секция
+   ║ Светлая и тёмная тема — отдельные цвета (не инверсия).
+   ╚══════════════════════════════════════════════════════════════ */
+
+.cash-cat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (max-width: 720px) {
+  .cash-cat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 460px) {
+  .cash-cat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.cash-cat-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 14px 8px;
+  min-height: 86px;
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  font: inherit;
+  color: var(--t-1);
+  text-align: center;
+}
+.cash-cat-tile:hover {
+  background: #E3F2FD;
+  border-color: color-mix(in srgb, #1565C0 35%, var(--brd-1));
+  transform: translateY(-1px);
+}
+.cash-cat-tile.active {
+  background: #E3F2FD;
+  border-color: #1565C0;
+  color: #0D47A1;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #1565C0 18%, transparent);
+}
+.cash-cat-tile:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+[data-theme="dark"] .cash-cat-tile:hover {
+  background: rgba(66, 165, 245, 0.15);
+  border-color: color-mix(in srgb, #42A5F5 40%, var(--brd-1));
+}
+[data-theme="dark"] .cash-cat-tile.active {
+  background: rgba(66, 165, 245, 0.20);
+  border-color: #42A5F5;
+  color: #BBDEFB;
+  box-shadow: 0 0 0 3px rgba(66, 165, 245, 0.22);
+}
+
+.cash-cat-icon {
+  font-size: 32px;
+  line-height: 1;
+}
+.cash-cat-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: inherit;
+}
+
+/* СЗ-секция (use_se_payee) */
+.cash-se-section {
+  margin-top: 18px;
+  padding: 14px;
+  border-radius: var(--r-md);
+  background: #F1F8E9;
+  border: 1px solid color-mix(in srgb, #43A047 30%, var(--brd-1));
+}
+[data-theme="dark"] .cash-se-section {
+  background: rgba(102, 187, 106, 0.10);
+  border-color: color-mix(in srgb, #66BB6A 35%, var(--brd-1));
+}
+.cash-se-picker {
+  margin-top: 10px;
+}
+.cash-se-hint {
+  font-size: 12px;
+  color: var(--t-2);
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+}
+.cash-se-hint.err {
+  background: color-mix(in srgb, var(--err) 14%, transparent);
+  color: var(--err);
+  font-weight: 600;
+}
+
+/* ╔══════════════════════════════════════════════════════════════
+   ║ Stage W — Balance Preview (CashAdmin DetailModal)
+   ╚══════════════════════════════════════════════════════════════ */
+
+.cash-balance-preview {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 22px;
+  margin: 14px 0;
+  border-radius: var(--r-md);
+  background: #E3F2FD;
+  border: 1px solid color-mix(in srgb, #1565C0 30%, var(--brd-1));
+}
+[data-theme="dark"] .cash-balance-preview {
+  background: rgba(66, 165, 245, 0.10);
+  border-color: color-mix(in srgb, #42A5F5 35%, var(--brd-1));
+}
+
+.cash-balance-preview.warn {
+  background: #FFF3E0;
+  border-color: #E65100;
+  box-shadow: 0 0 16px color-mix(in srgb, #E65100 18%, transparent);
+}
+[data-theme="dark"] .cash-balance-preview.warn {
+  background: rgba(255, 152, 0, 0.10);
+  border-color: color-mix(in srgb, #FF9800 45%, var(--brd-1));
+}
+
+.cbp-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.cbp-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--t-3);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.cbp-now {
+  font-size: 24px;
+  font-weight: 800;
+  color: #0D47A1;
+  letter-spacing: -0.01em;
+}
+[data-theme="dark"] .cbp-now { color: #90CAF9; }
+
+.cbp-after {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--ok);
+  letter-spacing: -0.01em;
+}
+.cbp-after.negative {
+  color: #E65100;
+}
+[data-theme="dark"] .cbp-after.negative { color: #FFB74D; }
+
+.cbp-arrow {
+  font-size: 26px;
+  color: var(--t-3);
+  font-weight: 600;
+}
+
+.cbp-error {
+  grid-column: 1 / -1;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #E65100;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px dashed color-mix(in srgb, #E65100 35%, transparent);
+}
+[data-theme="dark"] .cbp-error { color: #FFB74D; }
+
 /* статус-пилюли */
 .cash-pill {
   display: inline-block;

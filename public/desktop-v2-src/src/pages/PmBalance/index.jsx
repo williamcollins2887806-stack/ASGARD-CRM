@@ -21,11 +21,17 @@ import { toast } from '@/modals/Notifications';
 import { Btn } from '@/modals/parts';
 import { SelectInput } from '@/inputs/Inputs';
 import { TopActionsBar, EmptyState } from '@/blocks/Blocks';
+import { api } from '@/api/client';
 
 import { PmBalanceDetailModal } from './PmBalanceDetailModal';
 import { loadPmBalanceList, loadPmBalanceDetail, rub, balanceTone, buildMonthOptions } from './api';
+import './pm-balance.css';
 
 const ALLOWED_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'BUH'];
+// Stage W — для секции «Ожидают передачи от рабочих» нужны PM-роли (если они
+// заходят на свою сводку из мобилки/др). На основной /pm-balance гейт остаётся,
+// но секция показывается когда API вернул ненулевой counter.
+const PM_ROLES = ['PM', 'HEAD_PM'];
 
 export default function PmBalancePage() {
   const { user } = useAuth();
@@ -38,6 +44,9 @@ export default function PmBalancePage() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [month, setMonth] = useState('');
+  // Stage W — ожидающие передачи от рабочих (показывается только PM-роли при
+  // заходе на /pm-balance из собственного баланса; для офисных ролей не нужно).
+  const [myHandovers, setMyHandovers] = useState(null);
 
   // Deep-link: #/pm-balance/:pm_id → автооткрытие модалки деталей (паритет с vanilla).
   const deepLinkPmId = params?.pm_id ? Number(params.pm_id) : null;
@@ -52,6 +61,31 @@ export default function PmBalancePage() {
   };
 
   useEffect(() => { if (hasAccess) refresh(); }, [hasAccess]);
+
+  // Stage W — подтягиваем «ожидают передачи» для текущего PM-пользователя
+  // (только если зашёл сам РП). Используем тот же endpoint, что табель: handovers/:y/:m.
+  useEffect(() => {
+    if (!user || !PM_ROLES.includes(user.role)) { setMyHandovers(null); return; }
+    let cancelled = false;
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth() + 1;
+    api(`/api/timesheet/v2/handovers/${y}/${m}`)
+      .then((d) => {
+        if (cancelled) return;
+        const list = Array.isArray(d?.handovers) ? d.handovers
+          : Array.isArray(d?.items) ? d.items
+          : Array.isArray(d) ? d : [];
+        const pending = list.filter((h) => {
+          const st = h.existing_handover?.status || h.status || 'pending';
+          return st === 'pending';
+        });
+        const sum = pending.reduce((s, h) => s + (Number(h.expected_amount) || 0), 0);
+        setMyHandovers({ count: pending.length, sum });
+      })
+      .catch(() => { if (!cancelled) setMyHandovers(null); });
+    return () => { cancelled = true; };
+  }, [user]);
 
   const openDetail = (pm) => modal.open(
     <PmBalanceDetailModal pmId={pm.pm_id} pmName={pm.pm_name} />,
@@ -156,6 +190,22 @@ export default function PmBalancePage() {
           {totals.negative > 0 && (
             <KpiBox label="В минусе РП" value={String(totals.negative)} tone="err" />
           )}
+        </div>
+      )}
+
+      {/* Stage W — карточка «Ожидают передачи от рабочих» (только для РП) */}
+      {myHandovers && myHandovers.count > 0 && (
+        <div className="pmb-handovers-card">
+          <div className="pmb-h-icon" aria-hidden="true">📥</div>
+          <div className="pmb-h-body">
+            <div className="pmb-h-title">Ожидают передачи от рабочих</div>
+            <div className="pmb-h-info">
+              {myHandovers.count} рабочих · <b>{rub(myHandovers.sum)}</b>
+            </div>
+          </div>
+          <Btn variant="primary" onClick={() => navigate('/my-timesheet')}>
+            Открыть табель →
+          </Btn>
         </div>
       )}
 

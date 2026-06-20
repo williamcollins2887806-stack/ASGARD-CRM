@@ -102,8 +102,16 @@
   white-space: nowrap;
 }
 
-.ofe-debt-pos { color: var(--err); }
-.ofe-debt-neg { color: var(--ok); }
+/* M3 (2026-06-20):
+ *  .ofe-debt-pos  → компания должна сотруднику (красный)
+ *  .ofe-debt-over → сотрудник получил больше → переплата (оранжевый)
+ *  .ofe-debt-zero → нейтрально (серый)
+ *  .ofe-debt-neg сохраняем для обратной совместимости (старые места) — = переплата.
+ */
+.ofe-debt-pos  { color: var(--err); }
+.ofe-debt-over { color: var(--orange, var(--amber)); }
+.ofe-debt-zero { color: var(--t-3); }
+.ofe-debt-neg  { color: var(--orange, var(--amber)); }
 
 .ofe-badge {
   display: inline-block;

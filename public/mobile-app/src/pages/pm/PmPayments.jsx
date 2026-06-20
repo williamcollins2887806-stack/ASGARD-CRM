@@ -88,7 +88,34 @@ export default function PmPayments() {
       await api.put(`/pm/payments/${payId}/paid`, {});
       setMsg('Отмечено как выплачено');
       load();
-    } catch (e) { setMsg('Ошибка: ' + e.message); }
+    } catch (e) {
+      // Stage S: бэк отвечает 409 `duplicate_payment` с requires_confirmation
+      // (см. src/routes/field-pm.js:640 PUT /payments/:id/paid). Показываем
+      // confirm со списком already_paid и при согласии повторяем с
+      // confirm_duplicate:true (пропускает проверку на бэке).
+      if (e?.status === 409 && e?.body?.requires_confirmation) {
+        const b = e.body;
+        const lines = (b.already_paid || []).map(p => {
+          const when = p.paid_at ? new Date(p.paid_at).toLocaleDateString('ru-RU') : '—';
+          const amt  = Number(p.amount || 0).toLocaleString('ru-RU') + ' ₽';
+          return `• ${when} — ${amt} (${p.payment_method || '—'})`;
+        }).join('\n');
+        const totalTxt = b.total_already_paid
+          ? `\nВсего уже выплачено: ${Number(b.total_already_paid).toLocaleString('ru-RU')} ₽`
+          : '';
+        const msg = `⚠ Возможно двойная выплата\n\n${b.message || ''}${lines ? '\n\n' + lines : ''}${totalTxt}\n\nПодтвердить новую выплату?`;
+        if (!confirm(msg)) { setMsg('Отменено'); return; }
+        try {
+          await api.put(`/pm/payments/${payId}/paid`, { confirm_duplicate: true });
+          setMsg('Отмечено как выплачено');
+          load();
+        } catch (e2) {
+          setMsg('Ошибка: ' + (e2?.message || e2));
+        }
+        return;
+      }
+      setMsg('Ошибка: ' + e.message);
+    }
   }
 
   async function handleCancel(payId) {

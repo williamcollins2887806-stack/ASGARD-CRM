@@ -27,10 +27,11 @@ import { useDebounce, useHotkeys, useLocalStorage, exportToCsv } from '@/api/use
 import {
   STATUSES, STATUS_MAP, SE_YEAR_LIMIT,
   loadReadiness, filterByQuery, fmtDate, fmtMoney, fmtRating,
-  canView, canEdit,
+  canView, canEdit, canImportSeLimits, loadSeLastImport,
 } from './api';
 import { AddEmployeeModal } from './AddEmployeeModal';
 import { EmployeeDetailModal } from './EmployeeDetailModal';
+import { SeLimitsImportModal } from './SeLimitsImportModal';
 import './personnel.css';
 
 const PAGE_SIZE = 50;
@@ -42,6 +43,11 @@ export default function PersonnelPage() {
   const [employees, setEmployees] = useState([]);
   const [groups, setGroups] = useState({ on_site: 0, approved: 0, ready: 0, not_ready: 0, archive: 0 });
   const [loading, setLoading] = useState(true);
+
+  // Импорт остатков СЗ (FIN_ROLES) — сведения о последней синхронизации
+  // (для tooltip кнопки). Сама модалка открывается через modal.open() — таково
+  // соглашение страницы, см. onAdd/onOpen ниже.
+  const [seLastImport, setSeLastImport] = useState(null);
 
   const [query, setQuery] = useState('');
   const dQuery = useDebounce(query, 300);  // G-11: debounce 300мс — таблица до 2000 рабочих, без неё лагает
@@ -68,6 +74,12 @@ export default function PersonnelPage() {
     window.addEventListener('asgard:personnel:changed', onChanged);
     return () => window.removeEventListener('asgard:personnel:changed', onChanged);
   }, []);
+
+  // Подгружаем сведения о последней синхронизации СЗ — только для FIN_ROLES.
+  useEffect(() => {
+    if (!user?.role || !canImportSeLimits(user.role)) return;
+    loadSeLastImport().then(setSeLastImport).catch(() => {});
+  }, [user?.role]);
 
   // Поддержка hash-параметра #/employee?id=… и #/personnel?id=…
   useEffect(() => {
@@ -139,6 +151,22 @@ export default function PersonnelPage() {
     modal.open(<AddEmployeeModal onSaved={() => refresh()} />, { size: 'wide' });
   };
 
+  const onImportSe = () => {
+    if (!canImportSeLimits(user?.role)) {
+      toast.warn('Импорт остатков СЗ доступен только финансовым ролям');
+      return;
+    }
+    modal.open(
+      <SeLimitsImportModal
+        onApplied={() => {
+          loadSeLastImport().then(setSeLastImport).catch(() => {});
+          refresh();
+        }}
+      />,
+      { size: 'wide' }
+    );
+  };
+
   const onOpen = (emp) => {
     modal.open(<EmployeeDetailModal employeeId={emp.id} />, { size: 'wide' });
   };
@@ -199,6 +227,18 @@ export default function PersonnelPage() {
             <Btn variant="ghost" onClick={() => { window.location.hash = '#/workers-schedule'; }}>📅 График</Btn>
             {/* v2 BONUS: CSV-экспорт (vanilla не имеет) */}
             <Btn variant="ghost" onClick={onExportCsv} title="Экспорт CSV (Ctrl+E)">📥 CSV</Btn>
+            {/* Импорт остатков СЗ (FIN_ROLES) — паритет с vanilla personnel.js */}
+            {canImportSeLimits(user?.role) && (
+              <Btn
+                variant="ghost"
+                onClick={onImportSe}
+                title={seLastImport?.last_import_at
+                  ? `Последний импорт: ${new Date(seLastImport.last_import_at).toLocaleDateString('ru-RU')} (${seLastImport.last_import_by_fio || '—'})`
+                  : 'Импорт остатков СЗ из Excel «Мой налог»'}
+              >
+                📥 Импорт остатков СЗ
+              </Btn>
+            )}
             {userCanEdit && <Btn onClick={onAdd} title="Добавить рабочего (Ctrl+N)">+ Добавить</Btn>}
           </>
         }

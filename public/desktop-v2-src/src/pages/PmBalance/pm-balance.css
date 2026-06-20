@@ -1,0 +1,44 @@
+/* ╔══════════════════════════════════════════════════════════════
+   ║ PmBalance — Stage W доп. блоки (handovers card)
+   ║ Золотистая палитра. Светлая и тёмная — отдельные цвета.
+   ╚══════════════════════════════════════════════════════════════ */
+
+.pmb-handovers-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  background: #FFF8E1;
+  border: 1px solid color-mix(in srgb, #FFB300 45%, var(--brd-1));
+  border-left: 4px solid #FFB300;
+  border-radius: var(--r-md);
+  box-shadow: 0 2px 14px color-mix(in srgb, #FFB300 14%, transparent);
+}
+[data-theme="dark"] .pmb-handovers-card {
+  background: rgba(255, 179, 0, 0.10);
+  border-color: color-mix(in srgb, #FFC107 45%, var(--brd-1));
+  border-left-color: #FFC107;
+}
+
+.pmb-h-icon {
+  font-size: 32px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.pmb-h-body {
+  flex: 1;
+  min-width: 0;
+}
+.pmb-h-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: #6D4C00;
+  margin-bottom: 4px;
+}
+[data-theme="dark"] .pmb-h-title { color: #FFD54F; }
+.pmb-h-info {
+  font-size: 13px;
+  color: var(--t-2);
+}
+.pmb-h-info b { color: #B26A00; font-weight: 800; }
+[data-theme="dark"] .pmb-h-info b { color: #FFD180; }

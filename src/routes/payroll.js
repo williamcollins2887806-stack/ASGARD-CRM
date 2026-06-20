@@ -338,9 +338,34 @@ async function routes(fastify, options) {
       WHERE id = $1
     `, [id, user.id]);
 
-    // Создание записей payment_registry для каждого item
-    const items = await db.query('SELECT * FROM payroll_items WHERE sheet_id = $1', [id]);
+    // Создание записей payment_registry для каждого item + журнал
+    // официальных начислений (official_salary_log).
+    // M3-2 (20.06.2026): для каждой строки ведомости, относящейся к
+    // официально устроенному рабочему, фиксируем «расчёт месяца» в
+    // official_salary_log:
+    //   salary_amount        = e.official_salary (оклад месяца)
+    //   earned_amount        = item.accrued      (что заработал по ведомости)
+    //   deducted_from_earned = min(earned, salary)
+    //       — сколько из earned ушло на покрытие оклада через банк
+    //   non_burnable_amount  = max(0, non_burnable - earned)
+    //       — сколько компания доплатила сверх заработка до несгораемого минимума
+    //         (если рабочий заработал 0, но non_burnable=30k → 30k)
+    // Период = (year, month) из period_to ведомости.
+    const items = await db.query(`
+      SELECT pi.*,
+             COALESCE(e.is_officially_employed, false) AS is_officially_employed,
+             e.official_salary,
+             e.official_non_burnable,
+             e.official_status
+      FROM payroll_items pi
+      LEFT JOIN employees e ON e.id = pi.employee_id
+      WHERE pi.sheet_id = $1
+    `, [id]);
     let paymentsCreated = 0;
+    // year/month фиксируем по period_to (как и для work_expenses ниже).
+    const periodToDate = sheet.period_to ? new Date(sheet.period_to) : new Date();
+    const logYear  = periodToDate.getFullYear();
+    const logMonth = periodToDate.getMonth() + 1;
 
     for (const item of items.rows) {
       if (Number(item.payout) <= 0) continue;
@@ -351,6 +376,42 @@ async function routes(fastify, options) {
         VALUES ($1, $2, $3, 'salary', 'pending')
       `, [id, item.employee_id, item.payout]);
       paymentsCreated++;
+
+      // M3-2: журнал по официально устроенному рабочему.
+      // Безопасно: если таблицы official_salary_log нет (старые БД) или
+      // запись с тем же (employee_id, year, month) уже есть — мягко переписываем.
+      if (item.is_officially_employed) {
+        try {
+          const salary      = Number(item.official_salary || 0);
+          const nonBurnable = Number(item.official_non_burnable || 0);
+          const earned      = Number(item.accrued || 0);
+          const deductedFromEarned = Math.min(earned, salary);
+          const nonBurnableAmount  = Math.max(0, nonBurnable - earned);
+          await db.query(`
+            INSERT INTO official_salary_log (
+              employee_id, year, month,
+              salary_amount, earned_amount,
+              deducted_from_earned, non_burnable_amount,
+              status, comment
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'paid', $8)
+            ON CONFLICT (employee_id, year, month) DO UPDATE SET
+              salary_amount        = EXCLUDED.salary_amount,
+              earned_amount        = EXCLUDED.earned_amount,
+              deducted_from_earned = EXCLUDED.deducted_from_earned,
+              non_burnable_amount  = EXCLUDED.non_burnable_amount,
+              status               = 'paid',
+              comment              = EXCLUDED.comment,
+              updated_at           = NOW()
+          `, [
+            item.employee_id, logYear, logMonth,
+            salary, earned,
+            deductedFromEarned, nonBurnableAmount,
+            'Ведомость #' + id
+          ]);
+        } catch (e) {
+          fastify.log.warn('[payroll/pay] official_salary_log insert skipped: ' + e.message);
+        }
+      }
     }
 
     // Создание записей work_expenses (ФОТ)

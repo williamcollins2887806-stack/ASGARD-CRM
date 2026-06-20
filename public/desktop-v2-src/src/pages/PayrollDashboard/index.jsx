@@ -28,6 +28,8 @@ import { Btn, Pill } from '@/modals/parts';
 import { SelectInput } from '@/inputs/Inputs';
 import { TopActionsBar, TabsBar, EmptyState } from '@/blocks/Blocks';
 
+import { api } from '@/api/client';
+import { CashCoverageCard, OfficialEmploymentCard } from '../Timesheet/Dashboard';
 import { AgreementTransferModal } from './AgreementTransferModal';
 import { FinanceLimitsModal } from './FinanceLimitsModal';
 import {
@@ -38,6 +40,7 @@ import {
   fmtMoney, fmtPeriod, statusMeta, payTypeMeta, shiftPeriod
 } from './api';
 import '../Payroll/payroll.css';
+import '../Timesheet/timesheet.css';
 
 function isDirRole(r) { return String(r || '').startsWith('DIRECTOR'); }
 
@@ -56,6 +59,8 @@ export default function PayrollDashboardPage() {
   const [cashCalc, setCashCalc] = useState(null);
   const [transfers, setTransfers] = useState([]);
   const [limits, setLimits] = useState({ employees: [], yearly_limit: 2400000, monthly_limit: 350000 });
+  // Phase 1E (2026-06-20) — карточка «🏦 Касса» (хватит ли нала на ЗП)
+  const [cashCoverage, setCashCoverage] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const [ccTab, setCcTab] = useState('all');
@@ -64,15 +69,18 @@ export default function PayrollDashboardPage() {
   const refresh = async () => {
     setLoading(true);
     try {
-      const [s, cc, tr, lm] = await Promise.allSettled([
+      const [s, cc, tr, lm, ccv] = await Promise.allSettled([
         getSummary(year, month),
         getCashCalc(year, month),
         getSeTransfers(year, month),
-        getSelfEmployedLimits()
+        getSelfEmployedLimits(),
+        // Phase 1E — cash-coverage (403/ошибки silent)
+        api(`/api/payroll-dashboard/cash-coverage/${year}/${month}`)
       ]);
       if (s.status === 'fulfilled')  setSummary(s.value); else { setSummary(null); toast.error('Сводка: ' + (s.reason?.message || '')); }
       if (cc.status === 'fulfilled') setCashCalc(cc.value); else { setCashCalc(null); toast.error('Расчёт кассы: ' + (cc.reason?.message || '')); }
       if (tr.status === 'fulfilled') setTransfers(tr.value); else { setTransfers([]); }
+      if (ccv.status === 'fulfilled') setCashCoverage(ccv.value); else { setCashCoverage(null); }
       if (lm.status === 'fulfilled') {
         const arr = lm.value.employees || lm.value.limits || [];
         const normalized = arr.map((w) => ({
@@ -215,6 +223,19 @@ export default function PayrollDashboardPage() {
         <KpiBox label="Из кассы" value={fmtMoney(summary?.total_cash_needed)} tone="amber" />
         <KpiBox label="Возврат в кассу" value={fmtMoney(summary?.total_cash_return)} tone="gold" />
       </div>
+
+      {/* Stage S (2026-06-20) — «📤 Уже выплачено в поле» (рендер только если есть выплаты) */}
+      {Number(summary?.total_paid_total || 0) > 0 && (
+        <PaidInFieldCard summary={summary} items={cashCalc?.items || []} />
+      )}
+
+      {/* Stage U (2026-06-20) — «🏢 Официально устроены» (рендер только если есть оф-сотрудники) */}
+      {Number(summary?.total_official_count || 0) > 0 && (
+        <OfficialEmploymentCard summary={summary} />
+      )}
+
+      {/* Phase 1E (2026-06-20) — 🏦 Касса: хватит ли нала на ЗП? */}
+      {cashCoverage && <CashCoverageCard data={cashCoverage} />}
 
       {/* Quick-навигация в детальные разделы */}
       <div className="card pyd-quick-card">
@@ -483,5 +504,48 @@ function QuickNav({ to, icon, title, sub }) {
       </div>
       <span className="pyd-quick-nav-arrow">›</span>
     </Link>
+  );
+}
+
+/**
+ * Stage S (2026-06-20) — «📤 Уже выплачено в поле».
+ * Источник: summary.total_paid_cash/transfer/total + cashCalc.items[].paid_breakdown.
+ * Реюзаем стили .ts-dash-paid* из ../Timesheet/timesheet.css (уже импортирован).
+ */
+function PaidInFieldCard({ summary, items }) {
+  // breakdown суммируем по типам из items[].paid_breakdown
+  const breakdown = { per_diem: 0, salary: 0, advance: 0, bonus: 0 };
+  (items || []).forEach((i) => {
+    const b = i?.paid_breakdown || {};
+    breakdown.per_diem += Number(b.per_diem || 0);
+    breakdown.salary   += Number(b.salary   || 0);
+    breakdown.advance  += Number(b.advance  || 0);
+    breakdown.bonus    += Number(b.bonus    || 0);
+  });
+  const hints = [];
+  if (breakdown.bonus > 0)    hints.push(`${fmtMoney(breakdown.bonus)} премии`);
+  if (breakdown.per_diem > 0) hints.push(`${fmtMoney(breakdown.per_diem)} суточные`);
+  if (breakdown.salary > 0)   hints.push(`${fmtMoney(breakdown.salary)} зп`);
+  if (breakdown.advance > 0)  hints.push(`${fmtMoney(breakdown.advance)} авансы`);
+
+  return (
+    <div className="ts-dash-paid">
+      <div className="ts-dash-paid-title">📤 Уже выплачено в поле</div>
+      <div className="ts-dash-paid-row">
+        <span>Налом (РП в поле)</span>
+        <span>{fmtMoney(summary?.total_paid_cash)}</span>
+      </div>
+      <div className="ts-dash-paid-row">
+        <span>Переводом</span>
+        <span>{fmtMoney(summary?.total_paid_transfer)}</span>
+      </div>
+      <div className="ts-dash-paid-row total">
+        <span>Всего</span>
+        <span>{fmtMoney(summary?.total_paid_total)}</span>
+      </div>
+      {hints.length > 0 && (
+        <div className="ts-dash-paid-hint">💡 {hints.join(' · ')}</div>
+      )}
+    </div>
   );
 }

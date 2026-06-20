@@ -29,12 +29,30 @@ module.exports = async function(fastify) {
   const DIRECTOR_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
   const BUH_AND_DIRECTOR_ROLES = ['BUH', ...DIRECTOR_ROLES];
 
+  // Stage W: согласовывать заявки имеет право DIRECTOR_COMM (главный),
+  // ADMIN/DIRECTOR_GEN/DIRECTOR_DEV — backup. БУХ только выдаёт, не одобряет.
+  const APPROVE_ROLES = ['DIRECTOR_COMM', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_DEV'];
+
+  // Stage W: 12 категорий + 'other' с обязательным описанием.
+  const CASH_CATEGORIES = [
+    'fuel_service', 'fuel_personal', 'taxi', 'accommodation',
+    'food_brigade', 'materials', 'tool', 'tech_rent',
+    'communication', 'representational', 'urgent_repair', 'other'
+  ];
+
+  // Главная касса — advisory-lock константа (защита от гонок в issue/adjust/return).
+  const CASH_ADVISORY_LOCK_KEY = 42;
+
   function isDirector(role) {
     return DIRECTOR_ROLES.includes(role);
   }
 
   function isBuhOrDirector(role) {
     return BUH_AND_DIRECTOR_ROLES.includes(role);
+  }
+
+  function canApprove(role) {
+    return APPROVE_ROLES.includes(role);
   }
 
   // Подсчёт баланса заявки
@@ -50,8 +68,11 @@ module.exports = async function(fastify) {
     );
     const spent = parseFloat(exp.rows[0].total) || 0;
 
+    // Stage W (баг #3): остаток считаем только по ПОДТВЕРЖДЁННЫМ возвратам.
+    // Неподтверждённые в баланс не идут — иначе РП может «вернуть» 100k неподтверждённо
+    // и формально закрыть заявку с remainder=0, без реального движения денег.
     const ret = await db.query(
-      'SELECT COALESCE(SUM(amount), 0) as total FROM cash_returns WHERE request_id = $1',
+      'SELECT COALESCE(SUM(amount), 0) as total FROM cash_returns WHERE request_id = $1 AND confirmed_at IS NOT NULL',
       [requestId]
     );
     const returned = parseFloat(ret.rows[0].total) || 0;
@@ -299,17 +320,37 @@ module.exports = async function(fastify) {
       return reply.code(400).send({ error: 'Укажите описание' });
     }
 
-    const currentBalance = await getCurrentCashBalance();
     const changeAmount = parseFloat(amount);
-    const newBalance = currentBalance + changeAmount;
 
-    const { rows } = await db.query(`
-      INSERT INTO cash_balance_log (amount, change_amount, change_type, description, user_id)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING *
-    `, [newBalance, changeAmount, changeAmount >= 0 ? 'income' : 'expense', description.trim(), request.user.id]);
+    // Stage W (баг #1): обёрнуто в advisory_xact_lock — гонка между двумя
+    // параллельными adjust привела бы к потере одного из обновлений.
+    let newBalance;
+    let operationRow;
+    try {
+      await db.query('BEGIN');
+      await db.query('SELECT pg_advisory_xact_lock($1)', [CASH_ADVISORY_LOCK_KEY]);
 
-    return { success: true, balance: newBalance, operation: rows[0] };
+      const { rows: [bal] } = await db.query(
+        'SELECT amount FROM cash_balance_log ORDER BY created_at DESC, id DESC LIMIT 1'
+      );
+      const currentBalance = bal ? parseFloat(bal.amount) : 0;
+      newBalance = currentBalance + changeAmount;
+
+      const { rows } = await db.query(`
+        INSERT INTO cash_balance_log (amount, change_amount, change_type, description, user_id)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING *
+      `, [newBalance, changeAmount, changeAmount >= 0 ? 'income' : 'expense', description.trim(), request.user.id]);
+
+      operationRow = rows[0];
+      await db.query('COMMIT');
+    } catch (e) {
+      try { await db.query('ROLLBACK'); } catch (_) {}
+      fastify.log.error({ err: e }, '[cash] /balance/adjust error');
+      return reply.code(500).send({ error: 'Не удалось скорректировать баланс', detail: e.message });
+    }
+
+    return { success: true, balance: newBalance, operation: operationRow };
   });
 
   // ─────────────────────────────────────────────────────────────────
@@ -318,8 +359,20 @@ module.exports = async function(fastify) {
   fastify.post('/', {
     preHandler: [fastify.requirePermission('cash', 'write')]
   }, async (request, reply) => {
-    const { work_id, type = 'advance', amount, purpose, cover_letter } = request.body;
+    const {
+      work_id, type = 'advance', amount, purpose, cover_letter,
+      category, category_other_desc,
+      use_se_payee, se_payee_employee_id
+    } = request.body;
     const userId = request.user.id;
+
+    // Stage W: тип loan полностью убран. Только advance/office/other.
+    const ALLOWED_TYPES = ['advance', 'office', 'other'];
+    if (!ALLOWED_TYPES.includes(type)) {
+      return reply.code(400).send({
+        error: `type должен быть одним из: ${ALLOWED_TYPES.join(', ')}. Тип "loan" убран.`
+      });
+    }
 
     if (!amount || amount <= 0) {
       return reply.code(400).send({ error: 'Сумма должна быть больше 0' });
@@ -333,11 +386,63 @@ module.exports = async function(fastify) {
       return reply.code(400).send({ error: 'Для аванса укажите проект' });
     }
 
+    // Stage W: category из закрытого набора (если передана).
+    // Если category='other' — требуем category_other_desc.
+    let categoryNorm = null;
+    let categoryOtherDescNorm = null;
+    if (category !== undefined && category !== null && category !== '') {
+      if (!CASH_CATEGORIES.includes(category)) {
+        return reply.code(400).send({
+          error: `category должен быть одним из: ${CASH_CATEGORIES.join(', ')}`
+        });
+      }
+      categoryNorm = category;
+      if (category === 'other') {
+        if (!category_other_desc || !String(category_other_desc).trim()) {
+          return reply.code(400).send({
+            error: 'Для category="other" обязательно укажите category_other_desc'
+          });
+        }
+        categoryOtherDescNorm = String(category_other_desc).trim();
+      }
+    }
+
+    // Stage W: use_se_payee → требуется se_payee_employee_id (СЗ-получатель).
+    const useSePayee = !!use_se_payee;
+    let sePayeeEmployeeId = null;
+    if (useSePayee) {
+      sePayeeEmployeeId = parseInt(se_payee_employee_id, 10);
+      if (!Number.isFinite(sePayeeEmployeeId)) {
+        return reply.code(400).send({
+          error: 'При use_se_payee=true укажите se_payee_employee_id'
+        });
+      }
+      // Проверка что employee существует и является СЗ
+      const { rows: [emp] } = await db.query(
+        'SELECT id, is_self_employed FROM employees WHERE id = $1',
+        [sePayeeEmployeeId]
+      );
+      if (!emp) {
+        return reply.code(404).send({ error: 'СЗ-получатель не найден' });
+      }
+      if (!emp.is_self_employed) {
+        return reply.code(400).send({
+          error: 'Указанный сотрудник не является самозанятым'
+        });
+      }
+    }
+
     const { rows } = await db.query(`
-      INSERT INTO cash_requests (user_id, work_id, type, amount, purpose, cover_letter, status)
-      VALUES ($1, $2, $3, $4, $5, $6, 'requested')
+      INSERT INTO cash_requests (
+        user_id, work_id, type, amount, purpose, cover_letter, status,
+        category, category_other_desc, use_se_payee, se_payee_employee_id
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, 'requested', $7, $8, $9, $10)
       RETURNING *
-    `, [userId, work_id || null, type, amount, purpose.trim(), cover_letter || null]);
+    `, [
+      userId, work_id || null, type, amount, purpose.trim(), cover_letter || null,
+      categoryNorm, categoryOtherDescNorm, useSePayee, sePayeeEmployeeId
+    ]);
 
     // Notify directors about new cash request
     const directors = await db.query(
@@ -437,6 +542,15 @@ module.exports = async function(fastify) {
   fastify.put('/:id/approve', {
     preHandler: [fastify.requirePermission('cash_admin', 'write')]
   }, async (request, reply) => {
+    // Stage W (баг #6): согласование — ТОЛЬКО директор (главный DIRECTOR_COMM,
+    // backup ADMIN/DIRECTOR_GEN/DIRECTOR_DEV). БУХ имеет cash_admin:write для
+    // выдачи денег, но НЕ для согласования.
+    if (!canApprove(request.user.role)) {
+      return reply.code(403).send({
+        error: 'Согласовывать заявки могут только директор (DIRECTOR_COMM) и админ'
+      });
+    }
+
     const id = parseInt(request.params.id);
     if (isNaN(id)) return reply.code(400).send({ error: 'Invalid id' });
 
@@ -504,26 +618,106 @@ module.exports = async function(fastify) {
     const req = check.rows[0];
     const amount = parseFloat(req.amount) || 0;
 
-    // Записать баланс кассы
-    const currentBalance = await getCurrentCashBalance();
-    const newBalance = currentBalance - amount;
+    // Stage W: если заявка с use_se_payee=true — выдача идёт через СЗ-перевод,
+    //   касса не трогается, создаётся se_transfers(operation_type='agreement_transfer').
+    if (req.use_se_payee && req.se_payee_employee_id) {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth() + 1;
 
-    await db.query(`
-      INSERT INTO cash_balance_log (amount, change_amount, change_type, description, related_request_id, user_id)
-      VALUES ($1, $2, 'cash_issued', $3, $4, $5)
-    `, [newBalance, -amount, `Выдача по заявке #${id}`, id, request.user.id]);
+      // Получаем pm_user_id заявки (для трекинга в se_transfers.pm_user_id)
+      const pmUserId = Number(req.user_id);
 
-    // Обновить заявку
-    await db.query(`
-      UPDATE cash_requests
-      SET status = 'money_issued',
-          issued_by = $1,
-          issued_at = NOW(),
-          receipt_deadline = NOW() + INTERVAL '12 hours',
-          overdue_notified = false,
-          updated_at = NOW()
-      WHERE id = $2
-    `, [request.user.id, id]);
+      try {
+        await db.query('BEGIN');
+
+        const { rows: [t] } = await db.query(`
+          INSERT INTO se_transfers (
+            employee_id, year, month, operation_type,
+            earned_amount, transfer_amount,
+            cash_return_amount, cash_payout_amount,
+            status, created_by, comment, pm_user_id, work_id
+          )
+          VALUES ($1, $2, $3, 'agreement_transfer',
+                  0, $4, $4, 0,
+                  'planned', $5, $6, $7, $8)
+          RETURNING id
+        `, [
+          req.se_payee_employee_id, year, month,
+          amount, request.user.id,
+          `Аванс РП через СЗ (заявка #${id}): ${req.purpose || ''}`,
+          pmUserId, req.work_id || null
+        ]);
+
+        await db.query(`
+          UPDATE cash_requests
+          SET status = 'money_issued',
+              issued_by = $1,
+              issued_at = NOW(),
+              receipt_deadline = NOW() + INTERVAL '12 hours',
+              overdue_notified = false,
+              se_transfer_id = $2,
+              updated_at = NOW()
+          WHERE id = $3
+        `, [request.user.id, t.id, id]);
+
+        await db.query('COMMIT');
+
+        // Уведомления (тот же блок, что и для нал. варианта)
+        if (req.user_id && req.user_id !== request.user.id) {
+          createNotification(db, {
+            user_id: req.user_id,
+            title: '💰 Аванс оформлен через СЗ-перевод',
+            message: `${request.user.name || 'Бухгалтер'} оформил ${amount} ₽ через СЗ. Дождитесь подтверждения получения от рабочего.`,
+            type: 'cash',
+            link: `#/cash?id=${id}`
+          });
+        }
+        return { success: true, message: 'Деньги оформлены через СЗ-перевод', se_transfer_id: t.id };
+      } catch (e) {
+        try { await db.query('ROLLBACK'); } catch (_) {}
+        fastify.log.error({ err: e }, '[cash] /issue (SE-route) error');
+        return reply.code(500).send({ error: 'Не удалось оформить СЗ-перевод', detail: e.message });
+      }
+    }
+
+    // ── Старая логика: выдача из главной кассы налом ──
+    // Stage W (баг #1): SELECT+INSERT в кассовый лог обёрнут в транзакцию
+    // с pg_advisory_xact_lock(CASH_ADVISORY_LOCK_KEY). Без этого два
+    // параллельных issue читали один и тот же currentBalance → второй
+    // INSERT перетирал балансом из устаревшего SELECT'а.
+    try {
+      await db.query('BEGIN');
+      await db.query('SELECT pg_advisory_xact_lock($1)', [CASH_ADVISORY_LOCK_KEY]);
+
+      const { rows: [bal] } = await db.query(
+        'SELECT amount FROM cash_balance_log ORDER BY created_at DESC, id DESC LIMIT 1'
+      );
+      const currentBalance = bal ? parseFloat(bal.amount) : 0;
+      const newBalance = currentBalance - amount;
+
+      await db.query(`
+        INSERT INTO cash_balance_log (amount, change_amount, change_type, description, related_request_id, user_id)
+        VALUES ($1, $2, 'cash_issued', $3, $4, $5)
+      `, [newBalance, -amount, `Выдача по заявке #${id}`, id, request.user.id]);
+
+      await db.query(`
+        UPDATE cash_requests
+        SET status = 'money_issued',
+            issued_by = $1,
+            issued_at = NOW(),
+            receipt_deadline = NOW() + INTERVAL '12 hours',
+            overdue_notified = false,
+            updated_at = NOW()
+        WHERE id = $2
+      `, [request.user.id, id]);
+
+      await db.query('COMMIT');
+    } catch (e) {
+      try { await db.query('ROLLBACK'); } catch (_) {}
+      fastify.log.error({ err: e }, '[cash] /issue (cash-route) error');
+      return reply.code(500).send({ error: 'Не удалось выдать средства', detail: e.message });
+    }
 
     // Уведомление РП
     if (req.user_id && req.user_id !== request.user.id) {
@@ -898,21 +1092,47 @@ module.exports = async function(fastify) {
       return reply.code(400).send({ error: 'Возврат уже подтверждён' });
     }
 
-    await db.query(`
-      UPDATE cash_returns
-      SET confirmed_by = $1, confirmed_at = NOW()
-      WHERE id = $2
-    `, [request.user.id, returnId]);
-
-    // Записать возврат в баланс кассы
+    // Stage W (баг #1): подтверждение возврата (увеличивает баланс) обёрнуто
+    // в advisory_xact_lock — без него параллельные подтверждения теряли бы суммы.
     const returnAmount = parseFloat(ret.rows[0].amount) || 0;
-    const currentBalance = await getCurrentCashBalance();
-    const newBalance = currentBalance + returnAmount;
+    try {
+      await db.query('BEGIN');
+      await db.query('SELECT pg_advisory_xact_lock($1)', [CASH_ADVISORY_LOCK_KEY]);
 
-    await db.query(`
-      INSERT INTO cash_balance_log (amount, change_amount, change_type, description, related_request_id, user_id)
-      VALUES ($1, $2, 'return', $3, $4, $5)
-    `, [newBalance, returnAmount, `Возврат по заявке #${id}`, id, request.user.id]);
+      // Внутри блокировки повторно убеждаемся, что возврат ещё не подтверждён
+      // (race-safe: между первой проверкой и BEGIN могла пройти другая транзакция).
+      const { rows: [retFresh] } = await db.query(
+        'SELECT confirmed_at FROM cash_returns WHERE id = $1 FOR UPDATE',
+        [returnId]
+      );
+      if (retFresh && retFresh.confirmed_at) {
+        await db.query('ROLLBACK');
+        return reply.code(409).send({ error: 'Возврат уже подтверждён (race)' });
+      }
+
+      await db.query(`
+        UPDATE cash_returns
+        SET confirmed_by = $1, confirmed_at = NOW()
+        WHERE id = $2
+      `, [request.user.id, returnId]);
+
+      const { rows: [bal] } = await db.query(
+        'SELECT amount FROM cash_balance_log ORDER BY created_at DESC, id DESC LIMIT 1'
+      );
+      const currentBalance = bal ? parseFloat(bal.amount) : 0;
+      const newBalance = currentBalance + returnAmount;
+
+      await db.query(`
+        INSERT INTO cash_balance_log (amount, change_amount, change_type, description, related_request_id, user_id)
+        VALUES ($1, $2, 'return', $3, $4, $5)
+      `, [newBalance, returnAmount, `Возврат по заявке #${id}`, id, request.user.id]);
+
+      await db.query('COMMIT');
+    } catch (e) {
+      try { await db.query('ROLLBACK'); } catch (_) {}
+      fastify.log.error({ err: e }, '[cash] return/confirm error');
+      return reply.code(500).send({ error: 'Не удалось подтвердить возврат', detail: e.message });
+    }
 
     return { success: true, message: 'Возврат подтверждён' };
   });

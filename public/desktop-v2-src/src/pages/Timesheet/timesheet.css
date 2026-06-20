@@ -1,0 +1,1359 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * Timesheet v2 — общий стиль для всех mode'ов (pm/warehouse/medical/travel/global)
+ * Все цвета — через CSS-переменные темы (см. styles/theme.css).
+ * Никаких хардкод-цветов (color-gate в .claude/settings.json).
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* FIX 7 — Единые токены типов клеток, общие с vanilla.
+ * Дублирую сюда фолбэк: если основной файл (assets/css/timesheet-types-tokens.css)
+ * не подключён в SPA-shell, ts-cell всё равно работает. */
+:root {
+  --ts-day-bg:       var(--ok-bg,   rgba(45,134,89,0.12));
+  --ts-day-fg:       var(--ok,      #2D8659);
+  --ts-night-bg:     var(--info-bg, rgba(59,130,246,0.12));
+  --ts-night-fg:     var(--info,    #3B82F6);
+  --ts-warehouse-bg: var(--purple-bg, rgba(139,92,246,0.12));
+  --ts-warehouse-fg: var(--purple-l,  #A78BFA);
+  --ts-medical-bg:   var(--err-bg, rgba(200,41,59,0.12));
+  --ts-medical-fg:   var(--err,    #C8293B);
+  --ts-travel-bg:    var(--cyan-bg, rgba(6,182,212,0.12));
+  --ts-travel-fg:    var(--cyan-l,  #22D3EE);
+  --ts-waiting-bg:   var(--orange-bg, rgba(249,115,22,0.12));
+  --ts-waiting-fg:   var(--orange,    #F97316);
+}
+
+.ts-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ─── Top controls (период + статусы + KPI) ─── */
+
+.ts-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+}
+
+.ts-period-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ts-period {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--t-1);
+  min-width: 180px;
+  text-align: center;
+  text-transform: capitalize;
+}
+
+.ts-stats {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ts-pill {
+  padding: 6px 12px;
+  border-radius: var(--r-pill);
+  background: var(--inner-bg);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--t-2);
+  border: 1px solid var(--brd-2);
+}
+
+.ts-pill.ok    { background: var(--ok-bg);   color: var(--ok); }
+.ts-pill.info  { background: var(--info-bg); color: var(--info); }
+.ts-pill.gold  { background: var(--gold-bg); color: var(--gold); }
+.ts-pill.warn  { background: var(--warn-bg); color: var(--warn-t); }
+.ts-pill.err   { background: var(--err-bg);  color: var(--err); }
+
+/* ─── Lock badges (бейджи закрытия по scope'ам) ─── */
+
+.ts-lock-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+}
+
+.ts-lock-bar-title {
+  font-size: 11px;
+  color: var(--t-3);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.ts-lock-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ts-lock-row-label {
+  font-size: 11px;
+  color: var(--t-3);
+  font-weight: 700;
+  min-width: 78px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.ts-lock-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--inner-bg);
+  color: var(--t-2);
+  border: 1px solid var(--brd-2);
+}
+
+.ts-lock-badge.locked {
+  background: var(--err-bg);
+  color: var(--err);
+  border-color: var(--err);
+}
+
+.ts-lock-badge.unlocked {
+  background: var(--inner-bg);
+  color: var(--t-3);
+  border: 1px dashed var(--brd-2);
+}
+
+.ts-lock-badge.open {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+/* Сетка чипов РП в global-режиме */
+.ts-pm-locks-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 6px;
+  width: 100%;
+}
+
+.ts-pm-lock-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--brd-2);
+  background: var(--inner-bg);
+  font-size: 12px;
+}
+
+.ts-pm-lock-chip.locked {
+  background: var(--ok-bg);
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.ts-pm-lock-chip.open {
+  background: var(--inner-bg);
+  border-style: dashed;
+  border-color: var(--brd-2);
+  color: var(--t-2);
+}
+
+.ts-pm-lock-chip .fio {
+  font-weight: 600;
+  color: var(--t-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ts-pm-lock-chip.locked .fio {
+  color: var(--ok);
+}
+
+.ts-pm-lock-chip .status {
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.ts-pm-remind {
+  background: transparent;
+  border: 1px solid var(--brd-2);
+  color: var(--t-3);
+  border-radius: var(--r-pill);
+  font-size: 10px;
+  padding: 1px 6px;
+  cursor: pointer;
+}
+
+.ts-pm-remind:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+/* ─── Wrap + table ─── */
+
+.ts-wrap {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  overflow: auto;
+  max-height: calc(100vh - 280px);
+  position: relative;
+}
+
+.ts-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
+  width: max-content;
+  min-width: 100%;
+}
+
+.ts-table th,
+.ts-table td {
+  padding: 4px 6px;
+  border-right: 1px solid var(--brd-2);
+  border-bottom: 1px solid var(--brd-2);
+  white-space: nowrap;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.ts-table thead th {
+  background: var(--inner-bg);
+  color: var(--t-2);
+  font-weight: 700;
+  font-size: 11px;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: 32px;
+}
+
+/* sticky ФИО колонка */
+.ts-table th.ts-fio-th,
+.ts-table td.ts-fio-td {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: var(--card-bg);
+  text-align: left;
+  min-width: 220px;
+  max-width: 260px;
+}
+
+.ts-table thead th.ts-fio-th {
+  z-index: 4;
+  background: var(--inner-bg);
+}
+
+.ts-table tbody tr:hover td {
+  background: var(--hover-bg);
+}
+
+.ts-table tbody tr:hover td.ts-fio-td {
+  background: var(--hover-bg);
+}
+
+.ts-group-header td {
+  background: var(--bar-bg);
+  font-weight: 700;
+  color: var(--t-1);
+  font-size: 12px;
+  text-align: left;
+  letter-spacing: 0.06em;
+  padding: 8px 12px;
+}
+
+.ts-th-weekend {
+  color: var(--err) !important;
+}
+
+.ts-th-day-num {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ts-th-day-wd {
+  font-size: 9px;
+  color: var(--t-3);
+  font-weight: 500;
+}
+
+.ts-fio {
+  font-weight: 600;
+  color: var(--t-1);
+  font-size: 13px;
+}
+
+.ts-position {
+  font-size: 10px;
+  color: var(--t-3);
+  margin-top: 2px;
+}
+
+.ts-total-cell {
+  font-weight: 700;
+  color: var(--t-1);
+  background: var(--inner-bg);
+  min-width: 60px;
+}
+
+.ts-total-cell.money {
+  color: var(--gold);
+}
+
+/* ─── Cells ─── */
+
+.ts-cell {
+  width: 30px;
+  height: 28px;
+  border-radius: var(--r-xs);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: default;
+}
+
+.ts-cell.editable {
+  cursor: pointer;
+  border: 1px dashed transparent;
+}
+
+.ts-cell.editable:hover {
+  border-color: var(--gold);
+  background: var(--hover-bg);
+}
+
+.ts-cell.has-value {
+  /* фон задаётся inline через --bg/--fg переменные */
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.ts-cell.icon-only {
+  font-size: 13px;
+  background: var(--bg);
+}
+
+.ts-cell.locked {
+  cursor: not-allowed;
+  opacity: 0.85;
+}
+
+.ts-cell.locked:hover {
+  border-color: transparent;
+  background: var(--bg);
+}
+
+/* ─── Empty / loading ─── */
+
+.ts-empty {
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--t-3);
+  font-size: 13px;
+}
+
+/* ─── Cell editor popover ─── */
+
+.ts-pop {
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  box-shadow: var(--sh-lg);
+  padding: 12px;
+  min-width: 280px;
+}
+
+.ts-pop-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--t-1);
+  margin-bottom: 4px;
+}
+
+.ts-pop-subtitle {
+  font-size: 11px;
+  color: var(--t-3);
+  margin-bottom: 10px;
+}
+
+.ts-pop-types {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.ts-pop-type-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-sm);
+  background: var(--inner-bg);
+  color: var(--t-1);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  text-align: left;
+}
+
+.ts-pop-type-btn:hover {
+  background: var(--hover-bg);
+  border-color: var(--gold);
+}
+
+.ts-pop-type-btn.active {
+  border-color: var(--gold);
+  background: var(--gold-bg);
+  color: var(--gold);
+}
+
+.ts-pop-type-btn .ts-cell {
+  flex-shrink: 0;
+}
+
+.ts-pop-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.ts-pop-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--brd-2);
+}
+
+.ts-pop-warn {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: var(--warn-bg);
+  color: var(--warn-t);
+  border-radius: var(--r-sm);
+  font-size: 11px;
+}
+
+.ts-pop-meta {
+  font-size: 10px;
+  color: var(--t-3);
+  margin-top: 6px;
+  line-height: 1.5;
+}
+
+/* ─── Tooltip ─── */
+
+.ts-tooltip {
+  position: fixed;
+  background: var(--bg-1);
+  color: var(--t-1);
+  padding: 8px 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--brd-1);
+  box-shadow: var(--sh-md);
+  font-size: 11px;
+  line-height: 1.5;
+  z-index: 30000;
+  pointer-events: none;
+  max-width: 260px;
+}
+
+.ts-tooltip-title {
+  font-weight: 700;
+  color: var(--t-1);
+  margin-bottom: 2px;
+}
+
+.ts-tooltip-row {
+  color: var(--t-2);
+}
+
+.ts-tooltip-meta {
+  color: var(--t-3);
+  font-size: 10px;
+  margin-top: 4px;
+}
+
+/* ─── Modal: add worker ─── */
+
+.ts-add-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin-top: 8px;
+}
+
+.ts-add-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.ts-add-item:hover {
+  background: var(--hover-bg);
+  border-color: var(--gold);
+}
+
+.ts-add-item .fio {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--t-1);
+}
+
+.ts-add-item .pos {
+  font-size: 11px;
+  color: var(--t-3);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Dashboard (Phase 1E, 2026-06-20) — компактный финансовый дашборд директора
+ * Структура: шапка-чипы → большая «Заработали» → 2 колонки → 🏦 Касса → Лимиты СЗ
+ * Постельные тона, читаемы в обеих темах (light + dark отдельные).
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.ts-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  margin-bottom: 12px;
+}
+
+/* ─── 1) Шапка-чипы ─── */
+.ts-dash-headrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--t-1);
+}
+
+.ts-dash-dot {
+  color: var(--t-3);
+  opacity: 0.6;
+}
+
+.ts-dash-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  background: var(--inner-bg);
+  color: var(--t-1);
+  border: 1px solid var(--brd-1);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ts-dash-chip--bold { font-weight: 700; }
+.ts-dash-chip--mute { color: var(--t-2); }
+
+.ts-dash-chip-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ts-dash-chip--dot-green .ts-dash-chip-dot { background: #4CAF50; }
+.ts-dash-chip--dot-blue  .ts-dash-chip-dot { background: #2196F3; }
+.ts-dash-chip--dot-grey  .ts-dash-chip-dot { background: #9E9E9E; }
+
+/* ─── 2) Большая карточка «Заработали» ─── */
+.ts-dash-earned-big {
+  padding: 14px 18px;
+  border-radius: var(--r-sm);
+  background: #FFF8E1;
+  color: #5D4037;
+  border: 1px solid #FFE082;
+}
+
+[data-theme="dark"] .ts-dash-earned-big {
+  background: rgba(255, 193, 7, 0.08);
+  color: #FFE082;
+  border-color: rgba(255, 193, 7, 0.30);
+}
+
+.ts-dash-earned-label {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.82;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ts-dash-earned-value {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.2;
+  margin-top: 4px;
+}
+
+.ts-dash-earned-sub {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+  margin-top: 5px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ts-dash-sub-bonus   { color: #2E7D32; }
+.ts-dash-sub-penalty { color: #C62828; }
+[data-theme="dark"] .ts-dash-sub-bonus   { color: #A5D6A7; }
+[data-theme="dark"] .ts-dash-sub-penalty { color: #EF9A9A; }
+
+/* ─── 3) 2 колонки «На карту» + «Из кассы» ─── */
+.ts-dash-split {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.ts-dash-split-card {
+  padding: 12px 14px;
+  border-radius: var(--r-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border: 1px solid transparent;
+}
+
+.ts-dash-split-label {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.85;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ts-dash-split-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.ts-dash-split-value {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.ts-dash-split-hint {
+  font-size: 11px;
+  opacity: 0.72;
+  margin-top: 2px;
+}
+
+.ts-dash-split-card--blue   { background: #E3F2FD; color: #0D47A1; border-color: #BBDEFB; }
+.ts-dash-split-card--orange { background: #FFF3E0; color: #E65100; border-color: #FFCC80; }
+
+[data-theme="dark"] .ts-dash-split-card--blue {
+  background: rgba(33, 150, 243, 0.10);
+  color: #BBDEFB;
+  border-color: rgba(33, 150, 243, 0.30);
+}
+[data-theme="dark"] .ts-dash-split-card--orange {
+  background: rgba(255, 152, 0, 0.10);
+  color: #FFCC80;
+  border-color: rgba(255, 152, 0, 0.30);
+}
+
+/* ─── 4) 🏦 Касса ─── */
+.ts-dash-cash {
+  padding: 14px 16px;
+  border-radius: var(--r-sm);
+  border: 1px solid;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ts-dash-cash-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.ts-dash-cash-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.ts-dash-cash-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ts-dash-cash-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 12px;
+  gap: 8px;
+}
+
+.ts-dash-cash-row--sep {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px dashed currentColor;
+}
+
+.ts-dash-cash-label { opacity: 0.78; }
+.ts-dash-cash-label--bold { font-weight: 700; opacity: 1; }
+
+.ts-dash-cash-num {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.ts-dash-cash-num--bold { font-weight: 800; font-size: 14px; }
+.ts-dash-cash-num--mut { opacity: 0.75; }
+
+.cash-diff-neg { color: #C62828; }
+.cash-diff-pos { color: #2E7D32; }
+.cash-diff-zero { opacity: 0.7; }
+[data-theme="dark"] .cash-diff-neg { color: #EF9A9A; }
+[data-theme="dark"] .cash-diff-pos { color: #A5D6A7; }
+
+.ts-dash-cash-pct {
+  font-size: 11px;
+  font-weight: 700;
+  margin-top: 3px;
+  opacity: 0.78;
+  text-align: right;
+}
+
+.ts-dash-cash-bar {
+  height: 10px;
+  border-radius: var(--r-pill);
+  background: var(--bar-bg);
+  overflow: hidden;
+  border: 1px solid var(--brd-1);
+}
+
+.ts-dash-cash-bar-fill {
+  height: 100%;
+  border-radius: var(--r-pill);
+  transition: width 240ms ease;
+}
+
+.ts-dash-cash-bar-fill.cash-status-ok,
+.ts-dash-cash-bar-fill.cash-status-ok_with_returns {
+  background: linear-gradient(90deg, #A5D6A7, #66BB6A);
+}
+.ts-dash-cash-bar-fill.cash-status-tight {
+  background: linear-gradient(90deg, #FFE082, #FFB300);
+}
+.ts-dash-cash-bar-fill.cash-status-shortage {
+  background: linear-gradient(90deg, #EF9A9A, #E57373);
+}
+
+.ts-dash-cash-action {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 6px 0;
+}
+
+.cash-action-bad { color: #B71C1C; }
+.cash-action-good { color: #1B5E20; }
+[data-theme="dark"] .cash-action-bad { color: #EF9A9A; }
+[data-theme="dark"] .cash-action-good { color: #A5D6A7; }
+
+.ts-dash-cash-advances {
+  font-size: 12px;
+  opacity: 0.82;
+  padding-top: 6px;
+  border-top: 1px dashed currentColor;
+}
+
+/* Постельные тона по статусу cash-coverage */
+.ts-dash-cash.cash-status-ok              { background: #E8F5E9; color: #1B5E20; border-color: #66BB6A; }
+.ts-dash-cash.cash-status-ok_with_returns { background: #F1F8E9; color: #33691E; border-color: #9CCC65; }
+.ts-dash-cash.cash-status-tight           { background: #FFF8E1; color: #E65100; border-color: #FFB300; }
+.ts-dash-cash.cash-status-shortage        { background: #FFEBEE; color: #B71C1C; border-color: #E57373; }
+
+[data-theme="dark"] .ts-dash-cash.cash-status-ok {
+  background: rgba(76, 175, 80, 0.10);
+  color: #A5D6A7;
+  border-color: rgba(76, 175, 80, 0.40);
+}
+[data-theme="dark"] .ts-dash-cash.cash-status-ok_with_returns {
+  background: rgba(124, 179, 66, 0.10);
+  color: #C5E1A5;
+  border-color: rgba(124, 179, 66, 0.40);
+}
+[data-theme="dark"] .ts-dash-cash.cash-status-tight {
+  background: rgba(255, 179, 0, 0.10);
+  color: #FFE082;
+  border-color: rgba(255, 179, 0, 0.40);
+}
+[data-theme="dark"] .ts-dash-cash.cash-status-shortage {
+  background: rgba(229, 115, 115, 0.12);
+  color: #EF9A9A;
+  border-color: rgba(229, 115, 115, 0.45);
+}
+
+/* ─── 5) Лимиты СЗ (компактная карточка) ─── */
+.ts-dash-limits-card {
+  padding: 12px 14px;
+  border-radius: var(--r-sm);
+  background: var(--inner-bg);
+  border: 1px solid var(--brd-1);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ts-dash-limits-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--t-2);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ts-dash-limit-row {
+  display: grid;
+  gap: 10px;
+  align-items: center;
+  grid-template-columns: minmax(220px, 1fr) minmax(140px, 1.5fr) auto;
+  font-size: 12px;
+  color: var(--t-1);
+}
+
+.ts-dash-limit-label { color: var(--t-1); }
+.ts-dash-limit-label b { font-weight: 700; }
+
+.ts-dash-limit-bar {
+  position: relative;
+  height: 10px;
+  background: var(--bar-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+}
+
+.ts-dash-limit-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: #81C784;
+  transition: width 240ms ease;
+}
+
+.ts-dash-limit-fill.remain-ok   { background: linear-gradient(90deg, #A5D6A7, #66BB6A); }
+.ts-dash-limit-fill.remain-warn { background: linear-gradient(90deg, #FFE082, #FFB300); }
+.ts-dash-limit-fill.remain-low  { background: linear-gradient(90deg, #EF9A9A, #E57373); }
+
+[data-theme="dark"] .ts-dash-limit-fill.remain-ok   { background: linear-gradient(90deg, #66BB6A, #43A047); }
+[data-theme="dark"] .ts-dash-limit-fill.remain-warn { background: linear-gradient(90deg, #FFB300, #F57F17); }
+[data-theme="dark"] .ts-dash-limit-fill.remain-low  { background: linear-gradient(90deg, #E57373, #C62828); }
+
+.ts-dash-limit-pct {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--t-2);
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* Адаптив — узкий экран в столбик */
+@media (max-width: 720px) {
+  .ts-dash-split { grid-template-columns: 1fr; }
+  .ts-dash-cash-grid { grid-template-columns: 1fr; }
+  .ts-dash-limit-row { grid-template-columns: 1fr; }
+  .ts-dash-limit-pct { text-align: left; }
+  .ts-dash-earned-value { font-size: 22px; }
+  .ts-dash-split-value { font-size: 18px; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Финансовые колонки в Grid (Phase 1C)
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.ts-total-cell.ts-pay-type-cell {
+  background: var(--inner-bg);
+  min-width: 70px;
+}
+
+.ts-pay-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+
+.ts-pay-pill--se   { background: #E0F2F1; color: #00695C; border-color: #80CBC4; }
+.ts-pay-pill--off  { background: #F1F8E9; color: #33691E; border-color: #C5E1A5; }
+.ts-pay-pill--cash { background: #F5F5F5; color: #424242; border-color: #BDBDBD; }
+
+[data-theme="dark"] .ts-pay-pill--se {
+  background: rgba(0, 150, 136, 0.15);
+  color: #80CBC4;
+  border-color: rgba(0, 150, 136, 0.35);
+}
+[data-theme="dark"] .ts-pay-pill--off {
+  background: rgba(124, 179, 66, 0.15);
+  color: #C5E1A5;
+  border-color: rgba(124, 179, 66, 0.35);
+}
+[data-theme="dark"] .ts-pay-pill--cash {
+  background: rgba(158, 158, 158, 0.15);
+  color: #BDBDBD;
+  border-color: rgba(158, 158, 158, 0.35);
+}
+
+.ts-fin-cell {
+  font-weight: 600;
+  min-width: 90px;
+}
+
+.ts-cash-cell.pos { color: #2E7D32; }
+.ts-cash-cell.neg { color: #C62828; }
+
+[data-theme="dark"] .ts-cash-cell.pos { color: #81C784; }
+[data-theme="dark"] .ts-cash-cell.neg { color: #E57373; }
+
+.ts-limit-cell {
+  font-weight: 600;
+  min-width: 110px;
+}
+
+.ts-limit-cell.healthy { background: #C8E6C9; color: #1B5E20; }
+.ts-limit-cell.tight   { background: #FFCDD2; color: #B71C1C; }
+
+[data-theme="dark"] .ts-limit-cell.healthy {
+  background: rgba(76, 175, 80, 0.18);
+  color: #A5D6A7;
+}
+[data-theme="dark"] .ts-limit-cell.tight {
+  background: rgba(239, 83, 80, 0.18);
+  color: #EF9A9A;
+}
+
+/* Phase 1B+ — 🎁 Премия и ⚠ Штраф ячейки (только когда has-value, иначе нейтральный «—») */
+.ts-bonus-cell.has-value   { color: #2E7D32; background: #E8F5E9; font-weight: 700; }
+.ts-penalty-cell.has-value { color: #C62828; background: #FFEBEE; font-weight: 700; }
+
+[data-theme="dark"] .ts-bonus-cell.has-value {
+  background: rgba(76, 175, 80, 0.15); color: #A5D6A7;
+}
+[data-theme="dark"] .ts-penalty-cell.has-value {
+  background: rgba(244, 67, 54, 0.15); color: #EF9A9A;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Q3 — «Город» и «Получает» колонки (только mode='global')
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* Q-3: «Город» — мягкий серый, центр */
+.ts-city {
+  font-size: 11px;
+  color: var(--t-2, var(--text-secondary));
+  text-align: center;
+  min-width: 90px;
+  max-width: 140px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Q-3: «Получает» — текстовый бейдж по типу источника выплаты */
+.ts-pay-source-cell {
+  min-width: 110px;
+  background: var(--inner-bg);
+}
+
+.ts-src-cell {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+.ts-src-cell.src-self   { background: #E8F5E9; color: #1B5E20; }
+.ts-src-cell.src-via    { background: #F3E5F5; color: #4A148C; }
+.ts-src-cell.src-salary { background: #E3F2FD; color: #0D47A1; }
+.ts-src-cell.src-cash   { background: var(--bg3, #F5F5F5); color: var(--t-3, #999); }
+
+[data-theme="dark"] .ts-src-cell.src-self   { background: rgba(76,175,80,0.15);  color: #A5D6A7; }
+[data-theme="dark"] .ts-src-cell.src-via    { background: rgba(156,39,176,0.18); color: #CE93D8; }
+[data-theme="dark"] .ts-src-cell.src-salary { background: rgba(33,150,243,0.15); color: #90CAF9; }
+[data-theme="dark"] .ts-src-cell.src-cash   { background: rgba(158,158,158,0.15); color: #BDBDBD; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Stage S (2026-06-20) — «Уже выплачено в поле»
+ * - Колонка «📤 Выплачено ₽» (TimesheetGrid)
+ * - Карточка «📤 Уже выплачено в поле» (Dashboard, перед 🏦 Касса)
+ * - Подстрока «Осталось …» под «Из кассы/На карту»
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* Оранжевый бейдж ячейки «📤 Выплачено ₽» */
+.ts-paid-cell {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #FFF3E0;
+  color: #E65100;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+[data-theme="dark"] .ts-paid-cell {
+  background: rgba(255, 152, 0, 0.18);
+  color: #FFAB91;
+}
+
+/* Прочерк-ячейка «—» в финансовых колонках */
+.ts-mute {
+  color: var(--t-3);
+  opacity: 0.6;
+}
+
+/* Карточка дашборда «📤 Уже выплачено в поле» */
+.ts-dash-paid {
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #FFF3E0;
+  border: 1px solid #FFB74D;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ts-dash-paid-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #E65100;
+  margin-bottom: 4px;
+}
+
+.ts-dash-paid-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: #BF360C;
+}
+
+.ts-dash-paid-row.total {
+  border-top: 1px dashed #FFB74D;
+  padding-top: 6px;
+  margin-top: 4px;
+  font-weight: 700;
+}
+
+.ts-dash-paid-hint {
+  font-size: 11px;
+  color: #BF360C;
+  opacity: 0.75;
+  margin-top: 6px;
+}
+
+[data-theme="dark"] .ts-dash-paid {
+  background: rgba(255, 152, 0, 0.10);
+  border-color: rgba(255, 152, 0, 0.30);
+}
+[data-theme="dark"] .ts-dash-paid-title,
+[data-theme="dark"] .ts-dash-paid-row,
+[data-theme="dark"] .ts-dash-paid-hint {
+  color: #FFCC80;
+}
+
+/* Подстрока «Осталось …» под «Из кассы»/«На карту» (в SplitCard) */
+.ts-dash-split-card .ts-remaining-hint {
+  font-size: 11px;
+  opacity: 0.75;
+  margin-top: 4px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * Stage U (2026-06-20) — Официальная выплата (бух vs директор)
+ * - Ячейка «На карту» подкрашена индиго для оф-сотрудников
+ * - Карточка дашборда «🏢 Официально устроены» (после «📤 Уже выплачено в поле»)
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* Индиго-бейдж ячейки «На карту» для оф-сотрудников */
+.ts-pay-cell.pay-buh {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #E8EAF6;
+  color: #1A237E;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+[data-theme="dark"] .ts-pay-cell.pay-buh {
+  background: rgba(63, 81, 181, 0.15);
+  color: #9FA8DA;
+}
+
+/* Карточка дашборда «🏢 Официально устроены» */
+.ts-dash-official {
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #E8EAF6;
+  border: 1px solid #9FA8DA;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ts-dash-official-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1A237E;
+  margin-bottom: 4px;
+}
+
+.ts-dash-official-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: #283593;
+}
+
+.ts-dash-official-row.total {
+  border-top: 1px dashed #9FA8DA;
+  padding-top: 6px;
+  margin-top: 4px;
+  font-weight: 700;
+}
+
+[data-theme="dark"] .ts-dash-official {
+  background: rgba(63, 81, 181, 0.10);
+  border-color: rgba(63, 81, 181, 0.30);
+}
+
+[data-theme="dark"] .ts-dash-official-title,
+[data-theme="dark"] .ts-dash-official-row {
+  color: #C5CAE9;
+}
+
+/* ─── Адаптив для мобилки (тот же v2 на mobile тоже работает) ─── */
+@media (max-width: 768px) {
+  .ts-controls {
+    padding: 10px;
+  }
+
+  .ts-period {
+    font-size: 14px;
+    min-width: 140px;
+  }
+
+  .ts-wrap {
+    max-height: calc(100vh - 240px);
+  }
+
+  .ts-table {
+    font-size: 11px;
+  }
+
+  .ts-table th,
+  .ts-table td {
+    padding: 3px 4px;
+  }
+
+  .ts-cell {
+    width: 24px;
+    height: 22px;
+    font-size: 10px;
+  }
+
+  .ts-table th.ts-fio-th,
+  .ts-table td.ts-fio-td {
+    min-width: 140px;
+    max-width: 160px;
+  }
+
+  .ts-pop {
+    min-width: 240px;
+  }
+
+  .ts-pop-types {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ╔══════════════════════════════════════════════════════════════
+   ║ Stage W — Передачи от рабочих (PM-tab)
+   ║ Светлая и тёмная — отдельные цвета (не инверсия).
+   ╚══════════════════════════════════════════════════════════════ */
+
+.ts-pm-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 2px solid var(--brd-1);
+  margin-bottom: 12px;
+}
+.ts-pm-tab {
+  padding: 10px 18px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--t-3);
+  font-size: 14px;
+  font-weight: 600;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.ts-pm-tab:hover { color: var(--t-1); }
+.ts-pm-tab.active {
+  color: var(--gold);
+  border-bottom-color: var(--gold);
+}
+
+.ts-handover-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ts-handover-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+}
+.ts-h-sumcell {
+  padding: 12px 16px;
+  border-radius: var(--r-md);
+  background: #FFF8E1;
+  border: 1px solid color-mix(in srgb, #FFB300 35%, var(--brd-1));
+}
+[data-theme="dark"] .ts-h-sumcell {
+  background: rgba(255, 179, 0, 0.10);
+  border-color: color-mix(in srgb, #FFC107 38%, var(--brd-1));
+}
+.ts-h-sumcell .lbl {
+  font-size: 11px;
+  color: var(--t-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.ts-h-sumcell .val {
+  font-size: 22px;
+  font-weight: 800;
+  color: #6D4C00;
+  margin-top: 4px;
+  letter-spacing: -0.01em;
+}
+[data-theme="dark"] .ts-h-sumcell .val { color: #FFD54F; }
+.ts-h-sumcell .val.ok   { color: var(--ok); }
+.ts-h-sumcell .val.warn { color: var(--amber); }
+
+.ts-handover-tbl {
+  width: 100%;
+  font-size: 13px;
+}
+.ts-h-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+.ts-h-pill.warn { background: color-mix(in srgb, var(--amber) 16%, transparent); color: var(--amber); border-color: color-mix(in srgb, var(--amber) 30%, transparent); }
+.ts-h-pill.ok   { background: color-mix(in srgb, var(--ok)    16%, transparent); color: var(--ok);    border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
+.ts-h-pill.err  { background: color-mix(in srgb, var(--err)   16%, transparent); color: var(--err);   border-color: color-mix(in srgb, var(--err) 30%, transparent); }
+.ts-h-pill.mute { background: var(--inner-bg); color: var(--t-3); border-color: var(--brd-1); }
+
+.ts-h-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.ts-handover-empty {
+  padding: 36px 24px;
+  text-align: center;
+  background: var(--card-bg);
+  border: 1px dashed var(--brd-1);
+  border-radius: var(--r-md);
+}
+.ts-h-empty-icon { font-size: 42px; opacity: 0.6; }
+.ts-h-empty-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--t-1);
+  margin: 10px 0 6px;
+}
+.ts-h-empty-hint {
+  font-size: 13px;
+  color: var(--t-3);
+  max-width: 560px;
+  margin: 0 auto;
+  line-height: 1.5;
+}
+
+@media (max-width: 720px) {
+  .ts-h-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

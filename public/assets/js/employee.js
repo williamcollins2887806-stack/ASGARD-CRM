@@ -63,11 +63,56 @@ window.AsgardEmployeePage=(function(){
     }
 
     const canEdit = (user.role==="ADMIN" || user.role==="HR" || user.role==="TO" || isDirRole(user.role));
+    // Финансовые поля (Оклад/несгораемая/can_exceed_limit/offset) — правит только бухгалтер/директор/админ.
+    // HR/TO/прочие видят значения текстом, без input.
+    const canEditFinance = ["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","BUH"].includes(user.role);
 
     const query = parseQuery();
     const id = Number(query.id||0);
     const emp = await AsgardDB.get("employees", id);
     if(!emp){ toast("Сотрудник","Не найден","err"); location.hash="#/personnel"; return; }
+
+    // Подтягиваем серверный snapshot из /api/staff/readiness — там есть on_site_info/approved_info,
+    // last_assignment_info (последняя работа), effective_status, readiness_date/reason —
+    // поля которых нет в локальной AsgardDB.
+    // Используется для блока «Текущий/Последний объект, РП» и кнопок ✓ Готов / ✗ Не готов / Архив.
+    let empServer = null;
+    try {
+      const rd = await apiFetch("/staff/readiness");
+      empServer = (rd.employees || []).find(e => e.id === Number(id));
+      if (empServer) {
+        emp.on_site_info         = empServer.on_site_info         || null;
+        emp.approved_info        = empServer.approved_info        || null;
+        emp.last_assignment_info = empServer.last_assignment_info || null;
+        emp.effective_status     = empServer.effective_status || emp.effective_status;
+        emp.readiness_status     = empServer.readiness_status || emp.readiness_status;
+        emp.readiness_date       = empServer.readiness_date   || emp.readiness_date;
+        emp.readiness_reason     = empServer.readiness_reason || emp.readiness_reason;
+      }
+    } catch(_) { /* offline / API недоступен — рендерим без блока */ }
+
+    // Если у рабочего привязан получатель НПД (se_payee_id) — подгрузим ФИО+телефон
+    // для отображения. Локальная БД может его не знать; ищем через /staff/payees.
+    if (emp.se_payee_id && !emp.se_payee_fio) {
+      try {
+        // Сначала пробуем взять напрямую из локальной БД (там employees уже синкнуты).
+        const local = await AsgardDB.get("employees", Number(emp.se_payee_id));
+        if (local && local.fio) {
+          emp.se_payee_fio = local.fio;
+          emp.se_payee_phone = local.phone || "";
+        } else {
+          // Иначе обращаемся к payees endpoint (search по id не обязан работать,
+          // но поиск по ФИО=пусто отдаст список всех payees — на проде их единицы).
+          const r = await apiFetch("/staff/payees?search=&limit=200");
+          const items = (r && (r.payees || r.items)) || [];
+          const found = items.find(x => Number(x.id) === Number(emp.se_payee_id));
+          if (found) {
+            emp.se_payee_fio = found.fio;
+            emp.se_payee_phone = found.phone || "";
+          }
+        }
+      } catch(_) { /* offline — отрендерим хотя бы id */ }
+    }
 
     const refsRec = await AsgardDB.get("settings","refs");
     const refs = refsRec ? JSON.parse(refsRec.value_json||"{}"): {};
@@ -149,6 +194,27 @@ window.AsgardEmployeePage=(function(){
           </div>
         </div>
 
+        ${emp && (emp.on_site_info || emp.approved_info) ? `
+          <div style="margin-top:12px;padding:10px 14px;background:var(--bg2);border-left:3px solid var(--gold);border-radius:6px;font-size:13px;color:var(--t1)">
+            <span style="color:var(--t3)">🏗 ${emp.on_site_info ? "На объекте" : "Согласован"}:</span>
+            <b>${esc((emp.on_site_info || emp.approved_info).work_title || "—")}</b>
+            ${(emp.on_site_info || emp.approved_info).pm_name
+              ? ` &middot; <span style="color:var(--t3)">РП:</span> <b>${esc((emp.on_site_info || emp.approved_info).pm_name)}</b>`
+              : ""}
+          </div>` : ""}
+
+        ${canEdit && window.AsgardPersonnelPage ? `
+          <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:12px">
+            <span style="color:var(--t2);font-size:13px;align-self:center">Статус готовности:</span>
+            <button class="btn emp-st-btn" data-st="ready"
+              style="background:var(--gold-bg);color:var(--gold)">✓ Готов</button>
+            <button class="btn ghost emp-st-btn" data-st="not_ready"
+              style="border-color:var(--warn);color:var(--warn-t)">✗ Не готов</button>
+            <button class="btn ghost emp-st-btn" data-st="archive"
+              style="border-color:var(--brd);color:var(--t3)">Архив</button>
+            ${emp.readiness_date ? `<span style="font-size:12px;color:var(--t3);align-self:center">с ${new Date(emp.readiness_date).toLocaleDateString('ru-RU')}</span>` : ""}
+          </div>` : ""}
+
         <div id="aiSummaryBlock" style="display:none;margin:12px 0;padding:16px;background:rgba(59,130,246,0.06);border-left:3px solid var(--blue-l);border-radius:8px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
             <span style="font-weight:700;color:var(--blue-l);font-size:13px">\uD83E\uDDD9 Характеристика от Мимира</span>
@@ -179,7 +245,21 @@ window.AsgardEmployeePage=(function(){
             </div>
             <div>
               <label>Должность</label>
-              <input id="role" value="${esc(emp.role_tag||"")}" ${canEdit?"":"disabled"}/>
+              <select id="role" ${canEdit?"":"disabled"} title="Слесарь — базовая ставка (склад 10б). Мастер — повышенная (склад 12б). РП — руководитель, не попадает в табель как рабочий.">
+                ${(() => {
+                  const cur = (emp.role_tag||"").toLowerCase();
+                  const opts = [
+                    { v: "слесарь", l: "🔧 Слесарь" },
+                    { v: "мастер",  l: "👷 Мастер" },
+                    { v: "РП",      l: "👑 РП (руководитель)" },
+                  ];
+                  // Если текущее значение не в списке — добавим как "Другое"
+                  if (cur && !opts.find(o => o.v.toLowerCase() === cur)) {
+                    opts.push({ v: emp.role_tag, l: `⚠ ${esc(emp.role_tag)} (нестандарт)` });
+                  }
+                  return opts.map(o => `<option value="${esc(o.v)}" ${cur===o.v.toLowerCase()?"selected":""}>${o.l}</option>`).join("");
+                })()}
+              </select>
             </div>
             <div>
               <label>Разряд</label>
@@ -189,6 +269,157 @@ window.AsgardEmployeePage=(function(){
               <label>Дата приёма</label>
               <input id="hire_date" type="date" value="${esc(normalizeDateInput(emp.hire_date))}" ${canEdit?"":"disabled"}/>
             </div>
+          </div>
+        </details>
+
+        <!-- 💼 Самозанятый -->
+        <details style="margin-top:16px" open>
+          <summary class="kpi" style="cursor:pointer"><span style="display:inline-block;width:3px;height:14px;border-radius:2px;background:var(--ok-t);margin-right:8px;vertical-align:middle"></span> 💼 Самозанятый</summary>
+          <div class="formrow" style="margin-top:12px">
+            <div style="grid-column:1/-1">
+              <label title="При включении блок «Официально устроен» будет недоступен (взаимоисключение)">
+                <input id="is_self_employed" type="checkbox" ${emp.is_self_employed?"checked":""} ${canEdit?"":"disabled"} ${emp.is_officially_employed?"disabled":""}/>
+                Является самозанятым (плательщик НПД)
+              </label>
+              ${emp.is_officially_employed && canEdit ? '<div class="help" style="margin-top:4px">Снимите «Официально устроен», чтобы включить.</div>' : ''}
+            </div>
+            <div>
+              <label title="12 цифр. Используется для проверки лимита самозанятого (2.4M/год).">ИНН</label>
+              <input id="inn" value="${esc(emp.inn||"")}" placeholder="123456789012" inputmode="numeric" ${canEdit?"":"disabled"}/>
+            </div>
+
+            <!-- Получатель НПД-выплат (V240) -->
+            <div style="grid-column:1/-1;border-top:1px dashed var(--brd);padding-top:12px;margin-top:4px">
+              <div class="help" style="margin-bottom:8px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:0.08em;font-size:11px">— Получатель НПД-выплат —</div>
+              <label title="Выплаты СЗ идут не на самого рабочего, а на родственника-получателя (жена/брат/отец как СЗ). У получателя свои НПД-лимиты.">
+                <input id="use_payee" type="checkbox" ${emp.se_payee_id?"checked":""} ${canEdit?"":"disabled"}/>
+                Выплаты идут не на меня (на родственника-СЗ)
+              </label>
+              <div id="payee_block" style="display:${emp.se_payee_id?'block':'none'};margin-top:10px">
+                <!-- Текущий привязанный payee (если есть) -->
+                <div id="payee_current" style="display:${emp.se_payee_id?'flex':'none'};align-items:center;gap:10px;padding:10px 12px;background:#E8F5E9;border-radius:8px;margin-bottom:10px;flex-wrap:wrap">
+                  <span style="font-size:18px">👤</span>
+                  <div style="flex:1;min-width:200px">
+                    <div style="font-weight:600;color:var(--t1)" id="payee_current_name">${esc(emp.se_payee_fio||('id='+(emp.se_payee_id||'')))}</div>
+                    <div class="help" id="payee_current_meta">${emp.se_payee_id?('id='+esc(String(emp.se_payee_id))+(emp.se_payee_phone?' · '+esc(emp.se_payee_phone):'')):''}</div>
+                  </div>
+                  <div class="row" style="gap:6px;flex-wrap:wrap">
+                    ${canEdit ? '<button type="button" class="btn ghost mini" id="payee_unlink">Открепить</button>' : ''}
+                    <button type="button" class="btn ghost mini" id="payee_open">Открыть карточку</button>
+                  </div>
+                </div>
+                <!-- Поиск + dropdown -->
+                <div id="payee_search_wrap" style="position:relative">
+                  <input id="payee_search" type="text" placeholder="Поиск по ФИО или телефону..." autocomplete="off" ${canEdit?'':'disabled'} style="width:100%"/>
+                  <div id="payee_results" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--bg1);border:1px solid var(--brd);border-radius:8px;margin-top:4px;max-height:280px;overflow-y:auto;z-index:10;box-shadow:0 4px 16px rgba(0,0,0,0.2)"></div>
+                </div>
+                ${canEditFinance ? `<div style="margin-top:8px"><button type="button" class="btn ghost mini" id="payee_create">+ Создать нового получателя</button></div>` : ``}
+                <input type="hidden" id="payee_id_hidden" value="${esc(String(emp.se_payee_id||''))}"/>
+              </div>
+            </div>
+
+            <div>
+              <label title="Если выключено — переводы свыше 350 000 ₽/мес автоматически блокируются. Годовой лимит 2,4 млн ₽ это не отменяет.">
+                <input id="can_exceed_limit" type="checkbox" ${emp.can_exceed_limit?"checked":""} ${canEditFinance?"":"disabled"}/>
+                Разрешить превышение месячного лимита (350k)
+              </label>
+            </div>
+            <div style="grid-column:1/-1">
+              <div class="help" style="margin-bottom:6px">Стартовый offset лимита (для переноса со старой системы):</div>
+              ${canEditFinance ? `
+                <div class="formrow">
+                  <div>
+                    <label title="Сумма, которая ушла самозанятому ВНЕ CRM с начала года. Пример: в апреле перевели 400 000 — ставь 400 000.">За год уже потрачено ₽</label>
+                    <input id="se_yearly_used_initial" type="number" min="0" value="${esc(emp.se_yearly_used_initial!=null?emp.se_yearly_used_initial:0)}"/>
+                  </div>
+                  <div style="grid-column:1/-1">
+                    <label title="Заполняй только если в этом конкретном месяце уже были переводы вне CRM.">За текущий месяц (опц.)</label>
+                    <div class="row" style="gap:6px;flex-wrap:wrap">
+                      <input id="se_monthly_used_initial_year"   type="number" min="2020" max="2099" placeholder="год"   value="${esc(emp.se_monthly_used_initial?.year||'')}"  style="max-width:90px"/>
+                      <input id="se_monthly_used_initial_month"  type="number" min="1"    max="12"   placeholder="мес"   value="${esc(emp.se_monthly_used_initial?.month||'')}" style="max-width:70px"/>
+                      <input id="se_monthly_used_initial_amount" type="number" min="0"               placeholder="сумма ₽" value="${esc(emp.se_monthly_used_initial?.amount||'')}" style="flex:1;min-width:160px"/>
+                    </div>
+                  </div>
+                </div>
+                <div class="help" style="margin-top:8px">
+                  Подсказка: «Стартовый offset» — это то, что СЗ уже потратил у нас до момента перевода в систему.
+                  Например, если в апреле ему уже перевели 400 000, поставь 400 000 в годовой offset.
+                  Месячный offset нужен только если в этом конкретном месяце уже были переводы вне CRM.
+                </div>
+              ` : `
+                <div class="help" style="font-size:12px;padding:8px;border:1px dashed var(--brd);border-radius:6px;color:var(--t2)">
+                  <div><b>Месячный лимит:</b> ${emp.can_exceed_limit?'снят (разрешено превышение)':'действует (350 000 ₽)'}</div>
+                  <div><b>За год уже потрачено:</b> ${esc(String(Number(emp.se_yearly_used_initial||0).toLocaleString('ru-RU')))} ₽</div>
+                  ${emp.se_monthly_used_initial?.year?`<div><b>Месячный offset:</b> ${esc(emp.se_monthly_used_initial.year)}-${String(emp.se_monthly_used_initial.month||0).padStart(2,'0')} → ${esc(Number(emp.se_monthly_used_initial.amount||0).toLocaleString('ru-RU'))} ₽</div>`:''}
+                  <div style="margin-top:4px;opacity:0.7">Изменить может только бухгалтер/директор/админ.</div>
+                </div>
+              `}
+            </div>
+          </div>
+        </details>
+
+        <!-- 🏢 Официально устроен -->
+        <details style="margin-top:16px" open>
+          <summary class="kpi" style="cursor:pointer"><span style="display:inline-block;width:3px;height:14px;border-radius:2px;background:var(--info);margin-right:8px;vertical-align:middle"></span> 🏢 Официально устроен</summary>
+          <div class="formrow" style="margin-top:12px">
+            <div style="grid-column:1/-1">
+              <label title="При включении блок «Самозанятый» будет недоступен (взаимоисключение)">
+                <input id="is_officially_employed" type="checkbox" ${emp.is_officially_employed?"checked":""} ${canEdit?"":"disabled"} ${emp.is_self_employed?"disabled":""}/>
+                Является официально устроенным (по ТД)
+              </label>
+              ${emp.is_self_employed && canEdit ? '<div class="help" style="margin-top:4px">Снимите «Самозанятый», чтобы включить.</div>' : ''}
+            </div>
+            ${canEditFinance ? `
+              <div>
+                <label title="Месячный оклад по трудовому договору">Оклад ₽</label>
+                <input id="official_salary" type="number" min="0" value="${esc(emp.official_salary!=null?emp.official_salary:'')}" placeholder="0"/>
+              </div>
+              <div>
+                <label title="Минимум который компания платит даже если рабочий не отработал. Например: оклад 60k, несгораемая 30k. Если рабочий заработал 0 — компания всё равно платит 30k.">Несгораемая часть ₽</label>
+                <input id="official_non_burnable" type="number" min="0" value="${esc(emp.official_non_burnable!=null?emp.official_non_burnable:'')}" placeholder="0"/>
+                <div class="help" style="margin-top:4px;color:var(--t3);font-size:11px;line-height:1.4">
+                  Минимум который компания платит даже если рабочий не отработал.<br>
+                  Пример: оклад 60 000 ₽, несгораемая 30 000 ₽. Если рабочий заработал 0 — компания всё равно платит 30 000 ₽.
+                </div>
+              </div>
+              <div>
+                <label title="Дата приёма по трудовому договору">Дата приёма</label>
+                <input id="official_hire_date" type="date" value="${esc(normalizeDateInput(emp.official_hire_date))}"/>
+              </div>
+              <div>
+                <label>Статус занятости</label>
+                <select id="official_status">
+                  <option value="active"        ${(emp.official_status||'active')==='active'?'selected':''}>Активен</option>
+                  <option value="unpaid_leave"  ${emp.official_status==='unpaid_leave'?'selected':''}>Отпуск без сохранения</option>
+                  <option value="maternity"     ${emp.official_status==='maternity'?'selected':''}>Декрет</option>
+                  <option value="sick_leave"    ${emp.official_status==='sick_leave'?'selected':''}>Больничный</option>
+                  <option value="fired"         ${emp.official_status==='fired'?'selected':''}>Уволен</option>
+                </select>
+              </div>
+              <div id="official_leave_block" style="grid-column:1/-1; ${emp.official_status==='unpaid_leave'?'':'display:none'}">
+                <div class="formrow">
+                  <div>
+                    <label title="Только если статус = Отпуск без сохранения">Отпуск с</label>
+                    <input id="official_leave_from" type="date" value="${esc(normalizeDateInput(emp.official_leave_from))}"/>
+                  </div>
+                  <div>
+                    <label>по</label>
+                    <input id="official_leave_to" type="date" value="${esc(normalizeDateInput(emp.official_leave_to))}"/>
+                  </div>
+                </div>
+              </div>
+            ` : `
+              <div style="grid-column:1/-1">
+                <div class="help" style="font-size:12px;padding:8px;border:1px dashed var(--brd);border-radius:6px;color:var(--t2)">
+                  <div><b>Оклад:</b> ${emp.official_salary!=null?esc(Number(emp.official_salary).toLocaleString('ru-RU'))+' ₽':'—'}</div>
+                  <div><b>Несгораемая часть:</b> ${emp.official_non_burnable!=null?esc(Number(emp.official_non_burnable).toLocaleString('ru-RU'))+' ₽':'—'}</div>
+                  <div><b>Дата приёма:</b> ${emp.official_hire_date?esc(normalizeDateInput(emp.official_hire_date)):'—'}</div>
+                  <div><b>Статус:</b> ${esc(({active:'Активен',unpaid_leave:'Отпуск без сохранения',maternity:'Декрет',sick_leave:'Больничный',fired:'Уволен'})[emp.official_status||'active'])}</div>
+                  ${emp.official_status==='unpaid_leave' && (emp.official_leave_from||emp.official_leave_to) ? `<div><b>Отпуск:</b> ${esc(normalizeDateInput(emp.official_leave_from)||'—')} — ${esc(normalizeDateInput(emp.official_leave_to)||'—')}</div>` : ''}
+                  <div style="margin-top:4px;opacity:0.7">Изменить может только бухгалтер/директор/админ.</div>
+                </div>
+              </div>
+            `}
           </div>
         </details>
 
@@ -215,10 +446,6 @@ window.AsgardEmployeePage=(function(){
             <div>
               <label>Код подразделения</label>
               <input id="passport_code" value="${esc(emp.passport_code||"")}" placeholder="123-456" ${canEdit?"":"disabled"}/>
-            </div>
-            <div>
-              <label>ИНН</label>
-              <input id="inn" value="${esc(emp.inn||"")}" ${canEdit?"":"disabled"}/>
             </div>
             <div>
               <label>СНИЛС</label>
@@ -571,6 +798,24 @@ window.AsgardEmployeePage=(function(){
 
     $("#btnSchedule").onclick=()=>{ location.hash=`#/workers-schedule?emp=${id}`; };
 
+    // ── Кнопки статуса готовности (✓ Готов / ✗ Не готов / Архив) ─────────
+    // Делегируем в AsgardPersonnelPage.openStatusModal — модалку которая
+    // и так умеет менять статус через PUT /staff/readiness/:id/status,
+    // показывать форму даты/причины и логировать в historу.
+    document.querySelectorAll(".emp-st-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        if (!window.AsgardPersonnelPage || !window.AsgardPersonnelPage.openStatusModal) {
+          toast("Статус", "Модуль персонала не загружен", "err");
+          return;
+        }
+        const currentStatus = emp.effective_status || emp.readiness_status || "";
+        window.AsgardPersonnelPage.openStatusModal(id, emp.fio, currentStatus, () => {
+          // На успешную смену — перерисовываем карточку.
+          render();
+        });
+      });
+    });
+
     const btnProfile = document.getElementById("btnProfile");
     if(btnProfile){
       btnProfile.onclick=()=>{
@@ -653,11 +898,258 @@ window.AsgardEmployeePage=(function(){
         // Документы (ссылка)
         emp.docs_folder_link=$("#docs")?.value?.trim() || "";
 
+        // 💼 Самозанятый / 🏢 Официально устроен — взаимоисключение + права на финансы
+        const flagSE  = !!$("#is_self_employed")?.checked;
+        const flagOFC = !!$("#is_officially_employed")?.checked;
+        if (flagSE && flagOFC) {
+          toast("Ошибка", "Нельзя одновременно «Самозанятый» и «Официально устроен»", "err");
+          return;
+        }
+        emp.is_self_employed      = flagSE;
+        emp.is_officially_employed = flagOFC;
+
+        // Получатель НПД-выплат (V240). Если выбран payee — выплаты идут на него,
+        // сам рабочий формально не СЗ (его ИНН-лимит не тратится).
+        const usePayee = !!$("#use_payee")?.checked;
+        const payeeIdRaw = $("#payee_id_hidden")?.value || "";
+        const payeeId = usePayee && payeeIdRaw ? Number(payeeIdRaw) : null;
+        emp.se_payee_id = payeeId;
+        if (payeeId) emp.is_self_employed = false;
+
+        // Финансовые поля — пишутся только если у юзера есть права
+        if (canEditFinance) {
+          emp.can_exceed_limit       = !!$("#can_exceed_limit")?.checked;
+          const yiRaw = $("#se_yearly_used_initial")?.value;
+          emp.se_yearly_used_initial = yiRaw !== "" && yiRaw != null ? Math.max(0, Number(yiRaw) || 0) : 0;
+          const monY = Number($("#se_monthly_used_initial_year")?.value);
+          const monM = Number($("#se_monthly_used_initial_month")?.value);
+          const monA = Number($("#se_monthly_used_initial_amount")?.value);
+          emp.se_monthly_used_initial = (monY && monM && monA && monM >= 1 && monM <= 12 && monA >= 0)
+            ? { year: monY, month: monM, amount: monA }
+            : null;
+          const salRaw = $("#official_salary")?.value;
+          const nbrRaw = $("#official_non_burnable")?.value;
+          emp.official_salary       = salRaw !== "" && salRaw != null ? Number(salRaw) || null : null;
+          emp.official_non_burnable = nbrRaw !== "" && nbrRaw != null ? Number(nbrRaw) || null : null;
+          emp.official_hire_date    = $("#official_hire_date")?.value || null;
+          emp.official_status       = $("#official_status")?.value || "active";
+          emp.official_leave_from   = emp.official_status === "unpaid_leave" ? ($("#official_leave_from")?.value || null) : null;
+          emp.official_leave_to     = emp.official_status === "unpaid_leave" ? ($("#official_leave_to")?.value   || null) : null;
+        }
+
         emp.updated_at = isoNow();
         await AsgardDB.put("employees", emp);
         toast("Сохранено","Данные обновлены");
       };
     }
+
+    // Взаимоисключение СЗ/Официально (live, без перерисовки страницы)
+    const cbSE  = document.getElementById("is_self_employed");
+    const cbOFC = document.getElementById("is_officially_employed");
+    if (cbSE && cbOFC) {
+      cbSE.addEventListener("change", () => {
+        if (cbSE.checked) cbOFC.checked = false;
+        cbOFC.disabled = cbSE.checked || !canEdit;
+      });
+      cbOFC.addEventListener("change", () => {
+        if (cbOFC.checked) cbSE.checked = false;
+        cbSE.disabled = cbOFC.checked || !canEdit;
+      });
+    }
+
+    // Показ/скрытие блока «Отпуск с … по …» в зависимости от статуса занятости
+    const selStatus = document.getElementById("official_status");
+    const leaveBlock = document.getElementById("official_leave_block");
+    if (selStatus && leaveBlock) {
+      selStatus.addEventListener("change", () => {
+        leaveBlock.style.display = (selStatus.value === "unpaid_leave") ? "" : "none";
+      });
+    }
+
+    // ─── Получатель НПД-выплат (V240) ──────────────────────────────────────
+    (function bindPayeeSection(){
+      const cbUse     = document.getElementById("use_payee");
+      const blockWrap = document.getElementById("payee_block");
+      const inpSearch = document.getElementById("payee_search");
+      const boxRes    = document.getElementById("payee_results");
+      const boxCur    = document.getElementById("payee_current");
+      const elName    = document.getElementById("payee_current_name");
+      const elMeta    = document.getElementById("payee_current_meta");
+      const hidden    = document.getElementById("payee_id_hidden");
+      const btnUnlink = document.getElementById("payee_unlink");
+      const btnOpen   = document.getElementById("payee_open");
+      const btnCreate = document.getElementById("payee_create");
+      if (!cbUse || !blockWrap || !inpSearch || !hidden) return;
+
+      function setPayee(p) {
+        if (!p) {
+          hidden.value = "";
+          if (boxCur) boxCur.style.display = "none";
+          return;
+        }
+        hidden.value = String(p.id);
+        if (elName) elName.textContent = p.fio || ("id=" + p.id);
+        if (elMeta) {
+          const bits = ["id=" + p.id];
+          if (p.phone) bits.push(p.phone);
+          if (p.inn) bits.push("ИНН " + p.inn);
+          elMeta.textContent = bits.join(" · ");
+        }
+        if (boxCur) boxCur.style.display = "flex";
+      }
+
+      cbUse?.addEventListener("change", () => {
+        if (cbUse.checked) {
+          blockWrap.style.display = "block";
+          inpSearch.focus();
+        } else {
+          blockWrap.style.display = "none";
+          setPayee(null);
+          // По требованиям: при выключении se_payee_id = null; is_self_employed
+          // остаётся как было (трогаем только при включении).
+          if (boxRes) { boxRes.style.display = "none"; boxRes.innerHTML = ""; }
+          inpSearch.value = "";
+        }
+      });
+
+      // debounced 300мс search
+      let timer = null, lastQ = "";
+      inpSearch?.addEventListener("input", () => {
+        if (!canEdit) return;
+        clearTimeout(timer);
+        const q = inpSearch.value.trim();
+        if (q.length < 2) {
+          if (boxRes) { boxRes.style.display = "none"; boxRes.innerHTML = ""; }
+          return;
+        }
+        if (q === lastQ) return;
+        timer = setTimeout(async () => {
+          lastQ = q;
+          try {
+            const res = await apiFetch("/staff/payees?search=" + encodeURIComponent(q) + "&limit=20");
+            const items = (res && (res.payees || res.items || res.rows)) || [];
+            if (!items.length) {
+              boxRes.innerHTML = '<div style="padding:10px 12px;color:var(--t3);font-size:13px">Никого не нашли. Попробуйте создать нового.</div>';
+              boxRes.style.display = "block";
+              return;
+            }
+            boxRes.innerHTML = items.map(p => {
+              const fio = esc(p.fio || "—");
+              const phone = p.phone ? ' · ' + esc(p.phone) : '';
+              const inn = p.inn ? ' · ИНН ' + esc(p.inn) : '';
+              const linkedCnt = (p.linked_count != null) ? ` <span class="help">(привязано: ${esc(String(p.linked_count))})</span>` : '';
+              return `<div class="payee-row" data-pid="${esc(String(p.id))}" data-fio="${esc(p.fio||'')}" data-phone="${esc(p.phone||'')}" data-inn="${esc(p.inn||'')}" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--brd-2);font-size:13px">
+                <b>${fio}</b>${linkedCnt}
+                <div class="help">id=${esc(String(p.id))}${phone}${inn}</div>
+              </div>`;
+            }).join("");
+            // hover effect через inline
+            boxRes.querySelectorAll(".payee-row").forEach(row => {
+              row.addEventListener("mouseenter", () => row.style.background = "var(--bg2)");
+              row.addEventListener("mouseleave", () => row.style.background = "");
+              row.addEventListener("click", () => {
+                setPayee({
+                  id: Number(row.dataset.pid),
+                  fio: row.dataset.fio,
+                  phone: row.dataset.phone,
+                  inn: row.dataset.inn,
+                });
+                inpSearch.value = "";
+                boxRes.style.display = "none";
+                boxRes.innerHTML = "";
+              });
+            });
+            boxRes.style.display = "block";
+          } catch (e) {
+            console.error("[payees] search failed:", e);
+            boxRes.innerHTML = '<div style="padding:10px 12px;color:var(--err-t);font-size:13px">Ошибка поиска получателей</div>';
+            boxRes.style.display = "block";
+          }
+        }, 300);
+      });
+
+      // Скрыть выпадайку при клике вне
+      document.addEventListener("click", (ev) => {
+        if (!boxRes) return;
+        if (boxRes.style.display === "none") return;
+        const wrap = document.getElementById("payee_search_wrap");
+        if (wrap && !wrap.contains(ev.target)) {
+          boxRes.style.display = "none";
+        }
+      });
+
+      // Открепить
+      btnUnlink?.addEventListener("click", () => {
+        setPayee(null);
+        if (cbUse) cbUse.checked = false;
+        blockWrap.style.display = "none";
+      });
+
+      // Открыть карточку получателя
+      btnOpen?.addEventListener("click", () => {
+        const pid = Number(hidden.value || 0);
+        if (!pid) { toast("Получатель", "Сначала выберите получателя", "err"); return; }
+        location.hash = "#/employee?id=" + pid;
+      });
+
+      // Создать нового получателя (только FIN_ROLES)
+      btnCreate?.addEventListener("click", () => {
+        const html = `
+          <div class="formrow">
+            <div style="grid-column:1/-1">
+              <label>ФИО получателя <span style="color:var(--err-t)">*</span></label>
+              <input id="np_fio" placeholder="Иванов Иван Иванович"/>
+            </div>
+            <div>
+              <label>Телефон</label>
+              <input id="np_phone" placeholder="+7..."/>
+            </div>
+            <div>
+              <label>ИНН (опц.)</label>
+              <input id="np_inn" placeholder="123456789012" inputmode="numeric"/>
+            </div>
+            <div style="grid-column:1/-1" class="help">
+              Будет создан employee с is_se_payee=true (получатель НПД, не работающий сам).
+            </div>
+          </div>
+          <div class="row" style="justify-content:flex-end;gap:8px;margin-top:12px">
+            <button class="btn" id="np_save">Создать</button>
+          </div>`;
+        showModal({ title: "+ Новый получатель НПД", html, icon: "💸", subtitle: "Родственник-СЗ для выплат" });
+        const btn = document.getElementById("np_save");
+        if (btn) {
+          btn.onclick = async () => {
+            const fio = document.getElementById("np_fio")?.value?.trim() || "";
+            const phone = document.getElementById("np_phone")?.value?.trim() || "";
+            const inn = document.getElementById("np_inn")?.value?.trim() || "";
+            if (!fio) { toast("Проверка", "ФИО обязательно", "err"); return; }
+            try {
+              btn.disabled = true; btn.textContent = "Создаём…";
+              const r = await apiFetch("/staff/payees", {
+                method: "POST",
+                body: JSON.stringify({ fio, phone, inn }),
+              });
+              const created = (r && (r.payee || r.employee || r)) || null;
+              if (!created || !created.id) {
+                toast("Ошибка", (r && r.error) || "Сервер не вернул id", "err");
+                btn.disabled = false; btn.textContent = "Создать";
+                return;
+              }
+              setPayee({ id: created.id, fio: created.fio || fio, phone: created.phone || phone, inn: created.inn || inn });
+              toast("Готово", "Получатель создан");
+              // закрыть модалку (AsgardUI.showModal обычно вешает overlay с data-close)
+              const overlay = document.querySelector(".modal-overlay,.modal-bd,[data-modal]");
+              if (overlay) overlay.remove();
+              else document.querySelectorAll(".modal").forEach(m => m.remove());
+            } catch (e) {
+              console.error("[payees] create failed:", e);
+              toast("Ошибка", "Не удалось создать получателя", "err");
+              btn.disabled = false; btn.textContent = "Создать";
+            }
+          };
+        }
+      });
+    })();
 
     const btnReview = document.getElementById("btnReview");
     if(btnReview){

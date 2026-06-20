@@ -122,8 +122,19 @@ export default function OfficialEmployeesPage() {
               <tbody>
                 {list.map((e) => {
                   const cfg = STATUS_CFG[e.official_status] || { label: e.official_status || '—', bg: 'var(--inner-bg)', color: 'var(--t-2)' };
-                  const debt = Number(e.company_debt || e.debt || 0);
-                  const debtCls = debt > 0 ? 'ofe-debt-pos' : debt < 0 ? 'ofe-debt-neg' : '';
+                  const debt = Number(e.company_debt || e.debt || 0) || 0;
+                  // M3: >0 — компания должна (красный), <0 — переплата (оранжевый), 0 — нейтрально (серый)
+                  const debtCls = debt > 0 ? 'ofe-debt-pos' : debt < 0 ? 'ofe-debt-over' : 'ofe-debt-zero';
+                  const debtLabel = debt > 0
+                    ? `Должны ${rub(debt)}`
+                    : debt < 0
+                      ? `Переплата ${rub(Math.abs(debt))}`
+                      : rub(0);
+                  const debtTitle = debt > 0
+                    ? 'Компания должна сотруднику'
+                    : debt < 0
+                      ? 'Сотрудник получил больше — компания переплатила'
+                      : 'Долг отсутствует';
                   const name = e.full_name || e.fio || '—';
                   const hireDate = e.hired_date || e.official_hire_date;
                   return (
@@ -142,7 +153,7 @@ export default function OfficialEmployeesPage() {
                           {cfg.label}
                         </span>
                       </td>
-                      <td className={'ofe-num ' + debtCls}>{rub(debt)}</td>
+                      <td className={'ofe-num ' + debtCls} title={debtTitle}>{debtLabel}</td>
                     </tr>
                   );
                 })}

@@ -21,23 +21,81 @@ window.AsgardCashPage = (function() {
 
   const TYPE_LABELS = {
     advance: 'Аванс на проект',
-    loan: 'Долг до ЗП'
+    office:  'Офисный расход',
+    other:   'Прочее'
   };
 
-  const EXPENSE_CATEGORIES = [
-    { value: 'materials', label: 'Материалы', icon: '🧱' },
-    { value: 'transport', label: 'Транспорт', icon: '🚗' },
-    { value: 'food', label: 'Питание', icon: '🍽️' },
-    { value: 'housing', label: 'Проживание', icon: '🏨' },
-    { value: 'tools', label: 'Инструмент', icon: '🔧' },
-    { value: 'fuel', label: 'Топливо', icon: '⛽' },
-    { value: 'other', label: 'Прочее', icon: '📦' }
+  // Stage W — 12 категорий авансового отчёта (CategoryGrid)
+  const CASH_CATEGORIES = [
+    { code: 'fuel_service',     icon: '⛽', label: 'ГСМ служ.' },
+    { code: 'fuel_personal',    icon: '⛽', label: 'ГСМ личн.' },
+    { code: 'taxi',             icon: '🚕', label: 'Такси' },
+    { code: 'accommodation',    icon: '🏨', label: 'Проживание' },
+    { code: 'food_brigade',     icon: '🍲', label: 'Продукты бригаде' },
+    { code: 'materials',        icon: '🧱', label: 'Материалы' },
+    { code: 'tool',             icon: '🔧', label: 'Инструмент' },
+    { code: 'tech_rent',        icon: '🚛', label: 'Аренда техники' },
+    { code: 'communication',    icon: '📞', label: 'Связь/интернет' },
+    { code: 'representational', icon: '🥂', label: 'Представительские' },
+    { code: 'urgent_repair',    icon: '🚨', label: 'Срочный ремонт' },
+    { code: 'other',            icon: '📦', label: 'Другое' },
   ];
 
-  // Status step order — money_issued добавлен между approved и received
+  // Совместимость старой таблицы расходов авансового отчёта (renderDetail)
+  const EXPENSE_CATEGORIES = CASH_CATEGORIES.map(c => ({ value: c.code, label: c.label, icon: c.icon }));
+
+  // Stage W — loan убран; steps только для advance/office/other
   const ADVANCE_STEPS = ['requested', 'approved', 'money_issued', 'received', 'reporting', 'closed'];
-  const LOAN_STEPS = ['requested', 'approved', 'money_issued', 'received', 'closed'];
   const STEP_LABELS = { requested: 'Заявка', approved: 'Согласов.', money_issued: 'Выдано', received: 'Получено', reporting: 'Отчёт', closed: 'Закрыто' };
+
+  // ─────────────────────────────────────────────────────────────────
+  // STAGE W — стили для CategoryGrid + SE-payee блока (one-time)
+  // ─────────────────────────────────────────────────────────────────
+  (function injectStageWStyles() {
+    if (document.getElementById('cash-stagew-styles')) return;
+    const s = document.createElement('style');
+    s.id = 'cash-stagew-styles';
+    s.textContent = `
+      .cash-category-grid {
+        display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; margin-top:6px;
+      }
+      @media (max-width:540px) { .cash-category-grid { grid-template-columns: repeat(2, 1fr); } }
+      .cash-cat {
+        display:flex; flex-direction:column; align-items:center; justify-content:center;
+        gap:6px; padding:14px 6px; min-height:78px;
+        background: var(--bg3); color: var(--t1, var(--text-primary));
+        border:1px solid var(--brd, var(--border)); border-radius: var(--r-md, 10px);
+        font-size:12px; font-weight:600; cursor:pointer;
+        transition: transform .12s ease, background .12s ease, border-color .12s ease;
+      }
+      .cash-cat span { display:block; text-align:center; line-height:1.15; font-size:11.5px; }
+      .cash-cat .cash-cat-ic { font-size:22px; line-height:1; }
+      .cash-cat:hover { transform: scale(1.02); border-color: var(--gold, #c8a849); }
+      .cash-cat.active {
+        background: var(--blue-bg, #1a2433);
+        color: var(--blue, #3b82f6);
+        border-color: var(--blue, #3b82f6);
+        box-shadow: 0 0 0 2px rgba(59,130,246,.18);
+      }
+      html[data-theme="light"] .cash-cat { background: #F5F7FA; color: #1F2933; border-color: #E2E8F0; }
+      html[data-theme="light"] .cash-cat:hover { background: #ECEFF4; }
+      html[data-theme="light"] .cash-cat.active { background: #E3F2FD; color: #1565C0; border-color: #1565C0; }
+
+      .cash-se-block {
+        margin-top:10px; padding:12px;
+        background: var(--blue-bg, rgba(33,150,243,.08));
+        border:1px solid var(--blue, #3b82f6); border-radius: var(--r-md, 10px);
+      }
+      html[data-theme="light"] .cash-se-block { background: #E3F2FD; border-color: #1565C0; }
+      .cash-se-block .cash-se-hint {
+        font-size:12px; color: var(--t3, var(--text-muted)); margin-bottom:8px;
+      }
+
+      .cash-cat-other-desc { margin-top:8px; }
+      .cash-cat-other-desc textarea { min-height:60px; }
+    `;
+    document.head.appendChild(s);
+  })();
 
   let currentRequests = [];
   let currentPage = 1, pageSize = 20;
@@ -185,18 +243,18 @@ window.AsgardCashPage = (function() {
   }
 
   function renderCard(r) {
-    const isLoan = r.type === 'loan';
-    const steps = isLoan ? LOAN_STEPS : ADVANCE_STEPS;
+    // Stage W — тип loan убран; legacy записи рендерим как advance
+    const steps = ADVANCE_STEPS;
     const currentStep = steps.indexOf(r.status);
     const isRejected = r.status === 'rejected';
     const isQuestion = r.status === 'question';
     const balanceVal = r.balance ? r.balance.remainder : 0;
-    const typeColor = isLoan ? 'var(--warning)' : 'var(--info)';
-    const projectName = r.work_title || (r.work_id ? '#' + r.work_id : (isLoan ? 'Личные средства' : ''));
+    const typeColor = 'var(--info)';
+    const projectName = r.work_title || (r.work_id ? '#' + r.work_id : '');
 
     // Quick actions
     const canReceive = r.status === 'approved' || r.status === 'money_issued';
-    const canAddExpense = !isLoan && ['received', 'reporting'].includes(r.status);
+    const canAddExpense = ['received', 'reporting'].includes(r.status);
     const canReturn = ['received', 'reporting'].includes(r.status) && balanceVal > 0;
     const canReply = r.status === 'question';
 
@@ -220,7 +278,7 @@ window.AsgardCashPage = (function() {
     const actions = [];
     if (canReceive) actions.push(`<button class="btn green mini" onclick="event.stopPropagation();AsgardCashPage.confirmReceive(${r.id})">Подтвердить получение</button>`);
     if (canAddExpense) actions.push(`<button class="btn primary mini" onclick="event.stopPropagation();AsgardCashPage.showExpenseModal(${r.id})">+ Расход</button>`);
-    if (canReturn) actions.push(`<button class="btn amber mini" onclick="event.stopPropagation();AsgardCashPage.showReturnModal(${r.id}, ${balanceVal})">${isLoan ? 'Погасить' : 'Вернуть'}</button>`);
+    if (canReturn) actions.push(`<button class="btn amber mini" onclick="event.stopPropagation();AsgardCashPage.showReturnModal(${r.id}, ${balanceVal})">Вернуть</button>`);
     if (canReply) actions.push(`<button class="btn blue mini" onclick="event.stopPropagation();AsgardCashPage.showReplyModal(${r.id})">Ответить</button>`);
     if (actions.length) {
       actionsHtml = `<div class="cash-card-actions">${actions.join('')}</div>`;
@@ -229,29 +287,24 @@ window.AsgardCashPage = (function() {
     // Balance display
     let balanceHtml = '';
     if (r.balance) {
-      if (isLoan) {
-        balanceHtml = balanceVal > 0
-          ? `<span style="color:var(--danger);font-weight:700">Долг: ${fmtMoney(balanceVal)}</span>`
-          : `<span style="color:var(--success);font-weight:600">Погашен</span>`;
-      } else {
-        const pct = r.balance.approved > 0 ? Math.round(r.balance.spent / r.balance.approved * 100) : 0;
-        balanceHtml = `
-          <div class="cash-card-balance-bar">
-            <div class="cash-card-balance-fill" style="width:${Math.min(pct, 100)}%"></div>
-          </div>
-          <div class="cash-card-balance-info">
-            <span>Израсходовано ${pct}%</span>
-            <span style="font-weight:600">Ост. ${fmtMoney(balanceVal)}</span>
-          </div>
-        `;
-      }
+      const pct = r.balance.approved > 0 ? Math.round(r.balance.spent / r.balance.approved * 100) : 0;
+      balanceHtml = `
+        <div class="cash-card-balance-bar">
+          <div class="cash-card-balance-fill" style="width:${Math.min(pct, 100)}%"></div>
+        </div>
+        <div class="cash-card-balance-info">
+          <span>Израсходовано ${pct}%</span>
+          <span style="font-weight:600">Ост. ${fmtMoney(balanceVal)}</span>
+        </div>
+      `;
     }
 
+    const typeLabel = TYPE_LABELS[r.type] || 'Заявка';
     return `
       <div class="cash-req-card ${isRejected ? 'rejected' : ''} ${isQuestion ? 'question' : ''}" onclick="AsgardCashPage.showDetail(${r.id})">
         <div class="cash-card-top">
           <div class="cash-card-type" style="color:${typeColor}">
-            ${isLoan ? '🪙' : '📋'} ${esc(TYPE_LABELS[r.type])}
+            📋 ${esc(typeLabel)}
           </div>
           <div class="cash-card-date">${fmtDate(r.created_at)}</div>
         </div>
@@ -281,11 +334,27 @@ window.AsgardCashPage = (function() {
   }
 
   // ─────────────────────────────────────────────────────────────────
-  // CREATE REQUEST
+  // CREATE REQUEST  (Stage W — CategoryGrid 12 + SE-payee)
   // ─────────────────────────────────────────────────────────────────
+  let _selectedCategory = null;       // выбранная категория (code)
+  let _useSePayee = false;            // галка «Использовать остаток лимита СЗ»
+  let _sePayee = null;                // {id, name, limit_remainder_month}
+
+  function renderCategoryGrid() {
+    return `<div class="cash-category-grid" id="cashCatGrid">
+      ${CASH_CATEGORIES.map(c => `
+        <button type="button" class="cash-cat" data-cat="${c.code}">
+          <span class="cash-cat-ic">${c.icon}</span>
+          <span>${esc(c.label)}</span>
+        </button>
+      `).join('')}
+    </div>`;
+  }
+
   function showCreateModal() {
-    const worksOptions = '<option value="">-- Выберите проект --</option>' +
-      works.map(w => `<option value="${w.id}">${esc(w.work_title || 'Проект #' + w.id)}</option>`).join('');
+    _selectedCategory = null;
+    _useSePayee = false;
+    _sePayee = null;
 
     showModal({
       title: 'Новая заявка',
@@ -293,28 +362,53 @@ window.AsgardCashPage = (function() {
       subtitle: 'Касса',
       html: `
         <form id="cashCreateForm">
-          <div class="asg-form-group">
-            <label>Тип</label>
-            <input type="hidden" name="type" id="cashTypeHidden" value="advance">
-            <div id="crselect-cashType"></div>
-          </div>
+          <input type="hidden" name="type" value="advance">
+
           <div class="asg-form-group" id="cashWorkGroup">
             <label>Проект</label>
             <input type="hidden" name="work_id" id="cashWorkIdHidden" value="">
             <div id="crselect-cashWorkId"></div>
           </div>
+
+          <div class="asg-form-group">
+            <label>Категория расхода</label>
+            <input type="hidden" name="category" id="cashCategoryHidden" value="">
+            ${renderCategoryGrid()}
+          </div>
+
+          <div class="asg-form-group cash-cat-other-desc" id="cashCatOtherDescWrap" style="display:none">
+            <label>Описание (обязательно для «Другое»)</label>
+            <textarea name="category_other_desc" id="cashCategoryOtherDesc" rows="2" placeholder="Подробно опишите цель"></textarea>
+          </div>
+
           <div class="asg-form-group">
             <label>Сумма</label>
             <input type="number" name="amount" step="0.01" min="1" required placeholder="0.00">
           </div>
+
           <div class="asg-form-group">
             <label>Цель / обоснование</label>
             <textarea name="purpose" rows="2" required placeholder="Укажите цель"></textarea>
           </div>
+
           <div class="asg-form-group">
             <label>Сопроводительное письмо (опционально)</label>
             <textarea name="cover_letter" rows="2" placeholder="Дополнительная информация"></textarea>
           </div>
+
+          <div class="asg-form-group">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+              <input type="checkbox" id="cashUseSePayee" name="use_se_payee">
+              <span>Использовать остаток лимита СЗ</span>
+            </label>
+            <div id="cashSeBlock" class="cash-se-block" style="display:none">
+              <div class="cash-se-hint">Бухгалтер переведёт деньги напрямую на СЗ вместо выдачи налом.</div>
+              <input type="hidden" name="se_payee_employee_id" id="cashSePayeeId" value="">
+              <div id="cashSePayeeAc"></div>
+              <div id="cashSePayeeInfo" style="font-size:12px;color:var(--t3,var(--text-muted));margin-top:6px"></div>
+            </div>
+          </div>
+
           <div class="asg-form-actions">
             <button type="button" class="btn ghost" onclick="AsgardUI.hideModal()">Отмена</button>
             <button type="button" class="btn primary" onclick="AsgardCashPage.submitCreate()">Создать</button>
@@ -323,15 +417,6 @@ window.AsgardCashPage = (function() {
       `
     });
 
-    // CRSelect init — type
-    document.getElementById('crselect-cashType')?.appendChild(CRSelect.create({
-      id: 'cashType', fullWidth: true, value: 'advance',
-      options: [
-        { value: 'advance', label: 'Аванс на проект' },
-        { value: 'loan', label: 'Личный долг до ЗП' },
-      ],
-      onChange: (v) => { document.getElementById('cashTypeHidden').value = v; onTypeChange(); },
-    }));
     // CRSelect init — work
     const _workOpts = works.map(w => ({ value: String(w.id), label: esc(w.work_title || 'Проект #' + w.id) }));
     document.getElementById('crselect-cashWorkId')?.appendChild(CRSelect.create({
@@ -339,15 +424,101 @@ window.AsgardCashPage = (function() {
       options: _workOpts,
       onChange: (v) => { document.getElementById('cashWorkIdHidden').value = v; },
     }));
+
+    // CategoryGrid — bind
+    const grid = document.getElementById('cashCatGrid');
+    if (grid) {
+      grid.addEventListener('click', (ev) => {
+        const btn = ev.target.closest('.cash-cat');
+        if (!btn) return;
+        grid.querySelectorAll('.cash-cat').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const code = btn.getAttribute('data-cat');
+        _selectedCategory = code;
+        document.getElementById('cashCategoryHidden').value = code;
+        const wrap = document.getElementById('cashCatOtherDescWrap');
+        if (wrap) wrap.style.display = (code === 'other') ? 'block' : 'none';
+      });
+    }
+
+    // SE-payee checkbox toggle
+    const seCb = document.getElementById('cashUseSePayee');
+    const seBlock = document.getElementById('cashSeBlock');
+    if (seCb && seBlock) {
+      seCb.addEventListener('change', () => {
+        _useSePayee = seCb.checked;
+        seBlock.style.display = _useSePayee ? 'block' : 'none';
+        if (!_useSePayee) {
+          _sePayee = null;
+          document.getElementById('cashSePayeeId').value = '';
+          document.getElementById('cashSePayeeInfo').textContent = '';
+          const acInp = document.querySelector('#cashSePayeeAc input');
+          if (acInp) acInp.value = '';
+        }
+      });
+    }
+
+    // Autocomplete для СЗ-получателя
+    mountSeAutocomplete();
   }
 
-  function onTypeChange() {
-    const typeVal = CRSelect.getValue('cashType');
-    const workGroup = document.getElementById('cashWorkGroup');
-    if (workGroup) {
-      workGroup.style.display = typeVal === 'advance' ? 'block' : 'none';
-    }
+  // Стрейт-форвард autocomplete без зависимости от внешних компонентов
+  function mountSeAutocomplete() {
+    const box = document.getElementById('cashSePayeeAc');
+    if (!box) return;
+    box.innerHTML = `
+      <input type="text" id="cashSePayeeInput" autocomplete="off"
+             placeholder="Начните вводить ФИО самозанятого…"
+             style="width:100%;padding:8px 10px;border:1px solid var(--brd,var(--border));border-radius:var(--r-sm,6px);background:var(--bg2,var(--bg-surface));color:var(--t1,var(--text-primary))">
+      <div id="cashSePayeeMenu" style="position:relative"></div>
+    `;
+    const inp = document.getElementById('cashSePayeeInput');
+    const menu = document.getElementById('cashSePayeeMenu');
+    if (!inp) return;
+    let timer = null;
+    inp.addEventListener('input', () => {
+      const q = inp.value.trim();
+      clearTimeout(timer);
+      if (q.length < 2) { menu.innerHTML = ''; return; }
+      timer = setTimeout(async () => {
+        try {
+          const r = await fetch('/api/employees?is_self_employed=true&search=' + encodeURIComponent(q), { headers: getHeaders() });
+          if (!r.ok) { menu.innerHTML = ''; return; }
+          const j = await r.json();
+          const list = Array.isArray(j) ? j : (j.employees || j.items || []);
+          if (!list.length) { menu.innerHTML = `<div style="padding:6px 8px;font-size:12px;color:var(--t3,var(--text-muted))">Не найдено</div>`; return; }
+          menu.innerHTML = `<div style="position:absolute;left:0;right:0;top:0;background:var(--bg2,var(--bg-surface));border:1px solid var(--brd,var(--border));border-radius:var(--r-sm,6px);max-height:220px;overflow-y:auto;z-index:10">
+            ${list.slice(0,12).map(e => `
+              <div data-eid="${e.id}" data-fio="${esc(e.full_name || e.name || '')}"
+                   data-limit="${e.se_limit_remainder_month || ''}"
+                   style="padding:8px 10px;cursor:pointer;border-bottom:1px solid var(--brd,var(--border));font-size:13px">
+                ${esc(e.full_name || e.name || '#' + e.id)}
+                ${e.se_limit_remainder_month != null ? `<div style="font-size:11px;color:var(--t3,var(--text-muted))">Лимит остаток: ${fmtMoney(e.se_limit_remainder_month)}</div>` : ''}
+              </div>
+            `).join('')}
+          </div>`;
+          menu.querySelectorAll('[data-eid]').forEach(it => {
+            it.addEventListener('click', () => {
+              const eid = it.getAttribute('data-eid');
+              const fio = it.getAttribute('data-fio');
+              const lim = it.getAttribute('data-limit');
+              _sePayee = { id: parseInt(eid, 10), name: fio, limit_remainder_month: lim ? parseFloat(lim) : null };
+              document.getElementById('cashSePayeeId').value = String(_sePayee.id);
+              inp.value = fio;
+              menu.innerHTML = '';
+              const info = document.getElementById('cashSePayeeInfo');
+              if (info) info.textContent = (_sePayee.limit_remainder_month != null)
+                ? `Остаток лимита СЗ за месяц: ${fmtMoney(_sePayee.limit_remainder_month)}`
+                : '';
+            });
+          });
+        } catch (_) { menu.innerHTML = ''; }
+      }, 250);
+    });
   }
+
+  // (legacy stub — больше не нужно переключать видимость "Проект", но публичный API сохраняем)
+  function onTypeChange() { /* no-op после Stage W */ }
 
   async function submitCreate() {
     const form = document.getElementById('cashCreateForm');
@@ -359,17 +530,57 @@ window.AsgardCashPage = (function() {
       return;
     }
 
+    // Stage W — категория обязательна
+    if (!data.category && !_selectedCategory) {
+      toast('Выберите категорию', '', 'warn');
+      return;
+    }
+    const category = data.category || _selectedCategory;
+
+    // 'other' → описание обязательно
+    if (category === 'other') {
+      const desc = (data.category_other_desc || '').trim();
+      if (!desc) {
+        toast('Опишите расход', 'Для категории «Другое» нужно описание', 'warn');
+        return;
+      }
+    }
+
+    // SE-payee валидации
+    const useSe = !!form.querySelector('#cashUseSePayee')?.checked;
+    let seEmpId = null;
+    if (useSe) {
+      seEmpId = parseInt(data.se_payee_employee_id || '0', 10);
+      if (!seEmpId) {
+        toast('Выберите СЗ-получателя', '', 'warn');
+        return;
+      }
+      if (_sePayee && _sePayee.limit_remainder_month != null
+          && parseFloat(data.amount) > _sePayee.limit_remainder_month) {
+        toast('Превышен лимит СЗ',
+              `Сумма ${fmtMoney(parseFloat(data.amount))} > остатка ${fmtMoney(_sePayee.limit_remainder_month)}`,
+              'warn');
+        return;
+      }
+    }
+
     try {
+      const body = {
+        type: data.type,
+        work_id: data.work_id ? parseInt(data.work_id) : null,
+        amount: parseFloat(data.amount),
+        purpose: data.purpose,
+        cover_letter: data.cover_letter || null,
+        category,
+        category_other_desc: (category === 'other') ? (data.category_other_desc || '').trim() : null,
+        use_se_payee: useSe
+      };
+      if (useSe) body.se_payee_employee_id = seEmpId;
+
       const resp = await fetch('/api/cash', {
         method: 'POST',
         headers: getHeaders(),
-        body: JSON.stringify({
-          type: data.type,
-          work_id: data.work_id ? parseInt(data.work_id) : null,
-          amount: parseFloat(data.amount),
-          purpose: data.purpose,
-          cover_letter: data.cover_letter || null
-        })
+        body: JSON.stringify(body)
       });
 
       if (!resp.ok) {
@@ -410,15 +621,15 @@ window.AsgardCashPage = (function() {
   }
 
   function renderDetail(req) {
-    const isLoan = req.type === 'loan';
+    // Stage W — тип loan убран
     const canReceive = req.status === 'approved' || req.status === 'money_issued';
-    const canAddExpense = !isLoan && ['received', 'reporting'].includes(req.status);
+    const canAddExpense = ['received', 'reporting'].includes(req.status);
     const canReturn = ['received', 'reporting'].includes(req.status) && req.balance?.remainder > 0;
     const canReply = req.status === 'question';
     const balanceVal = req.balance?.remainder || 0;
 
     // Progress bar
-    const steps = isLoan ? LOAN_STEPS : ADVANCE_STEPS;
+    const steps = ADVANCE_STEPS;
     const currentStep = steps.indexOf(req.status);
     const isRejected = req.status === 'rejected';
     const stepsHtml = steps.map((s, i) => {
@@ -434,8 +645,8 @@ window.AsgardCashPage = (function() {
 
       <div class="cash-detail-grid">
         <div>
-          <div class="cash-detail-item"><span class="label">Тип</span><span class="value"><span class="status status-${isLoan ? 'yellow' : 'blue'}">${esc(TYPE_LABELS[req.type] || req.type)}</span></span></div>
-          <div class="cash-detail-item" style="margin-top:12px"><span class="label">Проект</span><span class="value">${esc(req.work_title || (req.work_id ? '#' + req.work_id : (isLoan ? 'Личные' : '-')))}</span></div>
+          <div class="cash-detail-item"><span class="label">Тип</span><span class="value"><span class="status status-blue">${esc(TYPE_LABELS[req.type] || req.type)}</span></span></div>
+          <div class="cash-detail-item" style="margin-top:12px"><span class="label">Проект</span><span class="value">${esc(req.work_title || (req.work_id ? '#' + req.work_id : '-'))}</span></div>
           <div class="cash-detail-item" style="margin-top:12px"><span class="label">Сумма</span><span class="value" style="font-size:var(--text-lg);color:var(--gold)">${fmtMoney(req.amount)}</span></div>
           <div class="cash-detail-item" style="margin-top:12px"><span class="label">Цель</span><span class="value">${esc(req.purpose)}</span></div>
           ${req.cover_letter ? `<div class="cash-detail-item" style="margin-top:12px"><span class="label">Письмо</span><span class="value">${esc(req.cover_letter)}</span></div>` : ''}
@@ -469,13 +680,9 @@ window.AsgardCashPage = (function() {
 
     // Balance
     if (req.balance) {
-      const alertType = req.balance.remainder > 0 ? (isLoan ? 'danger' : 'warning') : 'success';
+      const alertType = req.balance.remainder > 0 ? 'warning' : 'success';
       html += `<div class="cash-alert ${alertType}">`;
-      if (isLoan) {
-        html += `<strong>Долг:</strong> Получено: ${fmtMoney(req.balance.approved)} | Возвращено: ${fmtMoney(req.balance.returned)} | <strong>${balanceVal > 0 ? 'Осталось: ' + fmtMoney(balanceVal) : 'Погашен'}</strong>`;
-      } else {
-        html += `<strong>Баланс:</strong> Выдано: ${fmtMoney(req.balance.approved)} | Потрачено: ${fmtMoney(req.balance.spent)} | Возвращено: ${fmtMoney(req.balance.returned)} | <strong>Остаток: ${fmtMoney(balanceVal)}</strong>`;
-      }
+      html += `<strong>Баланс:</strong> Выдано: ${fmtMoney(req.balance.approved)} | Потрачено: ${fmtMoney(req.balance.spent)} | Возвращено: ${fmtMoney(req.balance.returned)} | <strong>Остаток: ${fmtMoney(balanceVal)}</strong>`;
       html += '</div>';
     }
 
@@ -484,14 +691,14 @@ window.AsgardCashPage = (function() {
     if (canReceive) actions.push(`<button class="btn green" onclick="AsgardCashPage.confirmReceive(${req.id})">Подтвердить получение</button>`);
     if (canAddExpense) actions.push(`<button class="btn primary" onclick="AsgardCashPage.showExpenseModal(${req.id})">+ Добавить расход</button>`);
     if (canAddExpense) actions.push(`<button class="btn amber" onclick="AsgardCashPage.submitReport(${req.id})">Отчитаться</button>`);
-    if (canReturn) actions.push(`<button class="btn ${isLoan ? 'red' : 'amber'}" onclick="AsgardCashPage.showReturnModal(${req.id}, ${balanceVal})">${isLoan ? 'Погасить долг' : 'Вернуть остаток'}</button>`);
+    if (canReturn) actions.push(`<button class="btn amber" onclick="AsgardCashPage.showReturnModal(${req.id}, ${balanceVal})">Вернуть остаток</button>`);
     if (canReply) actions.push(`<button class="btn blue" onclick="AsgardCashPage.showReplyModal(${req.id})">Ответить</button>`);
     if (actions.length) {
       html += `<div class="cash-actions">${actions.join('')}</div>`;
     }
 
     // Expenses with category totals
-    if (!isLoan && req.expenses?.length) {
+    if (req.expenses?.length) {
       // Group by category
       const byCat = {};
       req.expenses.forEach(e => {

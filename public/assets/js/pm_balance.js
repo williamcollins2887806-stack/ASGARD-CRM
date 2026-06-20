@@ -23,8 +23,38 @@ window.AsgardPmBalancePage = (function () {
     if (document.getElementById('pmb-styles')) return;
     const s = document.createElement('style');
     s.id = 'pmb-styles';
-    s.textContent = `.pmb-hover-row:hover td { background: var(--bg2); }
-      .pmb-row:hover td { background: var(--bg2); }`;
+    s.textContent = `
+      .pmb-hover-row:hover td { background: var(--bg2); }
+      .pmb-row:hover td { background: var(--bg2); }
+
+      /* Stage W — секция «Ожидают передачи от рабочих» */
+      .pmb-handovers-section {
+        display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+        margin: 0 0 16px;
+        padding: 14px 18px;
+        background: var(--gold-bg, rgba(255,193,7,.10));
+        border: 1px solid var(--gold, #c8a849);
+        border-left: 4px solid var(--gold, #c8a849);
+        border-radius: var(--r-md, 10px);
+      }
+      .pmb-handovers-section .pmb-h-icon { font-size:22px; line-height:1; }
+      .pmb-handovers-section .pmb-h-text { display:flex; flex-direction:column; gap:2px; }
+      .pmb-handovers-section .pmb-h-title { font-size:13px; font-weight:700; color: var(--gold, #c8a849); text-transform:uppercase; letter-spacing:.04em; }
+      .pmb-handovers-section .pmb-h-info  { font-size:13px; color: var(--t1, var(--text-primary)); font-weight:500; }
+      .pmb-handovers-section .pmb-h-info strong { color: var(--gold, #c8a849); font-weight:800; }
+      .pmb-handovers-section .pmb-h-btn   {
+        margin-left:auto;
+        padding:8px 14px; border-radius:var(--r-sm, 8px); cursor:pointer;
+        background: var(--gold, #c8a849); color:#1a1409; border:none;
+        font-weight:700; font-size:13px;
+      }
+      .pmb-handovers-section .pmb-h-btn:hover { filter: brightness(1.08); }
+
+      html[data-theme="light"] .pmb-handovers-section { background: #FFF8E1; border-color: #F9A825; border-left-color: #F9A825; }
+      html[data-theme="light"] .pmb-handovers-section .pmb-h-title { color: #B26A00; }
+      html[data-theme="light"] .pmb-handovers-section .pmb-h-info strong { color: #B26A00; }
+      html[data-theme="light"] .pmb-handovers-section .pmb-h-btn { background:#F9A825; color:#3E2723; }
+    `;
     document.head.appendChild(s);
   })();
 
@@ -197,6 +227,8 @@ window.AsgardPmBalancePage = (function () {
         <div id="pmb_stats"
              style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;"></div>
 
+        <div id="pmb_handovers_wrap"></div>
+
         <div id="pmb_table_wrap"
              style="background:var(--bg1);border:1px solid var(--brd);
                     border-radius:var(--r-md);overflow:hidden;">
@@ -221,6 +253,24 @@ window.AsgardPmBalancePage = (function () {
       });
     }
 
+    // Stage W — секция «Ожидают передачи от рабочих» (золотистый акцент)
+    function renderHandoversSection(data) {
+      const wrap = $('#pmb_handovers_wrap');
+      if (!wrap) return;
+      const cnt = Number(data && data.handovers_pending_count) || 0;
+      if (cnt <= 0) { wrap.innerHTML = ''; return; }
+      const sum = Number(data.handovers_pending_sum) || 0;
+      wrap.innerHTML = `
+        <div class="pmb-handovers-section" role="status">
+          <span class="pmb-h-icon">📥</span>
+          <div class="pmb-h-text">
+            <div class="pmb-h-title">Ожидают передачи от рабочих</div>
+            <div class="pmb-h-info"><strong>${cnt}</strong> рабочих · <strong>${rub(sum)}</strong></div>
+          </div>
+          <button type="button" class="pmb-h-btn" onclick="location.hash='#/timesheet'">Открыть табель →</button>
+        </div>`;
+    }
+
     async function load() {
       $('#pmb_table_wrap').innerHTML =
         `<p style="text-align:center;padding:36px;color:var(--t3);">Загрузка…</p>`;
@@ -243,6 +293,13 @@ window.AsgardPmBalancePage = (function () {
                                                                        totalBal >= 0 ? 'var(--ok-t)'   : 'var(--err-t)') +
             (negative ? statCard('В минусе РП', negative, 'var(--err-bg)', 'var(--err-t)') : '');
         }
+
+        // Stage W — секция «Ожидают передачи от рабочих» (агрегат по всем РП)
+        renderHandoversSection({
+          handovers_pending_count: _allData.reduce((s,p) => s + (p.handovers_pending_count || 0), 0),
+          handovers_pending_sum:   _allData.reduce((s,p) => s + (p.handovers_pending_sum   || 0), 0),
+          handovers_received:      _allData.reduce((s,p) => s + (p.handovers_received      || 0), 0),
+        });
 
         renderFiltered();
       } catch (e) {
@@ -378,6 +435,19 @@ window.AsgardPmBalancePage = (function () {
       const out     = (data.cash_out  || 0);
       const returned = (data.cash_returned || 0);
 
+      // Stage W — секция «Ожидают передачи от рабочих» для конкретного РП
+      const hovCnt = Number(data.handovers_pending_count) || 0;
+      const hovSum = Number(data.handovers_pending_sum)   || 0;
+      const handoversHtml = hovCnt > 0 ? `
+        <div class="pmb-handovers-section" role="status">
+          <span class="pmb-h-icon">📥</span>
+          <div class="pmb-h-text">
+            <div class="pmb-h-title">Ожидают передачи от рабочих</div>
+            <div class="pmb-h-info"><strong>${hovCnt}</strong> рабочих · <strong>${rub(hovSum)}</strong></div>
+          </div>
+          <button type="button" class="pmb-h-btn" onclick="location.hash='#/timesheet'">Открыть табель →</button>
+        </div>` : '';
+
       const content = $('#pmbd_content');
       content.innerHTML = `
         <!-- Header with PM name and balance summary -->
@@ -401,6 +471,8 @@ window.AsgardPmBalancePage = (function () {
           ${statCard('На руках',       rub(bal),      bal >= 0 ? 'var(--ok-bg)'  : 'var(--err-bg)',
                                                                  bal >= 0 ? 'var(--ok-t)'   : 'var(--err-t)')}
         </div>
+
+        ${handoversHtml}
 
         <!-- 5 operational sections -->
         ${sectionTable(

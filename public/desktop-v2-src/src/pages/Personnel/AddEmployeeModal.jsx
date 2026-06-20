@@ -13,16 +13,12 @@ import { phoneError, dateNotFutureError } from '@/inputs/validators';
 import { toast } from '@/modals/Notifications';
 import { createEmployee } from './api';
 
+// Должность влияет на баллы в табеле (склад 10б vs 12б).
+// Слесарь — базовая ставка, мастер — повышенная, РП — руководитель (не попадает в табель).
 const SPECIALTIES = [
-  'Оператор ВД',
-  'Наблюдающий (ВД)',
-  'Слесарь-сантехник',
-  'Электромонтажник',
-  'Стропальщик',
-  'Мастер участка',
-  'Подсобный рабочий',
-  'Сварщик',
-  'Монтажник',
+  'слесарь',
+  'мастер',
+  'РП',
 ];
 
 function emitChanged() {
@@ -98,11 +94,15 @@ export function AddEmployeeModal({ onSaved }) {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 1fr', gap: 10 }}>
-            <Field label="Специальность">
+            <Field label="Должность" hint="Слесарь — базовая ставка (склад 10б). Мастер — повышенная (склад 12б). РП — руководитель.">
               <SelectInput
-                value={form.role_tag}
+                value={form.role_tag || 'слесарь'}
                 onChange={(v) => set('role_tag', v)}
-                options={SPECIALTIES.map((s) => ({ value: s, label: s }))}
+                options={[
+                  { value: 'слесарь', label: '🔧 Слесарь' },
+                  { value: 'мастер',  label: '👷 Мастер' },
+                  { value: 'РП',      label: '👑 РП (руководитель)' },
+                ]}
               />
             </Field>
             <Field label="Разряд">

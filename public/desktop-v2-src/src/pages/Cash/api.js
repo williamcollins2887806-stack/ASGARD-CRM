@@ -31,24 +31,48 @@ export const STATUS_TONE = {
   question:     'warn'
 };
 
+// Stage W — loan УБРАН. Остаётся advance + office + other.
 export const TYPE_LABELS = {
   advance: 'Аванс на проект',
-  loan:    'Долг до ЗП'
+  office:  'Офисный расход',
+  other:   'Прочее'
 };
 
 export const TYPE_OPTIONS = [
   { value: 'advance', label: 'Аванс на проект' },
-  { value: 'loan',    label: 'Личный долг до ЗП' }
+  { value: 'office',  label: 'Офисный расход' },
+  { value: 'other',   label: 'Прочее' }
 ];
 
+/**
+ * Stage W — 12 категорий расходов (CategoryGrid).
+ * `code` совпадает с backend CHECK-ограничением cash_requests.category.
+ * 'other' требует поля `category_other_desc` (см. CreateRequestModal).
+ */
+export const CASH_CATEGORIES = [
+  { code: 'fuel_service',     icon: '⛽', label: 'ГСМ служ.' },
+  { code: 'fuel_personal',    icon: '⛽', label: 'ГСМ личн.' },
+  { code: 'taxi',             icon: '🚕', label: 'Такси' },
+  { code: 'accommodation',    icon: '🏨', label: 'Проживание' },
+  { code: 'food_brigade',     icon: '🍲', label: 'Продукты бригаде' },
+  { code: 'materials',        icon: '🧱', label: 'Материалы' },
+  { code: 'tool',             icon: '🔧', label: 'Инструмент' },
+  { code: 'tech_rent',        icon: '🚛', label: 'Аренда техники' },
+  { code: 'communication',    icon: '📞', label: 'Связь/интернет' },
+  { code: 'representational', icon: '🥂', label: 'Представительские' },
+  { code: 'urgent_repair',    icon: '🚨', label: 'Срочный ремонт' },
+  { code: 'other',            icon: '📦', label: 'Другое' }
+];
+
+// Legacy-список расходов для расшифровки в DetailModal — оставляем для совместимости с старыми записями.
 export const EXPENSE_CATEGORIES = [
-  { value: 'materials', label: 'Материалы',     icon: '🧱' },
-  { value: 'transport', label: 'Транспорт',     icon: '🚗' },
-  { value: 'food',      label: 'Питание',       icon: '🍽️' },
-  { value: 'housing',   label: 'Проживание',    icon: '🏨' },
-  { value: 'tools',     label: 'Инструмент',    icon: '🔧' },
-  { value: 'fuel',      label: 'Топливо',       icon: '⛽' },
-  { value: 'other',     label: 'Прочее',        icon: '📦' }
+  ...CASH_CATEGORIES.map((c) => ({ value: c.code, label: c.label, icon: c.icon })),
+  // backward compat for older expenses
+  { value: 'transport', label: 'Транспорт',  icon: '🚗' },
+  { value: 'food',      label: 'Питание',    icon: '🍽️' },
+  { value: 'housing',   label: 'Проживание', icon: '🏨' },
+  { value: 'tools',     label: 'Инструмент', icon: '🔧' },
+  { value: 'fuel',      label: 'Топливо',    icon: '⛽' }
 ];
 
 export const CATEGORY_BY_VALUE = Object.fromEntries(EXPENSE_CATEGORIES.map((c) => [c.value, c]));
@@ -119,6 +143,52 @@ export function loadWorks() {
   return api('/api/works?limit=2000')
     .then((d) => d.works || d.items || d || [])
     .catch(() => []);
+}
+
+/**
+ * Stage W — список СЗ с остатком лимита.
+ * Бэк-эндпоинт по контракту STAGE_W_CONTRACT.md:
+ *   GET /api/employees?is_self_employed=true
+ * На текущей кодовой базе employees доступны через /api/staff/employees,
+ * поэтому мы пробуем оба варианта (с дефолтом на /staff/employees) и фильтруем
+ * is_self_employed на клиенте — это страховка пока бэкенд (Agent A) не доедет.
+ * Возвращает массив {id, full_name, agreement_limit, agreement_used, agreement_remainder}.
+ */
+export function loadSelfEmployedEmployees() {
+  const parse = (d) => {
+    const arr = Array.isArray(d) ? d
+      : Array.isArray(d?.employees) ? d.employees
+      : Array.isArray(d?.items) ? d.items
+      : [];
+    return arr
+      .filter((e) => e.is_self_employed === true || e.is_self_employed === 1)
+      .map((e) => {
+        const limit = Number(e.agreement_limit ?? e.se_limit ?? 0) || 0;
+        const used  = Number(e.agreement_used  ?? e.se_used  ?? 0) || 0;
+        const remainder = e.agreement_remainder != null
+          ? Number(e.agreement_remainder)
+          : Math.max(0, limit - used);
+        return {
+          id: e.id,
+          full_name: e.full_name || e.fio || e.name || `СЗ #${e.id}`,
+          agreement_limit: limit,
+          agreement_used: used,
+          agreement_remainder: remainder
+        };
+      });
+  };
+  return api('/api/employees?is_self_employed=true&limit=500')
+    .then(parse)
+    .catch(() =>
+      api('/api/staff/employees?is_self_employed=true&limit=500')
+        .then(parse)
+        .catch(() => [])
+    );
+}
+
+/** Stage W — GET /api/cash/balance — для preview «сейчас → после». */
+export function loadCashBalance() {
+  return api('/api/cash/balance').catch(() => null);
 }
 
 /** POST /api/cash/:id/expense — добавить расход (multipart). */

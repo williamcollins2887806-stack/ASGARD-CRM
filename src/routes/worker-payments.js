@@ -35,6 +35,25 @@
 
 const { getWorkerFinances } = require('../lib/worker-finances');
 
+// Lock helper
+function getLockLib() {
+  try { return require('../lib/timesheet-locks'); } catch (_) {}
+  try { return require('./timesheet-v2'); } catch (_) {}
+  return null;
+}
+async function assertNotLockedSafe(fastify, viewer, ctx) {
+  const lib = getLockLib();
+  if (!lib || typeof lib.assertNotLocked !== 'function') return;
+  await lib.assertNotLocked(fastify, viewer, ctx);
+}
+function scopeForRole(role) {
+  if (role === 'PM' || role === 'HEAD_PM') return 'pm';
+  if (role === 'TO' || role === 'HEAD_TO') return 'medical';
+  if (role === 'WAREHOUSE') return 'warehouse';
+  if (role === 'OFFICE_MANAGER') return 'travel';
+  return 'global';
+}
+
 const MANAGE_ROLES = ['PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'PROC', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH', 'ADMIN'];
 const DIRECTOR_ROLES = ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH', 'ADMIN'];
 
@@ -79,8 +98,16 @@ async function routes(fastify, options) {
       }
 
       const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+      // FIX 11: LIMIT/OFFSET через placeholder'ы — раньше шёл string-concat
+      // `LIMIT ${parseInt(...)}` (анти-pattern, теоретически инъекционно при
+      // обходе parseInt через NaN/мусор; pg всё равно скастует, но единый стиль).
       const limit = Math.min(parseInt(lim) || 500, 2000);
-      const offset = parseInt(off) || 0;
+      const offset = Math.max(parseInt(off) || 0, 0);
+      const lparams = params.slice();
+      lparams.push(limit);
+      lparams.push(offset);
+      const limPh = `$${lparams.length - 1}`;
+      const offPh = `$${lparams.length}`;
 
       const { rows } = await db.query(`
         SELECT wp.*, e.fio as employee_name, e.phone as employee_phone,
@@ -94,8 +121,8 @@ async function routes(fastify, options) {
         LEFT JOIN employees pb ON pb.user_id = wp.paid_by
         ${where}
         ORDER BY wp.created_at DESC
-        LIMIT ${limit} OFFSET ${offset}
-      `, params);
+        LIMIT ${limPh} OFFSET ${offPh}
+      `, lparams);
 
       const { rows: countRows } = await db.query(
         `SELECT COUNT(*) as total FROM worker_payments wp ${where}`, params
@@ -389,9 +416,19 @@ async function routes(fastify, options) {
   });
 
   // ─── POST /pay-worker — выплатить рабочему (свободная сумма) ──────
+  //
+  // Защита от двойной выплаты (Stage S):
+  //   Если у сотрудника УЖЕ есть paid/confirmed запись того же `type` за тот же
+  //   месяц (pay_year/pay_month, fallback на created_at), возвращаем 409
+  //   `duplicate_payment` со списком ранее выплаченных и `requires_confirmation:true`.
+  //   Клиент после подтверждения от пользователя должен повторить запрос с
+  //   `confirm_duplicate: true` — этот флаг пропускает проверку.
   fastify.post('/pay-worker', crmAuth, async (req, reply) => {
     try {
-      const { employee_id, work_id, type, amount, payment_method, note } = req.body || {};
+      const {
+        employee_id, work_id, type, amount, payment_method, note,
+        pay_year, pay_month, confirm_duplicate
+      } = req.body || {};
 
       const validTypes = ['per_diem', 'salary', 'advance', 'bonus', 'penalty'];
       if (!validTypes.includes(type)) return reply.code(400).send({ error: 'type: per_diem, salary, advance, bonus, penalty' });
@@ -419,6 +456,44 @@ async function routes(fastify, options) {
         hasAccess = c.pm_id === userId;
       }
       if (!hasAccess) return reply.code(403).send({ error: 'Недостаточно прав' });
+
+      // ─── Защита от двойной выплаты (Stage S) ──────────────────────
+      // Пропускается, если клиент явно подтвердил повторную выплату.
+      if (!confirm_duplicate) {
+        const now = new Date();
+        const py = pay_year  ? parseInt(pay_year)  : now.getFullYear();
+        const pm = pay_month ? parseInt(pay_month) : (now.getMonth() + 1);
+        const { rows: existing } = await db.query(`
+          SELECT id, amount, paid_at, payment_method
+          FROM worker_payments
+          WHERE employee_id = $1
+            AND type = $2
+            AND status IN ('paid','confirmed')
+            AND COALESCE(pay_year,  EXTRACT(YEAR  FROM created_at)::int) = $3
+            AND COALESCE(pay_month, EXTRACT(MONTH FROM created_at)::int) = $4
+          ORDER BY id DESC
+        `, [eId, type, py, pm]);
+
+        if (existing.length > 0) {
+          const totalAlreadyPaid = existing.reduce((s, r) => s + Number(r.amount || 0), 0);
+          const typeRu = {
+            per_diem: 'Суточные', salary: 'Зарплата', advance: 'Аванс',
+            bonus: 'Премия', penalty: 'Штраф'
+          }[type] || type;
+          return reply.code(409).send({
+            error: 'duplicate_payment',
+            message: `${typeRu} уже выплачены этому рабочему: ${existing.length} операция(й), всего ${Math.round(totalAlreadyPaid)} ₽. Подтвердите если это новая выплата.`,
+            already_paid: existing.map((r) => ({
+              id: r.id,
+              amount: Number(r.amount),
+              paid_at: r.paid_at,
+              payment_method: r.payment_method
+            })),
+            total_already_paid: Math.round(totalAlreadyPaid),
+            requires_confirmation: true
+          });
+        }
+      }
 
       const { rows: inserted } = await db.query(`
         INSERT INTO worker_payments (
@@ -587,6 +662,8 @@ async function routes(fastify, options) {
   });
 
   // ─── POST /pay-salary/:year/:month — массово отметить выплату ─────
+  // Stage W (баг #2): защита от двойной массовой выплаты — если за период уже
+  // есть paid/confirmed зарплаты, требуем confirm_duplicate=true.
   fastify.post('/pay-salary/:year/:month', crmAuth, async (req, reply) => {
     try {
       const userId = req.user.id;
@@ -594,6 +671,38 @@ async function routes(fastify, options) {
       const month = parseInt(req.params.month);
       const paymentMethod = req.body?.payment_method || 'transfer';
       const workId = req.body?.work_id ? parseInt(req.body.work_id) : null;
+      const confirmDuplicate = !!req.body?.confirm_duplicate;
+
+      // ── Проверка на повторную выплату за период ──
+      if (!confirmDuplicate) {
+        const dupConds = [
+          `type = 'salary'`,
+          `status IN ('paid','confirmed')`,
+          `pay_year = $1`,
+          `pay_month = $2`
+        ];
+        const dupParams = [year, month];
+        if (workId) {
+          dupConds.push('work_id = $3');
+          dupParams.push(workId);
+        }
+        const { rows: existing } = await db.query(`
+          SELECT COUNT(*)::int AS cnt,
+                 COALESCE(SUM(amount), 0)::numeric AS sum_amount
+          FROM worker_payments
+          WHERE ${dupConds.join(' AND ')}
+        `, dupParams);
+        const cnt = Number(existing[0]?.cnt) || 0;
+        if (cnt > 0) {
+          return reply.code(409).send({
+            error: 'salary_already_paid_in_period',
+            message: `За этот период уже выплачено ${cnt} зарплат на сумму ${Math.round(Number(existing[0].sum_amount) || 0)} ₽. Подтвердите повторную выплату.`,
+            already_paid_count: cnt,
+            already_paid_sum: Number(existing[0].sum_amount) || 0,
+            requires_confirmation: true
+          });
+        }
+      }
 
       let query = `
         UPDATE worker_payments
@@ -1318,6 +1427,18 @@ async function routes(fastify, options) {
         return reply.code(400).send({ error: 'Укажите rows: [{employee_id, days: [{date, points, work_id?}]}]' });
       }
 
+      // Period lock — pre-check на весь месяц
+      try {
+        await assertNotLockedSafe(fastify, { id: req.user.id, role: req.user.role }, {
+          year, month, scope_hint: scopeForRole(req.user.role)
+        });
+      } catch (lockErr) {
+        if (lockErr && lockErr.code === 'period_locked') {
+          return reply.code(423).send({ error: 'period_locked', lock: lockErr.lock || null });
+        }
+        throw lockErr;
+      }
+
       const isDir = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_PM', 'BUH', 'TO', 'HEAD_TO', 'PROC'].includes(req.user.role);
 
       // Point value from settings
@@ -1359,12 +1480,12 @@ async function routes(fastify, options) {
           // Try UPDATE existing checkin (strict: work_id + non-cancelled + PM scope)
           const result = await db.query(`
             UPDATE field_checkins
-            SET day_rate = $1, amount_earned = $2, updated_at = NOW()
+            SET day_rate = $1, amount_earned = $2, entered_by_user_id = $5, updated_at = NOW()
             WHERE employee_id = $3 AND date = $4::date
               AND status != 'cancelled'
               ${worksSubquery}
               ${day.work_id ? 'AND work_id = ' + parseInt(day.work_id) : ''}
-          `, [dayAmount, dayAmount, empId, dayDate]);
+          `, [dayAmount, dayAmount, empId, dayDate, req.user.id]);
 
           if (result.rowCount > 0) {
             updated += result.rowCount;
@@ -1386,10 +1507,10 @@ async function routes(fastify, options) {
 
             // INSERT new checkin if work_id is provided and no existing record
             await db.query(`
-              INSERT INTO field_checkins (employee_id, work_id, assignment_id, date, day_rate, amount_earned, status, checkin_at, created_at, updated_at)
-              VALUES ($1, $2, $3, $4::date, $5, $6, 'completed', $4::date + TIME '08:00', NOW(), NOW())
+              INSERT INTO field_checkins (employee_id, work_id, assignment_id, date, day_rate, amount_earned, status, checkin_at, entered_by_user_id, created_at, updated_at)
+              VALUES ($1, $2, $3, $4::date, $5, $6, 'completed', $4::date + TIME '08:00', $7, NOW(), NOW())
               ON CONFLICT (employee_id, date, work_id) WHERE status != 'cancelled' DO NOTHING
-            `, [empId, parseInt(day.work_id), assignmentId, dayDate, dayAmount, dayAmount]);
+            `, [empId, parseInt(day.work_id), assignmentId, dayDate, dayAmount, dayAmount, req.user.id]);
             updated += 1;
           }
         }

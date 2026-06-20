@@ -26,7 +26,7 @@ window.AsgardPayrollDashboard=(function(){
       toast("Доступ","Недостаточно прав","err"); location.hash="#/home"; return;
     }
     // Менять лимиты может только ADMIN/DIRECTOR_GEN (как в backend admin-system.js)
-    const canEditLimits = user.role === "ADMIN" || user.role === "DIRECTOR_GEN";
+    const canEditLimits = ["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","BUH"].includes(user.role);
 
     const now = new Date();
     let curYear = now.getFullYear(), curMonth = now.getMonth()+1;
@@ -43,6 +43,9 @@ window.AsgardPayrollDashboard=(function(){
         </div>
 
         <div id="pd_cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:20px"></div>
+
+        <!-- Phase 1E (2026-06-20) — Карточка «🏦 КАССА»: хватит ли нала на ЗП -->
+        <div id="pd_cash_box" style="margin-bottom:20px"></div>
 
         <h3 style="color:var(--t1);margin:0 0 12px">Расчёт кассы</h3>
         <div id="pd_cc_tabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
@@ -93,6 +96,102 @@ window.AsgardPayrollDashboard=(function(){
       </div>
     `;
     await layout(html, {title: title || "Финансы персонала"});
+
+    // Phase 1E (2026-06-20) — стили для «🏦 Касса» (inject один раз)
+    if(!document.getElementById('pdcash-styles')){
+      const s = document.createElement('style');
+      s.id = 'pdcash-styles';
+      s.textContent = `
+        .pdcash {
+          padding: 14px 16px; border-radius: var(--r-md, 8px);
+          border: 1px solid; display: flex; flex-direction: column; gap: 10px;
+        }
+        .pdcash-title { font-size: 14px; font-weight: 700; }
+        .pdcash-grid { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; }
+        .pdcash-col { display: flex; flex-direction: column; gap: 4px; }
+        .pdcash-row {
+          display: flex; justify-content: space-between; align-items: baseline;
+          font-size: 12px; gap: 8px;
+        }
+        .pdcash-row-sep {
+          margin-top: 4px; padding-top: 6px;
+          border-top: 1px dashed currentColor;
+        }
+        .pdcash-label { opacity: 0.78; }
+        .pdcash-label-bold { font-weight: 700; opacity: 1; }
+        .pdcash-num { font-variant-numeric: tabular-nums; font-weight: 600; }
+        .pdcash-num-bold { font-weight: 800; font-size: 14px; }
+        .pdcash-num-mut { opacity: 0.75; }
+        .pdcash-diff-neg { color: #C62828; }
+        .pdcash-diff-pos { color: #2E7D32; }
+        .pdcash-diff-zero { opacity: 0.7; }
+        html[data-theme="dark"] .pdcash-diff-neg { color: #EF9A9A; }
+        html[data-theme="dark"] .pdcash-diff-pos { color: #A5D6A7; }
+        .pdcash-pct {
+          font-size: 11px; font-weight: 700;
+          margin-top: 3px; opacity: 0.78; text-align: right;
+        }
+        .pdcash-bar {
+          height: 10px; border-radius: 999px;
+          background: var(--bg3, #eee); overflow: hidden;
+          border: 1px solid var(--brd, #ccc);
+        }
+        .pdcash-bar-fill {
+          height: 100%; border-radius: 999px;
+          transition: width 240ms ease;
+        }
+        .pdcash-bar-fill.cash-status-ok,
+        .pdcash-bar-fill.cash-status-ok_with_returns {
+          background: linear-gradient(90deg, #A5D6A7, #66BB6A);
+        }
+        .pdcash-bar-fill.cash-status-tight {
+          background: linear-gradient(90deg, #FFE082, #FFB300);
+        }
+        .pdcash-bar-fill.cash-status-shortage {
+          background: linear-gradient(90deg, #EF9A9A, #E57373);
+        }
+        /* 2026-06-20 — парность для тёмной темы (на тёмном фоне нужны более насыщенные оттенки) */
+        html[data-theme="dark"] .pdcash-bar-fill.cash-status-ok,
+        html[data-theme="dark"] .pdcash-bar-fill.cash-status-ok_with_returns {
+          background: linear-gradient(90deg, #66BB6A, #43A047);
+        }
+        html[data-theme="dark"] .pdcash-bar-fill.cash-status-tight {
+          background: linear-gradient(90deg, #FFB300, #F57F17);
+        }
+        html[data-theme="dark"] .pdcash-bar-fill.cash-status-shortage {
+          background: linear-gradient(90deg, #E57373, #C62828);
+        }
+        .pdcash-action { font-size: 13px; font-weight: 700; padding: 6px 0; }
+        .pdcash-action-bad { color: #B71C1C; }
+        .pdcash-action-good { color: #1B5E20; }
+        html[data-theme="dark"] .pdcash-action-bad { color: #EF9A9A; }
+        html[data-theme="dark"] .pdcash-action-good { color: #A5D6A7; }
+        .pdcash-advances {
+          font-size: 12px; opacity: 0.82;
+          padding-top: 6px; border-top: 1px dashed currentColor;
+        }
+        .pdcash.cash-status-ok              { background: #E8F5E9; color: #1B5E20; border-color: #66BB6A; }
+        .pdcash.cash-status-ok_with_returns { background: #F1F8E9; color: #33691E; border-color: #9CCC65; }
+        .pdcash.cash-status-tight           { background: #FFF8E1; color: #E65100; border-color: #FFB300; }
+        .pdcash.cash-status-shortage        { background: #FFEBEE; color: #B71C1C; border-color: #E57373; }
+        html[data-theme="dark"] .pdcash.cash-status-ok {
+          background: rgba(76,175,80,0.10); color: #A5D6A7; border-color: rgba(76,175,80,0.40);
+        }
+        html[data-theme="dark"] .pdcash.cash-status-ok_with_returns {
+          background: rgba(124,179,66,0.10); color: #C5E1A5; border-color: rgba(124,179,66,0.40);
+        }
+        html[data-theme="dark"] .pdcash.cash-status-tight {
+          background: rgba(255,179,0,0.10); color: #FFE082; border-color: rgba(255,179,0,0.40);
+        }
+        html[data-theme="dark"] .pdcash.cash-status-shortage {
+          background: rgba(229,115,115,0.12); color: #EF9A9A; border-color: rgba(229,115,115,0.45);
+        }
+        @media (max-width: 720px) {
+          .pdcash-grid { grid-template-columns: 1fr; }
+        }
+      `;
+      document.head.appendChild(s);
+    }
 
     // Filter
     let filterType = '';
@@ -162,6 +261,77 @@ window.AsgardPayrollDashboard=(function(){
       }catch(e){
         toast("Ошибка","Не удалось загрузить сводку","err");
       }
+    }
+
+    // Phase 1E (2026-06-20) — «🏦 Касса» (хватит ли нала на ЗП)
+    async function loadCashCoverage(){
+      const box = $('#pd_cash_box');
+      if(!box) return;
+      let cc = null;
+      try{
+        cc = await apiFetch(`/api/payroll-dashboard/cash-coverage/${curYear}/${curMonth}`);
+      }catch(_){
+        box.innerHTML = '';
+        return;
+      }
+      box.innerHTML = renderCashCoverage(cc);
+    }
+
+    function renderCashCoverage(cc){
+      if(!cc) return '';
+      const balance   = Number(cc.cash_balance||0);
+      const needed    = Number(cc.cash_needed||0);
+      const pending   = Number(cc.pending_returns||0);
+      const effective = Number(cc.effective_balance != null ? cc.effective_balance : (balance + pending));
+      const diff      = Number(cc.diff != null ? cc.diff : (effective - needed));
+      const pct       = Number(cc.coverage_pct != null ? cc.coverage_pct : (needed>0 ? Math.round(effective/needed*100) : 100));
+      const advSum    = Number(cc.advances_outstanding||0);
+      const advCnt    = Number(cc.advances_count||0);
+      const status    = cc.status || 'ok';
+      const statusLb  = cc.status_label || '';
+
+      const cls = `cash-status-${status}`;
+      const icon = status==='ok' ? '✅'
+                 : status==='ok_with_returns' ? '🟢'
+                 : status==='tight' ? '⚠'
+                 : '❌';
+
+      const barPct = Math.min(100, Math.max(0, pct));
+      const diffSign = diff<0 ? '−' : (diff>0 ? '+' : '');
+      const diffAbs = Math.abs(diff);
+      const diffCls = diff<0 ? 'pdcash-diff-neg' : (diff>0 ? 'pdcash-diff-pos' : 'pdcash-diff-zero');
+
+      const advPlural = advCnt===1 ? 'заявка' : (advCnt<5 ? 'заявки' : 'заявок');
+      const advRow = advSum>0 ? `<div class="pdcash-advances">💡 Дополнительно — <b>${fmtR(advSum)}</b> выданы РП на руках (${advCnt} ${advPlural})</div>` : '';
+
+      const action = diff<0
+        ? `<div class="pdcash-action pdcash-action-bad">${icon} ${esc(statusLb)} — нужно пополнить ${fmtR(diffAbs)}</div>`
+        : `<div class="pdcash-action pdcash-action-good">${icon} ${esc(statusLb)}</div>`;
+
+      return `<div class="pdcash ${cls}">
+        <div class="pdcash-title">🏦 Касса — есть ли деньги на ЗП?</div>
+        <div class="pdcash-grid">
+          <div class="pdcash-col">
+            <div class="pdcash-row"><span class="pdcash-label">В кассе:</span><span class="pdcash-num">${fmtR(balance)}</span></div>
+            <div class="pdcash-row"><span class="pdcash-label">+ Ожидается возвратов:</span><span class="pdcash-num pdcash-num-mut">${fmtR(pending)}</span></div>
+            <div class="pdcash-row pdcash-row-sep">
+              <span class="pdcash-label pdcash-label-bold">= Эффективно:</span>
+              <span class="pdcash-num pdcash-num-bold">${fmtR(effective)}</span>
+            </div>
+          </div>
+          <div class="pdcash-col">
+            <div class="pdcash-row"><span class="pdcash-label">Нужно на ЗП:</span><span class="pdcash-num">${fmtR(needed)}</span></div>
+            <div class="pdcash-row pdcash-row-sep">
+              <span class="pdcash-label pdcash-label-bold">${diff<0?'Дефицит:':'Профицит:'}</span>
+              <span class="pdcash-num pdcash-num-bold ${diffCls}">${diffSign}${fmtR(diffAbs)}</span>
+            </div>
+            <div class="pdcash-pct">${pct}% покрыто</div>
+          </div>
+        </div>
+        <div class="pdcash-bar"><div class="pdcash-bar-fill ${cls}" style="width:${barPct}%"></div></div>
+        ${action}
+        ${advRow}
+      </div>`;
     }
 
     // ─── Расчёт кассы (4 вкладки) ───────────────────────────────
@@ -430,7 +600,7 @@ window.AsgardPayrollDashboard=(function(){
 
     async function refreshAll(){
       updatePeriod();
-      await Promise.all([loadSummary(), loadCashCalc(), loadTransfers(), loadLimits()]);
+      await Promise.all([loadSummary(), loadCashCoverage(), loadCashCalc(), loadTransfers(), loadLimits()]);
     }
 
     // Navigation

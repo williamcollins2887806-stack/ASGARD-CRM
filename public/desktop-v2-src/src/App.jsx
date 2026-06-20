@@ -58,7 +58,9 @@ const Alerts = lazy(() => import('@/pages/Alerts'));
 const OfficeSchedule = lazy(() => import('@/pages/OfficeSchedule'));
 const Travel = lazy(() => import('@/pages/Travel'));
 const OfficialEmployees = lazy(() => import('@/pages/OfficialEmployees'));
-const GlobalTimesheet = lazy(() => import('@/pages/GlobalTimesheet'));
+// GlobalTimesheet удалён 18.06.2026 — заменён на Timesheet (mode='global').
+// Timesheet v2 — единый компонент для 5 mode'ов (см. TIMESHEET_V2_CONTRACT.md)
+const Timesheet = lazy(() => import('@/pages/Timesheet'));
 const Personnel = lazy(() => import('@/pages/Personnel'));
 const HrRequests = lazy(() => import('@/pages/HrRequests'));
 const HrRating = lazy(() => import('@/pages/HrRating'));
@@ -82,13 +84,14 @@ const Acts = lazy(() => import('@/pages/Acts'));
 const OfficeExpenses = lazy(() => import('@/pages/OfficeExpenses'));
 const PayrollDashboard = lazy(() => import('@/pages/PayrollDashboard'));
 const Payroll = lazy(() => import('@/pages/Payroll'));
-const PayrollReport = lazy(() => import('@/pages/PayrollReport'));
+// PayrollReport удалён 18.06.2026 — это был дубль PaymentsReport. См. TIMESHEET_V2_CONTRACT.md.
 const MyEquipment = lazy(() => import('@/pages/MyEquipment'));
 const Contracts = lazy(() => import('@/pages/Contracts'));
 const Seals = lazy(() => import('@/pages/Seals'));
 const Proxies = lazy(() => import('@/pages/Proxies'));
 const PassRequests = lazy(() => import('@/pages/PassRequests'));
 const Settings = lazy(() => import('@/pages/Settings'));
+const AdminTimesheetSettings = lazy(() => import('@/pages/AdminTimesheetSettings'));
 const Diag = lazy(() => import('@/pages/Diag'));
 const Backup = lazy(() => import('@/pages/Backup'));
 const Sync = lazy(() => import('@/pages/Sync'));
@@ -103,6 +106,8 @@ const InboxApplications = lazy(() => import('@/pages/InboxApplications'));
 const Calculator = lazy(() => import('@/pages/Calculator'));
 const Cash = lazy(() => import('@/pages/Cash'));
 const CashAdmin = lazy(() => import('@/pages/CashAdmin'));
+// Stage W — Выплаты от директора (paid_by_role='director')
+const DirectorPayments = lazy(() => import('@/pages/DirectorPayments'));
 const Permits = lazy(() => import('@/pages/Permits'));
 const PermitApplications = lazy(() => import('@/pages/PermitApplications'));
 const PermitApplicationForm = lazy(() => import('@/pages/PermitApplications/FormPage'));
@@ -238,7 +243,15 @@ export default function App() {
               <Route path="/office-schedule" element={<Protected title="График офиса"><OfficeSchedule /></Protected>} />
               <Route path="/travel" element={<Protected title="Логистика дружины"><Travel /></Protected>} />
               <Route path="/official-employees" element={<Protected title="Официально устроенные"><OfficialEmployees /></Protected>} />
-              <Route path="/global-timesheet" element={<Protected title="Общий табель"><GlobalTimesheet /></Protected>} />
+              {/* Старый /global-timesheet → редирект на новый /timesheet (Timesheet v2 global mode) */}
+              <Route path="/global-timesheet" element={<Navigate to="/timesheet" replace />} />
+              {/* Timesheet v2 — единый компонент для 5 mode'ов (см. TIMESHEET_V2_CONTRACT.md) */}
+              <Route path="/my-timesheet"        element={<Protected title="Табель моей дружины"        roles={['PM','HEAD_PM']}><Timesheet mode="pm" /></Protected>} />
+              <Route path="/timesheet-warehouse" element={<Protected title="Табель учёта работы на складе" roles={['WAREHOUSE','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV']}><Timesheet mode="warehouse" /></Protected>} />
+              <Route path="/timesheet-medical"   element={<Protected title="Табель учёта МО"             roles={['TO','HEAD_TO','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV']}><Timesheet mode="medical" /></Protected>} />
+              <Route path="/timesheet-travel"    element={<Protected title="Табель учёта дороги"          roles={['OFFICE_MANAGER','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV']}><Timesheet mode="travel" /></Protected>} />
+              <Route path="/timesheet"           element={<Protected title="Общий табель — Табель дружины" roles={['DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','ADMIN','BUH','HR','HR_MANAGER']}><Timesheet mode="global" /></Protected>} />
+              <Route path="/admin/timesheet-settings" element={<Protected title="Настройки баллов табеля" roles={['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','BUH']}><AdminTimesheetSettings /></Protected>} />
               <Route path="/personnel" element={<Protected title="Дружина"><Personnel /></Protected>} />
               <Route path="/employee" element={<Protected title="Дружина"><Personnel /></Protected>} />
               <Route path="/hr-requests" element={<Protected title="Заявки персонала"><HrRequests /></Protected>} />
@@ -273,8 +286,10 @@ export default function App() {
               <Route path="/payroll-dashboard" element={<Protected title="Финансы персонала"><PayrollDashboard /></Protected>} />
               <Route path="/payroll"       element={<Protected title="Расчёты с рабочими"><Payroll /></Protected>} />
               <Route path="/payroll-sheet" element={<Protected title="Ведомость"><Payroll mode="sheet" /></Protected>} />
-              <Route path="/payroll-grid"  element={<Protected title="Ведомость-сетка"><Payroll mode="grid" /></Protected>} />
-              <Route path="/reports/payroll" element={<Protected title="Отчёт по выплатам"><PayrollReport /></Protected>} />
+              {/* Старый /payroll-grid → редирект на /my-timesheet (Timesheet v2 pm mode) */}
+              <Route path="/payroll-grid"  element={<Navigate to="/my-timesheet" replace />} />
+              {/* Старый /reports/payroll → редирект на /payments-report (PayrollReport удалён как дубль) */}
+              <Route path="/reports/payroll" element={<Navigate to="/payments-report" replace />} />
               <Route path="/my-equipment" element={<Protected title="Моё оборудование"><MyEquipment /></Protected>} />
               <Route path="/contracts" element={<Protected title="Реестр договоров"><Contracts /></Protected>} />
               <Route path="/seals" element={<Protected title="Реестр печатей"><Seals /></Protected>} />
@@ -296,6 +311,8 @@ export default function App() {
               <Route path="/calculator" element={<Protected title="Калькулятор работ"><Calculator /></Protected>} />
               <Route path="/cash" element={<Protected title="Казна Дружины"><Cash /></Protected>} />
               <Route path="/cash-admin" element={<Protected title="Казна. Управление"><CashAdmin /></Protected>} />
+              {/* Stage W — выплаты директора рабочему (paid_by_role='director') */}
+              <Route path="/director-payments" element={<Protected title="Выплаты от директора" roles={['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV']}><DirectorPayments /></Protected>} />
               <Route path="/permits" element={<Protected title="Разрешения и допуски"><Permits /></Protected>} />
               <Route path="/permit-applications" element={<Protected title="Заявки на оформление разрешений"><PermitApplications /></Protected>} />
               <Route path="/permit-application-form" element={<Protected title="Заявка на оформление"><PermitApplicationForm /></Protected>} />

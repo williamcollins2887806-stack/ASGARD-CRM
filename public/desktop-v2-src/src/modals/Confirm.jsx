@@ -34,7 +34,7 @@ export function ConfirmModal({
     <MCard className="frame-inside">
       <MHead icon={icon ?? t.icon} title={title} accent={t.accent} onClose={() => { onCancel?.(); close(); }} />
       <MBody>
-        <p style={{ fontSize: 14, lineHeight: 1.5 }}>{message}</p>
+        <p style={{ fontSize: 14, lineHeight: 1.5, whiteSpace: 'pre-line' }}>{message}</p>
       </MBody>
       <MFoot>
         <Btn variant="ghost" onClick={() => { onCancel?.(); close(); }}>{cancelText}</Btn>

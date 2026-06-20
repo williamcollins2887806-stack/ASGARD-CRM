@@ -10,6 +10,30 @@
 const { notClosedSql } = require('../helpers/work-status');
 const NOT_CLOSED = notClosedSql('work_status');   // толерантно: исключает все варианты закрытых/отменённых
 
+// Lock helper
+function getLockLib() {
+  try { return require('../lib/timesheet-locks'); } catch (_) {}
+  try { return require('./timesheet-v2'); } catch (_) {}
+  return null;
+}
+async function assertNotLockedSafe(fastify, viewer, ctx) {
+  const lib = getLockLib();
+  if (!lib || typeof lib.assertNotLocked !== 'function') return;
+  await lib.assertNotLocked(fastify, viewer, ctx);
+}
+function tryDateParts(dateStr) {
+  if (!dateStr || typeof dateStr !== 'string') {
+    const d = new Date();
+    return { year: d.getFullYear(), month: d.getMonth() + 1 };
+  }
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr);
+  if (!m) {
+    const d = new Date(dateStr);
+    return { year: d.getFullYear(), month: d.getMonth() + 1 };
+  }
+  return { year: parseInt(m[1], 10), month: parseInt(m[2], 10) };
+}
+
 const MONTH_NAMES = ['', 'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
   'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 
@@ -387,6 +411,19 @@ async function routes(fastify) {
       return reply.code(400).send({ error: 'employee_id, work_id, date обязательны' });
     }
 
+    // Period lock
+    try {
+      const { year, month } = tryDateParts(date);
+      await assertNotLockedSafe(fastify, { id: req.user.id, role: req.user.role }, {
+        year, month, scope_hint: 'pm', work_id, employee_id, date
+      });
+    } catch (lockErr) {
+      if (lockErr && lockErr.code === 'period_locked') {
+        return reply.code(423).send({ error: 'period_locked', lock: lockErr.lock || null });
+      }
+      throw lockErr;
+    }
+
     // Проверка доступа PM к объекту
     const { rows: check } = await db.query(
       isAdmin ? `SELECT id FROM works WHERE id=$1` : `SELECT id FROM works WHERE id=$1 AND pm_id=$2`,
@@ -408,10 +445,10 @@ async function routes(fastify) {
       INSERT INTO field_checkins
         (employee_id, work_id, assignment_id, date, shift, status,
          hours_worked, hours_paid, day_rate, amount_earned, note,
-         checkin_at, checkin_source, checkin_by)
+         checkin_at, checkin_source, checkin_by, entered_by_user_id)
       VALUES ($1,$2,$3,$4,$5,'completed',$6,$6,$7,$8,$9,
               ($4::date + TIME '08:00')::timestamp,
-              'pm_manual', $10)
+              'pm_manual', $10, $10)
       RETURNING *
     `, [employee_id, work_id, assignment.id, date, shift,
         hours_worked, finalRate, finalEarned, note || null, req.user.id]);
@@ -434,17 +471,32 @@ async function routes(fastify) {
     if (!existing) return reply.code(404).send({ error: 'Смена не найдена' });
     if (!isAdmin && existing.pm_id !== userId) return reply.code(403).send({ error: 'Нет доступа' });
 
+    // Period lock
+    try {
+      const lockDate = existing.date ? (typeof existing.date === 'string' ? existing.date.slice(0, 10) : new Date(existing.date).toISOString().slice(0, 10)) : null;
+      const { year, month } = tryDateParts(lockDate);
+      await assertNotLockedSafe(fastify, { id: req.user.id, role: req.user.role }, {
+        year, month, scope_hint: 'pm', work_id: existing.work_id, employee_id: existing.employee_id, date: lockDate
+      });
+    } catch (lockErr) {
+      if (lockErr && lockErr.code === 'period_locked') {
+        return reply.code(423).send({ error: 'period_locked', lock: lockErr.lock || null });
+      }
+      throw lockErr;
+    }
+
     const { rows: [updated] } = await db.query(`
       UPDATE field_checkins SET
-        amount_earned = COALESCE($2, amount_earned),
-        hours_worked  = COALESCE($3, hours_worked),
-        day_rate      = COALESCE($4, day_rate),
-        shift         = COALESCE($5, shift),
-        note          = COALESCE($6, note),
-        updated_at    = NOW()
+        amount_earned       = COALESCE($2, amount_earned),
+        hours_worked        = COALESCE($3, hours_worked),
+        day_rate            = COALESCE($4, day_rate),
+        shift               = COALESCE($5, shift),
+        note                = COALESCE($6, note),
+        entered_by_user_id  = $7,
+        updated_at          = NOW()
       WHERE id = $1
       RETURNING *
-    `, [checkinId, amount_earned, hours_worked, day_rate, shift, note]);
+    `, [checkinId, amount_earned, hours_worked, day_rate, shift, note, req.user.id]);
 
     return { checkin: updated };
   });
@@ -461,6 +513,20 @@ async function routes(fastify) {
     `, [checkinId]);
     if (!existing) return reply.code(404).send({ error: 'Смена не найдена' });
     if (!isAdmin && existing.pm_id !== userId) return reply.code(403).send({ error: 'Нет доступа' });
+
+    // Period lock
+    try {
+      const lockDate = existing.date ? (typeof existing.date === 'string' ? existing.date.slice(0, 10) : new Date(existing.date).toISOString().slice(0, 10)) : null;
+      const { year, month } = tryDateParts(lockDate);
+      await assertNotLockedSafe(fastify, { id: req.user.id, role: req.user.role }, {
+        year, month, scope_hint: 'pm', work_id: existing.work_id, employee_id: existing.employee_id, date: lockDate
+      });
+    } catch (lockErr) {
+      if (lockErr && lockErr.code === 'period_locked') {
+        return reply.code(423).send({ error: 'period_locked', lock: lockErr.lock || null });
+      }
+      throw lockErr;
+    }
 
     await db.query(
       `UPDATE field_checkins SET status='cancelled', updated_at=NOW() WHERE id=$1`,
@@ -564,11 +630,17 @@ async function routes(fastify) {
 
   // ═══════════════════════════════════════════════════════════════════
   // PUT /payments/:id/paid — отметить как выплачено
+  //
+  // Защита от двойной выплаты (Stage S):
+  //   Если у того же сотрудника уже есть paid/confirmed запись того же типа
+  //   за тот же месяц (НЕ считая саму обновляемую) — отдаём 409
+  //   `duplicate_payment` с `requires_confirmation:true`. Клиент после
+  //   подтверждения пользователем повторяет с `confirm_duplicate: true`.
   // ═══════════════════════════════════════════════════════════════════
   fastify.put('/payments/:id/paid', auth, async (req, reply) => {
     const { isAdmin, userId } = pmFilter(req.user);
     const payId = parseInt(req.params.id);
-    const { payment_method } = req.body || {};
+    const { payment_method, confirm_duplicate } = req.body || {};
 
     const { rows: [existing] } = await db.query(`
       SELECT wp.*, w.pm_id FROM worker_payments wp
@@ -576,6 +648,44 @@ async function routes(fastify) {
     `, [payId]);
     if (!existing) return reply.code(404).send({ error: 'Выплата не найдена' });
     if (!isAdmin && existing.pm_id !== userId) return reply.code(403).send({ error: 'Нет доступа' });
+
+    // ─── Защита от двойной выплаты (Stage S) ────────────────────────
+    if (!confirm_duplicate) {
+      const now = new Date();
+      const py = existing.pay_year  != null ? Number(existing.pay_year)  : now.getFullYear();
+      const pm = existing.pay_month != null ? Number(existing.pay_month) : (now.getMonth() + 1);
+      const { rows: dup } = await db.query(`
+        SELECT id, amount, paid_at, payment_method
+        FROM worker_payments
+        WHERE employee_id = $1
+          AND type = $2
+          AND status IN ('paid','confirmed')
+          AND id <> $3
+          AND COALESCE(pay_year,  EXTRACT(YEAR  FROM created_at)::int) = $4
+          AND COALESCE(pay_month, EXTRACT(MONTH FROM created_at)::int) = $5
+        ORDER BY id DESC
+      `, [existing.employee_id, existing.type, payId, py, pm]);
+
+      if (dup.length > 0) {
+        const totalAlreadyPaid = dup.reduce((s, r) => s + Number(r.amount || 0), 0);
+        const typeRu = {
+          per_diem: 'Суточные', salary: 'Зарплата', advance: 'Аванс',
+          bonus: 'Премия', penalty: 'Штраф'
+        }[existing.type] || existing.type;
+        return reply.code(409).send({
+          error: 'duplicate_payment',
+          message: `${typeRu} уже выплачены этому рабочему: ${dup.length} операция(й), всего ${Math.round(totalAlreadyPaid)} ₽. Подтвердите если это новая выплата.`,
+          already_paid: dup.map((r) => ({
+            id: r.id,
+            amount: Number(r.amount),
+            paid_at: r.paid_at,
+            payment_method: r.payment_method
+          })),
+          total_already_paid: Math.round(totalAlreadyPaid),
+          requires_confirmation: true
+        });
+      }
+    }
 
     const { rows: [updated] } = await db.query(`
       UPDATE worker_payments SET
@@ -989,7 +1099,7 @@ async function routes(fastify) {
               status = 'completed',
               hours_worked = $2, hours_paid = $3, day_rate = $4,
               amount_earned = $5, shift = COALESCE($6, shift),
-              edit_reason = $7, updated_at = NOW()
+              edit_reason = $7, entered_by_user_id = $8, updated_at = NOW()
             WHERE id = $1
           `, [
             existing.id,
@@ -998,7 +1108,8 @@ async function routes(fastify) {
             Number(cd.day_rate || 0),
             Number(cd.amount_earned || 0),
             cd.shift || 'day',
-            `Восстановлено по разногласию #${id}: ${responseText.slice(0, 200)}`
+            `Восстановлено по разногласию #${id}: ${responseText.slice(0, 200)}`,
+            userId
           ]);
           createdCheckinId = existing.id;
         } else {
@@ -1011,8 +1122,8 @@ async function routes(fastify) {
           INSERT INTO field_checkins (
             employee_id, work_id, assignment_id, date, shift,
             hours_worked, hours_paid, day_rate, amount_earned,
-            status, checkin_source, checkin_by, edit_reason
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'completed', 'pm_dispute_resolution', $10, $11)
+            status, checkin_source, checkin_by, edit_reason, entered_by_user_id
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'completed', 'pm_dispute_resolution', $10, $11, $10)
           RETURNING id
         `, [
           d.employee_id, d.work_id, assignment.id, date, cd.shift || 'day',

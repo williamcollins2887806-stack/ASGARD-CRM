@@ -81,8 +81,19 @@ window.AsgardOfficialEmployeesPage = (function () {
       .map(th).join('');
 
     const tbodies = rows.map(e => {
-      const debt       = e.company_debt || e.debt || 0;
-      const debtColor  = debt > 0 ? 'var(--err-t)' : debt < 0 ? 'var(--ok-t)' : 'var(--t2)';
+      const debt       = Number(e.company_debt || e.debt || 0) || 0;
+      // M3: положительный=должны (красный), 0=нулевой (серый), отрицательный=переплата (оранжевый)
+      const debtColor  = debt > 0 ? 'var(--err-t)' : debt < 0 ? 'var(--warn-t, var(--amber-t))' : 'var(--t2)';
+      const debtLabel  = debt > 0
+        ? `Должны ${rub(debt)}`
+        : debt < 0
+          ? `Переплата ${rub(Math.abs(debt))}`
+          : rub(0);
+      const debtTitle  = debt > 0
+        ? 'Компания должна сотруднику'
+        : debt < 0
+          ? 'Сотрудник получил больше — компания переплатила'
+          : 'Долг отсутствует';
       const hireDate   = e.hired_date || e.official_hire_date;
       const name       = e.full_name  || e.fio || '—';
       return `
@@ -98,7 +109,7 @@ window.AsgardOfficialEmployeesPage = (function () {
           <td style="padding:10px 14px;color:var(--t1);font-weight:600;">${rub(e.official_salary)}</td>
           <td style="padding:10px 14px;color:var(--t2);">${rub(e.official_non_burnable)}</td>
           <td style="padding:10px 14px;">${statusBadge(e.official_status)}</td>
-          <td style="padding:10px 14px;font-weight:700;color:${debtColor};">${rub(debt)}</td>
+          <td style="padding:10px 14px;font-weight:700;color:${debtColor};" title="${debtTitle}">${esc(debtLabel)}</td>
         </tr>`;
     }).join('');
 

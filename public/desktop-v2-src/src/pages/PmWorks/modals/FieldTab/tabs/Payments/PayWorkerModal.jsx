@@ -13,13 +13,26 @@ import { useEffect, useMemo, useState } from 'react';
 import { MCard, MHead, MBody, MFoot, Btn, Field } from '@/modals/parts';
 import { TextInput, MoneyInput, SelectInput } from '@/inputs/Inputs';
 import { toast } from '@/modals/Notifications';
-import { useModal } from '@/modals';
+import { useModal, ConfirmModal } from '@/modals';
 import { loadEmployeePaymentSummary, payWorkerDirect, loadCrew } from '../../api';
 
 function fmtMoney(n) {
   if (!Number.isFinite(+n)) return '0 ₽';
   return new Intl.NumberFormat('ru-RU').format(Math.round(+n)) + ' ₽';
 }
+
+function fmtDate(s) {
+  if (!s) return '—';
+  try {
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return String(s);
+    return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  } catch {
+    return String(s);
+  }
+}
+
+const METHOD_LBL = { cash: 'нал', card: 'карта', transfer: 'перевод', auto: 'авто' };
 
 const TYPE_TILES = [
   { value: 'per_diem', icon: '🌙', label: 'Суточные' },
@@ -36,7 +49,7 @@ const METHOD_TILES = [
 ];
 
 export function PayWorkerModal({ work, employeeId: initialEmpId, employeeName: initialEmpName, defaultType = 'salary', onSaved }) {
-  const { close } = useModal();
+  const { open, close } = useModal();
   const [employeeId, setEmployeeId] = useState(initialEmpId ? String(initialEmpId) : '');
   const [employeeName, setEmployeeName] = useState(initialEmpName || '');
   const [crew, setCrew] = useState([]);
@@ -145,21 +158,63 @@ export function PayWorkerModal({ work, employeeId: initialEmpId, employeeName: i
     if (!type) { setSubmitErr('Выберите тип выплаты'); return; }
     if (!method) { setSubmitErr('Выберите способ выплаты'); return; }
 
+    const basePayload = {
+      employee_id: Number(employeeId),
+      work_id: Number(work.id),
+      type,
+      amount: amt,
+      payment_method: method,
+      note: note.trim() || null
+    };
+
     setBusy(true);
-    try {
-      await payWorkerDirect({
-        employee_id: Number(employeeId),
-        work_id: Number(work.id),
-        type,
-        amount: amt,
-        payment_method: method,
-        note: note.trim() || null
-      });
+
+    const doPay = async (extra = {}) => {
+      await payWorkerDirect({ ...basePayload, ...extra });
       toast('Выплачено', `${fmtMoney(amt)} — ${employeeName || ''}`, 'ok');
       onSaved?.();
       close();
+    };
+
+    try {
+      await doPay();
     } catch (e) {
-      setSubmitErr(e?.message || String(e));
+      // Stage S — защита от двойной выплаты: 409 duplicate_payment.
+      // Сервер вернул `requires_confirmation:true` + список already_paid.
+      // Показываем confirm-модалку, после подтверждения — повторяем с
+      // `confirm_duplicate:true`, который пропускает проверку.
+      const data = e?.data || e?.body || null; // api-client кладёт payload в e.data
+      if (e?.status === 409 && data?.requires_confirmation) {
+        const alreadyList = (data.already_paid || []).map((p) =>
+          `• ${fmtDate(p.paid_at)} — ${fmtMoney(p.amount)} (${METHOD_LBL[p.payment_method] || p.payment_method || '—'})`
+        ).join('\n');
+        const totalTxt = data.total_already_paid
+          ? `\nВсего уже выплачено: ${fmtMoney(data.total_already_paid)}`
+          : '';
+        const msg = (data.message || 'Возможно двойная выплата.') + (alreadyList ? '\n\n' + alreadyList : '') + totalTxt;
+
+        // Чтобы пользователь видел модалку — снимем busy на время выбора.
+        setBusy(false);
+        open(<ConfirmModal
+          title="⚠ Возможно двойная выплата"
+          message={msg}
+          tone="warn"
+          okText="Подтвердить (новая выплата)"
+          cancelText="Отмена"
+          onConfirm={async () => {
+            setBusy(true);
+            try {
+              await doPay({ confirm_duplicate: true });
+            } catch (e2) {
+              setSubmitErr(e2?.serverMsg || e2?.message || String(e2));
+            } finally {
+              setBusy(false);
+            }
+          }}
+        />);
+        return;
+      }
+      setSubmitErr(e?.serverMsg || e?.message || String(e));
     } finally {
       setBusy(false);
     }

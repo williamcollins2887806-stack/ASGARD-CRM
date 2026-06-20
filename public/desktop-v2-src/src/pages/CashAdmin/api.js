@@ -83,8 +83,11 @@ export const ADMIN_STATUS_OPTIONS = [
   { value: 'rejected',     label: 'Отклонены' }
 ];
 
+// Stage W — фильтр без 'loan' (тип убран из UI).
+// Старые записи с type='loan' бэкенд бэкфилит в 'advance' (V243).
 export const ADMIN_TYPE_OPTIONS = [
   { value: '',        label: 'Все типы' },
   { value: 'advance', label: 'Аванс' },
-  { value: 'loan',    label: 'Долг до ЗП' }
+  { value: 'office',  label: 'Офисный расход' },
+  { value: 'other',   label: 'Прочее' }
 ];

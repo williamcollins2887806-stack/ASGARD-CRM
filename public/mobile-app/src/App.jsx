@@ -122,6 +122,7 @@ import EstimateReport from '@/pages/EstimateReport';
 import MimirAutoEstimate from '@/pages/MimirAutoEstimate';
 import HuginnEstimateChat from '@/pages/HuginnEstimateChat';
 import ExpenseChat from '@/pages/ExpenseChat';
+import DirectorApprovals from '@/pages/director/Approvals';
 import { Toaster } from '@/components/ui/sonner';
 import { usePushSubscription } from '@/hooks/usePushSubscription';
 
@@ -308,6 +309,7 @@ function AppLayout() {
           <Route path="/mimir-estimate/:workId" element={<ProtectedRoute section="works"><PinGuard><MimirAutoEstimate /></PinGuard></ProtectedRoute>} />
           <Route path="/huginn-chat/:chatId" element={<ProtectedRoute section="chat"><PinGuard><HuginnEstimateChat /></PinGuard></ProtectedRoute>} />
           <Route path="/expense-chat/:workId" element={<ProtectedRoute section="finances"><PinGuard><ExpenseChat /></PinGuard></ProtectedRoute>} />
+          <Route path="/director-approvals" element={<ProtectedRoute section="finances"><PinGuard><DirectorApprovals /></PinGuard></ProtectedRoute>} />
           <Route path="/more" element={<ProtectedRoute><PinGuard><More /></PinGuard></ProtectedRoute>} />
 
           {/* ═══ Личный канбан + Inbox (Волна 3) ═══ */}
@@ -341,7 +343,7 @@ function AppLayout() {
               <ProtectedRoute section="personal_kanban">
                 <PinGuard>
                   <Suspense fallback={<div style={{ padding: 20, color: 'var(--text-secondary)' }}>Загрузка…</div>}>
-                    <PersonalKanbanV3 onSwitchToSubstages={() => { window.location.hash = '#/personal-kanban'; }} />
+                    <PersonalKanbanV3 />
                   </Suspense>
                 </PinGuard>
               </ProtectedRoute>

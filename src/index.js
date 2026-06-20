@@ -522,6 +522,9 @@ fastify.register(require('./routes/equipment'), { prefix: '/api/equipment' });
 fastify.register(require('./routes/data'), { prefix: '/api/data' });
 fastify.register(require('./routes/permissions'), { prefix: '/api/permissions' });
 fastify.register(require('./routes/cash'), { prefix: '/api/cash' });
+// Stage W: новые модули кассового редизайна.
+fastify.register(require('./routes/handovers'),         { prefix: '/api/handovers' });
+fastify.register(require('./routes/director-payments'), { prefix: '/api/director-payments' });
 fastify.register(require('./routes/tasks'), { prefix: '/api/tasks' });
 fastify.register(require('./routes/permits'), { prefix: '/api/permits' });
 fastify.register(require('./routes/chat_groups'), { prefix: '/api/chat-groups' });
@@ -572,6 +575,7 @@ fastify.register(require('./routes/max-webhook'),      { prefix: '/api/max' });
 fastify.register(require('./routes/worker-readiness'),  { prefix: '/api/staff/readiness' });
 fastify.register(require('./routes/staff-requests-v2'), { prefix: '/api/staff-requests' });
 fastify.register(require('./routes/global-timesheet'),  { prefix: '/api/timesheet' });
+fastify.register(require('./routes/timesheet-v2'),      { prefix: '/api/timesheet/v2' });
 fastify.register(require('./routes/payroll-dashboard'), { prefix: '/api/payroll-dashboard' });
 fastify.register(require('./routes/training'),          { prefix: '/api/training' });
 fastify.register(require('./routes/telegram'),          { prefix: '/api/telegram' });

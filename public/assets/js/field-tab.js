@@ -3251,31 +3251,82 @@ window.AsgardFieldTab = (function () {
       confirmBtn.innerHTML = '⏳ Обработка...';
       console.log('[pay-worker] sending', { employee_id: summary.employee.id, work_id: work.id, type: type, amount: amount, payment_method: method });
 
-      try {
-        var resp = await fetch('/api/worker-payments/pay-worker', {
-          method: 'POST', headers: hdr(),
-          body: JSON.stringify({ employee_id: parseInt(summary.employee.id), work_id: work.id, type: type, amount: amount, payment_method: method, note: note })
-        });
-        var data;
-        try { data = await resp.json(); } catch (_) { data = {}; }
-        console.log('[pay-worker] response', resp.status, data);
+      var payload = {
+        employee_id: parseInt(summary.employee.id),
+        work_id: work.id,
+        type: type,
+        amount: amount,
+        payment_method: method,
+        note: note
+      };
 
-        if (!resp.ok) {
-          var emsg = data.details || data.error || ('HTTP ' + resp.status);
-          showInlineErr(emsg);
+      try {
+        var data = await submitPayWorker(payload);
+        if (data === null) {
+          // Пользователь отказался подтверждать дубль — снимаем состояние «обработка».
           confirmBtn.disabled = false; confirmBtn.innerHTML = origText;
           return;
         }
-
         AsgardUI.hideModal();
         toast('✅ Выплата записана: ' + money(amount) + ' ₽', '', 'ok');
         renderPaymentsTab(container, work, user);
       } catch (err) {
-        console.error('[pay-worker] network error', err);
-        showInlineErr('Сеть: ' + (err.message || 'не удалось отправить запрос'));
+        console.error('[pay-worker] error', err);
+        showInlineErr(err && err.message ? err.message : 'не удалось отправить запрос');
         confirmBtn.disabled = false; confirmBtn.innerHTML = origText;
       }
     });
+  }
+
+  // ─── POST /api/worker-payments/pay-worker с обработкой 409 duplicate_payment ──
+  // Сервер (worker-payments.js:462) возвращает 409 `duplicate_payment` с
+  // `requires_confirmation:true` и списком `already_paid`, если у сотрудника
+  // уже есть выплата того же `type` за тот же месяц. Показываем confirm:
+  // согласие → повтор с `confirm_duplicate:true`; отказ → null.
+  // Возвращает: { ...payload } при успехе, null если пользователь отказался.
+  async function submitPayWorker(payload) {
+    var resp = await fetch('/api/worker-payments/pay-worker', {
+      method: 'POST', headers: hdr(),
+      body: JSON.stringify(payload)
+    });
+    var data;
+    try { data = await resp.json(); } catch (_) { data = {}; }
+    console.log('[pay-worker] response', resp.status, data);
+
+    if (resp.status === 409 && data && data.requires_confirmation) {
+      var lines = (data.already_paid || []).map(function (p) {
+        var when = p.paid_at ? new Date(p.paid_at).toLocaleDateString('ru-RU') : '—';
+        var amt  = Number(p.amount || 0).toLocaleString('ru-RU') + ' ₽';
+        var pm   = p.payment_method || '—';
+        return '• ' + when + ' — ' + amt + ' (' + pm + ')';
+      }).join('\n');
+      var totalTxt = data.total_already_paid
+        ? '\nВсего уже выплачено: ' + Number(data.total_already_paid).toLocaleString('ru-RU') + ' ₽'
+        : '';
+      var msg = '⚠ Возможно двойная выплата\n\n' +
+                (data.message || 'Уже есть выплата того же типа за этот месяц.') +
+                (lines ? '\n\n' + lines : '') + totalTxt +
+                '\n\nПодтвердить новую выплату?';
+      if (!window.confirm(msg)) return null;
+
+      // Повтор с confirm_duplicate:true — пропускает проверку на бэке.
+      var p2 = Object.assign({}, payload, { confirm_duplicate: true });
+      resp = await fetch('/api/worker-payments/pay-worker', {
+        method: 'POST', headers: hdr(),
+        body: JSON.stringify(p2)
+      });
+      try { data = await resp.json(); } catch (_) { data = {}; }
+      console.log('[pay-worker] retry response', resp.status, data);
+    }
+
+    if (!resp.ok) {
+      var emsg = (data && (data.details || data.error)) || ('HTTP ' + resp.status);
+      var e = new Error(emsg);
+      e.status = resp.status;
+      e.data = data;
+      throw e;
+    }
+    return data || {};
   }
 
   // ─── Inline form: массовые суточные (рендерится внутри вкладки, не в отдельной модалке) ──
