@@ -1717,11 +1717,9 @@ window.AsgardTendersPage = (function(){
         if (days <= 3) urgencyCls = 'hub-row-burn';
         else if (days <= 7) urgencyCls = 'hub-row-soon';
       }
-      // Действия: для applications — «Принять / Отклонить», для tender — open
-      const actionsBtns = x.kind === 'application'
-        ? `<button class="btn" style="padding:6px 10px" data-feed-act="to-tender" data-kind="${esc(x.kind)}" data-fid="${esc(x.id)}" title="Создать тендер">⚔ В тендер</button>
-           <button class="btn ghost" style="padding:6px 10px;margin-left:4px" data-feed-act="reject" data-kind="${esc(x.kind)}" data-fid="${esc(x.id)}" title="Отклонить">❌</button>`
-        : `<button class="btn" style="padding:6px 10px" data-feed-act="open" data-kind="${esc(x.kind||'tender')}" data-fid="${esc(x.id)}">Открыть</button>`;
+      // Действия: единая кнопка «Открыть» — переход к источнику (тендер/заявка/звонок/просчёт).
+      // «В тендер» / «Отклонить» — на странице источника (там RBAC и существующие endpoints).
+      const actionsBtns = `<button class="btn" style="padding:6px 10px" data-feed-act="open" data-kind="${esc(x.kind||'tender')}" data-fid="${esc(x.id)}">Открыть</button>`;
       const priceCell = (nmck || sub)
         ? `${nmck?'<div style="font-size:11px"><span style="font-size:10px;color:var(--t3)">НМЦ</span> '+money(nmck)+'</div>':''}${sub?'<div style="font-size:11px;margin-top:3px"><span style="font-size:10px;color:#4cd964">Подача</span> '+money(sub)+'</div>':''}`
         : '—';
@@ -2066,12 +2064,20 @@ window.AsgardTendersPage = (function(){
         if (fact === 'open') {
           const kind = e.target.getAttribute('data-kind');
           const fid = e.target.getAttribute('data-fid');
-          if (kind === 'tender') openTenderEditor(Number(fid));
-          else toast('Открытие заявки', 'Drawer для заявок появится в S-18/S-22 (мобайл/React)', 'ok');
-        } else if (fact === 'to-tender') {
-          toast('В тендер', 'Создание тендера из заявки выполняется через AI-классификатор (S-3/S-10). Ручное действие пока недоступно.', 'ok');
-        } else if (fact === 'reject') {
-          toast('Отклонение', 'Действие отклонения заявки появится в S-7 (backend endpoint).', 'ok');
+          // Маршрутизация на страницу источника — там полный набор действий
+          // (В тендер / Отклонить / Drawer и т.д.) с RBAC.
+          if (kind === 'tender') {
+            openTenderEditor(Number(fid));
+          } else if (kind === 'application') {
+            window.location.hash = '#/inbox-applications?id=' + encodeURIComponent(fid);
+          } else if (kind === 'pre_tender') {
+            window.location.hash = '#/pre-tenders?id=' + encodeURIComponent(fid);
+          } else if (kind === 'call') {
+            window.location.hash = '#/telephony?id=' + encodeURIComponent(fid);
+          } else {
+            // Неизвестный kind — fallback на саму страницу хаба
+            window.location.hash = '#/tenders';
+          }
         }
         return;
       }

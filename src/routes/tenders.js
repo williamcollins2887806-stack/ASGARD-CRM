@@ -763,7 +763,7 @@ async function routes(fastify, options) {
                 [newPmId, updated.id, card.id]);
               if (!dup.rows[0]) {
                 // Новый substage у нового owner
-                const newSub = await personalKanban.ensureDefaultSubstages(
+                const newSub = await personalKanban.loadFirstActiveSubstage(
                   pkClient, newPmId, 'tender', safeMain);
                 // Подпись предыдущего substage (для метки transferred_prev_substage_label)
                 let prevLabel = null;
@@ -812,7 +812,7 @@ async function routes(fastify, options) {
             }
           } else {
             // Карты не было — создаём новую у нового PM.
-            const firstSub = await personalKanban.ensureDefaultSubstages(
+            const firstSub = await personalKanban.loadFirstActiveSubstage(
               pkClient, newPmId, 'tender', safeMain);
             const ins = await pkClient.query(
               `INSERT INTO personal_kanban_cards
@@ -1992,7 +1992,7 @@ async function routes(fastify, options) {
       // §2.5/§9.1: canonical work main_status = 'Подготовка'.
       try {
         const personalKanban = require('./personal-kanban');
-        const firstSub = await personalKanban.ensureDefaultSubstages(
+        const firstSub = await personalKanban.loadFirstActiveSubstage(
           client, pm_id, 'work', 'Подготовка');
 
         // F-1: ищем уже существующую открытую tender-карту PM на этот тендер.
