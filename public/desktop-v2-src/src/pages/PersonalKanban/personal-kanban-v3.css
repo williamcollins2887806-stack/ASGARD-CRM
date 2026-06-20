@@ -86,6 +86,34 @@
   display: flex; flex-direction: column; gap: 7px;
 }
 .pk3-col-body.pk3-drop-hover { background: var(--gold-bg); }
+
+/* S-31.1 F-6: глобальный banner «Ничего не найдено» при активном поиске. */
+.pk3-search-no-results {
+  display: flex; align-items: center; gap: 12px;
+  margin: 8px 22px 0;
+  padding: 12px 16px;
+  background: var(--bg-2);
+  border: 1px solid var(--brd-1);
+  border-left: 3px solid var(--gold);
+  border-radius: var(--r-md, 8px);
+  color: var(--t-1);
+  font-size: 13px;
+}
+.pk3-search-no-results-ic { font-size: 18px; }
+.pk3-search-no-results-txt { flex: 1; }
+.pk3-search-no-results-reset {
+  background: var(--bg-3);
+  border: 1px solid var(--brd-1);
+  color: var(--t-1);
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.pk3-search-no-results-reset:hover {
+  border-color: var(--gold);
+  background: var(--gold-bg);
+}
 .pk3-col-win .pk3-col-head { background: linear-gradient(180deg, var(--ok-bg), transparent); }
 .pk3-col-lose .pk3-col-head { background: linear-gradient(180deg, var(--err-bg), transparent); }
 /* S-21: 9-я колонка «Дозапрос» — золотой акцент + pulse-анимация */

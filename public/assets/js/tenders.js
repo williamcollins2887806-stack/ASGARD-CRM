@@ -397,12 +397,16 @@ window.AsgardTendersPage = (function(){
 
   // ═══ Tenders-Hub: Источник (source_kind) ═══
   // Цвета через CSS-классы (.src-*) в app.css — поэтому здесь только label+cls maps.
+  // S-31.1 F-2: добавлен 'to_manual' (V250 7-е значение source_kind CHECK)
+  // — иначе тендер, созданный ТО вручную, на хабе рисовался как «🖐 Вручную»
+  // и провенанс ТО→тендер был неотличим от РП-ввода.
   const SOURCE_LABELS = {
     'platform':      '📡 Площадка',
     'email_invite':  '📧 Приглашение',
     'email_request': '📧 Письмо',
     'phone':         '📞 Звонок',
     'pm_manual':     '👤 От РП',
+    'to_manual':     '🛡 От ТО',
     'manual':        '🖐 Вручную'
   };
   const SOURCE_CLS = {
@@ -411,6 +415,7 @@ window.AsgardTendersPage = (function(){
     'email_request': 'src-email',
     'phone':         'src-phone',
     'pm_manual':     'src-manual',
+    'to_manual':     'src-to-manual',
     'manual':        'src-manual'
   };
   function srcBadge(kind){
@@ -1794,13 +1799,24 @@ window.AsgardTendersPage = (function(){
         return hay.includes(q);
       });
       if (!filtered.length) {
-        const errLine = feed._error ? `<div class="help" style="margin-top:8px;color:var(--err-t)">⚠ ${esc(feed._error)} — endpoint /api/tenders-hub/feed недоступен (ждёт S-7 backend)</div>` : '';
-        tb.innerHTML = `<tr><td colspan="14" style="padding:40px;text-align:center;color:var(--t3)">
-          <div>Нет данных по этому фильтру.</div>${errLine}
-        </td></tr>`;
+        // S-31.1 F-3: user-friendly error без internal-pipeline-жаргона (раньше — «ждёт S-7 backend»).
+        if (feed._error) {
+          tb.innerHTML = `<tr><td colspan="14" style="padding:40px;text-align:center;color:var(--t3)">
+            <div style="font-size:14px;font-weight:600;color:var(--err-t);margin-bottom:6px">⚠ Не удалось загрузить хаб тендеров</div>
+            <div class="help" style="margin-bottom:12px">${esc(feed._error)}</div>
+            <button type="button" class="btn btn-primary" data-feed-retry="1">↻ Повторить</button>
+          </td></tr>`;
+        } else {
+          tb.innerHTML = `<tr><td colspan="14" style="padding:40px;text-align:center;color:var(--t3)">
+            <div>Нет данных по этому фильтру.</div>
+          </td></tr>`;
+        }
       } else {
         tb.innerHTML = filtered.map(feedRow).join('');
       }
+      // S-31.1 F-3: bind retry-кнопки (если она отрендерилась).
+      const retryBtn = tb.querySelector('[data-feed-retry]');
+      if (retryBtn) retryBtn.addEventListener('click', () => applyAndRenderFromFeed(), { once: true });
       cnt.textContent = `Показано: ${filtered.length} из ${items.length}.`;
       // Sub-tab бейджи для applications (если backend вернул разрезы)
       if (tab === 'applications' && feed.subtab_counts) {

@@ -11093,6 +11093,8 @@ html[data-theme="light"] .v2-switch { color: #1a1410; }
 .src-email    { background: var(--info-bg); color: var(--info-t); border-color: rgba(96,165,250,0.30); }
 .src-phone    { background: var(--ok-bg);   color: var(--ok-t);   border-color: rgba(74,222,128,0.30); }
 .src-manual   { background: var(--purple-bg); color: var(--purple-l); border-color: rgba(139,92,246,0.30); }
+/* S-31.1 F-2: source_kind='to_manual' — тендер, созданный ТО вручную. */
+.src-to-manual { background: var(--blue-bg); color: var(--blue-l, var(--blue)); border-color: var(--blue); }
 
 /* KPI-карточки сверху */
 .hub-kpi-grid {

@@ -25,6 +25,7 @@ import { useModal } from '@/modals';
 import { toast } from '@/modals/Notifications';
 import { Btn } from '@/modals/parts';
 import { TopActionsBar, EmptyState, LoadingCard, TabsBar } from '@/blocks/Blocks';
+import AccessDenied from '@/blocks/AccessDenied';
 import {
   FLOW_TYPES, MAIN_STATUSES,
   loadSubstages, loadCards, moveCard
@@ -45,7 +46,8 @@ export default function PersonalKanbanPage() {
   const modal = useModal();
 
   // S-21: TO/HEAD_TO добавлены — у них собственный режим scope (to_personal / to_team), а не PM-канбан.
-  const allowed = !!user && ['PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(user.role);
+  const ALLOWED_ROLES = ['PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+  const allowed = !!user && ALLOWED_ROLES.includes(user.role);
 
   const [viewMode, setViewMode] = useState(() => {
     try { return localStorage.getItem(STORAGE_VIEW) || 'v3'; } catch { return 'v3'; }
@@ -279,14 +281,15 @@ export default function PersonalKanbanPage() {
     return <BoardV3 onSwitchToSubstages={forceV3 ? undefined : () => setViewMode('substages')} />;
   }
 
-  // Гейт прав
+  // Гейт прав — S-31.1 F-5: используем общий <AccessDenied/> (как в Tenders/index.jsx).
   if (user && !allowed) {
     return (
-      <div className="card p-32 t-center">
-        <div className="fs-32 mb-12">🛡</div>
-        <div className="fs-16 fw-700 mb-6">Нет доступа</div>
-        <div className="c-t3">Личный канбан доступен РП, главам РП, тендерному отделу и директорам.</div>
-      </div>
+      <AccessDenied
+        allowed={ALLOWED_ROLES}
+        userRole={user.role}
+        title="Личный канбан недоступен"
+        message="Раздел канбана видят РП, главы РП, тендерный отдел и директора."
+      />
     );
   }
 

@@ -23,6 +23,8 @@ import {
   v3ConvertToPretender, v3SearchReferences,
   tkpFromCard, tkpLoadBlocks, tkpSaveBlocks, tkpRenderPdf, tkpAttachToCard, tkpSendToClient,
 } from './api';
+// S-31.1 F-1: «＋ Создать вручную» теперь открывает реальный wizard (раньше — toast-stub).
+import { TenderEditorModal } from '../Tenders/modals/TenderEditor.dispatch';
 import './personal-kanban-v3.css';
 
 const FLOW_TABS = [
@@ -188,7 +190,7 @@ export default function BoardV3({ onSwitchToSubstages }) {
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
-        <Btn variant="gold" onClick={() => toast.info('Откроется форма создания. Сейчас используй /pre-tenders или /tenders для ручного ввода.')}>＋ Создать вручную</Btn>
+        <Btn variant="gold" onClick={() => open(<TenderEditorModal />, { size: 'wide' })}>＋ Создать вручную</Btn>
       </div>
 
       {/* S-21: для TO/HEAD_TO flow-tabs скрыты (видят только tender). */}
@@ -203,6 +205,25 @@ export default function BoardV3({ onSwitchToSubstages }) {
               {t.label} <span className="pk3-cnt">{flowFilter === t.id ? (counts.total || 0) : '—'}</span>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* S-31.1 F-6: глобальный banner «ничего не найдено» при активном поиске. */}
+      {search && !loading && V3_COLUMNS.reduce(
+        (s, k) => s + (columns[k] || []).filter(cardFiltered).length, 0
+      ) === 0 && (
+        <div className="pk3-search-no-results" role="status" aria-live="polite">
+          <span className="pk3-search-no-results-ic" aria-hidden="true">🔍</span>
+          <span className="pk3-search-no-results-txt">
+            Ничего не найдено по запросу «{search}»
+          </span>
+          <button
+            type="button"
+            className="pk3-search-no-results-reset"
+            onClick={() => setSearch('')}
+          >
+            ✕ Сбросить
+          </button>
         </div>
       )}
 

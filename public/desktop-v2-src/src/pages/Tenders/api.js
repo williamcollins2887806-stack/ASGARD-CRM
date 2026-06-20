@@ -52,12 +52,16 @@ export const TENDER_STATUS_COLORS = {
 
 // Источник заявки/тендера (новое поле tenders.source_kind после V250 S-2).
 // Лейблы и CSS-классы 1:1 с vanilla S-13 (tenders.js SOURCE_LABELS/SOURCE_CLS).
+// S-31.1 F-2: добавлен `to_manual` (V250 7-е значение CHECK) — тендер,
+// созданный ТО вручную. Иначе на хабе рендерился fallback «🖐 Вручную»
+// и провенанс ТО→тендер хоронился.
 export const SOURCE_LABELS = {
   'platform':      '📡 Площадка',
   'email_invite':  '📧 Приглашение',
   'email_request': '📧 Письмо',
   'phone':         '📞 Звонок',
   'pm_manual':     '👤 От РП',
+  'to_manual':     '🛡 От ТО',
   'manual':        '🖐 Вручную'
 };
 
@@ -67,6 +71,7 @@ export const SOURCE_CLS = {
   'email_request': 'tnd-src-email',
   'phone':         'tnd-src-phone',
   'pm_manual':     'tnd-src-manual',
+  'to_manual':     'tnd-src-to-manual',
   'manual':        'tnd-src-manual'
 };
 
@@ -77,6 +82,7 @@ export const SOURCE_OPTIONS = [
   { value: 'email_request', label: '📧 Письма' },
   { value: 'phone',         label: '📞 Звонки' },
   { value: 'pm_manual',     label: '👤 От РП' },
+  { value: 'to_manual',     label: '🛡 От ТО (вручную)' },
   { value: 'manual',        label: '🖐 Вручную' }
 ];
 

@@ -37,12 +37,16 @@ function isAddendum(s) { return s && s.toLowerCase().includes('дозапрос'
 
 // SourceBadge — компактный бейдж источника (по INV-18 D §для IMP-19).
 // Карта source_kind → {ic, label, fg, bg}. Только токены, без хардкод-цветов.
+// S-31.1 F-2: добавлен `to_manual` (V250 7-е значение CHECK) — тендер,
+// созданный ТО вручную. Иначе fallback рендерил «·» вместо иконки и провенанс
+// ТО→тендер был неотличим от РП-ввода.
 const SOURCE_META = {
   platform:      { ic: '📡',  label: 'С площадки',   fg: 'var(--blue)',  bg: 'rgba(74,144,217,0.13)' },
   email_invite:  { ic: '📧✨', label: 'AI-письмо',    fg: 'var(--gold)',  bg: 'rgba(200,168,78,0.13)' },
   email_request: { ic: '📧',  label: 'Письмо',       fg: 'var(--blue)',  bg: 'rgba(74,144,217,0.10)' },
   phone:         { ic: '📞',  label: 'Звонок',       fg: 'var(--green)', bg: 'rgba(48,209,88,0.11)' },
   pm_manual:     { ic: '👤',  label: 'От РП',        fg: 'var(--gold)',  bg: 'rgba(200,168,78,0.10)' },
+  to_manual:     { ic: '🛡',  label: 'От ТО',        fg: 'var(--blue)',  bg: 'rgba(74,144,217,0.13)' },
   manual:        { ic: '✍️',  label: 'Вручную',      fg: 'var(--text-tertiary)', bg: 'rgba(142,142,147,0.10)' },
 };
 

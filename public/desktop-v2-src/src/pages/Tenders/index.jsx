@@ -24,7 +24,7 @@ import { useAuth } from '@/api/useAuth';
 import { useModal } from '@/modals';
 import { toast } from '@/modals/Notifications';
 import { Btn } from '@/modals/parts';
-import { TopActionsBar } from '@/blocks/Blocks';
+import { TopActionsBar, SkeletonRows } from '@/blocks/Blocks';
 import AccessDenied from '@/blocks/AccessDenied';
 
 // RBAC синхронно с backend `src/routes/tenders.js:268` (GET /api/tenders) +
@@ -83,11 +83,14 @@ export default function TendersPage() {
   const [feedItems, setFeedItems] = useState([]);
   const [pms, setPms] = useState([]);
   const [loading, setLoading] = useState(true);
+  // S-31.1 F-4: ErrorCard вместо ложного EmptyState при сетевой ошибке.
+  const [loadError, setLoadError] = useState(null);
 
   /* Загрузка для tab='tenders' — старый /api/tenders endpoint (snapshot).
      Для applications/all — /api/tenders-hub/feed (UNION 4 источников). */
   const refresh = () => {
     setLoading(true);
+    setLoadError(null);
     const wantTenders = (main === 'tenders');
     const wantFeed    = (main !== 'tenders');
     const tasks = [];
@@ -121,7 +124,15 @@ export default function TendersPage() {
         setTenders(tList);
         setFeedItems(feed?.items || []);
       })
-      .catch((e) => toast('Не удалось загрузить хаб', String(e?.message || e), 'err'))
+      .catch((e) => {
+        // S-31.1 F-4: фиксируем ошибку в state, чтобы отрендерить ErrorCard
+        // вместо ложного EmptyState «Тендеров пока нет».
+        const msg = String(e?.message || e || 'Неизвестная ошибка');
+        setLoadError(msg);
+        setTenders([]);
+        setFeedItems([]);
+        toast('Не удалось загрузить хаб', msg, 'err');
+      })
       .finally(() => setLoading(false));
   };
 
@@ -470,8 +481,23 @@ export default function TendersPage() {
       <TendersFilter filters={filters} onChange={setFilters} pms={pms} />
 
       {loading ? (
-        <div className="card card-empty">
-          ⏳ Загружаем хаб…
+        /* S-31.1 F-7: skeleton вместо текстового «⏳ Загружаем хаб…»
+           (требование промпта §D.3 «скелетоны вместо пустоты»). */
+        <SkeletonRows count={6} rowHeight={52} />
+      ) : loadError ? (
+        /* S-31.1 F-4: ErrorCard с retry — раньше при сетевой ошибке
+           показывался ложный EmptyState «Тендеров пока нет. Создайте новый». */
+        <div className="tnd-error-card" role="alert" aria-live="assertive">
+          <div className="tnd-error-icon" aria-hidden="true">⚠</div>
+          <div className="tnd-error-title">Не удалось загрузить хаб тендеров</div>
+          <div className="tnd-error-msg">{loadError}</div>
+          <button
+            type="button"
+            className="tnd-error-retry"
+            onClick={() => { setLoadError(null); refresh(); }}
+          >
+            ↻ Повторить
+          </button>
         </div>
       ) : (
         <TendersList

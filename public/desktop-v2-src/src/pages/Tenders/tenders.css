@@ -657,6 +657,56 @@
   color: var(--purple-l);
   border-color: var(--purple);
 }
+/* S-31.1 F-2: бейдж source_kind='to_manual' — отдельный от pm_manual/manual. */
+.tnd-src-to-manual {
+  background: var(--blue-bg);
+  color: var(--blue);
+  border-color: var(--blue);
+}
+
+/* S-31.1 F-4: ErrorCard вместо ложного EmptyState при сетевой ошибке. */
+.tnd-error-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 32px 22px;
+  background: var(--bg-2);
+  border: 1px solid var(--err);
+  border-left: 4px solid var(--err);
+  border-radius: var(--r-md, 10px);
+  text-align: center;
+}
+.tnd-error-icon {
+  font-size: 32px;
+  color: var(--err);
+  line-height: 1;
+}
+.tnd-error-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--t-1);
+}
+.tnd-error-msg {
+  font-size: 13px;
+  color: var(--t-3);
+  max-width: 520px;
+}
+.tnd-error-retry {
+  margin-top: 6px;
+  padding: 8px 18px;
+  background: var(--bg-3);
+  color: var(--t-1);
+  border: 1px solid var(--gold);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.tnd-error-retry:hover {
+  background: var(--gold-bg);
+  color: var(--gold);
+}
 
 /* ─── KPI-карточки ─── */
 .tnd-hub-kpi-grid {
