@@ -14,7 +14,10 @@ const TENDER_TRANSITIONS = {
   'Согласование ТКП':      ['ТКП согласовано', 'Отправлено на просчёт', 'Проиграли', 'Не подходит'],
   'ТКП согласовано':       ['Готово к отправке КП', 'Согласование ТКП', 'Проиграли', 'Не подходит'],
   'Готово к отправке КП':  ['КП отправлено', 'ТКП согласовано', 'Проиграли', 'Не подходит'],
-  'КП отправлено':         ['Выиграли', 'Проиграли', 'Не подходит'],
+  // S-2/V250 + S-13: «Дозапрос» — заказчик прислал дозапрос после «КП отправлено».
+  // Карта временно туда до ответа, потом — обратно в «КП отправлено» либо в Выиграли/Проиграли.
+  'КП отправлено':         ['Дозапрос', 'Выиграли', 'Проиграли', 'Не подходит'],
+  'Дозапрос':              ['КП отправлено', 'Выиграли', 'Проиграли', 'Не подходит'],
   'Выиграли':              [],
   'Проиграли':             ['Новый'],
   'Не подходит':           ['Новый']
@@ -30,7 +33,8 @@ const HEAD_TO_TRANSITIONS = {
   'Согласование ТКП':      ['Отправлено на просчёт', 'Проиграли', 'Не подходит'],
   'ТКП согласовано':       ['Согласование ТКП', 'Проиграли', 'Не подходит'],
   'Готово к отправке КП':  ['КП отправлено', 'ТКП согласовано', 'Проиграли', 'Не подходит'],
-  'КП отправлено':         ['Выиграли', 'Проиграли', 'Не подходит'],
+  'КП отправлено':         ['Дозапрос', 'Выиграли', 'Проиграли', 'Не подходит'],
+  'Дозапрос':              ['КП отправлено', 'Выиграли', 'Проиграли', 'Не подходит'],
   'Выиграли':              [],
   'Проиграли':             ['Новый'],
   'Не подходит':           ['Новый']
@@ -759,7 +763,7 @@ async function routes(fastify, options) {
                 [newPmId, updated.id, card.id]);
               if (!dup.rows[0]) {
                 // Новый substage у нового owner
-                const newSub = await personalKanban.loadFirstActiveSubstage(
+                const newSub = await personalKanban.ensureDefaultSubstages(
                   pkClient, newPmId, 'tender', safeMain);
                 // Подпись предыдущего substage (для метки transferred_prev_substage_label)
                 let prevLabel = null;
@@ -808,7 +812,7 @@ async function routes(fastify, options) {
             }
           } else {
             // Карты не было — создаём новую у нового PM.
-            const firstSub = await personalKanban.loadFirstActiveSubstage(
+            const firstSub = await personalKanban.ensureDefaultSubstages(
               pkClient, newPmId, 'tender', safeMain);
             const ins = await pkClient.query(
               `INSERT INTO personal_kanban_cards
@@ -1682,6 +1686,73 @@ async function routes(fastify, options) {
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // PUT /:id/status — выделенный endpoint для смены tender_status
+  // S-13.1: добавлен для frontend хаба (кнопки «❓ Дозапрос» / «📤 Ответили»).
+  // Использует ту же state-machine что и PUT /:id, но проще payload: { tender_status, reason? }.
+  // SSE-broadcast как и в PUT /:id.
+  // ═══════════════════════════════════════════════════════════════════════════
+  fastify.put('/:id/status', {
+    preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return reply.code(400).send({ error: 'invalid_id' });
+    }
+    const { tender_status: newStatus, reason } = request.body || {};
+    if (!newStatus || typeof newStatus !== 'string') {
+      return reply.code(400).send({ error: 'tender_status required' });
+    }
+
+    const current = await db.query('SELECT * FROM tenders WHERE id = $1', [id]);
+    if (!current.rows[0]) return reply.code(404).send({ error: 'tender_not_found' });
+    const oldTender = current.rows[0];
+
+    if (newStatus === oldTender.tender_status) {
+      // no-op
+      return { success: true, tender: oldTender, changed: false };
+    }
+
+    if (!VALID_TENDER_STATUSES.includes(newStatus) && request.user.role !== 'ADMIN') {
+      return reply.code(400).send({ error: `Недопустимый статус: "${newStatus}"` });
+    }
+    if (!isValidTenderTransition(oldTender.tender_status, newStatus, request.user.role)) {
+      return reply.code(400).send({
+        error: `Недопустимый переход статуса: "${oldTender.tender_status}" → "${newStatus}"`,
+        allowed: TENDER_TRANSITIONS[oldTender.tender_status] || []
+      });
+    }
+    if (newStatus === 'Проиграли' && !reason && !oldTender.reject_reason) {
+      return reply.code(400).send({ error: 'Для статуса «Проиграли» обязательна причина отказа' });
+    }
+
+    const updateRes = await db.query(
+      `UPDATE tenders
+          SET tender_status = $1,
+              reject_reason = CASE WHEN $1 = 'Проиграли' AND $2::text IS NOT NULL THEN $2 ELSE reject_reason END,
+              updated_at = NOW()
+        WHERE id = $3
+       RETURNING *`,
+      [newStatus, reason || null, id]
+    );
+    const updated = updateRes.rows[0];
+
+    try {
+      broadcast('tender:status_changed', {
+        tender_id: id,
+        old_status: oldTender.tender_status,
+        new_status: newStatus,
+        changed_by: request.user.id,
+        reason: reason || null
+      });
+      broadcast('tender:updated', { tender_id: id });
+    } catch (e) {
+      request.log.warn({ err: e }, '[tenders] SSE broadcast failed for /:id/status');
+    }
+
+    return { success: true, tender: updated, old_status: oldTender.tender_status };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // POST /:id/win — ТО/HEAD_TO/ADMIN отмечают «Выиграли» после «КП отправлено»
   // Работа НЕ создаётся сразу. Тендер появляется в win-assign panel у HEAD_TO
   // для назначения РП на выполнение работ (может быть другой РП).
@@ -1921,7 +1992,7 @@ async function routes(fastify, options) {
       // §2.5/§9.1: canonical work main_status = 'Подготовка'.
       try {
         const personalKanban = require('./personal-kanban');
-        const firstSub = await personalKanban.loadFirstActiveSubstage(
+        const firstSub = await personalKanban.ensureDefaultSubstages(
           client, pm_id, 'work', 'Подготовка');
 
         // F-1: ищем уже существующую открытую tender-карту PM на этот тендер.
