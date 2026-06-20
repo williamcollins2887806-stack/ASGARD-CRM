@@ -495,6 +495,7 @@ fastify.register(require('./routes/auth'), { prefix: '/api/auth' });
 fastify.register(require('./routes/users'), { prefix: '/api/users' });
 fastify.register(require('./routes/pre_tenders'), { prefix: '/api/pre-tenders' });
 fastify.register(require('./routes/tenders'), { prefix: '/api/tenders' });
+fastify.register(require('./routes/tenders-hub'), { prefix: '/api/tenders-hub' }); // S-7: единый агрегатор feed
 fastify.register(require('./routes/estimates'), { prefix: '/api/estimates' });
 fastify.register(require('./routes/works'), { prefix: '/api/works' });
 fastify.register(require('./routes/work-readiness'), { prefix: '/api/work-readiness' });
