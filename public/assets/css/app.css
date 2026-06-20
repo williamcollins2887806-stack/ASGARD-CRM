@@ -11180,3 +11180,46 @@ table.asg tbody tr.hub-row-soon td:first-child { box-shadow: inset 3px 0 0 var(-
   .hub-kpi-grid { grid-template-columns: repeat(2, 1fr); }
   .hub-kpi-v { font-size: 18px; }
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   S-13.3: бейдж работы (W-NNNN · РП · статус) в feed-таблицах хаба
+   Связь tender→work для вкладок «🌐 Все» и «📥 Заявки».
+   Все цвета — через токены (dark/light переключаются автоматически).
+   ════════════════════════════════════════════════════════════════════════ */
+.work-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  background: var(--bg2);
+  border: 1px solid var(--brd);
+  border-radius: var(--r-md);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--t1);
+  text-decoration: none;
+  transition: all var(--fast);
+}
+.work-badge:hover {
+  border-color: var(--gold);
+  color: var(--gold-l);
+  background: var(--bg3);
+}
+.work-badge .work-pm {
+  color: var(--t3);
+  font-weight: 400;
+}
+.work-badge .work-status {
+  font-size: 10.5px;
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+  font-weight: 600;
+}
+.work-badge.work-new      .work-status { background: var(--bg3);    color: var(--t2); }
+.work-badge.work-prep     .work-status { background: var(--info-bg); color: var(--info-t); }
+.work-badge.work-mob      .work-status { background: var(--warn-bg); color: var(--warn-t); }
+.work-badge.work-exec     .work-status { background: var(--ok-bg);   color: var(--ok-t); }
+.work-badge.work-paused   .work-status { background: var(--err-bg);  color: var(--err-t); }
+.work-badge.work-handover .work-status { background: var(--gold-bg); color: var(--gold-l); }
+.work-badge.work-closed   .work-status { background: var(--bg4);     color: var(--t2); }
+.work-badge.work-unknown  .work-status { background: var(--bg3);     color: var(--t3); }

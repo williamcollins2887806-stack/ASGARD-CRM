@@ -12,6 +12,12 @@
  * Контракт см. pipeline/investigations/INV-4.md §2 (унифицированная схема).
  * Зависимость: V250 миграция (tenders.source_kind колонка с CHECK 7 значений).
  *
+ * S-13.3 (gap-fix): +4 поля связи tender→work (work_id, work_code, work_pm_name,
+ * work_status). Для tenders — LEFT JOIN works w ON tender_id=t.id AND work_kind='main'
+ * AND deleted_at IS NULL + users wu ON wu.id=w.pm_id. Для pre_tender_requests —
+ * та же цепочка через pt.created_tender_id. inbox/calls — NULL (отдельной сессией,
+ * слишком длинная цепочка для UNION). Итого 19 полей унифицированной схемы.
+ *
  * Query params:
  *   tab     — tenders | applications | all (default: all)
  *   subtab  — platforms | in_work | mail | phone | pm (default: '' = all of tab)
@@ -158,8 +164,19 @@ async function routes(fastify, opts) {
           NULL::numeric                                   AS ai_confidence,
           (t.tender_status = 'Дозапрос')::boolean         AS addendum_flag,
           0::int                                          AS docs_count,
-          t.created_at::timestamp                         AS event_at
+          t.created_at::timestamp                         AS event_at,
+          w.id::int                                       AS work_id,
+          CASE WHEN w.id IS NOT NULL
+               THEN ('W-' || w.id::text) ELSE NULL END::text AS work_code,
+          wu.name::text                                   AS work_pm_name,
+          w.work_status::text                             AS work_status
         FROM tenders t
+        LEFT JOIN works w
+          ON w.tender_id = t.id
+         AND w.work_kind = 'main'
+         AND w.deleted_at IS NULL
+        LEFT JOIN users wu
+          ON wu.id = w.pm_id
         WHERE ${w.join(' AND ')}
       `);
     }
@@ -198,8 +215,20 @@ async function routes(fastify, opts) {
           pt.ai_confidence::numeric                       AS ai_confidence,
           false::boolean                                  AS addendum_flag,
           (CASE WHEN pt.has_documents THEN 1 ELSE 0 END)::int AS docs_count,
-          pt.created_at::timestamp                        AS event_at
+          pt.created_at::timestamp                        AS event_at,
+          w.id::int                                       AS work_id,
+          CASE WHEN w.id IS NOT NULL
+               THEN ('W-' || w.id::text) ELSE NULL END::text AS work_code,
+          wu.name::text                                   AS work_pm_name,
+          w.work_status::text                             AS work_status
         FROM pre_tender_requests pt
+        LEFT JOIN tenders tch ON tch.id = pt.created_tender_id
+        LEFT JOIN works w
+          ON w.tender_id = tch.id
+         AND w.work_kind = 'main'
+         AND w.deleted_at IS NULL
+        LEFT JOIN users wu
+          ON wu.id = w.pm_id
         WHERE ${w.join(' AND ')}
       `);
     }
@@ -241,7 +270,11 @@ async function routes(fastify, opts) {
           ia.ai_confidence::numeric                       AS ai_confidence,
           false::boolean                                  AS addendum_flag,
           ia.attachment_count::int                        AS docs_count,
-          ia.created_at::timestamp                        AS event_at
+          ia.created_at::timestamp                        AS event_at,
+          NULL::int                                       AS work_id,
+          NULL::text                                      AS work_code,
+          NULL::text                                      AS work_pm_name,
+          NULL::text                                      AS work_status
         FROM inbox_applications ia
         WHERE ${w.join(' AND ')}
       `);
@@ -281,7 +314,11 @@ async function routes(fastify, opts) {
           NULL::numeric                                   AS ai_confidence,
           false::boolean                                  AS addendum_flag,
           0::int                                          AS docs_count,
-          ch.created_at::timestamp                        AS event_at
+          ch.created_at::timestamp                        AS event_at,
+          NULL::int                                       AS work_id,
+          NULL::text                                      AS work_code,
+          NULL::text                                      AS work_pm_name,
+          NULL::text                                      AS work_status
         FROM call_history ch
         LEFT JOIN customers c ON c.inn = ch.client_inn
         WHERE ${w.join(' AND ')}

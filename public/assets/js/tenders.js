@@ -454,6 +454,32 @@ window.AsgardTendersPage = (function(){
     return `<span class="cr-status-badge" style="background:${bg}">${esc(status || '')}</span>`;
   }
 
+  // ═══ S-13.3: бейдж работы (W-NNNN · РП · статус) для feed-таблиц ═══
+  // Статусы соответствуют STATUS_TRANSITIONS в src/routes/works.js
+  // (8 канонических: Новая/Подготовка/Мобилизация/В работе/На паузе/
+  //  Подписание акта/Работы сдали/Закрыт). Подписание акта и Работы сдали
+  // объединены под одним «handover»-классом — оба этапа сдачи.
+  function workStatusClass(status){
+    const map = {
+      'Новая':            'work-new',
+      'Подготовка':       'work-prep',
+      'Мобилизация':      'work-mob',
+      'В работе':         'work-exec',
+      'На паузе':         'work-paused',
+      'Подписание акта':  'work-handover',
+      'Работы сдали':     'work-handover',
+      'Закрыт':           'work-closed'
+    };
+    return map[status] || 'work-unknown';
+  }
+  function tenderWorkBadge(row){
+    if (!row || !row.work_id) return '<span class="help">—</span>';
+    const cls = workStatusClass(row.work_status);
+    const pm  = row.work_pm_name ? `<span class="work-pm">· ${esc(row.work_pm_name)}</span>` : '';
+    const stt = `<span class="work-status">${esc(row.work_status || '—')}</span>`;
+    return `<a href="#/pm-works?id=${encodeURIComponent(row.work_id)}" class="work-badge ${cls}" title="${esc(row.work_pm_name || 'РП не назначен')}">🏗 ${esc(row.work_code || ('W-' + row.work_id))} ${pm} ${stt}</a>`;
+  }
+
   async function getRefs(){
     const refs = await AsgardDB.get("settings","refs");
     const defaultStatuses = ['Черновик','Новый','На анализе','Отправлено на просчёт','Согласование ТКП','ТКП согласовано','Готово к отправке КП','КП отправлено','Дозапрос','Выиграли','Проиграли','Не подходит'];
@@ -562,6 +588,7 @@ window.AsgardTendersPage = (function(){
       <td>${(function(){var n=t.tender_price?'<div style="font-size:11px"><span style="font-size:10px;color:var(--t3)">НМЦ</span> '+money(t.tender_price)+'</div>':'';var s=t.submission_price?'<div style="font-size:11px;margin-top:3px"><span style="font-size:10px;color:#4cd964">Подача</span> '+money(t.submission_price)+'</div>':'';return (n+s)||'—';}())}</td>
       <td>${ds} → ${de}</td>
       <td>${link}</td>
+      <td>${tenderWorkBadge(t)}</td>
       <td style="white-space:nowrap">
         ${autoEstBtn}${ctxActions}
       </td>
@@ -807,6 +834,7 @@ window.AsgardTendersPage = (function(){
                 <th><button class="btn ghost" style="padding:6px 10px" data-sort="tender_price">НМЦ / Подача</button></th>
                 <th><button class="btn ghost" style="padding:6px 10px" data-sort="work_start_plan">Сроки (план)</button></th>
                 <th>Документы</th>
+                <th>Работа</th>
                 <th></th>
               </tr>
             </thead>
@@ -1740,6 +1768,7 @@ window.AsgardTendersPage = (function(){
         <td>${priceCell}</td>
         <td>—</td>
         <td>${link}</td>
+        <td>${tenderWorkBadge(x)}</td>
         <td style="white-space:nowrap">${actionsBtns}</td>
       </tr>`;
     }
@@ -1748,7 +1777,7 @@ window.AsgardTendersPage = (function(){
       // Для applications — учитываем sub-tab, для all — без sub-tab.
       const tab = currentMainTab; // 'applications' | 'all'
       const sub = (tab === 'applications') ? currentSubTab : null;
-      tb.innerHTML = `<tr><td colspan="13" style="padding:20px;text-align:center;color:var(--t3)">Загрузка…</td></tr>`;
+      tb.innerHTML = `<tr><td colspan="14" style="padding:20px;text-align:center;color:var(--t3)">Загрузка…</td></tr>`;
       const feed = await loadFeed(tab, sub);
       feedCache = feed;
       const items = Array.isArray(feed.items) ? feed.items : [];
@@ -1766,7 +1795,7 @@ window.AsgardTendersPage = (function(){
       });
       if (!filtered.length) {
         const errLine = feed._error ? `<div class="help" style="margin-top:8px;color:var(--err-t)">⚠ ${esc(feed._error)} — endpoint /api/tenders-hub/feed недоступен (ждёт S-7 backend)</div>` : '';
-        tb.innerHTML = `<tr><td colspan="13" style="padding:40px;text-align:center;color:var(--t3)">
+        tb.innerHTML = `<tr><td colspan="14" style="padding:40px;text-align:center;color:var(--t3)">
           <div>Нет данных по этому фильтру.</div>${errLine}
         </td></tr>`;
       } else {
