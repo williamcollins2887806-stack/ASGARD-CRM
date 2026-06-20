@@ -1901,8 +1901,8 @@ window.AsgardPersonalKanbanV3 = (function () {
   // ── State ────────────────────────────────────────────────────────────
   let _layout = null;
   let _user = null;
-  let _columns = { new: [], calc: [], approval: [], kp_prep: [], sent: [], win: [], lose: [], work: [] };
-  let _counts = { new: 0, calc: 0, approval: 0, kp_prep: 0, sent: 0, win: 0, lose: 0, work: 0, total: 0 };
+  let _columns = { new: [], calc: [], approval: [], kp_prep: [], sent: [], addendum: [], win: [], lose: [], work: [] };
+  let _counts = { new: 0, calc: 0, approval: 0, kp_prep: 0, sent: 0, addendum: 0, win: 0, lose: 0, work: 0, total: 0 };
   let _flowFilter = 'all';
   let _searchQ = '';
   let _draggingCardId = null;
@@ -1911,6 +1911,8 @@ window.AsgardPersonalKanbanV3 = (function () {
   let _modalStack = [];
   let _sseHandler = null;
   let _sseConnected = false;
+  // S-15: scope-режим (HEAD_TO toggle Мои/Отдел, TO auto, PM owner)
+  let _scopeMode = null; // 'owner' | 'to_personal' | 'to_team' | 'all' — derived from role+toggle
 
   // ── Колонки и константы ──────────────────────────────────────────────
   const COLS = [
@@ -1919,6 +1921,7 @@ window.AsgardPersonalKanbanV3 = (function () {
     { id: 'approval', ic: '⚖️', title: 'На согласовании' },
     { id: 'kp_prep',  ic: '📋', title: 'КП готовится' },
     { id: 'sent',     ic: '📤', title: 'КП отправлено' },
+    { id: 'addendum', ic: '❓', title: 'Дозапрос', cls: 'pk3-col-addendum' },
     { id: 'win',      ic: '🏆', title: 'Выиграно', cls: 'pk3-col-win' },
     { id: 'lose',     ic: '❌', title: 'Проиграно', cls: 'pk3-col-lose' },
     { id: 'work',     ic: '🏗', title: 'В работе' },
@@ -1930,8 +1933,32 @@ window.AsgardPersonalKanbanV3 = (function () {
     { id: 'tender',      label: '📋 Тендеры' },
     { id: 'work',        label: '🏗 Работы' },
   ];
-  const STAGE_LABELS = ['📥 Новая', '🧮 Просчёт', '⚖️ Согл. дир', '📋 КП готов', '📤 КП ушло', '🏆 Выигр.', '❌ Проигр.', '🏗 В работе'];
-  const COL_TO_STAGE = { new: 0, calc: 1, approval: 2, kp_prep: 3, sent: 4, win: 5, lose: 6, work: 7 };
+  const STAGE_LABELS = ['📥 Новая', '🧮 Просчёт', '⚖️ Согл. дир', '📋 КП готов', '📤 КП ушло', '❓ Дозапрос', '🏆 Выигр.', '❌ Проигр.', '🏗 В работе'];
+  const COL_TO_STAGE = { new: 0, calc: 1, approval: 2, kp_prep: 3, sent: 4, addendum: 5, win: 6, lose: 7, work: 8 };
+
+  // S-15: scope helpers — определяет режим выборки по роли и (для HEAD_TO) toggle из LS
+  function _computeScope() {
+    const role = (_user && _user.role) || '';
+    if (role === 'TO') return 'to_personal';
+    if (role === 'HEAD_TO') {
+      let toggle = 'team';
+      try { toggle = localStorage.getItem('pk3_scope_toggle') || 'team'; } catch (_) {}
+      return (toggle === 'mine') ? 'owner' : 'to_team';
+    }
+    // PM / HEAD_PM / ADMIN / DIRECTOR_* — owner-режим (бэкенд для admin/director сам решит, через scope=auto)
+    return 'auto';
+  }
+  function _isToRole() {
+    const role = (_user && _user.role) || '';
+    return role === 'TO' || role === 'HEAD_TO';
+  }
+  function _scopeLabel() {
+    const sc = _scopeMode || _computeScope();
+    if (sc === 'to_personal') return 'Канбан · Мои тендеры (ТО)';
+    if (sc === 'to_team')     return 'Канбан · Весь отдел ТО';
+    if (sc === 'all')         return 'Канбан · Все (ADMIN)';
+    return 'Канбан · полный цикл';
+  }
 
   // ── CSS-инжект (наши токены --bg0..--bg5, --t1..--t3, --gold, --ok, etc.) ──
   function _injectV3Styles() {
@@ -2020,6 +2047,38 @@ window.AsgardPersonalKanbanV3 = (function () {
 .pk3-col-body.pk3-drop-hover { background: var(--gold-bg); }
 .pk3-col-win .pk3-col-head { background: linear-gradient(180deg, var(--ok-bg), transparent); }
 .pk3-col-lose .pk3-col-head { background: linear-gradient(180deg, var(--err-bg), transparent); }
+/* S-15: 9-я колонка «Дозапрос» — золотой акцент + pulse */
+.pk3-col-addendum .pk3-col-head {
+  background: linear-gradient(180deg, rgba(212,168,67,0.18), transparent);
+  position: relative;
+}
+.pk3-col-addendum .pk3-col-head::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(circle at 50% 0%, rgba(212,168,67,.25), transparent 70%);
+  animation: pk3-pulse 2s ease-in-out infinite;
+}
+@keyframes pk3-pulse { 0%,100%{opacity:.35} 50%{opacity:.9} }
+.pk3-card-addendum-mark {
+  position: absolute; top: 6px; right: 6px;
+  background: var(--gold); color: #1a1000;
+  font-size: 9px; font-weight: 700;
+  padding: 2px 6px; border-radius: 999px;
+  animation: pk3-pulse 1.5s ease-in-out infinite;
+}
+/* S-15: scope-toggle для HEAD_TO «Мои ↔ Отдел» */
+.pk3-scope-toggle {
+  display: inline-flex; background: var(--bg3); border-radius: 8px; padding: 2px;
+  margin-right: 8px;
+}
+.pk3-scope-toggle button {
+  padding: 6px 12px; background: transparent; border: 0; color: var(--t3);
+  cursor: pointer; font-size: 12px; border-radius: 6px; font-family: inherit;
+  transition: all .15s;
+}
+.pk3-scope-toggle button.active {
+  background: var(--gold); color: #1a1000; font-weight: 600;
+}
+.pk3-scope-toggle button:not(.active):hover { color: var(--t1); }
 
 /* ── Card ── */
 .pk3-card {
@@ -2494,27 +2553,59 @@ window.AsgardPersonalKanbanV3 = (function () {
     _v3AttachEvents();
   }
   async function _v3LoadData() {
+    // S-15: scope=auto по умолчанию; для TO/HEAD_TO backend форсит flow_filter='tender'
+    _scopeMode = _computeScope();
+    const scope = _scopeMode || 'auto';
+    // Для TO/HEAD_TO канбана — backend (S-9) сам форсит tender; на фронте flow_filter не шлём,
+    // чтобы не конфликтовать с серверной логикой; для PM/HEAD_PM/ADMIN — текущий _flowFilter.
+    const flowParam = _isToRole() ? '' : ('&flow_filter=' + encodeURIComponent(_flowFilter));
+    const scopeParam = '&scope=' + encodeURIComponent(scope);
     const [boardRes, countsRes] = await Promise.all([
-      api('/api/personal-kanban/board?flow_filter=' + _flowFilter),
-      api('/api/personal-kanban/columns/counts?flow_filter=' + _flowFilter),
+      api('/api/personal-kanban/board?_=1' + flowParam + scopeParam),
+      api('/api/personal-kanban/columns/counts?_=1' + flowParam + scopeParam),
     ]);
     if (boardRes.ok && boardRes.data && boardRes.data.columns) {
       _columns = boardRes.data.columns;
+      // S-15: гарантируем что 9 ключей всегда есть (даже если backend вернул 8 для старых клонов)
+      ['new','calc','approval','kp_prep','sent','addendum','win','lose','work'].forEach(k => {
+        if (!Array.isArray(_columns[k])) _columns[k] = [];
+      });
     }
     if (countsRes.ok && countsRes.data) {
       _counts = countsRes.data;
+      if (typeof _counts.addendum !== 'number') _counts.addendum = 0;
     }
   }
   function _v3RenderShell() {
     const root = $('#pk3-root');
     if (!root) return;
+    // S-15: для TO/HEAD_TO скрываем flow-tabs (показываем только тендеры);
+    //       для HEAD_TO добавляем toggle «Мои / Отдел»
+    const role = (_user && _user.role) || '';
+    const hideFlowTabs = _isToRole();
+    let scopeToggle = '';
+    if (role === 'HEAD_TO') {
+      let toggle = 'team';
+      try { toggle = localStorage.getItem('pk3_scope_toggle') || 'team'; } catch (_) {}
+      scopeToggle = `
+        <div class="pk3-scope-toggle" id="pk3-scope-toggle" title="Переключить scope">
+          <button data-scope="mine" class="${toggle === 'mine' ? 'active' : ''}">🟦 Мои</button>
+          <button data-scope="team" class="${toggle === 'team' ? 'active' : ''}">👑 Отдел</button>
+        </div>
+      `;
+    }
+    const h2Title = _scopeLabel();
+    const subTitle = hideFlowTabs
+      ? '📥 → 🧮 → ⚖️ → 📋 → 📤 → ❓ → 🏆/❌ · только тендеры'
+      : '📥 → 🧮 → ⚖️ → 📋 → 📤 → ❓ → 🏆/❌ → 🏗 · с просчётом и ТКП внутри карты';
     root.innerHTML = `
       <div class="pk3-top-actions">
         <div class="pk3-titles">
           <div class="pk3-kicker">САГА ТЕНДЕРОВ</div>
-          <h1 class="pk3-h2">Канбан · полный цикл</h1>
-          <div class="pk3-h2-sub">📥 → 🧮 → ⚖️ → 📋 → 📤 → 🏆/❌ → 🏗 · с просчётом и ТКП внутри карты</div>
+          <h1 class="pk3-h2">${esc(h2Title)}</h1>
+          <div class="pk3-h2-sub">${subTitle}</div>
         </div>
+        ${scopeToggle}
         <div class="pk3-view-toggle" id="pk3-view-toggle">
           <button data-view="substages">📋 По под-этапам</button>
           <button class="active" data-view="v3">📊 По воронке</button>
@@ -2522,9 +2613,11 @@ window.AsgardPersonalKanbanV3 = (function () {
         <input class="pk3-search-input" id="pk3-search" placeholder="🔍 поиск по клиенту, теме, ИНН…" />
         <button class="pk3-btn pk3-gold" id="pk3-create-manual">＋ Создать вручную</button>
       </div>
+      ${hideFlowTabs ? '' : `
       <div class="pk3-tabs-bar" id="pk3-tabs">
         ${FLOW_TABS.map(t => `<div class="pk3-tab ${_flowFilter === t.id ? 'active' : ''}" data-flow="${t.id}">${esc(t.label)} <span class="pk3-cnt">${_countByFlow(t.id)}</span></div>`).join('')}
       </div>
+      `}
       <div class="pk3-board" id="pk3-board"></div>
     `;
   }
@@ -2538,6 +2631,11 @@ window.AsgardPersonalKanbanV3 = (function () {
   function _v3RenderBoard() {
     const board = $('#pk3-board');
     if (!board) return;
+    // S-15: сохраняем скролл-позицию колонки addendum (и любых других) между ре-рендерами
+    const prevScroll = {};
+    $$('#pk3-board .pk3-col-body').forEach(b => {
+      const cid = b.dataset.colId; if (cid) prevScroll[cid] = b.scrollTop;
+    });
     const cardMatchesFlow = (c) => _flowFilter === 'all' || c.flow_type === _flowFilter;
     const cardMatchesSearch = (c) => {
       if (!_searchQ) return true;
@@ -2561,15 +2659,26 @@ window.AsgardPersonalKanbanV3 = (function () {
         </div>
       `;
     }).join('');
+    // S-15: восстанавливаем скролл-позиции
+    $$('#pk3-board .pk3-col-body').forEach(b => {
+      const cid = b.dataset.colId;
+      if (cid && prevScroll[cid] != null) b.scrollTop = prevScroll[cid];
+    });
   }
   function _v3RenderCardHtml(c) {
     const kindShort = (c.kind || c.entity_kind || '').split('_')[0];
     const color = c.color || 'green';
     const winCls = c.col === 'win' ? ' pk3-win' : (c.col === 'lose' ? ' pk3-lose' : '');
     const meta = c.meta || [];
-    const progress = c.progress || [0,0,0,0,0,0,0,0];
+    // S-15: 9-этапная шкала прогресса (раньше 8); поддерживаем и legacy 8-элементный массив
+    const progress = c.progress || [0,0,0,0,0,0,0,0,0];
+    // S-15: маркер дозапроса (если backend пришлёт addendum_days или карта в колонке addendum)
+    const addendumMark = (c.col === 'addendum')
+      ? `<div class="pk3-card-addendum-mark">${esc((c.addendum_days != null ? c.addendum_days + 'д' : '!'))}</div>`
+      : '';
     return `
       <div class="pk3-card pk3-${color}${winCls}" draggable="true" data-card-id="${c.id}">
+        ${addendumMark}
         <div class="pk3-card-top">
           <span class="pk3-badge pk3-${kindShort}">${esc(c.kindLabel || kindShort)}</span>
           <span class="pk3-card-id">${esc(c.code || '#' + c.id)}</span>
@@ -2592,7 +2701,18 @@ window.AsgardPersonalKanbanV3 = (function () {
     const s = $('#pk3-search'); if (s) s.addEventListener('input', (e) => {
       _searchQ = e.target.value || ''; _v3RenderBoard();
     });
-    // tabs flow
+    // S-15: scope-toggle (HEAD_TO) «Мои / Отдел»
+    $$('#pk3-scope-toggle button').forEach(b => b.addEventListener('click', async () => {
+      const val = b.dataset.scope; // 'mine' | 'team'
+      try { localStorage.setItem('pk3_scope_toggle', val); } catch (_) {}
+      $$('#pk3-scope-toggle button').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      await _v3LoadData();
+      _v3RenderShell();
+      _v3RenderBoard();
+      _v3AttachEvents();
+    }));
+    // tabs flow (для PM/HEAD_PM/ADMIN/DIRECTOR — у TO/HEAD_TO скрыты, селектор пустой)
     $$('#pk3-tabs .pk3-tab').forEach(t => t.addEventListener('click', async () => {
       _flowFilter = t.dataset.flow;
       $$('#pk3-tabs .pk3-tab').forEach(x => x.classList.remove('active'));
@@ -2994,8 +3114,16 @@ window.AsgardPersonalKanbanV3 = (function () {
     } else if (card.col === 'sent') {
       context = `
         <button class="pk3-btn" data-action="note">📞 Записать звонок</button>
+        <button class="pk3-btn" data-action="trans-addendum">❓ Дозапрос</button>
         <button class="pk3-btn pk3-danger" data-action="trans-lose">❌ Проиграли</button>
         <button class="pk3-btn pk3-ok" data-action="trans-win">🏆 Выиграли</button>
+      `;
+    } else if (card.col === 'addendum') {
+      // S-15: actions для статуса «Дозапрос» — ответить → обратно в sent, либо итог
+      context = `
+        <button class="pk3-btn pk3-gold" data-action="trans-sent">✅ Ответили</button>
+        <button class="pk3-btn pk3-ok" data-action="trans-win">🏆 Выиграли</button>
+        <button class="pk3-btn pk3-danger" data-action="trans-lose">❌ Проиграли</button>
       `;
     } else if (card.col === 'win') {
       context = `<button class="pk3-btn pk3-gold" data-action="trans-work">🏗 Перевести в работу</button>`;
@@ -3051,8 +3179,12 @@ window.AsgardPersonalKanbanV3 = (function () {
     if (act.startsWith('trans-')) {
       const toCol = act.replace('trans-', '');
       let note = null;
-      if (toCol === 'lose' || toCol === 'kp_prep' || toCol === 'approval') {
-        note = window.prompt('Комментарий (опционально):') || null;
+      // S-15: для перехода в «Дозапрос» и обратно в «sent» (ответили) — попросить текст
+      if (toCol === 'lose' || toCol === 'kp_prep' || toCol === 'approval' || toCol === 'addendum' || (toCol === 'sent' && card.col === 'addendum')) {
+        const promptText = toCol === 'addendum'
+          ? 'Что прислал заказчик в дозапросе?'
+          : (toCol === 'sent' && card.col === 'addendum' ? 'Что ответили на дозапрос?' : 'Комментарий (опционально):');
+        note = window.prompt(promptText) || null;
       }
       await _v3DoTransition(card.id, toCol, { note, confirm: true });
       _closeDrawer();
