@@ -361,7 +361,13 @@ const BADGE_TONES = {
   question: { bg: 'var(--orange-bg)', fg: 'var(--amber)', ic: '?' },
   rejected: { bg: 'var(--err-bg)', fg: 'var(--err)', ic: '✕' },
   paid:     { bg: 'var(--ok-bg)', fg: 'var(--ok)', ic: '💳' },
-  burning:  { bg: 'var(--red-bg)', fg: 'var(--red)', ic: '🔥', pulse: true }
+  burning:  { bg: 'var(--red-bg)', fg: 'var(--red)', ic: '🔥', pulse: true },
+  // S-19.1 (fix F1 AUD-19): закрытие STATUS_TONE['Дозапрос']='gold' (TenderRow.jsx)
+  // + pre-existing 'info' для Черновик/Новый. До: оба → fallback draft (○ серый).
+  // gold = золотой бейдж приоритета (Дозапрос ждёт ответ заказчику), pulse — таймер.
+  // info = синий бейдж информации (Черновик/Новый/прочие state-метки в api.js).
+  gold:     { bg: 'var(--gold-bg)', fg: 'var(--gold-l)', ic: '⚜', pulse: true },
+  info:     { bg: 'var(--info-bg)', fg: 'var(--info)', ic: '●' }
 };
 
 export function StatusBadge({ tone = 'draft', label, customIcon }) {
