@@ -269,27 +269,43 @@ export function sourceInfo(entityKind) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * v3 API — 8-колоночный канбан, ТКП-конструктор, Quick/Conductor/References
+ * v3 API — 9-колоночный канбан, ТКП-конструктор, Quick/Conductor/References
+ * S-21: добавлена 9-я колонка 'addendum' (Дозапрос) + поддержка scope/owner_id
+ *       (S-9 backend готов: VALID_SCOPES = ['auto','owner','to_personal','to_team','all'])
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-export const V3_COLUMNS = ['new', 'calc', 'approval', 'kp_prep', 'sent', 'win', 'lose', 'work'];
+export const V3_COLUMNS = ['new', 'calc', 'approval', 'kp_prep', 'sent', 'addendum', 'win', 'lose', 'work'];
 export const V3_COL_META = {
   new:      { ic: '📥', title: 'Новые' },
   calc:     { ic: '🧮', title: 'Просчёт ТКП' },
   approval: { ic: '⚖️', title: 'На согласовании' },
   kp_prep:  { ic: '📋', title: 'КП готовится' },
   sent:     { ic: '📤', title: 'КП отправлено' },
-  win:      { ic: '🏆', title: 'Выиграно' },
-  lose:     { ic: '❌', title: 'Проиграно' },
+  addendum: { ic: '❓', title: 'Дозапрос', cls: 'pk3-col-addendum' },
+  win:      { ic: '🏆', title: 'Выиграно', cls: 'pk3-col-win' },
+  lose:     { ic: '❌', title: 'Проиграно', cls: 'pk3-col-lose' },
   work:     { ic: '🏗', title: 'В работе' },
 };
-export const V3_STAGE_LABELS = ['📥 Новая', '🧮 Просчёт', '⚖️ Согл. дир', '📋 КП готов', '📤 КП ушло', '🏆 Выигр.', '❌ Проигр.', '🏗 В работе'];
+export const V3_STAGE_LABELS = ['📥 Новая', '🧮 Просчёт', '⚖️ Согл. дир', '📋 КП готов', '📤 КП ушло', '❓ Дозапрос', '🏆 Выигр.', '❌ Проигр.', '🏗 В работе'];
 
-export async function loadV3Board(flowFilter) {
-  return await api(`/api/personal-kanban/board?flow_filter=${encodeURIComponent(flowFilter || 'all')}`) || { columns: {}, total: 0 };
+// S-21: scope ('auto' | 'owner' | 'to_personal' | 'to_team' | 'all') и owner_id (HEAD_TO для чужого канбана).
+// Backend (S-9, src/routes/personal-kanban.js) сам резолвит auto → owner/to_personal/to_team/all по роли,
+// а для TO/HEAD_TO форсит flow_filter='tender' (отсюда — isToRole убирает наш flow_filter из строки).
+// Старые вызовы loadV3Board(flowFilter) остаются совместимыми (scope='auto').
+function _buildV3Query(flowFilter, scope, ownerId, isToRole) {
+  const parts = [];
+  if (!isToRole) parts.push('flow_filter=' + encodeURIComponent(flowFilter || 'all'));
+  parts.push('scope=' + encodeURIComponent(scope || 'auto'));
+  if (ownerId != null && String(ownerId).length) parts.push('owner_id=' + encodeURIComponent(String(ownerId)));
+  return parts.join('&');
 }
-export async function loadV3Counts(flowFilter) {
-  return await api(`/api/personal-kanban/columns/counts?flow_filter=${encodeURIComponent(flowFilter || 'all')}`) || {};
+export async function loadV3Board(flowFilter, scope, ownerId, isToRole) {
+  const qs = _buildV3Query(flowFilter, scope, ownerId, isToRole);
+  return await api(`/api/personal-kanban/board?${qs}`) || { columns: {}, total: 0 };
+}
+export async function loadV3Counts(flowFilter, scope, ownerId, isToRole) {
+  const qs = _buildV3Query(flowFilter, scope, ownerId, isToRole);
+  return await api(`/api/personal-kanban/columns/counts?${qs}`) || {};
 }
 export async function v3Transition(cardId, toCol, note, confirm) {
   return await api(`/api/personal-kanban/cards/${cardId}/transition`, {

@@ -44,7 +44,8 @@ export default function PersonalKanbanPage() {
   const { user } = useAuth();
   const modal = useModal();
 
-  const allowed = !!user && ['PM', 'HEAD_PM', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(user.role);
+  // S-21: TO/HEAD_TO добавлены — у них собственный режим scope (to_personal / to_team), а не PM-канбан.
+  const allowed = !!user && ['PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(user.role);
 
   const [viewMode, setViewMode] = useState(() => {
     try { return localStorage.getItem(STORAGE_VIEW) || 'v3'; } catch { return 'v3'; }
@@ -271,9 +272,11 @@ export default function PersonalKanbanPage() {
     { size: 'lg' }
   );
 
-  // Если viewMode='v3' — рендерим BoardV3 (8 колонок воронки)
-  if (allowed && viewMode === 'v3') {
-    return <BoardV3 onSwitchToSubstages={() => setViewMode('substages')} />;
+  // Если viewMode='v3' — рендерим BoardV3 (9 колонок воронки, S-21).
+  // S-21: TO/HEAD_TO ВСЕГДА видят v3 (substages для них не настроены) — игнорируем сохранённый viewMode.
+  const forceV3 = !!user && (user.role === 'TO' || user.role === 'HEAD_TO');
+  if (allowed && (viewMode === 'v3' || forceV3)) {
+    return <BoardV3 onSwitchToSubstages={forceV3 ? undefined : () => setViewMode('substages')} />;
   }
 
   // Гейт прав
@@ -282,7 +285,7 @@ export default function PersonalKanbanPage() {
       <div className="card p-32 t-center">
         <div className="fs-32 mb-12">🛡</div>
         <div className="fs-16 fw-700 mb-6">Нет доступа</div>
-        <div className="c-t3">Личный канбан доступен РП, главам РП и директорам.</div>
+        <div className="c-t3">Личный канбан доступен РП, главам РП, тендерному отделу и директорам.</div>
       </div>
     );
   }

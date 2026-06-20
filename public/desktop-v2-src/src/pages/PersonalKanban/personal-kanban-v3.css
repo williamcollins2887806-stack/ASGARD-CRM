@@ -88,6 +88,39 @@
 .pk3-col-body.pk3-drop-hover { background: var(--gold-bg); }
 .pk3-col-win .pk3-col-head { background: linear-gradient(180deg, var(--ok-bg), transparent); }
 .pk3-col-lose .pk3-col-head { background: linear-gradient(180deg, var(--err-bg), transparent); }
+/* S-21: 9-я колонка «Дозапрос» — золотой акцент + pulse-анимация */
+.pk3-col-addendum .pk3-col-head {
+  background: linear-gradient(180deg, var(--gold-bg), transparent);
+  position: relative;
+}
+.pk3-col-addendum .pk3-col-head::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(circle at 50% 0%, var(--gold-bg), transparent 70%);
+  animation: pk3-pulse 2s ease-in-out infinite;
+}
+@keyframes pk3-pulse { 0%, 100% { opacity: .35; } 50% { opacity: .9; } }
+.pk3-card-addendum-mark {
+  position: absolute; top: 6px; right: 6px;
+  background: var(--gold); color: var(--on-gold);
+  font-size: 9px; font-weight: 700;
+  padding: 2px 6px; border-radius: 999px;
+  animation: pk3-pulse 1.5s ease-in-out infinite;
+  z-index: 2;
+}
+/* S-21: scope-toggle «Мои / Отдел» для HEAD_TO в шапке канбана */
+.pk3-scope-toggle {
+  display: inline-flex; background: var(--bg-3); border-radius: 8px; padding: 2px;
+  margin-right: 8px;
+}
+.pk3-scope-toggle button {
+  padding: 6px 12px; background: transparent; border: 0; color: var(--t-3);
+  cursor: pointer; font-size: 12px; border-radius: 6px; font-family: inherit;
+  transition: all .15s;
+}
+.pk3-scope-toggle button.pk3-active {
+  background: var(--gold); color: var(--on-gold); font-weight: 600;
+}
+.pk3-scope-toggle button:not(.pk3-active):hover { color: var(--t-1); }
 
 /* ── Card ── */
 .pk3-card {

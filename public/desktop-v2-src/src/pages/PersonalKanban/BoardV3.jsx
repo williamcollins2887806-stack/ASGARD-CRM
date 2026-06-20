@@ -1,10 +1,16 @@
 /**
- * Канбан v3 — 8-колоночный вид «По воронке»
+ * Канбан v3 — 9-колоночный вид «По воронке»
  *   📥 Новые → 🧮 Просчёт → ⚖️ На согласовании → 📋 КП готовится →
- *   📤 КП отправлено → 🏆 Выиграно / ❌ Проиграно → 🏗 В работе
+ *   📤 КП отправлено → ❓ Дозапрос → 🏆 Выиграно / ❌ Проиграно → 🏗 В работе
  *
  * Один файл: Board + Drawer + 5 модалок (Quick / Conductor / References / TKPConstructor / Send).
  * Реюз: useModal/Btn/toast из @/modals, токены theme.css.
+ *
+ * S-21 (Tenders-Hub Wave-7):
+ *   • 9-я колонка 'addendum' (Дозапрос) между 'sent' и 'win' с pulse-анимацией
+ *   • scope=auto|owner|to_personal|to_team|all + owner_id шлются в backend (S-9)
+ *   • HEAD_TO toggle «Мои / Отдел» (localStorage 'pk3_v2_scope_to')
+ *   • TO/HEAD_TO видят только tender-flow (flow-tabs скрыты, backend форсит)
  */
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '@/api/useAuth';
@@ -26,12 +32,54 @@ const FLOW_TABS = [
   { id: 'tender',      label: '📋 Тендеры' },
   { id: 'work',        label: '🏗 Работы' },
 ];
-const COL_TO_STAGE = { new: 0, calc: 1, approval: 2, kp_prep: 3, sent: 4, win: 5, lose: 6, work: 7 };
+// S-21: 9 стадий (addendum=5; win/lose/work сдвинулись на +1). Соответствует V3_STAGE_LABELS.
+const COL_TO_STAGE = { new: 0, calc: 1, approval: 2, kp_prep: 3, sent: 4, addendum: 5, win: 6, lose: 7, work: 8 };
+
+// S-21: localStorage ключ HEAD_TO toggle Мои/Отдел.
+const STORAGE_SCOPE_TO = 'pk3_v2_scope_to'; // 'owner' | 'to_team', дефолт 'to_team'.
+
+function isToRoleFn(role) { return role === 'TO' || role === 'HEAD_TO'; }
+function computeScopeFn(role, headToToggle) {
+  if (role === 'TO') return 'to_personal';
+  if (role === 'HEAD_TO') return headToToggle === 'owner' ? 'owner' : 'to_team';
+  // PM / HEAD_PM / ADMIN / DIRECTOR_* — auto (backend сам резолвит)
+  return 'auto';
+}
+function scopeTitleFn(role, scope) {
+  if (role === 'TO') return 'Канбан · Мои тендеры (ТО)';
+  if (role === 'HEAD_TO') return scope === 'owner' ? 'Канбан · Мои тендеры' : 'Канбан · Весь отдел ТО';
+  if (role === 'ADMIN' || (role && role.startsWith('DIRECTOR_'))) return 'Канбан · Все';
+  return 'Канбан · полный цикл';
+}
+function scopeSubtitleFn(isTo) {
+  return isTo
+    ? '📥 → 🧮 → ⚖️ → 📋 → 📤 → ❓ → 🏆/❌ · только тендеры'
+    : '📥 → 🧮 → ⚖️ → 📋 → 📤 → ❓ → 🏆/❌ → 🏗 · с просчётом и ТКП внутри карты';
+}
 
 export default function BoardV3({ onSwitchToSubstages }) {
   const { user } = useAuth();
   const { open } = useModal();
-  const [flowFilter, setFlowFilter] = useState('all');
+  const role = user?.role || '';
+  const isToRole = isToRoleFn(role);
+
+  // S-21: scope-toggle для HEAD_TO (Мои / Отдел), персистится в LS.
+  const [headToToggle, setHeadToToggle] = useState(() => {
+    try {
+      const v = localStorage.getItem(STORAGE_SCOPE_TO);
+      return (v === 'owner' || v === 'to_team') ? v : 'to_team';
+    } catch { return 'to_team'; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_SCOPE_TO, headToToggle); } catch { /* noop */ }
+  }, [headToToggle]);
+
+  const scope = useMemo(() => computeScopeFn(role, headToToggle), [role, headToToggle]);
+
+  // Для TO/HEAD_TO принудительно tender-flow (UI-форс — backend и так форсит, но прячем табы для согласованности).
+  const [flowFilterRaw, setFlowFilter] = useState('all');
+  const flowFilter = isToRole ? 'tender' : flowFilterRaw;
+
   const [search, setSearch] = useState('');
   const [columns, setColumns] = useState({});
   const [counts, setCounts] = useState({});
@@ -43,18 +91,23 @@ export default function BoardV3({ onSwitchToSubstages }) {
     setLoading(true);
     try {
       const [board, cnts] = await Promise.all([
-        loadV3Board(flowFilter),
-        loadV3Counts(flowFilter),
+        loadV3Board(flowFilter, scope, null, isToRole),
+        loadV3Counts(flowFilter, scope, null, isToRole),
       ]);
-      setColumns(board.columns || {});
-      setCounts(cnts || {});
+      // S-21: гарантируем 9 ключей даже если backend на устаревшем клоне вернул 8 (graceful fallback).
+      const cols = board.columns || {};
+      for (const k of V3_COLUMNS) if (!Array.isArray(cols[k])) cols[k] = [];
+      setColumns(cols);
+      const c = cnts || {};
+      if (typeof c.addendum !== 'number') c.addendum = 0;
+      setCounts(c);
     } catch (e) {
       toast.error('Не удалось загрузить канбан: ' + e.message);
     } finally {
       setLoading(false);
     }
   }
-  useEffect(() => { reload(); /* eslint-disable-next-line */ }, [flowFilter]);
+  useEffect(() => { reload(); /* eslint-disable-next-line */ }, [flowFilter, scope]);
 
   // SSE
   useEffect(() => {
@@ -72,7 +125,7 @@ export default function BoardV3({ onSwitchToSubstages }) {
       window.removeEventListener('asgard:sse:tkp_constructor:sent', handler);
     };
     /* eslint-disable-next-line */
-  }, [flowFilter]);
+  }, [flowFilter, scope]);
 
   async function doTransition(cardId, toCol, opts = {}) {
     const res = await v3Transition(cardId, toCol, opts.note, opts.confirm);
@@ -98,18 +151,37 @@ export default function BoardV3({ onSwitchToSubstages }) {
       || (c.code || '').toLowerCase().includes(q);
   }
 
+  // S-21: динамические header-тексты по scope и подтипу пользователя.
+  const h2Title = scopeTitleFn(role, scope);
+  const h2Sub = scopeSubtitleFn(isToRole);
+
   return (
     <div className="pk3-shell">
       <div className="pk3-top-actions">
         <div className="pk3-titles">
           <div className="pk3-kicker">САГА ТЕНДЕРОВ</div>
-          <h1 className="pk3-h2">Канбан · полный цикл</h1>
-          <div className="pk3-h2-sub">📥 → 🧮 → ⚖️ → 📋 → 📤 → 🏆/❌ → 🏗 · с просчётом и ТКП внутри карты</div>
+          <h1 className="pk3-h2">{h2Title}</h1>
+          <div className="pk3-h2-sub">{h2Sub}</div>
         </div>
-        <div className="pk3-view-toggle">
-          <button onClick={onSwitchToSubstages}>📋 По под-этапам</button>
-          <button className="pk3-active">📊 По воронке</button>
-        </div>
+        {role === 'HEAD_TO' && (
+          <div className="pk3-scope-toggle" title="Переключить scope">
+            <button
+              className={headToToggle === 'owner' ? 'pk3-active' : ''}
+              onClick={() => setHeadToToggle('owner')}
+            >🟦 Мои</button>
+            <button
+              className={headToToggle === 'to_team' ? 'pk3-active' : ''}
+              onClick={() => setHeadToToggle('to_team')}
+            >👑 Отдел</button>
+          </div>
+        )}
+        {/* S-21: для TO/HEAD_TO substages-режим не доступен — родитель передаёт undefined, прячем тогглер. */}
+        {onSwitchToSubstages && (
+          <div className="pk3-view-toggle">
+            <button onClick={onSwitchToSubstages}>📋 По под-этапам</button>
+            <button className="pk3-active">📊 По воронке</button>
+          </div>
+        )}
         <input
           className="pk3-search-input"
           placeholder="🔍 поиск по клиенту, теме, ИНН…"
@@ -119,23 +191,27 @@ export default function BoardV3({ onSwitchToSubstages }) {
         <Btn variant="gold" onClick={() => toast.info('Откроется форма создания. Сейчас используй /pre-tenders или /tenders для ручного ввода.')}>＋ Создать вручную</Btn>
       </div>
 
-      <div className="pk3-tabs-bar">
-        {FLOW_TABS.map(t => (
-          <div
-            key={t.id}
-            className={'pk3-tab' + (flowFilter === t.id ? ' pk3-active' : '')}
-            onClick={() => setFlowFilter(t.id)}
-          >
-            {t.label} <span className="pk3-cnt">{flowFilter === t.id ? (counts.total || 0) : '—'}</span>
-          </div>
-        ))}
-      </div>
+      {/* S-21: для TO/HEAD_TO flow-tabs скрыты (видят только tender). */}
+      {!isToRole && (
+        <div className="pk3-tabs-bar">
+          {FLOW_TABS.map(t => (
+            <div
+              key={t.id}
+              className={'pk3-tab' + (flowFilter === t.id ? ' pk3-active' : '')}
+              onClick={() => setFlowFilter(t.id)}
+            >
+              {t.label} <span className="pk3-cnt">{flowFilter === t.id ? (counts.total || 0) : '—'}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="pk3-board">
         {V3_COLUMNS.map(colId => {
           const meta = V3_COL_META[colId];
           const cards = (columns[colId] || []).filter(cardFiltered);
-          const colCls = colId === 'win' ? ' pk3-col-win' : (colId === 'lose' ? ' pk3-col-lose' : '');
+          // S-21: colCls берётся из V3_COL_META[].cls (win/lose/addendum), fallback ''.
+          const colCls = meta?.cls ? ' ' + meta.cls : '';
           return (
             <div key={colId} className={'pk3-col' + colCls}>
               <div className="pk3-col-head">
@@ -192,7 +268,13 @@ function CardV3({ c, onClick, onDragStart, onDragEnd }) {
   const color = c.color || 'green';
   const extraCls = c.col === 'win' ? ' pk3-win' : (c.col === 'lose' ? ' pk3-lose' : '');
   const meta = c.meta || [];
-  const progress = c.progress || [0, 0, 0, 0, 0, 0, 0, 0];
+  // S-21: 9-этапная шкала прогресса. Backwards-compat: если backend прислал 8 — дотягиваем 9-м нулём.
+  let progress = c.progress || [0, 0, 0, 0, 0, 0, 0, 0, 0];
+  if (progress.length < 9) progress = [...progress, ...new Array(9 - progress.length).fill(0)];
+  // S-21: маркер дозапроса в правом верхнем углу карточки в колонке addendum (с днями, если backend прислал).
+  const addendumMark = c.col === 'addendum'
+    ? (c.addendum_days != null ? c.addendum_days + 'д' : '!')
+    : null;
   return (
     <div
       className={`pk3-card pk3-${color}${extraCls}`}
@@ -201,6 +283,7 @@ function CardV3({ c, onClick, onDragStart, onDragEnd }) {
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
     >
+      {addendumMark != null && <div className="pk3-card-addendum-mark">{addendumMark}</div>}
       <div className="pk3-card-top">
         <span className={`pk3-badge pk3-${kind}`}>{c.kindLabel || kind}</span>
         <span className="pk3-card-id">{c.code || '#' + c.id}</span>
@@ -259,6 +342,12 @@ function DrawerV3({ card, onClose, onChanged, openModal }) {
       let note = null;
       if (toCol === 'lose' || toCol === 'kp_prep' || toCol === 'approval') {
         note = window.prompt('Комментарий (опц.):') || null;
+      } else if (toCol === 'addendum') {
+        // S-21: prompt про дозапрос — что прислал заказчик.
+        note = window.prompt('Что прислал заказчик в дозапросе?') || null;
+      } else if (toCol === 'sent' && card.col === 'addendum') {
+        // S-21: возврат addendum → sent — что ответили.
+        note = window.prompt('Что ответили на дозапрос?') || null;
       }
       const r = await v3Transition(card.id, toCol, note, true);
       if (r && r.error) toast.error(r.message || r.error);
@@ -288,8 +377,15 @@ function DrawerV3({ card, onClose, onChanged, openModal }) {
       ...(tkpAttached ? [<Btn key="os" variant="gold" onClick={() => onAction('open-send')}>📧 Отправить клиенту</Btn>] : []),
     ];
     else if (card.col === 'sent') ctx = [
+      <Btn key="ta" onClick={() => onAction('trans-addendum')}>❓ Дозапрос</Btn>,
       <Btn key="tl" variant="danger" onClick={() => onAction('trans-lose')}>❌ Проиграли</Btn>,
       <Btn key="tw" variant="primary" onClick={() => onAction('trans-win')}>🏆 Выиграли</Btn>,
+    ];
+    // S-21: actions для статуса «Дозапрос» — ответили → обратно в sent, либо итог.
+    else if (card.col === 'addendum') ctx = [
+      <Btn key="ts" variant="gold" onClick={() => onAction('trans-sent')}>✅ Ответили</Btn>,
+      <Btn key="tw" variant="primary" onClick={() => onAction('trans-win')}>🏆 Выиграли</Btn>,
+      <Btn key="tl" variant="danger" onClick={() => onAction('trans-lose')}>❌ Проиграли</Btn>,
     ];
     else if (card.col === 'win')  ctx = [<Btn key="tw" variant="gold" onClick={() => onAction('trans-work')}>🏗 Перевести в работу</Btn>];
     else if (card.col === 'work') ctx = [<Btn key="cl" variant="gold" onClick={() => toast.info('Закрытие актом — через /works')}>📦 Закрыть актом</Btn>];
@@ -486,6 +582,8 @@ function TkpStatus({ card, tkpAttached, onAction }) {
   else if (card.col === 'kp_prep' && !tkpAttached)     stat = { tag: 'утверждено', cls: 'ok',   text: 'Директор согласовал. Финализируй и отправь клиенту.', lock: false };
   else if (card.col === 'kp_prep' &&  tkpAttached)     stat = { tag: 'к отправке', cls: 'ok',   text: 'ТКП готово. Нажми «Отправить клиенту» внизу карты.', lock: false };
   else if (card.col === 'sent')                        stat = { tag: 'отправлено', cls: 'ok',   text: 'ТКП ушло клиенту. Ждём ответ.', lock: true };
+  // S-21: addendum — клиент прислал дозапрос; РП отвечает и карта возвращается в sent.
+  else if (card.col === 'addendum')                    stat = { tag: 'дозапрос',   cls: 'warn', text: 'Клиент прислал дозапрос. Ответь — карта вернётся в «КП отправлено».', lock: false };
   else if (card.col === 'win' || card.col === 'work')  stat = { tag: 'принято',    cls: 'ok',   text: 'Клиент принял ТКП.', lock: true };
   else if (card.col === 'lose')                        stat = { tag: 'отклонено',  cls: 'err',  text: 'Клиент отклонил.', lock: true };
   else                                                 stat = { tag: '—',          cls: 'info', text: '', lock: true };
