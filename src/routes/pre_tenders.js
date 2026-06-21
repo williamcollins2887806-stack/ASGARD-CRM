@@ -10,10 +10,34 @@ const db = require('../services/db');
 const preTenderService = require('../services/pre-tender-service');
 const { sendToUser, sendToRoles, broadcast } = require('./sse');
 const { createNotification } = require('../services/notify');
+// Wave D: для ensureDefaultSubstages (BUG-7)
+const personalKanban = require('./personal-kanban');
 const path = require('path');
 const fs = require('fs');
 
-const ALLOWED_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_TO', 'HEAD_PM', 'TO'];
+// Wave A+ fix BLOCKER#1: PM добавлен — после Wave B он получает карту через /to-pre-tender
+// и должен иметь доступ к assigned-to-него pre_tender'у. Доступ к чужим закрыт owner-guard'ом.
+const ALLOWED_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_TO', 'HEAD_PM', 'TO', 'PM'];
+const DIRECTOR_LIKE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_TO', 'HEAD_PM'];
+
+// Wave A+ fix BLOCKER#1 + MED#4: проверка владельца pre_tender'а.
+// Возвращает {ok:true, row} или {ok:false, code, error}. Не бросает.
+async function checkPreTenderAccess(user, ptId) {
+  if (!user) return { ok: false, code: 401, error: 'unauthorized' };
+  if (DIRECTOR_LIKE_ROLES.includes(user.role)) {
+    const r = await db.query('SELECT id, assigned_to, email_id FROM pre_tender_requests WHERE id=$1 LIMIT 1', [ptId]);
+    if (!r.rows.length) return { ok: false, code: 404, error: 'pre_tender_not_found' };
+    return { ok: true, row: r.rows[0] };
+  }
+  // PM/TO — только свои (assigned_to или created_by)
+  const r = await db.query(
+    'SELECT id, assigned_to, created_by, email_id FROM pre_tender_requests WHERE id=$1 LIMIT 1',
+    [ptId]);
+  if (!r.rows.length) return { ok: false, code: 404, error: 'pre_tender_not_found' };
+  const row = r.rows[0];
+  if (row.assigned_to === user.id || row.created_by === user.id) return { ok: true, row };
+  return { ok: false, code: 403, error: 'forbidden' };
+}
 
 module.exports = async function (fastify) {
 
@@ -24,10 +48,19 @@ module.exports = async function (fastify) {
     preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const { status, ai_color, search, sort = 'created_at', order = 'DESC', limit = 50, offset = 0 } = request.query;
+    const user = request.user;
 
     let where = 'WHERE 1=1';
     const params = [];
     let idx = 1;
+
+    // Wave A+ fix BLOCKER#1: PM/TO видят только свои (assigned_to ИЛИ created_by).
+    // Директорские роли — без фильтра.
+    if (!DIRECTOR_LIKE_ROLES.includes(user.role)) {
+      where += ` AND (pt.assigned_to = $${idx} OR pt.created_by = $${idx})`;
+      params.push(user.id);
+      idx++;
+    }
 
     if (status) {
       where += ` AND pt.status = $${idx++}`;
@@ -125,6 +158,10 @@ module.exports = async function (fastify) {
   }, async (request, reply) => {
     const { id } = request.params;
 
+    // Wave A+ fix BLOCKER#1: PM/TO имеют доступ только к своим (assigned_to/created_by).
+    const acc = await checkPreTenderAccess(request.user, id);
+    if (!acc.ok) return reply.code(acc.code).send({ error: acc.error });
+
     const res = await db.query(`
       SELECT pt.*,
         e.subject as email_subject,
@@ -214,37 +251,98 @@ module.exports = async function (fastify) {
     preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const { customer_name, customer_email, customer_inn, contact_person, contact_phone,
-            work_description, work_location, work_deadline, estimated_sum } = request.body;
+            work_location, work_deadline, estimated_sum,
+            assigned_to, source_type, ai_work_type, decision_comment } = request.body;
+    let { work_description } = request.body;
     const user = request.user;
 
     if (!customer_name && !work_description) {
       return reply.code(400).send({ error: 'Укажите заказчика или описание работ' });
     }
 
+    // BUG #1: source_type теперь приходит из body (phone/meeting/email/referral/website/other),
+    // дефолт 'manual' если не передан. Валидация по белому списку, чтобы не пропустить мусор.
+    const ALLOWED_SOURCE_TYPES = ['manual', 'phone', 'meeting', 'email', 'referral', 'website', 'other'];
+    const srcType = ALLOWED_SOURCE_TYPES.includes(source_type) ? source_type : 'manual';
+
+    // BUG #3: колонки ai_work_type в pre_tender_requests НЕТ (есть только в inbox_applications).
+    // TODO: добавить миграцию ALTER TABLE pre_tender_requests ADD COLUMN ai_work_type VARCHAR(100).
+    // Пока — вшиваем тип работ префиксом в work_description (как объём/сроки во фронте).
+    if (ai_work_type && typeof ai_work_type === 'string' && ai_work_type.trim()) {
+      work_description = `Тип работ: ${ai_work_type.trim()}\n\n${work_description || ''}`.trim();
+    }
+
     const ins = await db.query(`
       INSERT INTO pre_tender_requests (
         source_type, customer_name, customer_email, customer_inn,
         contact_person, contact_phone, work_description, work_location,
-        work_deadline, estimated_sum, ai_color, status, created_by
-      ) VALUES ('manual', $1, $2, $3, $4, $5, $6, $7, $8, $9, 'gray', 'new', $10)
+        work_deadline, estimated_sum, ai_color, status, created_by, assigned_to,
+        decision_comment
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'gray', 'new', $11, $12, $13)
       RETURNING id
     `, [
+      srcType,
       customer_name || '', customer_email || '', customer_inn || '',
       contact_person || '', contact_phone || '',
       work_description || '', work_location || '',
       work_deadline || null, estimated_sum || null,
-      user.id
+      user.id, assigned_to || null,
+      decision_comment || null
     ]);
 
     const newId = ins.rows[0].id;
 
+    // Wave C: если указан assigned_to → auto-create karta kanban (как pre_tender).
+    let cardId = null;
+    if (assigned_to) {
+      try {
+        // Wave D BUG-7: ensureDefaultSubstages — если у PM 0 подэтапов под (pre_tender, new),
+        // создастся дефолтный набор и вернётся id первого.
+        const newSub = await personalKanban.ensureDefaultSubstages(db, assigned_to, 'pre_tender', 'new');
+        const cIns = await db.query(
+          `INSERT INTO personal_kanban_cards
+            (owner_user_id, flow_type, entity_kind, entity_id, current_main_status, current_substage_id)
+           VALUES ($1, 'pre_tender', 'pre_tender', $2, 'new', $3)
+           ON CONFLICT (owner_user_id, entity_kind, entity_id) DO NOTHING
+           RETURNING id`,
+          [assigned_to, newId, newSub]);
+        if (cIns.rowCount > 0) {
+          cardId = cIns.rows[0].id;
+          await db.query(
+            `INSERT INTO personal_kanban_card_history
+              (card_id, to_main_status, moved_by, action, note)
+             VALUES ($1, 'new', $2, 'create', $3)`,
+            [cardId, user.id, `Создан вручную: ${customer_name || work_description || 'pre_tender'}`]);
+          try {
+            const { createNotification } = require('../services/notify');
+            Promise.resolve(createNotification(db, {
+              user_id: assigned_to,
+              title: `Новый просчёт №${newId}`,
+              message: customer_name || work_description?.slice(0, 100) || '',
+              type: 'pre_tender_assigned',
+              link: `#/personal-kanban?card=${cardId}`,
+            })).catch(() => {});
+          } catch (_) {}
+          try {
+            const sse = require('../services/sse');
+            sse.broadcast?.('personal_kanban:card_created', {
+              card_id: cardId, owner_user_id: assigned_to,
+              flow_type: 'pre_tender', entity_kind: 'pre_tender', entity_id: newId,
+            });
+          } catch (_) {}
+        }
+      } catch (cardErr) {
+        console.error('[PreTender] Manual create kanban hook error:', cardErr.message);
+      }
+    }
+
     // SSE: уведомляем о новой заявке
     broadcast('pre_tender:new', {
       id: newId, customer_name: customer_name || '', ai_color: 'gray',
-      status: 'new', source_type: 'manual', created_by: user.id
+      status: 'new', source_type: srcType, created_by: user.id
     });
 
-    return { success: true, id: newId };
+    return { success: true, id: newId, kanban_card_id: cardId };
   });
 
   // ═══════════════════════════════════════════════════════════════════
@@ -254,6 +352,9 @@ module.exports = async function (fastify) {
     preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const { id } = request.params;
+    // Wave A+ fix BLOCKER#1: owner-check для PM/TO.
+    const acc = await checkPreTenderAccess(request.user, id);
+    if (!acc.ok) return reply.code(acc.code).send({ error: acc.error });
     const allowed = ['customer_name', 'customer_inn', 'customer_email', 'contact_person',
                      'contact_phone', 'work_description', 'work_location', 'work_deadline',
                      'estimated_sum', 'assigned_to', 'ai_color'];
@@ -297,12 +398,17 @@ module.exports = async function (fastify) {
     preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const { id } = request.params;
-    const { comment } = request.body || {};
+    // Wave A+ fix BLOCKER#1: owner-check для PM/TO.
+    const acc = await checkPreTenderAccess(request.user, id);
+    if (!acc.ok) return reply.code(acc.code).send({ error: acc.error });
+    const body = request.body || {};
+    // Wave A+ fix: vanilla шлёт request_text, держим обратную совместимость для comment.
+    const note = body.request_text || body.comment || 'Запрошены дополнительные документы';
 
     await db.query(`
       UPDATE pre_tender_requests SET status = 'need_docs', decision_comment = $1, updated_at = NOW()
       WHERE id = $2 AND status IN ('new','in_review')
-    `, [comment || 'Запрошены дополнительные документы', id]);
+    `, [note, id]);
 
     return { success: true };
   });
@@ -314,6 +420,10 @@ module.exports = async function (fastify) {
     preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const { id } = request.params;
+
+    // Wave A+ fix BLOCKER#1: owner-check для PM/TO.
+    const acc = await checkPreTenderAccess(request.user, id);
+    if (!acc.ok) return reply.code(acc.code).send({ error: acc.error });
 
     // Проверяем заявку
     const ptRes = await db.query('SELECT id, manual_documents FROM pre_tender_requests WHERE id = $1', [id]);
@@ -358,6 +468,657 @@ module.exports = async function (fastify) {
   });
 
   // ═══════════════════════════════════════════════════════════════════
+  // 7.6 (Wave D — BUG-8) GET /:ptId/documents/:docIdx/download
+  //     Скачать manual_documents[docIdx] из pre_tender_requests.
+  //     Auth: Bearer header ИЛИ query ?token=... (для <a target=_blank>).
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.get('/:ptId/documents/:docIdx/download', {
+    preHandler: [
+      async (request, reply) => {
+        if (!request.headers.authorization && request.query.token) {
+          request.headers.authorization = 'Bearer ' + request.query.token;
+        }
+      },
+      fastify.authenticate
+    ]
+  }, async (request, reply) => {
+    const ptId = Number(request.params.ptId);
+    const docIdx = Number(request.params.docIdx);
+    if (!Number.isFinite(ptId) || !Number.isFinite(docIdx) || docIdx < 0) {
+      return reply.code(400).send({ error: 'invalid_params' });
+    }
+    // Wave A+ fix MED#4: owner-guard. PM/TO не должен скачивать чужие manual_documents.
+    const acc = await checkPreTenderAccess(request.user, ptId);
+    if (!acc.ok) return reply.code(acc.code).send({ error: acc.error });
+    const r = await db.query(
+      `SELECT manual_documents FROM pre_tender_requests WHERE id = $1 LIMIT 1`,
+      [ptId]);
+    const row = r.rows[0];
+    if (!row) return reply.code(404).send({ error: 'pre_tender_not_found' });
+    const docs = Array.isArray(row.manual_documents) ? row.manual_documents : [];
+    if (docIdx >= docs.length) return reply.code(404).send({ error: 'document_not_found' });
+    const doc = docs[docIdx];
+    if (!doc || !doc.path) return reply.code(404).send({ error: 'document_path_missing' });
+
+    // Резолв пути — path хранится относительно cwd как 'uploads/pre_tenders/X/file.ext'
+    const candidates = [
+      doc.path,
+      path.join(process.cwd(), doc.path),
+      path.join(__dirname, '..', '..', doc.path),
+    ];
+    let absPath = null;
+    for (const p of candidates) {
+      try { if (fs.existsSync(p) && fs.statSync(p).isFile()) { absPath = p; break; } } catch (_) {}
+    }
+    if (!absPath) return reply.code(404).send({ error: 'file_not_found_on_disk' });
+
+    // ─── Wave-8 task A: ?format=pdf ────────────────────────────────────────
+    // 1) Ищем PDF-сиблинг в manual_documents (parent_kind === doc.kind),
+    //    например 'mimir_director_report_pdf' для 'mimir_director_report'.
+    // 2) Если нет — конвертим XLSX/DOCX через LibreOffice on-demand.
+    // 3) Если исходник уже PDF — отдаём как есть.
+    // Без ?format=pdf поведение endpoint не меняется.
+    const wantPdf = String(request.query.format || '').toLowerCase() === 'pdf';
+    if (wantPdf) {
+      const srcMime = String(doc.mime_type || '').toLowerCase();
+      const srcExt  = String(path.extname(doc.original_name || doc.filename || absPath) || '').toLowerCase();
+      const isPdfSrc = srcMime === 'application/pdf' || srcExt === '.pdf';
+
+      // (3) Исходник — уже PDF: отдаём как есть.
+      if (isPdfSrc) {
+        const buf = fs.readFileSync(absPath);
+        const dispName = (doc.original_name || doc.filename || 'document.pdf').replace(/[\r\n"]/g, '_');
+        return reply
+          .header('Content-Type', 'application/pdf')
+          .header('Content-Length', buf.length)
+          .header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(dispName)}`)
+          .send(buf);
+      }
+
+      // (1) Ищем PDF-сиблинг (parent_kind === doc.kind).
+      if (doc.kind) {
+        const sibling = docs.find(d => d && d.parent_kind === doc.kind && d.path);
+        if (sibling) {
+          const sibCandidates = [
+            sibling.path,
+            path.join(process.cwd(), sibling.path),
+            path.join(__dirname, '..', '..', sibling.path),
+          ];
+          let sibAbs = null;
+          for (const p of sibCandidates) {
+            try { if (fs.existsSync(p) && fs.statSync(p).isFile()) { sibAbs = p; break; } } catch (_) {}
+          }
+          if (sibAbs) {
+            const buf = fs.readFileSync(sibAbs);
+            const sibName = (sibling.original_name || sibling.filename || 'document.pdf').replace(/[\r\n"]/g, '_');
+            return reply
+              .header('Content-Type', 'application/pdf')
+              .header('Content-Length', buf.length)
+              .header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(sibName)}`)
+              .send(buf);
+          }
+          // сиблинг записан, но файла нет на диске — падаем в on-demand-convert.
+        }
+      }
+
+      // (2) On-demand LibreOffice convert XLSX/DOCX → PDF.
+      const isConvertible = ['.xlsx', '.xls', '.docx', '.doc', '.odt', '.ods', '.rtf'].includes(srcExt)
+        || srcMime.includes('spreadsheet')
+        || srcMime.includes('wordprocessing')
+        || srcMime.includes('msword')
+        || srcMime.includes('officedocument');
+      if (!isConvertible) {
+        return reply.code(415).send({ error: 'pdf_conversion_unsupported_source', source_ext: srcExt, source_mime: srcMime });
+      }
+
+      const { spawnSync } = require('child_process');
+      const tmpDir = `/tmp/pkpdf_${Date.now()}_${docIdx}_${Math.floor(Math.random() * 1e6)}`;
+      try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (_) {}
+      let pdfAbs = null;
+      try {
+        const r = spawnSync('libreoffice', ['--headless', '--convert-to', 'pdf', '--outdir', tmpDir, absPath], {
+          timeout: 30000,
+          windowsHide: true
+        });
+        if (r.status !== 0) {
+          try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
+          const stderr = (r.stderr && r.stderr.toString()) || (r.error && r.error.message) || 'libreoffice non-zero exit';
+          return reply.code(500).send({ error: 'PDF conversion failed', detail: stderr.slice(0, 500) });
+        }
+        const baseNoExt = path.basename(absPath, path.extname(absPath));
+        pdfAbs = path.join(tmpDir, baseNoExt + '.pdf');
+        if (!fs.existsSync(pdfAbs)) {
+          // LibreOffice мог дать другое имя (нормализация unicode/пробелов) — берём первый .pdf в tmpDir.
+          try {
+            const list = fs.readdirSync(tmpDir).filter(f => /\.pdf$/i.test(f));
+            if (list.length) pdfAbs = path.join(tmpDir, list[0]);
+          } catch (_) {}
+        }
+        if (!pdfAbs || !fs.existsSync(pdfAbs)) {
+          try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
+          return reply.code(500).send({ error: 'PDF conversion failed', detail: 'output_pdf_not_found' });
+        }
+        const buf = fs.readFileSync(pdfAbs);
+        const srcDispName = (doc.original_name || doc.filename || 'document');
+        const pdfDispName = srcDispName.replace(/\.[^.]+$/, '') + '.pdf';
+        const safeDispName = pdfDispName.replace(/[\r\n"]/g, '_');
+        // Удаляем временную директорию сразу после чтения, до .send (буфер уже в памяти).
+        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
+        return reply
+          .header('Content-Type', 'application/pdf')
+          .header('Content-Length', buf.length)
+          .header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(safeDispName)}`)
+          .send(buf);
+      } catch (e) {
+        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
+        return reply.code(500).send({ error: 'PDF conversion failed', detail: String(e && e.message || e).slice(0, 500) });
+      }
+    }
+    // ─── /Wave-8 task A ────────────────────────────────────────────────────
+
+    const buf = fs.readFileSync(absPath);
+    const dispName = (doc.original_name || doc.filename || 'document').replace(/[\r\n"]/g, '_');
+    reply
+      .header('Content-Type', doc.mime_type || 'application/octet-stream')
+      .header('Content-Length', buf.length)
+      .header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(dispName)}`)
+      .send(buf);
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 7.6b GET /:ptId/documents/:idx/json
+  //     Вернуть JSON-представление документа Мимира для in-place правок
+  //     (модалка «✏ Просмотр и правки» в drawer'е карты pk3).
+  //     Поддерживает: XLSX (смета) → {type:'smeta', rows:[[...]]}
+  //                   DOCX (отчёт)  → {type:'director_report', data:{...}, text:'…'}
+  //     Auth: Bearer header.
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.get('/:ptId/documents/:idx/json', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const ptId = Number(request.params.ptId);
+    const idx  = Number(request.params.idx);
+    if (!Number.isFinite(ptId) || !Number.isFinite(idx) || idx < 0) {
+      return reply.code(400).send({ error: 'invalid_params' });
+    }
+    const acc = await checkPreTenderAccess(request.user, ptId);
+    if (!acc.ok) return reply.code(acc.code).send({ error: acc.error });
+    const r = await db.query(
+      'SELECT manual_documents FROM pre_tender_requests WHERE id=$1 LIMIT 1', [ptId]);
+    if (!r.rows.length) return reply.code(404).send({ error: 'pre_tender_not_found' });
+    const docs = Array.isArray(r.rows[0].manual_documents) ? r.rows[0].manual_documents : [];
+    if (idx >= docs.length) return reply.code(404).send({ error: 'document_not_found' });
+    const doc = docs[idx];
+    if (!doc || !doc.path) return reply.code(404).send({ error: 'document_path_missing' });
+
+    // Если AI положил исходную JSON-структуру (source_data/edits_json) — отдаём её как есть.
+    if (doc.source_data && typeof doc.source_data === 'object') {
+      return doc.source_data;
+    }
+
+    // Резолв пути на диске.
+    const candidates = [
+      doc.path,
+      path.join(process.cwd(), doc.path),
+      path.join(__dirname, '..', '..', doc.path),
+    ];
+    let absPath = null;
+    for (const p of candidates) {
+      try { if (fs.existsSync(p) && fs.statSync(p).isFile()) { absPath = p; break; } } catch (_) {}
+    }
+    if (!absPath) return reply.code(404).send({ error: 'file_not_found_on_disk' });
+
+    const mime = (doc.mime_type || '').toLowerCase();
+    const kindHint = String(doc.kind || '').toLowerCase();
+    const isSmeta = mime.includes('spreadsheet') || /\.xlsx?$/i.test(absPath) || kindHint.includes('smeta');
+    const isReport = mime.includes('wordprocessing') || /\.docx?$/i.test(absPath)
+                  || kindHint.includes('director_report') || kindHint.includes('director');
+
+    try {
+      if (isSmeta) {
+        const ExcelJS = require('exceljs');
+        const wb = new ExcelJS.Workbook();
+        await wb.xlsx.readFile(absPath);
+        const sheet = wb.worksheets[0];
+        const rows = [];
+        if (sheet) {
+          // eachRow с includeEmpty:false — пропускаем пустые. row.values[0] — undefined (1-based).
+          sheet.eachRow({ includeEmpty: false }, (row) => {
+            const v = Array.isArray(row.values) ? row.values.slice(1) : [];
+            // Нормализуем ячейки: объекты ExcelJS (RichText/Formula) — в строку.
+            const norm = v.map(c => {
+              if (c == null) return '';
+              if (typeof c === 'object') {
+                if (c.richText) return c.richText.map(t => t.text || '').join('');
+                if (c.result != null) return String(c.result);
+                if (c.formula) return String(c.formula);
+                if (c.text) return String(c.text);
+                return JSON.stringify(c);
+              }
+              return c;
+            });
+            rows.push(norm);
+          });
+        }
+        return { type: 'smeta', rows };
+      }
+      if (isReport) {
+        // Парсим DOCX как ZIP → word/document.xml.
+        // Структуру шаблона (templates/director-report-tpl.docx) знаем заранее:
+        //   "Резюме."         → следующий параграф = summary_paragraph
+        //   "Заказчик: {customer_name}"
+        //   "Адрес: {customer_address}"
+        //   "Объект: {project_object}"
+        //   "Предмет: {project_subject}"
+        //   "Бригада: {crew_size} чел."
+        //   "Срок: {deadline_str}"
+        //   "Себестоимость (без НДС): {cost_no_vat}"
+        //   "Цена по стандартной наценке (с НДС): {price_standard_vat}"
+        //   "Цена по раздельной наценке (с НДС): {price_separate_vat}"
+        //   Параграф "3. Риски и допущения" → следующий "•" параграф (warnings: title — text)
+        //   "4. Требуется решение руководства" → следующий "•" параграф (decisions)
+        //   "____________________  / {author_name} /" — extract author_name
+        //   Параграф перед подписью с "Приложение:" — пропускаем; должность = параграф перед линией подписи.
+        // На случай битого/чужого DOCX держим fallback: mammoth + позиционная эвристика старого формата.
+        const PizZip = require('pizzip');
+        const docxBuf = fs.readFileSync(absPath);
+        let paragraphs = [];
+        let rawText = '';
+        try {
+          const zip = new PizZip(docxBuf);
+          const documentXml = zip.file('word/document.xml').asText();
+          // Каждый <w:p> = параграф; все <w:t> внутри склеиваем.
+          // Используем регулярные выражения (XML лёгкий, без вложенных <w:p>).
+          const pBlocks = documentXml.split(/<w:p\b/).slice(1);
+          paragraphs = pBlocks.map(block => {
+            // Берём до </w:p>
+            const end = block.indexOf('</w:p>');
+            const body = end >= 0 ? block.slice(0, end) : block;
+            // Все <w:t ...>текст</w:t>
+            const re = /<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g;
+            let text = '';
+            let m;
+            while ((m = re.exec(body)) !== null) {
+              text += m[1]
+                .replace(/&amp;/g, '&')
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/&quot;/g, '"')
+                .replace(/&apos;/g, "'");
+            }
+            return text;
+          });
+          rawText = paragraphs.join('\n');
+        } catch (_) {
+          // Если pizzip / структура XML не сработала — фоллбэк mammoth.
+          try {
+            const mammoth = require('mammoth');
+            const ext = await mammoth.extractRawText({ path: absPath });
+            rawText = ext.value || '';
+            paragraphs = rawText.split(/\r?\n/);
+          } catch (_) {
+            paragraphs = [];
+            rawText = '';
+          }
+        }
+
+        // Утилиты для извлечения значений по префиксу.
+        const norm = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
+        const paras = paragraphs.map(norm);
+        // Найти параграф, где текст начинается с одного из префиксов; вернуть «хвост» после префикса.
+        const extractAfterPrefix = (prefixes) => {
+          for (const p of paras) {
+            for (const pref of prefixes) {
+              if (p.startsWith(pref)) {
+                const v = p.slice(pref.length).trim();
+                if (v && v !== '—' && !/^\{[a-z_]+\}$/i.test(v)) return v;
+              }
+            }
+          }
+          return '';
+        };
+        // Найти индекс первого параграфа, начинающегося с любого из префиксов.
+        const findParaIdx = (prefixes, fromIdx = 0) => {
+          for (let i = fromIdx; i < paras.length; i++) {
+            for (const pref of prefixes) {
+              if (paras[i].startsWith(pref)) return i;
+            }
+          }
+          return -1;
+        };
+        // «Параграф после префикса» (для «Резюме.»).
+        const paraAfterPrefix = (prefixes) => {
+          const i = findParaIdx(prefixes);
+          if (i < 0) return '';
+          for (let j = i + 1; j < paras.length; j++) {
+            if (paras[j]) return paras[j];
+          }
+          return '';
+        };
+        // Собрать «буллет-список» между двумя заголовками: всё, что начинается с "•".
+        // Если буллетов нет — берём непустые параграфы.
+        const collectBullets = (startPrefixes, endPrefixes) => {
+          const si = findParaIdx(startPrefixes);
+          if (si < 0) return [];
+          const ei = endPrefixes ? findParaIdx(endPrefixes, si + 1) : -1;
+          const stop = ei < 0 ? paras.length : ei;
+          const items = [];
+          for (let i = si + 1; i < stop; i++) {
+            const t = paras[i];
+            if (!t) continue;
+            if (t === '—') continue;
+            // Bullet могут быть "• Заголовок — текст" в одном параграфе либо через перевод строки.
+            // Шаблон рендерит каждый warning в ОДИН параграф (вид: "• Title — Text").
+            if (t.startsWith('•')) {
+              const body = t.replace(/^•\s*/, '').trim();
+              // "Title — Text" → split по em-dash или двум дефисам.
+              const m = body.match(/^(.+?)\s+[—–-]\s+(.+)$/);
+              if (m) items.push({ title: m[1].trim(), text: m[2].trim() });
+              else items.push({ title: '', text: body });
+            } else {
+              items.push({ title: '', text: t });
+            }
+          }
+          return items;
+        };
+
+        // Извлечение полей.
+        const customer_name = extractAfterPrefix(['Заказчик:']);
+        const customer_address = extractAfterPrefix(['Адрес:']);
+        const project_object = extractAfterPrefix(['Объект:']);
+        const project_subject = extractAfterPrefix(['Предмет:']);
+        const brigade = extractAfterPrefix(['Бригада:']);
+        // "X чел." → оставляем как есть; визуально UI показывает строку.
+        const crew_size = brigade.replace(/\s*чел\.?\s*$/i, '').trim() || brigade;
+        const deadline_str = extractAfterPrefix(['Срок:']);
+        const cost_no_vat = extractAfterPrefix(['Себестоимость (без НДС):']);
+        const price_standard_vat = extractAfterPrefix(['Цена по стандартной наценке (с НДС):']);
+        const price_separate_vat = extractAfterPrefix(['Цена по раздельной наценке (с НДС):']);
+        const summary_paragraph = paraAfterPrefix(['Резюме.', 'Резюме:']);
+
+        const warnings = collectBullets(
+          ['3. Риски и допущения', '3.Риски и допущения', 'Риски и допущения'],
+          ['4. Требуется решение руководства', '4.Требуется решение руководства', 'Требуется решение руководства', 'Приложение:']
+        );
+        const decisions = collectBullets(
+          ['4. Требуется решение руководства', '4.Требуется решение руководства', 'Требуется решение руководства'],
+          ['Приложение:', 'С уважением']
+        );
+
+        // Подпись: ищем параграф вида "____________ / Имя /". Имя — между / /.
+        let author_name = '';
+        let author_position = '';
+        for (let i = 0; i < paras.length; i++) {
+          const m = paras[i].match(/\/\s*([^/]+?)\s*\/\s*$/);
+          if (m && /_{3,}/.test(paras[i])) {
+            author_name = m[1].trim();
+            // должность — предыдущий непустой параграф (не «Приложение:», не «С уважением»).
+            for (let j = i - 1; j >= 0; j--) {
+              const t = paras[j];
+              if (!t) continue;
+              if (/^Приложение:/.test(t)) continue;
+              if (/^С уважением/i.test(t)) continue;
+              author_position = t;
+              break;
+            }
+            break;
+          }
+        }
+
+        const data = {
+          project_subject,
+          customer_name,
+          customer_address,
+          project_object,
+          summary_paragraph,
+          crew_size,
+          deadline_str,
+          cost_no_vat,
+          price_standard_vat,
+          price_separate_vat,
+          warnings,
+          decisions: decisions.map(d => ({ text: d.title ? `${d.title} — ${d.text}` : d.text })),
+          author_name,
+          author_position
+        };
+        return { type: 'director_report', data, text: rawText };
+      }
+      return { type: 'unknown', mime: doc.mime_type, filename: doc.filename };
+    } catch (e) {
+      request.log.error({ err: e }, '[pre-tenders documents/json] parse failed');
+      return reply.code(500).send({ error: 'parse_failed', detail: e.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 7.6c POST /:ptId/documents/:idx/save-edits
+  //     Принять JSON с правками от фронта (модалка «✏ Просмотр и правки»)
+  //     и пересобрать XLSX/DOCX. По умолчанию обновляет файл «на месте»
+  //     (перезаписывает doc.path) + сохраняет source_data в manual_documents
+  //     чтобы повторный preview-edit давал JSON без потерь.
+  //     Body: { kind:'smeta'|'director_report', edits:{...} }
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.post('/:ptId/documents/:idx/save-edits', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const ptId = Number(request.params.ptId);
+    const idx  = Number(request.params.idx);
+    if (!Number.isFinite(ptId) || !Number.isFinite(idx) || idx < 0) {
+      return reply.code(400).send({ error: 'invalid_params' });
+    }
+    const acc = await checkPreTenderAccess(request.user, ptId);
+    if (!acc.ok) return reply.code(acc.code).send({ error: acc.error });
+    const { kind, edits } = request.body || {};
+    if (!kind || !edits) return reply.code(400).send({ error: 'kind_and_edits_required' });
+    const normKind = String(kind).toLowerCase();
+
+    const r = await db.query(
+      'SELECT manual_documents FROM pre_tender_requests WHERE id=$1 LIMIT 1', [ptId]);
+    if (!r.rows.length) return reply.code(404).send({ error: 'pre_tender_not_found' });
+    const docs = Array.isArray(r.rows[0].manual_documents) ? r.rows[0].manual_documents : [];
+    if (idx >= docs.length) return reply.code(404).send({ error: 'document_not_found' });
+    const doc = docs[idx];
+    if (!doc || !doc.path) return reply.code(404).send({ error: 'document_path_missing' });
+
+    // Резолвим абсолютный путь файла на диске.
+    const candidates = [
+      doc.path,
+      path.join(process.cwd(), doc.path),
+      path.join(__dirname, '..', '..', doc.path),
+    ];
+    let absPath = null;
+    for (const p of candidates) {
+      try { if (fs.existsSync(p) && fs.statSync(p).isFile()) { absPath = p; break; } } catch (_) {}
+    }
+    if (!absPath) return reply.code(404).send({ error: 'file_not_found_on_disk' });
+
+    try {
+      let buf = null;
+      if (normKind === 'smeta' || normKind.includes('smeta')) {
+        const ExcelJS = require('exceljs');
+        const wb = new ExcelJS.Workbook();
+        const ws = wb.addWorksheet('Смета');
+        const rows = Array.isArray(edits.rows) ? edits.rows : [];
+        rows.forEach((row, ri) => {
+          const r = ws.getRow(ri + 1);
+          (Array.isArray(row) ? row : []).forEach((val, ci) => {
+            // Пытаемся сохранить числа как числа.
+            const sv = String(val == null ? '' : val).replace(/\s+/g, '').replace(',', '.');
+            const num = Number(sv);
+            if (sv !== '' && !isNaN(num)) {
+              r.getCell(ci + 1).value = num;
+            } else {
+              r.getCell(ci + 1).value = (val == null ? '' : String(val));
+            }
+          });
+          r.commit();
+        });
+        ws.columns.forEach(c => { c.width = c.width || 18; });
+        buf = await wb.xlsx.writeBuffer();
+      } else if (normKind === 'director_report' || normKind.includes('director')) {
+        // Для отчёта используем docxtemplater через document-generator, передавая edits.data
+        // как «estimate+analysis+project+customer» в упрощённом виде.
+        const docGen = require('../services/document-generator');
+        const d = edits.data || {};
+        const fakeEstimate = {
+          estimate: {},
+          calculation: {},
+          totals: {
+            // Если пользователь ввёл «3,87 млн ₽» — это уже отформатированная строка;
+            // generateDirectorReportDocx _fmtMillions их перетрёт. Мы заменяем их в data ниже.
+          },
+          analysis: {
+            summary: d.summary_paragraph || '',
+            warnings: Array.isArray(d.warnings) ? d.warnings : [],
+            recommendations: Array.isArray(d.decisions) ? d.decisions.map(x => typeof x === 'string' ? x : (x.text || '')) : []
+          }
+        };
+        const project = { subject: d.project_subject || '—', object: d.project_object || '—', deadline: d.deadline_str || '—' };
+        const customer = { name: d.customer_name || '—', address: d.customer_address || '—' };
+        const analysis = {
+          summary: d.summary_paragraph || '',
+          warnings: fakeEstimate.analysis.warnings,
+          recommendations: fakeEstimate.analysis.recommendations,
+          author_name: d.author_name || undefined,
+          author_position: d.author_position || undefined
+        };
+        // Генерим документ из шаблона. Числовые поля (cost/price/crew/deadline) —
+        // forсимуляция: подкладываем готовые строки через TPL-data override.
+        // generateDirectorReportDocx сам их пересчитает из totals; мы не хотим этого.
+        // Поэтому делаем низкоуровневый рендер шаблона напрямую.
+        const { TPL_DIRECTOR } = docGen;
+        // Если TPL_DIRECTOR доступен — рендерим вручную через _renderDocxTemplate.
+        // Но он не экспортирован. Fallback: зовём generateDirectorReportDocx, а пользовательские
+        // экономические строки игнорятся (это TODO). Здесь — выбираем рендер через шаблон, если возможно.
+        let renderedBuf;
+        try {
+          // Прямой рендер: повторяем поля из generateDirectorReportDocx, но с нашими готовыми строками.
+          const { Docxtemplater, PizZip } = (() => {
+            // та же ленивая загрузка, что и в document-generator.
+            return { Docxtemplater: require('docxtemplater'), PizZip: require('pizzip') };
+          })();
+          const content = fs.readFileSync(TPL_DIRECTOR, 'binary');
+          const zip = new PizZip(content);
+          const docx = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true, nullGetter: () => '—' });
+          const warningsTpl = (Array.isArray(d.warnings) ? d.warnings : []).slice(0, 12).map(w => ({
+            title: String((w && (w.title || w.kind)) || 'Внимание'),
+            text:  String((w && (w.text  || w.message || w.detail)) || '')
+          }));
+          const decisionsRaw = Array.isArray(d.decisions) ? d.decisions : [];
+          const decisionsTpl = decisionsRaw.slice(0, 12).map(x => ({
+            text: typeof x === 'string' ? x : String((x && (x.text || x.title)) || '')
+          }));
+          docx.render({
+            customer_name: d.customer_name || '—',
+            customer_address: d.customer_address || '—',
+            project_object: d.project_object || '—',
+            project_subject: d.project_subject || '—',
+            report_number: `ПО-${new Date().getFullYear()}/${String(Date.now()).slice(-4)}`,
+            report_date: new Date().toLocaleDateString('ru-RU'),
+            summary_paragraph: d.summary_paragraph || '—',
+            crew_size: d.crew_size || '—',
+            deadline_str: d.deadline_str || '—',
+            cost_no_vat: d.cost_no_vat || '—',
+            price_standard_vat: d.price_standard_vat || '—',
+            price_separate_vat: d.price_separate_vat || '—',
+            warnings: warningsTpl,
+            decisions: decisionsTpl,
+            author_name: d.author_name || '(подпись РП)',
+            author_position: d.author_position || 'Руководитель проектного отдела'
+          });
+          renderedBuf = docx.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+        } catch (e) {
+          // Фоллбэк: дефолтный генератор (потеряет user-economics, но не упадёт).
+          request.log.warn({ err: e }, '[save-edits] direct DOCX render failed, falling back to default');
+          renderedBuf = await docGen.generateDirectorReportDocx(fakeEstimate, project, customer, analysis);
+        }
+        buf = renderedBuf;
+      } else {
+        return reply.code(400).send({ error: 'unsupported_kind', kind });
+      }
+
+      if (!buf) return reply.code(500).send({ error: 'render_returned_empty' });
+
+      // Бэкап старого файла и запись нового.
+      const bakPath = absPath + '.bak';
+      try { fs.copyFileSync(absPath, bakPath); } catch (_) {}
+      fs.writeFileSync(absPath, buf);
+
+      // Обновляем запись в manual_documents: размер, source_data (для будущих правок), edited_at.
+      const updated = docs.slice();
+      updated[idx] = Object.assign({}, doc, {
+        size: buf.length,
+        source_data: { type: normKind.includes('smeta') ? 'smeta' : 'director_report', ...edits },
+        edited_at: new Date().toISOString(),
+        edited_by: request.user && request.user.id
+      });
+      await db.query(
+        'UPDATE pre_tender_requests SET manual_documents=$1, updated_at=NOW() WHERE id=$2',
+        [JSON.stringify(updated), ptId]);
+
+      return { ok: true, idx, size: buf.length };
+    } catch (e) {
+      request.log.error({ err: e }, '[pre-tenders documents/save-edits] failed');
+      return reply.code(500).send({ error: 'save_failed', detail: e.message });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 7.7 (Wave A+ fix BLOCKER#2) GET /:ptId/email-attachments/:attId/download
+  //     Скачать email_attachment (из исходного письма) для pre_tender'a.
+  //     До этого vanilla бил по /inbox-applications/0/attachments/... — 404 (хардкод).
+  //     Security: JOIN на pt.email_id — attachment принадлежит письму pt.
+  //     Auth: Bearer header ИЛИ query ?token=...
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.get('/:ptId/email-attachments/:attId/download', {
+    preHandler: [
+      async (request, reply) => {
+        if (!request.headers.authorization && request.query.token) {
+          request.headers.authorization = 'Bearer ' + request.query.token;
+        }
+      },
+      fastify.authenticate
+    ]
+  }, async (request, reply) => {
+    const ptId = Number(request.params.ptId);
+    const attId = Number(request.params.attId);
+    if (!Number.isFinite(ptId) || !Number.isFinite(attId)) {
+      return reply.code(400).send({ error: 'invalid_params' });
+    }
+    // Wave A+ fix MED#4: owner-guard. PM/TO не должен скачивать вложения чужих pre_tender'ов.
+    const acc = await checkPreTenderAccess(request.user, ptId);
+    if (!acc.ok) return reply.code(acc.code).send({ error: acc.error });
+    // SELECT attachment строго в рамках письма pre_tender'a.
+    const r = await db.query(`
+      SELECT ea.id, ea.filename, ea.original_filename, ea.mime_type, ea.size, ea.file_path
+      FROM email_attachments ea
+      JOIN pre_tender_requests pt ON pt.email_id = ea.email_id
+      WHERE ea.id = $1 AND pt.id = $2 LIMIT 1
+    `, [attId, ptId]);
+    const att = r.rows[0];
+    if (!att) return reply.code(404).send({ error: 'attachment_not_found' });
+    // Резолв пути — аналогично inbox_applications_ai.js
+    const candidates = [
+      att.file_path,
+      path.join(process.cwd(), att.file_path),
+      path.join(process.cwd(), 'uploads', att.file_path),
+      path.join(process.cwd(), 'uploads', 'mail', att.file_path),
+    ];
+    let absPath = null;
+    for (const p of candidates) {
+      try { if (fs.existsSync(p) && fs.statSync(p).isFile()) { absPath = p; break; } } catch (_) {}
+    }
+    if (!absPath) return reply.code(404).send({ error: 'file_not_found_on_disk' });
+    const buf = fs.readFileSync(absPath);
+    const dispName = (att.original_filename || att.filename || 'attachment').replace(/[\r\n"]/g, '_');
+    reply
+      .header('Content-Type', att.mime_type || 'application/octet-stream')
+      .header('Content-Length', buf.length)
+      .header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(dispName)}`)
+      .send(buf);
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
   // 8. POST /:id/analyze — AI-анализ
   // ═══════════════════════════════════════════════════════════════════
   fastify.post('/:id/analyze', {
@@ -382,6 +1143,10 @@ module.exports = async function (fastify) {
     const { id } = request.params;
     let { comment, contact_person, contact_phone, assigned_pm_id, send_email = true } = request.body || {};
     const user = request.user;
+
+    // Wave A+ fix BLOCKER#1: owner-check для PM/TO.
+    const acc = await checkPreTenderAccess(user, id);
+    if (!acc.ok) return reply.code(acc.code).send({ error: acc.error });
 
     // Получаем заявку (без JOIN с emails — для ручных заявок emails не нужны)
     const ptRes = await db.query('SELECT * FROM pre_tender_requests WHERE id = $1', [id]);
@@ -609,6 +1374,54 @@ module.exports = async function (fastify) {
       });
     }
 
+    // Wave C: конверсия карты канбана pre_tender → tender (fire-and-forget).
+    // Симметрично Wave-5 hook для assign-work-pm. Не валим accept если упадёт.
+    // Wave A+ fix MED#5: SELECT FOR UPDATE в транзакции — защищает от параллельной конверсии
+    // (если кто-то ещё одновременно нажал accept или Wave-5 hook сработал на ту же карту).
+    try {
+      await db.transaction(async (client) => {
+        const cardRes = await client.query(
+          `SELECT id, owner_user_id, current_main_status, current_substage_id, version, entity_kind, entity_id
+           FROM personal_kanban_cards
+           WHERE entity_kind='pre_tender' AND entity_id=$1 AND is_closed=false
+           ORDER BY id DESC LIMIT 1 FOR UPDATE`,
+          [parseInt(id)]);
+        const card = cardRes.rows[0];
+        if (!card) return; // карты нет — ничего не делаем
+        // Защита от двойной конверсии: если кто-то уже перевёл карту на tender → выходим.
+        if (card.entity_kind !== 'pre_tender' || card.entity_id !== parseInt(id)) return;
+
+        // Wave D BUG-7: default substages если у PM 0 для (tender, Новый)
+        const newSubstageId = await personalKanban.ensureDefaultSubstages(client, card.owner_user_id, 'tender', 'Новый');
+
+        await client.query(
+          `UPDATE personal_kanban_cards
+           SET entity_kind='tender', entity_id=$1, flow_type='tender',
+               current_main_status='Новый', current_substage_id=$2,
+               last_moved_at=now(), version=version+1, updated_at=now()
+           WHERE id=$3`,
+          [tenderId, newSubstageId, card.id]);
+
+        await client.query(
+          `INSERT INTO personal_kanban_card_history
+            (card_id, from_substage_id, to_substage_id, from_main_status, to_main_status, moved_by, action, note)
+           VALUES ($1, $2, $3, $4, 'Новый', $5, 'convert', $6)`,
+          [card.id, card.current_substage_id, newSubstageId, card.current_main_status, user.id,
+           `pre_tender #${id} → tender #${tenderId}`]);
+
+        try {
+          const sse = require('../services/sse');
+          sse.broadcast?.('personal_kanban:card_converted', {
+            card_id: card.id, owner_user_id: card.owner_user_id,
+            flow_type: 'tender', entity_kind: 'tender', entity_id: tenderId,
+            from_entity_kind: 'pre_tender', from_entity_id: parseInt(id),
+          });
+        } catch (_) {}
+      });
+    } catch (cardErr) {
+      console.error('[PreTender] Accept kanban convert error:', cardErr.message);
+    }
+
     return { success: true, tender_id: tenderId, response_email_id: responseEmailId };
   });
 
@@ -621,6 +1434,10 @@ module.exports = async function (fastify) {
     const { id } = request.params;
     const { reject_reason, send_email = true } = request.body || {};
     const user = request.user;
+
+    // Wave A+ fix BLOCKER#1: owner-check для PM/TO.
+    const acc = await checkPreTenderAccess(user, id);
+    if (!acc.ok) return reply.code(acc.code).send({ error: acc.error });
 
     const ptRes = await db.query('SELECT * FROM pre_tender_requests WHERE id = $1', [id]);
 
