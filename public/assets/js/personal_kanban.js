@@ -341,6 +341,27 @@ window.AsgardPersonalKanbanPage = (function () {
 .pk3-drawer{position:fixed;top:0;right:0;bottom:0;width:920px;max-width:96vw;background:var(--bg1);border-left:1px solid var(--brd);box-shadow:0 8px 28px rgba(0,0,0,.45);overflow-y:auto;z-index:401;display:none;scroll-behavior:smooth;scroll-padding-top:170px}
 .pk3-drawer.pk3-show{display:block;animation:pk3-in .25s cubic-bezier(.16,1,.3,1)}
 @keyframes pk3-in{from{transform:translateX(40px);opacity:0}to{transform:translateX(0);opacity:1}}
+/* Когда показан busy-overlay — скрываем фоновый прогресс-line,
+   иначе юзер видит дубль текста под полупрозрачным фоном. */
+.pk3-modal:has(.pk3-busy) #pk3-q-progress,
+.pk3-modal:has(.pk3-busy) #pk3-q-prog-line { visibility: hidden }
+/* Busy-overlay: накладывается на pk3-modal во время AI-вызовов.
+   Полупрозрачный фон + spinner + текст состояния. Перехватывает клики чтобы
+   юзер не двойным-кликом повторно слал запрос. Кнопки фона visually disabled. */
+.pk3-busy{position:absolute;inset:0;background:rgba(15,15,18,.78);backdrop-filter:blur(3px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:50;border-radius:14px;animation:pk3-fade-in .18s ease-out;pointer-events:auto}
+.pk3-busy-spin{width:46px;height:46px;border-radius:50%;border:3px solid rgba(255,255,255,.08);border-top-color:#D4A843;animation:pk3-spin .8s linear infinite}
+.pk3-busy-text{color:#E8C35A;font-size:14px;font-weight:600;font-family:Cinzel,Georgia,serif;letter-spacing:.4px;text-align:center;max-width:80%;line-height:1.5}
+.pk3-busy-sub{color:rgba(255,255,255,.55);font-size:11.5px;text-align:center;margin-top:-2px}
+.pk3-busy-dots::after{content:'';display:inline-block;width:18px;text-align:left;animation:pk3-dots 1.2s steps(4,end) infinite}
+@keyframes pk3-spin{to{transform:rotate(360deg)}}
+@keyframes pk3-fade-in{from{opacity:0}to{opacity:1}}
+@keyframes pk3-dots{0%{content:''}25%{content:'.'}50%{content:'..'}75%{content:'...'}100%{content:''}}
+/* Кнопка во время своего запроса: spinner вместо иконки */
+.pk3-btn.pk3-loading{position:relative;color:transparent !important;pointer-events:none}
+.pk3-btn.pk3-loading::after{content:'';position:absolute;left:50%;top:50%;width:14px;height:14px;border-radius:50%;border:2px solid rgba(0,0,0,.18);border-top-color:currentColor;color:#fff;transform:translate(-50%,-50%);animation:pk3-spin .7s linear infinite}
+/* Pulse-эффект при первом нажатии — мгновенное визуальное подтверждение */
+.pk3-btn.pk3-pulse{animation:pk3-pulse .35s ease-out}
+@keyframes pk3-pulse{0%{transform:scale(1)}50%{transform:scale(.96);box-shadow:0 0 0 4px rgba(212,168,67,.35)}100%{transform:scale(1)}}
 .pk3-drawer-head{padding:18px 24px 12px;border-bottom:1px solid var(--brd-m);background:var(--bg2);backdrop-filter:blur(14px);position:sticky;top:0;z-index:5}
 .pk3-drawer-head .pk3-row1{display:flex;align-items:center;gap:10px;margin-bottom:8px}
 .pk3-drawer-head h2{font-size:17px;flex:1;line-height:1.3;font-family:'Cinzel',Georgia,serif;color:var(--t1);font-weight:700;margin:0}
@@ -760,10 +781,7 @@ window.AsgardPersonalKanbanPage = (function () {
   }
 
   function renderPage() {
-    if (_viewMode === 'v3') {
-      _renderV3Page();
-      return;
-    }
+    // (v3 — отдельный namespace AsgardPersonalKanbanV3 на роуте /personal-kanban-v3)
     const flow = getFlow(_flowKey);
     if (!_mainStatus || !flow.mainStatuses.includes(_mainStatus)) {
       // Выбираем первый статус с картами или substages, иначе первый
@@ -2753,6 +2771,9 @@ window.AsgardPersonalKanbanV3 = (function () {
         e.preventDefault(); body.classList.remove('pk3-drop-hover');
         const toCol = body.dataset.colId;
         const cardId = _draggingCardId; if (!cardId) return;
+        // FIX JS-2: drop в ту же колонку — noop, не отправлять POST.
+        const card = _v3FindCard(cardId);
+        if (card && card.col === toCol) { _draggingCardId = null; return; }
         await _v3DoTransition(cardId, toCol);
       });
     });
@@ -2782,7 +2803,190 @@ window.AsgardPersonalKanbanV3 = (function () {
     await _v3LoadAndRender();
   }
   function _v3OpenCreateManual() {
-    toast('Создание вручную', 'Используй существующую страницу /pre-tenders или /tenders для ручного ввода. Из канбана v3 — в следующей итерации.', 'warn');
+    // Полная форма ручного создания заявки (формат как через почту).
+    // POST /api/pre-tenders/ создаёт pre_tender_request, далее карта канбана попадает в колонку «📥 Новые».
+    const overlay = document.createElement('div');
+    overlay.className = 'pk3-modal-overlay show';
+    overlay.innerHTML = `
+      <div class="pk3-modal" style="max-width:760px;height:auto;max-height:90vh">
+        <div class="pk3-modal-head">
+          <span style="font-size:20px;color:var(--gold)">＋</span>
+          <h3>Создать заявку вручную</h3>
+          <span class="pk3-tag pk3-info">та же форма что приходит с почты</span>
+          <button class="pk3-btn-icon" data-act="close">✕</button>
+        </div>
+        <div class="pk3-modal-body">
+          <p style="margin-bottom:14px;color:var(--t2);font-size:12.5px">
+            Заполни поля — заявка попадёт в колонку «📥 Новые» и будет распределена тебе. Дальше — как обычно: 🚀 Quick → ТКП → отправка.
+          </p>
+
+          <h4 style="font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px">Источник</h4>
+          <div class="pk3-row"><label>Канал заявки *</label>
+            <select id="pk3mc-source">
+              <option value="phone">📞 Звонок клиента</option>
+              <option value="meeting">🤝 Личная встреча</option>
+              <option value="email">📧 Личная почта (не CRM)</option>
+              <option value="referral">🔄 Перевод от партнёра</option>
+              <option value="website">🌐 Сайт компании</option>
+              <option value="other">📝 Другое</option>
+            </select>
+          </div>
+
+          <h4 style="font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px">Клиент</h4>
+          <div class="pk3-row"><label>ИНН</label>
+            <div class="pk3-twocol">
+              <input id="pk3mc-inn" placeholder="введите ИНН">
+              <button class="pk3-btn pk3-ghost pk3-sm" id="pk3mc-egrul">🔎 Найти в egrul</button>
+            </div>
+          </div>
+          <div class="pk3-row"><label>Заказчик *</label><input id="pk3mc-customer" placeholder="название организации"></div>
+          <div class="pk3-row"><label>Контактное лицо</label><input id="pk3mc-contact" placeholder="ФИО"></div>
+          <div class="pk3-row"><label>Должность</label><input id="pk3mc-position" placeholder="например, главный механик"></div>
+          <div class="pk3-row"><label>Email клиента</label><input id="pk3mc-email" type="email" placeholder="email для отправки КП"></div>
+          <div class="pk3-row"><label>Телефон *</label><input id="pk3mc-phone" placeholder="+7 (___) ___-__-__"></div>
+          <div class="pk3-row"><label>Город</label><input id="pk3mc-city" placeholder="город объекта"></div>
+          <div class="pk3-row"><label>Адрес объекта</label><input id="pk3mc-location" placeholder="полный адрес"></div>
+
+          <h4 style="font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px">Работа</h4>
+          <div class="pk3-row"><label>Тип работ</label>
+            <select id="pk3mc-worktype">
+              <option value="">— не выбрано —</option>
+              <option>Гидромеханическая очистка</option>
+              <option>Химическая промывка</option>
+              <option>Антикоррозионная обработка</option>
+              <option>Монтажные работы</option>
+              <option>ПНР (пуско-наладочные работы)</option>
+              <option>Диагностика</option>
+              <option>Вентиляция и кондиционирование</option>
+              <option>Другое</option>
+            </select>
+          </div>
+          <div class="pk3-row"><label>Описание работ *</label><textarea id="pk3mc-desc" rows="3" placeholder="что нужно сделать, на каком оборудовании, особенности"></textarea></div>
+          <div class="pk3-row"><label>Объём</label>
+            <div class="pk3-twocol">
+              <input id="pk3mc-volume" type="number" min="0" step="0.1" placeholder="число">
+              <select id="pk3mc-vunit"><option>м³</option><option>часов</option><option>точек</option><option>тонн</option><option>м²</option><option>п.м.</option><option>шт</option><option>компл</option></select>
+            </div>
+          </div>
+          <div class="pk3-row"><label>Дедлайн КП</label><input id="pk3mc-kpdeadline" type="date"></div>
+          <div class="pk3-row"><label>Сроки работ</label>
+            <div class="pk3-twocol">
+              <input id="pk3mc-startp" type="date" placeholder="с">
+              <input id="pk3mc-endp" type="date" placeholder="по">
+            </div>
+          </div>
+          <div class="pk3-row"><label>Ориентир бюджета</label>
+            <div class="pk3-twocol">
+              <input id="pk3mc-budget" type="number" min="0" step="1000" placeholder="₽ (если клиент назвал)">
+              <span style="color:var(--t3);font-size:11px;padding-top:7px">опционально</span>
+            </div>
+          </div>
+
+          <h4 style="font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px">Заметки</h4>
+          <div class="pk3-row"><label>Контекст</label><textarea id="pk3mc-notes" rows="3" placeholder="что сказал клиент, какие особенности, обещания, дедлайны — это попадёт в заметку карты"></textarea></div>
+
+          <div style="margin-top:14px;padding:11px 13px;background:var(--ok-bg);border:1px solid var(--ok);border-radius:8px;font-size:12px;color:var(--t2);line-height:1.55">
+            💡 <b>После создания</b>: заявка попадёт в твой канбан в колонку «📥 Новые». AI её НЕ будет повторно разбирать (ты сам всё ввёл) — можно сразу нажать «🚀 К просчёту».
+          </div>
+        </div>
+        <div class="pk3-modal-foot">
+          <button class="pk3-btn pk3-ghost" data-act="close">← Отмена</button>
+          <div style="flex:1"></div>
+          <button class="pk3-btn pk3-gold" data-act="create">✅ Создать заявку</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+
+    // egrul lookup (если есть endpoint)
+    const inn = overlay.querySelector('#pk3mc-inn');
+    overlay.querySelector('#pk3mc-egrul').addEventListener('click', async () => {
+      const v = (inn.value || '').trim();
+      if (!v) { toast('Введи ИНН', '', 'warn'); return; }
+      // FIX B-2: реальный endpoint — /api/customers/lookup/:inn (см. src/routes/customers.js)
+      try {
+        const r = await api('/api/customers/lookup/' + encodeURIComponent(v));
+        const found = r.ok && r.data && (r.data.name || r.data.value || r.data.customer_name);
+        if (found) {
+          const name = r.data.name || r.data.value || r.data.customer_name || '';
+          overlay.querySelector('#pk3mc-customer').value = name;
+          toast('Найдено', name, 'ok');
+        } else {
+          toast('Не найдено', 'Заполни вручную', 'warn');
+        }
+      } catch (_) { toast('egrul недоступен', 'Заполни вручную', 'warn'); }
+    });
+
+    overlay.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', async () => {
+      const a = b.dataset.act;
+      if (a === 'close') return overlay.remove();
+      if (a === 'create') {
+        const $f = (id) => overlay.querySelector('#' + id);
+        const customer  = $f('pk3mc-customer').value.trim();
+        const phone     = $f('pk3mc-phone').value.trim();
+        const desc      = $f('pk3mc-desc').value.trim();
+        if (!customer && !desc) { toast('Заполни поля', 'Нужен Заказчик ИЛИ Описание работ', 'err'); return; }
+        if (!phone) { toast('Телефон обязателен', '', 'err'); return; }
+        b.disabled = true; b.textContent = '⏳ Создаю…';
+
+        // BUG #2: должность вшиваем в contact_person через ", " — отдельной колонки нет
+        const person   = $f('pk3mc-contact').value.trim();
+        const position = $f('pk3mc-position').value.trim();
+        const contactPerson = position ? (person ? `${person}, ${position}` : position) : person;
+
+        // BUG #4 + #5: объём и сроки нет отдельных колонок — префиксом в work_description
+        const vol   = $f('pk3mc-volume').value.trim();
+        const vunit = $f('pk3mc-vunit').value || '';
+        const startp = $f('pk3mc-startp').value;
+        const endp   = $f('pk3mc-endp').value;
+        let prefix = '';
+        if (startp || endp) {
+          prefix += `Сроки работ: ${startp || '?'} — ${endp || '?'}\n\n`;
+        }
+        if (vol) {
+          prefix += `Объём: ${vol} ${vunit}\n\n`;
+        }
+        const finalDesc = (prefix ? prefix + (desc || '') : desc) || null;
+
+        // Bonus: notes (контекст) — fallback в decision_comment, чтобы не потерять если карта не создалась
+        const notes = $f('pk3mc-notes').value.trim();
+
+        const body = {
+          source_type:     $f('pk3mc-source').value || 'manual',
+          customer_name:   customer || null,
+          customer_inn:    $f('pk3mc-inn').value.trim() || null,
+          customer_email:  $f('pk3mc-email').value.trim() || null,
+          contact_person:  contactPerson || null,
+          contact_phone:   phone,
+          work_description: finalDesc,
+          work_location:    [$f('pk3mc-city').value.trim(), $f('pk3mc-location').value.trim()].filter(Boolean).join(', ') || null,
+          work_deadline:    $f('pk3mc-kpdeadline').value || null,
+          estimated_sum:    parseFloat($f('pk3mc-budget').value) || null,
+          assigned_to:      _user && _user.id ? _user.id : null,  // на себя
+          // BUG #3: тип работ — у pre_tender_requests есть колонка ai_work_type
+          ai_work_type:    $f('pk3mc-worktype').value || null,
+          // Bonus: fallback notes в decision_comment, чтобы текст не потерялся если карта не создастся
+          decision_comment: notes || null,
+        };
+        const r = await api('/api/pre-tenders/', { method: 'POST', body });
+        if (r.ok && r.data && r.data.id) {
+          // Если есть notes — добавим как первую заметку через kanban API.
+          if (notes && r.data.kanban_card_id) {
+            api(`/api/personal-kanban/cards/${r.data.kanban_card_id}/notes`, { method: 'POST', body: { body: notes } }).catch(() => {});
+          }
+          toast('✅ Создано', `Заявка #${r.data.id} в колонке «📥 Новые»`, 'ok');
+          overlay.remove();
+          _v3LoadAndRender();
+        } else {
+          b.disabled = false; b.textContent = '✅ Создать заявку';
+          toast('Не получилось', (r.data && (r.data.error || r.data.message)) || 'Ошибка', 'err');
+        }
+      }
+    }));
+
+    const escHandler = (e) => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', escHandler); } };
+    document.addEventListener('keydown', escHandler);
   }
 
   // SSE подписка (минимальная)
@@ -2815,7 +3019,7 @@ window.AsgardPersonalKanbanV3 = (function () {
     _sseHandler = null; _sseConnected = false;
   }
 
-  // ── Drawer (stub — будет дополнен Edit-ами с 8 секциями + 5 модалок) ──
+  // ── Drawer (открытие/закрытие + рендер 8 секций) ──
   function _openDrawer(card) {
     _currentCard = card;
     if (_drawerEl) _closeDrawer();
@@ -2835,21 +3039,46 @@ window.AsgardPersonalKanbanV3 = (function () {
     try { _drawerEl.overlay.remove(); _drawerEl.drawer.remove(); } catch (_) {}
     _drawerEl = null; _currentCard = null;
   }
+  function _kindLabelFromEntity(k) {
+    if (k === 'pre_tender') return 'PRE-TENDER';
+    if (k === 'inbox_application') return 'ЗАЯВКА';
+    if (k === 'tender') return 'TENDER';
+    if (k === 'work') return 'WORK';
+    return '';
+  }
   function _renderDrawerHtml(card) {
-    const active = COL_TO_STAGE[card.col] ?? 0;
+    // Backend (loadEntitySnapshotsBatch + _v3LoadBoard) кладёт колонку как
+    // `card.v3_column`. Старый код читал card.col, которого нет в payload —
+    // отсюда прочерки и полоски всегда «застряли» на этапе 0 «Новые».
+    const colKey = card.v3_column || card.col || 'new';
+    const active = COL_TO_STAGE[colKey] ?? 0;
     const fin = card.finance || {};
     const aiSummary = card.ai_summary || '(AI ещё не разобрал заявку)';
+    // Источник дат: card.created_at (ISO от Postgres) или snap.created_at.
+    let dateLabel = '—';
+    try {
+      const dt = card.created_at_label || card.created_at;
+      if (dt) {
+        const d = new Date(dt);
+        if (!isNaN(d)) dateLabel = d.toLocaleDateString('ru-RU') + ' ' + d.toLocaleTimeString('ru-RU', { hour:'2-digit', minute:'2-digit' });
+      }
+    } catch (_) {}
+    // Источник РП: имя owner — приходит как owner_name из view или подмешивается
+    // отдельным полем (snap.owner_label). Если нет — показываем e-mail/role.
+    const ownerLabel = card.owner_label || card.owner_name || (card.owner_user_id ? '#' + card.owner_user_id : '—');
+    // 📨 — клиент: customer_name из pre_tender/tender или source_name из inbox_application.
+    const customerLine = card.customer || card.customer_name || card.source_name || card.source_email || '—';
     return `
       <div class="pk3-drawer-head">
         <div class="pk3-row1">
-          <span class="pk3-badge pk3-${(card.kind || '').split('_')[0]}">${esc(card.kindLabel || '')}</span>
-          <h2>${esc(card.title || '')}</h2>
+          <span class="pk3-badge pk3-${(card.kind || card.entity_kind || '').split('_')[0]}">${esc(card.kindLabel || _kindLabelFromEntity(card.entity_kind))}</span>
+          <h2>${esc(card.title || card.work_description || '(без названия)')}</h2>
           <button class="pk3-btn-icon" id="pk3-drawer-close" title="Закрыть (Esc)">✕</button>
         </div>
         <div class="pk3-meta">
-          <span>📅 ${esc(card.created_at_label || '—')}</span>
-          <span>👤 РП: ${esc(card.owner_label || '—')}</span>
-          <span>📨 ${esc(card.customer || '—')}</span>
+          <span>📅 ${esc(dateLabel)}</span>
+          <span>👤 РП: ${esc(ownerLabel)}</span>
+          <span>📨 ${esc(customerLine)}</span>
           <span>🆔 ${esc(card.code || '#' + card.id)}</span>
         </div>
       </div>
@@ -2917,7 +3146,7 @@ window.AsgardPersonalKanbanV3 = (function () {
   function _secClient(card) {
     return _section('sec-client', '👤', 'Клиент и контакты', null, `
       ${_row('Заказчик', `<input id="pk3-f-customer" value="${esc(card.customer_name || card.customer || '')}" />`)}
-      ${_row('ИНН', `<div class="pk3-twocol"><input id="pk3-f-inn" value="${esc(card.customer_inn || '')}" placeholder="ИНН для подгрузки" /><button class="pk3-btn pk3-ghost pk3-sm" id="pk3-egrul">🔎 egrul</button></div>`)}
+      ${_row('ИНН', `<div class="pk3-twocol"><input id="pk3-f-inn" value="${esc(card.customer_inn || '')}" placeholder="ИНН для подгрузки" /><button class="pk3-btn pk3-ghost pk3-sm" id="pk3-egrul" data-action="egrul-lookup">🔎 egrul</button></div>`)}
       ${_row('Контактное лицо', `<input id="pk3-f-contact" value="${esc(card.contact_person || '')}" />`)}
       ${_row('Email', `<input id="pk3-f-email" value="${esc(card.customer_email || '')}" />`)}
       ${_row('Телефон', `<input id="pk3-f-phone" value="${esc(card.contact_phone || '')}" placeholder="+7 (___) ___-__-__" />`)}
@@ -2969,30 +3198,97 @@ window.AsgardPersonalKanbanV3 = (function () {
     const emailDocs = card.email_attachments || [];
     const pmDocs    = card.pm_documents || [];
     const calcDocs  = card.calc_documents || [];
-    const renderDoc = (d, idx) => `
+    // _src='email' → download через /api/pre-tenders/:ptId/email-attachments/:attId/download
+    // _src='manual' → через /api/pre-tenders/:ptId/documents/:idx/download
+    // _src='calc'   → отдельный canal (TKP)
+    const renderDoc = (d, idx, src) => `
       <div class="pk3-doc-row">
         <span class="pk3-doc-ic">${esc(_docIcon(d.mime_type || d.original_filename || d.filename))}</span>
         <span class="pk3-doc-name">${esc(d.original_filename || d.filename || 'файл')}</span>
         <span class="pk3-doc-size">${d.size ? _fmtBytes(d.size) : ''}</span>
         <div class="pk3-doc-actions">
-          <button data-act="view" data-id="${d.id || idx}">👁</button>
-          <button data-act="dl"   data-id="${d.id || idx}">⬇</button>
+          <button class="pk3-doc-btn" data-action="doc-view" data-src="${src}" data-id="${d.id || idx}" title="Открыть">👁</button>
+          <button class="pk3-doc-btn" data-action="doc-dl"   data-src="${src}" data-id="${d.id || idx}" title="Скачать">⬇</button>
         </div>
       </div>
     `;
-    const totalCount = emailDocs.length + pmDocs.length + calcDocs.length;
+    // 🧙 manual_documents JSONB c generated_by='mimir' — сметы/отчёты/письма от AI.
+    // Сохраняем абсолютный индекс в исходном массиве — backend ждёт его в /:ptId/documents/:idx/download.
+    const allManual = Array.isArray(card.manual_documents) ? card.manual_documents : [];
+    const _isPdfSibling = (md) => !!(md && ((md.kind && /_pdf$/.test(md.kind)) || md.parent_kind));
+    const mimirAll = allManual
+      .map((md, idx) => ({ md, idx }))
+      .filter(x => x.md && x.md.generated_by === 'mimir');
+    // PDF-сиблинги схлопываются в кнопку у родителя — отдельной строкой не показываем.
+    const mimirDocs = mimirAll.filter(x => !_isPdfSibling(x.md));
+    // Карта parent_kind → {idx} для O(1) поиска PDF-сиблинга у родителя.
+    const mimirPdfByParent = {};
+    mimirAll.forEach(x => {
+      if (!_isPdfSibling(x.md)) return;
+      const pk = x.md.parent_kind || (x.md.kind || '').replace(/_pdf$/, '');
+      if (pk) mimirPdfByParent[pk] = x;
+    });
+    const _mimirIcon = (kind, mime) => {
+      if (kind === 'smeta') return '📊';
+      if (kind === 'director_report') return '📄';
+      if (kind === 'customer_letter') return '✉';
+      if (kind === 'tkp') return '📋';
+      return _docIcon(mime || '');
+    };
+    const _mimirKindLbl = (kind) => {
+      if (kind === 'smeta') return 'смета';
+      if (kind === 'director_report') return 'отчёт директору';
+      if (kind === 'customer_letter') return 'письмо клиенту';
+      if (kind === 'tkp') return 'ТКП';
+      return '';
+    };
+    const renderMimirDoc = ({ md, idx }) => {
+      const name = md.filename || md.original_name || ('документ #' + idx);
+      const kind = md.kind || '';
+      const lbl  = _mimirKindLbl(kind);
+      const ext  = (name.split('.').pop() || '').toUpperCase();
+      const dlLbl = ext === 'XLSX' ? '⬇ XLSX' : (ext === 'DOCX' ? '⬇ DOCX' : (ext === 'PDF' ? '⬇ PDF' : '⬇ Скачать'));
+      // Кнопка «✏ Просмотр и правки» доступна для смет (xlsx) и отчётов директору (docx),
+      // т.к. для них backend умеет распарсить в JSON + сгенерить обратно.
+      const editable = (kind === 'smeta' || kind === 'mimir_smeta'
+                     || kind === 'director_report' || kind === 'mimir_director_report');
+      // Вторая кнопка «⬇ PDF» — если родитель НЕ PDF и (а) есть PDF-сиблинг в manual_documents
+      // (тогда качаем сиблинг по его idx), либо (б) исходник XLSX/DOCX — backend сконвертит
+      // on-demand через ?format=pdf на том же /:ptId/documents/:idx/download.
+      const pdfSib = mimirPdfByParent[kind];
+      const hasPdfBtn = ext !== 'PDF' && (pdfSib || ext === 'XLSX' || ext === 'DOCX');
+      const pdfId = pdfSib ? pdfSib.idx : idx;
+      return `
+        <div class="pk3-doc-row" data-mimir-kind="${esc(kind)}">
+          <span class="pk3-doc-ic">${esc(_mimirIcon(kind, md.mime))}</span>
+          <span class="pk3-doc-name">${esc(name)}${lbl ? ` <span style="color:var(--t3);font-size:11px;font-weight:400">· ${esc(lbl)}</span>` : ''}</span>
+          <span class="pk3-doc-size">${md.size ? _fmtBytes(md.size) : ''}</span>
+          <div class="pk3-doc-actions">
+            <button class="pk3-doc-btn" data-action="doc-view" data-src="manual" data-id="${idx}" title="Открыть">👁</button>
+            <button class="pk3-doc-btn" data-action="doc-dl"   data-src="manual" data-id="${idx}" title="Скачать ${esc(ext || 'файл')}">${dlLbl}</button>
+            ${hasPdfBtn ? `<button class="pk3-doc-btn" data-action="doc-dl-pdf" data-src="manual" data-id="${pdfId}" data-from-parent="${pdfSib ? '0' : '1'}" title="Скачать PDF">⬇ PDF</button>` : ''}
+            ${editable ? `<button class="pk3-doc-btn" data-action="doc-preview-edit" data-src="manual" data-id="${idx}" data-kind="${esc(kind)}" title="Просмотр и правки">✏</button>` : ''}
+          </div>
+        </div>
+      `;
+    };
+    const totalCount = emailDocs.length + pmDocs.length + calcDocs.length + mimirDocs.length;
     return _section('sec-docs', '📎', 'Документы', totalCount, `
       <div class="pk3-doc-group">
         <h4>📧 Из письма клиента</h4>
-        ${emailDocs.length ? emailDocs.map(renderDoc).join('') : '<div style="color:var(--t3);font-size:11.5px">Нет вложений</div>'}
+        ${emailDocs.length ? emailDocs.map((d,i) => renderDoc(d,i,'email')).join('') : '<div style="color:var(--t3);font-size:11.5px">Нет вложений</div>'}
       </div>
       <div class="pk3-doc-group">
         <h4>📤 Загружено РП</h4>
-        ${pmDocs.length ? pmDocs.map(renderDoc).join('') : '<div class="pk3-doc-add" id="pk3-upload-pm">+ Перетащите файлы или нажмите чтобы выбрать</div>'}
+        ${pmDocs.length ? pmDocs.map((d,i) => renderDoc(d,i,'manual')).join('') : '<div class="pk3-doc-add" data-action="doc-upload">+ Перетащите файлы или нажмите чтобы выбрать</div>'}
       </div>
       <div class="pk3-doc-group">
         <h4>🧮 Расчёты и сметы</h4>
-        ${calcDocs.length ? calcDocs.map(renderDoc).join('') : '<div style="color:var(--t3);font-size:11.5px">Сметы появятся после Quick/Кондуктора</div>'}
+        ${calcDocs.length ? calcDocs.map((d,i) => renderDoc(d,i,'calc')).join('') : '<div style="color:var(--t3);font-size:11.5px">Сметы появятся после Quick/Кондуктора</div>'}
+      </div>
+      <div class="pk3-doc-group">
+        <h4>🧙 Сгенерировано Мимиром</h4>
+        ${mimirDocs.length ? mimirDocs.map(renderMimirDoc).join('') : '<div style="color:var(--t3);font-size:11.5px">Документы появятся после запуска Quick или Conductor</div>'}
       </div>
     `);
   }
@@ -3138,6 +3434,26 @@ window.AsgardPersonalKanbanV3 = (function () {
 
   function _attachDrawerEvents(card) {
     const cl = $('#pk3-drawer-close'); if (cl) cl.addEventListener('click', _closeDrawer);
+    // Подтягиваем дефолтный НДС из настроек системы (settings.vat_default_pct).
+    // Раньше fallback был хардкод 20% — но компания работает с 22% (УСН 5/НДС/etc),
+    // дефолт должен браться из настроек, не из кода.
+    (async () => {
+      try {
+        const r = await api('/api/settings/vat_default_pct');
+        const v = (r && r.ok && r.data && r.data.value != null) ? String(r.data.value) : null;
+        if (!v) return;
+        const sel = $('#pk3-f-vat');
+        if (sel) {
+          // Если значения из настроек нет среди option — добавляем.
+          if (![...sel.options].some(o => o.value === v)) {
+            const opt = document.createElement('option');
+            opt.value = v; opt.textContent = v + '% (по настройкам)';
+            sel.appendChild(opt);
+          }
+          sel.value = v;
+        }
+      } catch (_) {}
+    })();
     // section accordion
     $$('.pk3-drawer .pk3-section-head').forEach(h => h.addEventListener('click', () => {
       const body = h.nextElementSibling;
@@ -3171,6 +3487,10 @@ window.AsgardPersonalKanbanV3 = (function () {
     if (act === 'tkp-pdf')         return _downloadTkpPdf(card);
     if (act === 'save')            return _saveDrawerFields(card);
     if (act === 'save-fin')        return _saveDrawerFields(card);
+    if (act === 'egrul-lookup')    return _doEgrulLookup();
+    if (act === 'doc-view' || act === 'doc-dl' || act === 'doc-dl-pdf') return _onDocClick(card, act);
+    if (act === 'doc-preview-edit') return _onDocPreviewEditClick(card);
+    if (act === 'doc-upload')      return _openDocUploadPicker(card);
     if (act === 'note')            return _addNote(card);
     if (act === 'remind')          return _addReminder(card);
     if (act === 'convert-pretender') return _doConvertPretender(card);
@@ -3191,23 +3511,887 @@ window.AsgardPersonalKanbanV3 = (function () {
     }
   }
   async function _saveDrawerFields(card) {
-    const get = (id) => { const el = $(id); return el ? el.value : null; };
+    const get = (id) => { const el = $(id); return el ? (el.value || '').trim() : null; };
+    // Шлём только заполненные customer_* / work_* поля. Финансовые поля сохраняем
+    // отдельным эндпоинтом — backend /cards/:cardId/update сейчас принимает только
+    // customer/work allowed-list (см. routes/personal-kanban.js).
     const body = {
-      customer_name: get('#pk3-f-customer'),
-      customer_inn:  get('#pk3-f-inn'),
-      contact_person: get('#pk3-f-contact'),
-      customer_email: get('#pk3-f-email'),
-      contact_phone:  get('#pk3-f-phone'),
-      customer_city:  get('#pk3-f-city'),
-      work_description: get('#pk3-f-desc'),
-      cost_planned: parseFloat(get('#pk3-f-cost')) || null,
-      kp_price_without_vat: parseFloat(get('#pk3-f-kp')) || null,
-      vat_rate_pct: parseFloat(get('#pk3-f-vat')) || 20,
+      customer_name:    get('#pk3-f-customer') || null,
+      customer_inn:     get('#pk3-f-inn')      || null,
+      contact_person:   get('#pk3-f-contact')  || null,
+      customer_email:   get('#pk3-f-email')    || null,
+      contact_phone:    get('#pk3-f-phone')    || null,
+      work_description: get('#pk3-f-desc')     || null,
+      work_location:    get('#pk3-f-city')     || null,
     };
-    // PATCH через entity endpoint — для простоты используем universal /cards/:id/update
     const r = await api(`/api/personal-kanban/cards/${card.id}/update`, { method: 'POST', body });
-    if (r.ok) toast('Сохранено', 'Поля карты обновлены', 'ok');
-    else toast('Не сохранилось', (r.data && r.data.error) || 'Ошибка', 'err');
+    if (r.ok) {
+      toast('Сохранено', 'Карточка клиента обновлена', 'ok');
+      // Подмешиваем свежие значения в текущую карту, чтобы _renderDrawerHtml на reopen
+      // не перетёр пользовательский ввод.
+      Object.assign(card, body);
+    } else {
+      toast('Не сохранилось', (r.data && r.data.error) || 'Ошибка', 'err');
+    }
+  }
+
+  // Просмотр / скачивание документа из drawer карты.
+  // event.target = <button data-action="doc-view|doc-dl|doc-dl-pdf" data-src=email|manual|calc data-id=...>
+  // pt id берём из card.entity_id (это pre_tender_request id).
+  // doc-dl-pdf — добавляет format=pdf к URL: если data-from-parent='1' (нет PDF-сиблинга),
+  // backend сконвертит исходник XLSX/DOCX в PDF on-demand; иначе data-id уже указывает на сиблинг.
+  function _onDocClick(card, act) {
+    const ev = window.event;
+    const btn = ev && ev.target && ev.target.closest('[data-action="doc-view"], [data-action="doc-dl"], [data-action="doc-dl-pdf"]');
+    if (!btn) return;
+    const src = btn.dataset.src || 'email';
+    const docId = btn.dataset.id;
+    const ptId = card.entity_id || card.entity_id_pt || (card.entity && card.entity.id);
+    if (!ptId) { toast('Нет привязки', 'Открой pre-tender', 'warn'); return; }
+    const token = encodeURIComponent(localStorage.getItem('asgard_token') || '');
+    let url;
+    if (src === 'email') {
+      url = `/api/pre-tenders/${ptId}/email-attachments/${encodeURIComponent(docId)}/download?token=${token}`;
+    } else if (src === 'manual') {
+      url = `/api/pre-tenders/${ptId}/documents/${encodeURIComponent(docId)}/download?token=${token}`;
+    } else {
+      toast('Скоро', 'Расчётные файлы появятся после Quick', 'info'); return;
+    }
+    // doc-dl-pdf: добавляем format=pdf к URL (token уже в query → через '&').
+    // Если сиблинг существует — он уже PDF, backend всё равно отдаст как есть; флаг безвреден.
+    if (act === 'doc-dl-pdf') {
+      url += (url.indexOf('?') >= 0 ? '&' : '?') + 'format=pdf';
+    }
+    // doc-view → новая вкладка (PDF/img покажет; docx/xlsx скачает — браузер решает).
+    // doc-dl / doc-dl-pdf → форсируем download через скрытую ссылку с attribute download.
+    if (act === 'doc-dl' || act === 'doc-dl-pdf') {
+      const a = document.createElement('a');
+      a.href = url; a.download = ''; a.target = '_blank';
+      document.body.appendChild(a); a.click(); a.remove();
+    } else {
+      window.open(url, '_blank', 'noopener');
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ✏ Просмотр и правки документа Мимира (смета или отчёт директору).
+  // Кнопка в drawer-секции «🧙 Сгенерировано Мимиром». Из event-делегата
+  // (_onDrawerAction → 'doc-preview-edit') достаём data-id/data-kind с кнопки
+  // и зовём _openDocPreviewEdit(card, idx, kind).
+  // ─────────────────────────────────────────────────────────────────────────
+  function _onDocPreviewEditClick(card) {
+    const ev = window.event;
+    const btn = ev && ev.target && ev.target.closest('[data-action="doc-preview-edit"]');
+    if (!btn) return;
+    const idx  = Number(btn.dataset.id);
+    const kind = btn.dataset.kind || '';
+    if (!Number.isFinite(idx)) { toast('Ошибка', 'Не определён индекс документа', 'err'); return; }
+    return _openDocPreviewEdit(card, idx, kind);
+  }
+
+  // Нормализатор kind: 'mimir_smeta' / 'smeta' → 'smeta'; 'mimir_director_report'/'director_report' → 'director_report'.
+  function _normMimirKind(k) {
+    if (!k) return '';
+    const s = String(k).toLowerCase();
+    if (s.includes('smeta')) return 'smeta';
+    if (s.includes('director_report') || s.includes('director')) return 'director_report';
+    if (s.includes('customer_letter')) return 'customer_letter';
+    if (s.includes('tkp')) return 'tkp';
+    return s;
+  }
+
+  // Главная функция: открыть модалку предпросмотра/правок.
+  // 1. GET /api/pre-tenders/:ptId/documents/:idx/json — получить JSON-представление.
+  // 2. Отрисовать редактируемое превью (смета — таблица input'ов с auto-sum;
+  //    отчёт — форма по разделам).
+  // 3. Кнопки: ⬇ Скачать с правками (POST /save-edits → файл),
+  //    ✉ Отправить Мимиру (POST в chat-сессию Quick или conductor recompute).
+  async function _openDocPreviewEdit(card, idx, kindRaw) {
+    const ptId = card.entity_id || card.entity_id_pt || (card.entity && card.entity.id);
+    if (!ptId) { toast('Нет привязки', 'Открой pre-tender', 'warn'); return; }
+    const kind = _normMimirKind(kindRaw);
+    const titleByKind = (k) => k === 'smeta' ? 'Смета — расчёт себестоимости'
+                            : k === 'director_report' ? 'Отчёт директору'
+                            : 'Документ Мимира';
+    const ttl = titleByKind(kind);
+
+    const overlay = document.createElement('div');
+    overlay.className = 'pk3-modal-overlay show';
+    overlay.id = 'pk3-doc-edit-overlay';
+    overlay.innerHTML = `
+      <div class="pk3-modal" style="max-width:1100px">
+        <div class="pk3-modal-head">
+          <span style="font-size:20px;color:var(--gold)">✏</span>
+          <h3>Редактирование: ${esc(ttl)}</h3>
+          <span class="pk3-tag pk3-info">правки доступны Мимиру</span>
+          <button class="pk3-btn-icon" data-act="close" title="Закрыть">✕</button>
+        </div>
+        <div class="pk3-modal-body" id="pk3-doc-edit-body">
+          <div style="padding:38px;text-align:center;color:var(--t2);font-size:13px">
+            ⏳ Загружаю документ…
+          </div>
+        </div>
+        <div class="pk3-modal-foot">
+          <button class="pk3-btn pk3-ghost" data-act="close">← Отмена</button>
+          <div style="flex:1"></div>
+          <button class="pk3-btn pk3-ghost" data-act="download-edited" disabled>⬇ Скачать с правками</button>
+          <button class="pk3-btn pk3-gold" data-act="send-mimir" disabled>✉ Отправить Мимиру</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) overlay.remove();
+      const closer = e.target.closest && e.target.closest('[data-act="close"]');
+      if (closer) overlay.remove();
+    });
+
+    // 1. Загружаем JSON-представление документа.
+    let docJson = null;
+    try {
+      const r = await apiPreTender(`/${ptId}/documents/${idx}/json`);
+      if (!r.ok || !r.data) {
+        const err = (r.data && r.data.error) || ('HTTP ' + r.status);
+        const body = $('#pk3-doc-edit-body');
+        if (body) body.innerHTML = `<div style="padding:38px;text-align:center;color:var(--err);font-size:13px">❌ Не удалось загрузить документ: ${esc(err)}</div>`;
+        return;
+      }
+      docJson = r.data;
+    } catch (e) {
+      const body = $('#pk3-doc-edit-body');
+      if (body) body.innerHTML = `<div style="padding:38px;text-align:center;color:var(--err);font-size:13px">❌ Сеть упала: ${esc(String(e.message || e))}</div>`;
+      return;
+    }
+
+    // 2. Рендерим редактируемое превью.
+    const body = $('#pk3-doc-edit-body');
+    if (!body) return;
+    const realKind = _normMimirKind(docJson.type || kind);
+    if (realKind === 'smeta') {
+      body.innerHTML = _renderSmetaEditable(docJson);
+      _bindSmetaEditable(body);
+    } else if (realKind === 'director_report') {
+      body.innerHTML = _renderReportEditable(docJson);
+    } else {
+      body.innerHTML = `<div style="padding:30px;color:var(--t2);font-size:13px">
+        Документ типа <b>${esc(docJson.type || 'unknown')}</b> не поддерживается для in-place правок.
+        Используй «⬇ Скачать», правь в Word/Excel и загрузи обратно через «📤 Загружено РП».
+      </div>`;
+    }
+
+    // Включаем кнопки.
+    const dlBtn = overlay.querySelector('[data-act="download-edited"]');
+    const sndBtn = overlay.querySelector('[data-act="send-mimir"]');
+    if (dlBtn) dlBtn.disabled = false;
+    if (sndBtn) sndBtn.disabled = false;
+
+    // 3. Действия в футере.
+    if (dlBtn) dlBtn.addEventListener('click', async () => {
+      const edits = _collectDocEdits(body, realKind);
+      if (!edits) { toast('Пусто', 'Нет полей для сохранения', 'warn'); return; }
+      dlBtn.disabled = true; dlBtn.textContent = '⏳ Генерирую…';
+      try {
+        const headers = await _authHeaders();
+        const res = await fetch(`/api/pre-tenders/${ptId}/documents/${idx}/save-edits`, {
+          method: 'POST', headers, body: JSON.stringify({ kind: realKind, edits })
+        });
+        if (!res.ok) {
+          const txt = await res.text().catch(() => '');
+          toast('Не сохранилось', txt || ('HTTP ' + res.status), 'err');
+          dlBtn.disabled = false; dlBtn.textContent = '⬇ Скачать с правками';
+          return;
+        }
+        // Backend возвращает либо бинарь файла, либо JSON {ok, new_idx}. Сначала пробуем blob.
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          const j = await res.json().catch(() => ({}));
+          toast('Сохранено', 'Документ обновлён в карте', 'ok');
+          dlBtn.textContent = '✅ Сохранено';
+          // Релоад карты, чтобы новый файл появился в списке.
+          _reopenCurrentCard();
+        } else {
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = (realKind === 'smeta' ? 'smeta_edited.xlsx' : 'report_edited.docx');
+          document.body.appendChild(a); a.click(); a.remove();
+          URL.revokeObjectURL(url);
+          dlBtn.disabled = false; dlBtn.textContent = '⬇ Скачать с правками';
+          toast('Готово', 'Документ скачан', 'ok');
+        }
+      } catch (e) {
+        toast('Сеть упала', String(e.message || e), 'err');
+        dlBtn.disabled = false; dlBtn.textContent = '⬇ Скачать с правками';
+      }
+    });
+
+    if (sndBtn) sndBtn.addEventListener('click', async () => {
+      const fb = (overlay.querySelector('#pk3-doc-edit-feedback') || {}).value;
+      const feedback = (fb || '').trim();
+      if (!feedback) { toast('Пусто', 'Опиши что нужно поправить — Мимир перечитает.', 'warn'); return; }
+      sndBtn.disabled = true; sndBtn.textContent = '⏳ Отправляю…';
+      try {
+        const ok = await _sendFeedbackToMimir(card, feedback);
+        if (ok) {
+          toast('Отправлено', 'Мимир пересчитывает в фоне — обнови карту через минуту.', 'ok');
+          overlay.remove();
+        } else {
+          toast('Не отправилось', 'Не нашёл активной Quick/Conductor сессии для карты. Запусти 🚀 Quick или 🎩 Кондуктора.', 'err');
+          sndBtn.disabled = false; sndBtn.textContent = '✉ Отправить Мимиру';
+        }
+      } catch (e) {
+        toast('Сеть упала', String(e.message || e), 'err');
+        sndBtn.disabled = false; sndBtn.textContent = '✉ Отправить Мимиру';
+      }
+    });
+  }
+
+  // Рендер редактируемой сметы: JSON {type:'smeta', rows:[[col1,col2,...], ...]}.
+  // Каждая ячейка — input. Внизу — textarea «Замечания Мимиру».
+  // На каждый input навешиваем data-field (qty|price|sum|rate|total_xxx|grand_xxx|markup|vat)
+  // — это позволяет _bindSmetaEditable пересчитывать суммы строк, итоги разделов и большие итоги.
+  function _renderSmetaEditable(j) {
+    const rows = Array.isArray(j.rows) ? j.rows : [];
+    const maxCols = rows.reduce((m, r) => Math.max(m, Array.isArray(r) ? r.length : 0), 0);
+
+    // --- Распознавание структуры ---
+    // 1) Ищем строку-заголовок таблицы: ячейки совпадают с «№»/«Кол-во»/«Цена»/«Сумма» (или содержат эти слова).
+    //    Эталон smeta-template.xlsx: row 36 = ["№","Статья затрат","Кол-во","Ед.","Цена/ставка, ₽","Сумма, ₽"].
+    let hdrRow = -1, colNum = -1, colName = -1, colQty = -1, colUnit = -1, colPrice = -1, colSum = -1;
+    const lc = s => String(s == null ? '' : s).toLowerCase().trim();
+    for (let ri = 0; ri < rows.length && ri < 80; ri++) {
+      const r = rows[ri] || [];
+      let qty = -1, price = -1, sum = -1, num = -1, name = -1, unit = -1;
+      for (let ci = 0; ci < r.length; ci++) {
+        const s = lc(r[ci]);
+        if (!s) continue;
+        if (qty < 0 && (s === 'кол-во' || s === 'кол.' || s.startsWith('кол-во') || s === 'qty' || s === 'количество')) qty = ci;
+        else if (price < 0 && (s.startsWith('цена') || s.startsWith('ставка') || s.includes('цена/ставка') || s === 'price' || s.includes('цена,') || s.startsWith('цена '))) price = ci;
+        else if (sum < 0 && (s.startsWith('сумма') || s === 'sum' || s === 'итого' || s.includes('сумма,'))) sum = ci;
+        else if (num < 0 && (s === '№' || s === 'no' || s === 'п/п' || s === '#')) num = ci;
+        else if (name < 0 && (s.includes('статья') || s.includes('наименование') || s.includes('позиция'))) name = ci;
+        else if (unit < 0 && (s === 'ед.' || s === 'ед' || s === 'ед. изм.' || s === 'unit' || s === 'ед.изм.')) unit = ci;
+      }
+      if (qty >= 0 && price >= 0 && sum >= 0) {
+        hdrRow = ri; colQty = qty; colPrice = price; colSum = sum;
+        colNum = num; colName = name; colUnit = unit;
+        break;
+      }
+    }
+    // Фоллбэк-эвристика: если заголовок не нашли, в каждой строке ищем 2 числовых поля + 3-е (сумма).
+    const fallbackMode = hdrRow < 0;
+
+    // 2) Определяем «итоговые» строки и большие итоги по тексту в любой ячейке.
+    //    Возвращает ключ итога: 'ФОТ', 'Персонал', 'Текущие', 'Командировочные', 'Транспорт',
+    //    'Материалы', 'direct', 'overhead', 'contingency', 'cost', 'markup', 'price_no_vat',
+    //    'vat', 'price_with_vat', 'profit', или null если строка обычная.
+    function _classifyTotal(row) {
+      const joined = (Array.isArray(row) ? row : []).map(c => lc(c)).join(' | ');
+      if (!joined) return null;
+      // Большие итоги — сначала, т.к. префиксы могут пересечься.
+      if (joined.includes('прибыль')) return 'profit';
+      if (joined.includes('цена заказчику') || joined.includes('цена с ндс')) return 'price_with_vat';
+      if (joined.includes('цена без ндс')) return 'price_no_vat';
+      // НДС-строка ставки: "НДС 22%" / "НДС 20%". \b не работает с кириллицей — используем явные границы.
+      if (/(^|[^а-яё])ндс(\s|$)/i.test(joined) && (joined.includes('22') || joined.includes('20') || joined.includes('%'))) return 'vat';
+      if (joined.includes('наценка') && joined.includes('markup')) return 'markup';
+      if (joined.includes('себестоимость')) return 'cost';
+      if (joined.includes('непредвиденн')) return 'contingency';
+      if (joined.includes('накладные')) return 'overhead';
+      if (joined.includes('прямые затраты')) return 'direct';
+      if (joined.includes('фот, итого')) return 'fot';
+      if (joined.includes('налог') && joined.includes('фот')) return 'fot_tax';
+      if (joined.includes('персонал, итого')) return 'section_persons';
+      if (joined.includes('текущие расходы, итого')) return 'section_current';
+      if (joined.includes('командировочные, итого')) return 'section_per_diem';
+      if (joined.includes('транспорт, итого')) return 'section_transport';
+      if (joined.includes('материалы') && joined.includes('итого')) return 'section_materials';
+      return null;
+    }
+
+    // 3) Определяем «принадлежность строки разделу». Section header — короткая ячейка «A»/«B»/«C»/«D»/«E»
+    //    в первой колонке; данные раздела — строки с кодом A1/A2/B1… в той же колонке.
+    //    Возвращает букву раздела или null.
+    function _sectionOf(row) {
+      const c0 = String((row && row[0]) || '').trim();
+      const c1 = String((row && row[1]) || '').trim();
+      const m0 = c0.match(/^([A-EА-Е])(\d+)?$/i);
+      if (m0) return m0[1].toUpperCase();
+      const m1 = c1.match(/^([A-EА-Е])(\d+)?$/i);
+      if (m1) return m1[1].toUpperCase();
+      return null;
+    }
+    // Map английского/русского: A→A, А→A. Раздел A=персонал, B=текущие, C=командировочные, D=транспорт, E=материалы.
+    const SECTION_TO_TOTAL = { A: 'fot', B: 'section_current', C: 'section_per_diem', D: 'section_transport', E: 'section_materials' };
+
+    // 4) Парсинг числовых строк (часто с пробелами, запятыми, формулами C45*E45 — формулу не считаем).
+    const _num = (v) => {
+      if (v == null) return NaN;
+      const s = String(v).replace(/\s+/g, '').replace(/,/g, '.').replace(/[^\d.\-]/g, '');
+      if (!s) return NaN;
+      const n = Number(s);
+      return isNaN(n) ? NaN : n;
+    };
+
+    // 5) Помечаем каждый ряд метаданными для последующего binding.
+    //    rowMeta[ri] = { section: 'A'|null, total: 'fot'|..., isData: bool }
+    const rowMeta = rows.map((row, ri) => {
+      if (ri <= hdrRow) return { meta: 'pre' };
+      const tot = _classifyTotal(row);
+      const sec = _sectionOf(row);
+      return { meta: tot ? 'total' : (sec ? 'data' : 'other'), section: sec, total: tot };
+    });
+
+    // --- Сборка HTML ---
+    let html = `
+      <div style="margin-bottom:14px;padding:11px 13px;background:var(--gold-bg);border:1px solid var(--gold);border-radius:8px;font-size:12.5px;color:var(--t2);line-height:1.55">
+        💡 Каждая ячейка редактируема. После правок: «⬇ Скачать с правками» — XLSX с твоими изменениями;
+        «✉ Отправить Мимиру» — попросить ИИ пересчитать смету с учётом твоих замечаний.
+        <b>Автопересчёт:</b> при правке Кол-во или Цены сумма строки и итоги разделов обновляются автоматически.
+      </div>
+      <div style="overflow:auto;max-height:55vh;border:1px solid var(--brd-m);border-radius:8px">
+        <table class="pk3-smeta-edit-tbl" style="width:100%;border-collapse:collapse;font-size:12px;font-family:'JetBrains Mono',Consolas,monospace">
+          <tbody>
+    `;
+    rows.forEach((row, ri) => {
+      const m = rowMeta[ri] || {};
+      const isTotal = m.meta === 'total';
+      const rowAttrs = [
+        `data-row-idx="${ri}"`,
+        m.section ? `data-section="${m.section}"` : '',
+        m.total ? `data-total="${m.total}"` : '',
+        `data-meta="${m.meta || ''}"`
+      ].filter(Boolean).join(' ');
+      const rowStyle = isTotal ? 'background:var(--bg2);font-weight:600' : '';
+      html += `<tr ${rowAttrs} style="${rowStyle}">`;
+      for (let ci = 0; ci < maxCols; ci++) {
+        const v = (row && row[ci] != null) ? String(row[ci]) : '';
+        const isNum = v !== '' && !isNaN(Number(v.replace(/\s+/g, '').replace(',', '.')));
+        // Определяем data-field для конкретной ячейки.
+        let field = '';
+        if (!fallbackMode && ri > hdrRow) {
+          if (ci === colQty) field = 'qty';
+          else if (ci === colPrice) field = 'price';
+          else if (ci === colSum) field = 'sum';
+        }
+        // На total-строках клетка суммы — выходной агрегат (не редактируется автоматически, но юзер может).
+        if (isTotal && ci === colSum) field = 'total_value';
+        // Для строки «Налог / взносы на ФОТ», «Накладные», «Непредвиденные», «Наценка», «НДС» —
+        // колонка price (колонка 4) хранит ставку (коэффициент). Помечаем как rate.
+        if (isTotal && (m.total === 'fot_tax' || m.total === 'overhead' || m.total === 'contingency' || m.total === 'markup' || m.total === 'vat') && ci === colPrice) {
+          field = 'rate';
+        }
+        const fieldAttr = field ? ` data-field="${field}"` : '';
+        const align = (field === 'qty' || field === 'price' || field === 'sum' || field === 'total_value' || field === 'rate' || isNum) ? 'text-align:right' : '';
+        html += `<td style="padding:0;border:1px solid var(--brd-m)"><input type="text" data-row="${ri}" data-col="${ci}"${fieldAttr} value="${esc(v)}" style="width:100%;border:0;padding:5px 7px;background:transparent;color:var(--t1);font:inherit;${align}"></td>`;
+      }
+      html += '</tr>';
+    });
+    html += `
+          </tbody>
+        </table>
+      </div>
+      <h4 style="font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin:18px 0 8px">💬 Замечания Мимиру</h4>
+      <textarea id="pk3-doc-edit-feedback" rows="4" placeholder="Например: «пересчитай маржу на 25%, бригаду уменьши до 9 человек, добавь логистику на 80 тыс»" style="width:100%;padding:9px 11px;background:var(--bg2);border:1px solid var(--brd);border-radius:8px;color:var(--t1);font-size:13px;font-family:inherit;resize:vertical"></textarea>
+    `;
+    // Кэшируем мета на таблице (читаем в _bindSmetaEditable).
+    setTimeout(() => {
+      const tbl = document.querySelector('.pk3-smeta-edit-tbl');
+      if (tbl) {
+        tbl.__cols = { num: colNum, name: colName, qty: colQty, unit: colUnit, price: colPrice, sum: colSum };
+        tbl.__fallback = fallbackMode;
+      }
+    }, 0);
+    return html;
+  }
+
+  // Авто-пересчёт сметы при правке qty/price.
+  //   1. sum строки = qty × price
+  //   2. итог раздела (data-total=fot/section_*) = Σ sum всех строк с тем же data-section
+  //   3. fot_tax = ФОТ × rate;  section_persons = ФОТ + tax
+  //   4. direct = Σ section_persons + section_current + section_per_diem + section_transport + section_materials
+  //   5. overhead = direct × rate;  contingency = direct × rate
+  //   6. cost = direct + overhead + contingency
+  //   7. price_no_vat = cost × markup;  vat = price_no_vat × vat_rate;
+  //      price_with_vat = price_no_vat + vat;  profit = price_no_vat − cost
+  // Если структура не распозналась (fallback) — для каждой строки с 2 числовыми
+  // полями подряд считаем 3-е поле как их произведение.
+  function _bindSmetaEditable(body) {
+    if (!body) return;
+    const tbl = body.querySelector('.pk3-smeta-edit-tbl');
+    if (!tbl) return;
+    const cols = tbl.__cols || {};
+    const fallback = !!tbl.__fallback;
+
+    const _num = (v) => {
+      if (v == null) return NaN;
+      const s = String(v).replace(/\s+/g, '').replace(/,/g, '.').replace(/[^\d.\-]/g, '');
+      if (!s || s === '-' || s === '.') return NaN;
+      const n = Number(s);
+      return isNaN(n) ? NaN : n;
+    };
+    const _fmt = (n) => {
+      if (!isFinite(n)) return '';
+      // Сохраняем 2 знака для дробных, целые без точки.
+      if (Math.abs(n - Math.round(n)) < 0.005) return String(Math.round(n));
+      return String(Math.round(n * 100) / 100);
+    };
+    const _set = (input, val) => {
+      if (!input) return;
+      const cur = input.value;
+      const next = _fmt(val);
+      if (cur !== next) input.value = next;
+    };
+
+    function recalcRowSum(tr) {
+      if (fallback) {
+        // Эвристика: ищем 2 первых числовых input'а в строке, 3-й = произведение.
+        const inputs = tr.querySelectorAll('input[data-col]');
+        let nums = [];
+        inputs.forEach(inp => {
+          const n = _num(inp.value);
+          if (isFinite(n)) nums.push({ inp, n });
+        });
+        if (nums.length >= 3) {
+          const prod = nums[0].n * nums[1].n;
+          if (isFinite(prod)) _set(nums[2].inp, prod);
+        }
+        return;
+      }
+      const qtyInp = tr.querySelector('input[data-field="qty"]');
+      const priceInp = tr.querySelector('input[data-field="price"]');
+      const sumInp = tr.querySelector('input[data-field="sum"]');
+      if (!qtyInp || !priceInp || !sumInp) return;
+      const q = _num(qtyInp.value);
+      const p = _num(priceInp.value);
+      if (isFinite(q) && isFinite(p)) _set(sumInp, q * p);
+    }
+
+    function sumSection(section) {
+      const rows = tbl.querySelectorAll(`tr[data-section="${section}"][data-meta="data"]`);
+      let total = 0, hadAny = false;
+      rows.forEach(tr => {
+        const sumInp = tr.querySelector('input[data-field="sum"]');
+        if (sumInp) {
+          const n = _num(sumInp.value);
+          if (isFinite(n)) { total += n; hadAny = true; }
+        }
+      });
+      return hadAny ? total : NaN;
+    }
+
+    function getTotalRowValue(totalKey) {
+      const tr = tbl.querySelector(`tr[data-total="${totalKey}"]`);
+      if (!tr) return NaN;
+      const inp = tr.querySelector('input[data-field="total_value"]');
+      return inp ? _num(inp.value) : NaN;
+    }
+    // Обновляем ВСЕ строки с одинаковым data-total (одна и та же сумма может
+    // встречаться в разделах «Калькуляция» и «Цена для заказчика»).
+    function setTotalRowValue(totalKey, val) {
+      if (!isFinite(val)) return;
+      tbl.querySelectorAll(`tr[data-total="${totalKey}"]`).forEach(tr => {
+        const inp = tr.querySelector('input[data-field="total_value"]');
+        if (inp) _set(inp, val);
+      });
+    }
+    function getRate(totalKey) {
+      const tr = tbl.querySelector(`tr[data-total="${totalKey}"]`);
+      if (!tr) return NaN;
+      const inp = tr.querySelector('input[data-field="rate"]');
+      return inp ? _num(inp.value) : NaN;
+    }
+
+    function recalcAllTotals() {
+      // По разделам
+      const fot = sumSection('A');        // A: персонал — суммы строк A1..AN
+      const sectB = sumSection('B');
+      const sectC = sumSection('C');
+      const sectD = sumSection('D');
+      const sectE = sumSection('E');
+
+      if (isFinite(fot)) setTotalRowValue('fot', fot);
+
+      // Налог на ФОТ
+      const fotTaxRate = getRate('fot_tax');
+      let fotTax = NaN;
+      if (isFinite(fot) && isFinite(fotTaxRate)) {
+        fotTax = fot * fotTaxRate;
+        setTotalRowValue('fot_tax', fotTax);
+      } else {
+        fotTax = getTotalRowValue('fot_tax');
+      }
+
+      // Персонал, итого = ФОТ + налог
+      let persons = NaN;
+      if (isFinite(fot) && isFinite(fotTax)) {
+        persons = fot + fotTax;
+        setTotalRowValue('section_persons', persons);
+      } else {
+        persons = getTotalRowValue('section_persons');
+      }
+
+      if (isFinite(sectB)) setTotalRowValue('section_current', sectB);
+      if (isFinite(sectC)) setTotalRowValue('section_per_diem', sectC);
+      if (isFinite(sectD)) setTotalRowValue('section_transport', sectD);
+      if (isFinite(sectE)) setTotalRowValue('section_materials', sectE);
+
+      // Прямые затраты = сумма разделов
+      const parts = [persons, sectB, sectC, sectD, sectE].filter(x => isFinite(x));
+      let direct = NaN;
+      if (parts.length) {
+        direct = parts.reduce((a, b) => a + b, 0);
+        setTotalRowValue('direct', direct);
+      } else {
+        direct = getTotalRowValue('direct');
+      }
+
+      // Накладные, непредвиденные — ставки от direct
+      const ovhRate = getRate('overhead');
+      const cntRate = getRate('contingency');
+      let overhead = getTotalRowValue('overhead');
+      let contingency = getTotalRowValue('contingency');
+      if (isFinite(direct) && isFinite(ovhRate)) {
+        overhead = direct * ovhRate;
+        setTotalRowValue('overhead', overhead);
+      }
+      if (isFinite(direct) && isFinite(cntRate)) {
+        contingency = direct * cntRate;
+        setTotalRowValue('contingency', contingency);
+      }
+
+      // Себестоимость
+      let cost = NaN;
+      if (isFinite(direct)) {
+        cost = direct + (isFinite(overhead) ? overhead : 0) + (isFinite(contingency) ? contingency : 0);
+        setTotalRowValue('cost', cost);
+      } else {
+        cost = getTotalRowValue('cost');
+      }
+
+      // Цена для заказчика
+      const markup = getRate('markup');
+      let priceNoVat = NaN;
+      if (isFinite(cost) && isFinite(markup)) {
+        priceNoVat = cost * markup;
+        setTotalRowValue('price_no_vat', priceNoVat);
+      } else {
+        priceNoVat = getTotalRowValue('price_no_vat');
+      }
+
+      const vatRate = getRate('vat');
+      let vat = NaN;
+      if (isFinite(priceNoVat) && isFinite(vatRate)) {
+        vat = priceNoVat * vatRate;
+        setTotalRowValue('vat', vat);
+      } else {
+        vat = getTotalRowValue('vat');
+      }
+
+      if (isFinite(priceNoVat) && isFinite(vat)) {
+        setTotalRowValue('price_with_vat', priceNoVat + vat);
+      }
+
+      if (isFinite(priceNoVat) && isFinite(cost)) {
+        setTotalRowValue('profit', priceNoVat - cost);
+      }
+    }
+
+    // Реагируем на input по qty/price/sum/rate (rate→каскад).
+    body.addEventListener('input', (e) => {
+      const t = e.target;
+      if (!t || !t.matches('input[data-field]')) return;
+      const fld = t.dataset.field;
+      if (fld === 'qty' || fld === 'price' || fld === 'sum' || fld === 'rate' || fld === 'total_value') {
+        const tr = t.closest('tr[data-row-idx]');
+        if (tr && (fld === 'qty' || fld === 'price')) recalcRowSum(tr);
+        recalcAllTotals();
+      }
+    });
+    // Если включён fallback-режим — пробегаем все строки и считаем 3-е поле.
+    if (fallback) {
+      tbl.querySelectorAll('tr[data-row-idx]').forEach(tr => recalcRowSum(tr));
+    } else {
+      // Первичный пересчёт — пользователь видит, что система работает.
+      recalcAllTotals();
+    }
+  }
+
+  // Рендер редактируемого отчёта директору: JSON {type:'director_report', data:{...}}.
+  // Каждое поле — textarea/input. Списки warnings/decisions — добавляемые.
+  function _renderReportEditable(j) {
+    const d = j.data || {};
+    const v = (k, def) => esc(d[k] != null ? String(d[k]) : (def || ''));
+    const warnings = Array.isArray(d.warnings) ? d.warnings : [];
+    const decisions = Array.isArray(d.decisions) ? d.decisions : [];
+    const rowsHtml = (arr, kind) => arr.map((it, i) => `
+      <div class="pk3-rep-listrow" data-kind="${kind}" data-i="${i}" style="display:flex;gap:7px;margin-bottom:6px">
+        <input type="text" data-field="title" value="${esc(it.title || it.kind || '')}" placeholder="Заголовок" style="flex:0 0 200px;padding:6px 9px;background:var(--bg2);border:1px solid var(--brd);border-radius:6px;color:var(--t1);font-size:12.5px">
+        <textarea data-field="text" rows="2" placeholder="Текст" style="flex:1;padding:6px 9px;background:var(--bg2);border:1px solid var(--brd);border-radius:6px;color:var(--t1);font-size:12.5px;resize:vertical">${esc(it.text || it.message || '')}</textarea>
+        <button class="pk3-btn pk3-ghost pk3-sm" data-act="rm-listrow" title="Удалить">✕</button>
+      </div>
+    `).join('');
+
+    const html = `
+      <div style="margin-bottom:14px;padding:11px 13px;background:var(--gold-bg);border:1px solid var(--gold);border-radius:8px;font-size:12.5px;color:var(--t2);line-height:1.55">
+        💡 Правь любые поля. Кнопка «⬇ Скачать с правками» соберёт новый DOCX и обновит карту.
+        «✉ Отправить Мимиру» — отдать твои замечания ИИ, чтобы он переписал отчёт целиком.
+      </div>
+
+      <h4 style="font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px">Заголовок</h4>
+      <div class="pk3-row"><label>Тема</label><input data-field="project_subject" type="text" value="${v('project_subject')}"></div>
+      <div class="pk3-row"><label>Заказчик</label><input data-field="customer_name" type="text" value="${v('customer_name')}"></div>
+      <div class="pk3-row"><label>Адрес заказчика</label><input data-field="customer_address" type="text" value="${v('customer_address')}"></div>
+      <div class="pk3-row"><label>Объект</label><input data-field="project_object" type="text" value="${v('project_object')}"></div>
+
+      <h4 style="font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px">Резюме</h4>
+      <div class="pk3-row" style="flex-direction:column;align-items:stretch"><label>Текст резюме</label>
+        <textarea data-field="summary_paragraph" rows="5" style="width:100%;padding:8px 10px;background:var(--bg2);border:1px solid var(--brd);border-radius:8px;color:var(--t1);font-size:12.5px;font-family:inherit;resize:vertical">${v('summary_paragraph')}</textarea>
+      </div>
+
+      <h4 style="font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px">Параметры</h4>
+      <div class="pk3-row"><label>Бригада, чел</label><input data-field="crew_size" type="text" value="${v('crew_size')}"></div>
+      <div class="pk3-row"><label>Срок</label><input data-field="deadline_str" type="text" value="${v('deadline_str')}"></div>
+
+      <h4 style="font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px">Экономика</h4>
+      <div class="pk3-row"><label>Себестоимость без НДС</label><input data-field="cost_no_vat" type="text" value="${v('cost_no_vat')}"></div>
+      <div class="pk3-row"><label>Цена (станд. НДС)</label><input data-field="price_standard_vat" type="text" value="${v('price_standard_vat')}"></div>
+      <div class="pk3-row"><label>Цена (раздельная)</label><input data-field="price_separate_vat" type="text" value="${v('price_separate_vat')}"></div>
+
+      <h4 style="font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px">Замечания (warnings)</h4>
+      <div id="pk3-rep-warnings">${rowsHtml(warnings, 'warning')}</div>
+      <button class="pk3-btn pk3-ghost pk3-sm" data-act="add-listrow" data-kind="warning">＋ Добавить замечание</button>
+
+      <h4 style="font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px">Решения (decisions)</h4>
+      <div id="pk3-rep-decisions">${rowsHtml(decisions.map(x => typeof x === 'string' ? { text: x } : x), 'decision')}</div>
+      <button class="pk3-btn pk3-ghost pk3-sm" data-act="add-listrow" data-kind="decision">＋ Добавить решение</button>
+
+      <h4 style="font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin:18px 0 8px">Подпись</h4>
+      <div class="pk3-row"><label>Автор</label><input data-field="author_name" type="text" value="${v('author_name')}"></div>
+      <div class="pk3-row"><label>Должность</label><input data-field="author_position" type="text" value="${v('author_position')}"></div>
+
+      <h4 style="font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin:18px 0 8px">💬 Замечания Мимиру</h4>
+      <textarea id="pk3-doc-edit-feedback" rows="4" placeholder="Например: «перепиши резюме покороче, добавь риск по реагенту, маржу подними до 30%»" style="width:100%;padding:9px 11px;background:var(--bg2);border:1px solid var(--brd);border-radius:8px;color:var(--t1);font-size:13px;font-family:inherit;resize:vertical"></textarea>
+    `;
+    // События для add/remove строк — навешиваем сразу после вставки в DOM.
+    setTimeout(() => {
+      const root = document.getElementById('pk3-doc-edit-body');
+      if (!root) return;
+      root.addEventListener('click', (e) => {
+        const addBtn = e.target.closest('[data-act="add-listrow"]');
+        if (addBtn) {
+          const kind = addBtn.dataset.kind;
+          const container = document.getElementById(kind === 'warning' ? 'pk3-rep-warnings' : 'pk3-rep-decisions');
+          if (!container) return;
+          const i = container.children.length;
+          const div = document.createElement('div');
+          div.className = 'pk3-rep-listrow';
+          div.dataset.kind = kind; div.dataset.i = String(i);
+          div.style.cssText = 'display:flex;gap:7px;margin-bottom:6px';
+          div.innerHTML = `
+            <input type="text" data-field="title" placeholder="Заголовок" style="flex:0 0 200px;padding:6px 9px;background:var(--bg2);border:1px solid var(--brd);border-radius:6px;color:var(--t1);font-size:12.5px">
+            <textarea data-field="text" rows="2" placeholder="Текст" style="flex:1;padding:6px 9px;background:var(--bg2);border:1px solid var(--brd);border-radius:6px;color:var(--t1);font-size:12.5px;resize:vertical"></textarea>
+            <button class="pk3-btn pk3-ghost pk3-sm" data-act="rm-listrow" title="Удалить">✕</button>
+          `;
+          container.appendChild(div);
+          return;
+        }
+        const rmBtn = e.target.closest('[data-act="rm-listrow"]');
+        if (rmBtn) {
+          const row = rmBtn.closest('.pk3-rep-listrow');
+          if (row) row.remove();
+        }
+      });
+    }, 30);
+    return html;
+  }
+
+  // Собрать правки в JSON для backend'а.
+  // smeta → {rows:[[col1,col2,...],...]}
+  // director_report → {data:{project_subject, customer_name, ..., warnings:[{title,text}], decisions:[{text}]}}
+  function _collectDocEdits(body, kind) {
+    if (kind === 'smeta') {
+      const inputs = body.querySelectorAll('.pk3-smeta-edit-tbl input[data-row]');
+      const matrix = {};
+      let maxCol = 0;
+      inputs.forEach(inp => {
+        const r = Number(inp.dataset.row), c = Number(inp.dataset.col);
+        if (!Number.isFinite(r) || !Number.isFinite(c)) return;
+        matrix[r] = matrix[r] || [];
+        matrix[r][c] = inp.value;
+        if (c > maxCol) maxCol = c;
+      });
+      const rows = [];
+      const keys = Object.keys(matrix).map(Number).sort((a, b) => a - b);
+      keys.forEach(r => {
+        const row = matrix[r];
+        // нормализуем длину до maxCol+1
+        for (let c = 0; c <= maxCol; c++) if (row[c] == null) row[c] = '';
+        rows.push(row);
+      });
+      return { rows };
+    }
+    if (kind === 'director_report') {
+      const data = {};
+      body.querySelectorAll('input[data-field], textarea[data-field]').forEach(inp => {
+        if (inp.closest('.pk3-rep-listrow')) return; // listrow собираем отдельно
+        if (inp.id === 'pk3-doc-edit-feedback') return; // это поле для AI, не для DOCX
+        data[inp.dataset.field] = inp.value;
+      });
+      const collectList = (containerId) => {
+        const c = document.getElementById(containerId);
+        if (!c) return [];
+        return Array.from(c.querySelectorAll('.pk3-rep-listrow')).map(row => ({
+          title: (row.querySelector('[data-field="title"]') || {}).value || '',
+          text:  (row.querySelector('[data-field="text"]')  || {}).value || ''
+        })).filter(x => x.title || x.text);
+      };
+      data.warnings = collectList('pk3-rep-warnings');
+      data.decisions = collectList('pk3-rep-decisions').map(x => ({ text: (x.title ? x.title + ': ' : '') + x.text }));
+      return { data };
+    }
+    return null;
+  }
+
+  // Отправить замечания обратно Мимиру.
+  // Приоритет: (1) card._conductorRun → POST /api/mimir/conductor/run/:id/recompute-with-feedback
+  //            (2) card._quickSession → POST /api/tkp-quick/sessions/:uid/chat (SSE)
+  //            (3) фоллбэк: ищем активную Quick-сессию по pre_tender_id (GET /sessions?…)
+  // Возвращает true если запрос принят, false если ни одного канала.
+  async function _sendFeedbackToMimir(card, feedback) {
+    const headers = await _authHeaders();
+    // (1) Conductor
+    if (card._conductorRun) {
+      try {
+        const res = await fetch(`/api/mimir/conductor/run/${card._conductorRun}/recompute-with-feedback`, {
+          method: 'POST', headers, body: JSON.stringify({ feedback_text: feedback })
+        });
+        if (res.ok) return true;
+      } catch (_) {}
+    }
+    // (2) Quick
+    if (card._quickSession) {
+      try {
+        // chat — SSE; нам не нужен ответ, просто запустить. fetch получит stream — закроем сразу.
+        const res = await fetch(`/api/tkp-quick/sessions/${card._quickSession}/chat`, {
+          method: 'POST', headers, body: JSON.stringify({ message: feedback })
+        });
+        if (res.ok) {
+          // отпускаем стрим — AI продолжит фоновую запись в БД.
+          try { res.body && res.body.cancel && res.body.cancel(); } catch (_) {}
+          return true;
+        }
+      } catch (_) {}
+    }
+    // (3) Фоллбэк: попробуем найти открытую Quick-сессию по pre_tender_id.
+    try {
+      const ptId = card.entity_id;
+      if (ptId) {
+        const res = await fetch(`/api/tkp-quick/sessions?pre_tender_id=${ptId}`, { headers });
+        if (res.ok) {
+          const j = await res.json().catch(() => ({}));
+          const sess = (j && (j.session || (Array.isArray(j.sessions) && j.sessions[0]) || (Array.isArray(j) && j[0]))) || null;
+          const uid = sess && (sess.session_uid || sess.uid);
+          if (uid) {
+            const r2 = await fetch(`/api/tkp-quick/sessions/${uid}/chat`, {
+              method: 'POST', headers, body: JSON.stringify({ message: feedback })
+            });
+            if (r2.ok) {
+              card._quickSession = uid;
+              try { r2.body && r2.body.cancel && r2.body.cancel(); } catch (_) {}
+              return true;
+            }
+          }
+        }
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  // Открыть file-picker и загрузить документ в pre_tender (раздел «📤 Загружено РП»).
+  function _openDocUploadPicker(card) {
+    const ptId = card.entity_id;
+    if (!ptId) { toast('Нет привязки', 'Открой pre-tender', 'warn'); return; }
+    const input = document.createElement('input');
+    input.type = 'file'; input.multiple = true;
+    input.style.display = 'none';
+    input.addEventListener('change', async () => {
+      const files = Array.from(input.files || []);
+      input.remove();
+      if (!files.length) return;
+      const fd = new FormData();
+      files.forEach(f => fd.append('files', f, f.name));
+      const headers = await _authHeaders();
+      try {
+        const res = await fetch(`/api/pre-tenders/${ptId}/upload-docs`, {
+          method: 'POST', headers, body: fd
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          toast('Загружено', `${files.length} файл(ов) сохранено`, 'ok');
+          // Релоад drawer, чтобы появились в списке.
+          _reopenCurrentCard();
+        } else {
+          toast('Не загрузилось', data.error || ('HTTP ' + res.status), 'err');
+        }
+      } catch (e) {
+        toast('Сеть упала', String(e.message || e), 'err');
+      }
+    });
+    document.body.appendChild(input);
+    input.click();
+  }
+  async function _reopenCurrentCard() {
+    if (!_currentCard) return;
+    try {
+      const r = await api(`/api/personal-kanban/board?flow_filter=all`);
+      if (!r.ok || !r.data || !r.data.columns) return;
+      // Найти карту с тем же id в обновлённом board.
+      const all = Object.values(r.data.columns).flat();
+      const fresh = all.find(c => c.id === _currentCard.id);
+      if (fresh) _openDrawer(fresh);
+    } catch (_) {}
+  }
+
+  // Поиск контрагента по ИНН через /api/customers/lookup/:inn.
+  // Автозаполняет customer_name / email / телефон. Используется data-action="egrul-lookup".
+  async function _doEgrulLookup() {
+    const innEl = $('#pk3-f-inn');
+    const inn = innEl ? (innEl.value || '').trim() : '';
+    if (!inn || inn.length < 10) { toast('Введи ИНН', 'Минимум 10 цифр', 'warn'); return; }
+    const btn = $('#pk3-egrul');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Ищу…'; }
+    try {
+      const r = await api('/api/customers/lookup/' + encodeURIComponent(inn));
+      // Реальный формат /api/customers/lookup/:inn (src/routes/customers.js:53):
+      //   { found: true|false, suggestion: {inn, name, full_name, kpp, ogrn, address}, message? }
+      // Раньше парсили r.data.name → всегда «не найдено».
+      const data = (r.ok && r.data) || {};
+      const sug  = data.suggestion || {};
+      if (data.found === false && data.message) {
+        toast('Не найдено', data.message, 'warn'); return;
+      }
+      const name  = sug.name || sug.full_name || data.name || '';
+      const email = sug.email || '';
+      const phone = sug.phone || '';
+      const kpp   = sug.kpp || '';
+      const addr  = sug.address || '';
+      if (!name) { toast('Не найдено', 'Заполни вручную', 'warn'); return; }
+      const setIfEmpty = (sel, val) => {
+        const el = $(sel); if (!el) return;
+        if (!el.value.trim() && val) el.value = val;
+      };
+      $('#pk3-f-customer').value = name; // имя — перезаписываем всегда
+      setIfEmpty('#pk3-f-email', email);
+      setIfEmpty('#pk3-f-phone', phone);
+      setIfEmpty('#pk3-f-city', addr);
+      toast('Найдено', kpp ? `${name} (КПП ${kpp})` : name, 'ok');
+    } catch (_) {
+      toast('egrul недоступен', 'Заполни вручную', 'warn');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '🔎 egrul'; }
+    }
   }
   async function _addNote(card) {
     const text = window.prompt('Текст заметки:');
@@ -3361,195 +4545,2034 @@ window.AsgardPKv3Modals = (function () {
     if (overlay && overlay._closeFn) overlay._closeFn();
   }
 
+  // ── Helpers общие для Quick / Conductor ──────────────────────────────
+  function _getToken() {
+    try { return localStorage.getItem('asgard_token') || ''; } catch (_) { return ''; }
+  }
+  function _authHeader() {
+    const t = _getToken();
+    return t ? { 'Authorization': 'Bearer ' + t } : {};
+  }
+  function _fmtMoneyRub(n) {
+    if (n == null || !isFinite(Number(n))) return '—';
+    return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(Math.round(Number(n))) + ' ₽';
+  }
+  function _markdownToHtml(md) {
+    // Минимальный безопасный рендер: только esc + перевод **bold**, *italic*, \n→<br>, нумерованные/маркер-списки.
+    if (md == null) return '';
+    let s = esc(String(md));
+    s = s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+    s = s.replace(/(^|[^*])\*([^*\n]+?)\*/g, '$1<i>$2</i>');
+    s = s.replace(/\n/g, '<br>');
+    return s;
+  }
+  // POST-SSE стрим: парсит "event:" + "data:" блоки и вызывает onEvent для каждого.
+  // Возвращает финальное событие done/error/complete.
+  async function _streamSSE(url, body) {
+    const headers = Object.assign({}, _authHeader(), { 'Content-Type': 'application/json' });
+    const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body || {}) });
+    if (!resp.ok || !resp.body) {
+      let errText = '';
+      try { const j = await resp.json(); errText = j.error || JSON.stringify(j); } catch (_) {}
+      throw new Error('HTTP ' + resp.status + (errText ? ': ' + errText : ''));
+    }
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    const events = [];
+    let onEvent = null;
+    const promise = (async () => {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        // SSE-блок разделён "\n\n"
+        let idx;
+        while ((idx = buf.indexOf('\n\n')) >= 0) {
+          const raw = buf.slice(0, idx); buf = buf.slice(idx + 2);
+          const ev = { event: 'message', data: null, id: null };
+          raw.split('\n').forEach(line => {
+            if (!line) return;
+            if (line.startsWith(':')) return; // heartbeat/comment
+            const m = line.match(/^(\w+):\s?(.*)$/);
+            if (!m) return;
+            const k = m[1], v = m[2];
+            if (k === 'event') ev.event = v;
+            else if (k === 'id') ev.id = v;
+            else if (k === 'data') ev.data = ev.data == null ? v : ev.data + '\n' + v;
+          });
+          if (ev.data != null) {
+            try { ev.data = JSON.parse(ev.data); } catch (_) { /* оставить строкой */ }
+          }
+          events.push(ev);
+          if (onEvent) try { onEvent(ev); } catch (_) {}
+        }
+      }
+    })();
+    return {
+      events,
+      stream: promise,
+      onEach(cb) { onEvent = cb; events.forEach(cb); return this; }
+    };
+  }
+
   /* ────────────────────────────────────────────────────────────────────
-   * 1. Quick wizard — 4 шага
+   * 1. Quick wizard — реальный AI-просчёт через /api/tkp-quick
    * ──────────────────────────────────────────────────────────────────── */
   function openQuick(card, opts) {
     opts = opts || {};
-    let step = 0;
-    let sessionUid = null;
-    const wizardHtml = (s) => {
-      const steps = ['Загрузка ТЗ', 'AI задаёт вопросы', 'Черновик сметы', 'Финальный ТКП'];
-      const stepsHtml = steps.map((lbl, i) => `<div class="pk3-wiz-step ${i < s ? 'pk3-done' : (i === s ? 'pk3-now' : '')}"><span class="pk3-num">${i+1}</span>${esc(lbl)}</div>`).join('');
-      let content = '';
-      if (s === 0) content = `
-        <p style="margin-bottom:14px;color:var(--t2)">Документы ТЗ из заявки <b>уже загружены</b>. AI распознал:</p>
-        <div class="pk3-ai-block">
-          <p><b>Содержимое вложений</b>: AI прочитал и извлёк ${card.email_attachments_count || '4'} файла из письма клиента.</p>
-          <p style="margin-top:7px"><b>Сводка</b>: ${esc(card.ai_summary || 'AI собрал ТЗ. Готов задать уточняющие вопросы.')}</p>
+    // Состояние сессии
+    let step = 0; // 0 загрузка, 1 расчёт, 2 диалог, 3 финал
+    let sessionUid = card._quickSession || null;
+    let lastEstimate = null;       // {items, totals, total_with_vat, ...}
+    let lastChatMd = '';            // markdown ответа AI
+    let attachWarn = [];            // имена файлов, не загруженных в сессию
+    let vatPct = 20;
+    let marginPct = 30;
+    let extraFiles = [];           // ручные File-объекты с диска (доп.ТЗ)
+    let marginEdited = false;       // юзер вручную тронул маржу → игнорим total_without_vat от AI
+    let vatEdited = false;          // то же для НДС
+    let running = false;            // блокирует кнопки во время AI-вызовов
+
+    // Подтянем дефолтный НДС из настроек
+    api('/api/settings/vat_default_pct').then(r => {
+      const v = (r && r.ok && r.data && r.data.value != null) ? Number(r.data.value) : null;
+      if (v && isFinite(v)) {
+        vatPct = v;
+        const vatEl = overlay && overlay.querySelector('#pk3-q-vat');
+        if (vatEl) vatEl.value = String(vatPct);
+      }
+    }).catch(() => {});
+
+    function _calcTotals(est) {
+      if (!est) return { cost: 0, kp_no_vat: 0, kp_with_vat: 0 };
+      const items = Array.isArray(est.items) ? est.items : [];
+      const cost = items.reduce((s, it) => {
+        const q = Number(it.qty || it.quantity || 0);
+        const p = Number(it.price || it.unit_price || 0);
+        return s + (isFinite(q * p) ? q * p : 0);
+      }, 0);
+      // Если юзер руками изменил маржу — наше значение приоритет, total_without_vat от AI
+      // игнорируется. Иначе используем AI-расчёт (он точнее, учитывает накладные/налоги).
+      const kpNoVat = (!marginEdited && est.total_without_vat != null)
+        ? Number(est.total_without_vat)
+        : Math.round(cost * (1 + marginPct / 100));
+      const kpWithVat = (!vatEdited && !marginEdited && est.total_with_vat != null)
+        ? Number(est.total_with_vat)
+        : Math.round(kpNoVat * (1 + vatPct / 100));
+      return { cost, kp_no_vat: kpNoVat, kp_with_vat: kpWithVat };
+    }
+
+    function _stepHeaderHtml(s) {
+      const labels = ['Загрузка ТЗ в AI', 'AI читает ТЗ', 'Диалог / уточнения', 'Смета', 'Финал'];
+      return labels.map((lbl, i) => {
+        const cls = i < s ? 'pk3-done' : (i === s ? 'pk3-now' : '');
+        return `<div class="pk3-wiz-step ${cls}"><span class="pk3-num">${i+1}</span>${esc(lbl)}</div>`;
+      }).join('');
+    }
+
+    function _attachmentsCount() {
+      return Array.isArray(card.email_attachments) ? card.email_attachments.length : 0;
+    }
+
+    function _renderStep0() {
+      const cnt = _attachmentsCount();
+      const extraList = (extraFiles && extraFiles.length) ? `
+        <div style="margin-top:8px;font-size:11.5px">
+          <b>Доп.файлы (${extraFiles.length}):</b>
+          ${extraFiles.map((f, i) => `<div style="display:flex;align-items:center;gap:8px;padding:4px 0">
+            <span style="flex:1">📎 ${esc(f.name)} · ${_fmtBytes(f.size)}</span>
+            <button class="pk3-btn pk3-ghost pk3-sm" data-act="extra-del" data-idx="${i}" style="padding:2px 8px">✕</button>
+          </div>`).join('')}
+        </div>` : '';
+      return `
+        <p style="margin-bottom:12px;color:var(--t2)">
+          ${cnt
+            ? `📎 Из письма клиента подтянется <b>${cnt}</b> вложение(й).`
+            : '⚠ В письме клиента нет вложений — добавь ТЗ или опиши работу руками ниже.'}
+        </p>
+
+        <div class="pk3-row" style="margin-bottom:10px">
+          <label>🖊 Дополнительное описание работы (необязательно)</label>
+          <textarea id="pk3-q-manual-tz" placeholder="Опиши вкратце что делаем, если ТЗ в письме нет или его мало. AI прочитает это вместе с приложенными документами." style="min-height:90px"></textarea>
+          <p style="font-size:11px;color:var(--t3);margin-top:4px">До 100 000 символов. Будет добавлено к ТЗ из письма (не заменит).</p>
         </div>
-        <div class="pk3-row" style="margin-top:14px"><label>Дополнительный контекст</label><textarea id="pk3-q-ctx" placeholder="опционально — что сказал клиент по телефону, дедлайны, особенности"></textarea></div>
+
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+          <button class="pk3-btn pk3-ghost pk3-sm" data-act="extra-add">📎 Добавить файл(ы) ТЗ</button>
+          <span style="flex:1"></span>
+          <span style="font-size:11px;color:var(--t3);align-self:center">PDF / DOCX / XLSX / JPG / PNG · до 200 МБ</span>
+        </div>
+        ${extraList}
+
+        <div id="pk3-q-progress" class="pk3-ai-block">
+          <p id="pk3-q-prog-line">Готов к запуску.</p>
+        </div>
+        ${attachWarn.length ? `<div class="pk3-ai-block" style="margin-top:10px;border-color:var(--warn)"><b>⚠ Файлы, которые не удалось загрузить:</b><br>${attachWarn.map(esc).join('<br>')}</div>` : ''}
       `;
-      if (s === 1) content = `
-        <p style="margin-bottom:12px;color:var(--t2)">AI задаёт 4 уточняющих вопроса:</p>
-        <div class="pk3-row"><label>1. Режим работ?</label><select id="pk3-q1"><option>Дневная смена (8 ч)</option><option>Круглосуточно (24/7)</option><option>2 смены по 12 ч</option></select></div>
-        <div class="pk3-row"><label>2. Требуется остановка?</label><select id="pk3-q2"><option>Да, плановая остановка</option><option>Без остановки</option><option>Уточнить у клиента</option></select></div>
-        <div class="pk3-row"><label>3. Логистика реагентов</label><select id="pk3-q3"><option>Везём со своего склада</option><option>Покупаем на месте</option><option>Поставщик клиента</option></select></div>
-        <div class="pk3-row"><label>4. Размещение бригады</label><select id="pk3-q4"><option>Гостиница за наш счёт</option><option>Клиент предоставляет</option><option>Своя мобильная база</option></select></div>
+    }
+    function _renderStep1() {
+      return `
+        <p style="margin-bottom:12px;color:var(--t2)">🧠 Мимир анализирует ТЗ. Это может занять до минуты.</p>
+        <div id="pk3-q-progress" class="pk3-ai-block">
+          <p id="pk3-q-prog-line">Подключаюсь…</p>
+        </div>
       `;
-      if (s === 2) content = `
-        <p style="margin-bottom:12px;color:var(--t2)">🤖 AI собрал черновик сметы. Правь прямо здесь.</p>
-        <div style="background:var(--bg2);border:1px solid var(--brd-m);border-radius:10px;padding:11px 13px">
-          <table style="width:100%;border-collapse:collapse;font-size:12px">
+    }
+    function _renderStep2() {
+      return `
+        <div class="pk3-quick-actions" style="display:flex;gap:8px;margin-bottom:10px;padding:8px;background:var(--bg2);border-radius:6px;border:1px solid var(--brd-m);flex-wrap:wrap;align-items:center">
+          <button data-act="dl-smeta-preview" class="pk3-btn pk3-ghost pk3-sm" type="button" title="Скачать промежуточную смету как Excel">📊 Скачать смету (предпросмотр)</button>
+          <button data-act="dl-report-preview" class="pk3-btn pk3-ghost pk3-sm" type="button" title="Скачать промежуточный отчёт как DOCX">📋 Скачать отчёт (предпросмотр)</button>
+          <button data-act="save-to-card" class="pk3-btn pk3-gold pk3-sm" type="button" title="Сохранить смету и отчёт в карточку заявки" style="margin-left:auto">💾 Сохранить в карточку</button>
+        </div>
+        <p style="margin-bottom:8px;color:var(--t2)">🤖 Ответ AI:</p>
+        <div class="pk3-ai-block" style="max-height:230px;overflow:auto">
+          ${_markdownToHtml(lastChatMd) || '<span style="color:var(--t3)">AI не вернул текстовый ответ</span>'}
+        </div>
+        <div class="pk3-row" style="margin-top:14px">
+          <label>Ваш ответ / уточнение для AI (опционально)</label>
+          <textarea id="pk3-q-reply" placeholder="Опиши режим работ, ограничения, особенности — AI пересчитает." style="min-height:90px"></textarea>
+        </div>
+        <p style="font-size:11px;color:var(--t3);margin-top:8px">Можно сразу перейти к смете, если черновика достаточно.</p>
+      `;
+    }
+    function _renderStep3() {
+      // Нормализуем items в единый формат до мутаций — чтобы input'ы работали стабильно.
+      if (lastEstimate && Array.isArray(lastEstimate.items)) {
+        lastEstimate.items = lastEstimate.items.map(it => ({
+          name:  it.name != null ? it.name : (it.title || it.description || ''),
+          unit:  it.unit != null ? it.unit : (it.unit_name || ''),
+          qty:   it.qty != null ? Number(it.qty) : (it.quantity != null ? Number(it.quantity) : 0),
+          price: it.price != null ? Number(it.price) : (it.unit_price != null ? Number(it.unit_price) : 0),
+        }));
+      }
+      const items = (lastEstimate && Array.isArray(lastEstimate.items)) ? lastEstimate.items : [];
+      const totals = _calcTotals(lastEstimate);
+      const inp = (val, attrs) => `<input ${attrs} value="${esc(String(val == null ? '' : val))}" style="width:100%;background:transparent;border:1px solid transparent;padding:4px 6px;color:var(--t1);font:inherit;border-radius:4px"/>`;
+      const rows = items.length ? items.map((it, i) => {
+        const sum = (Number(it.qty) * Number(it.price)) || 0;
+        return `<tr data-row-idx="${i}" style="border-bottom:1px solid var(--brd-m)">
+          <td style="padding:4px;color:var(--t3);font-size:11px">${i+1}</td>
+          <td style="padding:4px">${inp(it.name, 'data-fld="name"')}</td>
+          <td style="padding:4px;width:64px">${inp(it.unit, 'data-fld="unit"')}</td>
+          <td style="padding:4px;width:80px">${inp(it.qty, 'data-fld="qty" type="number" min="0" step="0.01" style="text-align:right;width:100%;background:transparent;border:1px solid transparent;padding:4px 6px;color:var(--t1);font:inherit;border-radius:4px"')}</td>
+          <td style="padding:4px;width:110px">${inp(it.price, 'data-fld="price" type="number" min="0" step="1" style="text-align:right;width:100%;background:transparent;border:1px solid transparent;padding:4px 6px;color:var(--t1);font:inherit;border-radius:4px"')}</td>
+          <td style="padding:6px;text-align:right;color:var(--gold-l);font-family:monospace" data-fld="sum">${_fmtMoneyRub(sum)}</td>
+          <td style="padding:4px;width:32px"><button class="pk3-btn pk3-ghost pk3-sm" data-act="row-del" data-row-idx="${i}" title="Удалить строку" style="padding:4px 8px">🗑</button></td>
+        </tr>`;
+      }).join('') : '<tr><td colspan="7" style="padding:14px;color:var(--t3);text-align:center">AI не вернул позиции сметы</td></tr>';
+
+      const aiBlock = lastChatMd ? `
+        <details style="margin-top:12px;background:var(--bg2);border:1px solid var(--brd-m);border-radius:10px;padding:8px 12px">
+          <summary style="cursor:pointer;font-size:12px;color:var(--gold-l);font-weight:600">📝 Анализ Мимира (нажми чтобы развернуть)</summary>
+          <div style="margin-top:10px;font-size:12.5px;line-height:1.55;max-height:240px;overflow:auto">${_markdownToHtml(lastChatMd)}</div>
+        </details>` : '';
+
+      return `
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:10px;flex-wrap:wrap">
+          <p style="margin:0;color:var(--t2)">Смета — <b>правь прямо в таблице</b>: имя / кол-во / цена / ед. Сумма пересчитывается автоматически.</p>
+          <div style="display:flex;gap:6px">
+            <button class="pk3-btn pk3-ghost pk3-sm" data-act="row-add">+ Позиция</button>
+            <button class="pk3-btn pk3-gold pk3-sm" data-act="dl-xlsx" title="Excel с формулами и дашбордом">📊 Excel</button>
+            <button class="pk3-btn pk3-ghost pk3-sm" data-act="preview-html" title="HTML-отчёт в новой вкладке">👁 Превью</button>
+            <button class="pk3-btn pk3-ghost pk3-sm" data-act="dl-csv" title="CSV для импорта в Excel/1С">📄 CSV</button>
+            <button class="pk3-btn pk3-ghost pk3-sm" data-act="dl-md" title="Markdown-отчёт">📋 MD</button>
+          </div>
+        </div>
+        <div style="background:var(--bg2);border:1px solid var(--brd-m);border-radius:10px;padding:8px 10px;max-height:340px;overflow:auto">
+          <table id="pk3-q-smeta-tbl" style="width:100%;border-collapse:collapse;font-size:12px">
             <thead><tr style="border-bottom:1px solid var(--brd-m)">
               <th style="text-align:left;padding:7px 6px;color:var(--t3);font-size:11px">№</th>
               <th style="text-align:left;padding:7px 6px;color:var(--t3);font-size:11px">Позиция</th>
-              <th style="text-align:right;padding:7px 6px;color:var(--t3);font-size:11px">Ед</th>
+              <th style="text-align:left;padding:7px 6px;color:var(--t3);font-size:11px">Ед</th>
               <th style="text-align:right;padding:7px 6px;color:var(--t3);font-size:11px">Кол-во</th>
               <th style="text-align:right;padding:7px 6px;color:var(--t3);font-size:11px">Цена</th>
               <th style="text-align:right;padding:7px 6px;color:var(--t3);font-size:11px">Сумма</th>
-            </tr></thead><tbody>
-              <tr style="border-bottom:1px solid var(--brd-m)"><td style="padding:6px">1</td><td style="padding:6px">Подготовка объекта</td><td style="padding:6px;text-align:right">шт</td><td style="padding:6px;text-align:right">1</td><td style="padding:6px;text-align:right">25 000</td><td style="padding:6px;text-align:right">25 000</td></tr>
-              <tr style="border-bottom:1px solid var(--brd-m)"><td style="padding:6px">2</td><td style="padding:6px">Основные работы</td><td style="padding:6px;text-align:right">м²</td><td style="padding:6px;text-align:right">42</td><td style="padding:6px;text-align:right">12 000</td><td style="padding:6px;text-align:right">504 000</td></tr>
-              <tr style="border-bottom:1px solid var(--brd-m)"><td style="padding:6px">3</td><td style="padding:6px">Контроль качества</td><td style="padding:6px;text-align:right">точек</td><td style="padding:6px;text-align:right">16</td><td style="padding:6px;text-align:right">2 500</td><td style="padding:6px;text-align:right">40 000</td></tr>
-              <tr style="border-bottom:1px solid var(--brd-m)"><td style="padding:6px">4</td><td style="padding:6px">Логистика</td><td style="padding:6px;text-align:right">компл</td><td style="padding:6px;text-align:right">1</td><td style="padding:6px;text-align:right">120 000</td><td style="padding:6px;text-align:right">120 000</td></tr>
-              <tr style="border-bottom:1px solid var(--brd-m)"><td style="padding:6px">5</td><td style="padding:6px">Реагенты</td><td style="padding:6px;text-align:right">компл</td><td style="padding:6px;text-align:right">1</td><td style="padding:6px;text-align:right">88 000</td><td style="padding:6px;text-align:right">88 000</td></tr>
-              <tr style="border-top:2px solid var(--brd)"><td colspan="5" style="padding:9px;text-align:right;color:var(--t1);font-weight:600">Итого с/с:</td><td style="padding:9px;text-align:right;color:var(--gold-l);font-weight:700;font-family:monospace">920 000 ₽</td></tr>
+              <th></th>
+            </tr></thead><tbody>${rows}
+              <tr style="border-top:2px solid var(--brd)">
+                <td colspan="5" style="padding:9px;text-align:right;color:var(--t1);font-weight:600">Итого с/с:</td>
+                <td id="pk3-q-smeta-total" style="padding:9px;text-align:right;color:var(--gold-l);font-weight:700;font-family:monospace">${_fmtMoneyRub(totals.cost)}</td>
+                <td></td>
+              </tr>
             </tbody>
           </table>
         </div>
-        <div class="pk3-row" style="margin-top:14px"><label>Маржа, %</label><input id="pk3-q-margin" type="number" value="30" /></div>
-        <div class="pk3-row"><label>Итоговое КП без НДС</label><input id="pk3-q-kp" type="number" value="1200000" /></div>
+        <div class="pk3-row" style="margin-top:14px"><label>Маржа, %</label><input id="pk3-q-margin" type="number" value="${marginPct}" /></div>
+        <div class="pk3-row"><label>НДС, %</label><input id="pk3-q-vat" type="number" value="${vatPct}" /></div>
+        <p style="font-size:11.5px;color:var(--t3);margin-top:10px">💡 Если правил позиции — Мимир увидит твою версию когда вернёшься в «← К диалогу» и нажмёшь «💬 Отправить AI».</p>
+        ${aiBlock}
       `;
-      if (s === 3) content = `
-        <p style="margin-bottom:12px;color:var(--t2)">✅ Черновик готов. Что дальше?</p>
+    }
+
+    // Пересчёт суммы строки и итога при изменении inputs в таблице сметы.
+    function _bindSmetaEditing() {
+      const tbl = overlay.querySelector('#pk3-q-smeta-tbl');
+      if (!tbl) return;
+      tbl.querySelectorAll('tr[data-row-idx]').forEach(tr => {
+        const idx = Number(tr.dataset.rowIdx);
+        const it = lastEstimate && lastEstimate.items && lastEstimate.items[idx];
+        if (!it) return;
+        tr.querySelectorAll('input[data-fld]').forEach(inp => {
+          inp.addEventListener('input', () => {
+            const fld = inp.dataset.fld;
+            if (fld === 'qty' || fld === 'price') it[fld] = Number(inp.value) || 0;
+            else it[fld] = inp.value;
+            const sum = (Number(it.qty) * Number(it.price)) || 0;
+            const sumCell = tr.querySelector('[data-fld="sum"]');
+            if (sumCell) sumCell.textContent = _fmtMoneyRub(sum);
+            // Итог
+            const totals = _calcTotals(lastEstimate);
+            const totEl = overlay.querySelector('#pk3-q-smeta-total');
+            if (totEl) totEl.textContent = _fmtMoneyRub(totals.cost);
+          });
+        });
+      });
+      // Маржа/НДС — отмечаем как edited при первом изменении и пересчитываем live.
+      const mEl = overlay.querySelector('#pk3-q-margin');
+      if (mEl) mEl.addEventListener('input', () => {
+        const v = Number(mEl.value);
+        if (isFinite(v)) { marginPct = v; marginEdited = true; }
+      });
+      const vEl = overlay.querySelector('#pk3-q-vat');
+      if (vEl) vEl.addEventListener('input', () => {
+        const v = Number(vEl.value);
+        if (isFinite(v)) { vatPct = v; vatEdited = true; }
+      });
+    }
+
+    function _addEstimateRow() {
+      if (!lastEstimate) lastEstimate = { items: [] };
+      if (!Array.isArray(lastEstimate.items)) lastEstimate.items = [];
+      lastEstimate.items.push({ name: '', unit: '', qty: 1, price: 0 });
+      rerender();
+    }
+    function _removeEstimateRow(idx) {
+      if (!lastEstimate || !Array.isArray(lastEstimate.items)) return;
+      lastEstimate.items.splice(idx, 1);
+      rerender();
+    }
+
+    function _estimateAsText() {
+      const items = (lastEstimate && Array.isArray(lastEstimate.items)) ? lastEstimate.items : [];
+      if (!items.length) return '(смета пустая)';
+      const lines = items.map((it, i) => {
+        const sum = (Number(it.qty) * Number(it.price)) || 0;
+        return `${i+1}. ${it.name || '—'} — ${it.qty || 0} ${it.unit || ''} × ${it.price || 0} ₽ = ${sum.toLocaleString('ru-RU')} ₽`;
+      });
+      const totals = _calcTotals(lastEstimate);
+      lines.push('');
+      lines.push(`Итого с/с: ${totals.cost.toLocaleString('ru-RU')} ₽`);
+      lines.push(`КП без НДС (маржа ${marginPct}%): ${totals.kp_no_vat.toLocaleString('ru-RU')} ₽`);
+      lines.push(`КП с НДС ${vatPct}%: ${totals.kp_with_vat.toLocaleString('ru-RU')} ₽`);
+      return lines.join('\n');
+    }
+
+    // Lazy-load ExcelJS из CDN — ~600KB, поэтому только когда юзер реально жмёт.
+    async function _loadExcelJS() {
+      if (window.ExcelJS) return window.ExcelJS;
+      await new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+        s.async = true;
+        s.onload = resolve;
+        s.onerror = () => reject(new Error('ExcelJS CDN недоступен'));
+        document.head.appendChild(s);
+      });
+      return window.ExcelJS;
+    }
+
+    async function _downloadXlsx() {
+      toast('Excel', 'Готовлю файл с формулами и дашбордом…', 'info');
+      let ExcelJS;
+      try { ExcelJS = await _loadExcelJS(); }
+      catch (e) { toast('Excel', 'Не удалось загрузить движок: ' + e.message, 'err'); return; }
+
+      const items = (lastEstimate && Array.isArray(lastEstimate.items)) ? lastEstimate.items : [];
+      const wb = new ExcelJS.Workbook();
+      wb.creator = 'ASGARD CRM · Мимир';
+      wb.created = new Date();
+
+      // ── Лист 1: Дашборд ──
+      const dash = wb.addWorksheet('Дашборд', {
+        properties: { tabColor: { argb: 'FFD4A843' } },
+        views: [{ showGridLines: false }]
+      });
+      dash.columns = [
+        { width: 32 }, { width: 22 }, { width: 22 }, { width: 22 }
+      ];
+      // Шапка
+      dash.mergeCells('A1:D1');
+      const head = dash.getCell('A1');
+      head.value = `Просчёт ТКП — ${card.customer_name || 'клиент'}`;
+      head.font = { name: 'Cinzel', size: 18, bold: true, color: { argb: 'FFE8C35A' } };
+      head.alignment = { horizontal: 'center', vertical: 'middle' };
+      head.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF15110D' } };
+      dash.getRow(1).height = 38;
+      dash.mergeCells('A2:D2');
+      const sub = dash.getCell('A2');
+      sub.value = `Карта #${card.id || ''} · ${new Date().toLocaleString('ru-RU')}`;
+      sub.font = { italic: true, color: { argb: 'FF888888' } };
+      sub.alignment = { horizontal: 'center' };
+
+      // KPI-карточки (4×1)
+      const kpiTitles = ['Себестоимость', 'КП без НДС', `С НДС (=НДС% из B7)`, 'Маржа'];
+      kpiTitles.forEach((t, i) => {
+        const c = dash.getCell(4, i + 1);
+        c.value = t;
+        c.font = { bold: true, color: { argb: 'FFB89860' }, size: 11 };
+        c.alignment = { horizontal: 'center' };
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F1A14' } };
+        c.border = { top: { style: 'thin', color: { argb: 'FF3E3729' } } };
+      });
+      // Значения через формулы из листа «Смета»
+      dash.getCell('A5').value = { formula: 'SUM(Смета!F8:F1000)' };
+      dash.getCell('B5').value = { formula: 'A5*(1+B7/100)' };
+      dash.getCell('C5').value = { formula: 'B5*(1+D7/100)' };
+      dash.getCell('D5').value = { formula: `${marginPct}` };
+      ['A5','B5','C5','D5'].forEach((addr, i) => {
+        const c = dash.getCell(addr);
+        c.numFmt = i === 3 ? '0.0"%"' : '# ##0 " ₽"';
+        c.font = { bold: true, size: 18, color: { argb: 'FFE8C35A' } };
+        c.alignment = { horizontal: 'center', vertical: 'middle' };
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF15110D' } };
+        c.border = {
+          top: { style: 'thin', color: { argb: 'FF3E3729' } },
+          left: { style: 'thin', color: { argb: 'FF3E3729' } },
+          right: { style: 'thin', color: { argb: 'FF3E3729' } },
+          bottom: { style: 'medium', color: { argb: 'FFD4A843' } }
+        };
+      });
+      dash.getRow(5).height = 38;
+
+      // Параметры
+      dash.getCell('A7').value = 'Маржа, %';   dash.getCell('A7').font = { bold: true };
+      dash.getCell('B7').value = marginPct;    dash.getCell('B7').numFmt = '0.0';
+      dash.getCell('C7').value = 'НДС, %';     dash.getCell('C7').font = { bold: true };
+      dash.getCell('D7').value = vatPct;       dash.getCell('D7').numFmt = '0.0';
+      // Обновление формул при изменении B7/D7 (Excel сам пересчитает).
+      // Связка маржи: D5 = B7 (формула)
+      dash.getCell('D5').value = { formula: 'B7' };
+
+      // Заказчик блок
+      dash.getCell('A9').value = 'Заказчик';        dash.getCell('A9').font = { bold: true };
+      dash.getCell('B9').value = card.customer_name || '—';
+      dash.mergeCells('B9:D9');
+      dash.getCell('A10').value = 'ИНН';            dash.getCell('A10').font = { bold: true };
+      dash.getCell('B10').value = card.customer_inn || '—';
+      dash.getCell('A11').value = 'Контакт';        dash.getCell('A11').font = { bold: true };
+      dash.getCell('B11').value = (card.contact_person || '—') + (card.contact_phone ? ' · ' + card.contact_phone : '');
+      dash.mergeCells('B11:D11');
+
+      // Анализ Мимира (если есть)
+      if (lastChatMd) {
+        dash.getCell('A13').value = 'Анализ Мимира';
+        dash.getCell('A13').font = { bold: true, color: { argb: 'FFD4A843' }, size: 13 };
+        dash.mergeCells('A13:D13');
+        // Конвертим markdown в plain (убираем **)
+        const plain = lastChatMd.replace(/\*\*/g, '').replace(/^#+\s*/gm, '');
+        dash.getCell('A14').value = plain;
+        dash.mergeCells('A14:D14');
+        dash.getCell('A14').alignment = { wrapText: true, vertical: 'top' };
+        dash.getRow(14).height = Math.min(400, plain.split('\n').length * 16);
+      }
+
+      // ── Лист 2: Смета ──
+      const sm = wb.addWorksheet('Смета', { properties: { tabColor: { argb: 'FF8B7339' } } });
+      sm.columns = [
+        { header: '№', key: 'idx', width: 5 },
+        { header: 'Позиция', key: 'name', width: 56 },
+        { header: 'Ед.', key: 'unit', width: 10 },
+        { header: 'Кол-во', key: 'qty', width: 12 },
+        { header: 'Цена ₽', key: 'price', width: 14 },
+        { header: 'Сумма ₽', key: 'sum', width: 16 }
+      ];
+      // Стиль шапки колонок
+      sm.getRow(1).font = { bold: true, color: { argb: 'FFE8C35A' } };
+      sm.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF15110D' } };
+      sm.getRow(1).alignment = { horizontal: 'center' };
+      sm.getRow(1).height = 26;
+
+      // Заголовок раздела (строка 2-6) — связь с дашбордом
+      sm.mergeCells('A2:F2');
+      sm.getCell('A2').value = `Смета по работе для ${card.customer_name || ''}`;
+      sm.getCell('A2').font = { bold: true, size: 14, color: { argb: 'FFD4A843' } };
+      sm.getCell('A2').alignment = { horizontal: 'center' };
+      sm.getRow(2).height = 28;
+
+      sm.getCell('A4').value = 'Дата:';
+      sm.getCell('B4').value = new Date().toLocaleDateString('ru-RU');
+      sm.getCell('A5').value = 'Карта:';
+      sm.getCell('B5').value = '#' + (card.id || '');
+      sm.getCell('A6').value = 'Заказчик:';
+      sm.getCell('B6').value = card.customer_name || '—';
+
+      // Шапка таблицы заново (на строке 7)
+      const tblHead = sm.getRow(7);
+      ['№','Позиция','Ед.','Кол-во','Цена ₽','Сумма ₽'].forEach((v, i) => {
+        const c = tblHead.getCell(i + 1);
+        c.value = v;
+        c.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2A2218' } };
+        c.alignment = { horizontal: i < 2 ? 'left' : (i === 2 ? 'center' : 'right'), vertical: 'middle' };
+        c.border = { bottom: { style: 'thin', color: { argb: 'FFD4A843' } } };
+      });
+      tblHead.height = 22;
+
+      // Строки сметы — позиции с ФОРМУЛАМИ для суммы
+      items.forEach((it, i) => {
+        const r = sm.getRow(8 + i);
+        r.getCell(1).value = i + 1;
+        r.getCell(2).value = it.name || '';
+        r.getCell(3).value = it.unit || '';
+        r.getCell(4).value = Number(it.qty) || 0;
+        r.getCell(5).value = Number(it.price) || 0;
+        r.getCell(6).value = { formula: `D${8 + i}*E${8 + i}` };
+        // Стили
+        r.getCell(1).alignment = { horizontal: 'center', vertical: 'top' };
+        r.getCell(2).alignment = { wrapText: true, vertical: 'top' };
+        r.getCell(3).alignment = { horizontal: 'center', vertical: 'top' };
+        r.getCell(4).numFmt = '# ##0.##';
+        r.getCell(5).numFmt = '# ##0 " ₽"';
+        r.getCell(6).numFmt = '# ##0 " ₽"';
+        r.getCell(6).font = { bold: true, color: { argb: 'FFD4A843' } };
+        [1,2,3,4,5,6].forEach(ci => {
+          r.getCell(ci).border = { bottom: { style: 'hair', color: { argb: 'FFCCCCCC' } } };
+        });
+        // Высота под wrap
+        const nameLen = (it.name || '').length;
+        if (nameLen > 60) r.height = 28;
+        if (nameLen > 100) r.height = 38;
+      });
+
+      // Итоги (сразу после последней строки)
+      const total = 8 + items.length;
+      const totalRow = sm.getRow(total);
+      totalRow.getCell(5).value = 'Итого с/с:';
+      totalRow.getCell(5).font = { bold: true };
+      totalRow.getCell(5).alignment = { horizontal: 'right' };
+      totalRow.getCell(6).value = { formula: `SUM(F8:F${total - 1})` };
+      totalRow.getCell(6).numFmt = '# ##0 " ₽"';
+      totalRow.getCell(6).font = { bold: true, color: { argb: 'FFE8C35A' }, size: 13 };
+      totalRow.getCell(6).border = {
+        top: { style: 'double', color: { argb: 'FFD4A843' } }
+      };
+
+      const margR = total + 1;
+      sm.getCell(`E${margR}`).value = `КП без НДС (маржа ${marginPct}%):`;
+      sm.getCell(`E${margR}`).font = { bold: true };
+      sm.getCell(`E${margR}`).alignment = { horizontal: 'right' };
+      sm.getCell(`F${margR}`).value = { formula: `F${total}*(1+${marginPct}/100)` };
+      sm.getCell(`F${margR}`).numFmt = '# ##0 " ₽"';
+
+      const vatR = total + 2;
+      sm.getCell(`E${vatR}`).value = `С НДС ${vatPct}%:`;
+      sm.getCell(`E${vatR}`).font = { bold: true };
+      sm.getCell(`E${vatR}`).alignment = { horizontal: 'right' };
+      sm.getCell(`F${vatR}`).value = { formula: `F${margR}*(1+${vatPct}/100)` };
+      sm.getCell(`F${vatR}`).numFmt = '# ##0 " ₽"';
+      sm.getCell(`F${vatR}`).font = { bold: true, color: { argb: 'FF4ADE80' }, size: 14 };
+
+      // Autofilter на таблицу
+      sm.autoFilter = `A7:F${total - 1}`;
+      // Freeze шапку
+      sm.views = [{ state: 'frozen', ySplit: 7 }];
+
+      // ── Лист 3: Анализ AI ──
+      if (lastChatMd) {
+        const an = wb.addWorksheet('Анализ Мимира', { properties: { tabColor: { argb: 'FF553A18' } } });
+        an.columns = [{ width: 120 }];
+        an.getCell('A1').value = '📝 Анализ от Мимира';
+        an.getCell('A1').font = { bold: true, size: 16, color: { argb: 'FFD4A843' } };
+        an.getRow(1).height = 30;
+        const plain = lastChatMd.replace(/\*\*([^*]+)\*\*/g, '$1');
+        an.getCell('A3').value = plain;
+        an.getCell('A3').alignment = { wrapText: true, vertical: 'top' };
+        an.getRow(3).height = Math.min(600, plain.split('\n').length * 16);
+      }
+
+      // Сохраняем
+      const buf = await wb.xlsx.writeBuffer();
+      _downloadFile(`mimir-quick-${card.id || 'report'}.xlsx`,
+        new Blob([buf]),
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      toast('Excel', 'Файл скачан — в нём дашборд + смета с формулами + анализ', 'ok');
+    }
+
+    function _previewHtml() {
+      const totals = _calcTotals(lastEstimate);
+      const items = (lastEstimate && Array.isArray(lastEstimate.items)) ? lastEstimate.items : [];
+      const ai = lastChatMd ? _markdownToHtml(lastChatMd) : '';
+      const rows = items.map((it, i) => {
+        const sum = (Number(it.qty) * Number(it.price)) || 0;
+        return `<tr>
+          <td class="num">${i + 1}</td>
+          <td>${esc(it.name || '')}</td>
+          <td class="ce">${esc(it.unit || '')}</td>
+          <td class="ri">${Number(it.qty || 0).toLocaleString('ru-RU')}</td>
+          <td class="ri">${Number(it.price || 0).toLocaleString('ru-RU')} ₽</td>
+          <td class="ri sum">${sum.toLocaleString('ru-RU')} ₽</td>
+        </tr>`;
+      }).join('');
+      const html = `<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"/>
+<title>Мимир-Quick · отчёт #${card.id || ''}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0d0a07;--bg2:#15110d;--bg3:#1f1a14;--gold:#d4a843;--gold-l:#e8c35a;--gold-d:#8b7339;--ok:#4ade80;--t1:#f5e9c8;--t2:#bfb195;--t3:#7a6f54;--brd:#3e3729}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--t1);font-family:Inter,system-ui,sans-serif;font-size:14px;line-height:1.55}
+.wrap{max-width:1080px;margin:0 auto;padding:32px 28px}
+.hd{display:flex;align-items:center;justify-content:space-between;gap:20px;padding-bottom:18px;border-bottom:2px solid var(--gold)}
+.hd .logo{font-family:Cinzel,serif;font-size:28px;font-weight:700;color:var(--gold-l);letter-spacing:1px}
+.hd .meta{text-align:right;color:var(--t3);font-size:12px}
+.hd .meta b{display:block;color:var(--t2);font-size:14px;margin-bottom:3px}
+h1{font-family:Cinzel,serif;color:var(--gold-l);margin:24px 0 10px;font-size:22px;font-weight:700}
+.cust{display:grid;grid-template-columns:repeat(2,1fr);gap:8px 24px;background:var(--bg2);border:1px solid var(--brd);border-radius:12px;padding:16px 20px;margin-top:16px}
+.cust div{display:flex;justify-content:space-between;font-size:13px}
+.cust label{color:var(--t3);text-transform:uppercase;letter-spacing:.5px;font-size:11px}
+.cust span{color:var(--t1);font-weight:500;text-align:right}
+.kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:22px 0}
+.kpi .card{background:linear-gradient(180deg,var(--bg2),var(--bg3));border:1px solid var(--brd);border-radius:14px;padding:14px 14px;border-bottom:3px solid var(--gold)}
+.kpi .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--gold-d);font-weight:600;margin-bottom:6px}
+.kpi .val{font-family:'Cinzel',serif;font-size:22px;font-weight:700;color:var(--gold-l);font-variant-numeric:tabular-nums}
+.kpi .card.marg{border-bottom-color:var(--ok)}
+.kpi .card.marg .val{color:var(--ok)}
+table{width:100%;border-collapse:collapse;background:var(--bg2);border:1px solid var(--brd);border-radius:12px;overflow:hidden;margin-top:8px}
+thead{background:#221c14}
+th{padding:11px 12px;text-align:left;font-size:11.5px;color:var(--gold-l);text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid var(--gold)}
+th.ri{text-align:right} th.ce{text-align:center}
+td{padding:10px 12px;font-size:13px;color:var(--t1);border-bottom:1px solid var(--brd)}
+td.num{color:var(--t3);width:32px;text-align:center}
+td.ri{text-align:right;font-variant-numeric:tabular-nums}
+td.ce{text-align:center;color:var(--t2)}
+td.sum{color:var(--gold-l);font-weight:600}
+tr:last-child td{border-bottom:none}
+tfoot td{padding:14px 12px;font-weight:700;background:var(--bg3);border-top:2px solid var(--gold)}
+tfoot .label{color:var(--gold-d);text-align:right}
+tfoot .total{color:var(--gold-l);font-size:16px;text-align:right}
+tfoot .vat{color:var(--ok);font-size:18px}
+.ai{margin-top:30px;background:var(--bg2);border:1px solid var(--brd);border-left:4px solid var(--gold);border-radius:12px;padding:18px 22px}
+.ai h2{margin:0 0 10px;font-family:Cinzel,serif;font-size:18px;color:var(--gold-l)}
+.ai .content{color:var(--t2);font-size:13px;line-height:1.65}
+.ai .content b,.ai .content strong{color:var(--t1)}
+.foot{margin-top:32px;text-align:center;color:var(--t3);font-size:11px;padding-top:18px;border-top:1px solid var(--brd)}
+.print{display:inline-block;background:var(--gold);color:var(--bg);border:none;padding:9px 18px;border-radius:8px;font-weight:700;cursor:pointer;margin:18px 4px 0}
+.print:hover{background:var(--gold-l)}
+@media print{body{background:#fff;color:#000}.print,.hd .meta{display:none}.hd{border-color:#000}.kpi .card,table,.ai{box-shadow:none;border-color:#999;background:#fff}.kpi .lbl{color:#666}.kpi .val,h1,.hd .logo,.ai h2{color:#000}th{color:#000;border-bottom-color:#000}td{color:#000;border-bottom-color:#ccc}}
+</style>
+</head><body>
+<div class="wrap">
+  <div class="hd">
+    <div>
+      <div class="logo">⚔ АСГАРД · Мимир</div>
+      <div style="color:var(--t3);font-size:12px;margin-top:4px">Quick-просчёт ТКП</div>
+    </div>
+    <div class="meta">
+      <b>Карта #${card.id || ''}</b>
+      ${new Date().toLocaleString('ru-RU')}
+    </div>
+  </div>
+
+  <h1>Заказчик</h1>
+  <div class="cust">
+    <div><label>Заказчик</label><span>${esc(card.customer_name || '—')}</span></div>
+    <div><label>ИНН</label><span>${esc(card.customer_inn || '—')}</span></div>
+    <div><label>Контактное лицо</label><span>${esc(card.contact_person || '—')}</span></div>
+    <div><label>Телефон</label><span>${esc(card.contact_phone || '—')}</span></div>
+    <div><label>Email</label><span>${esc(card.customer_email || '—')}</span></div>
+    <div><label>Объект</label><span>${esc(card.work_location || '—')}</span></div>
+  </div>
+
+  <h1>Финансовая сводка</h1>
+  <div class="kpi">
+    <div class="card"><div class="lbl">Себестоимость</div><div class="val">${totals.cost.toLocaleString('ru-RU')} ₽</div></div>
+    <div class="card"><div class="lbl">КП без НДС</div><div class="val">${totals.kp_no_vat.toLocaleString('ru-RU')} ₽</div></div>
+    <div class="card"><div class="lbl">С НДС ${vatPct}%</div><div class="val">${totals.kp_with_vat.toLocaleString('ru-RU')} ₽</div></div>
+    <div class="card marg"><div class="lbl">Маржа</div><div class="val">${(marginPct.toFixed ? marginPct.toFixed(1) : marginPct)}%</div></div>
+  </div>
+
+  <h1>Смета — ${items.length} позиций</h1>
+  <table>
+    <thead><tr>
+      <th>№</th><th>Позиция</th><th class="ce">Ед.</th><th class="ri">Кол-во</th><th class="ri">Цена</th><th class="ri">Сумма</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot>
+      <tr><td colspan="5" class="label">Итого с/с:</td><td class="total">${totals.cost.toLocaleString('ru-RU')} ₽</td></tr>
+      <tr><td colspan="5" class="label">КП без НДС (маржа ${marginPct}%):</td><td class="total">${totals.kp_no_vat.toLocaleString('ru-RU')} ₽</td></tr>
+      <tr><td colspan="5" class="label">КП с НДС ${vatPct}%:</td><td class="vat total">${totals.kp_with_vat.toLocaleString('ru-RU')} ₽</td></tr>
+    </tfoot>
+  </table>
+
+  ${ai ? `<div class="ai"><h2>📝 Анализ Мимира</h2><div class="content">${ai}</div></div>` : ''}
+
+  <div class="foot">
+    Сформировано ASGARD CRM · Мимир-Quick · ${new Date().toLocaleString('ru-RU')}<br>
+    <button class="print" onclick="window.print()">🖨 Печать / PDF</button>
+    <button class="print" onclick="window.close()">Закрыть</button>
+  </div>
+</div>
+</body></html>`;
+      const w = window.open('', '_blank');
+      if (!w) { toast('Превью', 'Браузер заблокировал новое окно. Разреши попап-ы.', 'warn'); return; }
+      w.document.write(html);
+      w.document.close();
+      w.focus();
+    }
+
+    function _pickExtraFiles() {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.multiple = true;
+      input.accept = '.pdf,.docx,.xlsx,.xls,.txt,.csv,.rtf,.jpg,.jpeg,.png,.webp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/*';
+      input.style.display = 'none';
+      input.addEventListener('change', () => {
+        const files = Array.from(input.files || []);
+        files.forEach(f => extraFiles.push(f));
+        input.remove();
+        rerender();
+        if (files.length) toast('Quick', `Добавлено ${files.length} файл(ов). Жми «▶ Запустить».`, 'ok');
+      });
+      document.body.appendChild(input);
+      input.click();
+    }
+    function _fmtBytes(n) {
+      if (!n && n !== 0) return '';
+      if (n < 1024) return n + ' Б';
+      if (n < 1024 * 1024) return Math.round(n / 1024) + ' КБ';
+      return (n / (1024 * 1024)).toFixed(1) + ' МБ';
+    }
+
+    function _downloadFile(filename, content, mime) {
+      const blob = new Blob([content], { type: mime || 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click();
+      setTimeout(() => { try { document.body.removeChild(a); URL.revokeObjectURL(url); } catch(_){} }, 100);
+    }
+    function _downloadCsv() {
+      const items = (lastEstimate && Array.isArray(lastEstimate.items)) ? lastEstimate.items : [];
+      const rows = [['№','Позиция','Ед.','Кол-во','Цена ₽','Сумма ₽']];
+      items.forEach((it, i) => {
+        const sum = (Number(it.qty) * Number(it.price)) || 0;
+        rows.push([i+1, it.name || '', it.unit || '', it.qty || 0, it.price || 0, sum]);
+      });
+      const totals = _calcTotals(lastEstimate);
+      rows.push(['','','','','Итого с/с', totals.cost]);
+      rows.push(['','','','',`КП без НДС (маржа ${marginPct}%)`, totals.kp_no_vat]);
+      rows.push(['','','','',`КП с НДС ${vatPct}%`, totals.kp_with_vat]);
+      const csv = '﻿' + rows.map(r =>
+        r.map(c => {
+          const s = String(c == null ? '' : c);
+          return /[",;\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+        }).join(';')
+      ).join('\r\n');
+      _downloadFile(`smeta-${card.id || 'quick'}.csv`, csv, 'text/csv;charset=utf-8');
+    }
+    function _downloadMd() {
+      const head = `# Отчёт Мимира · Quick-просчёт\n\n**Карта:** #${card.id || ''}\n**Заказчик:** ${card.customer_name || '—'}\n**Дата:** ${new Date().toLocaleString('ru-RU')}\n\n`;
+      const ai = lastChatMd ? `## Анализ Мимира\n\n${lastChatMd}\n\n` : '';
+      const items = (lastEstimate && Array.isArray(lastEstimate.items)) ? lastEstimate.items : [];
+      const totals = _calcTotals(lastEstimate);
+      let table = '## Смета\n\n| № | Позиция | Ед | Кол-во | Цена ₽ | Сумма ₽ |\n|---|---|---|---|---|---|\n';
+      items.forEach((it, i) => {
+        const sum = (Number(it.qty) * Number(it.price)) || 0;
+        table += `| ${i+1} | ${(it.name || '').replace(/\|/g,'\\|')} | ${it.unit || ''} | ${it.qty || 0} | ${(it.price||0).toLocaleString('ru-RU')} | ${sum.toLocaleString('ru-RU')} |\n`;
+      });
+      table += `\n**Итого с/с:** ${totals.cost.toLocaleString('ru-RU')} ₽\n`;
+      table += `**КП без НДС (маржа ${marginPct}%):** ${totals.kp_no_vat.toLocaleString('ru-RU')} ₽\n`;
+      table += `**КП с НДС ${vatPct}%:** ${totals.kp_with_vat.toLocaleString('ru-RU')} ₽\n`;
+      _downloadFile(`mimir-quick-${card.id || 'report'}.md`, head + ai + table, 'text/markdown;charset=utf-8');
+    }
+    function _renderStep4() {
+      const totals = _calcTotals(lastEstimate);
+      return `
+        <p style="margin-bottom:12px;color:var(--t2)">✅ Готово к фиксации. Маржу и НДС можно поправить — карточки и сумма обновятся.</p>
         <div class="pk3-fin-grid">
-          <div class="pk3-fin-card"><label>Плановая с/с</label><div class="pk3-v">920 К ₽</div></div>
-          <div class="pk3-fin-card"><label>Цена КП без НДС</label><div class="pk3-v">1.20 М ₽</div></div>
-          <div class="pk3-fin-card"><label>С НДС 20%</label><div class="pk3-v">1.44 М ₽</div></div>
-          <div class="pk3-fin-card pk3-margin"><label>Маржа</label><div class="pk3-v">23.3%</div></div>
+          <div class="pk3-fin-card"><label>Плановая с/с</label><div class="pk3-v" id="pk3-f-cost">${_fmtMoneyRub(totals.cost)}</div></div>
+          <div class="pk3-fin-card"><label>Цена КП без НДС</label><div class="pk3-v" id="pk3-f-kpnovat">${_fmtMoneyRub(totals.kp_no_vat)}</div></div>
+          <div class="pk3-fin-card"><label>С НДС <span id="pk3-f-vatlbl">${vatPct}</span>%</label><div class="pk3-v" id="pk3-f-kpwithvat">${_fmtMoneyRub(totals.kp_with_vat)}</div></div>
+          <div class="pk3-fin-card pk3-margin"><label>Маржа</label><div class="pk3-v" id="pk3-f-marginlbl">${marginPct.toFixed ? marginPct.toFixed(1) : marginPct}%</div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px">
+          <div class="pk3-row"><label>Маржа, %</label><input id="pk3-q-margin" type="number" step="1" value="${marginPct}" /></div>
+          <div class="pk3-row"><label>НДС, %</label><input id="pk3-q-vat" type="number" step="1" value="${vatPct}" /></div>
         </div>
         <div class="pk3-ai-block" style="margin-top:14px">
-          <p><b>📊 После «Сохранить»:</b></p>
+          <p><b>📊 После «Сохранить и на согласование»:</b></p>
           <ul style="margin-top:5px;padding-left:18px;line-height:1.6">
-            <li>Финансовые поля карты заполнятся</li>
-            <li>Смета сохранится в «🧮 Расчёты»</li>
-            <li>Можно сразу собрать ТКП (числа подставятся)</li>
-            <li>Или сохранить → на согласование (ТКП позже)</li>
+            <li>finalize → ТКП-черновик в pre_tender_request (источник: mimir_quick)</li>
+            <li>карта переходит в колонку «Согласование»</li>
           </ul>
         </div>
+        <div id="pk3-q-generated-docs" style="margin-top:14px">${_quickGeneratedDocsHtml()}</div>
       `;
+    }
+    // Сгенерированные Мимиром документы для текущей карты (manual_documents JSONB,
+    // фильтр generated_by='mimir'). Рендерится на финал-шаге Quick. После finalize
+    // блок перерисовывается через _refreshGeneratedDocs() — подтягиваем свежий card.
+    function _quickGeneratedDocsHtml() {
+      const docs = Array.isArray(card.manual_documents) ? card.manual_documents : [];
+      const items = docs.map((md, idx) => ({ md, idx })).filter(x => x.md && x.md.generated_by === 'mimir');
+      if (!items.length) {
+        return `<div style="font-size:11.5px;color:var(--t3)">📎 Сгенерированные документы появятся здесь после сохранения (смета.xlsx / отчёт.docx / письмо.docx).</div>`;
+      }
+      const ptId = card.entity_id;
+      const token = encodeURIComponent(localStorage.getItem('asgard_token') || '');
+      const ico = (k) => k === 'smeta' ? '📊' : (k === 'director_report' ? '📄' : (k === 'customer_letter' ? '✉' : (k === 'tkp' ? '📋' : '📎')));
+      const lbl = (k) => k === 'smeta' ? 'смета' : (k === 'director_report' ? 'отчёт директору' : (k === 'customer_letter' ? 'письмо клиенту' : (k === 'tkp' ? 'ТКП' : '')));
+      return `
+        <div style="font-size:10.5px;color:var(--t3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">📎 Сгенерированные документы</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${items.map(({ md, idx }) => {
+            const name = md.filename || md.original_name || ('документ #' + idx);
+            const url  = `/api/pre-tenders/${ptId}/documents/${idx}/download?token=${token}`;
+            const kLbl = lbl(md.kind || '');
+            return `
+              <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--bg2);border:1px solid var(--brd-m);border-radius:6px;font-size:12px">
+                <span>${ico(md.kind)}</span>
+                <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}${kLbl ? ` <span style="color:var(--t3);font-size:11px">· ${esc(kLbl)}</span>` : ''}</span>
+                <a class="pk3-btn pk3-sm pk3-ghost" href="${url}" target="_blank" rel="noopener" style="text-decoration:none">⬇ Скачать</a>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+    // Дёргаем актуальную карту с board (там GET /personal-kanban/board подгружает
+    // pre_tender_requests со всеми JSONB-полями) и перерисовываем блок.
+    async function _refreshGeneratedDocs() {
+      try {
+        const r = await api(`/api/personal-kanban/board?flow_filter=all`);
+        if (!r.ok || !r.data || !r.data.columns) return;
+        const all = Object.values(r.data.columns).flat();
+        const fresh = all.find(c => c.id === card.id);
+        if (fresh && Array.isArray(fresh.manual_documents)) {
+          card.manual_documents = fresh.manual_documents;
+        }
+      } catch (_) { /* graceful */ }
+      const el = overlay.querySelector('#pk3-q-generated-docs');
+      if (el) el.innerHTML = _quickGeneratedDocsHtml();
+    }
+    // Live-пересчёт 4 финкарточек на шаге 4 при изменении маржи/НДС.
+    function _bindFinalEditing() {
+      const mEl = overlay.querySelector('#pk3-q-margin');
+      const vEl = overlay.querySelector('#pk3-q-vat');
+      if (!mEl && !vEl) return;
+      const recalc = () => {
+        const t = _calcTotals(lastEstimate);
+        const set = (id, v) => { const el = overlay.querySelector(id); if (el) el.textContent = v; };
+        set('#pk3-f-cost',       _fmtMoneyRub(t.cost));
+        set('#pk3-f-kpnovat',    _fmtMoneyRub(t.kp_no_vat));
+        set('#pk3-f-kpwithvat',  _fmtMoneyRub(t.kp_with_vat));
+        set('#pk3-f-vatlbl',     String(vatPct));
+        set('#pk3-f-marginlbl',  (marginPct.toFixed ? marginPct.toFixed(1) : marginPct) + '%');
+      };
+      if (mEl) mEl.addEventListener('input', () => {
+        const v = Number(mEl.value); if (isFinite(v)) { marginPct = v; marginEdited = true; recalc(); }
+      });
+      if (vEl) vEl.addEventListener('input', () => {
+        const v = Number(vEl.value); if (isFinite(v)) { vatPct = v; vatEdited = true; recalc(); }
+      });
+    }
+    function _renderFoot(s) {
+      const disabled = running ? 'disabled' : '';
+      // Кнопка «🔄 С нуля» — общая для всех шагов, рядом с закрытием.
+      const resetBtn = `<button class="pk3-btn pk3-ghost" data-act="reset" title="Полный пересчёт с нуля" ${disabled}>🔄 С нуля</button>`;
+      if (s === 0) return `<button class="pk3-btn pk3-ghost" data-act="close">Отмена</button>${resetBtn}<div style="flex:1"></div><button class="pk3-btn pk3-gold" data-act="upload" ${disabled}>▶ Запустить</button>`;
+      if (s === 1) return `<button class="pk3-btn pk3-ghost" data-act="close">Закрыть</button>${resetBtn}<div style="flex:1"></div><button class="pk3-btn" data-act="calc" ${disabled}>🧠 Запросить расчёт у AI</button>`;
+      if (s === 2) return `<button class="pk3-btn pk3-ghost" data-act="back">← Назад</button>${resetBtn}<div style="flex:1"></div><button class="pk3-btn" data-act="send-reply" ${disabled}>💬 Отправить AI</button><button class="pk3-btn pk3-gold" data-act="to-smeta" ${disabled}>📊 К смете →</button>`;
+      if (s === 3) return `<button class="pk3-btn pk3-ghost" data-act="back" title="Вернуться в диалог с AI">← К диалогу</button>${resetBtn}<div style="flex:1"></div><button class="pk3-btn" data-act="ai-again" ${disabled}>🔁 Уточнить AI заново</button><button class="pk3-btn pk3-gold" data-act="to-final" ${disabled}>→ Финал</button>`;
+      /* s === 4 */ return `<button class="pk3-btn pk3-ghost" data-act="back">← Назад</button>${resetBtn}<div style="flex:1"></div><button class="pk3-btn" data-act="save-tkp" ${disabled}>🛠 Сохранить и собрать ТКП</button><button class="pk3-btn pk3-ok" data-act="save" ${disabled}>✅ Сохранить и на согласование</button>`;
+    }
+    function _renderBody(s) {
+      if (s === 0) return _renderStep0();
+      if (s === 1) return _renderStep1();
+      if (s === 2) return _renderStep2();
+      if (s === 3) return _renderStep3();
+      return _renderStep4();
+    }
+    function wizardHtml() {
       return `
         <div class="pk3-modal">
           <div class="pk3-modal-head">
             <span style="font-size:20px;color:var(--info)">🚀</span>
             <h3>Быстрый просчёт через Мимир-Quick</h3>
-            <span class="pk3-tag pk3-info">~10 мин</span>
+            <span class="pk3-tag pk3-info" id="pk3-q-tag">${sessionUid ? 'сессия ' + esc(sessionUid.substring(0, 8)) : 'AI ~10 мин'}</span>
             <button class="pk3-btn-icon" data-act="close">✕</button>
           </div>
           <div class="pk3-modal-body">
-            <div class="pk3-wiz-steps">${stepsHtml}</div>
-            ${content}
+            <div class="pk3-wiz-steps">${_stepHeaderHtml(step)}</div>
+            ${_renderBody(step)}
           </div>
-          <div class="pk3-modal-foot">
-            ${s > 0 ? '<button class="pk3-btn pk3-ghost" data-act="back">← Назад</button>' : ''}
-            <div style="flex:1"></div>
-            ${s < 3 ? `
-              <button class="pk3-btn pk3-ghost" data-act="close">Отмена</button>
-              <button class="pk3-btn pk3-gold" data-act="next">Далее →</button>
-            ` : `
-              <button class="pk3-btn pk3-ghost" data-act="close">Отмена</button>
-              <button class="pk3-btn" data-act="save-tkp">🛠 Сохранить и собрать ТКП</button>
-              <button class="pk3-btn pk3-ok" data-act="save">✅ Сохранить и на согласование</button>
-            `}
-          </div>
+          <div class="pk3-modal-foot">${_renderFoot(step)}</div>
         </div>
       `;
+    }
+
+    const overlay = mountModal(wizardHtml());
+    const rerender = () => { overlay.innerHTML = wizardHtml(); bindAll(); };
+    const setProgress = (text) => {
+      // Если busy-overlay показан — пишем ТОЛЬКО в него (иначе текст дублируется
+      // и виден под полупрозрачным фоном). Без busy — обычный inline progress-line.
+      const busy = overlay.querySelector('.pk3-busy');
+      if (busy) {
+        const bt = busy.querySelector('.pk3-busy-text');
+        if (bt) bt.textContent = text;
+        return;
+      }
+      const el = overlay.querySelector('#pk3-q-prog-line');
+      if (el) el.innerHTML = esc(text);
     };
-    let overlay = mountModal(wizardHtml(step));
-    const rerender = () => { overlay.innerHTML = wizardHtml(step); bind(); };
-    function bind() {
-      overlay.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', async () => {
-        const a = b.dataset.act;
-        if (a === 'close') return close(overlay);
-        if (a === 'back')  { step = Math.max(0, step - 1); return rerender(); }
-        if (a === 'next')  { step = Math.min(3, step + 1); return rerender(); }
-        if (a === 'save' || a === 'save-tkp') {
-          // start-quick на backend
-          if (!sessionUid) {
-            const r = await api(`/api/personal-kanban/cards/${card.id}/start-quick`, { method: 'POST', body: {} });
-            if (r.ok && r.data) sessionUid = r.data.session_uid;
-          }
-          close(overlay);
-          if (a === 'save-tkp') {
-            if (opts.onOpenTKP) opts.onOpenTKP({ prefillFromSession: sessionUid });
-          } else {
-            toast('Готово', 'Просчёт сохранён, карта пойдёт на согласование', 'ok');
-            if (opts.onSaved) opts.onSaved({ sessionUid });
+
+    // ── Busy-overlay поверх модалки (показываем пока ждём AI) ──
+    function _setBusy(title, subtitle) {
+      const modalEl = overlay.querySelector('.pk3-modal');
+      if (!modalEl) return;
+      let busy = modalEl.querySelector('.pk3-busy');
+      if (!busy) {
+        // pk3-modal обязан быть position:relative — иначе inset не сработает.
+        modalEl.style.position = 'relative';
+        busy = document.createElement('div');
+        busy.className = 'pk3-busy';
+        busy.innerHTML = `
+          <div class="pk3-busy-spin"></div>
+          <div class="pk3-busy-text"></div>
+          <div class="pk3-busy-sub"></div>
+          <div class="pk3-busy-sub pk3-busy-dots"></div>
+        `;
+        modalEl.appendChild(busy);
+      }
+      busy.querySelector('.pk3-busy-text').textContent = title || 'Мимир работает';
+      busy.querySelectorAll('.pk3-busy-sub')[0].textContent = subtitle || '';
+    }
+    function _clearBusy() {
+      const busy = overlay.querySelector('.pk3-busy');
+      if (busy) busy.remove();
+    }
+
+    // ── Авто-инициализация: ищем существующую сессию (backend дедупит
+    //    по pre_tender_id/tender_id). Если уже была — подгружаем состояние,
+    //    PM продолжает с того места.
+    async function _initSession() {
+      try {
+        setProgress('Проверяю предыдущую сессию…');
+        const r = await api(`/api/personal-kanban/cards/${card.id}/start-quick`, { method: 'POST', body: {} });
+        if (!r.ok || !r.data || !r.data.session_uid) return; // ничего — юзер жмёт «Запустить»
+        sessionUid = r.data.session_uid;
+        card._quickSession = sessionUid;
+        const isExisting = r.data.status === 'existing';
+        if (!isExisting) {
+          setProgress('Сессия готова. Жми «▶ Запустить» чтобы скачать ТЗ.');
+          return;
+        }
+        // Существующая — тянем полное состояние и восстанавливаем шаг.
+        setProgress('Восстанавливаю предыдущий расчёт…');
+        const g = await api(`/api/tkp-quick/sessions/${encodeURIComponent(sessionUid)}`);
+        if (!g.ok || !g.data) {
+          setProgress('Не удалось подгрузить — нажми «🔄 С нуля» или «▶ Запустить».');
+          return;
+        }
+        const sess = g.data.session || g.data;
+        const sStatus = (sess.status || '').toLowerCase();
+        const msgs = Array.isArray(sess.chat_messages) ? sess.chat_messages : [];
+        // Берём последний assistant с estimate.
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          if (msgs[i].role === 'assistant') {
+            lastChatMd = msgs[i].content || lastChatMd;
+            if (msgs[i].estimate) lastEstimate = msgs[i].estimate;
+            if (lastEstimate) break;
           }
         }
-      }));
+        if (!lastEstimate && sess.estimate_draft) lastEstimate = sess.estimate_draft;
+        // Маппинг статуса в step:
+        if (sStatus === 'finalized') {
+          step = 4; // финал — но finalize уже сделан, кнопки заблокируем дальше
+        } else if (lastEstimate || sStatus === 'chatting') {
+          step = 2; // есть смета + диалог открыт
+        } else if (sStatus === 'calculating') {
+          step = 1; // AI всё ещё считает; backend завершит и сохранит — purpos: показать ожидание
+        } else {
+          step = 0; // draft без расчёта
+        }
+        rerender();
+      } catch (e) {
+        // молча, юзер всё равно увидит шаг 0 с кнопкой «Запустить»
+        try { console.warn('[Quick] init failed:', e && e.message); } catch (_) {}
+      }
     }
-    bind();
+    // Не блокируем рендер модалки — _initSession асинхронен.
+    _initSession();
+
+    // Кнопка «🔄 С нуля» — confirm + POST start-quick{fresh:true} + reset state.
+    async function _resetSession() {
+      if (running) return;
+      if (!window.confirm('Полный пересчёт с нуля? Текущая сессия будет помечена как abandoned.')) return;
+      running = true;
+      try {
+        const r = await api(`/api/personal-kanban/cards/${card.id}/start-quick`, { method: 'POST', body: { fresh: true } });
+        if (!r.ok || !r.data || !r.data.session_uid) {
+          toast('Quick', 'Не удалось создать новую сессию', 'err');
+          return;
+        }
+        sessionUid = r.data.session_uid;
+        card._quickSession = sessionUid;
+        lastEstimate = null;
+        lastChatMd = '';
+        attachWarn = [];
+        step = 0;
+        toast('Quick', 'Новая сессия создана', 'ok');
+        rerender();
+      } finally {
+        running = false;
+      }
+    }
+
+    // ── Шаги ──
+    async function _doUpload() {
+      if (running) return;
+      running = true;
+      const tag = overlay.querySelector('#pk3-q-tag'); if (tag) tag.textContent = 'запуск…';
+      _setBusy('Мимир готовит сессию', 'это займёт несколько секунд');
+      try {
+        // 1. Создать (или переиспользовать) сессию
+        if (!sessionUid) {
+          setProgress('Создаю Quick-сессию…');
+          const r = await api(`/api/personal-kanban/cards/${card.id}/start-quick`, { method: 'POST', body: {} });
+          if (!r.ok || !r.data || !r.data.session_uid) {
+            throw new Error((r.data && r.data.error) || 'start-quick failed');
+          }
+          sessionUid = r.data.session_uid;
+          card._quickSession = sessionUid;
+        }
+        // 1.5 Если юзер ввёл ручной текст — добавим в сессию
+        const manualEl = overlay.querySelector('#pk3-q-manual-tz');
+        const manualTz = manualEl ? (manualEl.value || '').trim() : '';
+        if (manualTz) {
+          setProgress('Сохраняю ваше описание работы…');
+          try {
+            await api(`/api/tkp-quick/sessions/${encodeURIComponent(sessionUid)}/text`, {
+              method: 'POST', body: { text: manualTz, mode: 'append' }
+            });
+          } catch (e) {
+            attachWarn.push('Ручной ТЗ: ' + (e.message || 'не сохранился'));
+          }
+        }
+        // 1.6 Догруженные с диска файлы — заливаем напрямую (без скачивания)
+        if (extraFiles.length) {
+          for (let i = 0; i < extraFiles.length; i++) {
+            const f = extraFiles[i];
+            setProgress(`Загружаю доп.файл ${i+1}/${extraFiles.length}: ${f.name}`);
+            try {
+              const fd = new FormData();
+              fd.append('files', f, f.name);
+              const upResp = await fetch(`/api/tkp-quick/sessions/${encodeURIComponent(sessionUid)}/upload`, {
+                method: 'POST', headers: _authHeader(), body: fd
+              });
+              if (!upResp.ok) {
+                let j = {}; try { j = await upResp.json(); } catch (_) {}
+                throw new Error(j.error || ('HTTP ' + upResp.status));
+              }
+            } catch (e) {
+              attachWarn.push(f.name + ' (upload: ' + (e.message || 'err') + ')');
+            }
+          }
+        }
+        // 2. Скачать каждый attachment и загрузить в сессию
+        const atts = Array.isArray(card.email_attachments) ? card.email_attachments : [];
+        const ptId = card.entity_id;
+        for (let i = 0; i < atts.length; i++) {
+          const att = atts[i];
+          const fname = att.original_filename || att.filename || ('att_' + att.id);
+          setProgress(`Качаю файл ${i+1}/${atts.length}: ${fname}`);
+          let blob;
+          try {
+            const dlUrl = `/api/pre-tenders/${ptId}/email-attachments/${att.id}/download?token=${encodeURIComponent(_getToken())}`;
+            const dlResp = await fetch(dlUrl);
+            if (!dlResp.ok) throw new Error('HTTP ' + dlResp.status);
+            blob = await dlResp.blob();
+          } catch (e) {
+            attachWarn.push(fname + ' (download: ' + e.message + ')');
+            continue;
+          }
+          setProgress(`Загружаю в AI-сессию: ${fname}`);
+          try {
+            const fd = new FormData();
+            fd.append('files', blob, fname);
+            const upResp = await fetch(`/api/tkp-quick/sessions/${encodeURIComponent(sessionUid)}/upload`, {
+              method: 'POST',
+              headers: _authHeader(), // НЕ ставим Content-Type — браузер выставит multipart с boundary
+              body: fd
+            });
+            if (!upResp.ok) {
+              let j = {}; try { j = await upResp.json(); } catch (_) {}
+              throw new Error(j.error || ('HTTP ' + upResp.status));
+            }
+          } catch (e) {
+            attachWarn.push(fname + ' (upload: ' + e.message + ')');
+          }
+        }
+        setProgress(atts.length
+          ? `✅ Загружено ${atts.length - attachWarn.length} из ${atts.length} файлов в сессию.`
+          : '⚠ В карте нет вложений — AI будет работать только по описанию работ.');
+        step = 1;
+        rerender();
+      } catch (e) {
+        toast('Quick: запуск не удался', String(e.message || e), 'err');
+        setProgress('❌ ' + (e.message || 'ошибка'));
+        _clearBusy();
+        running = false;
+        return;
+      }
+      // running=false до _doCalculate (см. коммент в шаге calculate).
+      running = false;
+      _doCalculate(); // _doCalculate сам обновит busy на «AI читает ТЗ»
+    }
+
+    async function _doCalculate() {
+      if (!sessionUid) return;
+      if (running) return;
+      running = true;
+      _setBusy('🧠 Мимир анализирует ТЗ', 'Claude читает документ и собирает смету (до 60 сек)');
+      try {
+        setProgress('AI читает ТЗ…');
+        const ssr = await _streamSSE(`/api/tkp-quick/sessions/${encodeURIComponent(sessionUid)}/calculate`, {});
+        ssr.onEach(ev => {
+          const d = ev.data || {};
+          if (d.type === 'start' || d.type === 'progress') {
+            setProgress(d.message || 'AI работает…');
+          } else if (d.type === 'done') {
+            lastChatMd = d.chat_response_md || '';
+            lastEstimate = d.estimate || null;
+          } else if (d.type === 'error') {
+            setProgress('❌ ' + (d.message || 'ошибка AI'));
+          }
+        });
+        await ssr.stream;
+        if (!lastEstimate && !lastChatMd) {
+          throw new Error('AI ничего не вернул');
+        }
+      } catch (e) {
+        toast('Quick: расчёт не удался', String(e.message || e), 'err');
+        setProgress('❌ ' + (e.message || 'ошибка'));
+        _clearBusy();
+        running = false;
+        return;
+      }
+      _clearBusy();
+      // running=false ДО rerender, иначе кнопки step=2 рендерятся disabled.
+      running = false;
+      step = 2;
+      rerender();
+    }
+
+    async function _doSendReply() {
+      const ta = overlay.querySelector('#pk3-q-reply');
+      const userMsg = (ta && ta.value || '').trim();
+      if (!userMsg) { toast('Quick', 'Напиши ответ AI или нажми «К смете»', 'warn'); return; }
+      if (!sessionUid) { toast('Quick', 'Сессия потеряна — закрой и открой заново', 'err'); return; }
+      if (running) { toast('Quick', 'Подожди — AI ещё думает', 'warn'); return; }
+      running = true;
+
+      // Если PM правил позиции в шаге «Смета» — добавляем актуальную смету в preamble,
+      // чтобы Claude увидел ИЗМЕНЕНИЯ (а не повторно работал по своей старой версии).
+      let msg = userMsg;
+      const items = (lastEstimate && Array.isArray(lastEstimate.items)) ? lastEstimate.items : [];
+      if (items.length) {
+        msg = `Ниже моя текущая смета (с моими правками — учти их при пересчёте):\n\n${_estimateAsText()}\n\nМой комментарий:\n${userMsg}`;
+      }
+
+      _setBusy('🧠 Мимир обрабатывает уточнение', 'пересчитываю смету с учётом твоего ответа (до 60 сек)');
+      try {
+        const ssr = await _streamSSE(`/api/tkp-quick/sessions/${encodeURIComponent(sessionUid)}/chat`, { message: msg });
+        ssr.onEach(ev => {
+          const d = ev.data || {};
+          if (d.type === 'start' || d.type === 'progress') {
+            _setBusy('🧠 ' + (d.message || 'Мимир думает'), 'пересчитываю смету');
+          } else if (d.type === 'done') {
+            lastChatMd = d.chat_response_md || lastChatMd;
+            if (d.estimate) lastEstimate = d.estimate;
+          } else if (d.type === 'error') {
+            _setBusy('❌ ' + (d.message || 'ошибка AI'), 'попробуй переотправить');
+          }
+        });
+        await ssr.stream;
+      } catch (e) {
+        toast('Quick: ответ AI не получен', String(e.message || e), 'err');
+        _clearBusy();
+        running = false;
+        return;
+      }
+      _clearBusy();
+      running = false;
+      toast('Готово', 'AI обновил ответ — смотри новый текст', 'ok');
+      rerender();
+    }
+
+    async function _doFinalize(thenOpenTkp) {
+      if (!sessionUid) return;
+      if (running) return;
+      running = true;
+      _setBusy(thenOpenTkp ? 'Сохраняю и открываю ТКП' : 'Сохраняю и отправляю на согласование',
+               'фиксирую финансы и двигаю карту');
+      try {
+        const totals = _calcTotals(lastEstimate);
+        const body = {
+          customer_name:   card.customer_name || null,
+          customer_inn:    card.customer_inn || null,
+          work_description: card.work_description || null,
+          kp_price_without_vat: totals.kp_no_vat || null,
+          kp_price_with_vat:    totals.kp_with_vat || null,
+          margin_pct: marginPct,
+          vat_pct: vatPct
+        };
+        const r = await api(`/api/tkp-quick/sessions/${encodeURIComponent(sessionUid)}/finalize`, { method: 'POST', body });
+        if (!r.ok) throw new Error((r.data && r.data.error) || 'finalize failed');
+        // best-effort: обновить карту (если поля разрешены — backend пропустит лишнее)
+        try {
+          await api(`/api/personal-kanban/cards/${card.id}/update`, {
+            method: 'POST',
+            body: { estimated_sum: totals.kp_no_vat || null }
+          });
+        } catch (_) {}
+        if (thenOpenTkp) {
+          close(overlay);
+          if (opts.onOpenTKP) opts.onOpenTKP({ prefillFromSession: sessionUid });
+          return;
+        }
+        // Перевод карты в approval
+        try {
+          await api(`/api/personal-kanban/cards/${card.id}/transition`, {
+            method: 'POST',
+            body: { to_v3_column: 'approval', note: 'AI Quick готов', confirm: true }
+          });
+        } catch (_) {}
+        toast('Готово', 'ТКП сохранён, карта на согласовании', 'ok');
+        close(overlay);
+        if (opts.onSaved) opts.onSaved({ sessionUid, tkp: (r.data && r.data.tkp) || null });
+      } catch (e) {
+        toast('Quick: не сохранилось', String(e.message || e), 'err');
+      } finally {
+        _clearBusy();
+        running = false;
+      }
+    }
+
+    function bindAll() {
+      overlay.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', async (ev) => {
+        const a = b.dataset.act;
+        // Мгновенная визуальная реакция на клик — pulse-анимация + spinner
+        // на самой кнопке для AI-actions. Юзер уверен что клик принят.
+        try {
+          b.classList.remove('pk3-pulse');
+          // принуждаем reflow для перезапуска анимации
+          void b.offsetWidth;
+          b.classList.add('pk3-pulse');
+        } catch (_) {}
+        const aiActs = ['upload','calc','send-reply','save','save-tkp','ai-again','reset'];
+        if (aiActs.includes(a)) {
+          b.classList.add('pk3-loading');
+          setTimeout(() => b.classList.remove('pk3-loading'), 60000);
+        }
+        if (a === 'close') return close(overlay);
+        if (a === 'back')  { step = Math.max(0, step - 1); return rerender(); }
+        if (a === 'upload')      return _doUpload();
+        if (a === 'calc')        return _doCalculate();
+        if (a === 'send-reply')  return _doSendReply();
+        if (a === 'to-smeta')    { step = 3; return rerender(); }
+        if (a === 'reset')       return _resetSession();
+        if (a === 'row-add')     return _addEstimateRow();
+        if (a === 'row-del')     return _removeEstimateRow(Number(b.dataset.rowIdx));
+        if (a === 'dl-csv')      return _downloadCsv();
+        if (a === 'dl-md')       return _downloadMd();
+        if (a === 'dl-xlsx')     return _downloadXlsx();
+        if (a === 'preview-html')return _previewHtml();
+        if (a === 'dl-smeta-preview') {
+          if (!sessionUid) return toast('Предпросмотр', 'Сессия не запущена', 'err');
+          const tk = encodeURIComponent(_getToken());
+          window.open(`/api/tkp-quick/sessions/${encodeURIComponent(sessionUid)}/preview-doc/smeta?token=${tk}`, '_blank');
+          return;
+        }
+        if (a === 'dl-report-preview') {
+          if (!sessionUid) return toast('Предпросмотр', 'Сессия не запущена', 'err');
+          const tk = encodeURIComponent(_getToken());
+          window.open(`/api/tkp-quick/sessions/${encodeURIComponent(sessionUid)}/preview-doc/report?token=${tk}`, '_blank');
+          return;
+        }
+        if (a === 'save-to-card') {
+          if (!sessionUid) return toast('Сохранение', 'Сессия не запущена', 'err');
+          const btn = b;
+          const origText = btn.textContent;
+          btn.disabled = true;
+          btn.textContent = '⏳ Сохраняю…';
+          try {
+            const r = await api(`/api/tkp-quick/sessions/${encodeURIComponent(sessionUid)}/save-to-card`, { method: 'POST', body: {} });
+            if (r.ok) {
+              toast('✓ Сохранено', 'Смета и отчёт сохранены в карточку заявки', 'ok');
+              try { window.dispatchEvent(new CustomEvent('asgard:pre-tender:docs:saved', { detail: { card_id: card.id, pre_tender_id: card.entity_id } })); } catch (_) {}
+            } else {
+              toast('Ошибка', (r.data && r.data.error) || 'Не удалось сохранить', 'err');
+            }
+          } catch (e) {
+            toast('Ошибка', e.message || String(e), 'err');
+          } finally {
+            btn.disabled = false;
+            btn.textContent = origText;
+          }
+          return;
+        }
+        if (a === 'extra-add')   return _pickExtraFiles();
+        if (a === 'extra-del')   { extraFiles.splice(Number(b.dataset.idx), 1); return rerender(); }
+        if (a === 'ai-again')    {
+          // Возвращаемся в диалог. _doSendReply вызывать не надо — текстарея
+          // ещё не отрендерилась, и юзер сам пишет новое уточнение.
+          step = 2;
+          rerender();
+          // Фокус на textarea для удобства.
+          setTimeout(() => { const t = overlay.querySelector('#pk3-q-reply'); if (t) t.focus(); }, 50);
+          return;
+        }
+        if (a === 'to-final') {
+          const mEl = overlay.querySelector('#pk3-q-margin');
+          const vEl = overlay.querySelector('#pk3-q-vat');
+          if (mEl && mEl.value !== '') marginPct = Number(mEl.value);
+          if (vEl && vEl.value !== '') vatPct = Number(vEl.value);
+          step = 4;
+          return rerender();
+        }
+        if (a === 'save')     return _doFinalize(false);
+        if (a === 'save-tkp') return _doFinalize(true);
+      }));
+      // Биндинг inputs редактируемой сметы (шаг 3) и финансов (шаг 4) — после каждого rerender.
+      _bindSmetaEditing();
+      _bindFinalEditing();
+      // На финальном шаге — подтянуть актуальные AI-документы (Мимир пишет в
+      // pre_tender.manual_documents в фоне; первый рендер может застать пустой массив).
+      if (step === 4) { _refreshGeneratedDocs(); }
+    }
+    bindAll();
   }
 
   /* ────────────────────────────────────────────────────────────────────
-   * 2. Conductor sessions
+   * 2. Conductor — реальный AI-цикл через /api/mimir/conductor + SSE
    * ──────────────────────────────────────────────────────────────────── */
   function openConductor(card) {
-    const mockJournal = [
-      { role: 'ai',     who: 'Мимир',        when: '17.06 22:15', status: 'sent',     text: 'Сформировал 5 уточняющих вопросов клиенту по ТЗ. Письмо «АС-2026-06-17/Q001» отправлено.' },
-      { role: 'pm',     who: 'Андросов Н.А.', when: '17.06 22:18', status: '',         text: 'Подтвердил отправку. Письмо ушло на адреса клиента.' },
-      { role: 'client', who: 'Газретов Г.А.', when: '18.06 09:42', status: 'received', text: 'Прислал ответы на 3 из 5 вопросов. Чертежи в приложении. По доступу ночью уточнит до конца недели.' },
-      { role: 'ai',     who: 'Мимир',        when: '18.06 09:46', status: 'draft',    text: 'На основе чертежей пересчитал объём. Готов сформировать письмо-напоминание по оставшимся 2 вопросам. Сформировать?' },
-    ];
-    const journalHtml = mockJournal.map(m => `
-      <div class="pk3-cond-msg pk3-${m.role}">
-        <div class="pk3-cond-ava">${m.role === 'ai' ? '🧙' : (m.role === 'client' ? '📨' : '👤')}</div>
-        <div class="pk3-cond-content">
-          <div class="pk3-cond-head">
-            <span class="pk3-cond-name">${esc(m.who)}</span>
-            <span class="pk3-cond-time">${esc(m.when)}</span>
-            ${m.status ? `<span class="pk3-cond-status pk3-${m.status}">${esc(m.status)}</span>` : ''}
+    let runId = (card._conductorRun && Number(card._conductorRun)) || null;
+    let runState = null;       // объект из GET /run/:id
+    let eventSource = null;
+    let reconnectAttempt = 0;
+    let lastLetter = null;     // последнее сгенерированное письмо {letter_id, subject, body}
+    const journalEvents = [];  // {id, event_type, data, created_at, _source?}
+
+    // ── HTML ──
+    // Какие event_type ВООБЩЕ не показывать в журнале (шум):
+    // - thought / tool_call / tool_result — внутренняя кухня AI, не нужна РП
+    // - mode / queue_wait / stage_step — техническая телеметрия
+    const HIDDEN_EVENT_TYPES = /^(thought|tool_call|tool_result|mode|queue_wait|stage_step|status_change|context_trimmed)$/i;
+    function _journalHtml() {
+      const visible = journalEvents.filter(ev => {
+        const t = ev.event_type || ev.event || '';
+        return !HIDDEN_EVENT_TYPES.test(t);
+      });
+      if (!visible.length) {
+        return '<div style="padding:14px;color:var(--t3);text-align:center;font-size:11.5px">Журнал чист. AI работает в фоне.</div>';
+      }
+      return visible.map(ev => {
+        const t = ev.event_type || ev.event || 'event';
+        const isErr = /^error$/i.test(t);
+        const isAI = /agent|analysis|estimate|computed|tz_summary|conductor/i.test(t);
+        const isClient = /letter_sent|reply|customer/i.test(t);
+        const isClar = /clarification/i.test(t);
+        const role = isErr ? 'err' : (isAI ? 'ai' : (isClient ? 'client' : (isClar ? 'pm' : 'ai')));
+        const av = isErr ? '⚠️' : (isAI ? '🧙' : (isClient ? '📨' : '👤'));
+        const when = ev.created_at ? new Date(ev.created_at).toLocaleTimeString('ru-RU', { hour12: false }) : '';
+        let body = '';
+        const d = ev.data || ev.payload || {};
+        if (typeof d === 'string') body = esc(d);
+        else if (d.message) body = esc(d.message);
+        else if (d.subject) body = esc(d.subject) + (d.preview ? '<br><span style="color:var(--t3)">' + esc(d.preview) + '</span>' : '');
+        else body = '<code style="font-size:10.5px;color:var(--t3)">' + esc(JSON.stringify(d).substring(0, 140)) + '</code>';
+        return `
+          <div class="pk3-cond-msg pk3-${role}">
+            <div class="pk3-cond-ava">${av}</div>
+            <div class="pk3-cond-content">
+              <div class="pk3-cond-head">
+                <span class="pk3-cond-name">${esc(t)}</span>
+                <span class="pk3-cond-time">${esc(when)}</span>
+              </div>
+              <div class="pk3-cond-text">${body}</div>
+            </div>
           </div>
-          <div class="pk3-cond-text">${esc(m.text)}</div>
+        `;
+      }).join('');
+    }
+
+    function _stateHtml() {
+      if (!runState) return '<p style="margin:0;color:var(--t3)">Загрузка состояния…</p>';
+      const r = runState.run || {};
+      const ar = runState.agent_runs || [];
+      const clars = runState.clarifications || [];
+      const letters = runState.customer_letters || [];
+      const blockingOpen = clars.filter(c => c.status === 'OPEN' && c.blocking).length;
+      const prog = runState.progress || {};
+      const pct = prog.progress_pct != null ? prog.progress_pct : null;
+      return `
+        <p style="margin:0;font-size:12px"><b>Статус:</b> ${esc(r.status || '—')}</p>
+        <p style="margin:6px 0 0;font-size:11.5px">Профиль: ${esc(r.profile || '—')}</p>
+        ${pct != null ? `<p style="margin:6px 0 0;font-size:11.5px">Прогресс: ${pct}%</p>` : ''}
+        <p style="margin:6px 0 0;font-size:11.5px">Агенты успешно: ${ar.filter(a => a.status === 'SUCCESS').length} / ${ar.length}</p>
+        <p style="margin:6px 0 0;font-size:11.5px">Уточнений (открыто/всего): ${clars.filter(c => c.status === 'OPEN').length} / ${clars.length}${blockingOpen ? ` <span style="color:var(--warn-t)">⚠ блокирует: ${blockingOpen}</span>` : ''}</p>
+        <p style="margin:6px 0 0;font-size:11.5px">Писем: ${letters.length}</p>
+        ${r.blocked_reason ? `<p style="margin:8px 0 0;font-size:11.5px;color:var(--warn-t)"><b>Блокер:</b> ${esc(r.blocked_reason)}</p>` : ''}
+      `;
+    }
+
+    function _clarificationsHtml() {
+      if (!runState) return '';
+      const opens = (runState.clarifications || []).filter(c => c.status === 'OPEN');
+      if (!opens.length) return '';
+      return `
+        <div style="margin-top:12px;font-size:10.5px;color:var(--t3);text-transform:uppercase;letter-spacing:.4px">Открытые уточнения от Мимира</div>
+        ${opens.map(c => {
+          // Backend колонка question_ru (mimir_clarifications), не question_text.
+          const q = c.question_ru || c.question_text || c.question || '—';
+          const why = c.why_we_ask;
+          const cons = c.consequence;
+          const def = c.default_assumption;
+          return `
+            <div class="pk3-ai-block" style="margin-top:8px;padding:12px 14px">
+              <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:11px;color:var(--t3);margin-bottom:6px">
+                <span><b>#${c.id}</b></span>
+                ${c.blocking ? '<span style="color:var(--err-t)">🔒 блокирует расчёт</span>' : '<span style="color:var(--t2)">опционально</span>'}
+                <span>канал: ${esc(c.channel || 'manual')}</span>
+                ${c.category ? `<span>· ${esc(c.category)}</span>` : ''}
+              </div>
+              <p style="margin:0;font-size:13px;line-height:1.5"><b>❓ ${esc(q)}</b></p>
+              ${why ? `<p style="margin:8px 0 0;font-size:11.5px;color:var(--t3)"><b>Зачем:</b> ${esc(why)}</p>` : ''}
+              ${cons ? `<p style="margin:5px 0 0;font-size:11.5px;color:var(--t3)"><b>Последствие если не ответить:</b> ${esc(cons)}</p>` : ''}
+              ${def ? `<p style="margin:5px 0 0;font-size:11.5px;color:var(--t3)"><b>Дефолт-предположение:</b> ${esc(def)}</p>` : ''}
+              <div class="pk3-row" style="margin-top:10px">
+                <label style="font-size:11px;color:var(--t3)">Твой ответ от лица клиента:</label>
+                <textarea data-clar-id="${c.id}" placeholder="Напиши ответ клиента (или то что бы сказал клиент) — AI учтёт и пересчитает" style="min-height:70px"></textarea>
+              </div>
+              <button class="pk3-btn pk3-sm pk3-gold" data-act="answer-clar" data-clar-id="${c.id}">✅ Ответить</button>
+            </div>
+          `;
+        }).join('')}
+      `;
+    }
+
+    function _letterPanelHtml() {
+      if (!lastLetter) return '';
+      return `
+        <div class="pk3-ai-block" style="margin-top:14px">
+          <p style="margin:0"><b>📧 Сгенерированное письмо #${esc(lastLetter.letter_id)}</b></p>
+          <p style="margin:6px 0 0"><b>Тема:</b> ${esc(lastLetter.subject || '')}</p>
+          <pre style="margin:8px 0 0;white-space:pre-wrap;font-family:inherit;font-size:12px;max-height:180px;overflow:auto;background:var(--bg2);padding:8px;border-radius:6px;border:1px solid var(--brd-m)">${esc(lastLetter.body || lastLetter.preview || '')}</pre>
+          <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+            <button class="pk3-btn pk3-sm" data-act="open-compose">📤 Открыть в My-Mail</button>
+            <button class="pk3-btn pk3-sm" data-act="mark-sent">✓ Отметить отправленным</button>
+            <button class="pk3-btn pk3-sm" data-act="upload-reply">📥 Загрузить ответ клиента</button>
+          </div>
         </div>
-      </div>
-    `).join('');
-    const overlay = mountModal(`
-      <div class="pk3-modal">
+      `;
+    }
+    // Sidebar-блок «📎 Сгенерированные документы» для War Room:
+    //  · письмо текущего прогона — через /api/mimir/conductor/letter/:id/download/docx (+ pdf если есть)
+    //  · отчёт директору / смета / ТКП — через pre_tender.manual_documents (generated_by=mimir)
+    function _condDocsHtml() {
+      const ptId = card.entity_id;
+      const token = encodeURIComponent(localStorage.getItem('asgard_token') || '');
+      const blocks = [];
+      // 1) Письмо клиенту от Conductor
+      if (lastLetter && lastLetter.letter_id) {
+        const docxUrl = `/api/mimir/conductor/letter/${lastLetter.letter_id}/download/docx?token=${token}`;
+        const pdfUrl  = `/api/mimir/conductor/letter/${lastLetter.letter_id}/download/pdf?token=${token}`;
+        blocks.push(`
+          <div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--bg2);border:1px solid var(--brd-m);border-radius:6px;font-size:12px">
+            <span>✉</span>
+            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">письмо #${esc(lastLetter.letter_id)}${lastLetter.subject ? ` <span style="color:var(--t3);font-size:11px">· ${esc(String(lastLetter.subject).slice(0, 40))}</span>` : ''}</span>
+            <a class="pk3-btn pk3-sm pk3-ghost" href="${docxUrl}" target="_blank" rel="noopener" style="text-decoration:none">⬇ DOCX</a>
+            <a class="pk3-btn pk3-sm pk3-ghost" href="${pdfUrl}" target="_blank" rel="noopener" style="text-decoration:none" title="если PDF не сгенерирован — backend вернёт 404">⬇ PDF</a>
+          </div>
+        `);
+      }
+      // 2) Документы из pre_tender.manual_documents (generated_by='mimir')
+      const docs = Array.isArray(card.manual_documents) ? card.manual_documents : [];
+      const mimirDocs = docs.map((md, idx) => ({ md, idx })).filter(x => x.md && x.md.generated_by === 'mimir');
+      const ico = (k) => k === 'smeta' ? '📊' : (k === 'director_report' ? '📄' : (k === 'customer_letter' ? '✉' : (k === 'tkp' ? '📋' : '📎')));
+      const lbl = (k) => k === 'smeta' ? 'смета' : (k === 'director_report' ? 'отчёт директору' : (k === 'customer_letter' ? 'письмо клиенту' : (k === 'tkp' ? 'ТКП' : '')));
+      mimirDocs.forEach(({ md, idx }) => {
+        const name = md.filename || md.original_name || ('документ #' + idx);
+        const url  = `/api/pre-tenders/${ptId}/documents/${idx}/download?token=${token}`;
+        const kLbl = lbl(md.kind || '');
+        blocks.push(`
+          <div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--bg2);border:1px solid var(--brd-m);border-radius:6px;font-size:12px">
+            <span>${ico(md.kind)}</span>
+            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}${kLbl ? ` <span style="color:var(--t3);font-size:11px">· ${esc(kLbl)}</span>` : ''}</span>
+            <a class="pk3-btn pk3-sm pk3-ghost" href="${url}" target="_blank" rel="noopener" style="text-decoration:none">⬇ Скачать</a>
+          </div>
+        `);
+      });
+      if (!blocks.length) {
+        return `
+          <div style="font-size:10.5px;color:var(--t3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">📎 Документы прогона</div>
+          <div style="font-size:11.5px;color:var(--t3)">Документы появятся после генерации письма / отчёта / сметы.</div>
+        `;
+      }
+      return `
+        <div style="font-size:10.5px;color:var(--t3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">📎 Документы прогона</div>
+        <div style="display:flex;flex-direction:column;gap:6px">${blocks.join('')}</div>
+      `;
+    }
+    // Подтянуть свежие manual_documents с board (Мимир пишет в pre_tender в фоне)
+    // и перерисовать sidebar-блок документов War Room.
+    async function _refreshCondDocs() {
+      try {
+        const r = await api(`/api/personal-kanban/board?flow_filter=all`);
+        if (r.ok && r.data && r.data.columns) {
+          const all = Object.values(r.data.columns).flat();
+          const fresh = all.find(c => c.id === card.id);
+          if (fresh && Array.isArray(fresh.manual_documents)) {
+            card.manual_documents = fresh.manual_documents;
+          }
+        }
+      } catch (_) { /* graceful */ }
+      const el = overlay.querySelector('#pk3-cond-docs');
+      if (el) el.innerHTML = _condDocsHtml();
+    }
+
+    function condHtml() {
+      const tagText = runId ? ('run #' + runId + (runState && runState.run ? ' · ' + runState.run.status : '')) : 'инициализация…';
+      const errorCount = journalEvents.filter(ev => /^error$/i.test(ev.event_type)).length;
+      return `
+      <div class="pk3-modal" style="max-width:1180px">
         <div class="pk3-modal-head">
           <span style="font-size:20px;color:#A78BFA">🎼</span>
-          <h3>Мимир-Кондуктор · сессия</h3>
-          <span class="pk3-tag pk3-warn">в работе · итерация 2/4</span>
+          <h3>Мимир-Кондуктор</h3>
+          <span class="pk3-tag pk3-warn" id="pk3-cond-tag">${esc(tagText)}</span>
           <button class="pk3-btn-icon" data-act="close">✕</button>
         </div>
         <div class="pk3-modal-body">
-          <div style="display:grid;grid-template-columns:200px 1fr;gap:18px">
+          <div style="display:grid;grid-template-columns:2fr 1fr;gap:18px">
+            <!-- ЛЕВО (2/3): главное — вопросы AI -->
             <div>
-              <div style="font-size:10.5px;color:var(--t3);text-transform:uppercase;margin-bottom:7px;letter-spacing:.4px">ПРОГРЕСС</div>
-              <div class="pk3-ai-block" style="padding:9px 11px;font-size:11px">
-                <p style="margin:0">✅ Анализ ТЗ · 100%</p>
-                <p style="margin:5px 0 0">✅ Вопросы клиенту · 5/5</p>
-                <p style="margin:5px 0 0">🔄 Получение ответов · 3/5</p>
-                <p style="margin:5px 0 0">⏳ Уточняющая итерация</p>
-                <p style="margin:5px 0 0;opacity:.5">⏳ Итоговая смета</p>
-                <p style="margin:5px 0 0;opacity:.5">⏳ ТКП</p>
-              </div>
-              <div style="margin-top:11px;font-size:10.5px;color:var(--t3)"><b>Токены:</b><br>Использовано: 47К / 80К</div>
+              <div style="font-size:10.5px;color:var(--t3);text-transform:uppercase;margin-bottom:7px;letter-spacing:.4px">ВОПРОСЫ ОТ МИМИРА — ответь чтобы продвинуться</div>
+              <div id="pk3-cond-clars">${_clarificationsHtml()}</div>
+              <div id="pk3-cond-letter">${_letterPanelHtml()}</div>
             </div>
+            <!-- ПРАВО (1/3): sidebar — статус + действия + журнал (свёрнут) -->
             <div>
-              <div style="font-size:10.5px;color:var(--t3);text-transform:uppercase;margin-bottom:7px;letter-spacing:.4px">ЖУРНАЛ ПЕРЕПИСКИ</div>
-              ${journalHtml}
+              <div style="font-size:10.5px;color:var(--t3);text-transform:uppercase;margin-bottom:7px;letter-spacing:.4px">СОСТОЯНИЕ</div>
+              <div class="pk3-ai-block" id="pk3-cond-state">${_stateHtml()}</div>
+              <div style="margin-top:12px;display:flex;flex-direction:column;gap:6px">
+                <button class="pk3-btn" data-act="gen-letter">📧 Сгенерировать письмо клиенту</button>
+                <button class="pk3-btn" data-act="recompute">🧮 Пересчитать с feedback</button>
+                <button class="pk3-btn pk3-ok" data-act="approve">✅ Утвердить</button>
+                <button class="pk3-btn pk3-danger" data-act="cancel-run">❌ Отменить run</button>
+              </div>
+              <div id="pk3-cond-docs" style="margin-top:12px">${_condDocsHtml()}</div>
+              <!-- Журнал свёрнут по умолчанию, ошибки в отдельной плашке -->
+              ${errorCount ? `<div class="pk3-ai-block" style="margin-top:12px;border-color:var(--warn);background:rgba(248,113,113,.05)">
+                <p style="margin:0;font-size:12px;color:var(--err-t)"><b>⚠ Ошибок AI: ${errorCount}</b> <span style="color:var(--t3);font-size:11px">— см. журнал ниже</span></p>
+              </div>` : ''}
+              <details style="margin-top:12px" ${errorCount ? 'open' : ''}>
+                <summary style="cursor:pointer;font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.4px;padding:6px 0">
+                  📜 Журнал событий <span id="pk3-cond-conn" style="text-transform:none;letter-spacing:0;font-size:10px">отключено</span>
+                </summary>
+                <div id="pk3-cond-journal" style="max-height:28vh;overflow:auto;margin-top:6px;font-size:11px">${_journalHtml()}</div>
+              </details>
             </div>
           </div>
         </div>
         <div class="pk3-modal-foot">
           <button class="pk3-btn pk3-ghost" data-act="close">Закрыть</button>
+          <button class="pk3-btn pk3-ghost" data-act="reset-cond" title="Отменить текущий прогон и запустить новый">🔄 С нуля</button>
+          <button class="pk3-btn pk3-ghost" data-act="add-materials" title="Добавить ТЗ-текст или файлы и перезапустить AI с учётом новых материалов">📎 Дозагрузить материалы</button>
           <div style="flex:1"></div>
-          <button class="pk3-btn" data-act="remind">📨 Отправить напоминание</button>
-          <button class="pk3-btn pk3-gold" data-act="to-estimate">📊 Перейти к смете</button>
+          <button class="pk3-btn" data-act="refresh">🔄 Обновить</button>
         </div>
       </div>
-    `);
-    // start-conductor на backend для регистрации run
-    api(`/api/personal-kanban/cards/${card.id}/start-conductor`, { method: 'POST', body: {} }).catch(() => {});
-    overlay.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => {
-      const a = b.dataset.act;
-      if (a === 'close') return close(overlay);
-      if (a === 'remind') { toast('Напоминание', 'Будет отправлено клиенту', 'info'); return; }
-      if (a === 'to-estimate') { toast('К смете', 'Откроется страница сметы', 'info'); }
-    }));
+    `;
+    }
+
+    // Мини-модалка дозагрузки: textarea + file-input + кнопка перезапуска Conductor.
+    function _openAddMaterials() {
+      const wrap = document.createElement('div');
+      wrap.className = 'pk3-modal-overlay show';
+      wrap.innerHTML = `
+        <div class="pk3-modal" style="max-width:560px">
+          <div class="pk3-modal-head">
+            <span style="font-size:18px;color:var(--gold)">📎</span>
+            <h3 style="flex:1;margin:0">Дозагрузить материалы для Кондуктора</h3>
+            <button class="pk3-btn-icon" data-am="close">✕</button>
+          </div>
+          <div class="pk3-modal-body">
+            <p style="color:var(--t2);font-size:12.5px;margin-bottom:10px">Добавь ТЗ-текст и/или файлы. После «Применить» — Conductor запускается заново с учётом новых материалов.</p>
+            <div class="pk3-row" style="margin-bottom:10px">
+              <label>🖊 Дополнительное описание</label>
+              <textarea id="am-text" placeholder="Опиши работу, добавь технические детали, объёмы — Мимир учтёт." style="min-height:120px"></textarea>
+              <p style="font-size:11px;color:var(--t3);margin-top:4px">Будет дописано к существующему work_description заявки.</p>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <button class="pk3-btn pk3-ghost pk3-sm" data-am="pick">📎 Выбрать файлы</button>
+              <span style="font-size:11px;color:var(--t3)">PDF / DOCX / XLSX / JPG / PNG</span>
+            </div>
+            <div id="am-list" style="margin-top:8px;font-size:11.5px"></div>
+          </div>
+          <div class="pk3-modal-foot">
+            <button class="pk3-btn pk3-ghost" data-am="close">Отмена</button>
+            <div style="flex:1"></div>
+            <button class="pk3-btn pk3-gold" data-am="apply">✅ Применить и перезапустить</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(wrap);
+      const close = () => wrap.remove();
+      const filesSel = [];
+      const listEl = wrap.querySelector('#am-list');
+      const renderList = () => {
+        if (!filesSel.length) { listEl.innerHTML = ''; return; }
+        listEl.innerHTML = '<b>Файлы (' + filesSel.length + '):</b>' + filesSel.map((f, i) =>
+          `<div style="display:flex;align-items:center;gap:8px;padding:4px 0">
+            <span style="flex:1">📎 ${esc(f.name)} · ${((f.size||0)/1024).toFixed(0)} КБ</span>
+            <button class="pk3-btn pk3-ghost pk3-sm" data-am-del="${i}" style="padding:2px 8px">✕</button>
+          </div>`).join('');
+        listEl.querySelectorAll('[data-am-del]').forEach(b => b.addEventListener('click', () => {
+          filesSel.splice(Number(b.dataset.amDel), 1); renderList();
+        }));
+      };
+
+      wrap.addEventListener('click', async e => {
+        const t = e.target.closest('[data-am]');
+        if (!t) return;
+        const a = t.dataset.am;
+        if (a === 'close') return close();
+        if (a === 'pick') {
+          const input = document.createElement('input');
+          input.type = 'file';
+          input.multiple = true;
+          input.accept = '.pdf,.docx,.xlsx,.xls,.txt,.csv,.rtf,.jpg,.jpeg,.png,.webp,image/*';
+          input.style.display = 'none';
+          input.addEventListener('change', () => {
+            Array.from(input.files || []).forEach(f => filesSel.push(f));
+            input.remove();
+            renderList();
+          });
+          document.body.appendChild(input);
+          input.click();
+          return;
+        }
+        if (a === 'apply') {
+          t.disabled = true; t.textContent = '⏳ Применяю…';
+          const text = (wrap.querySelector('#am-text').value || '').trim();
+          const ptId = card.entity_id;
+          try {
+            // 1. Дописываем work_description к pre_tender (если есть текст)
+            if (text && ptId) {
+              const cur = card.work_description || '';
+              const next = cur ? (cur + '\n\n— Дополнение РП —\n' + text) : text;
+              await api(`/api/personal-kanban/cards/${card.id}/update`, {
+                method: 'POST', body: { work_description: next }
+              });
+              card.work_description = next; // обновим в памяти
+            }
+            // 2. Загружаем файлы в pre_tender (manual_documents JSONB)
+            if (filesSel.length && ptId) {
+              const fd = new FormData();
+              filesSel.forEach(f => fd.append('files', f, f.name));
+              const r = await fetch(`/api/pre-tenders/${ptId}/upload-docs`, {
+                method: 'POST', headers: await _authHeaders(), body: fd
+              });
+              if (!r.ok) {
+                const j = await r.json().catch(() => ({}));
+                throw new Error(j.error || ('upload ' + r.status));
+              }
+            }
+            toast('Кондуктор', 'Материалы добавлены, перезапускаю AI', 'ok');
+            close();
+            await _bootstrap({ fresh: true });
+          } catch (err) {
+            toast('Не применилось', String(err.message || err), 'err');
+            t.disabled = false; t.textContent = '✅ Применить и перезапустить';
+          }
+        }
+      });
+    }
+
+    const overlay = mountModal(condHtml());
+    const rerender = () => { overlay.innerHTML = condHtml(); bindAll(); };
+    const updateJournal = () => {
+      const el = overlay.querySelector('#pk3-cond-journal');
+      if (el) el.innerHTML = _journalHtml();
+    };
+    const updateState = () => {
+      const el = overlay.querySelector('#pk3-cond-state');
+      if (el) el.innerHTML = _stateHtml();
+      const tag = overlay.querySelector('#pk3-cond-tag');
+      if (tag) tag.textContent = (runId ? 'run #' + runId : '') + (runState && runState.run ? ' · ' + runState.run.status : '');
+      const cl = overlay.querySelector('#pk3-cond-clars');
+      if (cl) cl.innerHTML = _clarificationsHtml();
+    };
+    const updateLetter = () => {
+      const el = overlay.querySelector('#pk3-cond-letter');
+      if (el) el.innerHTML = _letterPanelHtml();
+      // Письмо появилось → его docx/pdf-ссылки нужно показать в блоке «Документы прогона».
+      const docsEl = overlay.querySelector('#pk3-cond-docs');
+      if (docsEl) docsEl.innerHTML = _condDocsHtml();
+    };
+    const setConn = (text, color) => {
+      const el = overlay.querySelector('#pk3-cond-conn');
+      if (el) { el.textContent = text; el.style.color = color || 'var(--t3)'; }
+    };
+
+    // Закрытие модалки → освободить SSE
+    const origClose = overlay._closeFn;
+    overlay._closeFn = () => {
+      try { if (eventSource) eventSource.close(); } catch (_) {}
+      eventSource = null;
+      if (origClose) origClose();
+    };
+
+    // Busy-overlay для Кондуктора (аналог Quick).
+    function _setBusy(title, subtitle) {
+      const modalEl = overlay.querySelector('.pk3-modal');
+      if (!modalEl) return;
+      let busy = modalEl.querySelector('.pk3-busy');
+      if (!busy) {
+        modalEl.style.position = 'relative';
+        busy = document.createElement('div');
+        busy.className = 'pk3-busy';
+        busy.innerHTML = `<div class="pk3-busy-spin"></div><div class="pk3-busy-text"></div><div class="pk3-busy-sub"></div><div class="pk3-busy-sub pk3-busy-dots"></div>`;
+        modalEl.appendChild(busy);
+      }
+      busy.querySelector('.pk3-busy-text').textContent = title || 'Мимир работает';
+      busy.querySelectorAll('.pk3-busy-sub')[0].textContent = subtitle || '';
+    }
+    function _clearBusy() {
+      const busy = overlay.querySelector('.pk3-busy');
+      if (busy) busy.remove();
+    }
+
+    let _loadStateTimer = null;
+    let _loadStateInflight = false;
+    // Throttle 800ms: SSE может сыпать ~30 events/сек, fronend не должен слать
+    // по одному GET /run/:id на каждое — это устраивало reconnect-storm.
+    async function _loadState() {
+      if (!runId) return;
+      if (_loadStateInflight) return;
+      if (_loadStateTimer) return; // уже запланирован
+      _loadStateTimer = setTimeout(async () => {
+        _loadStateTimer = null;
+        if (!runId) return;
+        _loadStateInflight = true;
+        try {
+          const r = await api(`/api/mimir/conductor/run/${runId}`);
+          if (r.ok && r.data) {
+            runState = r.data;
+            updateState();
+            // Подтянуть свежий manual_documents — Мимир мог дописать смету/отчёт
+            // в фоне за время прогона. _refreshCondDocs обновит блок «Документы прогона».
+            _refreshCondDocs();
+            // Если статус терминальный — закрываем SSE, чтобы EventSource не
+            // переподключался в бесконечную петлю на упавшем run.
+            const st = runState.run && runState.run.status;
+            if (['ERROR', 'READY_FOR_REVIEW', 'APPROVED', 'REJECTED', 'CANCELLED'].includes(st)) {
+              try { if (eventSource) eventSource.close(); } catch (_) {}
+              eventSource = null;
+              setConn(`run · ${st}`, st === 'ERROR' ? 'var(--err-t)' : 'var(--ok-t)');
+            }
+          }
+        } catch (_) {}
+        _loadStateInflight = false;
+      }, 800);
+    }
+
+    function _openSSE() {
+      if (!runId) return;
+      try { if (eventSource) eventSource.close(); } catch (_) {}
+      const url = `/api/mimir/conductor/events?run_id=${runId}&token=${encodeURIComponent(_getToken())}`;
+      setConn('подключаюсь…');
+      eventSource = new EventSource(url);
+      eventSource.addEventListener('connected', (e) => {
+        setConn('online', 'var(--ok-t)');
+        reconnectAttempt = 0;
+        try {
+          const d = JSON.parse(e.data || '{}');
+          if (d.status && runState && runState.run) { runState.run.status = d.status; updateState(); }
+        } catch (_) {}
+      });
+      eventSource.addEventListener('complete', (e) => {
+        setConn('завершено', 'var(--ok-t)');
+        try { eventSource.close(); } catch (_) {}
+        eventSource = null;
+        _loadState();
+      });
+      // Каталог-событий из backend: 'message' (по умолчанию) + named типы
+      const onAny = (e) => {
+        let payload = null;
+        try { payload = JSON.parse(e.data || 'null'); } catch (_) { payload = e.data; }
+        const ev = {
+          id: e.lastEventId || null,
+          event_type: e.type && e.type !== 'message' ? e.type : (payload && payload.event_type) || 'message',
+          data: payload && payload.payload ? payload.payload : (payload && payload.data ? payload.data : payload),
+          created_at: (payload && payload.created_at) || new Date().toISOString()
+        };
+        journalEvents.push(ev);
+        if (journalEvents.length > 200) journalEvents.shift();
+        updateJournal();
+        // Догружаем state при ключевых событиях
+        if (/clarification|letter|status|estimate|agent_/.test(ev.event_type)) {
+          _loadState();
+        }
+      };
+      eventSource.addEventListener('message', onAny);
+      // Backend шлёт каждое событие как именованное (event:<event_type>).
+      // EventSource не вызывает 'message' для именованных — нужно явно слушать каждый тип.
+      [
+        'agent_started', 'agent_finished', 'agent_rejected',
+        'clarification_raised', 'clarification_requested', 'clarification_answered', 'clarification_answered_with_norms',
+        'letter_drafted', 'letter_sent', 'reply_parsed', 'answers_applied',
+        'status_change', 'recompute_requested', 'resume_recompute', 'estimate_diff',
+        'artifact_emitted', 'thought', 'tool_call', 'tool_result',
+        'mode', 'stage_step', 'queue_wait', 'director_report_generated', 'error'
+      ].forEach(t => eventSource.addEventListener(t, onAny));
+      eventSource.onerror = () => {
+        setConn('ошибка', 'var(--err-t)');
+        try { eventSource.close(); } catch (_) {}
+        eventSource = null;
+        // Не реконнектимся если run в терминальном статусе — там стрим уже закрыт.
+        const st = runState && runState.run && runState.run.status;
+        if (['ERROR', 'READY_FOR_REVIEW', 'APPROVED', 'REJECTED', 'CANCELLED'].includes(st)) {
+          setConn(`run · ${st}`, st === 'ERROR' ? 'var(--err-t)' : 'var(--ok-t)');
+          return;
+        }
+        if (reconnectAttempt < 3) {
+          const delay = Math.pow(2, reconnectAttempt) * 1000;
+          reconnectAttempt++;
+          setTimeout(() => _openSSE(), delay);
+        }
+      };
+    }
+
+    async function _bootstrap(opts) {
+      opts = opts || {};
+      _setBusy(opts.fresh ? 'Перезапускаю Кондуктора' : '🎼 Мимир-Кондуктор стартует',
+               'создаю/возобновляю прогон AI-цикла');
+      try {
+        const body = opts.fresh ? { fresh: true } : {};
+        const r = await api(`/api/personal-kanban/cards/${card.id}/start-conductor`, { method: 'POST', body });
+        if (!r.ok || !r.data || !r.data.run_id) {
+          throw new Error((r.data && r.data.error) || 'start-conductor failed');
+        }
+        runId = Number(r.data.run_id);
+        card._conductorRun = runId;
+        // Чистим журнал/письмо если перезапуск
+        if (opts.fresh) {
+          journalEvents.length = 0;
+          lastLetter = null;
+        }
+        await _loadState();
+        rerender();
+        _openSSE();
+        if (opts.fresh) toast('Кондуктор', 'Прогон запущен заново', 'ok');
+      } catch (e) {
+        toast('Кондуктор', 'Не удалось запустить: ' + (e.message || e), 'err');
+        const tag = overlay.querySelector('#pk3-cond-tag');
+        if (tag) { tag.textContent = 'ошибка'; tag.style.color = 'var(--err-t)'; }
+      } finally {
+        _clearBusy();
+      }
+    }
+
+    async function _resetConductor() {
+      if (!window.confirm('Отменить текущий прогон Кондуктора и запустить с нуля? Текущий run будет помечен CANCELLED.')) return;
+      try { if (eventSource) eventSource.close(); } catch (_) {}
+      eventSource = null;
+      runState = null;
+      lastLetter = null;
+      journalEvents.length = 0;
+      await _bootstrap({ fresh: true });
+    }
+
+    async function _genLetter() {
+      if (!runId) return;
+      // Берём все OPEN+blocking clarification_ids; если пусто — все OPEN.
+      let ids = [];
+      if (runState && Array.isArray(runState.clarifications)) {
+        ids = runState.clarifications.filter(c => c.status === 'OPEN' && c.blocking).map(c => c.id);
+        if (!ids.length) ids = runState.clarifications.filter(c => c.status === 'OPEN').map(c => c.id);
+      }
+      if (!ids.length) {
+        toast('Кондуктор', 'Нет открытых вопросов — письмо не нужно', 'warn');
+        return;
+      }
+      try {
+        const r = await api('/api/mimir/conductor/letter/generate', { method: 'POST', body: { run_id: runId, clarification_ids: ids } });
+        if (!r.ok) throw new Error((r.data && r.data.error) || 'letter/generate failed');
+        const L = r.data || {};
+        lastLetter = {
+          letter_id: L.id || L.letter_id || (L.letter && L.letter.id),
+          subject:   L.subject || (L.letter && L.letter.subject) || '',
+          body:      L.body_text || L.body || (L.letter && (L.letter.body_text || L.letter.body)) || '',
+          preview:   L.preview || ''
+        };
+        updateLetter();
+        toast('Письмо готово', 'Можно открыть в My-Mail или отметить отправленным', 'ok');
+      } catch (e) {
+        toast('Письмо не сгенерировано', String(e.message || e), 'err');
+      }
+    }
+
+    async function _markSent() {
+      if (!lastLetter || !lastLetter.letter_id) return;
+      try {
+        const r = await api(`/api/mimir/conductor/letter/${lastLetter.letter_id}/mark-sent`, { method: 'POST', body: { channel: 'manual' } });
+        if (!r.ok) throw new Error((r.data && r.data.error) || 'mark-sent failed');
+        toast('Отмечено', 'Письмо помечено отправленным', 'ok');
+        _loadState();
+      } catch (e) {
+        toast('Не сохранилось', String(e.message || e), 'err');
+      }
+    }
+
+    function _openCompose() {
+      if (!lastLetter) return;
+      const to = card.customer_email || '';
+      const subj = encodeURIComponent(lastLetter.subject || '');
+      const body = encodeURIComponent(lastLetter.body || '');
+      window.open(`#/my-mail/compose?to=${encodeURIComponent(to)}&subject=${subj}&body=${body}`, '_blank');
+    }
+
+    function _uploadReply() {
+      if (!lastLetter || !lastLetter.letter_id) return;
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.style.display = 'none';
+      input.addEventListener('change', async () => {
+        const f = input.files && input.files[0];
+        input.remove();
+        if (!f) return;
+        try {
+          const fd = new FormData();
+          fd.append('file', f, f.name);
+          const resp = await fetch(`/api/mimir/conductor/letter/${lastLetter.letter_id}/upload-reply`, {
+            method: 'POST', headers: _authHeader(), body: fd
+          });
+          if (!resp.ok) {
+            let j = {}; try { j = await resp.json(); } catch (_) {}
+            throw new Error(j.error || ('HTTP ' + resp.status));
+          }
+          const data = await resp.json().catch(() => ({}));
+          // mapping в ответе → сразу применяем (AI распарсил)
+          if (data.mapping && Array.isArray(data.mapping) && data.mapping.length) {
+            try {
+              const ar = await api(`/api/mimir/conductor/letter/${lastLetter.letter_id}/apply-mapping`, {
+                method: 'POST', body: { mapping: data.mapping }
+              });
+              if (ar.ok) toast('Ответы клиента применены', `Закрыто вопросов: ${(ar.data && ar.data.applied) || data.mapping.length}`, 'ok');
+              else toast('Применение не сработало', (ar.data && ar.data.error) || 'ошибка', 'warn');
+            } catch (e) {
+              toast('apply-mapping упал', String(e.message || e), 'err');
+            }
+          } else {
+            toast('Файл загружен', 'AI не нашёл прямых ответов — открой уточнения и закрой вручную', 'warn');
+          }
+          _loadState();
+        } catch (e) {
+          toast('Загрузка не удалась', String(e.message || e), 'err');
+        }
+      });
+      document.body.appendChild(input);
+      input.click();
+    }
+
+    async function _answerClar(clarId, text) {
+      if (!clarId || !text || !text.trim()) return;
+      try {
+        const r = await api(`/api/mimir/conductor/clarification/${clarId}/answer`, { method: 'POST', body: { answer_text: text.trim() } });
+        if (!r.ok) throw new Error((r.data && r.data.error) || 'answer failed');
+        toast('Ответ записан', r.data && r.data.resumed ? 'Кондуктор продолжает работу' : 'Ждём остальные ответы', 'ok');
+        _loadState();
+      } catch (e) {
+        toast('Не сохранилось', String(e.message || e), 'err');
+      }
+    }
+
+    async function _recompute() {
+      if (!runId) return;
+      const fb = window.prompt('Опиши, что пересчитать (feedback для AI):');
+      if (!fb || !fb.trim()) return;
+      try {
+        const r = await api(`/api/mimir/conductor/run/${runId}/recompute-with-feedback`, { method: 'POST', body: { feedback_text: fb.trim() } });
+        if (!r.ok) throw new Error((r.data && r.data.error) || 'recompute failed');
+        toast('Пересчёт запущен', 'События придут в журнал', 'ok');
+        _loadState();
+      } catch (e) {
+        toast('Пересчёт не запущен', String(e.message || e), 'err');
+      }
+    }
+
+    async function _approve() {
+      if (!runId) return;
+      if (!window.confirm('Утвердить просчёт?')) return;
+      try {
+        const r = await api(`/api/mimir/conductor/run/${runId}/approve`, { method: 'POST', body: {} });
+        if (!r.ok) throw new Error((r.data && r.data.error) || 'approve failed');
+        toast('Утверждено', 'Карта переходит в Согласование', 'ok');
+        try {
+          await api(`/api/personal-kanban/cards/${card.id}/transition`, {
+            method: 'POST', body: { to_v3_column: 'approval', note: 'Кондуктор утверждён', confirm: true }
+          });
+        } catch (_) {}
+        close(overlay);
+      } catch (e) {
+        toast('Не утвердилось', String(e.message || e), 'err');
+      }
+    }
+
+    async function _cancelRun() {
+      if (!runId) return;
+      if (!window.confirm('Точно отменить просчёт? Все промежуточные данные сохранятся, но run закроется.')) return;
+      try {
+        const r = await api(`/api/mimir/conductor/run/${runId}/cancel`, { method: 'POST', body: {} });
+        if (!r.ok) throw new Error((r.data && r.data.error) || 'cancel failed');
+        toast('Отменено', 'Run закрыт', 'ok');
+        close(overlay);
+      } catch (e) {
+        toast('Не отменилось', String(e.message || e), 'err');
+      }
+    }
+
+    function bindAll() {
+      overlay.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', async () => {
+        const a = b.dataset.act;
+        if (a === 'close')        return close(overlay);
+        if (a === 'refresh')      return _loadState();
+        if (a === 'reset-cond')   return _resetConductor();
+        if (a === 'add-materials')return _openAddMaterials();
+        if (a === 'gen-letter')   return _genLetter();
+        if (a === 'mark-sent')    return _markSent();
+        if (a === 'open-compose') return _openCompose();
+        if (a === 'upload-reply') return _uploadReply();
+        if (a === 'recompute')    return _recompute();
+        if (a === 'approve')      return _approve();
+        if (a === 'cancel-run')   return _cancelRun();
+        if (a === 'answer-clar') {
+          const id = b.dataset.clarId;
+          const ta = overlay.querySelector(`textarea[data-clar-id="${id}"]`);
+          return _answerClar(id, ta ? ta.value : '');
+        }
+      }));
+    }
+    bindAll();
+
+    // Старт
+    _bootstrap();
   }
 
   /* ────────────────────────────────────────────────────────────────────
@@ -3663,14 +6686,14 @@ window.AsgardPKv3Modals = (function () {
         tkpId = r.data.tkp_id;
         if (r.data.blocks && r.data.blocks.length) blocks = r.data.blocks.map(b => ({
           key: b.block_key, ic: b.block_icon || '📦', name: b.block_title || b.block_key,
-          required: b.is_required, data: b.block_data || {}
+          required: b.is_required, block_data: b.block_data || {}
         }));
       } else if (r.status === 409 && r.data && r.data.tkp_id) {
         tkpId = r.data.tkp_id;
         const g = await api(`/api/tkp/${tkpId}/blocks`);
         if (g.ok && g.data && g.data.blocks) blocks = g.data.blocks.map(b => ({
           key: b.block_key, ic: b.block_icon || '📦', name: b.block_title || b.block_key,
-          required: b.is_required, data: b.block_data || {}
+          required: b.is_required, block_data: b.block_data || {}
         }));
       }
     } else {
@@ -3770,6 +6793,60 @@ window.AsgardPKv3Modals = (function () {
         [blocks[i], blocks[j]] = [blocks[j], blocks[i]];
         dirty = true; rerender();
       }));
+      // ── EXCEL-style смета: редактирование ячеек + add/del/recalc без полного rerender ──
+      const smetaBlock = blocks.find(b => b.key === 'smeta');
+      const fmt = (n) => Math.round(n).toLocaleString('ru-RU');
+      function recalcSmetaUI() {
+        if (!smetaBlock || !smetaBlock.block_data || !Array.isArray(smetaBlock.block_data.items)) return;
+        const items = smetaBlock.block_data.items;
+        const vatPct = Number(smetaBlock.block_data.vat_pct) || 0;
+        let total = 0;
+        items.forEach((it, i) => {
+          const s = (Number(it.qty) || 0) * (Number(it.price) || 0);
+          total += s;
+          const cell = overlay.querySelector(`[data-sum="${i}"]`);
+          if (cell) cell.textContent = fmt(s);
+        });
+        const vatAmount = total * vatPct / 100;
+        const tot = overlay.querySelector('[data-pk3-smeta-total]'); if (tot) tot.textContent = fmt(total);
+        const va = overlay.querySelector('[data-pk3-smeta-vatamt]'); if (va) va.innerHTML = fmt(vatAmount);
+        const tv = overlay.querySelector('[data-pk3-smeta-totalvat]'); if (tv) tv.innerHTML = `<b>${fmt(total + vatAmount)}</b>`;
+      }
+      // input на ячейках имени/единицы/количества/цены
+      overlay.querySelectorAll('tr[data-row] input[data-fld]').forEach(inp => {
+        inp.addEventListener('input', () => {
+          const tr = inp.closest('tr[data-row]');
+          const idx = parseInt(tr.dataset.row, 10);
+          const fld = inp.dataset.fld;
+          if (!smetaBlock.block_data.items[idx]) return;
+          const val = (fld === 'qty' || fld === 'price') ? parseFloat(inp.value) || 0 : inp.value;
+          smetaBlock.block_data.items[idx][fld] = val;
+          dirty = true;
+          if (fld === 'qty' || fld === 'price') recalcSmetaUI();
+        });
+        inp.addEventListener('focus', () => { inp.style.border = '1px solid #b89860'; inp.style.background = '#fff'; });
+        inp.addEventListener('blur',  () => { inp.style.border = '1px solid transparent'; inp.style.background = 'transparent'; });
+      });
+      // НДС rate
+      const vatInp = overlay.querySelector('[data-pk3-smeta-vat]');
+      if (vatInp) vatInp.addEventListener('input', () => {
+        smetaBlock.block_data.vat_pct = parseFloat(vatInp.value) || 0;
+        dirty = true;
+        recalcSmetaUI();
+      });
+      // + Добавить позицию
+      const addBtn = overlay.querySelector('[data-pk3-smeta-add]');
+      if (addBtn) addBtn.addEventListener('click', () => {
+        smetaBlock.block_data.items.push({ name: '', unit: 'шт', qty: 1, price: 0 });
+        dirty = true; rerender();
+      });
+      // ✕ Удалить позицию
+      overlay.querySelectorAll('[data-pk3-smeta-del]').forEach(b => b.addEventListener('click', () => {
+        const idx = parseInt(b.dataset.pk3SmetaDel, 10);
+        smetaBlock.block_data.items.splice(idx, 1);
+        dirty = true; rerender();
+      }));
+
       overlay.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', async () => {
         const a = b.dataset.act;
         if (a === 'close') { if (autosaveTimer) clearInterval(autosaveTimer); return close(overlay); }
@@ -3802,7 +6879,7 @@ window.AsgardPKv3Modals = (function () {
       if (!tkpId) return;
       const payload = blocks.map((b, i) => ({
         block_key: b.key, block_order: (i + 1) * 100, block_title: b.name, block_icon: b.ic,
-        block_data: b.data || {}, is_required: !!b.required, is_active: true
+        block_data: b.block_data || b.data || {}, is_required: !!b.required, is_active: true
       }));
       const r = await api(`/api/tkp/${tkpId}/blocks`, { method: 'PUT', body: { blocks: payload } });
       if (r.ok) {
@@ -3841,20 +6918,69 @@ window.AsgardPKv3Modals = (function () {
         <p>Настоящее ТКП действительно в течение 30 календарных дней. Стоимость указана в рублях без НДС / с НДС 20%.</p>`;
     }
     if (blocks.find(b => b.key === 'smeta')) {
-      out += `<h2>Смета работ</h2>
-        <table>
-          <thead><tr><th>№</th><th>Наименование</th><th class="pk3-right">Ед.</th><th class="pk3-right">Кол-во</th><th class="pk3-right">Цена</th><th class="pk3-right">Сумма</th></tr></thead>
+      const smetaBlock = blocks.find(b => b.key === 'smeta');
+      // Excel-style редактируемая таблица. Позиции в block_data.items, ставка в block_data.vat_pct.
+      const items = (smetaBlock.block_data && Array.isArray(smetaBlock.block_data.items) && smetaBlock.block_data.items.length)
+        ? smetaBlock.block_data.items
+        : [
+          { name: 'Подготовка',         unit: 'шт',     qty: 1,  price: 28500  },
+          { name: 'Основные работы',    unit: 'м²',     qty: 42, price: 14500  },
+          { name: 'Контроль качества',  unit: 'точек', qty: 16, price: 3000   },
+          { name: 'Логистика',          unit: 'компл',  qty: 1,  price: 144000 },
+          { name: 'Реагенты',           unit: 'компл',  qty: 1,  price: 370500 },
+        ];
+      const vatPct = (smetaBlock.block_data && smetaBlock.block_data.vat_pct != null)
+        ? Number(smetaBlock.block_data.vat_pct) : 20;
+      // Сохраняем дефолты обратно в blocks для autosave (если пусто).
+      if (!smetaBlock.block_data || !Array.isArray(smetaBlock.block_data.items)) {
+        smetaBlock.block_data = { items, vat_pct: vatPct };
+      }
+
+      const sum = (it) => (Number(it.qty) || 0) * (Number(it.price) || 0);
+      const fmt = (n) => (Math.round(n)).toLocaleString('ru-RU');
+      const total = items.reduce((acc, it) => acc + sum(it), 0);
+      const vatAmount = total * vatPct / 100;
+      const totalWithVat = total + vatAmount;
+
+      out += `<h2 style="display:flex;align-items:center;justify-content:space-between">
+          <span>Смета работ</span>
+          <span style="font-size:11px;color:#7a5a22;font-style:italic;font-weight:normal">✏️ Редактируйте поля прямо в таблице</span>
+        </h2>
+        <table data-pk3-smeta-tbl>
+          <thead>
+            <tr>
+              <th style="width:28px">№</th>
+              <th>Наименование</th>
+              <th style="width:60px" class="pk3-right">Ед.</th>
+              <th style="width:70px" class="pk3-right">Кол-во</th>
+              <th style="width:110px" class="pk3-right">Цена</th>
+              <th style="width:130px" class="pk3-right">Сумма</th>
+              <th style="width:24px"></th>
+            </tr>
+          </thead>
           <tbody>
-            <tr><td>1</td><td>Подготовка</td><td class="pk3-right">шт</td><td class="pk3-right">1</td><td class="pk3-right">28 500</td><td class="pk3-right">28 500</td></tr>
-            <tr><td>2</td><td>Основные работы</td><td class="pk3-right">м²</td><td class="pk3-right">42</td><td class="pk3-right">14 500</td><td class="pk3-right">609 000</td></tr>
-            <tr><td>3</td><td>Контроль качества</td><td class="pk3-right">точек</td><td class="pk3-right">16</td><td class="pk3-right">3 000</td><td class="pk3-right">48 000</td></tr>
-            <tr><td>4</td><td>Логистика</td><td class="pk3-right">компл</td><td class="pk3-right">1</td><td class="pk3-right">144 000</td><td class="pk3-right">144 000</td></tr>
-            <tr><td>5</td><td>Реагенты</td><td class="pk3-right">компл</td><td class="pk3-right">1</td><td class="pk3-right">370 500</td><td class="pk3-right">370 500</td></tr>
+            ${items.map((it, i) => `
+              <tr data-row="${i}">
+                <td>${i + 1}</td>
+                <td><input data-fld="name" type="text" value="${esc(it.name || '')}" style="width:100%;background:transparent;border:1px solid transparent;padding:3px 4px;color:#2a1f0a;font:inherit"></td>
+                <td><input data-fld="unit" type="text" value="${esc(it.unit || '')}" style="width:100%;background:transparent;border:1px solid transparent;padding:3px 4px;color:#2a1f0a;font:inherit;text-align:right"></td>
+                <td><input data-fld="qty" type="number" min="0" step="0.01" value="${Number(it.qty) || 0}" style="width:100%;background:transparent;border:1px solid transparent;padding:3px 4px;color:#2a1f0a;font:inherit;text-align:right"></td>
+                <td><input data-fld="price" type="number" min="0" step="1" value="${Number(it.price) || 0}" style="width:100%;background:transparent;border:1px solid transparent;padding:3px 4px;color:#2a1f0a;font:inherit;text-align:right"></td>
+                <td class="pk3-right" data-sum="${i}" style="font-weight:600">${fmt(sum(it))}</td>
+                <td><button data-pk3-smeta-del="${i}" style="background:transparent;border:0;color:#a94440;cursor:pointer;font-size:14px" title="Удалить">✕</button></td>
+              </tr>
+            `).join('')}
           </tbody>
           <tfoot>
-            <tr><td colspan="5" class="pk3-right">Итого без НДС:</td><td class="pk3-right">1 200 000</td></tr>
-            <tr><td colspan="5" class="pk3-right">НДС 20%:</td><td class="pk3-right">240 000</td></tr>
-            <tr><td colspan="5" class="pk3-right" style="font-size:13px"><b>Итого с НДС:</b></td><td class="pk3-right" style="font-size:13px"><b>1 440 000</b></td></tr>
+            <tr>
+              <td colspan="7" style="padding:7px 4px"><button data-pk3-smeta-add style="background:#e8d8a8;border:1px solid #b89860;padding:5px 10px;border-radius:4px;color:#3d2a08;cursor:pointer;font-weight:600;font-family:'Cinzel',serif">+ Добавить позицию</button></td>
+            </tr>
+            <tr><td colspan="5" class="pk3-right">Итого без НДС:</td><td class="pk3-right" data-pk3-smeta-total>${fmt(total)}</td><td></td></tr>
+            <tr>
+              <td colspan="5" class="pk3-right">НДС <input data-pk3-smeta-vat type="number" min="0" max="100" step="1" value="${vatPct}" style="width:42px;background:transparent;border:1px solid #b89860;padding:1px 4px;color:#2a1f0a;font:inherit;text-align:right">%:</td>
+              <td class="pk3-right" data-pk3-smeta-vatamt>${fmt(vatAmount)}</td><td></td>
+            </tr>
+            <tr><td colspan="5" class="pk3-right" style="font-size:13px"><b>Итого с НДС:</b></td><td class="pk3-right" data-pk3-smeta-totalvat style="font-size:13px"><b>${fmt(totalWithVat)}</b></td><td></td></tr>
           </tfoot>
         </table>`;
     }
