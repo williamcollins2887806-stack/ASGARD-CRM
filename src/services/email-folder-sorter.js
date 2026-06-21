@@ -212,40 +212,71 @@ async function processNewCrmEmails() {
 }
 
 /**
- * Initialize: create CRM folder structure on first run
+ * Initialize: create CRM folder structure on first run.
+ * IMAP connect иногда flaky (throttle Yandex при гонке с imapService.startPolling
+ * на ту же учётку) → retry с backoff. AggregateError разворачиваем для диагностики.
  */
-async function initCrmFolders() {
+function _formatInitErr(e) {
+  if (!e) return 'unknown';
+  const parts = [];
+  if (e.message) parts.push(e.message);
+  if (e.code) parts.push(`code=${e.code}`);
+  if (Array.isArray(e.errors) && e.errors.length) {
+    parts.push('aggregated: ' + e.errors.map(x => x?.message || x?.code || String(x)).join('; '));
+  }
+  return parts.length ? parts.join(' | ') : (e.name || 'no message');
+}
+
+async function _initCrmFoldersOnce() {
+  const accRes = await db.query(
+    "SELECT * FROM email_accounts WHERE (is_copy_target = true OR account_type = 'primary') AND is_active = true LIMIT 1"
+  );
+  if (accRes.rows.length === 0) return 'no_account';
+  const crmAccount = accRes.rows[0];
+
+  const client = new ImapFlow({
+    host: crmAccount.imap_host,
+    port: crmAccount.imap_port || 993,
+    secure: crmAccount.imap_tls !== false,
+    auth: {
+      user: crmAccount.imap_user,
+      pass: imapService.decrypt(crmAccount.imap_pass_encrypted)
+    },
+    logger: false,
+    greetingTimeout: 15000,
+    socketTimeout: 60000
+  });
+
+  await client.connect();
   try {
-    const accRes = await db.query(
-      "SELECT * FROM email_accounts WHERE (is_copy_target = true OR account_type = 'primary') AND is_active = true LIMIT 1"
-    );
-    if (accRes.rows.length === 0) return;
-    const crmAccount = accRes.rows[0];
-
-    const client = new ImapFlow({
-      host: crmAccount.imap_host,
-      port: crmAccount.imap_port || 993,
-      secure: crmAccount.imap_tls !== false,
-      auth: {
-        user: crmAccount.imap_user,
-        pass: imapService.decrypt(crmAccount.imap_pass_encrypted)
-      },
-      logger: false,
-      greetingTimeout: 15000,
-      socketTimeout: 60000
-    });
-
-    await client.connect();
-    try {
-      for (const folder of Object.values(CRM_FOLDERS)) {
-        await ensureFolder(client, folder);
-      }
-      console.log('[FolderSorter] CRM folder structure initialized');
-    } finally {
-      await client.logout();
+    for (const folder of Object.values(CRM_FOLDERS)) {
+      await ensureFolder(client, folder);
     }
-  } catch (e) {
-    console.error('[FolderSorter] Init error:', e.message);
+    return 'ok';
+  } finally {
+    await client.logout().catch(() => {});
+  }
+}
+
+async function initCrmFolders() {
+  const RETRY_DELAYS_MS = [5000, 15000, 45000];
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      const result = await _initCrmFoldersOnce();
+      if (result === 'no_account') return;
+      const suffix = attempt > 0 ? ` (after ${attempt} retr${attempt === 1 ? 'y' : 'ies'})` : '';
+      console.log('[FolderSorter] CRM folder structure initialized' + suffix);
+      return;
+    } catch (e) {
+      const detail = _formatInitErr(e);
+      if (attempt >= RETRY_DELAYS_MS.length) {
+        console.error(`[FolderSorter] Init failed after ${attempt + 1} attempts:`, detail);
+        return;
+      }
+      const delay = RETRY_DELAYS_MS[attempt];
+      console.warn(`[FolderSorter] Init attempt ${attempt + 1} failed (${detail}) — retry in ${delay / 1000}s`);
+      await new Promise(r => setTimeout(r, delay));
+    }
   }
 }
 
