@@ -114,6 +114,16 @@ async function createClient(account) {
     greetingTimeout: 15000,
     socketTimeout: 60000
   });
+
+  // Без этого listener'а async-ошибки TLS-socket (Yandex периодически дропает
+  // long-lived IMAP-коннект → ECONNRESET/EPIPE через часы работы) пробрасываются
+  // как uncaughtException и кладут весь сервис (21.06.2026 прод лежал 2 часа).
+  // Сама ошибка sync уже обрабатывается в syncAccount catch — здесь только
+  // глушим bubble-up чтобы процесс не упал.
+  client.on('error', (err) => {
+    console.error(`[IMAP] Async client error account=${account.id} (handled):`, err.code || err.message);
+  });
+
   return client;
 }
 

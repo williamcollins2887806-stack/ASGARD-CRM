@@ -1501,9 +1501,12 @@ const start = async () => {
   }
 };
 
-// Graceful shutdown with timeout
-const shutdown = async () => {
-  fastify.log.info('Shutting down...');
+// Graceful shutdown with timeout. exitCode передаётся: 0 для штатных SIGINT/SIGTERM,
+// 1 для uncaughtException — чтобы systemd увидел failure и сработал Restart=on-failure
+// из unit-файла. Иначе exit(0) обманывает systemd ("успешное завершение") и сервис
+// тихо лежит часами (инцидент 21.06.2026: прод лежал 2 часа из-за TLS-ECONNRESET).
+const shutdown = async (exitCode = 0) => {
+  fastify.log.info(`Shutting down (exit=${exitCode})...`);
   const forceExit = setTimeout(() => {
     fastify.log.warn('Forced exit after 8s timeout');
     process.exit(1);
@@ -1515,11 +1518,11 @@ const shutdown = async () => {
   try { const imap = require('./services/imap'); await imap.shutdown(); } catch (_) {}
   try { await fastify.close(); } catch (_) {}
   try { await db.end(); } catch (_) {}
-  process.exit(0);
+  process.exit(exitCode);
 };
 
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+process.on('SIGINT', () => shutdown(0));
+process.on('SIGTERM', () => shutdown(0));
 
 // Prevent silent crashes from unhandled rejections
 process.on('unhandledRejection', (reason) => {
@@ -1528,7 +1531,7 @@ process.on('unhandledRejection', (reason) => {
 });
 process.on('uncaughtException', (err) => {
   fastify.log.error({ err }, 'Uncaught Exception — shutting down');
-  shutdown();
+  shutdown(1);
 });
 
 start();
