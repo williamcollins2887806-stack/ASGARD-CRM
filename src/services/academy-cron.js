@@ -1,12 +1,17 @@
 /**
  * Academy Cron — Чертоги Мимира
- * Воскресенье 20:00 MSK → Мимир генерирует Руну следующей недели (DRAFT)
+ * Воскресенье 17:00 MSK → Мимир генерирует Руну следующей недели (DRAFT)
  * Ежедневно 07:00 MSK → Мимир генерирует Факт дня (auto-publish)
  *
  * Учебная программа: 48 недель без повторов
  * Обязательные уроки (is_mandatory=true) блокируют открытие смен
  * Необязательные дают XP и руны, но не блокируют
  * Цикл повторяется каждые 48 недель (≈ раз в год → периодическая переаттестация)
+ *
+ * Модель: grok-4.20-fast (xAI) — 2M контекст, 256K output, быстрая.
+ * Sonnet через Tokenator упирался в 4-минутный upstream timeout (504) на
+ * генерации ~40K токенов. Grok успевает за окно (200-500 tok/sec).
+ * Доп. страховка: retry с backoff (1/5/30 мин) обёрнут вокруг weekly-lesson.
  */
 
 'use strict';
@@ -542,16 +547,20 @@ async function generateWeeklyLesson() {
     ? `\n\nУже изученные темы (не повторяй их содержание, только ссылайся при необходимости):\n${recentTopics}`
     : '';
 
-  console.log(`[AcademyCron] Generating lesson for week ${nextWeek}: "${curriculumEntry.saga}"...`);
+  console.log(`[AcademyCron] Generating lesson for week ${nextWeek}: "${curriculumEntry.saga}"... (model=grok-4.20-fast)`);
 
   const response = await aiProvider.complete({
+    // 21.06.2026: переход с Sonnet на Grok 4.20 Fast — Sonnet генерировал 40K
+    // токенов дольше 4 мин и упирался в Tokenator upstream-timeout (504).
+    // Grok 4.20 Fast — 2M контекст, 256K output, скорость 200-500 tok/sec
+    // (заявленная xAI), успевает в окно Tokenator. См. [[feedback-tokenator-constraints]].
+    model: 'grok-4.20-fast',
     system: LESSON_SYSTEM_PROMPT + avoidNote,
     messages: [
       { role: 'user', content: `Создай Руну для недели ${nextWeek}.\n\n${topicInfo}` }
     ],
     temperature: 0.7,
-    // Sonnet 4.6 поддерживает до 64K output. Берём максимум — лекция с 12-18
-    // блоками по 5-9 предложений + 12 вопросами с объяснениями свободно
+    // Grok 4.20 Fast: до 256K output. Лекция с 12-18 блоками + 12 вопросами
     // дотягивает до 40K токенов на русском. JSON repair страхует если упрёмся.
     maxTokens: 64000,
   });
@@ -647,6 +656,35 @@ async function notifyAdmins(lessonTitle, lessonId, isMandatory) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// RETRY-WRAPPER для еженедельной генерации
+// ═══════════════════════════════════════════════════════════════════════════
+// Cron срабатывает только раз в неделю → одного 504/400 от Tokenator достаточно
+// чтобы рабочие остались без нового урока на 7 дней. Делаем 4 попытки с backoff
+// (1мин/5мин/30мин) — даже если первая упала, шанс что хотя бы одна пройдёт
+// близок к 100% (различные транзиентные сбои крайне редко длятся >30 мин).
+async function generateWeeklyLessonWithRetry() {
+  const RETRY_DELAYS_MS = [60_000, 300_000, 1_800_000]; // 1 мин, 5 мин, 30 мин
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      const result = await generateWeeklyLesson();
+      if (attempt > 0) {
+        console.log(`[AcademyCron] Weekly lesson succeeded after ${attempt} retr${attempt === 1 ? 'y' : 'ies'}`);
+      }
+      return result;
+    } catch (e) {
+      const detail = (e.message || String(e)).slice(0, 300);
+      if (attempt >= RETRY_DELAYS_MS.length) {
+        console.error(`[AcademyCron] Weekly lesson FAILED after ${attempt + 1} attempts. Last error: ${detail}`);
+        throw e;
+      }
+      const delay = RETRY_DELAYS_MS[attempt];
+      console.warn(`[AcademyCron] Weekly lesson attempt ${attempt + 1} failed: ${detail} — retry in ${Math.round(delay / 1000)}s`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // CRON SCHEDULES
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -661,18 +699,21 @@ function init() {
     }
   }, { timezone: 'Europe/Moscow' });
 
-  // Каждое воскресенье в 20:00 MSK — урок следующей недели
+  // Каждое воскресенье в 17:00 MSK — урок следующей недели (с retry-обёрткой)
   cron.schedule('0 17 * * 0', async () => {
     console.log('[AcademyCron] Generating weekly lesson...');
     try {
-      await generateWeeklyLesson();
+      await generateWeeklyLessonWithRetry();
     } catch (e) {
-      console.error('[AcademyCron] Weekly lesson error:', e.message);
+      // Сюда попадаем только если ВСЕ 4 попытки упали (1мин/5мин/30мин ретраи внутри).
+      // В этом случае нужно ручное вмешательство — например, через админку
+      // или прямой вызов generateWeeklyLessonWithRetry() из shell.
+      console.error('[AcademyCron] Weekly lesson FINAL error (after all retries):', e.message);
     }
   }, { timezone: 'Europe/Moscow' });
 
-  console.log('[AcademyCron] Scheduled: daily fact 07:00, weekly lesson Sunday 20:00 MSK');
+  console.log('[AcademyCron] Scheduled: daily fact 07:00, weekly lesson Sunday 17:00 MSK');
   console.log(`[AcademyCron] Curriculum: ${CURRICULUM_48.length} topics, ${CURRICULUM_48.filter(t => t.mandatory).length} mandatory`);
 }
 
-module.exports = { init, generateDailyFact, generateWeeklyLesson };
+module.exports = { init, generateDailyFact, generateWeeklyLesson, generateWeeklyLessonWithRetry };
