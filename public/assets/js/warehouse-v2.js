@@ -674,7 +674,9 @@ window.AsgardWarehouseV2 = (function () {
           <div style="display:flex;gap:11px;align-items:flex-start;flex:1;min-width:0">
             ${p.photo_url
               ? `<img src="${esc(p.photo_url)}" style="width:42px;height:42px;border-radius:12px;flex-shrink:0;object-fit:cover">`
-              : `<div style="width:42px;height:42px;border-radius:12px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:22px;background:${AV_COLORS[idx % AV_COLORS.length]}22">${CAT_ICON(p.category_name)}</div>`}
+              : (window.AsgardGoodsIcon && (p.icon_path || p.icon_slug)
+                ? `<div style="width:48px;height:48px;border-radius:12px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:${AV_COLORS[idx % AV_COLORS.length]}22">${window.AsgardGoodsIcon.placeholder({ slug: p.icon_slug, path: p.icon_path, size: 36, alt: p.name })}</div>`
+                : `<div style="width:42px;height:42px;border-radius:12px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:22px;background:${AV_COLORS[idx % AV_COLORS.length]}22">${CAT_ICON(p.category_name)}</div>`)}
             <div style="min-width:0">
               <div class="wh2-card__name">${esc(p.name)}</div>
               <div class="wh2-card__sub">${esc(p.category_name || 'Без категории')}${p.article ? ' • ' + esc(p.article) : ''}</div>
@@ -694,6 +696,8 @@ window.AsgardWarehouseV2 = (function () {
     container.querySelectorAll('.wh2-card[data-pid]').forEach(c => c.onclick = () => openProduct(+c.dataset.pid));
     // степперы на карточках
     container.querySelectorAll('.wh2-stp[data-step-pid]').forEach(el => _bindStepper(el));
+    // SVG-иконки каталога — inline fetch (для наследования --icon-ink/--icon-accent)
+    if (window.AsgardGoodsIcon) window.AsgardGoodsIcon.hydrate(container);
     // подгрузка наличия по каждой позиции (лениво, параллельно)
     prods.forEach(async p => {
       try {
@@ -800,8 +804,11 @@ window.AsgardWarehouseV2 = (function () {
       <th>Позиция</th><th>Склад</th><th>Ячейка</th><th>Остаток</th><th>Мин.</th><th></th><th>🛒</th></tr></thead><tbody>
       ${rows.map(r => {
         const low = r.min_stock_level > 0 && Number(r.quantity) <= Number(r.min_stock_level);
+        const icon = window.AsgardGoodsIcon && (r.icon_path || r.icon_slug)
+          ? window.AsgardGoodsIcon.placeholder({ slug: r.icon_slug, path: r.icon_path, size: 32, alt: r.product_name })
+          : '';
         return `<tr>
-          <td><b>${esc(r.product_name)}</b>${r.article ? ' <span style="opacity:.5">' + esc(r.article) + '</span>' : ''}</td>
+          <td><span style="display:inline-flex;align-items:center;gap:8px">${icon}<b>${esc(r.product_name)}</b></span>${r.article ? ' <span style="opacity:.5">' + esc(r.article) + '</span>' : ''}</td>
           <td>${esc(r.warehouse_name || '—')}</td><td>${esc(r.location_label || '—')}</td>
           <td><b style="color:${low ? 'var(--err-t,#ff5c5c)' : 'var(--ok-t,#30d158)'}">${fmt(r.quantity)}</b> ${esc(r.unit)}</td>
           <td>${r.min_stock_level > 0 ? fmt(r.min_stock_level) : '—'}</td>
@@ -811,6 +818,7 @@ window.AsgardWarehouseV2 = (function () {
       }).join('')}</tbody></table>`;
     container.querySelectorAll('[data-op]').forEach(b => b.onclick = () => openStockOp(b.dataset.op));
     container.querySelectorAll('.wh2-stp[data-step-pid]').forEach(el => _bindStepper(el));
+    if (window.AsgardGoodsIcon) window.AsgardGoodsIcon.hydrate(container);
   }
 
   // Операция со складом (приход/расход/перемещение/списание) — drawer-форма

@@ -11,6 +11,7 @@ import { StockOpModal } from './StockOpModal';
 import { QuickProductModal } from './QuickProductModal';
 import { ProductDetailModal } from './ProductDetailModal';
 import { CatalogImportModal } from './CatalogImportModal';
+import { GoodsIcon } from '@/components/GoodsIcon';
 
 /**
  * Вкладка «Расходники» (vanilla renderConsumables → renderCatalog/renderStock).
@@ -162,7 +163,19 @@ function CatalogCards({ products, availabilities, cartItemFor, cartEnabled, cart
             aria-label={`Расходник: ${p.name}`}
           >
             <div className="wh-card__top">
-              <div className="wh-card__ic">{categoryIcon(p.category_name)}</div>
+              {(p.icon_path || p.icon_slug)
+                ? (
+                  <div className="wh-card__ic" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <GoodsIcon
+                      slug={p.icon_slug}
+                      path={p.icon_path}
+                      size={36}
+                      alt={p.name}
+                      fallback={<span>{categoryIcon(p.category_name)}</span>}
+                    />
+                  </div>
+                )
+                : <div className="wh-card__ic">{categoryIcon(p.category_name)}</div>}
               <div className="flex-1">
                 <div className="wh-card__nm">{p.name}</div>
                 <div className="wh-card__sub">
@@ -228,7 +241,15 @@ function StockTable({ rows, cartItemFor, cartEnabled, cart, onAdd, onRefreshCart
               const inCart = r.product_id ? cartItemFor.get(r.product_id) : null;
               return (
                 <tr key={r.product_id ? r.product_id + '-' + i : i}>
-                  <td><strong>{r.product_name}</strong>{r.article && <span className="ml-6 op-half">{r.article}</span>}</td>
+                  <td>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      {(r.icon_path || r.icon_slug) && (
+                        <GoodsIcon slug={r.icon_slug} path={r.icon_path} size={32} alt={r.product_name} />
+                      )}
+                      <strong>{r.product_name}</strong>
+                    </span>
+                    {r.article && <span className="ml-6 op-half">{r.article}</span>}
+                  </td>
                   <td>{r.warehouse_name || '—'}</td>
                   <td>{r.location_label || '—'}</td>
                   <td><strong style={{ color: low ? 'var(--err)' : 'var(--ok)' }}>{fmt(r.quantity)}</strong> {r.unit}</td>

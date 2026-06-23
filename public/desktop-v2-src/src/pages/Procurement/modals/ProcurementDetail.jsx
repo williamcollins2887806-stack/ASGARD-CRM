@@ -36,6 +36,7 @@ import { ShowcaseModal as _ShowcaseModal, openShowcaseModal } from './ShowcaseMo
 import { ImportExcelModal as _ImportExcelModal, openImportExcelModal } from './ImportExcelModal';
 import { openProtected } from '@/api/download';
 import { validateFile, MAX_ATTACHMENT_SIZE } from '@/api/upload';
+import { GoodsIcon } from '@/components/GoodsIcon';
 
 /** Открыть деталь заявки (1:1 с vanilla openDetail). */
 export function openDetailModal(modal, procId, onChanged) {
@@ -380,16 +381,24 @@ export function ProcurementDetailModal({ procId, onChanged }) {
     if (hint?.last) hintParts.push(`посл. ${money(hint.last.unit_price)}${hint.last.supplier_name ? ' (' + hint.last.supplier_name + ')' : ''}`);
     if (hint?.stats?.avg_price) hintParts.push(`ср.рынок ${money(hint.stats.avg_price)}`);
 
+    const showIcon = !isChild && (it.icon_path || it.icon_slug);
+    const nameNode = canEditItems && !isSplit ? (
+      <input className="proc-items-table__input"
+        value={getEditedValue(it, 'name')}
+        onChange={(e) => setEdit(it.id, 'name', e.target.value)}
+      />
+    ) : <span>{it.name}</span>;
+
     return (
       <tr key={it.id} className={isChild ? 'proc-row-child' : ''}>
         <td>{isChild ? '↳' : row._idx}</td>
         <td>
-          {canEditItems && !isSplit ? (
-            <input className="proc-items-table__input"
-              value={getEditedValue(it, 'name')}
-              onChange={(e) => setEdit(it.id, 'name', e.target.value)}
-            />
-          ) : it.name}
+          {showIcon ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, verticalAlign: 'middle' }}>
+              <GoodsIcon slug={it.icon_slug} path={it.icon_path} size={28} alt={it.name} />
+              {nameNode}
+            </span>
+          ) : nameNode}
           {isSplit && <span className="proc-kbadge proc-detail-mlbadge">разбито</span>}
         </td>
         <td>{it.article || ''}</td>
@@ -691,6 +700,18 @@ export function ProcurementDetailModal({ procId, onChanged }) {
       <MFoot align="spread">
         <Btn variant="ghost" onClick={close}>Закрыть</Btn>
         <div className="proc-detail-actions-foot">
+          {/* S-13F Stage 4 React v2 — паритет с vanilla procurement-page.js:102+395-400.
+              Привязка к заявке закупки (parent_entity_type=request), как в vanilla. */}
+          {p?.id && (
+            <Btn
+              variant="ghost"
+              onClick={() => {
+                window.location.hash = `#/correspondence?parent_entity_type=request&parent_entity_id=${p.id}`;
+                close();
+              }}
+              title="Журнал переписки по заявке"
+            >📜 Переписка</Btn>
+          )}
           {actions.map((a) => (
             <Btn
               key={a.action}

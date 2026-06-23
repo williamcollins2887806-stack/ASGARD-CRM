@@ -20,6 +20,7 @@ import { EquipmentKitsModal } from './EquipmentKitsModal';
 import { EquipmentQrPrintModal } from './EquipmentQrPrintModal';
 import { EquipmentBulkCreateModal } from './EquipmentBulkCreateModal';
 import { openProtected } from '@/api/download';
+import { GoodsIcon } from '@/components/GoodsIcon';
 
 const STATUS_CHIPS = [
   { v: '',             l: 'Все' },
@@ -369,7 +370,19 @@ function EqCard({ e, user, cartEnabled, cartItem, cart, onAdd, onRefreshCart, on
       <div className="wh-eq-card__row">
         {e.photo_url
           ? <img className="wh-eq-card__ph" src={e.photo_url} alt="" loading="lazy" />
-          : <div className="wh-eq-card__ph">{eqIcon(e)}</div>}
+          : ((e.icon_path || e.icon_slug)
+            ? (
+              <div className="wh-eq-card__ph" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <GoodsIcon
+                  slug={e.icon_slug}
+                  path={e.icon_path}
+                  size={48}
+                  alt={e.name}
+                  fallback={<span>{eqIcon(e)}</span>}
+                />
+              </div>
+            )
+            : <div className="wh-eq-card__ph">{eqIcon(e)}</div>)}
         <div className="flex-1">
           <div className="wh-eq-card__nm">{e.name}</div>
           <div className="wh-eq-card__inv">
@@ -430,7 +443,9 @@ function EqTable({ items, _user, cartEnabled, cartItemFor, cart, onAdd, onRefres
                   <td className="fs-18">
                     {e.photo_url
                       ? <img src={e.photo_url} alt="" loading="lazy" style={{ width: 28, height: 28, borderRadius: 6, objectFit: 'cover' }} />
-                      : eqIcon(e)}
+                      : ((e.icon_path || e.icon_slug)
+                        ? <GoodsIcon slug={e.icon_slug} path={e.icon_path} size={28} alt={e.name} fallback={<span>{eqIcon(e)}</span>} />
+                        : eqIcon(e))}
                   </td>
                   <td><strong>{e.name}</strong></td>
                   <td>{e.inventory_number || '—'}</td>

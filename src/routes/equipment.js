@@ -8,6 +8,8 @@ async function equipmentRoutes(fastify, options) {
   const path = require('path');
   const fsp = require('fs').promises;
   const { randomUUID } = require('crypto');
+  // V254: icon_slug → icon_path обогащение для каталога оборудования
+  const { enrichIcon, enrichIcons } = require('../utils/icon-path');
 
   // Роли с полным доступом к складу (M15: добавлен CHIEF_ENGINEER)
   const WAREHOUSE_ADMINS = ['ADMIN', 'WAREHOUSE', 'CHIEF_ENGINEER', 'DIRECTOR', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
@@ -274,7 +276,7 @@ async function equipmentRoutes(fastify, options) {
     sql += ` ORDER BY c.name, e.name`;
     const result = await db.query(sql, params);
 
-    return { success: true, equipment: result.rows };
+    return { success: true, equipment: enrichIcons(result.rows) };
   });
 
   // ============================================
@@ -429,7 +431,7 @@ async function equipmentRoutes(fastify, options) {
 
     return {
       success: true,
-      equipment: items.rows,
+      equipment: enrichIcons(items.rows),
       total,
       page: pageNum,
       limit: pageSize,
@@ -573,7 +575,7 @@ async function equipmentRoutes(fastify, options) {
 
     return {
       success: true,
-      equipment: result.rows[0],
+      equipment: enrichIcon(result.rows[0]),
       movements: movements.rows,
       maintenance: maintenance.rows,
       reservations: reservations.rows
@@ -621,7 +623,7 @@ async function equipmentRoutes(fastify, options) {
       useful_life_months, salvage_value, auto_write_off,
       specifications, notes, status, warehouse_id, condition,
       next_maintenance, next_calibration, min_stock_level, reorder_point,
-      custom_icon
+      custom_icon, icon_slug
     } = request.body;
 
     if (!name) {
@@ -676,6 +678,9 @@ async function equipmentRoutes(fastify, options) {
     const invNumber = inventory_number || ('INV-' + Date.now().toString(36).toUpperCase());
     const eqStatus = status || 'on_warehouse';
 
+    // V254: icon_slug опционален; если NULL — триггер БД подставит по нормализованному имени.
+    const iconSlug = (typeof icon_slug === 'string' && icon_slug.trim()) ? icon_slug.trim() : null;
+
     const result = await db.query(`
       INSERT INTO equipment (
         name, category_id, inventory_number, serial_number, barcode, qr_uuid, qr_code,
@@ -684,7 +689,7 @@ async function equipmentRoutes(fastify, options) {
         useful_life_months, salvage_value, auto_write_off,
         specifications, notes, status, warehouse_id, condition,
         next_maintenance, next_calibration, min_stock_level, reorder_point,
-        custom_icon, created_by
+        custom_icon, created_by, icon_slug
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7,
         $8, $9, $10, $11, $12, $13,
@@ -692,7 +697,7 @@ async function equipmentRoutes(fastify, options) {
         $18, $19, $20,
         $21, $22, $23, $24, $25,
         $26, $27, $28, $29,
-        $30, $31
+        $30, $31, $32
       ) RETURNING *
     `, [
       name, catId, invNumber, serial_number || null, barcode || null, qrUuid, qrUuid,
@@ -701,10 +706,10 @@ async function equipmentRoutes(fastify, options) {
       useful_life_months || null, salvage_value || null, auto_write_off || false,
       specifications ? JSON.stringify(specifications) : null, notes || null, eqStatus, whId, condition || 'new',
       next_maintenance || null, next_calibration || null, min_stock_level || 0, reorder_point || 0,
-      custom_icon || null, user.id
+      custom_icon || null, user.id, iconSlug
     ]);
 
-    return { success: true, equipment: result.rows[0] };
+    return { success: true, equipment: enrichIcon(result.rows[0]) };
   });
 
   // ============================================
@@ -806,6 +811,7 @@ async function equipmentRoutes(fastify, options) {
       quantity, unit, warranty_end, maintenance_interval_days,
       useful_life_months, salvage_value, auto_write_off,
       specifications, notes, status, warehouse_id, condition,
+      icon_slug,
       next_maintenance, next_calibration, min_stock_level, reorder_point,
       custom_icon
     } = request.body;
@@ -830,6 +836,14 @@ async function equipmentRoutes(fastify, options) {
     if (maintenance_interval_days !== undefined && maintenance_interval_days !== null && (isNaN(Number(maintenance_interval_days)) || Number(maintenance_interval_days) < 0)) {
       return reply.code(400).send({ success: false, message: 'Интервал обслуживания должен быть неотрицательным числом' });
     }
+    // V254: icon_slug — если передан как явный null/пустая строка → сброс, чтобы триггер перематчил
+    //       по нормализованному имени при следующем UPDATE OF name.
+    //       Если поле вовсе не пришло — оставляем как есть через COALESCE.
+    const iconSlugParam = (icon_slug === undefined)
+      ? null
+      : (typeof icon_slug === 'string' && icon_slug.trim() ? icon_slug.trim() : null);
+    const iconSlugForceSet = (icon_slug !== undefined);
+
     const result = await db.query(`
       UPDATE equipment SET
         name = COALESCE($1, name),
@@ -859,6 +873,7 @@ async function equipmentRoutes(fastify, options) {
         min_stock_level = COALESCE($25, min_stock_level),
         reorder_point = COALESCE($26, reorder_point),
         custom_icon = COALESCE($27, custom_icon),
+        icon_slug = CASE WHEN $29::boolean THEN $30::varchar ELSE icon_slug END,
         updated_at = NOW()
       WHERE id = $28
       RETURNING *
@@ -869,14 +884,14 @@ async function equipmentRoutes(fastify, options) {
       useful_life_months, salvage_value, auto_write_off,
       specifications ? JSON.stringify(specifications) : null, notes, status, warehouse_id, condition,
       next_maintenance, next_calibration, min_stock_level, reorder_point,
-      custom_icon || null, id
+      custom_icon || null, id, iconSlugForceSet, iconSlugParam
     ]);
 
     if (result.rows.length === 0) {
       return reply.code(404).send({ success: false, message: 'Оборудование не найдено' });
     }
 
-    return { success: true, equipment: result.rows[0] };
+    return { success: true, equipment: enrichIcon(result.rows[0]) };
   });
 
   // ============================================

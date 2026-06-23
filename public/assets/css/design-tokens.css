@@ -522,6 +522,10 @@ html[data-theme="light"] {
   --grad-corp-90: linear-gradient(90deg, #A82030, #1A3F74);
   --grad-gold:    linear-gradient(90deg, #B8841A, #D4A843);
 
+  /* ── Иконки каталога (светлая тема — НЕ инверсия dark) ── */
+  --icon-ink:    #1F2A3A;   /* глубокий slate для контура (читается на пергаменте) */
+  --icon-accent: #2E7BC0;   /* брендовый синий, чуть насыщеннее для контраста */
+
   /* ── Зависимые алиасы ── */
   --glass-bg:  var(--bg3);
   --glass:     var(--bg3);
@@ -546,4 +550,25 @@ html[data-theme="light"] {
   --shadow-hover:   var(--shadow-lg);
   --gold-border: rgba(184,132,26,0.30);
   --gold-dim:    rgba(184,132,26,0.65);
+
+  /* ═══════════════════════════════════════════════════════════════════════════
+     ИКОНКИ КАТАЛОГА (warehouse/procurement, /v2/assets/icons/*.svg)
+     Используются ВНУТРИ SVG-файла через <style>:root{} — наследуются только
+     при INLINE-вставке (см. assets/js/goods-icon.js).
+     ═══════════════════════════════════════════════════════════════════════════ */
+  --icon-ink:    #C8D2DF;   /* контур / основной цвет линий */
+  --icon-accent: #4FA3E0;   /* акцент (заливка активной части) */
+}
+
+/* ─── Базовые правила для .goods-icon (обе темы) ──────────────────────────── */
+.goods-icon {
+  display: inline-block;
+  vertical-align: middle;
+  line-height: 0;
+  flex-shrink: 0;
+}
+.goods-icon svg { display: block; width: 100%; height: 100%; }
+.goods-icon--loading {
+  background: var(--bg3, rgba(255,255,255,0.04));
+  border-radius: 6px;
 }

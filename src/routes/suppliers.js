@@ -18,6 +18,9 @@ const READ_ROLES = ['PROC', 'ADMIN', 'PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_
 const SUPPLIER_CATEGORIES = ['materials', 'equipment_rental', 'services', 'other'];
 const PRICE_SOURCES = ['procurement', 'manual', 'ai_search', 'quote', 'market_monitoring'];
 
+// V254: icon_slug → icon_path обогащение для каталога
+const { enrichIcon, enrichIcons } = require('../utils/icon-path');
+
 async function routes(fastify) {
   const db = fastify.db;
 
@@ -226,7 +229,7 @@ async function routes(fastify) {
     sql += ` ORDER BY p.name LIMIT $${i++} OFFSET $${i++}`;
     params.push(Math.min(parseInt(limit), 500), parseInt(offset));
     const { rows } = await db.query(sql, params);
-    return { items: rows };
+    return { items: enrichIcons(rows) };
   });
 
   // Автокомплит для поля «позиция закупки» — trigram similarity
@@ -235,12 +238,13 @@ async function routes(fastify) {
     if (q.length < 2) return { items: [] };
     const { rows } = await db.query(
       `SELECT p.id, p.name, p.article, p.unit, p.category_id, c.name as category_name,
+        p.icon_slug,
         similarity(p.name, $1) as sim
        FROM products p LEFT JOIN product_categories c ON p.category_id=c.id
        WHERE p.is_active=true AND p.deleted_at IS NULL AND p.is_draft IS NOT TRUE AND (p.name ILIKE $2 OR p.name % $1)
        ORDER BY sim DESC, p.name LIMIT 12`,
       [q, `%${q}%`]);
-    return { items: rows };
+    return { items: enrichIcons(rows) };
   });
 
   // Витрина-каталог для закупки: товар + остаток (доступно) + последняя цена/поставщик.
@@ -254,7 +258,7 @@ async function routes(fastify) {
     if (search) { where += ` AND (p.name ILIKE $${i} OR p.article ILIKE $${i})`; params.push(`%${search}%`); i++; }
     let sql = `
       SELECT p.id, p.name, p.article, p.unit, p.category_id, c.name AS category_name,
-        p.is_consumable, 'catalog' AS source,
+        p.is_consumable, p.icon_slug, 'catalog' AS source,
         COALESCE((SELECT SUM(s.quantity - s.reserved_qty) FROM stock s WHERE s.product_id=p.id), 0) AS available_qty,
         lp.unit_price AS last_price, lp.supplier_name AS last_supplier, lp.recorded_at AS price_date
       FROM products p
@@ -272,7 +276,9 @@ async function routes(fastify) {
       if (search) { ew += ` AND e.name ILIKE $${j++}`; eparams.push(`%${search}%`); }
       const eq = await db.query(`
         SELECT MIN(e.id) AS id, e.name, NULL::text AS article, MIN(e.unit) AS unit, NULL::int AS category_id,
-          'Оборудование' AS category_name, false AS is_consumable, 'equipment' AS source,
+          'Оборудование' AS category_name, false AS is_consumable,
+          (SELECT icon_slug FROM equipment e2 WHERE e2.name=e.name AND e2.icon_slug IS NOT NULL LIMIT 1) AS icon_slug,
+          'equipment' AS source,
           COUNT(*) FILTER (WHERE e.status='on_warehouse') AS available_qty,
           NULL::numeric AS last_price, NULL::text AS last_supplier, NULL AS price_date
         FROM equipment e WHERE ${ew}
@@ -280,35 +286,38 @@ async function routes(fastify) {
         GROUP BY e.name ORDER BY e.name LIMIT 200`, eparams);
       equip = eq.rows;
     }
-    return { items: [...cat.rows, ...equip] };
+    return { items: enrichIcons([...cat.rows, ...equip]) };
   });
 
   fastify.get('/products/:id', { preHandler: [fastify.authenticate] }, async (req, reply) => {
     const { rows } = await db.query(`SELECT p.*, c.name as category_name FROM products p
       LEFT JOIN product_categories c ON p.category_id=c.id WHERE p.id=$1 AND p.deleted_at IS NULL`, [req.params.id]);
     if (!rows[0]) return bad(reply, 'Не найден', 404);
-    return { item: rows[0] };
+    return { item: enrichIcon(rows[0]) };
   });
 
   fastify.post('/products', { preHandler: [fastify.requireRoles(PROC_ROLES)] }, async (req, reply) => {
-    const { name, article, unit, category_id, notes } = req.body;
+    // V254: icon_slug опционален; если не передан — триггер БД подставит по нормализованному имени.
+    const { name, article, unit, category_id, notes, icon_slug } = req.body;
     if (!name || !name.trim()) return bad(reply, 'Название обязательно');
     const { rows } = await db.query(
-      `INSERT INTO products(name,article,unit,category_id,notes,created_by)
-       VALUES($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [name.trim(), article || null, unit || 'шт', category_id || null, notes || null, req.user.id]);
-    return { item: rows[0] };
+      `INSERT INTO products(name,article,unit,category_id,notes,created_by,icon_slug)
+       VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [name.trim(), article || null, unit || 'шт', category_id || null, notes || null, req.user.id,
+       (typeof icon_slug === 'string' && icon_slug.trim()) ? icon_slug.trim() : null]);
+    return { item: enrichIcon(rows[0]) };
   });
 
   fastify.put('/products/:id', { preHandler: [fastify.requireRoles(PROC_ROLES)] }, async (req, reply) => {
-    const allowed = ['name', 'article', 'unit', 'category_id', 'notes', 'is_active'];
+    // V254: icon_slug в allowed (можно сбросить null чтобы триггер перематчил по имени).
+    const allowed = ['name', 'article', 'unit', 'category_id', 'notes', 'is_active', 'icon_slug'];
     const upd = [], vals = []; let i = 1;
     for (const k of allowed) if (req.body[k] !== undefined) { upd.push(`${k}=$${i++}`); vals.push(req.body[k]); }
     if (!upd.length) return bad(reply, 'Нет данных');
     upd.push('updated_at=NOW()'); vals.push(req.params.id);
     const { rows } = await db.query(`UPDATE products SET ${upd.join(',')} WHERE id=$${i} RETURNING *`, vals);
     if (!rows[0]) return bad(reply, 'Не найден', 404);
-    return { item: rows[0] };
+    return { item: enrichIcon(rows[0]) };
   });
 
   // История цен и статистика по товару

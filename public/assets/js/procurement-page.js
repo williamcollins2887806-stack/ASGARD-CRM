@@ -99,6 +99,7 @@ window.AsgardProcurementPage = (function() {
         ${isLocked?'<span class="badge" style="background:var(--warn-bg);color:var(--warn-t)">🔒 Заблокирована</span>':''}
         <div style="display:flex;gap:6px;margin-left:auto">
           <button class="btn ghost" id="proc-clone" style="font-size:12px" title="Создать копию этой заявки">🔁 Повторить</button>
+          <button class="btn ghost" id="proc-correspondence" style="font-size:12px" title="Журнал переписки по заявке">📜 Переписка</button>
           ${items.length?'<button class="btn ghost" id="proc-save-tpl" style="font-size:12px" title="Сохранить как шаблон для постоянных работ">📋 В шаблон</button>':''}
         </div>
       </div>
@@ -127,9 +128,18 @@ window.AsgardProcurementPage = (function() {
     const rowHtml = (it, idx, isChild) => {
       const kids = isChild ? [] : childrenOf(it.id);
       const isSplit = kids.length > 0;
+      const icon = (!isChild && window.AsgardGoodsIcon && (it.icon_path || it.icon_slug))
+        ? window.AsgardGoodsIcon.placeholder({ slug: it.icon_slug, path: it.icon_path, size: 28, alt: it.name })
+        : '';
+      const nameCell = canEditItems && !isSplit
+        ? `<input class="proc-items-table__input" value="${esc(it.name)}" data-id="${it.id}" data-field="name">`
+        : esc(it.name);
+      const nameWrap = icon
+        ? `<span style="display:inline-flex;align-items:center;gap:8px;vertical-align:middle">${icon}<span>${nameCell}</span></span>`
+        : nameCell;
       return `<tr class="${isChild?'proc-row-child':''}" data-row-id="${it.id}">
         <td>${isChild?'↳':(idx+1)}</td>
-        <td>${canEditItems&&!isSplit?`<input class="proc-items-table__input" value="${esc(it.name)}" data-id="${it.id}" data-field="name">`:esc(it.name)}${isSplit?' <span class="proc-kbadge">разбито</span>':''}</td>
+        <td>${nameWrap}${isSplit?' <span class="proc-kbadge">разбито</span>':''}</td>
         <td>${esc(it.article||'')}</td>
         <td>${esc(it.unit)}</td>
         <td>${canEditItems&&!isSplit?`<input class="proc-items-table__input" type="number" value="${it.quantity}" data-id="${it.id}" data-field="quantity" style="width:64px">`:it.quantity}</td>
@@ -241,6 +251,12 @@ window.AsgardProcurementPage = (function() {
     html += `</div>`;
 
     showModal({ title: `Заявка #${p.id}`, html: html });
+
+    // SVG-иконки каталога — inline fetch (наследование --icon-ink/--icon-accent)
+    if (window.AsgardGoodsIcon) {
+      const modalHost = document.querySelector('.modal-body, .modal__body, .modal') || document;
+      window.AsgardGoodsIcon.hydrate(modalHost);
+    }
 
     // Handlers
     document.querySelectorAll('.proc-detail__actions [data-action]').forEach(btn => {
@@ -389,6 +405,14 @@ window.AsgardProcurementPage = (function() {
       if (r.error) { toast('Ошибка', r.error, 'err'); return; }
       toast('Создана копия', '', 'ok'); closeModal(); openDetail(r.item.id);
     };
+
+    // Correspondence journal
+    const corrBtn = document.getElementById('proc-correspondence');
+    if (corrBtn) {
+      corrBtn.onclick = () => {
+        location.hash = `#/correspondence?parent_entity_type=request&parent_entity_id=${p.id}`;
+      };
+    }
 
     // Save as template
     const saveTplBtn = document.getElementById('proc-save-tpl');

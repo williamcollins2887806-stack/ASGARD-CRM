@@ -512,13 +512,16 @@ fastify.register(require('./routes/settings'), { prefix: '/api/settings' });
 fastify.register(require('./routes/reports'), { prefix: '/api/reports' });
 fastify.register(require('./routes/mimir'), { prefix: '/api/mimir' });
 fastify.register(require('./routes/mimir-conductor'), { prefix: '/api/mimir' });
+fastify.register(require('./routes/mimir-letter'), { prefix: '/api/mimir' });
 fastify.register(require('./routes/hints'), { prefix: '/api' });
 fastify.register(require('./routes/geo'), { prefix: '/api/geo' });
 fastify.register(require('./routes/email'), { prefix: '/api/email' });
 fastify.register(require('./routes/acts'), { prefix: '/api/acts' });
 fastify.register(require('./routes/invoices'), { prefix: '/api/invoices' });
 fastify.register(require('./routes/correspondence'), { prefix: '/api/correspondence' });
+fastify.register(require('./routes/letter'), { prefix: '/api/letter' });
 fastify.register(require('./routes/equipment'), { prefix: '/api/equipment' });
+fastify.register(require('./routes/icons'), { prefix: '/api/icons' }); // V254: реестр SVG-иконок каталога (manifest.json)
 fastify.register(require('./routes/data'), { prefix: '/api/data' });
 fastify.register(require('./routes/permissions'), { prefix: '/api/permissions' });
 fastify.register(require('./routes/cash'), { prefix: '/api/cash' });
@@ -981,6 +984,17 @@ fastify.setNotFoundHandler((request, reply) => {
   const cleanUrl = request.url.split('?')[0];
   if (/\.(js|mjs|css|map|png|jpg|jpeg|gif|svg|webp|ico|woff2?|ttf|otf|eot|json|txt|wasm|mp3|mp4|webm|ogg|wav)$/i.test(cleanUrl)) {
     reply.code(404).send({ error: 'Not Found', message: 'Asset не найден' });
+    return;
+  }
+
+  // /office и /office/* — алиас на мобильную React-CRM в /m/.
+  // До этого SPA fallback отдавал десктоп index.html, у которого все CSS-ссылки
+  // относительные (assets/css/*), и под базой /office/ они разворачивались в
+  // /office/assets/css/* → 404 → JSON-ошибка с MIME application/json → браузер
+  // отвергал все стили → белый экран на мобильном.
+  if (cleanUrl === '/office' || cleanUrl.startsWith('/office/')) {
+    const rest = cleanUrl === '/office' ? '/' : cleanUrl.slice('/office'.length);
+    reply.code(302).header('Location', '/m' + rest).send();
     return;
   }
 

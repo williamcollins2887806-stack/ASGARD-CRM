@@ -253,6 +253,8 @@ window.WH2Equipment = (function () {
     el.querySelectorAll('[data-act]').forEach(b => b.onclick = ev => { ev.stopPropagation(); handleAction(b.dataset.act, +b.dataset.id); });
     // степперы корзины на оборудовании (карточки + таблица)
     el.querySelectorAll('.wh2-stp[data-eqstep]').forEach(s => _bindEqStepper(s));
+    // SVG-иконки каталога — inline fetch (наследование --icon-ink/--icon-accent)
+    if (window.AsgardGoodsIcon) window.AsgardGoodsIcon.hydrate(el);
     const more = el.querySelector('#wh2-eq-more'); if (more) more.onclick = async () => { S.offset += S.PAGE; try { await loadData(true); } catch (e) { toast('Ошибка', e.message, 'err'); } };
   }
 
@@ -275,7 +277,12 @@ window.WH2Equipment = (function () {
   function renderCard(e) {
     const st = STATUS[e.status] || { l: e.status || '—', c: '#8b93a3' };
     const cond = COND[e.condition];
-    const photo = e.photo_url ? `<img class="wh2-eq-card__ph" src="${esc(e.photo_url)}">` : `<div class="wh2-eq-card__ph">${eqIcon(e)}</div>`;
+    const hasSvg = window.AsgardGoodsIcon && (e.icon_path || e.icon_slug);
+    const photo = e.photo_url
+      ? `<img class="wh2-eq-card__ph" src="${esc(e.photo_url)}">`
+      : (hasSvg
+        ? `<div class="wh2-eq-card__ph" style="display:flex;align-items:center;justify-content:center">${window.AsgardGoodsIcon.placeholder({ slug: e.icon_slug, path: e.icon_path, size: 48, alt: e.name })}</div>`
+        : `<div class="wh2-eq-card__ph">${eqIcon(e)}</div>`);
     const acts = [];
     if (e.status === 'on_warehouse' && isAdmin()) acts.push(`<button class="wh2-eq-act wh2-eq-act--issue" data-act="issue" data-id="${e.id}">📤 Выдать</button>`);
     if (e.status === 'issued' && (isAdmin() || e.current_holder_id === _user.id)) acts.push(`<button class="wh2-eq-act wh2-eq-act--return" data-act="return" data-id="${e.id}">📥 Вернуть</button>`);
@@ -300,8 +307,12 @@ window.WH2Equipment = (function () {
     return `<table class="wh2-table"><thead><tr><th></th><th>Наименование</th><th>Инв.№</th><th>Категория</th><th>Статус</th><th>Ответственный</th><th>Объект</th>${cartCol}</tr></thead><tbody>
       ${items.map(e => { const st = STATUS[e.status] || { l: e.status, c: '#8b93a3' };
         const cartCell = _cartCb ? `<td>${_eqStepper(e.id)}</td>` : '';
+        const hasSvg = window.AsgardGoodsIcon && (e.icon_path || e.icon_slug);
+        const iconCell = e.photo_url
+          ? `<img src="${esc(e.photo_url)}" style="width:28px;height:28px;border-radius:6px;object-fit:cover">`
+          : (hasSvg ? window.AsgardGoodsIcon.placeholder({ slug: e.icon_slug, path: e.icon_path, size: 28, alt: e.name }) : eqIcon(e));
         return `<tr data-eqid="${e.id}" style="cursor:pointer">
-        <td style="font-size:18px">${e.photo_url ? `<img src="${esc(e.photo_url)}" style="width:28px;height:28px;border-radius:6px;object-fit:cover">` : eqIcon(e)}</td>
+        <td style="font-size:18px">${iconCell}</td>
         <td><b>${hl(e.name)}</b></td><td>${hl(e.inventory_number || '—')}</td><td>${esc(e.category_name || '—')}</td>
         <td><span class="wh2-chip" style="background:${st.c}22;color:${st.c}">${st.l}</span></td>
         <td>${esc(e.holder_name || '—')}</td><td>${esc(e.object_name || e.warehouse_name || '—')}</td>${cartCell}</tr>`; }).join('')}</tbody></table>`;
