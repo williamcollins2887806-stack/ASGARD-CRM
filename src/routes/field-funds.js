@@ -16,6 +16,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { logError } = require('../lib/log-error');
 
 const UPLOAD_BASE = process.env.UPLOAD_DIR || './uploads';
 const MAX_RECEIPT_SIZE = 15 * 1024 * 1024; // 15MB
@@ -62,7 +63,7 @@ async function routes(fastify, options) {
 
       return { fund: inserted[0] };
     } catch (err) {
-      fastify.log.error('[field-funds] POST / error:', err);
+      logError(fastify, '[field-funds] POST / error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -87,7 +88,7 @@ async function routes(fastify, options) {
 
       return { funds: rows };
     } catch (err) {
-      fastify.log.error('[field-funds] GET / error:', err);
+      logError(fastify, '[field-funds] GET / error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -117,7 +118,7 @@ async function routes(fastify, options) {
 
       return { fund: fund[0], expenses, returns };
     } catch (err) {
-      fastify.log.error('[field-funds] GET /:id error:', err);
+      logError(fastify, '[field-funds] GET /:id error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -141,7 +142,7 @@ async function routes(fastify, options) {
 
       return { ok: true };
     } catch (err) {
-      fastify.log.error('[field-funds] PUT /:id/close error:', err);
+      logError(fastify, '[field-funds] PUT /:id/close error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -172,7 +173,7 @@ async function routes(fastify, options) {
 
       return { ok: true, status: 'confirmed' };
     } catch (err) {
-      fastify.log.error('[field-funds] PUT /:id/confirm error:', err);
+      logError(fastify, '[field-funds] PUT /:id/confirm error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -305,7 +306,7 @@ async function routes(fastify, options) {
 
       return { expense: inserted[0], work_expense_id: workExpenseId };
     } catch (err) {
-      fastify.log.error('[field-funds] POST /:id/expense error:', err);
+      logError(fastify, '[field-funds] POST /:id/expense error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -347,7 +348,7 @@ async function routes(fastify, options) {
 
       return { return: ret[0] };
     } catch (err) {
-      fastify.log.error('[field-funds] POST /:id/return error:', err);
+      logError(fastify, '[field-funds] POST /:id/return error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -397,7 +398,7 @@ async function routes(fastify, options) {
         }
       };
     } catch (err) {
-      fastify.log.error('[field-funds] GET /my/balance error:', err);
+      logError(fastify, '[field-funds] GET /my/balance error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -420,7 +421,7 @@ async function routes(fastify, options) {
 
       return { funds: rows };
     } catch (err) {
-      fastify.log.error('[field-funds] GET /my error:', err);
+      logError(fastify, '[field-funds] GET /my error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });

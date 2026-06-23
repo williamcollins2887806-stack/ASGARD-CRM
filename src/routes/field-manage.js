@@ -21,9 +21,39 @@ const ExcelJS = require('exceljs');
 const MangoService = require('../services/mango');
 const { createNotification } = require('../services/notify');
 const { getWorkerFinances } = require('../lib/worker-finances');
+const { logError } = require('../lib/log-error');
 const MANGO_SMS_FROM = process.env.MANGO_SMS_EXTENSION || '101';
 
 const MANAGE_ROLES = ['PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+
+// Lock helper
+function getLockLib() {
+  try { return require('../lib/timesheet-locks'); } catch (_) {}
+  try { return require('./timesheet-v2'); } catch (_) {}
+  return null;
+}
+async function assertNotLockedSafe(fastify, viewer, ctx) {
+  const lib = getLockLib();
+  if (!lib || typeof lib.assertNotLocked !== 'function') return;
+  await lib.assertNotLocked(fastify, viewer, ctx);
+}
+function tryDateParts(dateStr) {
+  if (!dateStr || typeof dateStr !== 'string') {
+    const d = new Date();
+    return { year: d.getFullYear(), month: d.getMonth() + 1 };
+  }
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr);
+  if (!m) {
+    const d = new Date(dateStr);
+    return { year: d.getFullYear(), month: d.getMonth() + 1 };
+  }
+  return { year: parseInt(m[1], 10), month: parseInt(m[2], 10) };
+}
+function scopeForRole(role) {
+  if (role === 'PM' || role === 'HEAD_PM') return 'pm';
+  if (role === 'TO' || role === 'HEAD_TO') return 'medical';
+  return 'global';
+}
 
 async function routes(fastify, options) {
   const db = fastify.db;
@@ -108,7 +138,7 @@ async function routes(fastify, options) {
 
       return { ok: true, work_id: workId };
     } catch (err) {
-      fastify.log.error('[field-manage] activate error:', err);
+      logError(fastify, '[field-manage] activate error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -137,7 +167,7 @@ async function routes(fastify, options) {
 
       return { tariffs, specials, point_value: 500 };
     } catch (err) {
-      fastify.log.error('[field-manage] tariffs error:', err);
+      logError(fastify, '[field-manage] tariffs error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -280,7 +310,7 @@ async function routes(fastify, options) {
 
       return { results, count: results.filter(r => r.ok).length };
     } catch (err) {
-      fastify.log.error('[field-manage] crew error:', err);
+      logError(fastify, '[field-manage] crew error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -346,7 +376,7 @@ async function routes(fastify, options) {
 
       return { sent, failed, total: crew.length };
     } catch (err) {
-      fastify.log.error('[field-manage] send-invites error:', err);
+      logError(fastify, '[field-manage] send-invites error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -418,7 +448,7 @@ async function routes(fastify, options) {
 
       return reply.send({ ok: true, sent, failed, skipped });
     } catch (err) {
-      fastify.log.error('[field-manage] send-max-invites error:', err);
+      logError(fastify, '[field-manage] send-max-invites error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -480,7 +510,7 @@ async function routes(fastify, options) {
 
       return { sent_sms: sentSms, sent_push: sentPush, total_crew: crew.length };
     } catch (err) {
-      fastify.log.error('[field-manage] broadcast error:', err);
+      logError(fastify, '[field-manage] broadcast error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -568,7 +598,7 @@ async function routes(fastify, options) {
         week_summary: weekSummary,
       };
     } catch (err) {
-      fastify.log.error('[field-manage] dashboard error:', err);
+      logError(fastify, '[field-manage] dashboard error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -878,7 +908,7 @@ async function routes(fastify, options) {
 
       return { timesheet, per_diem_rate: perDiem };
     } catch (err) {
-      fastify.log.error('[field-manage] timesheet error:', err);
+      logError(fastify, '[field-manage] timesheet error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -905,7 +935,7 @@ async function routes(fastify, options) {
           requires_approval || false, notes || null]);
       return { ok: true, tariff: rows[0] };
     } catch (err) {
-      fastify.log.error('[field-manage] create tariff error:', err);
+      logError(fastify, '[field-manage] create tariff error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -941,7 +971,7 @@ async function routes(fastify, options) {
       if (rows.length === 0) return reply.code(404).send({ error: 'Тариф не найден' });
       return { ok: true, tariff: rows[0] };
     } catch (err) {
-      fastify.log.error('[field-manage] update tariff error:', err);
+      logError(fastify, '[field-manage] update tariff error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -958,7 +988,7 @@ async function routes(fastify, options) {
       if (rowCount === 0) return reply.code(404).send({ error: 'Тариф не найден' });
       return { ok: true };
     } catch (err) {
-      fastify.log.error('[field-manage] delete tariff error:', err);
+      logError(fastify, '[field-manage] delete tariff error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -969,10 +999,30 @@ async function routes(fastify, options) {
   fastify.post('/projects/:work_id/checkin', roleCheck, async (req, reply) => {
     try {
       const workId = parseInt(req.params.work_id);
-      const { employee_id, date, shift, hours_worked, hours_paid, day_rate,
+      const { employee_id, date, shift: shiftRaw, hours_worked, hours_paid, day_rate,
               amount_earned, status, note } = req.body || {};
       if (!employee_id || !date) {
         return reply.code(400).send({ error: 'employee_id и date обязательны' });
+      }
+      // 23.06.2026 BUG-FIX (🟡 T-shift-aliases): legacy-эндпоинт принимал shift
+      // 'as is' → клиенты, шлющие 'road'/'standby' (план миграции V145), получали
+      // запись с шифтом, который timesheet-v2.js трактует, а 'half' молча
+      // превращается в 'day'. Нормализуем синонимы к канону field_checkins:
+      // 'road'→'travel', 'standby'→'waiting' (см. validation 04-timesheet R-03/R-04).
+      const SHIFT_ALIASES = { road: 'travel', standby: 'waiting' };
+      const shift = SHIFT_ALIASES[shiftRaw] || shiftRaw;
+
+      // Period lock
+      try {
+        const { year, month } = tryDateParts(date);
+        await assertNotLockedSafe(fastify, { id: req.user.id, role: req.user.role }, {
+          year, month, scope_hint: scopeForRole(req.user.role), work_id: workId, employee_id, date
+        });
+      } catch (lockErr) {
+        if (lockErr && lockErr.code === 'period_locked') {
+          return reply.code(423).send({ error: 'period_locked', lock: lockErr.lock || null });
+        }
+        throw lockErr;
       }
 
       // Lookup assignment_id для employee_id + work_id
@@ -998,8 +1048,8 @@ async function routes(fastify, options) {
       const { rows } = await db.query(`
         INSERT INTO field_checkins (work_id, employee_id, assignment_id, date, shift,
           checkin_at, hours_worked, hours_paid, day_rate, amount_earned, status,
-          checkin_source, note)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'manual', $12)
+          checkin_source, note, entered_by_user_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'manual', $12, $13)
         ON CONFLICT (employee_id, date, work_id) WHERE status != 'cancelled'
           DO UPDATE SET
             assignment_id = EXCLUDED.assignment_id,
@@ -1012,11 +1062,12 @@ async function routes(fastify, options) {
             status = EXCLUDED.status,
             checkin_source = EXCLUDED.checkin_source,
             note = COALESCE(EXCLUDED.note, field_checkins.note),
+            entered_by_user_id = EXCLUDED.entered_by_user_id,
             updated_at = NOW()
         RETURNING *
       `, [workId, employee_id, assignmentId, date, shift || 'day', checkinAt,
           hours_worked || 11, hours_paid || 11, pts, amt,
-          status || 'completed', note || null]);
+          status || 'completed', note || null, req.user.id]);
       return { ok: true, checkin: rows[0] };
     } catch (err) {
       fastify.log.error({ err }, '[field-manage] create checkin error');
@@ -1031,7 +1082,25 @@ async function routes(fastify, options) {
     try {
       const id = parseInt(req.params.id);
       const workId = parseInt(req.params.work_id);
-      const { shift, hours_worked, hours_paid, day_rate, amount_earned, status, note } = req.body || {};
+      const { shift: shiftRaw, hours_worked, hours_paid, day_rate, amount_earned, status, note } = req.body || {};
+      // 23.06.2026 BUG-FIX (🟡 T-shift-aliases): тот же маппинг что в POST.
+      // 'road'→'travel', 'standby'→'waiting'.
+      const SHIFT_ALIASES = { road: 'travel', standby: 'waiting' };
+      const shift = SHIFT_ALIASES[shiftRaw] || shiftRaw;
+      // Period lock — берём дату из чекина
+      try {
+        const { rows: ci0 } = await db.query(`SELECT date, employee_id FROM field_checkins WHERE id=$1`, [id]);
+        const lockDate = ci0[0] && ci0[0].date ? (typeof ci0[0].date === 'string' ? ci0[0].date.slice(0, 10) : new Date(ci0[0].date).toISOString().slice(0, 10)) : null;
+        const { year, month } = tryDateParts(lockDate);
+        await assertNotLockedSafe(fastify, { id: req.user.id, role: req.user.role }, {
+          year, month, scope_hint: scopeForRole(req.user.role), work_id: workId, employee_id: ci0[0] && ci0[0].employee_id, date: lockDate
+        });
+      } catch (lockErr) {
+        if (lockErr && lockErr.code === 'period_locked') {
+          return reply.code(423).send({ error: 'period_locked', lock: lockErr.lock || null });
+        }
+        throw lockErr;
+      }
       const { rows } = await db.query(`
         UPDATE field_checkins SET
           shift = COALESCE($3, shift),
@@ -1041,12 +1110,14 @@ async function routes(fastify, options) {
           amount_earned = COALESCE($7, amount_earned),
           status = COALESCE($8, status),
           note = COALESCE($9, note),
+          entered_by_user_id = $10,
           updated_at = NOW()
         WHERE id = $1 AND work_id = $2
         RETURNING *
       `, [id, workId, shift || null, hours_worked != null ? hours_worked : null,
           hours_paid != null ? hours_paid : null, day_rate != null ? day_rate : null,
-          amount_earned != null ? amount_earned : null, status || null, note !== undefined ? note : null]);
+          amount_earned != null ? amount_earned : null, status || null, note !== undefined ? note : null,
+          req.user.id]);
       if (rows.length === 0) return reply.code(404).send({ error: 'Запись не найдена' });
       return { ok: true, checkin: rows[0] };
     } catch (err) {
@@ -1062,14 +1133,30 @@ async function routes(fastify, options) {
     try {
       const id = parseInt(req.params.id);
       const workId = parseInt(req.params.work_id);
+      // Period lock — берём дату из чекина
+      try {
+        const { rows: ci0 } = await db.query(`SELECT date, employee_id FROM field_checkins WHERE id=$1`, [id]);
+        const lockDate = ci0[0] && ci0[0].date ? (typeof ci0[0].date === 'string' ? ci0[0].date.slice(0, 10) : new Date(ci0[0].date).toISOString().slice(0, 10)) : null;
+        const { year, month } = tryDateParts(lockDate);
+        await assertNotLockedSafe(fastify, { id: req.user.id, role: req.user.role }, {
+          year, month, scope_hint: scopeForRole(req.user.role), work_id: workId, employee_id: ci0[0] && ci0[0].employee_id, date: lockDate
+        });
+      } catch (lockErr) {
+        if (lockErr && lockErr.code === 'period_locked') {
+          return reply.code(423).send({ error: 'period_locked', lock: lockErr.lock || null });
+        }
+        throw lockErr;
+      }
       const { rowCount } = await db.query(
-        `UPDATE field_checkins SET status = 'cancelled', updated_at = NOW() WHERE id = $1 AND work_id = $2`,
-        [id, workId]
+        `UPDATE field_checkins
+            SET status = 'cancelled', entered_by_user_id = $3, updated_at = NOW()
+          WHERE id = $1 AND work_id = $2`,
+        [id, workId, req.user.id]
       );
       if (rowCount === 0) return reply.code(404).send({ error: 'Запись не найдена' });
       return { ok: true };
     } catch (err) {
-      fastify.log.error('[field-manage] delete checkin error:', err);
+      logError(fastify, '[field-manage] delete checkin error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -1114,7 +1201,7 @@ async function routes(fastify, options) {
         daily,
       };
     } catch (err) {
-      fastify.log.error('[field-manage] progress error:', err);
+      logError(fastify, '[field-manage] progress error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -1164,7 +1251,7 @@ async function routes(fastify, options) {
         finances_error: finances.error || null,
       };
     } catch (err) {
-      fastify.log.error('[field-manage] departure-preview error:', err);
+      logError(fastify, '[field-manage] departure-preview error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -1209,7 +1296,7 @@ async function routes(fastify, options) {
 
       return { ok: true, departure_date: depDate };
     } catch (err) {
-      fastify.log.error('[field-manage] departure error:', err);
+      logError(fastify, '[field-manage] departure error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -1254,7 +1341,7 @@ async function routes(fastify, options) {
 
       return { ok: true };
     } catch (err) {
-      fastify.log.error('[field-manage] return error:', err);
+      logError(fastify, '[field-manage] return error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });

@@ -8,6 +8,31 @@
  */
 
 const { closedSql } = require('../helpers/work-status');
+const { logError } = require('../lib/log-error');
+
+// Lock helper: пробуем lib/timesheet-locks.js (агент A), fallback — наш timesheet-v2 экспорт
+function getLockLib() {
+  try { return require('../lib/timesheet-locks'); } catch (_) {}
+  try { return require('./timesheet-v2'); } catch (_) {}
+  return null;
+}
+async function assertNotLockedSafe(fastify, viewer, ctx) {
+  const lib = getLockLib();
+  if (!lib || typeof lib.assertNotLocked !== 'function') return;
+  await lib.assertNotLocked(fastify, viewer, ctx);
+}
+function tryDateParts(dateStr) {
+  if (!dateStr || typeof dateStr !== 'string') {
+    const d = new Date();
+    return { year: d.getFullYear(), month: d.getMonth() + 1 };
+  }
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr);
+  if (!m) {
+    const d = new Date(dateStr);
+    return { year: d.getFullYear(), month: d.getMonth() + 1 };
+  }
+  return { year: parseInt(m[1], 10), month: parseInt(m[2], 10) };
+}
 
 const FIELD_QUOTES_SHIFT_START = [
   'Slavnoj smeny, voin! Valhalla gorditsya toboj',
@@ -98,6 +123,19 @@ async function routes(fastify, options) {
 
       if (!work_id) {
         return reply.code(400).send({ error: 'Укажите work_id' });
+      }
+
+      // Global period lock (рабочий не может стартовать смену задним числом, если месяц закрыт)
+      try {
+        const { year, month } = tryDateParts(useDate);
+        await assertNotLockedSafe(fastify, { id: empId, role: 'WORKER' }, {
+          year, month, scope_hint: 'global', work_id, employee_id: empId, date: useDate
+        });
+      } catch (lockErr) {
+        if (lockErr && lockErr.code === 'period_locked') {
+          return reply.code(423).send({ error: 'period_locked', lock: lockErr.lock || null });
+        }
+        throw lockErr;
       }
 
       // Check assignment exists and is active + работа открыта (не закрыта/сдана/удалена)
@@ -285,7 +323,7 @@ async function routes(fastify, options) {
         quote: randomQuote(FIELD_QUOTES_SHIFT_START),
       };
     } catch (err) {
-      fastify.log.error('[field-checkin] POST / error:', err);
+      logError(fastify, '[field-checkin] POST / error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -300,6 +338,50 @@ async function routes(fastify, options) {
 
       if (!checkin_id) {
         return reply.code(400).send({ error: 'Укажите checkin_id' });
+      }
+
+      // Global lock — рабочий не может закрыть смену на залоченном периоде
+      // FIX 9 (агент 1): передаём work_id, чтобы pm-лок проверялся правильно
+      //   (раньше pm-лок работы не действовал без work_id в payload).
+      // FIX #10 (агент 2, Data integrity #5): cross-midnight checkout grace.
+      //   Сценарий: Worker стартовал 30.06 23:55 (status='active').
+      //   01.07 директор закрыл июнь global-локом.
+      //   Worker делает checkout 06:00 1.07 → раньше получал 423 «period_locked»
+      //   и не мог закрыть смену, хотя дата чекина в его собственном начале месяца
+      //   уже залочена. Решение: если чекин ВСЁ ЕЩЁ active И его date < сегодня —
+      //   это «остаточный» межсуточный чекаут, разрешаем закрыть без 423.
+      try {
+        const { rows: ci0 } = await db.query(
+          `SELECT date, work_id, status FROM field_checkins WHERE id=$1`,
+          [checkin_id]
+        );
+        const lockDate = ci0[0] && ci0[0].date
+          ? (typeof ci0[0].date === 'string'
+              ? ci0[0].date.slice(0, 10)
+              : new Date(ci0[0].date).toISOString().slice(0, 10))
+          : null;
+        const lockWorkId = ci0[0] ? ci0[0].work_id : null;
+        const ciStatus = ci0[0] && ci0[0].status;
+
+        // FIX #10: grace для межсуточного checkout.
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const isCrossMidnightGrace = (
+          ciStatus === 'active' &&
+          lockDate &&
+          lockDate < todayStr
+        );
+
+        if (!isCrossMidnightGrace) {
+          const { year, month } = tryDateParts(lockDate);
+          await assertNotLockedSafe(fastify, { id: empId, role: 'WORKER' }, {
+            year, month, scope_hint: 'global', work_id: lockWorkId, employee_id: empId, date: lockDate
+          });
+        }
+      } catch (lockErr) {
+        if (lockErr && lockErr.code === 'period_locked') {
+          return reply.code(423).send({ error: 'period_locked', lock: lockErr.lock || null });
+        }
+        throw lockErr;
       }
 
       // Find checkin with shift type
@@ -461,7 +543,7 @@ async function routes(fastify, options) {
         quote,
       };
     } catch (err) {
-      fastify.log.error('[field-checkin] /checkout error:', err);
+      logError(fastify, '[field-checkin] /checkout error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -476,6 +558,19 @@ async function routes(fastify, options) {
 
       if (!employee_id || !work_id) {
         return reply.code(400).send({ error: 'Укажите employee_id и work_id' });
+      }
+
+      // Global lock — мастер не может ставить отметку в закрытом периоде
+      try {
+        const { year, month } = tryDateParts(date);
+        await assertNotLockedSafe(fastify, { id: masterEmpId, role: 'MASTER' }, {
+          year, month, scope_hint: 'global', work_id, employee_id, date
+        });
+      } catch (lockErr) {
+        if (lockErr && lockErr.code === 'period_locked') {
+          return reply.code(423).send({ error: 'period_locked', lock: lockErr.lock || null });
+        }
+        throw lockErr;
       }
 
       // Check master has master role on this project
@@ -571,7 +666,7 @@ async function routes(fastify, options) {
         amount_earned: amountEarned,
       };
     } catch (err) {
-      fastify.log.error('[field-checkin] /manual error:', err);
+      logError(fastify, '[field-checkin] /manual error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -587,13 +682,27 @@ async function routes(fastify, options) {
 
       // Get the checkin to find work_id
       const { rows: checkins } = await db.query(
-        'SELECT id, work_id, employee_id FROM field_checkins WHERE id = $1',
+        'SELECT id, work_id, employee_id, date FROM field_checkins WHERE id = $1',
         [checkinId]
       );
       if (checkins.length === 0) {
         return reply.code(404).send({ error: 'Чекин не найден' });
       }
       const checkin = checkins[0];
+
+      // Global lock — на закрытом периоде корректировать нельзя
+      try {
+        const lockDate = checkin.date ? (typeof checkin.date === 'string' ? checkin.date.slice(0, 10) : new Date(checkin.date).toISOString().slice(0, 10)) : null;
+        const { year, month } = tryDateParts(lockDate);
+        await assertNotLockedSafe(fastify, { id: masterEmpId, role: 'MASTER' }, {
+          year, month, scope_hint: 'global', work_id: checkin.work_id, employee_id: checkin.employee_id, date: lockDate
+        });
+      } catch (lockErr) {
+        if (lockErr && lockErr.code === 'period_locked') {
+          return reply.code(423).send({ error: 'period_locked', lock: lockErr.lock || null });
+        }
+        throw lockErr;
+      }
 
       // Check master has master role on this project
       const { rows: masterAssign } = await db.query(`
@@ -621,7 +730,7 @@ async function routes(fastify, options) {
 
       return { ok: true, checkin: updated[0] };
     } catch (err) {
-      fastify.log.error('[field-checkin] /correct error:', err);
+      logError(fastify, '[field-checkin] /correct error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -679,7 +788,7 @@ async function routes(fastify, options) {
         present_count: checkins.length,
       };
     } catch (err) {
-      fastify.log.error('[field-checkin] /today error:', err);
+      logError(fastify, '[field-checkin] /today error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -764,7 +873,7 @@ async function routes(fastify, options) {
         crew,
       };
     } catch (err) {
-      fastify.log.error('[field-checkin] /worker/my-work error:', err);
+      logError(fastify, '[field-checkin] /worker/my-work error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });

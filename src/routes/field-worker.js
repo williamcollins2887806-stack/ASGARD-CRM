@@ -12,6 +12,7 @@
  */
 
 const { getWorkerFinances } = require('../lib/worker-finances');
+const { logError } = require('../lib/log-error');
 
 const FIELD_ACHIEVEMENTS = [
   { id: 'first_shift',    icon: '🔥', name: 'Пе��вая смена',    desc: 'Отработал первый день', check: s => s.total_shifts >= 1 },
@@ -158,7 +159,7 @@ async function routes(fastify, options) {
         active_armor:  cosmetics?.active_armor  || null,
       };
     } catch (err) {
-      fastify.log.error('[field-worker] /me error:', err);
+      logError(fastify, '[field-worker] /me error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -410,7 +411,7 @@ async function routes(fastify, options) {
 
       return { projects };
     } catch (err) {
-      fastify.log.error('[field-worker] /projects error:', err);
+      logError(fastify, '[field-worker] /projects error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -449,7 +450,7 @@ async function routes(fastify, options) {
         timesheet: checkins,
       };
     } catch (err) {
-      fastify.log.error('[field-worker] /projects/:id error:', err);
+      logError(fastify, '[field-worker] /projects/:id error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -467,7 +468,7 @@ async function routes(fastify, options) {
       if (result.error) return reply.code(500).send(result);
       return result;
     } catch (err) {
-      fastify.log.error('[field-worker] /finances error:', err);
+      logError(fastify, '[field-worker] /finances error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -627,7 +628,7 @@ async function routes(fastify, options) {
         one_time_payments: otps,
       };
     } catch (err) {
-      fastify.log.error('[field-worker] /finances/:id error:', err);
+      logError(fastify, '[field-worker] /finances/:id error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -724,7 +725,7 @@ async function routes(fastify, options) {
         left_site_count: leftSite.length,
       };
     } catch (err) {
-      fastify.log.error('[field-worker] /crew error:', err);
+      logError(fastify, '[field-worker] /crew error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -746,7 +747,7 @@ async function routes(fastify, options) {
 
       return { logistics: rows };
     } catch (err) {
-      fastify.log.error('[field-worker] /logistics error:', err);
+      logError(fastify, '[field-worker] /logistics error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -767,7 +768,7 @@ async function routes(fastify, options) {
 
       return { logistics: rows };
     } catch (err) {
-      fastify.log.error('[field-worker] /logistics/history error:', err);
+      logError(fastify, '[field-worker] /logistics/history error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -796,7 +797,7 @@ async function routes(fastify, options) {
       `, [empId]);
       return { permits: rows };
     } catch (err) {
-      fastify.log.error('[field-worker] /permits error:', err);
+      logError(fastify, '[field-worker] /permits error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -821,7 +822,7 @@ async function routes(fastify, options) {
       if (!rows.length) return reply.code(404).send({ error: 'Не найден' });
       return { employee: rows[0] };
     } catch (err) {
-      fastify.log.error('[field-worker] /personal error:', err);
+      logError(fastify, '[field-worker] /personal error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -875,7 +876,7 @@ async function routes(fastify, options) {
       fastify.log.info(`[field-worker] Employee ${empId} updated personal data: ${Object.keys(filtered).join(', ')}`);
       return { ok: true, employee: rows[0], updated_fields: Object.keys(filtered) };
     } catch (err) {
-      fastify.log.error('[field-worker] PUT /personal error:', err);
+      logError(fastify, '[field-worker] PUT /personal error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -916,7 +917,7 @@ async function routes(fastify, options) {
         }
       };
     } catch (err) {
-      fastify.log.error('[field-worker] /timesheet error:', err);
+      logError(fastify, '[field-worker] /timesheet error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });

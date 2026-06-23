@@ -8,6 +8,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { logError } = require('../lib/log-error');
 
 const UPLOAD_BASE = process.env.UPLOAD_DIR || './uploads';
 const MAX_PHOTO_SIZE = 20 * 1024 * 1024; // 20MB
@@ -129,7 +130,7 @@ async function routes(fastify, options) {
         quote: randomQuote(FIELD_QUOTES_PHOTO),
       };
     } catch (err) {
-      fastify.log.error('[field-photos] POST /upload error:', err);
+      logError(fastify, '[field-photos] POST /upload error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -208,7 +209,7 @@ async function routes(fastify, options) {
 
       return { photos };
     } catch (err) {
-      fastify.log.error('[field-photos] GET / error:', err);
+      logError(fastify, '[field-photos] GET / error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -253,7 +254,7 @@ async function routes(fastify, options) {
 
       return { ok: true };
     } catch (err) {
-      fastify.log.error('[field-photos] DELETE /:id error:', err);
+      logError(fastify, '[field-photos] DELETE /:id error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -294,7 +295,7 @@ async function routes(fastify, options) {
 
       return rows[0];
     } catch (err) {
-      fastify.log.error('[field-photos] GET /stats error:', err);
+      logError(fastify, '[field-photos] GET /stats error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -332,7 +333,69 @@ async function routes(fastify, options) {
 
       return { photos };
     } catch (err) {
-      fastify.log.error('[field-photos] GET /crm error:', err);
+      logError(fastify, '[field-photos] GET /crm error', err, req);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // GET /recent — recent photos from PM's workers (mobile dashboard widget)
+  // RBAC: PM (own works only), HEAD_PM/ADMIN/DIRECTOR_* (all works)
+  // ─────────────────────────────────────────────────────────────────────
+  fastify.get('/recent', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    try {
+      const allowedRoles = ['PM', 'HEAD_PM', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+      if (!allowedRoles.includes(req.user.role)) {
+        return reply.code(403).send({ error: 'Нет доступа' });
+      }
+
+      let limit = parseInt(req.query.limit) || 12;
+      if (limit < 1) limit = 12;
+      if (limit > 50) limit = 50;
+
+      const isPM = req.user.role === 'PM';
+
+      // 23.06.2026 BUG-FIX (Phase 4 smoke): w.title → w.work_title (в таблице works колонки 'title' нет).
+      let sql = `
+        SELECT fp.id,
+               fp.filename,
+               fp.work_id,
+               fp.taken_at,
+               fp.created_at,
+               e.fio AS employee_fio,
+               COALESCE(w.work_title, w.object_name) AS work_title
+        FROM field_photos fp
+        JOIN employees e ON e.id = fp.employee_id
+        JOIN works w ON w.id = fp.work_id
+        LEFT JOIN field_checkins fc ON fc.id = fp.checkin_id
+      `;
+      const params = [];
+
+      if (isPM) {
+        sql += ` WHERE w.pm_id = $1`;
+        params.push(req.user.id);
+      }
+
+      sql += ` ORDER BY COALESCE(fp.taken_at, fp.created_at) DESC LIMIT $${params.length + 1}`;
+      params.push(limit);
+
+      const { rows } = await db.query(sql, params);
+
+      const photos = rows.map(p => {
+        const url = `/uploads/field/${p.work_id}/${p.filename}`;
+        return {
+          id: p.id,
+          url,
+          thumbnail_url: url,
+          employee_fio: p.employee_fio,
+          work_title: p.work_title,
+          taken_at: p.taken_at || p.created_at,
+        };
+      });
+
+      return photos;
+    } catch (err) {
+      logError(fastify, '[field-photos] GET /recent error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });

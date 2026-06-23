@@ -21,6 +21,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const MangoService = require('../services/mango');
+const { logError } = require('../lib/log-error');
 
 const UPLOAD_BASE = process.env.UPLOAD_DIR || './uploads';
 const MAX_PHOTO_SIZE = 15 * 1024 * 1024; // 15MB
@@ -88,7 +89,7 @@ async function routes(fastify, options) {
 
       return { list: list[0], items_count: items ? items.length : 0 };
     } catch (err) {
-      fastify.log.error('[field-packing] POST / error:', err);
+      logError(fastify, '[field-packing] POST / error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -113,7 +114,7 @@ async function routes(fastify, options) {
 
       return { lists: rows };
     } catch (err) {
-      fastify.log.error('[field-packing] GET / error:', err);
+      logError(fastify, '[field-packing] GET / error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -143,7 +144,7 @@ async function routes(fastify, options) {
 
       return { list: list[0], items };
     } catch (err) {
-      fastify.log.error('[field-packing] GET /:id error:', err);
+      logError(fastify, '[field-packing] GET /:id error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -171,7 +172,7 @@ async function routes(fastify, options) {
 
       return { ok: true };
     } catch (err) {
-      fastify.log.error('[field-packing] PUT /:id error:', err);
+      logError(fastify, '[field-packing] PUT /:id error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -225,7 +226,7 @@ async function routes(fastify, options) {
 
       return { ok: true, inserted: inserted.length };
     } catch (err) {
-      fastify.log.error('[field-packing] POST /:id/items error:', err);
+      logError(fastify, '[field-packing] POST /:id/items error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -258,7 +259,7 @@ async function routes(fastify, options) {
 
       return { ok: true };
     } catch (err) {
-      fastify.log.error('[field-packing] PUT /:id/items/:itemId error:', err);
+      logError(fastify, '[field-packing] PUT /:id/items/:itemId error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -287,7 +288,7 @@ async function routes(fastify, options) {
 
       return { ok: true };
     } catch (err) {
-      fastify.log.error('[field-packing] DELETE /:id/items/:itemId error:', err);
+      logError(fastify, '[field-packing] DELETE /:id/items/:itemId error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -337,7 +338,7 @@ async function routes(fastify, options) {
 
       return { ok: true, sms_sent: smsSent };
     } catch (err) {
-      fastify.log.error('[field-packing] POST /:id/assign error:', err);
+      logError(fastify, '[field-packing] POST /:id/assign error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -366,7 +367,7 @@ async function routes(fastify, options) {
 
       return { lists: rows };
     } catch (err) {
-      fastify.log.error('[field-packing] GET /my error:', err);
+      logError(fastify, '[field-packing] GET /my error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -399,7 +400,7 @@ async function routes(fastify, options) {
 
       return { ok: true, status: 'in_progress', items };
     } catch (err) {
-      fastify.log.error('[field-packing] PUT /my/:id/start error:', err);
+      logError(fastify, '[field-packing] PUT /my/:id/start error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -454,7 +455,7 @@ async function routes(fastify, options) {
 
       return { ok: true, items_packed: parseInt(counts[0].packed) };
     } catch (err) {
-      fastify.log.error('[field-packing] PUT /my/:id/items/:itemId error:', err);
+      logError(fastify, '[field-packing] PUT /my/:id/items/:itemId error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -512,7 +513,7 @@ async function routes(fastify, options) {
 
       return { ok: true, photo_url: `/uploads/packing/${uniqueName}` };
     } catch (err) {
-      fastify.log.error('[field-packing] POST photo error:', err);
+      logError(fastify, '[field-packing] POST photo error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -539,7 +540,7 @@ async function routes(fastify, options) {
 
       return { ok: true, status: 'completed' };
     } catch (err) {
-      fastify.log.error('[field-packing] PUT /my/:id/complete error:', err);
+      logError(fastify, '[field-packing] PUT /my/:id/complete error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });

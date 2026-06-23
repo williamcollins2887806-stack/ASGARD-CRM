@@ -5,6 +5,7 @@
 
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const { logError } = require('../lib/log-error');
 
 async function routes(fastify, options) {
   const db = fastify.db;
@@ -40,8 +41,12 @@ async function routes(fastify, options) {
     let idx = 1;
 
     if (role) {
-      sql += ` AND u.role = $${idx}`;
-      params.push(role);
+      // Поддержка одиночной роли ("PM") и списка через запятую ("PM,HEAD_PM").
+      // Vanilla tenders.js:717 фильтрует пользователей по role IN (PM, HEAD_PM) —
+      // даём v2 один backend-вызов вместо двух.
+      const roleList = String(role).split(',').map((s) => s.trim()).filter(Boolean);
+      sql += ` AND u.role = ANY($${idx}::text[])`;
+      params.push(roleList);
       idx++;
     }
 
@@ -175,7 +180,7 @@ async function routes(fastify, options) {
           `При первом входе вам нужно сменить пароль и установить PIN.`
         );
       } catch(e) {
-        fastify.log.error('Failed to send Telegram:', e);
+        logError(fastify, 'Failed to send Telegram', e, request);
       }
     }
 

@@ -34,6 +34,7 @@
  */
 
 const { getWorkerFinances } = require('../lib/worker-finances');
+const { logError } = require('../lib/log-error');
 
 // Lock helper
 function getLockLib() {
@@ -130,7 +131,7 @@ async function routes(fastify, options) {
 
       return { payments: rows, total: parseInt(countRows[0].total) };
     } catch (err) {
-      fastify.log.error('[worker-payments] GET / error:', err);
+      logError(fastify, '[worker-payments] GET / error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -191,7 +192,7 @@ async function routes(fastify, options) {
 
       return { payment: inserted[0] };
     } catch (err) {
-      fastify.log.error('[worker-payments] POST / error:', err);
+      logError(fastify, '[worker-payments] POST / error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -231,7 +232,7 @@ async function routes(fastify, options) {
 
       return { payment: rows[0] };
     } catch (err) {
-      fastify.log.error('[worker-payments] PUT /:id error:', err);
+      logError(fastify, '[worker-payments] PUT /:id error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -364,7 +365,7 @@ async function routes(fastify, options) {
 
       return { ok: true };
     } catch (err) {
-      fastify.log.error('[worker-payments] DELETE /:id error:', err);
+      logError(fastify, '[worker-payments] DELETE /:id error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -410,7 +411,7 @@ async function routes(fastify, options) {
         last_payment_date: lastP?.last_date || null
       };
     } catch (err) {
-      fastify.log.error('[worker-payments] GET /employee-summary error:', err);
+      logError(fastify, '[worker-payments] GET /employee-summary error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -570,7 +571,7 @@ async function routes(fastify, options) {
 
       return { payments: created, count: created.length };
     } catch (err) {
-      fastify.log.error('[worker-payments] POST /bulk-per-diem error:', err);
+      logError(fastify, '[worker-payments] POST /bulk-per-diem error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -656,7 +657,7 @@ async function routes(fastify, options) {
 
       return { payments: created, count: created.length, point_value: pointValue };
     } catch (err) {
-      fastify.log.error('[worker-payments] POST /generate-salary error:', err);
+      logError(fastify, '[worker-payments] POST /generate-salary error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -720,7 +721,7 @@ async function routes(fastify, options) {
 
       return { ok: true, updated: result.rowCount };
     } catch (err) {
-      fastify.log.error('[worker-payments] POST /pay-salary error:', err);
+      logError(fastify, '[worker-payments] POST /pay-salary error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -787,7 +788,7 @@ async function routes(fastify, options) {
 
       return { workers, totals };
     } catch (err) {
-      fastify.log.error('[worker-payments] GET /project/:id/summary error:', err);
+      logError(fastify, '[worker-payments] GET /project/:id/summary error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -821,7 +822,7 @@ async function routes(fastify, options) {
       const { rows } = await db.query(query, params);
       return { payments: rows };
     } catch (err) {
-      fastify.log.error('[worker-payments] GET /my error:', err);
+      logError(fastify, '[worker-payments] GET /my error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -837,7 +838,7 @@ async function routes(fastify, options) {
       if (result.error) return reply.code(500).send(result);
       return result;
     } catch (err) {
-      fastify.log.error('[worker-payments] GET /my/balance error:', err);
+      logError(fastify, '[worker-payments] GET /my/balance error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -865,7 +866,7 @@ async function routes(fastify, options) {
 
       return { ok: true, status: 'confirmed' };
     } catch (err) {
-      fastify.log.error('[worker-payments] POST /my/:id/confirm error:', err);
+      logError(fastify, '[worker-payments] POST /my/:id/confirm error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -891,7 +892,15 @@ async function routes(fastify, options) {
           SUM(CASE WHEN wp.type = 'penalty' THEN wp.amount ELSE 0 END) as penalty,
           SUM(CASE WHEN wp.type = 'salary' THEN COALESCE(wp.total_points, 0) ELSE 0 END) as points,
           SUM(CASE WHEN wp.type = 'salary' THEN COALESCE(wp.days, 0) ELSE 0 END) as shifts,
-          MAX(wp.status) as payment_status
+          -- 23.06.2026 BUG-FIX (🟡 Payouts-3): MAX(wp.status) лексикографически давал
+          -- 'pending' даже если 4 из 5 выплат 'confirmed' (p > c > p). Заменено на
+          -- агрегацию по приоритету paid > confirmed > pending > cancelled.
+          CASE
+            WHEN BOOL_OR(wp.status = 'paid')      THEN 'paid'
+            WHEN BOOL_OR(wp.status = 'confirmed') THEN 'confirmed'
+            WHEN BOOL_OR(wp.status = 'pending')   THEN 'pending'
+            ELSE 'cancelled'
+          END as payment_status
         FROM worker_payments wp
         JOIN employees e ON e.id = wp.employee_id
         LEFT JOIN works w ON w.id = wp.work_id
@@ -921,11 +930,15 @@ async function routes(fastify, options) {
           penalty: totalPenalty,
           fot: totalSalary + totalBonus - totalPenalty,
           tax: Math.round((totalSalary + totalBonus - totalPenalty) * (await getPayrollTaxRate())),
-          grand_total: totalSalary + totalPerDiem + totalBonus - totalPenalty
+          // 23.06.2026 BUG-FIX (Payouts R3): grand_total теперь вычитает уже выплаченные авансы.
+          // Vanilla payments-report.js:178 net вычитает advance, а API ранее возвращал «грязный»
+          // итог без вычета авансов → строка «Итого к выплате» в desktop-отчёте и API-ответе
+          // не совпадали. Семантика: «итого ещё к выплате на руки» = ЗП + сут + премии − штрафы − аванс.
+          grand_total: totalSalary + totalPerDiem + totalBonus - totalPenalty - totalAdvance
         }
       };
     } catch (err) {
-      fastify.log.error('[worker-payments] GET /reports/payroll error:', err);
+      logError(fastify, '[worker-payments] GET /reports/payroll error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -948,7 +961,7 @@ async function routes(fastify, options) {
 
       return { rows };
     } catch (err) {
-      fastify.log.error('[worker-payments] GET /reports/per-diem error:', err);
+      logError(fastify, '[worker-payments] GET /reports/per-diem error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -985,7 +998,7 @@ async function routes(fastify, options) {
 
       return { rows };
     } catch (err) {
-      fastify.log.error('[worker-payments] GET /reports/labor-costs error:', err);
+      logError(fastify, '[worker-payments] GET /reports/labor-costs error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -1015,7 +1028,7 @@ async function routes(fastify, options) {
 
       return { employee: emp[0], year, months: rows };
     } catch (err) {
-      fastify.log.error('[worker-payments] GET /reports/worker/:id/year/:y error:', err);
+      logError(fastify, '[worker-payments] GET /reports/worker/:id/year/:y error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -1048,7 +1061,7 @@ async function routes(fastify, options) {
 
       return { rows };
     } catch (err) {
-      fastify.log.error('[worker-payments] GET /reports/debts error:', err);
+      logError(fastify, '[worker-payments] GET /reports/debts error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -1247,7 +1260,7 @@ async function routes(fastify, options) {
       reply.header('Content-Disposition', `attachment; filename="worker_payments_${year}_${month}.xlsx"`);
       return reply.send(Buffer.from(buffer));
     } catch (err) {
-      fastify.log.error('[worker-payments] Excel export error:', err);
+      logError(fastify, '[worker-payments] Excel export error', err, req);
       return reply.code(500).send({ error: '\u041E\u0448\u0438\u0431\u043A\u0430 \u044D\u043A\u0441\u043F\u043E\u0440\u0442\u0430' });
     }
   });
@@ -1280,7 +1293,10 @@ async function routes(fastify, options) {
       const worksFilter = isDir
         ? ''
         : 'AND fc.work_id IN (SELECT id FROM works WHERE pm_id = $4)';
-      const checkinParams = isDir ? [year, month, ['completed', 'closed', 'confirmed']] : [year, month, ['completed', 'closed', 'confirmed'], req.user.id];
+      // 23.06.2026 BUG-FIX (Payouts R4): приведено к SSoT (worker-finances.js:44) — только 'completed'.
+      // До фикса payroll-grid считал смены ('completed','closed','confirmed'), и сетка ФОТ
+      // показывала больше смен, чем SSoT-баланс — расхождение «начислено vs к выплате».
+      const checkinParams = isDir ? [year, month, ['completed']] : [year, month, ['completed'], req.user.id];
 
       const { rows: checkins } = await db.query(`
         SELECT fc.employee_id, e.fio, e.full_name, e.position,
@@ -1408,7 +1424,7 @@ async function routes(fastify, options) {
         tariff_categories: tariffCategories
       };
     } catch (err) {
-      fastify.log.error('[worker-payments] GET /reports/payroll-grid error:', err);
+      logError(fastify, '[worker-payments] GET /reports/payroll-grid error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -1518,7 +1534,7 @@ async function routes(fastify, options) {
 
       return { ok: true, updated };
     } catch (err) {
-      fastify.log.error('[worker-payments] PUT /reports/payroll-grid/save error:', err);
+      logError(fastify, '[worker-payments] PUT /reports/payroll-grid/save error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -1559,7 +1575,10 @@ async function routes(fastify, options) {
       const worksFilter = isDir
         ? ''
         : 'AND fc.work_id IN (SELECT id FROM works WHERE pm_id = $4)';
-      const checkinParams = isDir ? [year, month, ['completed', 'closed', 'confirmed']] : [year, month, ['completed', 'closed', 'confirmed'], req.user.id];
+      // 23.06.2026 BUG-FIX (Payouts R4): приведено к SSoT (worker-finances.js:44) — только 'completed'.
+      // До фикса payroll-grid считал смены ('completed','closed','confirmed'), и сетка ФОТ
+      // показывала больше смен, чем SSoT-баланс — расхождение «начислено vs к выплате».
+      const checkinParams = isDir ? [year, month, ['completed']] : [year, month, ['completed'], req.user.id];
 
       const { rows: checkins } = await db.query(`
         SELECT fc.employee_id, e.fio, e.full_name,
@@ -1841,7 +1860,7 @@ async function routes(fastify, options) {
       reply.header('Content-Disposition', `attachment; filename*=UTF-8''${fname}`);
       return reply.send(Buffer.from(buf));
     } catch (err) {
-      fastify.log.error('[worker-payments] payroll-grid export error:', err);
+      logError(fastify, '[worker-payments] payroll-grid export error', err, req);
       return reply.code(500).send({ error: 'Ошибка экспорта' });
     }
   });

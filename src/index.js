@@ -522,6 +522,7 @@ fastify.register(require('./routes/correspondence'), { prefix: '/api/corresponde
 fastify.register(require('./routes/letter'), { prefix: '/api/letter' });
 fastify.register(require('./routes/equipment'), { prefix: '/api/equipment' });
 fastify.register(require('./routes/icons'), { prefix: '/api/icons' }); // V254: реестр SVG-иконок каталога (manifest.json)
+// 24.06.2026: /api/health уже есть в репо (другой route), не дублируем
 fastify.register(require('./routes/data'), { prefix: '/api/data' });
 fastify.register(require('./routes/permissions'), { prefix: '/api/permissions' });
 fastify.register(require('./routes/cash'), { prefix: '/api/cash' });
@@ -1051,11 +1052,17 @@ async function ensureTables() {
   `);
 
   // Chats table
+  // 23.06.2026 BUG-FIX (Mail Y7 🟡): chat_type помечен как LEGACY.
+  // КАНОН — chats.type (создаётся ниже ALTER'ом и используется во всех routes:
+  // chat_groups.js / chat.js / notifications). chat_type остался от первой версии
+  // и НЕ читается ни одним роутом — но колонка не удалена, чтобы не сломать
+  // старые INSERT'ы и для отката. Любой новый код ДОЛЖЕН писать в `type`,
+  // НЕ в `chat_type`.
   await db.query(`
     CREATE TABLE IF NOT EXISTS chats (
       id SERIAL PRIMARY KEY,
       name VARCHAR(255),
-      chat_type VARCHAR(50) DEFAULT 'direct',
+      chat_type VARCHAR(50) DEFAULT 'direct', -- LEGACY (см. Mail Y7), канон: column "type" ниже
       participants TEXT,
       created_by INTEGER,
       created_at TIMESTAMP DEFAULT NOW(),

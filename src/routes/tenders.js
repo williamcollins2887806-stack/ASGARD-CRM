@@ -72,6 +72,7 @@ async function routes(fastify, options) {
   const { createNotification } = require('../services/notify');
   const { sendToUser, broadcast } = require('./sse');
   const { ensureSiteByPlace } = require('../helpers/site-geocode');
+const { logError } = require('../lib/log-error');
 
   // ─────────────────────────────────────────────────────────────────────────────
   // GET /api/tenders - List all tenders
@@ -98,12 +99,22 @@ async function routes(fastify, options) {
     let sql = `
       SELECT t.*,
              u.name as pm_name,
+             -- 23.06.2026 BUG-FIX (🟡 N2): унификация с tenders-hub/feed.
+             -- Хаб тендеров отдаёт responsible_user_id = COALESCE(responsible_pm_id, work_assigned_pm_id).
+             -- До фикса фронт-консумеру нужно было вычислять его вручную, иначе фильтры/группировки по
+             -- «исполнителю» в одних местах работали, в других — нет.
+             COALESCE(t.responsible_pm_id, t.work_assigned_pm_id)::int AS responsible_user_id,
              (SELECT COUNT(*) FROM estimates e WHERE e.tender_id = t.id) as estimates_count,
              (SELECT COUNT(*) FROM works w WHERE w.tender_id = t.id) as works_count
       FROM tenders t
       LEFT JOIN users u ON t.responsible_pm_id = u.id
       WHERE 1=1
         AND t.deleted_at IS NULL
+        -- Стаб-tenders "Auto-tender для pt-N/inbox-N" — placeholders из legacy-кода;
+        -- настоящая запись живёт в pre_tender_requests / inbox_applications.
+        -- На уровне общего реестра /api/tenders они не нужны (показываются как
+        -- заявки в Хабе через /api/tenders-hub/feed на отдельной вкладке).
+        AND (t.tender_title IS NULL OR t.tender_title NOT ILIKE 'Auto-tender%')
     `;
     const params = [];
     let idx = 1;
@@ -360,6 +371,8 @@ async function routes(fastify, options) {
     const result = await db.query(`
       SELECT t.*,
              u.name as pm_name,
+             -- 23.06.2026 BUG-FIX (🟡 N2): унификация с tenders-hub/feed (см. /api/tenders SELECT).
+             COALESCE(t.responsible_pm_id, t.work_assigned_pm_id)::int AS responsible_user_id,
              COALESCE(c.name, t.customer_name) as customer_display
       FROM tenders t
       LEFT JOIN users u ON t.responsible_pm_id = u.id
@@ -640,7 +653,10 @@ async function routes(fastify, options) {
       'responsible_pm_id', 'tag', 'group_tag', 'tag_id',
       'docs_link', 'purchase_url', 'comment_to', 'comment_dir', 'reject_reason',
       'calculator_kind', 'calculator_user_id',
-      'contract_sum', 'status_comment', 'winner_name'
+      'contract_sum', 'status_comment', 'winner_name',
+      // 23.06.2026 BUG-FIX (🟡 P0 #3 в VALIDATION): kp_sent_at существует в БД (V236:22)
+      // и v2 KpReadyPanel.jsx:44 шлёт PUT с этим полем, но до фикса оно молча отбрасывалось.
+      'kp_sent_at'
     ];
 
     const updates = [];
@@ -2077,7 +2093,7 @@ async function routes(fastify, options) {
       await client.query('COMMIT');
     } catch (txErr) {
       try { await client.query('ROLLBACK'); } catch (_) {}
-      fastify.log.error('[tender->work] tx error:', txErr);
+      logError(fastify, '[tender->work] tx error', txErr, request);
       return reply.code(500).send({ error: 'Ошибка создания работы' });
     } finally {
       client.release();

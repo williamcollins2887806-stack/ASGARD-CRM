@@ -10,6 +10,7 @@
  */
 
 const { createNotification } = require('../services/notify');
+const { logError } = require('../lib/log-error');
 
 const FIELD_QUOTES_REPORT = [
   'Otchyot otpravlen — skaldy zapomniat etot den!',
@@ -61,7 +62,7 @@ async function routes(fastify, options) {
 
       return { template: rows[0] };
     } catch (err) {
-      fastify.log.error('[field-reports] GET /template error:', err);
+      logError(fastify, '[field-reports] GET /template error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -140,7 +141,7 @@ async function routes(fastify, options) {
         quote: randomQuote(FIELD_QUOTES_REPORT),
       };
     } catch (err) {
-      fastify.log.error('[field-reports] POST / error:', err);
+      logError(fastify, '[field-reports] POST / error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -201,7 +202,7 @@ async function routes(fastify, options) {
       const { rows } = await db.query(sql, params);
       return { reports: rows };
     } catch (err) {
-      fastify.log.error('[field-reports] GET / error:', err);
+      logError(fastify, '[field-reports] GET / error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -235,7 +236,7 @@ async function routes(fastify, options) {
 
         return { ok: true, status: 'accepted' };
       } catch (err) {
-        fastify.log.error('[field-reports] PUT /:id/accept error:', err);
+        logError(fastify, '[field-reports] PUT /:id/accept error', err, req);
         return reply.code(500).send({ error: 'Ошибка сервера' });
       }
     }
@@ -295,7 +296,7 @@ async function routes(fastify, options) {
         created_at: inserted[0].created_at,
       };
     } catch (err) {
-      fastify.log.error('[field-reports] POST /incidents error:', err);
+      logError(fastify, '[field-reports] POST /incidents error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -318,7 +319,7 @@ async function routes(fastify, options) {
 
       return { incidents: rows };
     } catch (err) {
-      fastify.log.error('[field-reports] GET /incidents error:', err);
+      logError(fastify, '[field-reports] GET /incidents error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });

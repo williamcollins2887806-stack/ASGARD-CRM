@@ -3,8 +3,17 @@
  */
 
 const { notClosedSql, closedSql } = require('../helpers/work-status');
+const { logError } = require('../lib/log-error');
 
 // SECURITY: Allowlist of columns for works
+// 23.06.2026 KNOWN ISSUES (🟡 S8/S9):
+//   - 'start_date' — легаси с V001; фронт активно НЕ пишет (только читает как fallback).
+//     Канон-цепочка start_plan → start_in_work_date → start_date → start_fact.
+//   - 'city'/'address' — schema-drift: НЕТ в V001 CREATE TABLE и ни в одной V*.sql миграции.
+//     На проде колонка присутствует благодаря ручному ALTER (нарушение feedback-deploy-strategy).
+//     Заполняется крайне редко; фронт показывает object_name как основное человекочитаемое
+//     поле, city — только fallback. После следующего pg_dump → V*-миграции эти поля
+//     должны быть либо легализованы новой миграцией, либо удалены из ALLOWED_COLS.
 const ALLOWED_COLS = new Set([
   'tender_id', 'pm_id', 'work_number', 'work_title', 'work_status',
   'customer_name', 'start_date', 'start_plan', 'end_plan', 'end_fact',
@@ -275,7 +284,7 @@ async function routes(fastify, options) {
 
       return { work };
     } catch (err) {
-      fastify.log.error('Works POST error:', err);
+      logError(fastify, 'Works POST error', err, request);
       return reply.code(500).send({ error: 'Ошибка создания работы', detail: err.message });
     }
   });
@@ -470,7 +479,11 @@ async function routes(fastify, options) {
       if (!siteId) return reply.code(502).send({ error: 'Не удалось создать объект (геокодер недоступен)' });
 
       await db.query(
-        'UPDATE works SET site_id = $1, object_place = $2, object_name = COALESCE(object_name, $2), updated_at = NOW() WHERE id = $3',
+        `UPDATE works
+            SET site_id = $1,
+                object_name = COALESCE(NULLIF(object_name, ''), $2),
+                updated_at = NOW()
+          WHERE id = $3`,
         [siteId, place, workId]
       );
       const { rows: sRows } = await db.query(
@@ -719,7 +732,7 @@ async function routes(fastify, options) {
 
       return { work: updateRes.rows[0], message: 'Контракт закрыт' };
     } catch (err) {
-      fastify.log.error('Closeout error:', err);
+      logError(fastify, 'Closeout error', err, request);
       return reply.code(500).send({ error: 'Ошибка закрытия', detail: err.message });
     }
   });

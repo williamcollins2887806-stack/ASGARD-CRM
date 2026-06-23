@@ -30,7 +30,10 @@ const STAGE_ORDER = ['personnel', 'training', 'procurement', 'assembly', 'ticket
 
 // Типы field_logistics, относящиеся к каждому этапу
 const TICKET_TYPES = ['ticket_to', 'ticket_back', 'flight', 'train'];
-const HOUSING_TYPES = ['hotel'];
+// 23.06.2026 BUG-FIX (🟡 S-FIELD-08): жильё считаем по 3 типам, а не только 'hotel'.
+// buildMessages в field-logistics.js поддерживает hotel/housing/hostel — раньше housing и hostel
+// записи (вахтовое жильё, хостел) НЕ попадали в кольцо готовности «Жильё».
+const HOUSING_TYPES = ['hotel', 'housing', 'hostel'];
 const LOGISTICS_TYPES = ['transfer'];
 // «Готовый» статус логистической позиции: куплено (V183) или уже отправлено рабочему
 const LOGI_DONE = ['purchased', 'sent'];
@@ -43,6 +46,7 @@ async function routes(fastify, options) {
   // Общий кэш батч-summary (TTL 60с). Вынесен в helpers, чтобы works.js мог инвалидировать
   // запись при смене статуса/назначений работы.
   const summaryCache = require('../helpers/readiness-cache');
+const { logError } = require('../lib/log-error');
   const TTL = summaryCache.TTL;
 
   // ─── helpers по этапам ────────────────────────────────────────────────────
@@ -291,7 +295,7 @@ async function routes(fastify, options) {
       }
       return { items, total: items.length };
     } catch (err) {
-      fastify.log.error('[work-readiness] GET /:', err);
+      logError(fastify, '[work-readiness] GET /', err, request);
       return reply.code(500).send({ error: 'Ошибка списка готовности' });
     }
   });
@@ -305,7 +309,7 @@ async function routes(fastify, options) {
       if (!data) return reply.code(404).send({ error: 'Работа не найдена' });
       return data;
     } catch (err) {
-      fastify.log.error('[work-readiness] GET /:workId:', err);
+      logError(fastify, '[work-readiness] GET /:workId', err, request);
       return reply.code(500).send({ error: 'Ошибка расчёта готовности' });
     }
   });
@@ -341,7 +345,7 @@ async function routes(fastify, options) {
       }
       return out;
     } catch (err) {
-      fastify.log.error('[work-readiness] GET /summary:', err);
+      logError(fastify, '[work-readiness] GET /summary', err, request);
       return reply.code(500).send({ error: 'Ошибка расчёта сводки' });
     }
   });
@@ -371,7 +375,7 @@ async function routes(fastify, options) {
       summaryCache.invalidate(workId);
       return { ok: true };
     } catch (err) {
-      fastify.log.error('[work-readiness] POST override:', err);
+      logError(fastify, '[work-readiness] POST override', err, request);
       return reply.code(500).send({ error: 'Ошибка сохранения' });
     }
   });
@@ -391,7 +395,7 @@ async function routes(fastify, options) {
       summaryCache.invalidate(workId);
       return { ok: true };
     } catch (err) {
-      fastify.log.error('[work-readiness] DELETE override:', err);
+      logError(fastify, '[work-readiness] DELETE override', err, request);
       return reply.code(500).send({ error: 'Ошибка удаления' });
     }
   });

@@ -15,9 +15,25 @@
 
 const MangoService = require('../services/mango');
 const { createNotification } = require('../services/notify');
+const { assertNotLocked } = require('../lib/timesheet-locks');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { logError } = require('../lib/log-error');
+
+// FIX 3: дата-парсер для assertNotLocked
+function _logDateParts(d) {
+  if (!d) {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() + 1 };
+  }
+  if (typeof d === 'string') {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d);
+    if (m) return { year: parseInt(m[1], 10), month: parseInt(m[2], 10) };
+  }
+  const dt = new Date(d);
+  return { year: dt.getFullYear(), month: dt.getMonth() + 1 };
+}
 
 const MANGO_SMS_FROM = process.env.MANGO_SMS_EXTENSION || '101';
 const UPLOAD_BASE = process.env.UPLOAD_DIR || './uploads';
@@ -161,32 +177,51 @@ async function routes(fastify, options) {
 
       // Auto-create travel stage for ticket_to / ticket_back (Session 12)
       if ((item_type === 'ticket_to' || item_type === 'ticket_back') && date_from) {
+        // FIX 3: assertNotLocked перед авто-INSERT travel-стейджа (scope='travel').
+        // Если travel-период залочен — стейдж НЕ создаём, но саму логистику оставляем
+        // (это сценарий «билет уже куплен, но месяц закрыт» — основная запись разрешена).
+        let travelLocked = false;
         try {
-          // Find tariff for travel
-          const { rows: tariffRows } = await db.query(
-            `SELECT id, points, rate_per_shift FROM field_tariff_grid WHERE category='special' AND position_name ILIKE '%Дорога%' LIMIT 1`
-          );
-          const tariff = tariffRows[0] || { id: null, points: 6, rate_per_shift: 3000 };
-          const tPoints = tariff.points;
-          const tRate = parseFloat(tariff.rate_per_shift);
-          const d1 = new Date(date_from);
-          const d2 = date_to ? new Date(date_to) : d1;
-          const days = Math.max(1, Math.round((d2 - d1) / 86400000) + 1);
-          const stageAmount = days * tRate;
+          const { year, month } = _logDateParts(date_from);
+          await assertNotLocked(fastify, { id: userId, role: req.user.role }, {
+            year, month, scope_hint: 'travel', work_id, employee_id, date: date_from, type: 'travel'
+          });
+        } catch (lockErr) {
+          if (lockErr && lockErr.code === 'period_locked') {
+            travelLocked = true;
+            fastify.log.warn('[field-logistics] travel-stage skipped — period locked');
+          } else {
+            throw lockErr;
+          }
+        }
+        if (!travelLocked) {
+          try {
+            // Find tariff for travel
+            const { rows: tariffRows } = await db.query(
+              `SELECT id, points, rate_per_shift FROM field_tariff_grid WHERE category='special' AND position_name ILIKE '%Дорога%' LIMIT 1`
+            );
+            const tariff = tariffRows[0] || { id: null, points: 6, rate_per_shift: 3000 };
+            const tPoints = tariff.points;
+            const tRate = parseFloat(tariff.rate_per_shift);
+            const d1 = new Date(date_from);
+            const d2 = date_to ? new Date(date_to) : d1;
+            const days = Math.max(1, Math.round((d2 - d1) / 86400000) + 1);
+            const stageAmount = days * tRate;
 
-          await db.query(`
-            INSERT INTO field_trip_stages
-              (employee_id, work_id, stage_type, date_from, date_to, days_count,
-               tariff_id, tariff_points, rate_per_day, amount_earned, details,
-               logistics_id, source, status, created_by)
-            VALUES ($1,$2,'travel',$3,$4,$5,$6,$7,$8,$9,$10,$11,'auto','planned',$12)
-            ON CONFLICT DO NOTHING
-          `, [employee_id, work_id, date_from, date_to || null, days,
-              tariff.id || null, tPoints, tRate, stageAmount,
-              JSON.stringify({ transport: 'auto', route: title }),
-              logisticsId, userId]);
-        } catch (stErr) {
-          fastify.log.warn('[field-logistics] auto-create travel stage:', stErr.message);
+            await db.query(`
+              INSERT INTO field_trip_stages
+                (employee_id, work_id, stage_type, date_from, date_to, days_count,
+                 tariff_id, tariff_points, rate_per_day, amount_earned, details,
+                 logistics_id, source, status, created_by, entered_by_user_id)
+              VALUES ($1,$2,'travel',$3,$4,$5,$6,$7,$8,$9,$10,$11,'auto','planned',$12,$12)
+              ON CONFLICT DO NOTHING
+            `, [employee_id, work_id, date_from, date_to || null, days,
+                tariff.id || null, tPoints, tRate, stageAmount,
+                JSON.stringify({ transport: 'auto', route: title }),
+                logisticsId, userId]);
+          } catch (stErr) {
+            fastify.log.warn('[field-logistics] auto-create travel stage:', stErr.message);
+          }
         }
       }
 
@@ -220,7 +255,7 @@ async function routes(fastify, options) {
 
       return { logistics_id: logisticsId, created_at: inserted[0].created_at };
     } catch (err) {
-      fastify.log.error('[field-logistics] POST / error:', err);
+      logError(fastify, '[field-logistics] POST / error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -321,7 +356,7 @@ async function routes(fastify, options) {
 
       return { ok: true, logistics: fresh };
     } catch (err) {
-      fastify.log.error('[field-logistics] PUT /:id error:', err);
+      logError(fastify, '[field-logistics] PUT /:id error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -394,7 +429,7 @@ async function routes(fastify, options) {
 
       return { ok: true };
     } catch (err) {
-      fastify.log.error('[field-logistics] DELETE /:id error:', err);
+      logError(fastify, '[field-logistics] DELETE /:id error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -453,7 +488,7 @@ async function routes(fastify, options) {
 
       return { ok: true, document_id: doc[0].id };
     } catch (err) {
-      fastify.log.error('[field-logistics] POST /:id/attach error:', err);
+      logError(fastify, '[field-logistics] POST /:id/attach error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -518,7 +553,7 @@ async function routes(fastify, options) {
 
       return { ok: true, sms_sent: smsSent, push_sent: pushSent, has_lk: !!rec.user_id };
     } catch (err) {
-      fastify.log.error('[field-logistics] POST /:id/send error:', err);
+      logError(fastify, '[field-logistics] POST /:id/send error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -546,7 +581,7 @@ async function routes(fastify, options) {
       );
       return { ok: true, status: 'purchased' };
     } catch (err) {
-      fastify.log.error('[field-logistics] POST /:id/purchased error:', err);
+      logError(fastify, '[field-logistics] POST /:id/purchased error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -560,7 +595,7 @@ async function routes(fastify, options) {
 
       let sql = `
         SELECT fl.*, e.fio, e.phone, (e.user_id IS NOT NULL) AS has_lk,
-               w.work_title, w.city,
+               w.work_title, COALESCE(w.object_name, w.city, w.tender_region) AS city,
                d.original_name as document_name, d.download_url
         FROM field_logistics fl
         JOIN employees e ON e.id = fl.employee_id
@@ -592,7 +627,7 @@ async function routes(fastify, options) {
 
       return { logistics: rows, total: rows.length };
     } catch (err) {
-      fastify.log.error('[field-logistics] GET / error:', err);
+      logError(fastify, '[field-logistics] GET / error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -605,7 +640,7 @@ async function routes(fastify, options) {
       const empId = req.fieldEmployee.id;
 
       const { rows } = await db.query(`
-        SELECT fl.*, w.work_title, w.city,
+        SELECT fl.*, w.work_title, COALESCE(w.object_name, w.city, w.tender_region) AS city,
                d.original_name as document_name, d.download_url,
                COALESCE(d.download_url, fl.details->>'receipt_url') as file_url
         FROM field_logistics fl
@@ -617,7 +652,7 @@ async function routes(fastify, options) {
 
       return { logistics: rows };
     } catch (err) {
-      fastify.log.error('[field-logistics] GET /my error:', err);
+      logError(fastify, '[field-logistics] GET /my error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -630,7 +665,7 @@ async function routes(fastify, options) {
       const empId = req.fieldEmployee.id;
 
       const { rows } = await db.query(`
-        SELECT fl.*, w.work_title, w.city,
+        SELECT fl.*, w.work_title, COALESCE(w.object_name, w.city, w.tender_region) AS city,
                d.original_name as document_name, d.download_url,
                COALESCE(d.download_url, fl.details->>'receipt_url') as file_url
         FROM field_logistics fl
@@ -643,7 +678,7 @@ async function routes(fastify, options) {
 
       return { logistics: rows };
     } catch (err) {
-      fastify.log.error('[field-logistics] GET /my/history error:', err);
+      logError(fastify, '[field-logistics] GET /my/history error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -712,7 +747,7 @@ async function routes(fastify, options) {
         .header('Cache-Control', 'private, max-age=3600')
         .send(buffer);
     } catch (err) {
-      fastify.log.error('[field-logistics] file preview error:', err);
+      logError(fastify, '[field-logistics] file preview error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });

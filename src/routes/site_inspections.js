@@ -27,6 +27,7 @@ const path = require('path');
 // DejaVuSans font path (same pattern as pass_requests.js)
 const fontDir = path.join(__dirname, '..', '..', 'public', 'assets', 'fonts');
 const fs_check = require('fs');
+const { logError } = require('../lib/log-error');
 const FONT_REGULAR = fs_check.existsSync(path.join(fontDir, 'DejaVuSans.ttf')) ? path.join(fontDir, 'DejaVuSans.ttf') : undefined;
 const FONT_BOLD = fs_check.existsSync(path.join(fontDir, 'DejaVuSans-Bold.ttf')) ? path.join(fontDir, 'DejaVuSans-Bold.ttf') : undefined;
 
@@ -619,7 +620,7 @@ module.exports = async function (fastify) {
           } catch (_) {}
         }
       } catch (e) {
-        fastify.log.error('Failed to create cash_request:', e);
+        logError(fastify, 'Failed to create cash_request', e, request);
       }
     }
 

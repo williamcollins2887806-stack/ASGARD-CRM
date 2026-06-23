@@ -12,6 +12,7 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const MangoService = require('../services/mango');
+const { logError } = require('../lib/log-error');
 
 const FIELD_JWT_SECRET = process.env.FIELD_JWT_SECRET || (process.env.JWT_SECRET + '_field'); // S7: separate field secret
 const FIELD_JWT_EXPIRES = '90d';
@@ -122,7 +123,7 @@ async function routes(fastify, options) {
 
       return { ok: true, expires_in: SMS_CODE_TTL_MIN * 60 };
     } catch (err) {
-      fastify.log.error('[field-auth] request-code error:', err);
+      logError(fastify, '[field-auth] request-code error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -249,7 +250,7 @@ async function routes(fastify, options) {
         }
       };
     } catch (err) {
-      fastify.log.error('[field-auth] verify-code error:', err);
+      logError(fastify, '[field-auth] verify-code error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -289,7 +290,7 @@ async function routes(fastify, options) {
 
       return { token: newToken };
     } catch (err) {
-      fastify.log.error('[field-auth] refresh error:', err);
+      logError(fastify, '[field-auth] refresh error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -308,7 +309,7 @@ async function routes(fastify, options) {
       }
       return { ok: true };
     } catch (err) {
-      fastify.log.error('[field-auth] logout error:', err);
+      logError(fastify, '[field-auth] logout error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -338,7 +339,7 @@ async function routes(fastify, options) {
         field_last_login: emp.field_last_login
       };
     } catch (err) {
-      fastify.log.error('[field-auth] me error:', err);
+      logError(fastify, '[field-auth] me error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -385,7 +386,7 @@ async function routes(fastify, options) {
 
       return { ok: true, message: 'PIN установлен' };
     } catch (err) {
-      fastify.log.error('[field-auth] setup-pin error:', err);
+      logError(fastify, '[field-auth] setup-pin error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -430,7 +431,7 @@ async function routes(fastify, options) {
 
       return { ok: true, verified: true };
     } catch (err) {
-      fastify.log.error('[field-auth] verify-pin error:', err);
+      logError(fastify, '[field-auth] verify-pin error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -529,7 +530,7 @@ async function routes(fastify, options) {
         }
       };
     } catch (err) {
-      fastify.log.error('[field-auth] pin-login error:', err);
+      logError(fastify, '[field-auth] pin-login error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -656,7 +657,7 @@ async function routes(fastify, options) {
         }
       };
     } catch (err) {
-      fastify.log.error('[field-auth] login-by-birth error:', err);
+      logError(fastify, '[field-auth] login-by-birth error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -694,7 +695,7 @@ async function routes(fastify, options) {
 
       return { ok: true, message: 'PIN сброшен' };
     } catch (err) {
-      fastify.log.error('[field-auth] reset-pin error:', err);
+      logError(fastify, '[field-auth] reset-pin error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -746,7 +747,7 @@ async function routes(fastify, options) {
 
       return { ok: true };
     } catch (err) {
-      fastify.log.error('[field-auth] push-subscribe error:', err);
+      logError(fastify, '[field-auth] push-subscribe error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -792,7 +793,7 @@ async function routes(fastify, options) {
 
       return { ok: true, employee: emp.fio, phone: normalized, response: smsResponse };
     } catch (err) {
-      fastify.log.error('[field-auth] send-invite error:', err);
+      logError(fastify, '[field-auth] send-invite error', err, req);
       return reply.code(500).send({ error: err.message });
     }
   });

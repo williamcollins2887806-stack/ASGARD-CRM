@@ -1,3 +1,4 @@
+const { logError } = require('../lib/log-error');
 /**
  * Customers Routes
  */
@@ -101,7 +102,7 @@ async function routes(fastify, options) {
 
       return { found: false, message: 'Организация не найдена', suggestion: { inn } };
     } catch (e) {
-      fastify.log.error('DaData lookup error:', e);
+      logError(fastify, 'DaData lookup error', e, request);
       return reply.code(500).send({ error: 'Ошибка поиска по ИНН: ' + e.message });
     }
   });
@@ -148,7 +149,7 @@ async function routes(fastify, options) {
 
       return { suggestions };
     } catch (e) {
-      fastify.log.error('DaData suggest error:', e);
+      logError(fastify, 'DaData suggest error', e, request);
       return { suggestions: [] };
     }
   });

@@ -28,12 +28,39 @@
  */
 
 const { createNotification } = require('../services/notify');
+const { assertNotLocked } = require('../lib/timesheet-locks');
+const { logError } = require('../lib/log-error');
 
-const STAGE_TYPES = ['medical', 'travel', 'waiting', 'warehouse', 'day_off', 'object'];
+// V255 (23.06.2026): добавлен 'ship' — альтернатива «Дорога» за повышенную ставку.
+const STAGE_TYPES = ['medical', 'travel', 'ship', 'waiting', 'warehouse', 'day_off', 'object'];
+
+// FIX 1: stage_type → scope_hint для лок-чекера.
+// warehouse/medical/travel — отдельные scope; остальные — global (только глобал-лок).
+// 'ship' — это медицинский scope (ставит ТО/HEAD_TO, как МО).
+function deriveScope(stage_type) {
+  return ({ warehouse: 'warehouse', medical: 'medical', ship: 'medical', travel: 'travel' })[stage_type] || 'global';
+}
+
+// FIX 1: month/year из строки даты или Date.
+function dateParts(d) {
+  if (!d) {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() + 1 };
+  }
+  if (typeof d === 'string') {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d);
+    if (m) return { year: parseInt(m[1], 10), month: parseInt(m[2], 10) };
+  }
+  const dt = new Date(d);
+  return { year: dt.getFullYear(), month: dt.getMonth() + 1 };
+}
+
+const ADMIN_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 
 const STAGE_LABELS = {
   medical: 'Медосмотр',
   travel: 'Дорога',
+  ship: 'Корабль',      // V255: альтернатива «Дорога» за повышенную ставку (12 баллов)
   waiting: 'Ожидание',
   warehouse: 'Склад',
   day_off: 'Выходной',
@@ -62,6 +89,10 @@ async function routes(fastify, options) {
       q = await db.query(`SELECT id, points, rate_per_shift FROM field_tariff_grid WHERE category='special' AND position_name ILIKE '%осмотр%' LIMIT 1`);
     } else if (stageType === 'travel') {
       q = await db.query(`SELECT id, points, rate_per_shift FROM field_tariff_grid WHERE category='special' AND position_name ILIKE '%Дорога%' LIMIT 1`);
+    } else if (stageType === 'ship') {
+      // V255: новый «Корабль» — пока в справочнике field_tariff_grid его может не быть,
+      // сразу падаем в defaults (12 баллов × 500 ₽).
+      q = await db.query(`SELECT id, points, rate_per_shift FROM field_tariff_grid WHERE category='special' AND position_name ILIKE '%Корабл%' LIMIT 1`);
     } else if (stageType === 'waiting' || stageType === 'day_off') {
       q = await db.query(`SELECT id, points, rate_per_shift FROM field_tariff_grid WHERE category='special' AND position_name ILIKE '%Выходной%' LIMIT 1`);
     } else if (stageType === 'warehouse') {
@@ -77,28 +108,44 @@ async function routes(fastify, options) {
       return { id: q.rows[0].id, points: q.rows[0].points, rate: parseFloat(q.rows[0].rate_per_shift) };
     }
 
-    // Fallback по умолчанию — 6 баллов, 3000₽
-    const defaults = { medical: { p: 7, r: 3500 }, travel: { p: 6, r: 3000 }, waiting: { p: 6, r: 3000 }, day_off: { p: 6, r: 3000 }, warehouse: { p: 10, r: 5000 }, object: { p: 11, r: 5500 } };
+    // Fallback по умолчанию. V255 (23.06.2026): medical 6→7, ship=12 (новый).
+    const defaults = {
+      medical:   { p: 7,  r: 3500 },
+      travel:    { p: 6,  r: 3000 },
+      ship:      { p: 12, r: 6000 },
+      waiting:   { p: 6,  r: 3000 },
+      day_off:   { p: 6,  r: 3000 },
+      warehouse: { p: 10, r: 5000 },
+      object:    { p: 11, r: 5500 }
+    };
     const d = defaults[stageType] || { p: 6, r: 3000 };
     return { id: null, points: d.p, rate: d.r };
   }
 
   async function insertStage(params) {
-    const { employee_id, work_id, assignment_id, stage_type, date_from, date_to, tariff_id, tariff_points, rate_per_day, details, logistics_id, source, source_employee_id, status, note, created_by } = params;
+    const { employee_id, work_id, assignment_id, stage_type, date_from, date_to, tariff_id, tariff_points, rate_per_day, details, logistics_id, source, source_employee_id, status, note, created_by, entered_by_user_id } = params;
     const days = calcDays(date_from, date_to);
     const amount = days * rate_per_day;
+
+    // BUG #4: entered_by_user_id ставим ТОЛЬКО для CRM-источников (source='pm'/'auto'),
+    // где created_by — реально users.id (PM/админ). Для source='master'/'self' оставляем
+    // NULL: там created_by это employees.id, маппинг неоднозначен (см. CONTRACT и V233).
+    let enteredBy = entered_by_user_id != null ? entered_by_user_id : null;
+    if (enteredBy == null && created_by != null && (source === 'pm' || source === 'auto')) {
+      enteredBy = created_by;
+    }
 
     const { rows } = await db.query(`
       INSERT INTO field_trip_stages
         (employee_id, work_id, assignment_id, stage_type, date_from, date_to, days_count,
          tariff_id, tariff_points, rate_per_day, amount_earned, details, logistics_id,
-         source, source_employee_id, status, note, created_by)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+         source, source_employee_id, status, note, created_by, entered_by_user_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
       RETURNING *
     `, [employee_id, work_id, assignment_id || null, stage_type, date_from, date_to || null, days,
         tariff_id || null, tariff_points, rate_per_day, amount, details ? JSON.stringify(details) : '{}',
         logistics_id || null, source || 'pm', source_employee_id || null, status || 'active',
-        note || null, created_by || null]);
+        note || null, created_by || null, enteredBy]);
 
     return rows[0];
   }
@@ -137,6 +184,20 @@ async function routes(fastify, options) {
         return reply.code(400).send({ error: 'Неизвестный тип этапа: ' + stage_type });
       }
 
+      // FIX 1: assertNotLocked перед INSERT
+      try {
+        const { year, month } = dateParts(date_from);
+        await assertNotLocked(fastify, { id: userId, role: req.user.role }, {
+          year, month, scope_hint: deriveScope(stage_type), work_id, employee_id, date: date_from,
+          type: ['warehouse','medical','travel','ship','waiting'].includes(stage_type) ? stage_type : undefined
+        });
+      } catch (lockErr) {
+        if (lockErr && lockErr.code === 'period_locked') {
+          return reply.code(423).send({ error: lockErr.message || 'period_locked', code: 'period_locked', lock: lockErr.lock || null });
+        }
+        throw lockErr;
+      }
+
       let tariff;
       if (tariff_id) {
         const { rows } = await db.query(`SELECT id, points, rate_per_shift FROM field_tariff_grid WHERE id=$1`, [tariff_id]);
@@ -155,7 +216,7 @@ async function routes(fastify, options) {
       return { stage };
     } catch (err) {
       if (err.code === '23505') return reply.code(409).send({ error: 'Этап такого типа уже существует на эту дату' });
-      fastify.log.error('[field-stages] POST / error:', err);
+      logError(fastify, '[field-stages] POST / error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -188,7 +249,7 @@ async function routes(fastify, options) {
 
       return { employees: Object.values(byEmployee), total_stages: rows.length };
     } catch (err) {
-      fastify.log.error('[field-stages] GET /project/:id error:', err);
+      logError(fastify, '[field-stages] GET /project/:id error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -249,7 +310,7 @@ async function routes(fastify, options) {
 
       return { employees: Object.values(empMap), date_from: dateFrom, date_to: dateTo };
     } catch (err) {
-      fastify.log.error('[field-stages] GET /calendar error:', err);
+      logError(fastify, '[field-stages] GET /calendar error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -270,7 +331,7 @@ async function routes(fastify, options) {
 
       return { stages: rows };
     } catch (err) {
-      fastify.log.error('[field-stages] GET /employee/:eid/work/:wid error:', err);
+      logError(fastify, '[field-stages] GET /employee/:eid/work/:wid error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -286,6 +347,22 @@ async function routes(fastify, options) {
       if (existing.length === 0) return reply.code(404).send({ error: 'Этап не найден' });
 
       const stage = existing[0];
+
+      // FIX 1: assertNotLocked перед UPDATE
+      try {
+        const { year, month } = dateParts(stage.date_from);
+        await assertNotLocked(fastify, { id: userId, role: req.user.role }, {
+          year, month, scope_hint: deriveScope(stage.stage_type), work_id: stage.work_id,
+          employee_id: stage.employee_id, date: stage.date_from,
+          type: ['warehouse','medical','travel','ship','waiting'].includes(stage.stage_type) ? stage.stage_type : undefined
+        });
+      } catch (lockErr) {
+        if (lockErr && lockErr.code === 'period_locked') {
+          return reply.code(423).send({ error: lockErr.message || 'period_locked', code: 'period_locked', lock: lockErr.lock || null });
+        }
+        throw lockErr;
+      }
+
       let newStatus = 'approved';
       let daysAppr = stage.days_count;
       let amountEarned = parseFloat(stage.amount_earned);
@@ -306,7 +383,7 @@ async function routes(fastify, options) {
 
       return { stage: rows[0] };
     } catch (err) {
-      fastify.log.error('[field-stages] PUT /:id/approve error:', err);
+      logError(fastify, '[field-stages] PUT /:id/approve error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -317,6 +394,25 @@ async function routes(fastify, options) {
       const stageId = parseInt(req.params.id);
       const userId = req.user.id;
       const { adjustment_note } = req.body || {};
+
+      // FIX 1: assertNotLocked перед UPDATE (нужно знать дату/тип/работу)
+      const { rows: pre } = await db.query(
+        `SELECT date_from, stage_type, work_id, employee_id FROM field_trip_stages WHERE id=$1`, [stageId]
+      );
+      if (!pre.length) return reply.code(404).send({ error: 'Этап не найден' });
+      try {
+        const { year, month } = dateParts(pre[0].date_from);
+        await assertNotLocked(fastify, { id: userId, role: req.user.role }, {
+          year, month, scope_hint: deriveScope(pre[0].stage_type), work_id: pre[0].work_id,
+          employee_id: pre[0].employee_id, date: pre[0].date_from,
+          type: ['warehouse','medical','travel','ship','waiting'].includes(pre[0].stage_type) ? pre[0].stage_type : undefined
+        });
+      } catch (lockErr) {
+        if (lockErr && lockErr.code === 'period_locked') {
+          return reply.code(423).send({ error: lockErr.message || 'period_locked', code: 'period_locked', lock: lockErr.lock || null });
+        }
+        throw lockErr;
+      }
 
       const { rows } = await db.query(`
         UPDATE field_trip_stages
@@ -329,7 +425,7 @@ async function routes(fastify, options) {
       if (rows.length === 0) return reply.code(404).send({ error: 'Этап не найден' });
       return { stage: rows[0] };
     } catch (err) {
-      fastify.log.error('[field-stages] PUT /:id/reject error:', err);
+      logError(fastify, '[field-stages] PUT /:id/reject error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -351,6 +447,30 @@ async function routes(fastify, options) {
       const newFrom = date_from || stage.date_from;
       const newTo = date_to !== undefined ? date_to : stage.date_to;
       const newType = stage_type || stage.stage_type;
+
+      // FIX 1: assertNotLocked — на старую И на новую дату/тип (если меняется)
+      try {
+        const { year, month } = dateParts(newFrom);
+        await assertNotLocked(fastify, { id: req.user.id, role: req.user.role }, {
+          year, month, scope_hint: deriveScope(newType), work_id: stage.work_id,
+          employee_id: stage.employee_id, date: newFrom,
+          type: ['warehouse','medical','travel','ship','waiting'].includes(newType) ? newType : undefined
+        });
+        // Если старая дата в другом месяце — лочить надо и его
+        const oldParts = dateParts(stage.date_from);
+        if (oldParts.year !== year || oldParts.month !== month) {
+          await assertNotLocked(fastify, { id: req.user.id, role: req.user.role }, {
+            year: oldParts.year, month: oldParts.month, scope_hint: deriveScope(stage.stage_type),
+            work_id: stage.work_id, employee_id: stage.employee_id, date: stage.date_from,
+            type: ['warehouse','medical','travel','ship','waiting'].includes(stage.stage_type) ? stage.stage_type : undefined
+          });
+        }
+      } catch (lockErr) {
+        if (lockErr && lockErr.code === 'period_locked') {
+          return reply.code(423).send({ error: lockErr.message || 'period_locked', code: 'period_locked', lock: lockErr.lock || null });
+        }
+        throw lockErr;
+      }
       const days = calcDays(newFrom, newTo);
       const amount = days * parseFloat(stage.rate_per_day);
 
@@ -358,16 +478,17 @@ async function routes(fastify, options) {
         UPDATE field_trip_stages
         SET date_from=COALESCE($1, date_from), date_to=$2, stage_type=$3,
             details=COALESCE($4, details), note=COALESCE($5, note),
-            days_count=$6, amount_earned=$7, updated_at=NOW()
+            days_count=$6, amount_earned=$7,
+            entered_by_user_id=$9, updated_at=NOW()
         WHERE id=$8
         RETURNING *
       `, [date_from || null, newTo || null, newType,
           details ? JSON.stringify(details) : null, note || null,
-          days, amount, stageId]);
+          days, amount, stageId, req.user.id]);
 
       return { stage: rows[0] };
     } catch (err) {
-      fastify.log.error('[field-stages] PUT /:id error:', err);
+      logError(fastify, '[field-stages] PUT /:id error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -376,18 +497,50 @@ async function routes(fastify, options) {
   fastify.delete('/:id', crmAuth, async (req, reply) => {
     try {
       const stageId = parseInt(req.params.id);
+      const userId = req.user.id;
 
-      const { rows: existing } = await db.query(`SELECT status FROM field_trip_stages WHERE id=$1`, [stageId]);
-      if (existing.length === 0) return reply.code(404).send({ error: 'Этап не найден' });
+      // FIX 2: RBAC автор-чек — раньше не было: любой PM мог HARD-DELETE любой
+      // запланированный этап чужого PM по простому перебору id.
+      const { rows: existing } = await db.query(
+        `SELECT s.status, s.created_by, s.entered_by_user_id, s.date_from, s.stage_type,
+                s.work_id, s.employee_id, w.pm_id
+         FROM field_trip_stages s
+         JOIN works w ON w.id = s.work_id
+         WHERE s.id=$1`, [stageId]);
+      if (!existing.length) return reply.code(404).send({ error: 'Этап не найден' });
+      const row = existing[0];
 
-      if (existing[0].status !== 'planned') {
+      if (row.status !== 'planned') {
         return reply.code(400).send({ error: 'Удалить можно только запланированный этап' });
+      }
+
+      const isOwner = Number(row.created_by) === Number(userId)
+        || Number(row.entered_by_user_id) === Number(userId);
+      const isPmOfWork = Number(row.pm_id) === Number(userId);
+      const isAdmin = ADMIN_ROLES.includes(req.user.role);
+      if (!isOwner && !isPmOfWork && !isAdmin) {
+        return reply.code(403).send({ error: 'Нет прав удалять чужой этап' });
+      }
+
+      // FIX 1: assertNotLocked перед DELETE
+      try {
+        const { year, month } = dateParts(row.date_from);
+        await assertNotLocked(fastify, { id: userId, role: req.user.role }, {
+          year, month, scope_hint: deriveScope(row.stage_type), work_id: row.work_id,
+          employee_id: row.employee_id, date: row.date_from,
+          type: ['warehouse','medical','travel','ship','waiting'].includes(row.stage_type) ? row.stage_type : undefined
+        });
+      } catch (lockErr) {
+        if (lockErr && lockErr.code === 'period_locked') {
+          return reply.code(423).send({ error: lockErr.message || 'period_locked', code: 'period_locked', lock: lockErr.lock || null });
+        }
+        throw lockErr;
       }
 
       await db.query(`DELETE FROM field_trip_stages WHERE id=$1`, [stageId]);
       return { ok: true };
     } catch (err) {
-      fastify.log.error('[field-stages] DELETE /:id error:', err);
+      logError(fastify, '[field-stages] DELETE /:id error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -403,6 +556,20 @@ async function routes(fastify, options) {
       }
       if (!STAGE_TYPES.includes(stage_type)) {
         return reply.code(400).send({ error: 'Неизвестный тип этапа' });
+      }
+
+      // FIX 1: assertNotLocked перед массовым INSERT
+      try {
+        const { year, month } = dateParts(date_from);
+        await assertNotLocked(fastify, { id: userId, role: req.user.role }, {
+          year, month, scope_hint: deriveScope(stage_type), work_id, date: date_from,
+          type: ['warehouse','medical','travel','ship','waiting'].includes(stage_type) ? stage_type : undefined
+        });
+      } catch (lockErr) {
+        if (lockErr && lockErr.code === 'period_locked') {
+          return reply.code(423).send({ error: lockErr.message || 'period_locked', code: 'period_locked', lock: lockErr.lock || null });
+        }
+        throw lockErr;
       }
 
       const tariff = await findTariff(stage_type, work_id);
@@ -423,7 +590,7 @@ async function routes(fastify, options) {
 
       return { created_count: created.length, stages: created };
     } catch (err) {
-      fastify.log.error('[field-stages] POST /bulk error:', err);
+      logError(fastify, '[field-stages] POST /bulk error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -467,7 +634,7 @@ async function routes(fastify, options) {
 
       return { employees: Object.values(byEmployee) };
     } catch (err) {
-      fastify.log.error('[field-stages] GET /my-crew/:id error:', err);
+      logError(fastify, '[field-stages] GET /my-crew/:id error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -496,6 +663,20 @@ async function routes(fastify, options) {
         return reply.code(400).send({ error: 'Недопустимый тип этапа' });
       }
 
+      // FIX 1: assertNotLocked перед INSERT (мастер ставит за рабочего)
+      try {
+        const { year, month } = dateParts(date_from);
+        await assertNotLocked(fastify, { id: masterEmpId, role: 'MASTER' }, {
+          year, month, scope_hint: deriveScope(stage_type), work_id, employee_id, date: date_from,
+          type: ['warehouse','medical','travel','ship','waiting'].includes(stage_type) ? stage_type : undefined
+        });
+      } catch (lockErr) {
+        if (lockErr && lockErr.code === 'period_locked') {
+          return reply.code(423).send({ error: lockErr.message || 'period_locked', code: 'period_locked', lock: lockErr.lock || null });
+        }
+        throw lockErr;
+      }
+
       const tariff = await findTariff(stage_type, work_id);
       const stage = await insertStage({
         employee_id, work_id, stage_type, date_from, date_to,
@@ -507,7 +688,7 @@ async function routes(fastify, options) {
       return { stage };
     } catch (err) {
       if (err.code === '23505') return reply.code(409).send({ error: 'Этап уже существует на эту дату' });
-      fastify.log.error('[field-stages] POST /on-behalf error:', err);
+      logError(fastify, '[field-stages] POST /on-behalf error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -527,6 +708,21 @@ async function routes(fastify, options) {
         return reply.code(403).send({ error: 'Только мастер может обновлять этапы бригады' });
       }
 
+      // FIX 1: assertNotLocked перед UPDATE (мастер)
+      try {
+        const { year, month } = dateParts(stage.date_from);
+        await assertNotLocked(fastify, { id: masterEmpId, role: 'MASTER' }, {
+          year, month, scope_hint: deriveScope(stage.stage_type), work_id: stage.work_id,
+          employee_id: stage.employee_id, date: stage.date_from,
+          type: ['warehouse','medical','travel','ship','waiting'].includes(stage.stage_type) ? stage.stage_type : undefined
+        });
+      } catch (lockErr) {
+        if (lockErr && lockErr.code === 'period_locked') {
+          return reply.code(423).send({ error: lockErr.message || 'period_locked', code: 'period_locked', lock: lockErr.lock || null });
+        }
+        throw lockErr;
+      }
+
       const newTo = date_to || stage.date_to;
       const days = calcDays(stage.date_from, newTo);
       const amount = days * parseFloat(stage.rate_per_day);
@@ -544,7 +740,7 @@ async function routes(fastify, options) {
 
       return { stage: rows[0] };
     } catch (err) {
-      fastify.log.error('[field-stages] PUT /on-behalf/:id error:', err);
+      logError(fastify, '[field-stages] PUT /on-behalf/:id error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -590,7 +786,7 @@ async function routes(fastify, options) {
 
       return { ok: true, message: 'Запрос отправлен РП' };
     } catch (err) {
-      fastify.log.error('[field-stages] POST /request-correction error:', err);
+      logError(fastify, '[field-stages] POST /request-correction error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -624,7 +820,7 @@ async function routes(fastify, options) {
 
       return { stages: rows, total_days: totalDays, total_earned: totalEarned };
     } catch (err) {
-      fastify.log.error('[field-stages] GET /my/:id error:', err);
+      logError(fastify, '[field-stages] GET /my/:id error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -649,6 +845,21 @@ async function routes(fastify, options) {
 
       const today = new Date().toISOString().slice(0, 10);
 
+      // FIX 1: assertNotLocked — рабочий блокируется только global-локом
+      // (scope_hint: 'global'); WORKER-роль в timesheet-locks обходит pm-check.
+      try {
+        const { year, month } = dateParts(today);
+        await assertNotLocked(fastify, { id: empId, role: 'WORKER' }, {
+          year, month, scope_hint: 'global', work_id, employee_id: empId, date: today,
+          type: ['warehouse','medical','travel','ship','waiting'].includes(stage_type) ? stage_type : undefined
+        });
+      } catch (lockErr) {
+        if (lockErr && lockErr.code === 'period_locked') {
+          return reply.code(423).send({ error: lockErr.message || 'period_locked', code: 'period_locked', lock: lockErr.lock || null });
+        }
+        throw lockErr;
+      }
+
       // Проверка дубликата
       const { rows: dup } = await db.query(
         `SELECT id FROM field_trip_stages WHERE employee_id=$1 AND work_id=$2 AND stage_type=$3 AND date_from=$4 AND status != 'rejected'`,
@@ -668,7 +879,7 @@ async function routes(fastify, options) {
       return { stage };
     } catch (err) {
       if (err.code === '23505') return reply.code(409).send({ error: 'Этап уже существует на сегодня' });
-      fastify.log.error('[field-stages] POST /my/start error:', err);
+      logError(fastify, '[field-stages] POST /my/start error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -698,6 +909,21 @@ async function routes(fastify, options) {
       }
 
       const today = new Date().toISOString().slice(0, 10);
+
+      // FIX 1: assertNotLocked — закрыть смену рабочий не может в залоченном периоде
+      try {
+        const { year, month } = dateParts(today);
+        await assertNotLocked(fastify, { id: empId, role: 'WORKER' }, {
+          year, month, scope_hint: 'global', work_id: stage.work_id, employee_id: empId, date: today,
+          type: ['warehouse','medical','travel','ship','waiting'].includes(stage.stage_type) ? stage.stage_type : undefined
+        });
+      } catch (lockErr) {
+        if (lockErr && lockErr.code === 'period_locked') {
+          return reply.code(423).send({ error: lockErr.message || 'period_locked', code: 'period_locked', lock: lockErr.lock || null });
+        }
+        throw lockErr;
+      }
+
       const days = calcDays(stage.date_from, today);
       const amount = days * parseFloat(stage.rate_per_day);
 
@@ -711,7 +937,7 @@ async function routes(fastify, options) {
 
       return { stage: rows[0] };
     } catch (err) {
-      fastify.log.error('[field-stages] POST /my/end error:', err);
+      logError(fastify, '[field-stages] POST /my/end error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });
@@ -733,7 +959,7 @@ async function routes(fastify, options) {
 
       return rows.length > 0 ? rows[0] : null;
     } catch (err) {
-      fastify.log.error('[field-stages] GET /my/current/:id error:', err);
+      logError(fastify, '[field-stages] GET /my/current/:id error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });

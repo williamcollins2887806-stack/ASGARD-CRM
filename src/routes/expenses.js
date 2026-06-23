@@ -65,6 +65,7 @@ async function routes(fastify, options) {
   // Фронты больше не хардкодят список — тянут отсюда. См. work-expense-categories.js.
   fastify.get('/categories', { preHandler: [fastify.authenticate] }, async (_request, reply) => {
     const taxo = require('../services/work-expense-categories');
+const { logError } = require('../lib/log-error');
     return reply.send({
       categories: taxo.CATEGORIES,
       subcategories: {
@@ -93,7 +94,7 @@ async function routes(fastify, options) {
       if (/обязател|не входит|положитель|подкатегори|payment_method/i.test(msg)) {
         return reply.code(400).send({ error: msg });
       }
-      request.log.error('[expenses.POST /work]', err);
+      logError(request, '[expenses.POST /work]', err, request);
       return reply.code(500).send({ error: msg });
     }
   });
