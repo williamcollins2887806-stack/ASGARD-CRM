@@ -2,7 +2,7 @@
 // Shell caching + Push Notifications + Offline Support + Background Sync
 // Session 15: PWA + Push Actions + Badge + Offline
 
-const SHELL_VERSION = '20.24.0';
+const SHELL_VERSION = '20.24.1';
 const CACHE_NAME = `asgard-crm-shell-${SHELL_VERSION}`;
 const API_CACHE_NAME = 'asgard-crm-api-v2';
 
@@ -45,24 +45,29 @@ self.addEventListener('install', (event) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// ACTIVATE — clean old caches
+// ACTIVATE — clean ONLY old caches (keep current shell + API cache)
 // ═══════════════════════════════════════════════════════════════
 self.addEventListener('activate', (event) => {
   console.log('[SW] Activating', CACHE_NAME);
+  // ВАЖНО: НЕ удалять CACHE_NAME (только что заполнили в install).
+  // Раньше код удалял ВСЁ при каждом обновлении → offline.html не сохранялся
+  // → юзеры видели plain "Offline" текст вместо красивой викинг-страницы
+  // когда сервер был недоступен. Стандартная ошибка PWA. Исправлено 23.06.2026.
+  // JS/CSS свежесть всё равно гарантируется через `?v=<SHELL_VERSION>` в index.html
+  // и `cache: 'no-store'` в networkFirstWithOffline — поэтому удалять текущий
+  // shell-кэш не нужно для свежести.
   event.waitUntil(
-    // АГРЕССИВНАЯ ОЧИСТКА: удаляем ВСЕ кеши при каждом обновлении SW.
-    // Это гарантирует что после деплоя пользователь получит свежие JS/CSS
-    // без необходимости ручного Ctrl+Shift+R. Первая загрузка после деплоя
-    // чуть медленнее (всё качается заново), зато 100% свежий контент.
     caches.keys()
       .then((names) => Promise.all(
-        names.map((name) => {
-          console.log('[SW] Clearing cache:', name);
-          return caches.delete(name);
-        })
+        names
+          .filter((name) => name !== CACHE_NAME && name !== API_CACHE_NAME)
+          .map((name) => {
+            console.log('[SW] Clearing OLD cache:', name);
+            return caches.delete(name);
+          })
       ))
       .then(() => {
-        console.log('[SW] All caches cleared, claiming clients');
+        console.log('[SW] Old caches cleared, keeping', CACHE_NAME, '+ API cache. Claiming clients.');
         return self.clients.claim();
       })
   );
