@@ -28,6 +28,31 @@ async function routes(fastify, options) {
   const db = fastify.db;
   const auth = { preHandler: [fastify.fieldAuthenticate] };
 
+  // 23.06.2026 BUG-FIX (🟡 Payouts-6): единый fallback `point_value` из settings.
+  // До фикса field-worker.js при NULL `tariff.point_value` отдавал хардкод 500,
+  // а worker-payments.js (РП-сетка, line 1276) читал `settings.point_value` — если
+  // в settings стоит 600, фронт у рабочего показывал 500, а РП-табель 600. Это
+  // делает обе ветки одинаковыми. Кэш — на время процесса (in-memory, 60 сек).
+  let _pvCache = { value: null, until: 0 };
+  async function getSettingsPointValue() {
+    const now = Date.now();
+    if (_pvCache.value !== null && now < _pvCache.until) return _pvCache.value;
+    try {
+      const { rows } = await db.query(
+        "SELECT value_json FROM settings WHERE key = 'point_value' LIMIT 1"
+      );
+      let v = 500;
+      if (rows[0]?.value_json !== undefined) {
+        const parsed = parseFloat(JSON.parse(rows[0].value_json));
+        if (Number.isFinite(parsed) && parsed > 0) v = parsed;
+      }
+      _pvCache = { value: v, until: now + 60_000 };
+      return v;
+    } catch (_) {
+      return 500;
+    }
+  }
+
   // ──────────────────────────────────────────────────────────────────���──
   // GET /me — profile + achievements
   // ─────────────────────────────────────────────────────────────────────
@@ -40,7 +65,7 @@ async function routes(fastify, options) {
         SELECT
           (SELECT COUNT(*) FROM field_checkins WHERE employee_id=$1 AND status='completed') as total_shifts,
           (SELECT COUNT(*) FROM field_photos WHERE employee_id=$1) as photos,
-          (SELECT COUNT(DISTINCT w.city) FROM employee_assignments ea JOIN works w ON w.id=ea.work_id WHERE ea.employee_id=$1) as cities,
+          (SELECT COUNT(DISTINCT COALESCE(w.object_name, w.city, w.tender_region)) FROM employee_assignments ea JOIN works w ON w.id=ea.work_id WHERE ea.employee_id=$1) as cities,
           (SELECT COUNT(*) FROM field_checkins WHERE employee_id=$1 AND status='completed' AND hours_worked >= 12) as long_shifts,
           (SELECT COUNT(*) FROM employee_assignments WHERE employee_id=$1 AND field_role IN ('shift_master','senior_master')) as was_master
       `, [emp.id]);
@@ -151,7 +176,7 @@ async function routes(fastify, options) {
                ea.shift_type, ea.date_from, ea.date_to, ea.role, ea.is_active,
                ea.tariff_id, ea.tariff_points, ea.combination_tariff_id,
                ea.departure_date, ea.departure_reason,
-               w.work_title, w.city, w.object_name, w.address, w.pm_id,
+               w.work_title, COALESCE(w.object_name, w.city, w.tender_region) AS city, w.object_name, w.address, w.pm_id,
                w.contact_person, w.contact_phone,
                fps.shift_hours, fps.schedule_type, fps.site_category,
                fps.rounding_rule, fps.rounding_step, fps.per_diem as project_per_diem,
@@ -286,7 +311,11 @@ async function routes(fastify, options) {
             position_name: tariff.position_name,
             points: tariff.points,
             rate_per_shift: parseFloat(tariff.rate_per_shift),
-            point_value: parseFloat(tariff.point_value || 500),
+            // 23.06.2026 BUG-FIX (🟡 Payouts-6): fallback из settings.point_value,
+            // а не хардкод 500 — иначе мобилка показывает 500, а РП-сетка — 600.
+            point_value: tariff.point_value != null
+              ? parseFloat(tariff.point_value)
+              : await getSettingsPointValue(),
             combination: combination ? {
               id: combination.id,
               position_name: combination.position_name,
@@ -303,8 +332,8 @@ async function routes(fastify, options) {
         },
       };
     } catch (err) {
-      fastify.log.error('[field-worker] /active-project error:', err);
-      return reply.code(500).send({ error: 'Ошибка сервера' });
+      fastify.log.error({ err, msg: err && err.message, stack: err && err.stack }, '[field-worker] /active-project error');
+      return reply.code(500).send({ error: 'Ошибка сервера', detail: err && err.message });
     }
   });
 
@@ -317,7 +346,7 @@ async function routes(fastify, options) {
       const { rows } = await db.query(`
         SELECT ea.work_id, ea.field_role, ea.date_from, ea.date_to, ea.is_active,
                ea.tariff_id, ea.per_diem,
-               w.work_title, w.city, w.object_name, w.work_status, w.customer_name,
+               w.work_title, COALESCE(w.object_name, w.city, w.tender_region) AS city, w.object_name, w.work_status, w.customer_name,
 
                -- PM как объект { fio, phone } или null
                (SELECT row_to_json(pm_row) FROM (
@@ -470,7 +499,14 @@ async function routes(fastify, options) {
           `SELECT position_name, points, rate_per_shift, point_value FROM field_tariff_grid WHERE id = $1`,
           [assignment.tariff_id]
         );
-        if (tRows.length > 0) tariffInfo = tRows[0];
+        if (tRows.length > 0) {
+          tariffInfo = tRows[0];
+          // 23.06.2026 BUG-FIX (🟡 Payouts-6): fallback из settings.point_value
+          // вместо хардкода 500 — синхронизация с РП-сеткой (worker-payments.js:1276).
+          if (tariffInfo.point_value == null) {
+            tariffInfo.point_value = await getSettingsPointValue();
+          }
+        }
       }
 
       let comboInfo = null;
@@ -525,13 +561,22 @@ async function routes(fastify, options) {
       const totalAdvances = payrollItems.reduce((s, p) => s + parseFloat(p.advance_paid || 0), 0);
       const totalBonuses = payrollItems.reduce((s, p) => s + parseFloat(p.bonus || 0), 0);
       const totalPenalties = payrollItems.reduce((s, p) => s + parseFloat(p.penalty || 0), 0);
-      // Actual payments from worker_payments table (not payroll accruals)
+      // Actual payments from worker_payments table (not payroll accruals).
+      // 23.06.2026 BUG-FIX (Payouts R1): семантика приведена к SSoT (src/lib/worker-finances.js:55-67).
+      //   1) Авансы — ПЛЮС, а не МИНУС. Аванс это выплата рабочему «вперёд», увеличивает то,
+      //      что РП уже выдал. До фикса advance шёл с отрицательным знаком → выплата уменьшалась
+      //      → детальный экран рабочего в Mobile показывал суммы, отличные от главного экрана.
+      //   2) status: ('paid','confirmed') — backend помечает выплату confirmed после подтверждения
+      //      бухом, SSoT учитывает оба. До фикса учитывался только 'paid' → confirmed-выплаты
+      //      выпадали из итога.
       let totalPaid = 0;
       try {
         const { rows: wpPaid } = await db.query(
-          `SELECT COALESCE(SUM(CASE WHEN type IN ('salary','per_diem','bonus') THEN amount
-                                     WHEN type IN ('advance') THEN -amount ELSE 0 END), 0) as paid
-           FROM worker_payments WHERE employee_id = $1 AND work_id = $2 AND status = 'paid'`,
+          `SELECT COALESCE(SUM(CASE WHEN type IN ('salary','per_diem','bonus','advance') THEN amount
+                                     ELSE 0 END), 0) AS paid
+             FROM worker_payments
+            WHERE employee_id = $1 AND work_id = $2
+              AND status IN ('paid','confirmed')`,
           [empId, workId]
         );
         totalPaid = parseFloat(wpPaid[0]?.paid || 0);
@@ -691,7 +736,7 @@ async function routes(fastify, options) {
     try {
       const empId = req.fieldEmployee.id;
       const { rows } = await db.query(`
-        SELECT fl.*, w.work_title, w.city
+        SELECT fl.*, w.work_title, COALESCE(w.object_name, w.city, w.tender_region) AS city
         FROM field_logistics fl
         LEFT JOIN works w ON w.id = fl.work_id
         WHERE fl.employee_id = $1
@@ -713,7 +758,7 @@ async function routes(fastify, options) {
     try {
       const empId = req.fieldEmployee.id;
       const { rows } = await db.query(`
-        SELECT fl.*, w.work_title, w.city
+        SELECT fl.*, w.work_title, COALESCE(w.object_name, w.city, w.tender_region) AS city
         FROM field_logistics fl
         LEFT JOIN works w ON w.id = fl.work_id
         WHERE fl.employee_id = $1

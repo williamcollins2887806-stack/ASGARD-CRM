@@ -561,14 +561,25 @@ html[data-theme="light"] {
 }
 
 /* ─── Базовые правила для .goods-icon (обе темы) ──────────────────────────── */
+/* ВАЖНО: в тёмной теме --icon-ink=#C8D2DF может не наследоваться в inline-SVG
+   (если контейнер не передаёт переменную), а захардкоженный дефолт #1F2A3A
+   сливается с тёмным фоном. Решение — БЕЛАЯ ПОДЛОЖКА: иконка всегда видна. */
 .goods-icon {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   vertical-align: middle;
   line-height: 0;
   flex-shrink: 0;
+  background: #FFFFFF;
+  border-radius: 8px;
+  /* SVG имеет внутренний 40px padding в 512 viewBox, дополнительный не нужен */
+  /* В тёмной теме принудительно ставим ink-цвет для inline-SVG (на случай если переменная не наследуется) */
+  --icon-ink: #1F2A3A;
+  --icon-accent: #2E7BC0;
 }
 .goods-icon svg { display: block; width: 100%; height: 100%; }
 .goods-icon--loading {
-  background: var(--bg3, rgba(255,255,255,0.04));
-  border-radius: 6px;
+  background: #F0F2F5;
+  border-radius: 8px;
 }

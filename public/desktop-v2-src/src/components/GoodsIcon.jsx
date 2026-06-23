@@ -40,7 +40,7 @@ function fetchIconOnce(url) {
 }
 
 export function GoodsIcon({ slug, path, size = 32, alt = '', fallback = null }) {
-  const src = path || (slug ? '/v2/assets/icons/' + slug + '.svg' : null);
+  const src = path || (slug ? '/icons/' + slug + '.svg' : null);
   const [svg, setSvg] = useState(() => (src && _cache.get(src) && _cache.get(src) !== 'ERR' ? _cache.get(src) : ''));
   const [err, setErr] = useState(() => src && _cache.get(src) === 'ERR');
   const ref = useRef(null);

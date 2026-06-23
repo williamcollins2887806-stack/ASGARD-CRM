@@ -35,7 +35,7 @@
   function srcFrom(opts) {
     if (!opts) return null;
     if (opts.path) return opts.path;
-    if (opts.slug) return '/v2/assets/icons/' + opts.slug + '.svg';
+    if (opts.slug) return '/icons/' + opts.slug + '.svg';
     return null;
   }
 
