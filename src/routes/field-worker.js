@@ -66,7 +66,7 @@ async function routes(fastify, options) {
         SELECT
           (SELECT COUNT(*) FROM field_checkins WHERE employee_id=$1 AND status='completed') as total_shifts,
           (SELECT COUNT(*) FROM field_photos WHERE employee_id=$1) as photos,
-          (SELECT COUNT(DISTINCT COALESCE(w.object_name, w.city, w.tender_region)) FROM employee_assignments ea JOIN works w ON w.id=ea.work_id WHERE ea.employee_id=$1) as cities,
+          (SELECT COUNT(DISTINCT COALESCE(w.object_name, w.city)) FROM employee_assignments ea JOIN works w ON w.id=ea.work_id WHERE ea.employee_id=$1) as cities,
           (SELECT COUNT(*) FROM field_checkins WHERE employee_id=$1 AND status='completed' AND hours_worked >= 12) as long_shifts,
           (SELECT COUNT(*) FROM employee_assignments WHERE employee_id=$1 AND field_role IN ('shift_master','senior_master')) as was_master
       `, [emp.id]);
@@ -177,7 +177,7 @@ async function routes(fastify, options) {
                ea.shift_type, ea.date_from, ea.date_to, ea.role, ea.is_active,
                ea.tariff_id, ea.tariff_points, ea.combination_tariff_id,
                ea.departure_date, ea.departure_reason,
-               w.work_title, COALESCE(w.object_name, w.city, w.tender_region) AS city, w.object_name, w.address, w.pm_id,
+               w.work_title, COALESCE(w.object_name, w.city) AS city, w.object_name, w.address, w.pm_id,
                w.contact_person, w.contact_phone,
                fps.shift_hours, fps.schedule_type, fps.site_category,
                fps.rounding_rule, fps.rounding_step, fps.per_diem as project_per_diem,
@@ -347,7 +347,7 @@ async function routes(fastify, options) {
       const { rows } = await db.query(`
         SELECT ea.work_id, ea.field_role, ea.date_from, ea.date_to, ea.is_active,
                ea.tariff_id, ea.per_diem,
-               w.work_title, COALESCE(w.object_name, w.city, w.tender_region) AS city, w.object_name, w.work_status, w.customer_name,
+               w.work_title, COALESCE(w.object_name, w.city) AS city, w.object_name, w.work_status, w.customer_name,
 
                -- PM как объект { fio, phone } или null
                (SELECT row_to_json(pm_row) FROM (
@@ -737,7 +737,7 @@ async function routes(fastify, options) {
     try {
       const empId = req.fieldEmployee.id;
       const { rows } = await db.query(`
-        SELECT fl.*, w.work_title, COALESCE(w.object_name, w.city, w.tender_region) AS city
+        SELECT fl.*, w.work_title, COALESCE(w.object_name, w.city) AS city
         FROM field_logistics fl
         LEFT JOIN works w ON w.id = fl.work_id
         WHERE fl.employee_id = $1
@@ -759,7 +759,7 @@ async function routes(fastify, options) {
     try {
       const empId = req.fieldEmployee.id;
       const { rows } = await db.query(`
-        SELECT fl.*, w.work_title, COALESCE(w.object_name, w.city, w.tender_region) AS city
+        SELECT fl.*, w.work_title, COALESCE(w.object_name, w.city) AS city
         FROM field_logistics fl
         LEFT JOIN works w ON w.id = fl.work_id
         WHERE fl.employee_id = $1

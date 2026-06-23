@@ -595,7 +595,7 @@ async function routes(fastify, options) {
 
       let sql = `
         SELECT fl.*, e.fio, e.phone, (e.user_id IS NOT NULL) AS has_lk,
-               w.work_title, COALESCE(w.object_name, w.city, w.tender_region) AS city,
+               w.work_title, COALESCE(w.object_name, w.city) AS city,
                d.original_name as document_name, d.download_url
         FROM field_logistics fl
         JOIN employees e ON e.id = fl.employee_id
@@ -640,7 +640,7 @@ async function routes(fastify, options) {
       const empId = req.fieldEmployee.id;
 
       const { rows } = await db.query(`
-        SELECT fl.*, w.work_title, COALESCE(w.object_name, w.city, w.tender_region) AS city,
+        SELECT fl.*, w.work_title, COALESCE(w.object_name, w.city) AS city,
                d.original_name as document_name, d.download_url,
                COALESCE(d.download_url, fl.details->>'receipt_url') as file_url
         FROM field_logistics fl
@@ -665,7 +665,7 @@ async function routes(fastify, options) {
       const empId = req.fieldEmployee.id;
 
       const { rows } = await db.query(`
-        SELECT fl.*, w.work_title, COALESCE(w.object_name, w.city, w.tender_region) AS city,
+        SELECT fl.*, w.work_title, COALESCE(w.object_name, w.city) AS city,
                d.original_name as document_name, d.download_url,
                COALESCE(d.download_url, fl.details->>'receipt_url') as file_url
         FROM field_logistics fl

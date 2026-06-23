@@ -40,7 +40,11 @@ const MONTH_NAMES = ['', 'Январь', 'Февраль', 'Март', 'Апре
 async function routes(fastify) {
   const db = fastify.db;
   const auth = { preHandler: [fastify.requireRoles(['PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'ADMIN'])] };
-  const SUPERVISOR_ROLES = ['ADMIN', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+  // FIX (23.06.2026): HEAD_PM добавлен в SUPERVISOR_ROLES.
+  // Климакин Д.В. (id=3458, HEAD_PM) — старший РП, у него самого работ (pm_id=3458) нет.
+  // Без isAdmin=true для HEAD_PM пустой /api/pm/works и пустые /workers → пустой табель «Моя дружина»,
+  // невозможно добавить смену через popover. По ТЗ HEAD_PM видит все работы своих РП.
+  const SUPERVISOR_ROLES = ['ADMIN', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 
   function pmFilter(user) {
     const isAdmin = SUPERVISOR_ROLES.includes(user.role);
@@ -129,14 +133,14 @@ async function routes(fastify) {
     const { isAdmin, userId } = pmFilter(req.user);
     const { rows } = await db.query(
       isAdmin
-        ? `SELECT w.id, w.work_title, w.city, w.work_status, w.address,
+        ? `SELECT w.id, w.work_title, COALESCE(w.object_name, w.city) AS city, w.work_status, w.address,
              COUNT(DISTINCT ea.employee_id) FILTER (WHERE ea.field_role='worker' AND ea.is_active) AS worker_count,
              COUNT(DISTINCT ea.employee_id) FILTER (WHERE ea.field_role IN ('shift_master','senior_master') AND ea.is_active) AS master_count
            FROM works w
            LEFT JOIN employee_assignments ea ON ea.work_id = w.id
            WHERE w.deleted_at IS NULL
            GROUP BY w.id ORDER BY w.created_at DESC`
-        : `SELECT w.id, w.work_title, w.city, w.work_status, w.address,
+        : `SELECT w.id, w.work_title, COALESCE(w.object_name, w.city) AS city, w.work_status, w.address,
              COUNT(DISTINCT ea.employee_id) FILTER (WHERE ea.field_role='worker' AND ea.is_active) AS worker_count,
              COUNT(DISTINCT ea.employee_id) FILTER (WHERE ea.field_role IN ('shift_master','senior_master') AND ea.is_active) AS master_count
            FROM works w
@@ -185,7 +189,7 @@ async function routes(fastify) {
         e.id, e.fio, e.phone, e.city,
         ea.id AS assignment_id, ea.work_id, ea.field_role, ea.shift_type,
         ea.per_diem, ea.is_active, ea.departure_date,
-        w.work_title, w.city AS work_city,
+        w.work_title, COALESCE(w.object_name, w.city) AS work_city,
         ft.points AS points_per_shift, ft.position_name AS tariff_name,
         fc.id AS checkin_id, fc.status AS checkin_status, fc.shift AS checkin_shift,
         fc.checkin_at, fc.checkout_at, fc.amount_earned,
@@ -246,7 +250,7 @@ async function routes(fastify) {
       db.query(`
         SELECT ea.id, ea.work_id, ea.field_role, ea.shift_type, ea.per_diem, ea.is_active,
           ea.date_from, ea.date_to, ea.departure_date, ea.departure_reason,
-          w.work_title, w.city, w.work_status,
+          w.work_title, COALESCE(w.object_name, w.city) AS city, w.work_status,
           ft.position_name AS tariff_name, ft.points AS points_per_shift
         FROM employee_assignments ea
         JOIN works w ON w.id = ea.work_id

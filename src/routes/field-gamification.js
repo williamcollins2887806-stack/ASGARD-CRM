@@ -1596,7 +1596,7 @@ async function routes(fastify) {
     const eid = req.fieldEmployee.id;
     const { rows } = await db.query(`
       SELECT
-        w.id as work_id, w.work_title, w.object_name, w.city,
+        w.id as work_id, w.work_title, w.object_name, COALESCE(w.object_name, w.city) AS city,
         fps.object_lat as latitude, fps.object_lng as longitude,
         ea.field_role,
         MIN(fc.date) as first_shift,
