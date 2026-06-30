@@ -19,7 +19,8 @@ class ReportScheduler {
     this.notify = notifyFn;
     this.log = log || console;
     this.jobs = [];
-    this._locks = new Set();
+    // NOTE: Locks are now persistent in DB (see _acquireLock/_releaseLock)
+    // to prevent duplicate sends when multiple node processes run simultaneously
   }
 
   async start() {
@@ -63,8 +64,13 @@ class ReportScheduler {
     const now = new Date();
     const mskDay = this._getMoscowDayOfWeek(now);
     const lockKey = `daily_${now.toISOString().slice(0, 10)}`;
-    if (this._locks.has(lockKey)) return;
-    this._locks.add(lockKey);
+
+    // Acquire persistent DB lock to prevent duplicates across multiple node processes
+    const lockAcquired = await this._acquireLock(lockKey, 300); // 5min TTL
+    if (!lockAcquired) {
+      this.log.info(`[ReportScheduler] Daily report already processing for ${lockKey}, skipping`);
+      return;
+    }
 
     try {
       let dateFrom, dateTo, label, reportSubType;
@@ -92,14 +98,20 @@ class ReportScheduler {
       await this._deliver(report, 'daily', label);
     } catch (err) {
       this.log.error({ err }, '[ReportScheduler] Daily failed');
-      this._locks.delete(lockKey);
+    } finally {
+      await this._releaseLock(lockKey);
     }
   }
 
   async _runWeekly() {
     const lockKey = `weekly_${new Date().toISOString().slice(0, 10)}`;
-    if (this._locks.has(lockKey)) return;
-    this._locks.add(lockKey);
+
+    // Acquire persistent DB lock
+    const lockAcquired = await this._acquireLock(lockKey, 300);
+    if (!lockAcquired) {
+      this.log.info(`[ReportScheduler] Weekly report already processing for ${lockKey}, skipping`);
+      return;
+    }
 
     try {
       const now = new Date();
@@ -116,14 +128,20 @@ class ReportScheduler {
       await this._deliver(report, 'weekly', label);
     } catch (err) {
       this.log.error({ err }, '[ReportScheduler] Weekly failed');
-      this._locks.delete(lockKey);
+    } finally {
+      await this._releaseLock(lockKey);
     }
   }
 
   async _runMonthly() {
     const lockKey = `monthly_${new Date().toISOString().slice(0, 7)}`;
-    if (this._locks.has(lockKey)) return;
-    this._locks.add(lockKey);
+
+    // Acquire persistent DB lock
+    const lockAcquired = await this._acquireLock(lockKey, 300);
+    if (!lockAcquired) {
+      this.log.info(`[ReportScheduler] Monthly report already processing for ${lockKey}, skipping`);
+      return;
+    }
 
     try {
       const now = new Date();
@@ -139,7 +157,8 @@ class ReportScheduler {
       await this._deliver(report, 'monthly', label);
     } catch (err) {
       this.log.error({ err }, '[ReportScheduler] Monthly failed');
-      this._locks.delete(lockKey);
+    } finally {
+      await this._releaseLock(lockKey);
     }
   }
 
@@ -302,6 +321,63 @@ class ReportScheduler {
 
     } catch (e) {
       this.log.error(`[ReportScheduler] MimirDigest for user ${directorId}: ${e.message}\n${e.stack}`);
+    }
+  }
+
+  // ════════════════════════════════════════════
+  // Distributed Lock (DB-persistent)
+  // Prevents duplicate sends when multiple node processes run simultaneously
+  // ════════════════════════════════════════════
+
+  async _acquireLock(lockKey, ttlSeconds = 300) {
+    try {
+      const result = await this.db.query(`
+        INSERT INTO cron_locks (lock_key, acquired_at, expires_at)
+        VALUES ($1, NOW(), NOW() + INTERVAL '1 second' * $2)
+        ON CONFLICT (lock_key) DO UPDATE
+        SET acquired_at = EXCLUDED.acquired_at, expires_at = EXCLUDED.expires_at
+        WHERE cron_locks.expires_at < NOW()
+        RETURNING lock_key
+      `, [lockKey, ttlSeconds]);
+
+      return result.rows.length > 0;
+    } catch (err) {
+      // If cron_locks table doesn't exist, create it
+      if (err.message?.includes('cron_locks')) {
+        try {
+          await this.db.query(`
+            CREATE TABLE IF NOT EXISTS cron_locks (
+              lock_key VARCHAR(255) PRIMARY KEY,
+              acquired_at TIMESTAMP DEFAULT NOW(),
+              expires_at TIMESTAMP NOT NULL
+            )
+          `);
+          this.log.info('[ReportScheduler] Created cron_locks table');
+          // Retry acquire
+          const retry = await this.db.query(`
+            INSERT INTO cron_locks (lock_key, acquired_at, expires_at)
+            VALUES ($1, NOW(), NOW() + INTERVAL '1 second' * $2)
+            ON CONFLICT (lock_key) DO UPDATE
+            SET acquired_at = EXCLUDED.acquired_at, expires_at = EXCLUDED.expires_at
+            WHERE cron_locks.expires_at < NOW()
+            RETURNING lock_key
+          `, [lockKey, ttlSeconds]);
+          return retry.rows.length > 0;
+        } catch (createErr) {
+          this.log.error('[ReportScheduler] Failed to create cron_locks table:', createErr.message);
+          return false;
+        }
+      }
+      this.log.error('[ReportScheduler] Lock acquire failed:', err.message);
+      return false;
+    }
+  }
+
+  async _releaseLock(lockKey) {
+    try {
+      await this.db.query('DELETE FROM cron_locks WHERE lock_key = $1', [lockKey]);
+    } catch (err) {
+      this.log.warn('[ReportScheduler] Lock release failed:', err.message);
     }
   }
 
