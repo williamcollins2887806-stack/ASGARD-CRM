@@ -40,9 +40,18 @@ function buildIndexVersions() {
   indexMobile = raw
     .replace(/<!-- ASGARD_DESKTOP_START -->[\s\S]*?<!-- ASGARD_DESKTOP_END -->/g, '<!-- desktop scripts excluded by server -->');
   // React mobile app (если собран)
+  reactMobileHtml = ''; // Force clear before reading
   try {
-    reactMobileHtml = fs.readFileSync(reactMobileHtmlPath, 'utf8');
-  } catch (_) {
+    const content = fs.readFileSync(reactMobileHtmlPath, 'utf8');
+    const matchBefore = 'empty';
+    const matchAfter = content.match(/index-(\w+)\.js/);
+    console.log(`[buildIndexVersions] File content hash: ${matchAfter ? matchAfter[1] : 'unknown'}`);
+    reactMobileHtml = Buffer.from(content); // Store as Buffer to prevent mutation
+    reactMobileHtml = reactMobileHtml.toString(); // Convert back
+    const matchVerify = reactMobileHtml.match(/index-(\w+)\.js/);
+    console.log(`[buildIndexVersions] Stored in memory: ${matchVerify ? matchVerify[1] : 'ERROR'}`);
+  } catch (e) {
+    console.error(`[buildIndexVersions] Failed to read ${reactMobileHtmlPath}:`, e.message);
     reactMobileHtml = '';
   }
 }
@@ -54,6 +63,11 @@ if (process.env.NODE_ENV !== 'production') {
   fs.watchFile(indexHtmlPath, { interval: 2000 }, () => {
     try { buildIndexVersions(); console.log('[Server] index.html reloaded'); }
     catch (e) { console.error('[Server] Failed to reload index.html:', e.message); }
+  });
+  // Watch mobile app index.html for dev hot-reload
+  fs.watchFile(reactMobileHtmlPath, { interval: 2000 }, () => {
+    try { buildIndexVersions(); console.log('[Server] /m/index.html reloaded'); }
+    catch (e) { console.error('[Server] Failed to reload /m/index.html:', e.message); }
   });
 }
 
@@ -188,6 +202,11 @@ try { fieldHtml = fs.readFileSync(fieldIndexPath, 'utf8'); } catch (_) {}
 fastify.addHook('onRequest', (request, reply, done) => {
   const url = request.url.split('?')[0];
 
+  // DEBUG: Log all requests to /m/*
+  if (url.startsWith('/m/')) {
+    console.log(`[onRequest] ${url}`);
+  }
+
   // React mobile app: /m → /m/ redirect
   if (url === '/m') {
     reply.redirect(301, '/m/');
@@ -197,7 +216,25 @@ fastify.addHook('onRequest', (request, reply, done) => {
   // React mobile app: SPA fallback для всех /m/* путей
   if (url === '/m/' || (url.startsWith('/m/') && !url.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot|webp|json|map)$/i))) {
     if (reactMobileHtml) {
-      reply.type('text/html').header('Cache-Control', 'no-cache').send(reactMobileHtml);
+      reply.type('text/html')
+        .header('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0')
+        .header('Pragma', 'no-cache')
+        .header('Expires', '0')
+        .send(reactMobileHtml);
+      return;
+    }
+  }
+
+  // Explicitly serve /m/index.html (prevent @fastify/static from serving stale cached version)
+  if (url === '/m/index.html') {
+    const match = reactMobileHtml.match(/index-(\w+)\.js/);
+    console.log(`[/m/index.html request] Serving stored reactMobileHtml with hash: ${match ? match[1] : 'ERROR'}`);
+    if (reactMobileHtml) {
+      reply.type('text/html')
+        .header('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0')
+        .header('Pragma', 'no-cache')
+        .header('Expires', '0')
+        .send(reactMobileHtml);
       return;
     }
   }
@@ -242,6 +279,16 @@ fastify.addHook('onRequest', (request, reply, done) => {
   done();
 });
 
+// Intercept /m/index.html with preHandler (runs BEFORE @fastify/static)
+fastify.addHook('preHandler', async (request, reply) => {
+  const url = request.url.split('?')[0];
+  if (url === '/m/index.html' && reactMobileHtml) {
+    const match = reactMobileHtml.match(/index-(\w+)\.js/);
+    console.log(`[preHandler] Intercepted /m/index.html, serving fresh from memory (hash: ${match ? match[1] : '?'})`);
+    reply.type('text/html').header('Cache-Control', 'no-cache').send(reactMobileHtml);
+  }
+});
+
 // Static files (frontend) with cache-busting headers
 fastify.register(require('@fastify/static'), {
   root: path.join(__dirname, '../public'),
@@ -271,6 +318,18 @@ fastify.register(require('@fastify/static'), {
     if (filePath.endsWith('.json')) {
       res.setHeader('Cache-Control', 'no-cache');
     }
+  }
+});
+
+// Intercept /m/index.html AFTER @fastify/static but BEFORE send (onSend hook)
+// This ensures we always serve the fresh SPA HTML from memory, not disk cache
+fastify.addHook('onSend', async (request, reply) => {
+  const url = request.url.split('?')[0];
+  if (url === '/m/index.html' && reactMobileHtml) {
+    const match = reactMobileHtml.match(/index-(\w+)\.js/);
+    console.log(`[onSend hook] Intercepted /m/index.html, serving fresh from memory (hash: ${match ? match[1] : '?'})`);
+    reply.type('text/html').header('Cache-Control', 'no-cache');
+    return reactMobileHtml;
   }
 });
 
@@ -502,6 +561,7 @@ fastify.register(require('./routes/work-readiness'), { prefix: '/api/work-readin
 fastify.register(require('./routes/birthdays'), { prefix: '/api/birthdays' });  // C-14: виджет ДР на главной
 fastify.register(require('./routes/customers'), { prefix: '/api/customers' });
 fastify.register(require('./routes/expenses'), { prefix: '/api/expenses' });
+fastify.register(require('./routes/kpi-money'), { prefix: '/api/kpi-money' }); // KPI v2: серверный агрегат /expenses-by-category для donut
 fastify.register(require('./routes/incomes'), { prefix: '/api/incomes' });
 fastify.register(require('./routes/calendar'), { prefix: '/api/calendar' });
 fastify.register(require('./routes/staff'), { prefix: '/api/staff' });

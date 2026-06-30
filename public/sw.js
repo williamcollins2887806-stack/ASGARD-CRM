@@ -2,7 +2,7 @@
 // Shell caching + Push Notifications + Offline Support + Background Sync
 // Session 15: PWA + Push Actions + Badge + Offline
 
-const SHELL_VERSION = '20.26.26';
+const SHELL_VERSION = '20.26.27';
 const CACHE_NAME = `asgard-crm-shell-${SHELL_VERSION}`;
 const API_CACHE_NAME = 'asgard-crm-api-v2';
 
@@ -184,15 +184,20 @@ async function networkFirstWithOffline(request) {
     // браузер делал 304-revalidation против устаревшего ETag).
     var response = await fetch(request, { cache: 'no-store' });
     if (response && response.ok) {
-      var cache = await caches.open(CACHE_NAME);
-      cache.put(request, response.clone()).catch(function() {});
+      // НЕ кэшируем HTML в SW для /m/* путей — это вызывает white screen
+      // когда браузер отключён или сеть медленная. Вместо этого,
+      // server отправляет Cache-Control: no-store, must-revalidate
+      // и браузер уважает это.
+      // ИСКЛЮЧЕНИЕ: кэшируем ТОЛЬКО если это NOT /m/ (desktop/field/root)
+      if (!request.url.includes('/m/') && !request.url.includes('/m/index.html')) {
+        var cache = await caches.open(CACHE_NAME);
+        cache.put(request, response.clone()).catch(function() {});
+      }
     }
     return response;
   } catch (err) {
-    var cached = await caches.match(request);
-    if (cached) return cached;
-    var shell = await caches.match('./index.html');
-    if (shell) return shell;
+    // При ошибке сети: НЕ возвращаем закэшированный HTML (он может быть старым)
+    // Вместо этого возвращаем offline.html ТОЛЬКО если это точный запрос на offline.html
     var offline = await caches.match('./offline.html');
     if (offline) return offline;
     return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
