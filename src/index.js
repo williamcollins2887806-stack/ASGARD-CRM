@@ -285,7 +285,11 @@ fastify.addHook('preHandler', async (request, reply) => {
   if (url === '/m/index.html' && reactMobileHtml) {
     const match = reactMobileHtml.match(/index-(\w+)\.js/);
     console.log(`[preHandler] Intercepted /m/index.html, serving fresh from memory (hash: ${match ? match[1] : '?'})`);
-    reply.type('text/html').header('Cache-Control', 'no-cache').send(reactMobileHtml);
+    reply.type('text/html')
+      .header('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0')
+      .header('Pragma', 'no-cache')
+      .header('Expires', '0')
+      .send(reactMobileHtml);
   }
 });
 
@@ -328,7 +332,10 @@ fastify.addHook('onSend', async (request, reply) => {
   if (url === '/m/index.html' && reactMobileHtml) {
     const match = reactMobileHtml.match(/index-(\w+)\.js/);
     console.log(`[onSend hook] Intercepted /m/index.html, serving fresh from memory (hash: ${match ? match[1] : '?'})`);
-    reply.type('text/html').header('Cache-Control', 'no-cache');
+    reply.type('text/html')
+      .header('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0')
+      .header('Pragma', 'no-cache')
+      .header('Expires', '0');
     return reactMobileHtml;
   }
 });
@@ -1061,7 +1068,11 @@ fastify.setNotFoundHandler((request, reply) => {
 
   // React mobile app SPA fallback (/m/* routes)
   if (cleanUrl.startsWith('/m/') && reactMobileHtml) {
-    reply.type('text/html').header('Cache-Control', 'no-cache').send(reactMobileHtml);
+    reply.type('text/html')
+      .header('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0')
+      .header('Pragma', 'no-cache')
+      .header('Expires', '0')
+      .send(reactMobileHtml);
     return;
   }
 
