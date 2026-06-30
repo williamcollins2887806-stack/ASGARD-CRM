@@ -28,11 +28,45 @@ const VIEW_ROLES = [
   'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV',
   'TO', 'HEAD_TO',
   'WAREHOUSE',
+  'OFFICE_MANAGER',
   'PROC', 'BUH',
   'HR', 'HR_MANAGER'
 ];
 
-const STAGE_TYPES = ['warehouse', 'medical', 'waiting', 'travel'];
+// Lock helper
+function getLockLib() {
+  try { return require('../lib/timesheet-locks'); } catch (_) {}
+  try { return require('./timesheet-v2'); } catch (_) {}
+  return null;
+}
+async function assertNotLockedSafe(fastify, viewer, ctx) {
+  const lib = getLockLib();
+  if (!lib || typeof lib.assertNotLocked !== 'function') return;
+  await lib.assertNotLocked(fastify, viewer, ctx);
+}
+function tryDateParts(dateStr) {
+  if (!dateStr || typeof dateStr !== 'string') {
+    const d = new Date();
+    return { year: d.getFullYear(), month: d.getMonth() + 1 };
+  }
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateStr);
+  if (!m) {
+    const d = new Date(dateStr);
+    return { year: d.getFullYear(), month: d.getMonth() + 1 };
+  }
+  return { year: parseInt(m[1], 10), month: parseInt(m[2], 10) };
+}
+function scopeForRole(role) {
+  if (role === 'PM' || role === 'HEAD_PM') return 'pm';
+  if (role === 'TO' || role === 'HEAD_TO') return 'medical';
+  if (role === 'WAREHOUSE') return 'warehouse';
+  if (role === 'OFFICE_MANAGER') return 'travel';
+  return 'global';
+}
+
+// V255 (23.06.2026): добавлен 'ship' — альтернатива «Дорога» за повышенную ставку
+// (12 баллов × 500 ₽). Ставит ТО/HEAD_TO (как МО), плюс ADMIN/DIRECTOR.
+const STAGE_TYPES = ['warehouse', 'medical', 'waiting', 'travel', 'ship'];
 const SHIFT_TYPES = ['day', 'night'];
 
 function daysInMonth(year, month) {
@@ -43,9 +77,12 @@ function fmtDate(d) {
   if (!d) return null;
   if (typeof d === 'string') return d.slice(0, 10);
   if (d instanceof Date) {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
+    // FIX 29.06.2026: UTC методы, не локальные. PG DATE приходит как
+    // UTC 00:00; локальный getDate() в MSK даёт −1 день (был баг в табелях:
+    // последний день месяца обрезался).
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(d.getUTCDate()).padStart(2, '0');
     return `${y}-${m}-${dd}`;
   }
   return String(d);
@@ -53,8 +90,10 @@ function fmtDate(d) {
 
 function canEditType(role, type) {
   if (role === 'ADMIN' || role.startsWith('DIRECTOR_')) return true;
-  if ((role === 'TO' || role === 'HEAD_TO') && type === 'medical') return true;
+  // V255: medical-роли (TO/HEAD_TO) ставят МО и Корабль.
+  if ((role === 'TO' || role === 'HEAD_TO') && (type === 'medical' || type === 'ship')) return true;
   if (role === 'WAREHOUSE' && type === 'warehouse') return true;
+  if (role === 'OFFICE_MANAGER' && type === 'travel') return true;
   return false;
 }
 
@@ -100,12 +139,14 @@ async function routes(fastify, options) {
         AND COALESCE(fts.date_to, fts.date_from) >= $1
     `, [periodStart, periodEnd]);
 
-    // Группировка: ключ = employee_id × work_id (или 0 если NULL — «Без объекта»)
-    // Каждая (emp, work) → одна строка в табеле с entries{YYYY-MM-DD: {type, amount, hours}}
-    const rowMap = {}; // key = `${empId}_${workKey}`
+    // Группировка: ОДНА СТРОКА НА РАБОТНИКА (сводно по всем проектам месяца).
+    // FIX 30.06.2026: раньше ключ был `${empId}_${workId}` → если работник
+    // был на 2 проектах последовательно (например КАО Азот → Пуровск), в
+    // директорском табеле появлялись 2 строки. Юзер хочет видеть СУММАРНУЮ
+    // сумму к выплате — одной строкой. work_title собираем списком.
+    const rowMap = {}; // key = empId
     function ensureRow(empId, fio, position, roleTag, workId, workTitle) {
-      const wKey = workId || 0;
-      const key = `${empId}_${wKey}`;
+      const key = String(empId);
       if (!rowMap[key]) {
         rowMap[key] = {
           employee_id: empId,
@@ -114,10 +155,17 @@ async function routes(fastify, options) {
           role_tag: roleTag || '',
           work_id: workId || null,
           work_title: workTitle || 'Без объекта',
+          work_titles: new Set(workTitle ? [workTitle] : []),
           entries: {},
           total_days: 0,
           total_amount: 0
         };
+      } else if (workTitle) {
+        rowMap[key].work_titles.add(workTitle);
+        // Если стало больше одного — обновляем итоговую строку
+        if (rowMap[key].work_titles.size > 1) {
+          rowMap[key].work_title = Array.from(rowMap[key].work_titles).join(' + ');
+        }
       }
       return rowMap[key];
     }
@@ -126,13 +174,16 @@ async function routes(fastify, options) {
       const row = ensureRow(c.employee_id, c.fio || c.full_name, c.role_tag, c.role_tag, c.work_id, c.work_title);
       const dStr = fmtDate(c.date);
       if (row.entries[dStr]) continue; // уже занято
+      const dayEarn = Number(c.amount_earned || 0);
+      // FIX 30.06.2026: табель ТОЛЬКО по ЗП, суточные НЕ включаются
+      // (по memory feedback-per_diem_pending_vs_paid: pending ≠ paid, не складывать)
       row.entries[dStr] = {
         type: c.shift || 'day',
-        amount: Number(c.amount_earned || 0),
+        amount: dayEarn,
         hours: Number(c.hours_worked || 0)
       };
       row.total_days += 1;
-      row.total_amount += Number(c.amount_earned || 0);
+      row.total_amount += dayEarn;
     }
 
     for (const s of stages) {
@@ -143,17 +194,25 @@ async function routes(fastify, options) {
       const endMs   = Math.min(to.getTime(), new Date(periodEnd).getTime());
       const oneDay  = 24 * 60 * 60 * 1000;
       const dCount  = Math.max(1, Math.round((endMs - startMs) / oneDay) + 1);
-      const perDay  = Number(s.amount_earned || 0) / Math.max(1, Number(s.days_count || dCount));
+      const totalAmount = Number(s.amount_earned || 0);
+      // FIX 30.06.2026: распределяем копейки чтобы избежать accumulation rounding error.
+      // Вместо perDay = 30001 / 25 = 1200.04 (суммирование теряет 0.04 × 25 = 1 ₽)
+      // используем целую часть + остаток на первые дни: 1200 × 25 + 1 на первый день.
+      const basePerDay = Math.floor(totalAmount / dCount);
+      const remainder = totalAmount - (basePerDay * dCount);
+      let dayIdx = 0;
       for (let t = startMs; t <= endMs; t += oneDay) {
         const dStr = fmtDate(new Date(t));
         if (row.entries[dStr]) continue;
+        const dayAmount = basePerDay + (dayIdx < remainder ? 1 : 0);
         row.entries[dStr] = {
           type: s.stage_type,
-          amount: perDay,
+          amount: dayAmount,
           hours: 0
         };
         row.total_days += 1;
-        row.total_amount += perDay;
+        row.total_amount += dayAmount;
+        dayIdx += 1;
       }
     }
 
@@ -420,6 +479,19 @@ async function routes(fastify, options) {
       return reply.code(403).send({ error: 'Недостаточно прав для типа: ' + type });
     }
 
+    // Period lock
+    try {
+      const { year, month } = tryDateParts(date);
+      await assertNotLockedSafe(fastify, { id: request.user.id, role: request.user.role }, {
+        year, month, scope_hint: scopeForRole(role), work_id, employee_id, date
+      });
+    } catch (lockErr) {
+      if (lockErr && lockErr.code === 'period_locked') {
+        return reply.code(423).send({ error: 'period_locked', lock: lockErr.lock || null });
+      }
+      throw lockErr;
+    }
+
     // Проверка employee существует
     const { rows: emp } = await db.query('SELECT id FROM employees WHERE id = $1', [employee_id]);
     if (!emp.length) return reply.code(404).send({ error: 'Сотрудник не найден' });
@@ -459,8 +531,8 @@ async function routes(fastify, options) {
       }
       const { rows: [ci] } = await db.query(`
         INSERT INTO field_checkins
-          (employee_id, work_id, assignment_id, date, shift, status, checkin_at, amount_earned, hours_worked, checkin_source, checkin_by, note)
-        VALUES ($1, $2, $3, $4, $5, 'completed', NOW(), $6, $7, 'admin', $8, $9)
+          (employee_id, work_id, assignment_id, date, shift, status, checkin_at, amount_earned, hours_worked, checkin_source, checkin_by, note, entered_by_user_id)
+        VALUES ($1, $2, $3, $4, $5, 'completed', NOW(), $6, $7, 'admin', $8, $9, $8)
         RETURNING *
       `, [employee_id, work_id, assign[0].id, date, type, amount || null, hours || null, request.user.id, note || null]);
       return { ok: true, entry: ci, kind: 'checkin' };
@@ -469,8 +541,8 @@ async function routes(fastify, options) {
     // warehouse/medical/waiting/travel → field_trip_stages (work_id может быть NULL)
     const { rows: [st] } = await db.query(`
       INSERT INTO field_trip_stages
-        (employee_id, work_id, stage_type, date_from, date_to, days_count, tariff_points, rate_per_day, amount_earned, status, created_by, note)
-      VALUES ($1, $2, $3, $4, $4, 1, 0, $5, $6, 'active', $7, $8)
+        (employee_id, work_id, stage_type, date_from, date_to, days_count, tariff_points, rate_per_day, amount_earned, status, created_by, note, entered_by_user_id)
+      VALUES ($1, $2, $3, $4, $4, 1, 0, $5, $6, 'active', $7, $8, $7)
       RETURNING *
     `, [employee_id, work_id || null, type, date, amount || 0, amount || 0, request.user.id, note || null]);
     return { ok: true, entry: st, kind: 'stage' };
