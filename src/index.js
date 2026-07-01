@@ -44,11 +44,11 @@ function buildIndexVersions() {
   try {
     const content = fs.readFileSync(reactMobileHtmlPath, 'utf8');
     const matchBefore = 'empty';
-    const matchAfter = content.match(/index-(\w+)\.js/);
+    const matchAfter = content.match(/index-([\w-]+)\.js/);
     console.log(`[buildIndexVersions] File content hash: ${matchAfter ? matchAfter[1] : 'unknown'}`);
     reactMobileHtml = Buffer.from(content); // Store as Buffer to prevent mutation
     reactMobileHtml = reactMobileHtml.toString(); // Convert back
-    const matchVerify = reactMobileHtml.match(/index-(\w+)\.js/);
+    const matchVerify = reactMobileHtml.match(/index-([\w-]+)\.js/);
     console.log(`[buildIndexVersions] Stored in memory: ${matchVerify ? matchVerify[1] : 'ERROR'}`);
   } catch (e) {
     console.error(`[buildIndexVersions] Failed to read ${reactMobileHtmlPath}:`, e.message);
@@ -227,7 +227,7 @@ fastify.addHook('onRequest', (request, reply, done) => {
 
   // Explicitly serve /m/index.html (prevent @fastify/static from serving stale cached version)
   if (url === '/m/index.html') {
-    const match = reactMobileHtml.match(/index-(\w+)\.js/);
+    const match = reactMobileHtml.match(/index-([\w-]+)\.js/);
     console.log(`[/m/index.html request] Serving stored reactMobileHtml with hash: ${match ? match[1] : 'ERROR'}`);
     if (reactMobileHtml) {
       reply.type('text/html')
@@ -283,7 +283,7 @@ fastify.addHook('onRequest', (request, reply, done) => {
 fastify.addHook('preHandler', async (request, reply) => {
   const url = request.url.split('?')[0];
   if (url === '/m/index.html' && reactMobileHtml) {
-    const match = reactMobileHtml.match(/index-(\w+)\.js/);
+    const match = reactMobileHtml.match(/index-([\w-]+)\.js/);
     console.log(`[preHandler] Intercepted /m/index.html, serving fresh from memory (hash: ${match ? match[1] : '?'})`);
     reply.type('text/html')
       .header('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0')
@@ -330,7 +330,7 @@ fastify.register(require('@fastify/static'), {
 fastify.addHook('onSend', async (request, reply) => {
   const url = request.url.split('?')[0];
   if (url === '/m/index.html' && reactMobileHtml) {
-    const match = reactMobileHtml.match(/index-(\w+)\.js/);
+    const match = reactMobileHtml.match(/index-([\w-]+)\.js/);
     console.log(`[onSend hook] Intercepted /m/index.html, serving fresh from memory (hash: ${match ? match[1] : '?'})`);
     reply.type('text/html')
       .header('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0')
