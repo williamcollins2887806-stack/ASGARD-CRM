@@ -167,9 +167,92 @@ window.AsgardWorkExpenses = (function(){
       if(byCategory[e.category]) byCategory[e.category].push(e);
     });
 
+    // Подкатегории под cash (синхронизировано с src/services/work-expense-categories.js)
+    const CASH_SUB_LABELS = {
+      gsm: '⛽ ГСМ',
+      accommodation: '🏨 Аренда жилья',
+      transport: '🚗 Транспорт / такси',
+      food: '🍽 Питание бригады',
+      supplies: '📦 Расходники / материалы',
+      representational: '🎁 Представительские',
+      services: '🛠 Услуги',
+      other: '📋 Прочее'
+    };
+    function _renderCashBreakdown(items) {
+      const groups = {};
+      items.forEach(e => {
+        const k = e.subcategory || 'other';
+        (groups[k] = groups[k] || []).push(e);
+      });
+      const order = ['gsm','transport','accommodation','food','supplies','services','representational','other'];
+      const visible = order.filter(k => groups[k] && groups[k].length);
+      const subTotals = visible.map(k => {
+        const sum = groups[k].reduce((a,b) => a + Number(b.amount||0), 0);
+        return `<span class="cash-sub" data-sub="${k}" title="Кликни — отфильтровать">${CASH_SUB_LABELS[k] || k} <b>${money(sum)} ₽</b> · ${groups[k].length}</span>`;
+      }).join('');
+      return subTotals ? `<div class="cash-breakdown">${subTotals}</div>` : '';
+    }
+
     const categoryRows = EXPENSE_CATEGORIES.filter(c => !c.hidden || (byCategory[c.key] && byCategory[c.key].length > 0)).map(c => {
       const items = byCategory[c.key] || [];
       const total = totals[c.key] || 0;
+      const breakdown = (c.key === 'cash' && items.length) ? _renderCashBreakdown(items) : '';
+
+      // Группировка по сотруднику для ФОТ/суточных (1 строка на чел.,
+      // раскрытие → детальные выплаты). User-фидбек 17.06.2026:
+      //   "должен быть учет только paid + сгруппировать по рабочему".
+      const isEmpGroup = (c.key === 'fot' || c.key === 'payroll' || c.key === 'per_diem');
+      if (isEmpGroup && items.length) {
+        const byEmp = {};
+        items.forEach(e => {
+          const name = e.fot_employee_name || e.recipient || e.supplier || 'Без сотрудника';
+          (byEmp[name] = byEmp[name] || []).push(e);
+        });
+        const empRows = Object.entries(byEmp)
+          .map(([name, arr]) => ({
+            name, count: arr.length,
+            sum: arr.reduce((a,b) => a + Number(b.amount||0), 0),
+            items: arr
+          }))
+          .sort((a,b) => b.sum - a.sum);
+        const empHtml = empRows.map((emp, idx) => `
+          <div class="exp-emp-row" data-emp-idx="${c.key}-${idx}">
+            <div class="exp-emp-head">
+              <span class="exp-emp-name">${esc(emp.name)}</span>
+              <span class="exp-emp-meta">${emp.count} вып.</span>
+              <span class="exp-emp-sum">${money(emp.sum)} ₽</span>
+              <button class="btn ghost mini" data-emp-toggle="${c.key}-${idx}" title="Показать выплаты">▼</button>
+            </div>
+            <div class="exp-emp-details" id="emp-details-${c.key}-${idx}" style="display:none">
+              ${emp.items.sort((a,b) => (a.date||'').localeCompare(b.date||'')).map(e => `
+                <div class="exp-item compact" data-id="${e.id}">
+                  <span class="exp-date">${e.date ? AsgardUI.formatDate(e.date) : '—'}</span>
+                  <span class="exp-amount">${money(e.amount)} ₽</span>
+                  ${e.comment ? `<span class="exp-comment">${esc(e.comment)}</span>` : ''}
+                  <span class="exp-item-actions">
+                    <button class="btn ghost mini" data-edit="${e.id}">✎</button>
+                    <button class="btn ghost mini red" data-del="${e.id}">✕</button>
+                  </span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `).join('');
+        return `
+          <div class="exp-category" data-cat="${c.key}">
+            <div class="exp-cat-header">
+              <span class="exp-cat-icon">${c.icon}</span>
+              <span class="exp-cat-label">${c.label}</span>
+              <span class="exp-cat-meta">${empRows.length} чел · ${items.length} вып.</span>
+              <span class="exp-cat-total">${money(total)} ₽</span>
+              <button class="btn ghost mini" data-add-cat="${c.key}">+ Добавить</button>
+              ${(c.key === 'fot' || c.key === 'payroll') ? `<button class="btn ghost mini" data-bonus-cat="${c.key}" style="color:var(--amber)">🏆 Премии</button>` : ''}
+            </div>
+            <div class="exp-cat-items">${empHtml}</div>
+          </div>
+        `;
+      }
+
       const itemsHtml = items.length ? items.map(e => `
         <div class="exp-item" data-id="${e.id}">
           <div class="exp-item-main">
@@ -199,10 +282,12 @@ window.AsgardWorkExpenses = (function(){
           <div class="exp-cat-header">
             <span class="exp-cat-icon">${c.icon}</span>
             <span class="exp-cat-label">${c.label}</span>
+            ${items.length ? `<span class="exp-cat-meta">${items.length} зап.</span>` : ''}
             <span class="exp-cat-total">${money(total)} ₽</span>
             <button class="btn ghost mini" data-add-cat="${c.key}">+ Добавить</button>
             ${(c.key === 'fot' || c.key === 'payroll') ? `<button class="btn ghost mini" data-bonus-cat="${c.key}" style="color:var(--amber)">🏆 Премии</button>` : ''}
           </div>
+          ${breakdown}
           <div class="exp-cat-items">${itemsHtml}</div>
         </div>
       `;
@@ -236,6 +321,24 @@ window.AsgardWorkExpenses = (function(){
         .btn.sm { padding:4px 8px; font-size:11px; }
         .badge.ok { background:rgba(34,197,94,.2); color:var(--ok-t); }
         .badge.warn { background:rgba(245,158,11,.2); color:var(--amber); }
+        /* Скролл блока категорий — иначе при 200+ выплатах модалка растягивается */
+        #expCategories { padding-right: 6px; }
+        .exp-cat-meta { font-size:11px; color:var(--muted); padding:0 4px; }
+        /* Breakdown по subcategory для категории "Наличные" */
+        .cash-breakdown { display:flex; flex-wrap:wrap; gap:6px; padding:8px 14px; background:var(--bg3); border-top:1px solid var(--brd); }
+        .cash-sub { font-size:12px; color:var(--muted); background:var(--bg4); padding:3px 8px; border-radius:4px; cursor:default; }
+        .cash-sub b { color:var(--text); }
+        /* Группировка по сотрудникам для ФОТ/Суточных */
+        .exp-emp-row { border-bottom:1px solid var(--brd); padding:6px 0; }
+        .exp-emp-row:last-child { border-bottom:none; }
+        .exp-emp-head { display:flex; align-items:center; gap:10px; padding:4px 0; cursor:pointer; }
+        .exp-emp-head:hover { background:var(--bg3); }
+        .exp-emp-name { flex:1; font-weight:600; }
+        .exp-emp-meta { font-size:11px; color:var(--muted); }
+        .exp-emp-sum { font-weight:700; color:var(--gold); min-width:120px; text-align:right; }
+        .exp-emp-details { padding:6px 0 6px 20px; background:var(--bg3); border-radius:4px; margin:4px 0; }
+        .exp-item.compact { display:flex; gap:10px; align-items:center; padding:3px 8px; border-bottom:1px solid var(--brd); }
+        .exp-item.compact:last-child { border-bottom:none; }
       </style>
 
       <div class="exp-summary">
@@ -303,6 +406,24 @@ window.AsgardWorkExpenses = (function(){
         } else {
           toast('Ошибка', 'Модуль премий не загружен', 'err');
         }
+      });
+    });
+
+    // Раскрытие/сворачивание выплат сотрудника (ФОТ/суточные)
+    function _toggleEmp(idx) {
+      const det = document.getElementById('emp-details-' + idx);
+      if (!det) return;
+      det.style.display = det.style.display === 'none' ? 'block' : 'none';
+      const btn = document.querySelector(`[data-emp-toggle="${idx}"]`);
+      if (btn) btn.textContent = det.style.display === 'none' ? '▼' : '▲';
+    }
+    $$('[data-emp-toggle]').forEach(btn => {
+      btn.addEventListener('click', e => { e.stopPropagation(); _toggleEmp(btn.dataset.empToggle); });
+    });
+    $$('.exp-emp-head').forEach(head => {
+      head.addEventListener('click', () => {
+        const btn = head.querySelector('[data-emp-toggle]');
+        if (btn) _toggleEmp(btn.dataset.empToggle);
       });
     });
 
@@ -423,7 +544,7 @@ window.AsgardWorkExpenses = (function(){
             <option value="cash">💵 Наличные (55%)</option>
             <option value="card">💳 Карта на месте (55%)</option>
             <option value="bank">🏦 Безнал по счёту</option>
-            <option value="self">👤 Самозанятый</option>
+            <option value="self" title="НПД: оплата от компании с расчётного счёта, НЕ из кассы РП. На баланс РП не влияет.">👤 Самозанятый</option>
           </select>
         </div>
         <div><label>Ставка НДС</label>
@@ -450,27 +571,42 @@ window.AsgardWorkExpenses = (function(){
 
     showModal({ title: `Добавить: ${cat.label}`, html, icon: cat.icon || '💳', subtitle: esc(work.work_title || '') });
 
+    // КРИТИЧНО: showModal СТЕКУЕТ модалки, а $/$$ ищут по всему document (первое совпадение).
+    // После пересохранения в DOM оказывается несколько форм с одинаковыми id (#btnSaveExp,
+    // #exp_file…), и глобальный $ вешал слушатели на ПОХОРОНЕННУЮ форму → видимая кнопка
+    // «Сохранить» не отзывалась и файл не подхватывался. Скоупим всё в текущий (верхний) оверлей.
+    const _ovs = document.querySelectorAll('.cr-m-overlay');
+    const _scope = _ovs[_ovs.length - 1] || document;
+    const q = (sel) => _scope.querySelector(sel);
+
     // Авто-расчёт НДС при изменении суммы или ставки
     let _expFile = null;
     if (!isFot) {
       const vatCalc = () => {
-        const amt = Number($('#exp_amount')?.value) || 0;
-        const rate = Number($('#exp_vat_rate')?.value) || 0;
+        const amt = Number(q('#exp_amount')?.value) || 0;
+        const rate = Number(q('#exp_vat_rate')?.value) || 0;
         if (rate > 0 && amt > 0) {
           const vatAmt = Math.round(amt * rate / (100 + rate) * 100) / 100;
-          $('#exp_vat_amount').value = vatAmt;
+          q('#exp_vat_amount').value = vatAmt;
         }
       };
-      $('#exp_amount')?.addEventListener('change', vatCalc);
-      $('#exp_vat_rate')?.addEventListener('change', vatCalc);
+      q('#exp_amount')?.addEventListener('change', vatCalc);
+      q('#exp_vat_rate')?.addEventListener('change', vatCalc);
 
-      // Предпросмотр файла
-      $('#exp_file')?.addEventListener('change', (e) => {
+      // Предпросмотр файла + клиентская проверка размера (бэк режет >200МБ, но большое
+      // фото на слабой связи вешало upload без таймаута → кнопка «залипала»).
+      q('#exp_file')?.addEventListener('change', (e) => {
         const f = e.target.files[0];
         if (!f) return;
+        if (f.size > 25 * 1024 * 1024) {
+          toast('Файл', 'Счёт больше 25 МБ — сожмите или переснимите', 'err');
+          e.target.value = ''; _expFile = null;
+          q('#exp_file_label').textContent = 'Прикрепить счёт (PDF/фото)';
+          return;
+        }
         _expFile = f;
-        $('#exp_file_label').textContent = '📎 ' + f.name;
-        const preview = $('#exp_file_preview');
+        q('#exp_file_label').textContent = '📎 ' + f.name;
+        const preview = q('#exp_file_preview');
         preview.style.display = 'block';
         if (f.type === 'application/pdf') {
           preview.innerHTML = '<iframe src="' + URL.createObjectURL(f) + '" style="width:100%;height:200px;border:none"></iframe>';
@@ -480,44 +616,49 @@ window.AsgardWorkExpenses = (function(){
       });
     }
 
-    $('#btnSaveExp').addEventListener('click', async () => {
+    q('#btnSaveExp').addEventListener('click', async () => {
+      const _btn = q('#btnSaveExp');
+      if (_btn.disabled) return;
+      _btn.disabled = true;
+      const _orig = _btn.textContent;
+      _btn.textContent = 'Сохранение…';
       try {
         if(isFot){
-          const name = $('#exp_emp_name').value.trim();
-          const base = Number($('#exp_base').value) || 0;
-          const perDiem = Number($('#exp_per_diem').value) || 0;
-          const bonus = Number($('#exp_bonus').value) || 0;
-          if(!name){ toast('ФОТ', 'Укажите имя сотрудника', 'err'); return; }
-          if(base + perDiem + bonus <= 0){ toast('ФОТ', 'Укажите сумму', 'err'); return; }
+          const name = q('#exp_emp_name').value.trim();
+          const base = Number(q('#exp_base').value) || 0;
+          const perDiem = Number(q('#exp_per_diem').value) || 0;
+          const bonus = Number(q('#exp_bonus').value) || 0;
+          if(!name){ toast('ФОТ', 'Укажите имя сотрудника', 'err'); _btn.disabled = false; _btn.textContent = _orig; return; }
+          if(base + perDiem + bonus <= 0){ toast('ФОТ', 'Укажите сумму', 'err'); _btn.disabled = false; _btn.textContent = _orig; return; }
           await addFotEntry({
             work_id: work.id,
             employee_name: name,
             base_pay: base,
             per_diem: perDiem,
             bonus: bonus,
-            date_from: $('#exp_date_from').value,
-            date_to: $('#exp_date_to').value,
-            comment: $('#exp_comment').value,
+            date_from: q('#exp_date_from').value,
+            date_to: q('#exp_date_to').value,
+            comment: q('#exp_comment').value,
             created_by: user.id
           });
         } else {
-          const amount = Number($('#exp_amount').value) || 0;
-          if(amount <= 0){ toast('Расход', 'Укажите сумму', 'err'); return; }
-          const vatRate = Number($('#exp_vat_rate')?.value) || null;
-          const vatAmount = Number($('#exp_vat_amount')?.value) || null;
+          const amount = Number(q('#exp_amount').value) || 0;
+          if(amount <= 0){ toast('Расход', 'Укажите сумму', 'err'); _btn.disabled = false; _btn.textContent = _orig; return; }
+          const vatRate = Number(q('#exp_vat_rate')?.value) || null;
+          const vatAmount = Number(q('#exp_vat_amount')?.value) || null;
           const amountExVat = (vatRate && vatAmount) ? (amount - vatAmount) : null;
-          const payMethod = $('#exp_pay_method')?.value || 'cash';
+          const payMethod = q('#exp_pay_method')?.value || 'cash';
 
           const expResult = await addExpense({
             work_id: work.id,
             category: normalizedCategory,
             amount: amount,
-            date: $('#exp_date').value,
-            comment: $('#exp_comment').value,
-            supplier: $('#exp_supplier').value,
-            doc_number: $('#exp_doc').value,
-            invoice_needed: $('#exp_inv_need')?.checked,
-            invoice_received: $('#exp_inv_got')?.checked,
+            date: q('#exp_date').value,
+            comment: q('#exp_comment').value,
+            supplier: q('#exp_supplier').value,
+            doc_number: q('#exp_doc').value,
+            invoice_needed: q('#exp_inv_need')?.checked,
+            invoice_received: q('#exp_inv_got')?.checked,
             vat_rate: vatRate,
             vat_amount: vatAmount,
             amount_ex_vat: amountExVat,
@@ -531,19 +672,37 @@ window.AsgardWorkExpenses = (function(){
               const fd = new FormData();
               fd.append('file', _expFile);
               const token = localStorage.getItem('asgard_token');
-              const upResp = await fetch(`/api/expenses/attach/${expResult.id}`, {
-                method: 'POST',
-                headers: { 'Authorization': 'Bearer ' + token },
-                body: fd
-              });
-              if (upResp.ok) toast('Файл', 'Счёт прикреплён', 'ok');
-            } catch(fe) { console.warn('File upload failed', fe); }
+              // Таймаут: без него зависший upload держал кнопку в «Сохранение…» бесконечно.
+              const ctrl = new AbortController();
+              const timer = setTimeout(() => ctrl.abort(), 60000);
+              let upResp;
+              try {
+                upResp = await fetch(`/api/expenses/attach/${expResult.id}`, {
+                  method: 'POST',
+                  headers: { 'Authorization': 'Bearer ' + token },
+                  body: fd,
+                  signal: ctrl.signal
+                });
+              } finally { clearTimeout(timer); }
+              if (upResp.ok) {
+                toast('Файл', 'Счёт прикреплён', 'ok');
+              } else {
+                // Раньше ошибка загрузки глоталась молча — юзер думал, что чек прикреплён.
+                const d = await upResp.json().catch(() => ({}));
+                toast('Файл', 'Расход сохранён, но чек не прикреплён: ' + (d.error || ('HTTP ' + upResp.status)), 'err');
+              }
+            } catch(fe) {
+              toast('Файл', 'Расход сохранён, но чек не прикреплён: ' + (fe.name === 'AbortError' ? 'таймаут загрузки' : (fe.message || fe)), 'err');
+            }
           }
         }
         toast('Расход', 'Добавлено');
+        hideModal();                 // закрыть форму (иначе модалки стекуются, дубли id → мёртвая кнопка)
         openExpensesModal(work, user);
       } catch(e){
         toast('Ошибка', e.message || 'Не удалось сохранить', 'err');
+        _btn.disabled = false;
+        _btn.textContent = _orig;
       }
     });
   }
@@ -583,38 +742,52 @@ window.AsgardWorkExpenses = (function(){
 
     showModal({ title: `Редактировать: ${cat.label}`, html, icon: cat.icon || '✏️', subtitle: esc(work.work_title || '') });
 
-    $('#btnSaveExp').addEventListener('click', async () => {
+    // Скоуп в текущий (верхний) оверлей — см. пояснение в openAddExpenseModal:
+    // стек модалок + глобальный $ = слушатель садится на похороненную форму.
+    const _ovsE = document.querySelectorAll('.cr-m-overlay');
+    const _scopeE = _ovsE[_ovsE.length - 1] || document;
+    const q = (sel) => _scopeE.querySelector(sel);
+
+    q('#btnSaveExp').addEventListener('click', async () => {
+      const _btn = q('#btnSaveExp');
+      if (_btn.disabled) return;
+      _btn.disabled = true;
+      const _orig = _btn.textContent;
+      _btn.textContent = 'Сохранение…';
       try {
         if(isFot){
-          const name = $('#exp_emp_name').value.trim();
-          const base = Number($('#exp_base').value) || 0;
-          const perDiem = Number($('#exp_per_diem').value) || 0;
-          const bonus = Number($('#exp_bonus').value) || 0;
+          const name = q('#exp_emp_name').value.trim();
+          const base = Number(q('#exp_base').value) || 0;
+          const perDiem = Number(q('#exp_per_diem').value) || 0;
+          const bonus = Number(q('#exp_bonus').value) || 0;
           await updateExpense(expense.id, {
             amount: base + perDiem + bonus,
             fot_employee_name: name,
             fot_base_pay: base,
             fot_per_diem: perDiem,
             fot_bonus: bonus,
-            fot_date_from: $('#exp_date_from').value,
-            fot_date_to: $('#exp_date_to').value,
-            comment: $('#exp_comment').value
+            fot_date_from: q('#exp_date_from').value,
+            fot_date_to: q('#exp_date_to').value,
+            comment: q('#exp_comment').value
           });
         } else {
           await updateExpense(expense.id, {
-            date: $('#exp_date').value,
-            amount: Number($('#exp_amount').value) || 0,
-            supplier: $('#exp_supplier').value,
-            doc_number: $('#exp_doc').value,
-            comment: $('#exp_comment').value,
-            invoice_needed: $('#exp_inv_need').checked,
-            invoice_received: $('#exp_inv_got').checked
+            date: q('#exp_date').value,
+            amount: Number(q('#exp_amount').value) || 0,
+            supplier: q('#exp_supplier').value,
+            doc_number: q('#exp_doc').value,
+            comment: q('#exp_comment').value,
+            invoice_needed: q('#exp_inv_need').checked,
+            invoice_received: q('#exp_inv_got').checked
           });
         }
         toast('Расход', 'Обновлено');
+        hideModal();
         openExpensesModal(work, user);
       } catch(e){
         toast('Ошибка', e.message || 'Не удалось сохранить', 'err');
+        _btn.disabled = false;
+        _btn.textContent = _orig;
       }
     });
   }
