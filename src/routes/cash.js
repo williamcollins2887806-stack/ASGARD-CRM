@@ -18,6 +18,8 @@
 const path = require('path');
 const fs = require('fs').promises;
 const { randomUUID } = require('crypto');
+const { calcPmBalance } = require('../lib/pm-balance');
+const pmStatementXlsx = require('../services/pm-statement-xlsx');
 
 module.exports = async function(fastify) {
   const db = fastify.db;
@@ -237,50 +239,540 @@ module.exports = async function(fastify) {
 
   // ─────────────────────────────────────────────────────────────────
   // GET /api/cash/my-balance — Мой текущий баланс (для виджета)
+  //
+  // С июня 2026 формула учитывает handovers (Stage W) + worker_payments cash/card,
+  // которые РП реально выдал. См. src/lib/pm-balance.js (единый источник правды).
+  // Backwards-compat: поля issued/spent/returned/balance/active_requests сохранены,
+  // дополнительно отдаём handovers_received, se_cash_legacy, cash_payouts_workers.
   // ─────────────────────────────────────────────────────────────────
   fastify.get('/my-balance', {
     preHandler: [fastify.authenticate]
   }, async (request) => {
     const userId = request.user.id;
-
-    // Сумма по активным заявкам (money_issued, received, reporting)
-    const issued = await db.query(`
-      SELECT COALESCE(SUM(amount), 0) as total
-      FROM cash_requests
-      WHERE user_id = $1 AND status IN ('money_issued', 'received', 'reporting')
-    `, [userId]);
-
-    const spent = await db.query(`
-      SELECT COALESCE(SUM(ce.amount), 0) as total
-      FROM cash_expenses ce
-      JOIN cash_requests cr ON cr.id = ce.request_id
-      WHERE cr.user_id = $1 AND cr.status IN ('received', 'reporting')
-    `, [userId]);
-
-    const returned = await db.query(`
-      SELECT COALESCE(SUM(cret.amount), 0) as total
-      FROM cash_returns cret
-      JOIN cash_requests cr ON cr.id = cret.request_id
-      WHERE cr.user_id = $1 AND cr.status IN ('received', 'reporting') AND cret.confirmed_at IS NOT NULL
-    `, [userId]);
-
-    const totalIssued = parseFloat(issued.rows[0].total) || 0;
-    const totalSpent = parseFloat(spent.rows[0].total) || 0;
-    const totalReturned = parseFloat(returned.rows[0].total) || 0;
-
-    // Количество активных заявок
-    const active = await db.query(`
-      SELECT COUNT(*) as cnt FROM cash_requests
-      WHERE user_id = $1 AND status NOT IN ('closed', 'rejected')
-    `, [userId]);
-
+    const b = await calcPmBalance(db, userId);
     return {
-      issued: totalIssued,
-      spent: totalSpent,
-      returned: totalReturned,
-      balance: totalIssued - totalSpent - totalReturned,
-      active_requests: parseInt(active.rows[0].cnt) || 0
+      // backwards-compat (старые виджеты)
+      issued:          b.cash_advances_issued,
+      spent:           b.cash_expenses,
+      returned:        b.cash_returns_confirmed,
+      balance:         b.balance,
+      active_requests: b.active_requests,
+      // новые поля
+      handovers_received:    b.handovers_received,
+      se_cash_legacy:        b.se_cash_legacy,
+      cash_payouts_workers:  b.cash_payouts_workers,
+      cash_returns_confirmed: b.cash_returns_confirmed,
+      cash_returns_pending:  b.cash_returns_pending
     };
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // GET /api/cash/statement — Выписка РП (банковский стиль)
+  //
+  // Полная хронологическая выписка движений подотчёта РП за период:
+  //  · приходы (handover от СЗ, аванс из кассы Асгарда)
+  //  · расходы (возврат в кассу, выплаты рабочим, прямые расходы по проектам,
+  //             расходы по подотчёту с чеком)
+  //  · running balance (накопительный остаток после каждой операции)
+  //
+  // RBAC:
+  //  · PM / HEAD_PM           — только свой, ?pm_id игнорируется
+  //  · ADMIN / DIRECTOR_*     — любой через ?pm_id (обязателен)
+  //  · BUH                    — любой через ?pm_id (обязателен)
+  //
+  // Query:
+  //  · pm_id  — int (обязателен для admin/director/buh)
+  //  · from   — YYYY-MM-DD (default = первый день текущего месяца)
+  //  · to     — YYYY-MM-DD (default = сегодня)
+  //  · format — json | xlsx | pdf (default 'json'; pdf пока 501)
+  //
+  // Источник правды формул: src/lib/pm-balance.js — здесь повторяем
+  // те же CTE-фильтры, расширив их датой.
+  // ─────────────────────────────────────────────────────────────────
+  fastify.get('/statement', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const role = request.user.role;
+    const isPmRole       = role === 'PM' || role === 'HEAD_PM';
+    const isPrivilegedFn = isBuhOrDirector(role); // ADMIN/DIRECTOR_*/BUH
+
+    // ── pm_id resolution ─────────────────────────────────────────
+    let pmId = null;
+    if (isPmRole) {
+      pmId = parseInt(request.user.id, 10);
+    } else if (isPrivilegedFn) {
+      const raw = request.query.pm_id;
+      pmId = parseInt(raw, 10);
+      if (!Number.isFinite(pmId)) {
+        return reply.code(400).send({ error: 'Параметр pm_id обязателен для ADMIN/DIRECTOR/BUH' });
+      }
+    } else {
+      return reply.code(403).send({ error: 'Нет доступа к выписке' });
+    }
+
+    // ── period ───────────────────────────────────────────────────
+    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    const defFrom = `${yyyy}-${mm}-01`;
+    const defTo   = `${yyyy}-${mm}-${dd}`;
+    const from = (request.query.from && dateRe.test(request.query.from)) ? request.query.from : defFrom;
+    const to   = (request.query.to   && dateRe.test(request.query.to))   ? request.query.to   : defTo;
+    if (from > to) {
+      return reply.code(400).send({ error: '"from" не может быть позже "to"' });
+    }
+
+    // ── format ───────────────────────────────────────────────────
+    const format = String(request.query.format || 'json').toLowerCase();
+    if (!['json', 'xlsx', 'pdf'].includes(format)) {
+      return reply.code(400).send({ error: 'format должен быть json | xlsx | pdf' });
+    }
+    if (format === 'pdf') {
+      return reply.code(501).send({ error: 'PDF-выгрузка пока не реализована. Используйте format=xlsx.' });
+    }
+
+    // ── PM info ──────────────────────────────────────────────────
+    const { rows: pmRows } = await db.query(
+      'SELECT id, name FROM users WHERE id = $1',
+      [pmId]
+    );
+    if (!pmRows[0]) {
+      return reply.code(404).send({ error: 'РП не найден' });
+    }
+    const pm = { id: pmRows[0].id, name: pmRows[0].name };
+
+    // ── 1) Operations в периоде (UNION ALL) ──────────────────────
+    // Колонки строго в одном порядке для всех веток:
+    //   d, type, source, amount, category, description, counterparty,
+    //   work_id, work_title, ref_id, source_kind, is_from_pm_cash
+    // amount: для income > 0, для outflow < 0, для info > 0 (но не меняет running).
+    // source_kind/is_from_pm_cash (V264) — для UI и XLSX, см. worker_payment_source_v.
+    const opsSql = `
+      WITH ops AS (
+        -- 1) handovers_received (приход от СЗ)
+        SELECT
+          h.received_at::date          AS d,
+          'income'::text               AS type,
+          'handover'::text             AS source,
+          h.received_amount::numeric   AS amount,
+          'Передача от СЗ'::text       AS category,
+          COALESCE(e.fio, '—')::text   AS description,
+          COALESCE(e.fio, '—')::text   AS counterparty,
+          h.work_id                    AS work_id,
+          w.work_title                 AS work_title,
+          h.id                         AS ref_id,
+          'pm_cash'::text              AS source_kind,
+          true                         AS is_from_pm_cash
+        FROM worker_to_pm_handovers h
+        LEFT JOIN employees e ON e.id = h.worker_id
+        LEFT JOIN works w     ON w.id = h.work_id
+        WHERE h.pm_user_id = $1
+          AND h.status IN ('received','partial')
+          AND h.received_at IS NOT NULL
+          AND h.received_at::date BETWEEN $2 AND $3
+
+        UNION ALL
+        -- 2) cash_requests issued (приход — аванс из кассы Асгарда)
+        SELECT
+          cr.issued_at::date,
+          'income',
+          'cash_request',
+          cr.amount::numeric,
+          'Аванс из кассы',
+          LEFT(COALESCE(cr.purpose, ''), 200),
+          'Касса Асгарда',
+          cr.work_id,
+          w.work_title,
+          cr.id,
+          'pm_cash'::text,
+          true
+        FROM cash_requests cr
+        LEFT JOIN works w ON w.id = cr.work_id
+        WHERE cr.user_id = $1
+          AND cr.status IN ('money_issued','received','reporting','closed')
+          AND cr.issued_at IS NOT NULL
+          AND cr.issued_at::date BETWEEN $2 AND $3
+
+        UNION ALL
+        -- 3) cash_returns confirmed (расход — возврат в кассу)
+        SELECT
+          crt.confirmed_at::date,
+          'outflow',
+          'cash_return',
+          (-crt.amount)::numeric,
+          'Возврат в кассу Асгарда',
+          LEFT(COALESCE(crt.note, ''), 200),
+          'Касса Асгарда',
+          cr.work_id,
+          w.work_title,
+          crt.id,
+          'pm_cash'::text,
+          true
+        FROM cash_returns crt
+        JOIN cash_requests cr ON cr.id = crt.request_id
+        LEFT JOIN works w ON w.id = cr.work_id
+        WHERE cr.user_id = $1
+          AND crt.confirmed_at IS NOT NULL
+          AND crt.confirmed_at::date BETWEEN $2 AND $3
+
+        UNION ALL
+        -- 4) cash_expenses (расход по подотчёту — отчётность с чеком)
+        SELECT
+          ce.expense_date::date,
+          'outflow',
+          'cash_expense',
+          (-ce.amount)::numeric,
+          COALESCE(ce.category, 'other'),
+          LEFT(COALESCE(ce.description, ''), 200),
+          NULL,
+          cr.work_id,
+          w.work_title,
+          ce.id,
+          'pm_cash'::text,
+          true
+        FROM cash_expenses ce
+        JOIN cash_requests cr ON cr.id = ce.request_id
+        LEFT JOIN works w ON w.id = cr.work_id
+        WHERE cr.user_id = $1
+          AND ce.expense_date IS NOT NULL
+          AND ce.expense_date::date BETWEEN $2 AND $3
+
+        UNION ALL
+        -- 5) worker_payments через view worker_payment_source_v (V264).
+        --    Строки is_from_pm_cash=true → 'outflow' (списываются с кассы РП).
+        --    Строки is_from_pm_cash=false → 'info'   (bank/se/auto — деньги
+        --    компании; в журнале нужны справочно, но баланс РП не трогают).
+        SELECT
+          v.paid_at::date,
+          CASE WHEN v.is_from_pm_cash THEN 'outflow' ELSE 'info' END AS type,
+          'worker_payment',
+          (CASE WHEN v.is_from_pm_cash THEN -v.amount ELSE v.amount END)::numeric,
+          v.type,
+          LEFT(COALESCE(v.comment, e.fio, ''), 200),
+          COALESCE(e.fio, ''),
+          v.work_id,
+          w.work_title,
+          v.id,
+          v.source_kind::text,
+          v.is_from_pm_cash
+        FROM worker_payment_source_v v
+        LEFT JOIN employees e ON e.id = v.employee_id
+        LEFT JOIN works w     ON w.id = v.work_id
+        WHERE v.status IN ('paid','confirmed')
+          AND v.type IN ('salary','bonus','per_diem','advance','penalty')
+          AND v.paid_at IS NOT NULL
+          AND v.paid_at::date BETWEEN $2 AND $3
+          AND (
+            -- "Моя касса РП": is_from_pm_cash=true ВСЕГДА для paid_by=$1 (через view).
+            -- Дополнительно: paid_by IS NULL + work.pm_id=$1 + cash/card (legacy).
+            v.paid_by = $1
+            OR (v.paid_by IS NULL AND w.pm_id = $1 AND v.payment_method IN ('cash','card'))
+            -- info-строки: показываем только если они относятся к работе PM
+            -- (работнику были выплачены деньги компании на работе этого PM).
+            OR (NOT v.is_from_pm_cash AND w.pm_id = $1)
+          )
+
+        UNION ALL
+        -- 6) work_expenses (прямые расходы РП по проектам)
+        SELECT
+          we.date::date,
+          'outflow',
+          'work_expense',
+          (-we.amount)::numeric,
+          COALESCE(we.category, 'other'),
+          LEFT(COALESCE(we.description, we.supplier, ''), 200),
+          we.supplier,
+          we.work_id,
+          w.work_title,
+          we.id,
+          'pm_cash'::text AS source_kind,
+          true             AS is_from_pm_cash
+        FROM work_expenses we
+        LEFT JOIN works w ON w.id = we.work_id
+        WHERE COALESCE(we.source_table, '') NOT IN ('worker_payments')
+          AND we.date IS NOT NULL
+          AND we.date::date BETWEEN $2 AND $3
+          AND (
+            (we.paid_by = $1 AND we.payment_method IN ('cash','card','transfer'))
+            OR (we.paid_by IS NULL AND w.pm_id = $1 AND we.payment_method IN ('cash','card'))
+          )
+      )
+      SELECT * FROM ops
+      ORDER BY d ASC, (CASE WHEN type = 'income' THEN 0 WHEN type = 'outflow' THEN 1 ELSE 2 END), ref_id ASC
+    `;
+
+    let rows;
+    try {
+      const r = await db.query(opsSql, [pmId, from, to]);
+      rows = r.rows;
+    } catch (e) {
+      fastify.log.error({ err: e }, '[cash] /statement query error');
+      return reply.code(500).send({ error: 'Не удалось получить операции', detail: e.message });
+    }
+
+    // ── 2) Opening balance ───────────────────────────────────────
+    // Используем те же CTE что в calcPmBalance, но фильтр "до from".
+    // Граница: всё что date < from (строго раньше) идёт в opening.
+    let openingBalance = 0;
+    try {
+      const openSql = `
+        WITH
+          h AS (
+            SELECT COALESCE(SUM(received_amount),0)::numeric AS amt
+            FROM worker_to_pm_handovers
+            WHERE pm_user_id = $1
+              AND status IN ('received','partial')
+              AND received_at IS NOT NULL
+              AND received_at::date < $2
+          ),
+          sl AS (
+            SELECT COALESCE(SUM(st.cash_return_amount),0)::numeric AS amt
+            FROM se_transfers st
+            LEFT JOIN worker_to_pm_handovers wh ON wh.source_se_transfer_id = st.id
+            WHERE st.pm_user_id = $1
+              AND st.status IN ('completed','returned')
+              AND wh.id IS NULL
+              AND COALESCE(st.updated_at, st.created_at)::date < $2
+          ),
+          ci AS (
+            SELECT COALESCE(SUM(amount),0)::numeric AS amt
+            FROM cash_requests
+            WHERE user_id = $1
+              AND status IN ('money_issued','received','reporting','closed')
+              AND issued_at IS NOT NULL
+              AND issued_at::date < $2
+          ),
+          ce AS (
+            SELECT COALESCE(SUM(ce.amount),0)::numeric AS amt
+            FROM cash_expenses ce
+            JOIN cash_requests cr ON cr.id = ce.request_id
+            WHERE cr.user_id = $1
+              AND ce.expense_date IS NOT NULL
+              AND ce.expense_date::date < $2
+          ),
+          cr_ret AS (
+            SELECT COALESCE(SUM(crt.amount),0)::numeric AS amt
+            FROM cash_returns crt
+            JOIN cash_requests cr ON cr.id = crt.request_id
+            WHERE cr.user_id = $1
+              AND crt.confirmed_at IS NOT NULL
+              AND crt.confirmed_at::date < $2
+          ),
+          po AS (
+            SELECT COALESCE(SUM(wp.amount),0)::numeric AS amt
+            FROM worker_payments wp
+            LEFT JOIN works w ON w.id = wp.work_id
+            WHERE wp.status IN ('paid','confirmed')
+              AND wp.type IN ('salary','bonus','per_diem','advance','penalty')
+              AND wp.paid_at IS NOT NULL
+              AND wp.paid_at::date < $2
+              AND (
+                wp.paid_by = $1
+                OR (wp.paid_by IS NULL AND w.pm_id = $1 AND wp.payment_method IN ('cash','card'))
+              )
+          ),
+          we_d AS (
+            SELECT COALESCE(SUM(we.amount),0)::numeric AS amt
+            FROM work_expenses we
+            LEFT JOIN works w ON w.id = we.work_id
+            WHERE COALESCE(we.source_table,'') NOT IN ('worker_payments')
+              AND we.date IS NOT NULL
+              AND we.date::date < $2
+              AND (
+                (we.paid_by = $1 AND we.payment_method IN ('cash','card','transfer'))
+                OR (we.paid_by IS NULL AND w.pm_id = $1 AND we.payment_method IN ('cash','card'))
+              )
+          )
+        SELECT
+          (SELECT amt FROM h)      AS handovers_received,
+          (SELECT amt FROM sl)     AS se_cash_legacy,
+          (SELECT amt FROM ci)     AS cash_advances_issued,
+          (SELECT amt FROM ce)     AS cash_expenses,
+          (SELECT amt FROM cr_ret) AS cash_returns_confirmed,
+          (SELECT amt FROM po)     AS cash_payouts_workers,
+          (SELECT amt FROM we_d)   AS work_expenses_direct
+      `;
+      const op = await db.query(openSql, [pmId, from]);
+      const o = op.rows[0] || {};
+      const n = (v) => {
+        if (v == null) return 0;
+        const x = typeof v === 'number' ? v : parseFloat(v);
+        return Number.isFinite(x) ? x : 0;
+      };
+      openingBalance =
+        n(o.handovers_received) + n(o.se_cash_legacy) + n(o.cash_advances_issued)
+        - n(o.cash_expenses) - n(o.cash_returns_confirmed)
+        - n(o.cash_payouts_workers) - n(o.work_expenses_direct);
+    } catch (e) {
+      fastify.log.error({ err: e }, '[cash] /statement opening-balance error');
+      return reply.code(500).send({ error: 'Не удалось получить opening_balance', detail: e.message });
+    }
+
+    // ── 3) Running balance + breakdown ───────────────────────────
+    const nn = (v) => {
+      if (v == null) return 0;
+      const x = typeof v === 'number' ? v : parseFloat(v);
+      return Number.isFinite(x) ? x : 0;
+    };
+
+    const breakdownIn = {
+      handovers_received: 0,
+      cash_advances_issued: 0,
+    };
+    const breakdownOut = {
+      cash_returns_confirmed: 0,
+      worker_payments: 0,
+      work_expenses_direct: 0,
+      cash_expenses: 0,
+    };
+    // V264: info-выплаты (bank/se/auto) — деньги КОМПАНИИ, не из кассы РП.
+    // Идут в журнал ТОЛЬКО справочно, баланс РП не трогают.
+    const breakdownInfo = {
+      info_company_bank: 0,
+      info_company_se:   0,
+      info_auto_fot:     0,
+    };
+
+    let running = openingBalance;
+    const operations = rows.map((r) => {
+      const amount = nn(r.amount); // income > 0, outflow < 0, info > 0 (не меняет running)
+      const isInfo = (r.type === 'info');
+
+      // running balance: info-строки НЕ меняют running
+      if (!isInfo) {
+        running += amount;
+      }
+
+      // breakdown
+      if (isInfo) {
+        // V264: справочный учёт денег компании по работнику
+        const sk = r.source_kind || 'other';
+        if (sk === 'company_bank')      breakdownInfo.info_company_bank += amount;
+        else if (sk === 'company_se')   breakdownInfo.info_company_se   += amount;
+        else if (sk === 'auto_fot')     breakdownInfo.info_auto_fot     += amount;
+      } else if (r.type === 'income') {
+        if (r.source === 'handover')      breakdownIn.handovers_received   += amount;
+        else if (r.source === 'cash_request') breakdownIn.cash_advances_issued += amount;
+      } else {
+        const abs = -amount; // делаем положительной для разбивки
+        if (r.source === 'cash_return')        breakdownOut.cash_returns_confirmed += abs;
+        else if (r.source === 'worker_payment') breakdownOut.worker_payments        += abs;
+        else if (r.source === 'work_expense')   breakdownOut.work_expenses_direct   += abs;
+        else if (r.source === 'cash_expense')   breakdownOut.cash_expenses          += abs;
+      }
+
+      // ISO date
+      let dateIso = null;
+      if (r.d instanceof Date) {
+        const yy = r.d.getFullYear();
+        const mm2 = String(r.d.getMonth() + 1).padStart(2, '0');
+        const dd2 = String(r.d.getDate()).padStart(2, '0');
+        dateIso = `${yy}-${mm2}-${dd2}`;
+      } else if (typeof r.d === 'string') {
+        dateIso = r.d.slice(0, 10);
+      }
+
+      return {
+        date: dateIso,
+        type: r.type,
+        source: r.source,
+        amount: amount,
+        balance_after: running,
+        category: r.category || null,
+        description: r.description || null,
+        counterparty: r.counterparty || null,
+        work_id: r.work_id == null ? null : Number(r.work_id),
+        work_title: r.work_title || null,
+        ref_id: r.ref_id == null ? null : Number(r.ref_id),
+        // V264: для UI и XLSX
+        source_kind: r.source_kind || null,
+        is_from_pm_cash: r.is_from_pm_cash == null ? null : !!r.is_from_pm_cash,
+      };
+    });
+
+    // total_in/total_out считаем ТОЛЬКО по реальным income/outflow,
+    // info-строки исключаем (они в running не учитывались).
+    const totalIn  = operations.reduce((s, o) => s + (o.type === 'income' ? o.amount : 0), 0);
+    const totalOut = operations.reduce((s, o) => s + (o.type === 'outflow' ? -o.amount : 0), 0);
+
+    // by_work агрегат (для XLSX-листа «По проектам»).
+    // info-строки в in/out НЕ учитываются (это деньги компании, не кассы РП),
+    // но отдельно учитываются в info-агрегате для справки.
+    const byWorkMap = new Map();
+    for (const op of operations) {
+      const key = op.work_id == null ? '__none__' : String(op.work_id);
+      let w = byWorkMap.get(key);
+      if (!w) {
+        w = {
+          work_id: op.work_id,
+          work_title: op.work_title || (op.work_id == null ? 'Без привязки' : `#${op.work_id}`),
+          ops: 0, in: 0, out: 0, info: 0,
+        };
+        byWorkMap.set(key, w);
+      }
+      w.ops += 1;
+      if (op.type === 'info') {
+        w.info += op.amount;
+      } else if (op.amount >= 0) {
+        w.in += op.amount;
+      } else {
+        w.out += -op.amount;
+      }
+    }
+    const by_work = [...byWorkMap.values()]
+      .map(w => ({ ...w, net: w.in - w.out }))
+      .sort((a, b) => (b.in + b.out + b.info) - (a.in + a.out + a.info));
+
+    const summary = {
+      opening_balance: openingBalance,
+      total_in: totalIn,
+      total_out: totalOut,
+      closing_balance: openingBalance + totalIn - totalOut,
+      breakdown_in: breakdownIn,
+      breakdown_out: breakdownOut,
+      // V264: справочный учёт денег компании работникам (bank/se/auto)
+      // — НЕ влияют на closing_balance, идут только для информации.
+      breakdown_info: breakdownInfo,
+      by_work,
+    };
+
+    const payload = {
+      pm,
+      period: { from, to },
+      summary,
+      operations,
+    };
+
+    // ── 4) Output ────────────────────────────────────────────────
+    if (format === 'json') {
+      return payload;
+    }
+
+    // xlsx
+    if (!pmStatementXlsx.isAvailable()) {
+      return reply.code(500).send({
+        error: 'XLSX-генератор недоступен. Установите exceljs: npm install exceljs'
+      });
+    }
+    try {
+      const buf = await pmStatementXlsx.generateStatementXlsx(payload);
+      const safeName = String(pm.name || `pm_${pm.id}`)
+        .replace(/[\\/:*?"<>|]+/g, '_')
+        .replace(/\s+/g, '_');
+      const fname = encodeURIComponent(`Выписка_${safeName}_${from}_${to}.xlsx`);
+      reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      reply.header('Content-Disposition', `attachment; filename*=UTF-8''${fname}`);
+      reply.header('Content-Length', String(buf.length));
+      return reply.send(buf);
+    } catch (e) {
+      fastify.log.error({ err: e }, '[cash] /statement xlsx generation error');
+      if (e.code === 'EXCELJS_MISSING') {
+        return reply.code(500).send({ error: e.message });
+      }
+      return reply.code(500).send({ error: 'Не удалось сформировать XLSX', detail: e.message });
+    }
   });
 
   // ─────────────────────────────────────────────────────────────────
@@ -900,7 +1392,7 @@ module.exports = async function(fastify) {
     const check = await db.query('SELECT user_id, status FROM cash_requests WHERE id = $1', [id]);
     if (!check.rows[0]) return reply.code(404).send({ error: 'Заявка не найдена' });
 
-    if (check.rows[0].user_id !== request.user.id) {
+    if (Number(check.rows[0].user_id) !== Number(request.user.id)) {
       return reply.code(403).send({ error: 'Это не ваша заявка' });
     }
 
