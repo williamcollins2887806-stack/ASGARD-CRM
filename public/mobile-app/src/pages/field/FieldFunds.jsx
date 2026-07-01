@@ -36,14 +36,33 @@ function FundDetail({ fundId, fund, onBack, onRefresh }) {
   const [expenseForm, setExpenseForm] = useState({ amount: '', description: '', category: '', supplier: '', source: 'advance' });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const [receiptName, setReceiptName] = useState(null);
   const fileRef = useRef(null);
 
   if (!fund) return null;
   const remainder = (fund.amount || 0) - (fund.spent || 0) - (fund.returned || 0);
 
+  // Макс. размер чека — совпадает с MAX_RECEIPT_SIZE на бэке (field-funds.js).
+  const MAX_RECEIPT_BYTES = 15 * 1024 * 1024;
+
+  function onPickReceipt(e) {
+    const f = e.target.files?.[0];
+    if (!f) { setReceiptName(null); return; }
+    if (f.size > MAX_RECEIPT_BYTES) {
+      // Иначе большой файл уходил на сервер и висел/падал 413 без объяснения.
+      setError('Фото чека больше 15 МБ — сожмите или переснимите');
+      e.target.value = '';
+      setReceiptName(null);
+      return;
+    }
+    setError(null);
+    setReceiptName(f.name);
+  }
+
   async function submitExpense() {
-    if (!expenseForm.amount || !expenseForm.description) return;
+    if (!expenseForm.amount || !expenseForm.description || submitting) return;
     haptic.medium();
+    setError(null);
     setSubmitting(true);
     try {
       const formData = new FormData();
@@ -56,16 +75,36 @@ function FundDetail({ fundId, fund, onBack, onRefresh }) {
         formData.append('receipt', fileRef.current.files[0]);
       }
       const token = localStorage.getItem('field_token');
-      await fetch(`/api/field/funds/${fundId}/expense`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
+      // Таймаут — на слабой связи в поле upload мог висеть вечно, кнопка «залипала» на «...».
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 60000);
+      let resp;
+      try {
+        resp = await fetch(`/api/field/funds/${fundId}/expense`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+          signal: ctrl.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
+      // Без проверки resp.ok серверный отказ (413/400/500) выглядел как успех,
+      // форма закрывалась, но расход НЕ сохранялся → «редко сохраняет».
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data.error || `Ошибка сервера (${resp.status})`);
+      }
       haptic.success();
       setShowExpense(false);
       setExpenseForm({ amount: '', description: '', category: '', supplier: '', source: 'advance' });
+      setReceiptName(null);
+      if (fileRef.current) fileRef.current.value = '';
       onRefresh();
-    } catch (e) { setError(e.message); }
+    } catch (e) {
+      haptic.error?.();
+      setError(e.name === 'AbortError' ? 'Превышено время загрузки — проверьте связь и повторите' : (e.message || 'Не удалось сохранить'));
+    }
     finally { setSubmitting(false); }
   }
 
@@ -178,10 +217,12 @@ function FundDetail({ fundId, fund, onBack, onRefresh }) {
           <div>
             <p className="text-xs mb-1.5" style={{ color: 'var(--text-tertiary)' }}>Фото чека</p>
             <label className="flex items-center gap-2 p-3 rounded-lg cursor-pointer"
-              style={{ backgroundColor: 'var(--bg-primary)', border: '1px dashed var(--border-norse)' }}>
+              style={{ backgroundColor: 'var(--bg-primary)', border: `1px dashed ${receiptName ? 'var(--gold)' : 'var(--border-norse)'}` }}>
               <Camera size={16} style={{ color: 'var(--gold)' }} />
-              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>Прикрепить фото</span>
-              <input ref={fileRef} type="file" accept="image/*" className="hidden" />
+              <span className="text-xs truncate" style={{ color: receiptName ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                {receiptName ? `📎 ${receiptName}` : 'Прикрепить фото'}
+              </span>
+              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onPickReceipt} />
             </label>
           </div>
 
