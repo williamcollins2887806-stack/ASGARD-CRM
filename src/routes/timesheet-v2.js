@@ -34,8 +34,17 @@ const WAREHOUSE_ROLES = ['WAREHOUSE'];
 const MEDICAL_ROLES = ['TO', 'HEAD_TO'];
 const TRAVEL_ROLES = ['OFFICE_MANAGER'];
 
-const STAGE_TYPES = new Set(['warehouse', 'medical', 'travel', 'waiting']);
+// V255 (23.06.2026): добавлен 'ship' — альтернатива «Дорога» за повышенную ставку
+// (12 баллов × 500 ₽ = 6000 ₽). Ставит ТО/HEAD_TO (как МО/Обучение).
+const STAGE_TYPES = new Set(['warehouse', 'medical', 'travel', 'ship', 'waiting']);
 const SHIFT_TYPES = new Set(['day', 'night']);
+
+// 23.06.2026 BUG-FIX (🟡 T-V230-note): миграция V230__fot_auto_payment_method.sql
+// уже задеплоена на прод и УЖЕ обеспечивает payment_method='auto' в work_expenses
+// при синке field_checkins → ФОТ. Если здесь видишь work_expenses без payment_method
+// или с 'cash' для записей source_table='field_checkins_agg' — это ЛЕГАСИ до V230.
+// Триггер sync_field_checkin_to_expense НЕ перетирает руками выставленный 'cash'
+// (memory feedback-fot-trigger-payment-method: «РП ввёл руками» = НЕ auto).
 
 // ───────────────────────────────────────────────────────────────────
 // Локальный fallback для assertNotLocked / getActiveLocks
@@ -158,13 +167,25 @@ function typeAllowedForMode(mode, type) {
   if (mode === 'global') return SHIFT_TYPES.has(type) || STAGE_TYPES.has(type);
   if (mode === 'pm') return type === 'day' || type === 'night' || type === 'waiting';
   if (mode === 'warehouse') return type === 'warehouse';
-  if (mode === 'medical') return type === 'medical';
+  // V255: medical-роли (TO/HEAD_TO) ставят МО, Обучение и Корабль.
+  // Хотя 'training' хранится не отдельным типом, а как stage_type='medical' с пометкой
+  // в notes — добавляем 'ship' как новый тип-этап.
+  if (mode === 'medical') return type === 'medical' || type === 'ship';
   if (mode === 'travel') return type === 'travel';
   return false;
 }
 
+// field_checkins.shift хранит 4 реальных значения: 'day' / 'night' / 'road' / 'standby'.
+// UI знает 7 типов ячеек: day / night / warehouse / medical / travel / ship / waiting.
+// 'road' === «дорога» → travel, 'standby' === «ожидание» → waiting.
+// До фикса 23.06.2026 функция возвращала только day/night → все «дорога/ожидание»
+// рендерились как ☀️ (солнышко).
 function cellTypeFromShift(shift) {
-  return shift === 'night' ? 'night' : 'day';
+  if (shift === 'night')                       return 'night';
+  if (shift === 'road'    || shift === 'travel')  return 'travel';
+  if (shift === 'ship')                        return 'ship';
+  if (shift === 'standby' || shift === 'waiting') return 'waiting';
+  return 'day';
 }
 
 // Загрузка position_points + per_diem_default
@@ -180,11 +201,16 @@ async function loadSettings(db) {
       }
     } catch (_) { /* schema mismatch */ }
   }
-  // fallback значения
+  // fallback значения. V255: medical 6→7, ship=12 (новый тип, альтернатива travel).
+  // 24.06.2026 fix: waiting=6 (Ожидание). Ранее pointsFor(waiting) возвращал 0 —
+  // в общем табеле все «⏰ Ожидание» рендерились с базой 13, потому что подтягивалась
+  // tariff_points (см. fix в field_checkins-loop ниже). Теперь waiting честно = 6.
   if (!('warehouse:слесарь' in out.position_points)) out.position_points['warehouse:слесарь'] = 10;
   if (!('warehouse:мастер' in out.position_points)) out.position_points['warehouse:мастер'] = 12;
-  if (!('medical' in out.position_points)) out.position_points['medical'] = 6;
-  if (!('travel' in out.position_points)) out.position_points['travel'] = 6;
+  if (!('medical' in out.position_points)) out.position_points['medical'] = 7;
+  if (!('travel'  in out.position_points)) out.position_points['travel']  = 6;
+  if (!('ship'    in out.position_points)) out.position_points['ship']    = 12;
+  if (!('waiting' in out.position_points)) out.position_points['waiting'] = 6;
 
   // per_diem_default — берём из settings.value_json (key='per_diem_default') либо MAX(per_diem) по полю
   try {
@@ -204,9 +230,13 @@ function pointsFor(settings, type, position) {
     const k = `warehouse:${position || 'слесарь'}`;
     return Number(settings.position_points[k] ?? settings.position_points['warehouse:слесарь'] ?? 10);
   }
-  if (type === 'medical') return Number(settings.position_points['medical'] ?? 6);
-  if (type === 'travel') return Number(settings.position_points['travel'] ?? 6);
-  if (type === 'waiting') return 0;
+  // V255: medical дефолт 6→7, добавлен ship=12 (альтернатива дороги за повышенную ставку).
+  if (type === 'medical') return Number(settings.position_points['medical'] ?? 7);
+  if (type === 'travel')  return Number(settings.position_points['travel']  ?? 6);
+  if (type === 'ship')    return Number(settings.position_points['ship']    ?? 12);
+  // 24.06.2026 fix: ранее возвращал 0 — в общем табеле «⏰ Ожидание» получалось 13
+  // (из tariff_points), и юзер жаловался «все ячейки 13 баллов». Правильно: 6.
+  if (type === 'waiting') return Number(settings.position_points['waiting'] ?? 6);
   return 0;
 }
 
@@ -255,6 +285,14 @@ async function routes(fastify) {
       // Все поля NULLABLE-safe: для не-СЗ/не-Оф они придут NULL/false.
       let employees;
       if (mode === 'pm') {
+        // FIX (23.06.2026): HEAD_PM видит работы ВСЕХ РП (он старший, его подчинённые ведут работы).
+        // У самого HEAD_PM (Климакин id=3458) обычно нет работ с pm_id=его_id — без этого фильтра
+        // табель «Моя дружина» был пустой.
+        const isHeadPm = viewer.role === 'HEAD_PM';
+        // Используем $1::integer explicit cast чтобы PostgreSQL мог определить тип параметра,
+        // даже когда фильтр для HEAD_PM «отключён» (no-op условие). Без cast SQL валился
+        // с «could not determine data type of parameter $1».
+        const pmFilterSql = isHeadPm ? 'AND ($1::integer IS NOT NULL OR $1::integer IS NULL)' : 'AND w.pm_id = $1::integer';
         const { rows } = await db.query(`
           SELECT DISTINCT
                  e.id,
@@ -277,17 +315,17 @@ async function routes(fastify) {
           WHERE e.id IN (
             SELECT ea.employee_id FROM employee_assignments ea
             JOIN works w ON w.id = ea.work_id
-            WHERE w.pm_id = $1
-              AND (ea.is_active = true OR ea.departure_date IS NULL OR ea.departure_date >= $2::date)
+            WHERE TRUE ${pmFilterSql}
+              AND (ea.is_active = true OR ea.departure_date >= $2::date)
             UNION
             SELECT fc.employee_id FROM field_checkins fc
             JOIN works w ON w.id = fc.work_id
-            WHERE w.pm_id = $1 AND fc.status = 'completed'
+            WHERE TRUE ${pmFilterSql} AND fc.status = 'completed'
               AND fc.date BETWEEN $2::date AND $3::date
             UNION
             SELECT fts.employee_id FROM field_trip_stages fts
             JOIN works w ON w.id = fts.work_id
-            WHERE w.pm_id = $1 AND COALESCE(fts.status,'active') NOT IN ('rejected','cancelled')
+            WHERE TRUE ${pmFilterSql} AND COALESCE(fts.status,'active') NOT IN ('rejected','cancelled')
               AND fts.date_from <= $3::date
               AND COALESCE(fts.date_to, fts.date_from) >= $2::date
           )
@@ -362,7 +400,7 @@ async function routes(fastify) {
         const locks = await getActiveLocks(fastify, year, month);
         const settings = await loadSettings(db);
         const columns = {
-          points:  mode === 'pm' ? 'mine' : (mode === 'global' ? 'always' : 'none'),
+          points:  mode === 'global' ? 'always' : 'mine',
           amount:  mode === 'global' ? 'show' : 'none',
           perDiem: mode === 'pm' ? 'show' : 'none'
         };
@@ -435,17 +473,19 @@ async function routes(fastify) {
       // (РП видит баллы по СВОИМ работам, не по тому что сам ввёл).
       const { rows: checkins } = await db.query(`
         SELECT fc.id, fc.employee_id, fc.work_id, fc.date, fc.shift,
-               fc.amount_earned, fc.day_rate, fc.hours_worked,
+               fc.amount_earned, fc.day_rate, fc.hours_worked, fc.hours_paid,
                fc.entered_by_user_id, fc.checkin_by, fc.checkin_source,
                fc.created_at,
                u.name AS entered_by_fio_user, u.role AS entered_by_role_user, u.phone AS entered_by_phone_user,
                w.work_title, w.pm_id AS work_pm_id,
-               ftg.points AS tariff_points
+               (COALESCE(ftg.points, 0) + COALESCE(ctg.points, 0)) AS tariff_points,
+               COALESCE(ftg.point_value, 500)::numeric AS point_value
         FROM field_checkins fc
         LEFT JOIN users u   ON u.id = fc.entered_by_user_id
         LEFT JOIN works w   ON w.id = fc.work_id
         LEFT JOIN employee_assignments ea ON ea.id = fc.assignment_id
         LEFT JOIN field_tariff_grid ftg ON ftg.id = ea.tariff_id
+        LEFT JOIN field_tariff_grid ctg ON ctg.id = ea.combination_tariff_id
         WHERE fc.status = 'completed'
           AND fc.date BETWEEN $1::date AND $2::date
           AND fc.employee_id = ANY($3::int[])
@@ -593,7 +633,12 @@ async function routes(fastify) {
         }
         if (emp.days[numKey]) return; // первая запись побеждает (как в global-timesheet)
         // raw: { points, amount, entered_by_fio, entered_by_role, entered_by_phone, entered_at, is_mine, work_id, work_title }
-        // projection per mode
+        // projection per mode (V255 23.06.2026 — изменена видимость баллов):
+        //   • global  — видит ВСЕ баллы + суммы (директор, бух, HR).
+        //   • pm/warehouse/medical/travel — видят баллы ТОЛЬКО на своих отметках
+        //     (is_mine=true). Чужие отметки → только иконка, без баллов.
+        //   До V255: warehouse/medical/travel занулял баллы и для своих → ТО не видела
+        //   что начислится за свою же отметку МО. Теперь видит.
         let points = raw.points;
         let amount = raw.amount;
         if (mode === 'pm') {
@@ -602,7 +647,10 @@ async function routes(fastify) {
           }
           amount = null;
         } else if (mode === 'warehouse' || mode === 'medical' || mode === 'travel') {
-          points = null;
+          // Свои отметки — со счётчиком баллов; чужие — только иконкой.
+          if (!raw.is_mine) {
+            points = null;
+          }
           amount = null;
         } else if (mode === 'global') {
           // оставляем числа
@@ -611,6 +659,12 @@ async function routes(fastify) {
           type,
           points,
           amount,
+          // FIX (23.06.2026): пробрасываем реальные часы в ячейку для tooltip.
+          // Раньше UI показывал только «баллы» (часто 13/16 у всех), и пользователь
+          // ошибочно воспринимал это как «часы». Теперь tooltip явно показывает hours_worked.
+          hours_worked: raw.hours_worked != null ? Number(raw.hours_worked) : null,
+          hours_paid:   raw.hours_paid   != null ? Number(raw.hours_paid)   : null,
+          shift:        raw.shift || null,
           entered_by_fio: raw.entered_by_fio || null,
           entered_by_role: raw.entered_by_role || null,
           entered_by_phone: raw.entered_by_phone || null, // FIX #5: «понять кто написал — phone»
@@ -621,7 +675,7 @@ async function routes(fastify) {
         };
       }
 
-      // ── checkins (day/night) ─────────────────────────────────────────
+      // ── checkins (day/night/road/standby/ship) ───────────────────────
       for (const c of checkins) {
         const emp = empById[c.employee_id];
         if (!emp) continue;
@@ -632,7 +686,38 @@ async function routes(fastify) {
         // НЕ day_rate (это рубли). day_rate перепутали с баллами в старой
         // реализации → global mode total_points показывал ставку, а не баллы.
         // Fallback цепочка: tariff.points → 0 (если тарифа нет — баллы не считаются).
-        const points = (c.tariff_points != null) ? Number(c.tariff_points) : 0;
+        //
+        // 24.06.2026 FIX «13 баллов для всех»: tariff_points = БАЗОВАЯ ставка тарифа
+        // (день/ночь), общая для рабочего на работе. Если field_checkins.shift = 'road'
+        // (Дорога), 'standby' (Ожидание) или 'ship' (Корабль) — баллы НЕ равны базовой
+        // ставке. Для них нужны pointsFor(travel=6, waiting=6, ship=12).
+        // В field_trip_stages-loop ниже (V255) это уже сделано через pointsFor.
+        // В полевом модуле всё было правильно — баг был ровно в этой строке.
+        let points;
+        if (type === 'day' || type === 'night') {
+          // 30.06.2026 FIX «0 баллов при ненулевом заработке»: поле day_rate
+          // исторически ДРЕЙФУЕТ — в части записей хранит рубли (points×500),
+          // в части уже сами баллы (13). Деление day_rate/point_value давало
+          // для «балльных» записей 13/500≈0 → директор видел 0 баллов, хотя
+          // amount_earned (рубли) корректный, и заработок показывался.
+          // amount_earned — ЕДИНСТВЕННОЕ поле, всегда хранящее рубли (проверено
+          // на проде: 348/348 day/night-чекинов июня, 0 NULL). Поэтому баллы
+          // надёжнее выводить из суммы: points = amount_earned / point_value.
+          const amount  = Number(c.amount_earned || 0);
+          const pv      = Number(c.point_value || 500);
+          const dayRate = Number(c.day_rate || 0);
+          if (amount > 0 && pv > 0) {
+            points = Math.round((amount / pv) * 10) / 10;
+          } else if (dayRate > 0 && pv > 0) {
+            // Нет суммы, но есть day_rate. Если day_rate выглядит как баллы
+            // (<=50) — берём как есть; иначе это рубли → делим на point_value.
+            points = dayRate <= 50 ? dayRate : Math.round((dayRate / pv) * 10) / 10;
+          } else {
+            points = (c.tariff_points != null) ? Number(c.tariff_points) : 0;
+          }
+        } else {
+          points = pointsFor(settings, type, emp.position);
+        }
         // resolve entered_by_fio/role/phone (FIX #5 + FIX #8 batch + FIX #9 strict source-gating)
         let fio = c.entered_by_fio_user;
         let role = c.entered_by_role_user;
@@ -654,6 +739,11 @@ async function routes(fastify) {
         placeCell(emp, dStr, type, {
           points,
           amount: amt,
+          // FIX (23.06.2026): пробрасываем часы для tooltip — чтобы директор видел
+          // реальные hours_worked, а не путал отображаемые «баллы» с часами.
+          hours_worked: c.hours_worked,
+          hours_paid:   c.hours_paid,
+          shift:        c.shift,
           entered_by_fio: fio,
           entered_by_role: role,
           entered_by_phone: phone,
@@ -663,6 +753,10 @@ async function routes(fastify) {
           work_title: c.work_title
         });
         if (mode === 'global') {
+          // FIX (24.06.2026): после фикса выше `points = pointsFor(...)` для
+          // road/standby/ship — глобальный total_points у директора теперь
+          // корректен (travel=6, ship=12, waiting=6). Раньше для не-day/night
+          // прилетал tariff_points (13/16) и общий табель тоже врал.
           emp.total_amount += amt;
           if (Number.isFinite(points)) emp.total_points += Number(points);
         } else if (mode === 'pm' && isMine) {
@@ -670,12 +764,13 @@ async function routes(fastify) {
         }
       }
 
-      // ── stages (warehouse/medical/travel/waiting) ─────────────────────
+      // ── stages (warehouse/medical/travel/ship/waiting) ─────────────────
+      // V255: 'ship' — новый тип (Корабль), альтернатива travel за повышенную ставку.
       for (const s of stages) {
         const emp = empById[s.employee_id];
         if (!emp) continue;
         const stageType = s.stage_type;
-        if (!['warehouse','medical','travel','waiting'].includes(stageType)) continue;
+        if (!['warehouse','medical','travel','ship','waiting'].includes(stageType)) continue;
 
         const fromD = new Date(s.date_from);
         const toD = s.date_to ? new Date(s.date_to) : fromD;
@@ -975,6 +1070,22 @@ async function routes(fastify) {
         //          + bonus  (worker_payments type='bonus'   за месяц, !=cancelled)
         //          − penalty(worker_payments type='penalty' за месяц, !=cancelled)
         //   nonneg: Math.max(0, ...) — отрицательная зарплата невозможна
+        //
+        // 23.06.2026 BUG-FIX (🟡 T-formula-divergence): ВНИМАНИЕ — в CRM СОСУЩЕСТВУЕТ
+        // ТРИ разные формулы total_earned для одного и того же периода:
+        //   (1) Бухгалтерская (ЗДЕСЬ, timesheet-v2.js): earned = shifts + bonus
+        //       (!= 'cancelled') − penalty (!= 'cancelled'). Pending bonus входит,
+        //       т.к. бухгалтеру нужно увидеть «к выплате» уже на этапе утверждения.
+        //   (2) SSoT мобилка-рабочий (src/services/worker-finances.js:172):
+        //       totalEarned = totalFot + perDiemAccrued + bonusPaid − penalty,
+        //       где bonusPaid берётся ТОЛЬКО из status IN ('paid','confirmed').
+        //       Рабочий не должен видеть «обещанный» бонус.
+        //   (3) Мобилка помесячно (src/routes/field-earnings.js:112):
+        //       total_earned = fot + per_diem_accrued (без bonus/penalty вообще).
+        //       Это исторический упрощённый расчёт для виджета «доход за месяц».
+        // Три разных потребителя — три формулы. Если придётся приводить к общему
+        // знаменателю — синхронизировать (2) и (3), бухгалтерскую (1) трогать нельзя
+        // (нужен «pending» вид для утверждения зарплаты).
         const earnedFromShifts = Number(emp._earned_full || 0);
         const bonus   = Number(bonusMap[emp.id]   || 0);
         const penalty = Number(penaltyMap[emp.id] || 0);
@@ -1133,12 +1244,22 @@ async function routes(fastify) {
         emp.paid_cash     = Math.round(paidCash     * 100) / 100;
         emp.paid_transfer = Math.round(paidTransfer * 100) / 100;
         emp.paid_total    = Math.round((paidCash + paidTransfer) * 100) / 100;
+        const paidPerDiem = sumPaidTS('paid_per_diem');
+        const paidSalary  = sumPaidTS('paid_salary');
+        const paidAdvance = sumPaidTS('paid_advance');
+        const paidBonus   = sumPaidTS('paid_bonus');
         emp.paid_breakdown = {
-          per_diem: Math.round(sumPaidTS('paid_per_diem') * 100) / 100,
-          salary:   Math.round(sumPaidTS('paid_salary')   * 100) / 100,
-          advance:  Math.round(sumPaidTS('paid_advance')  * 100) / 100,
-          bonus:    Math.round(sumPaidTS('paid_bonus')    * 100) / 100
+          per_diem: Math.round(paidPerDiem * 100) / 100,
+          salary:   Math.round(paidSalary  * 100) / 100,
+          advance:  Math.round(paidAdvance * 100) / 100,
+          bonus:    Math.round(paidBonus   * 100) / 100
         };
+        // Фикс (23.06.2026): для колонки «📤 Выплачено ₽» нужно показывать ТОЛЬКО ЗП
+        // (зп + аванс + бонус), без суточных. Суточные — это не «выплата ЗП», а
+        // компенсация командировочных расходов, в финансовый расчёт «к выплате на руки»
+        // НЕ входит. Юзер просил: «суточные НЕ должны учитываться» в колонке «Выплачено».
+        // paid_total оставлен как есть для обратной совместимости.
+        emp.paid_salary_total = Math.round((paidSalary + paidAdvance + paidBonus) * 100) / 100;
         emp.cash_payout_remaining = Math.round(Math.max(0, Number(emp.cash_payout)     - paidCash)     * 100) / 100;
         emp.transfer_remaining    = Math.round(Math.max(0, Number(emp.transfer_amount) - paidTransfer) * 100) / 100;
 
@@ -1166,8 +1287,10 @@ async function routes(fastify) {
 
       // BUG #6: контракт ждёт data.columns с правилами проекции колонок —
       // фронты (vanilla + desktop-v2 + mobile-app) могут на это опираться.
+      // V255 (23.06.2026): warehouse/medical/travel теперь тоже 'mine' —
+      // свои отметки показываются с баллами, чужие — только иконка.
       const columns = {
-        points:  mode === 'pm' ? 'mine' : (mode === 'global' ? 'always' : 'none'),
+        points:  mode === 'global' ? 'always' : 'mine',
         amount:  mode === 'global' ? 'show' : 'none',
         perDiem: mode === 'pm' ? 'show' : 'none'
       };
@@ -1253,6 +1376,8 @@ async function routes(fastify) {
           total_paid_cash:              r2(sum(e => e.paid_cash)),
           total_paid_transfer:          r2(sum(e => e.paid_transfer)),
           total_paid_total:             r2(sum(e => e.paid_total)),
+          // Фикс (23.06.2026): выплачено по ЗП без суточных.
+          total_paid_salary_total:      r2(sum(e => e.paid_salary_total)),
           total_cash_needed_remaining:  r2(Math.max(0, sum(e => e.cash_payout)     - sum(e => e.paid_cash))),
           total_transfer_remaining:     r2(Math.max(0, sum(e => e.transfer_amount) - sum(e => e.paid_transfer))),
           // ── Stage U (20.06.2026): официально устроены (бух vs директор) ──
@@ -1349,9 +1474,19 @@ async function routes(fastify) {
         throw lockErr;
       }
 
-      // PM: проверка владения работой
-      if (mode === 'pm') {
-        if (!work_id) return reply.code(400).send({ error: 'work_id обязателен для PM-режима' });
+      // 24.06.2026 FIX: work_id обязателен для day/night/waiting/ship/warehouse
+      // (привязка к конкретной работе). НЕ обязателен для medical/travel —
+      // это межработные этапы (медосмотр и дорога между вахтами).
+      // Если у РП/директора несколько работ — UI должен показать picker выбора работы.
+      const REQUIRE_WORK_ID = new Set(['day', 'night', 'waiting', 'ship', 'warehouse']);
+      if (REQUIRE_WORK_ID.has(type) && !work_id) {
+        return reply.code(400).send({
+          error: 'work_id_required',
+          message: `Для отметки "${type}" нужно выбрать работу`
+        });
+      }
+      // PM: проверка владения работой (если work_id передан)
+      if (mode === 'pm' && work_id) {
         const { rows: wcheck } = await db.query(`SELECT id, pm_id FROM works WHERE id=$1`, [work_id]);
         if (!wcheck.length) return reply.code(404).send({ error: 'Работа не найдена' });
         if (Number(wcheck[0].pm_id) !== Number(viewer.id) && viewer.role !== 'HEAD_PM') {
@@ -1454,9 +1589,49 @@ async function routes(fastify) {
           return reply.code(409).send({ error: 'На эту дату уже есть этап (' + dupSt[0].stage_type + ')' });
         }
 
+        // 25.06.2026 FIX «коллизия чужой работы»: чекин на ту же дату
+        // на ДРУГОЙ работе → 409 (см. инцидент Климакин 23.06 → Пономарёв).
+        // ADMIN/DIRECTOR_* могут перебить.
+        const role = viewer.role;
+        const canForce = role === 'ADMIN' || (role && role.startsWith('DIRECTOR_'));
+        if (!canForce) {
+          const { rows: otherCi } = await db.query(`
+            SELECT fc.id, fc.work_id, w.work_title, w.pm_id, u.name AS pm_fio
+              FROM field_checkins fc
+              LEFT JOIN works w ON w.id = fc.work_id
+              LEFT JOIN users u ON u.id = w.pm_id
+             WHERE fc.employee_id = $1
+               AND fc.date = $2::date
+               AND fc.work_id <> $3
+               AND fc.status = 'completed'
+             LIMIT 1
+          `, [employee_id, date, work_id]);
+          if (otherCi.length > 0) {
+            const o = otherCi[0];
+            return reply.code(409).send({
+              error: 'worker_busy_on_other_work',
+              message: 'Этот рабочий в эту дату уже отмечен на работе «' +
+                       (o.work_title || '—') + '» (РП ' + (o.pm_fio || '—') +
+                       '). Попросите этого РП снять отметку, если хотите перенести.',
+              other: {
+                checkin_id: o.id, work_id: o.work_id,
+                work_title: o.work_title, pm_id: o.pm_id, pm_fio: o.pm_fio
+              }
+            });
+          }
+        }
+
         const dayRate = Number(body.amount) || Number(body.day_rate) || 0;
         const amountEarned = Number(body.amount) || Number(body.amount_earned) || dayRate;
-        const hoursWorked = Number(body.hours) || 11;
+        // 27.06.2026 FIX: раньше hoursWorked = 11 fallback независимо от типа смены.
+        // Из-за этого road/standby/half попадали как 11 часов, и в tooltip
+        // показывалось «отработано 11 ч» для дороги (что неверно).
+        // Дефолт теперь зависит от типа: day/night = 11, half = 6,
+        // road/standby/waiting = 0 (это не работа).
+        const DEFAULT_HOURS_BY_SHIFT = { day: 11, night: 11, half: 6, road: 0, standby: 0, waiting: 0 };
+        const hoursWorked = Number.isFinite(Number(body.hours))
+          ? Number(body.hours)
+          : (DEFAULT_HOURS_BY_SHIFT[type] ?? 11);
 
         if (dupCi.length) {
           // UPDATE
@@ -1810,7 +1985,8 @@ async function routes(fastify) {
       const type = body.type;
       const position = body.position || null;
       const points = parseInt(body.points, 10);
-      if (!['warehouse','medical','travel'].includes(type)) {
+      // V255: добавлен 'ship' — альтернативная дорога с повышенной ставкой (12 баллов).
+      if (!['warehouse','medical','travel','ship'].includes(type)) {
         return reply.code(400).send({ error: 'bad type' });
       }
       if (!Number.isFinite(points) || points < 0) {
