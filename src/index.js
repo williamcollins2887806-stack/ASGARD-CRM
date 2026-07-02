@@ -8,7 +8,8 @@ require('dotenv').config();
 const fastify = require('fastify')({
   logger: {
     level: process.env.NODE_ENV === 'production' ? 'info' : 'debug'
-  }
+  },
+  bodyLimit: 209715200 // 200 MB — для загрузки файлов в pre-tenders, cash и др.
 });
 
 // Allow empty body with Content-Type: application/json (returns {} instead of 400)
