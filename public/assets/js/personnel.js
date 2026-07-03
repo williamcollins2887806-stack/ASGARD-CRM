@@ -377,11 +377,21 @@ window.AsgardPersonnelPage = (function () {
         const workTitle = active ? (active.work_title || '') : (last ? (last.work_title || '') : '');
         const pmName    = active ? (active.pm_name    || '') : (last ? (last.pm_name    || '') : '');
         const isHistorical = !!last && !active;
-        // «Начало работ» — для активных: дата готовности (когда стал готов).
-        // Для исторических (последняя работа): дата старта последнего assignment'а.
-        const startDate = active
-          ? (e.readiness_date ? fmtDate(e.readiness_date) : '—')
-          : (last && last.start_date ? fmtDate(last.start_date) : (e.readiness_date ? fmtDate(e.readiness_date) : '—'));
+        // «Начало работ»:
+        //  • на объекте — дата первой смены на объекте (backend: on_site_info.start_date,
+        //    с фолбэком на дату назначения); если совсем нет — дата готовности;
+        //  • готов / согласован — дата, с которой сотрудник готов (readiness_date);
+        //  • исторические (последняя работа) — дата старта последнего assignment'а.
+        const st = e.effective_status;
+        let startRaw;
+        if (st === 'on_site') {
+          startRaw = (e.on_site_info && e.on_site_info.start_date) || e.readiness_date || null;
+        } else if (st === 'ready' || st === 'approved') {
+          startRaw = e.readiness_date || null;
+        } else {
+          startRaw = (last && last.start_date) || e.readiness_date || null;
+        }
+        const startDate = startRaw ? fmtDate(startRaw) : '—';
         const seTrans   = Number(e.se_transferred_year || 0);
 
         // Префикс «был на:» для последней работы (когда сотрудник не на объекте сейчас).

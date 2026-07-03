@@ -71,6 +71,7 @@ async function routes(fastify, options) {
       SELECT
         ea.employee_id, ea.work_id, ea.field_role,
         ea.departure_date, ea.is_active,
+        COALESCE(ea.date_from, ea.created_at) AS date_from,
         w.work_title,
         wpm.name AS pm_name
       FROM employee_assignments ea
@@ -84,6 +85,23 @@ async function routes(fastify, options) {
     const onSiteByEmp = {};
     for (const a of assignments) {
       if (!onSiteByEmp[a.employee_id]) onSiteByEmp[a.employee_id] = a;
+    }
+
+    // «Начало работ» для тех, кто на объекте — дата ПЕРВОЙ смены на этом объекте
+    // (первый чек-ин в field_checkins по паре employee+work, кроме отменённых).
+    // Если смен ещё нет — фолбэк на дату назначения (date_from) на фронте.
+    const firstShiftByEmpWork = {};
+    if (Object.keys(onSiteByEmp).length) {
+      const { rows: firstShifts } = await db.query(`
+        SELECT employee_id, work_id, MIN(date) AS first_shift
+        FROM field_checkins
+        WHERE employee_id = ANY($1::int[])
+          AND status != 'cancelled'
+        GROUP BY employee_id, work_id
+      `, [empIds]);
+      for (const fs of firstShifts) {
+        firstShiftByEmpWork[`${fs.employee_id}_${fs.work_id}`] = fs.first_shift;
+      }
     }
 
     // Назначения в активных заявках (approved, ещё не added_to_crew)
@@ -214,10 +232,13 @@ async function routes(fastify, options) {
 
       if (onSiteByEmp[e.id]) {
         effective_status = 'on_site';
+        const _work_id = onSiteByEmp[e.id].work_id;
         on_site_info = {
-          work_id:    onSiteByEmp[e.id].work_id,
+          work_id:    _work_id,
           work_title: onSiteByEmp[e.id].work_title,
           pm_name:    onSiteByEmp[e.id].pm_name,
+          // Дата первой смены на объекте; фолбэк — дата назначения на работу.
+          start_date: firstShiftByEmpWork[`${e.id}_${_work_id}`] || onSiteByEmp[e.id].date_from || null,
         };
       } else if (approvedByEmp[e.id]) {
         effective_status = 'approved';
