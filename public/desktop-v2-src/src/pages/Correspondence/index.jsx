@@ -1,81 +1,134 @@
 /**
  * Страница /correspondence — реестр входящих и исходящих документов (переписка с заказчиками).
  *
- * Источник: vanilla `public/assets/js/correspondence.js` (~857 строк) +
- * backend `src/routes/correspondence.js` (allocate номер) + generic `/api/data/correspondence`.
+ * Источник: vanilla `public/assets/js/correspondence.js` (1301 LOC после S-11A) +
+ * backend `src/routes/correspondence.js` (allocate номер / by-parent / finalize / delete) +
+ * `src/routes/letter.js` (PDF/DOCX/new-revision) +
+ * generic `/api/data/correspondence`.
  *
- * RBAC: ADMIN, DIRECTOR_GEN, DIRECTOR_COMM, DIRECTOR_DEV, OFFICE_MANAGER, PM, HEAD_PM, TO, HEAD_TO.
+ * RBAC: 9 ролей (см. _LETTER_CONTRACT.md §5):
+ *   - ADMIN, DIRECTOR_GEN, DIRECTOR_COMM, DIRECTOR_DEV    — full + delete (только GEN+ADMIN)
+ *   - OFFICE_MANAGER                                      — full доступ кроме edit-text и delete
+ *   - PM, HEAD_PM, TO, HEAD_TO                            — view + create + edit/finalize/new-revision «своих»
+ *
+ * URL params:
+ *   ?parent_entity_type=tender|work|calc|pre_tender|request
+ *   ?parent_entity_id=<int>
+ *   ?id=<int> — deep link для открытия CorrViewModal
+ *
+ * При наличии parent_entity_* — используем `/api/correspondence/by-parent` + бейдж
+ * «Фильтр по тендеру #N» c кнопкой сброса.
  *
  * ┌────────── Vanilla coverage checklist ──────────┐
- * │ ✅ render()             — главный layout (TopActionsBar + KPI + фильтры + таблица) │
- * │ ✅ renderPage()         — таблица с группировкой/пагинацией                         │
- * │ ✅ filterItems()        — фильтры по году/месяцу/направлению/типу/поиску            │
- * │ ✅ calcStats()          — KPI расчёт (incoming/outgoing/total/byType)               │
- * │ ✅ bindEvents()         — фильтры + Add/Edit/View                                   │
- * │ ✅ openAddModal()       — CorrFormModal с direction                                 │
- * │ ✅ openEditModal()      — CorrFormModal с item                                      │
- * │ ✅ openViewModal()      — CorrViewModal с item                                      │
- * │ ✅ generateOutgoingNumber() — getNextOutgoingNumber в api.js                        │
- * │ ✅ uploadFile / linkDoc — uploadFile/linkDoc в api.js                               │
- * │ ✅ RBAC hasAccess()     — hasAccess(user) в api.js                                  │
- * │ ✅ audit()              — write to audit_log (опционально через бэк, generic)       │
- * │ ⚠ MimirForms autofill  — НЕ переносим (это плагин-AI, требует отдельной интеграции)│
- * │ ✅ DOC_TYPES / DIRECTIONS — справочники в api.js                                    │
- * │ ✅ formatDate / month / esc — функции в api.js                                      │
+ * │ ✅ render()                — главный layout                                       │
+ * │ ✅ renderPage()            — таблица с группировкой / пагинацией                  │
+ * │ ✅ filterItems()           — фильтры год/месяц/направление/тип/поиск/sstatus      │
+ * │ ✅ calcStats()             — KPI расчёт (incoming/outgoing/total + drafts)        │
+ * │ ✅ bindEvents()            — фильтры + Add/Edit/View                              │
+ * │ ✅ openAddModal()          — CorrFormModal                                        │
+ * │ ✅ openEditModal()         — CorrFormModal (по item)                              │
+ * │ ✅ openViewModal()         — CorrViewModal                                        │
+ * │ ✅ generateOutgoingNumber  — getNextOutgoingNumber в api.js                       │
+ * │ ✅ uploadFile / linkDoc    — uploadFile/linkDoc в api.js                          │
+ * │ ✅ RBAC 9 ролей            — hasAccess + canEditItem + canFinalizeItem + ...      │
+ * │ ✅ Pill signing_status     — V252 (3 цвета через --info-bg/--ok-bg/--muted-bg)    │
+ * │ ✅ Chip letter_kind        — V252 (--gold-bg)                                     │
+ * │ ✅ Chip version_no/parent  — V252 (--info-bg)                                     │
+ * │ ✅ Number col placeholder  — «🔒 при finalize» для draft outgoing                 │
+ * │ ✅ Финализация             — POST /api/correspondence/:id/finalize                │
+ * │ ✅ Новая редакция          — POST /api/letter/:id/new-revision + prompt note      │
+ * │ ✅ PDF / Word скачивание   — /api/letter/:id/render/pdf|docx (openProtected)      │
+ * │ ✅ Soft delete             — DELETE /api/correspondence/:id (ADMIN/DIRECTOR_GEN)  │
+ * │ ✅ Composer entry point    — кнопка → /composer/new?parent_entity_type=...        │
+ * │ ✅ URL parent_entity_*     — авто-фильтр + badge сущности                         │
  * └─────────────────────────────────────────────────┘
- *
- * Привязка к тендеру/работе/заказчику — НОВОЕ (добавлено в v2, на бэке поля уже есть).
  */
 import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/api/useAuth';
-import { useModal } from '@/modals';
+import { useModal, ConfirmModal } from '@/modals';
 import { toast } from '@/modals/Notifications';
 import { Btn } from '@/modals/parts';
 import { TopActionsBar, EmptyState } from '@/blocks/Blocks';
 import { SearchInput, SelectInput } from '@/inputs/Inputs';
 import { useDebounce } from '@/api/useListHelpers';
+import { openProtected } from '@/api/download';
 
 import {
-  hasAccess, DIRECTION_OPTIONS, DOC_TYPE_OPTIONS, MONTH_OPTIONS,
-  loadCorrespondence, loadOne,
-  getDirInfo, getDocTypeInfo, fmtDate
+  hasAccess, hasFullAccess, isViewOnlyRole, canEditItem, canFinalizeItem,
+  canNewRevision, canDownloadLetter, canDelete,
+  DIRECTION_OPTIONS, DOC_TYPE_OPTIONS, MONTH_OPTIONS, SIGNING_STATUS_OPTIONS,
+  loadCorrespondence, loadCorrespondenceByParent, loadOne,
+  finalizeCorrespondence, createNewRevision, deleteCorrespondence,
+  letterRenderUrl, letterFileBase, getParentEntityLabel
 } from './api';
 import { CorrFormModal } from './CorrFormModal';
 import { CorrViewModal } from './CorrViewModal';
+import CorrespondenceRow from './CorrespondenceRow';
 import './correspondence.css';
 
 const PAGE_SIZE = 25;
 
+/** Прочитать ?parent_entity_type / ?parent_entity_id из location.search (HashRouter). */
+function readParentFromLocation(search) {
+  const params = new URLSearchParams(search || '');
+  const type = params.get('parent_entity_type') || '';
+  const idStr = params.get('parent_entity_id') || '';
+  const id = idStr ? Number(idStr) : null;
+  if (!type || !id || !Number.isFinite(id)) return null;
+  return { type, id };
+}
+
 export default function CorrespondencePage() {
   const { user } = useAuth();
   const modal = useModal();
+  const navigate = useNavigate();
+  const location = useLocation();
   const access = hasAccess(user);
+  const fullAccess = hasFullAccess(user);
+  const viewOnly = isViewOnlyRole(user);
+
+  const parentFilter = useMemo(() => readParentFromLocation(location.search), [location.search]);
 
   const currentYear = new Date().getFullYear();
-
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Фильтры
   const [year, setYear] = useState(currentYear);
   const [month, setMonth] = useState('');
   const [direction, setDirection] = useState('');
   const [docType, setDocType] = useState('');
+  const [signingStatus, setSigningStatus] = useState('');
   const [search, setSearch] = useState('');
-  // G-11: debounce поиска (5к строк, фильтрация в useMemo — без debounce страница лагает).
   const dSearch = useDebounce(search, 300);
   const [page, setPage] = useState(0);
 
+  /* — Загрузка — */
   const refresh = useCallback(async () => {
     if (!access) return;
     setLoading(true);
     try {
-      const arr = await loadCorrespondence(5000);
-      setItems(arr);
+      if (parentFilter) {
+        // by-parent — backend сам учитывает RBAC и роли (PM видит только своё под этой сущностью).
+        const { items: arr } = await loadCorrespondenceByParent({
+          parent_entity_type: parentFilter.type,
+          parent_entity_id:   parentFilter.id,
+          only_current:       false,
+          limit:              5000
+        });
+        setItems(arr);
+      } else {
+        // Generic список (RBAC в бэке + soft-delete фильтр).
+        const arr = await loadCorrespondence(5000);
+        setItems(arr);
+      }
     } catch (e) {
       toast.error('Не удалось загрузить: ' + (e?.message || e));
     } finally {
       setLoading(false);
     }
-  }, [access]);
+  }, [access, parentFilter]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -87,9 +140,11 @@ export default function CorrespondencePage() {
 
   // Deep link ?id=
   useEffect(() => {
-    const m = (window.location.hash.split('?')[1] || '').match(/(?:^|&)id=(\d+)/);
-    if (!m) return;
-    const id = Number(m[1]);
+    const params = new URLSearchParams(location.search || '');
+    const idStr = params.get('id');
+    if (!idStr) return;
+    const id = Number(idStr);
+    if (!Number.isFinite(id)) return;
     const cached = items.find((x) => x.id === id);
     if (cached) {
       modal.open(<CorrViewModal item={cached} onChanged={refresh} />);
@@ -99,7 +154,7 @@ export default function CorrespondencePage() {
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items]);
+  }, [items, location.search]);
 
   /* — Фильтр + пагинация — */
   const filtered = useMemo(() => {
@@ -112,6 +167,10 @@ export default function CorrespondencePage() {
         if (month !== '' && d.getMonth() !== Number(month)) return false;
         if (direction && it.direction !== direction) return false;
         if (docType && it.doc_type !== docType) return false;
+        if (signingStatus) {
+          const sk = it.signing_status || (it.direction === 'outgoing' && !it.number ? 'draft' : 'finalized');
+          if (sk !== signingStatus) return false;
+        }
         if (dSearch) {
           const s = dSearch.toLowerCase();
           const hay = (
@@ -125,26 +184,32 @@ export default function CorrespondencePage() {
         return true;
       })
       .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
-  }, [items, year, month, direction, docType, dSearch]);
+  }, [items, year, month, direction, docType, signingStatus, dSearch]);
 
-  // G-11: сброс page=0 при смене любого фильтра — иначе на странице 5 фильтр на 4 элемента = пустота.
-  useEffect(() => { setPage(0); }, [year, month, direction, docType, dSearch]);
+  useEffect(() => { setPage(0); }, [year, month, direction, docType, signingStatus, dSearch]);
 
   const stats = useMemo(() => {
     const incoming = filtered.filter((x) => x.direction === 'incoming').length;
     const outgoing = filtered.filter((x) => x.direction === 'outgoing').length;
-    return { incoming, outgoing, total: filtered.length };
+    const drafts = filtered.filter((x) =>
+      (x.signing_status || (x.direction === 'outgoing' && !x.number ? 'draft' : 'finalized')) === 'draft'
+    ).length;
+    return { incoming, outgoing, total: filtered.length, drafts };
   }, [filtered]);
 
-  const pageItems = useMemo(() => filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE), [filtered, page]);
+  const pageItems = useMemo(
+    () => filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
+    [filtered, page]
+  );
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
 
   useEffect(() => {
     if (page > 0 && page >= totalPages) setPage(0);
   }, [totalPages, page]);
 
+  /* — Действия — */
   const openAdd = (dirVal) => {
-    modal.open(<CorrFormModal direction={dirVal} onSaved={refresh} />);
+    modal.open(<CorrFormModal direction={dirVal} parentFilter={parentFilter} onSaved={refresh} />);
   };
 
   const openView = (it) => {
@@ -152,7 +217,110 @@ export default function CorrespondencePage() {
   };
 
   const openEdit = (it) => {
+    if (!canEditItem(user, it)) {
+      toast.warn('Финализированное письмо нельзя редактировать — создайте новую редакцию');
+      return;
+    }
     modal.open(<CorrFormModal item={it} onSaved={refresh} />);
+  };
+
+  const downloadPdf = (it) => {
+    const url = letterRenderUrl(it.id, 'pdf', { with_signature: true, with_stamp: true });
+    openProtected(url, letterFileBase(it) + '.pdf')
+      .catch((err) => toast.error('PDF: ' + (err?.message || err)));
+  };
+
+  const downloadDocx = (it) => {
+    const url = letterRenderUrl(it.id, 'docx');
+    openProtected(url, letterFileBase(it) + '.docx')
+      .catch((err) => toast.error('Word: ' + (err?.message || err)));
+  };
+
+  const doFinalize = (it) => {
+    modal.open(
+      <ConfirmModal
+        title="Финализировать письмо?"
+        message="После финализации будет присвоен Исх.№ и редактирование закроется. Создать новую редакцию можно будет позже."
+        okText="🔒 Финализировать"
+        tone="warning"
+        onConfirm={async () => {
+          try {
+            const resp = await finalizeCorrespondence(it.id);
+            toast.success('Письмо финализировано · № ' + (resp?.number || ''));
+            window.dispatchEvent(new CustomEvent('asgard:correspondence:changed'));
+            await refresh();
+          } catch (e) {
+            toast.error('Не удалось финализировать: ' + (e?.message || e));
+          }
+        }}
+      />
+    );
+  };
+
+  const doNewRevision = (it) => {
+    // window.prompt используется вместо отдельной модалки — лаконичный UX (как vanilla S-11A).
+    const note = (window.prompt('Краткое примечание к новой редакции (опц.):', '') || '').trim();
+    (async () => {
+      try {
+        const resp = await createNewRevision(it.id, note || undefined);
+        toast.success('Создана редакция v' + (resp?.version_no || '?'));
+        window.dispatchEvent(new CustomEvent('asgard:correspondence:changed'));
+        await refresh();
+        // Открыть новую редакцию для редактирования, если у пользователя есть права.
+        const newId = resp?.new_id;
+        if (newId) {
+          const fresh = await loadOne(newId);
+          if (fresh) {
+            if (canEditItem(user, fresh)) modal.open(<CorrFormModal item={fresh} onSaved={refresh} />);
+            else modal.open(<CorrViewModal item={fresh} onChanged={refresh} />);
+          }
+        }
+      } catch (e) {
+        toast.error('Не удалось создать редакцию: ' + (e?.message || e));
+      }
+    })();
+  };
+
+  const doDelete = (it) => {
+    modal.open(
+      <ConfirmModal
+        title="Удалить документ?"
+        message={`Документ «${it.subject || 'без темы'}» №${it.number || it.id} будет удалён безвозвратно (soft delete).`}
+        tone="danger"
+        okText="🗑 Удалить"
+        onConfirm={async () => {
+          try {
+            await deleteCorrespondence(it.id);
+            toast.success('Документ удалён');
+            window.dispatchEvent(new CustomEvent('asgard:correspondence:changed'));
+            await refresh();
+          } catch (e) {
+            toast.error('Не удалось удалить: ' + (e?.message || e));
+          }
+        }}
+      />
+    );
+  };
+
+  const goComposer = () => {
+    const p = new URLSearchParams();
+    if (parentFilter) {
+      p.set('parent_entity_type', parentFilter.type);
+      p.set('parent_entity_id', String(parentFilter.id));
+    }
+    const qs = p.toString();
+    // Composer уже зарегистрирован в App.jsx как /correspondence/composer (новое письмо)
+    // и /correspondence/composer/:id (редактирование существующего). Параметры по родителю
+    // — через query, чтобы composer пред-заполнил привязку.
+    navigate('/correspondence/composer' + (qs ? '?' + qs : ''));
+  };
+
+  const clearParentFilter = () => {
+    const p = new URLSearchParams(location.search || '');
+    p.delete('parent_entity_type');
+    p.delete('parent_entity_id');
+    const qs = p.toString();
+    navigate('/correspondence' + (qs ? '?' + qs : ''), { replace: true });
   };
 
   if (!user) return null;
@@ -160,37 +328,56 @@ export default function CorrespondencePage() {
   if (!access) {
     return (
       <div className="col gap-12">
-        <TopActionsBar kicker="Документы" title="Корреспонденция" />
+        <TopActionsBar kicker="Документы" title="Официальная переписка" />
         <EmptyState
           icon="🔒"
           title="Нет доступа"
-          hint="Раздел доступен офис-менеджерам, директорам и тендерному отделу."
+          hint="Раздел доступен директорам, офис-менеджеру, РП и тендерному отделу."
         />
       </div>
     );
   }
 
-  /* Опции года — этот + 4 предыдущих */
   const yearOptions = [
     { value: '', label: 'Все' },
     ...[currentYear, currentYear - 1, currentYear - 2, currentYear - 3, currentYear - 4]
       .map((y) => ({ value: String(y), label: String(y) }))
   ];
 
+  const parentLabel = parentFilter ? getParentEntityLabel(parentFilter.type) : null;
+
   return (
     <div className="col gap-14">
       <TopActionsBar
         kicker="Документы"
-        title="Корреспонденция"
-        subtitle="Реестр входящих и исходящих документов"
+        title="Официальная переписка"
+        subtitle={
+          parentFilter
+            ? `Письма по ${parentLabel.label} #${parentFilter.id}`
+            : 'Реестр входящих и исходящих документов'
+        }
         actions={
           <>
             <Btn variant="ghost" onClick={refresh}>↻ Обновить</Btn>
             <Btn variant="ghost" onClick={() => openAdd('incoming')}>📥 Входящее</Btn>
-            <Btn variant="primary" onClick={() => openAdd('outgoing')}>📤 Исходящее</Btn>
+            <Btn variant="ghost" onClick={() => openAdd('outgoing')}>📤 Исходящее</Btn>
+            <Btn variant="primary" onClick={goComposer} title="Открыть редактор официального письма">
+              ✉ Создать письмо
+            </Btn>
           </>
         }
       />
+
+      {/* Badge фильтра по сущности */}
+      {parentFilter && (
+        <div className="corr-parent-badge">
+          <span className="corr-parent-badge__icon">{parentLabel.icon}</span>
+          <span>Фильтр: письма по {parentLabel.label} <b>#{parentFilter.id}</b></span>
+          <button type="button" className="corr-parent-badge__close" onClick={clearParentFilter} title="Сбросить фильтр">
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* KPI */}
       <div className="corr-kpi-grid">
@@ -208,6 +395,11 @@ export default function CorrespondencePage() {
           <div className="corr-kpi-label">Исходящие</div>
           <div className="corr-kpi-value tone-ok">{stats.outgoing}</div>
           <div className="corr-kpi-icon">📤</div>
+        </div>
+        <div className="corr-kpi-card">
+          <div className="corr-kpi-label">Черновики</div>
+          <div className="corr-kpi-value tone-muted">{stats.drafts}</div>
+          <div className="corr-kpi-icon">✎</div>
         </div>
       </div>
 
@@ -229,7 +421,11 @@ export default function CorrespondencePage() {
           <span className="filter-label">Тип</span>
           <SelectInput value={docType} onChange={(v) => { setDocType(v); setPage(0); }} options={DOC_TYPE_OPTIONS} />
         </div>
-        <div style={{ gridColumn: '1 / span 2' }}>
+        <div>
+          <span className="filter-label">Статус</span>
+          <SelectInput value={signingStatus} onChange={(v) => { setSigningStatus(v); setPage(0); }} options={SIGNING_STATUS_OPTIONS} />
+        </div>
+        <div style={{ gridColumn: 'span 2' }}>
           <span className="filter-label">Поиск</span>
           <SearchInput value={search} onChange={(v) => { setSearch(v); setPage(0); }} placeholder="Тема, контрагент, номер…" />
         </div>
@@ -242,9 +438,9 @@ export default function CorrespondencePage() {
         <EmptyState
           icon="📬"
           title="Документов нет"
-          hint={search || direction || docType
+          hint={search || direction || docType || signingStatus
             ? 'По текущим фильтрам ничего не найдено. Попробуйте сбросить.'
-            : 'Создайте первый документ — кнопки 📥 Входящее / 📤 Исходящее в шапке.'
+            : 'Создайте первое письмо — кнопка ✉ «Создать письмо» в шапке.'
           }
         />
       ) : (
@@ -259,49 +455,38 @@ export default function CorrespondencePage() {
                 <tr>
                   <th className="w-110">Направление</th>
                   <th className="w-100">Дата</th>
-                  <th className="w-140">Номер</th>
+                  <th className="w-160">Номер</th>
                   <th>Тема / Контрагент</th>
                   <th className="w-130">Тип</th>
-                  <th className="right w-110"></th>
+                  <th className="w-150">Статус</th>
+                  <th className="right w-200"></th>
                 </tr>
               </thead>
               <tbody>
                 {pageItems.map((it) => {
-                  const dir = getDirInfo(it.direction);
-                  const dtype = getDocTypeInfo(it.doc_type);
-                  const toneClass = it.direction === 'outgoing' ? 'has-tone-out' : 'has-tone-in';
+                  // RBAC проверки на уровне item — определяем какие кнопки доступны.
+                  const actions = {
+                    view:        true, // всем кто прошёл hasAccess (см. early return выше)
+                    edit:        canEditItem(user, it),
+                    pdf:         canDownloadLetter(user, it),
+                    docx:        canDownloadLetter(user, it),
+                    finalize:    canFinalizeItem(user, it),
+                    newRevision: canNewRevision(user, it),
+                    delete:      canDelete(user)
+                  };
                   return (
-                    <tr key={it.id} className={toneClass}>
-                      <td onClick={() => openView(it)} className="cur-p">
-                        <span className={'corr-dir-pill tone-' + dir.tone}>
-                          {dir.icon} {dir.label}
-                        </span>
-                      </td>
-                      <td onClick={() => openView(it)} className="corr-date-cell cur-p" >
-                        {fmtDate(it.date)}
-                      </td>
-                      <td onClick={() => openView(it)} className="cur-p">
-                        <span className="corr-number">{it.number || '—'}</span>
-                      </td>
-                      <td onClick={() => openView(it)} className="cur-p">
-                        <div className="corr-subject">{it.subject || 'Без темы'}</div>
-                        <div className="corr-counterparty">{it.counterparty || '—'}</div>
-                        {(it.tender_id || it.work_id || it.customer_id) && (
-                          <div className="corr-link-block">
-                            {it.tender_id   && <a href={`#/tenders?open=${it.tender_id}`}>🎯 Тендер #{it.tender_id}</a>}
-                            {it.work_id     && <a href={`#/pm-works?id=${it.work_id}`}>📌 Работа #{it.work_id}</a>}
-                            {it.customer_id && <a href={`#/customers?id=${it.customer_id}`}>🏢 Заказчик</a>}
-                          </div>
-                        )}
-                      </td>
-                      <td onClick={() => openView(it)} className="cur-p">{dtype.label}</td>
-                      <td className="right">
-                        <div className="corr-actions-row">
-                          <Btn size="sm" variant="ghost" onClick={() => openView(it)} title="Просмотр">👁</Btn>
-                          <Btn size="sm" variant="ghost" onClick={() => openEdit(it)} title="Править">✎</Btn>
-                        </div>
-                      </td>
-                    </tr>
+                    <CorrespondenceRow
+                      key={it.id}
+                      item={it}
+                      actions={actions}
+                      onView={() => openView(it)}
+                      onEdit={() => openEdit(it)}
+                      onPdf={() => downloadPdf(it)}
+                      onDocx={() => downloadDocx(it)}
+                      onFinalize={() => doFinalize(it)}
+                      onNewRevision={() => doNewRevision(it)}
+                      onDelete={() => doDelete(it)}
+                    />
                   );
                 })}
               </tbody>
@@ -316,6 +501,19 @@ export default function CorrespondencePage() {
             </div>
           )}
         </>
+      )}
+
+      {/* Footer hint для view-only ролей (PM/HEAD_PM/TO/HEAD_TO) */}
+      {viewOnly && (
+        <div className="fs-12 c-t3 t-center">
+          Вы видите только свои письма (и письма по сущностям, в которых вы участвуете).
+          {' '}Для полного доступа обратитесь к OFFICE_MANAGER или DIRECTOR_*.
+        </div>
+      )}
+      {fullAccess && !canDelete(user) && (
+        <div className="fs-12 c-t3 t-center">
+          Удаление документов доступно только ADMIN и DIRECTOR_GEN.
+        </div>
       )}
     </div>
   );

@@ -40,6 +40,19 @@ function isChunkError(err) {
 
 function tryReload(reason) {
   try {
+    // KILL-SWITCH: пользователь сообщил reload-loop 2026-06-18, временно
+    // отключаем автоматический reload. ChunkLoadError будет залогирован,
+    // но страница НЕ перезагружается — даём шанс увидеть реальную причину
+    // в консоли. Снять флаг localStorage.removeItem('asgard_disable_reload')
+    // когда корневой причинно-следственный фикс будет найден и задеплоен.
+    if (typeof localStorage !== 'undefined') {
+      // По умолчанию kill-switch ВКЛЮЧЁН (для аварийного состояния прод).
+      const killOff = localStorage.getItem('asgard_enable_reload');
+      if (killOff !== '1') {
+        console.warn('[ChunkReloadBoundary] AUTO-RELOAD DISABLED (kill-switch). Reason:', reason);
+        return false;
+      }
+    }
     const now = Date.now();
     const last = parseInt(sessionStorage.getItem(RELOAD_KEY) || '0', 10);
     // Anti-loop: считаем сколько перезагрузок было в window.

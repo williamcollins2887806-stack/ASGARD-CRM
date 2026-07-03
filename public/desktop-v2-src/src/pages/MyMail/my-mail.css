@@ -50,7 +50,8 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  color: #fff;
+  /* background ставится JS-ом из хеша имени (любой насыщенный hue) — текст должен быть светлым в обеих темах */
+  color: var(--on-brand);
   font-weight: 700;
   font-size: 13px;
   flex-shrink: 0;
@@ -186,7 +187,7 @@
 }
 .mm-folder__badge {
   background: var(--gold);
-  color: #fff;
+  color: var(--on-gold);
   font-size: 10.5px;
   font-weight: 700;
   padding: 1px 6px;
@@ -664,7 +665,8 @@
   width: 100%;
   min-height: 250px;
   border: none;
-  background: #fff;
+  /* iframe-контейнер: для HTML-писем фон зависит от темы — на тёмной даём card-bg, на светлой остаётся белый через токен */
+  background: var(--card-bg);
   flex: 1;
 }
 

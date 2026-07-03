@@ -29,7 +29,8 @@ import { api } from '@/api/client';
 import {
   MODES, inferModeFromRole,
   canLockScope, canAnyUnlock,
-  getMonth, putEntry, lockMonth, unlockMonth, getLocks, getClosureStatus, exportXlsx
+  getMonth, putEntry, lockMonth, unlockMonth, getLocks, getClosureStatus, exportXlsx,
+  monthLabel
 } from './api';
 import Toolbar from './Toolbar';
 import TimesheetGrid from './TimesheetGrid';
@@ -243,10 +244,33 @@ export default function TimesheetPage({ mode: modeProp }) {
     }
   };
 
-  // FIX 2 — «Напомнить РП» (опционально; пока пушим toast как TODO)
-  const onRemindPm = (pmLock) => {
-    // TODO: POST /api/notifications/push  body: { user_id, kind: 'timesheet_close_reminder', year, month }
-    toast.info(`Напоминание для ${pmLock.fio} поставлено в очередь (TODO: реальный endpoint)`);
+  // FIX 2 — «Напомнить РП»: реальный push через /api/notifications/push.
+  // RBAC сервера: ADMIN, DIRECTOR_GEN, DIRECTOR_COMM, BUH, HR_MANAGER.
+  const onRemindPm = async (pmLock) => {
+    if (!pmLock?.user_id) {
+      toast.error('Не удалось определить РП');
+      return;
+    }
+    const period = monthLabel(year, month);
+    try {
+      await api('/api/notifications/push', {
+        method: 'POST',
+        body: {
+          user_id: pmLock.user_id,
+          title: 'Напоминание: закрытие табеля',
+          message: `Пожалуйста, заполните и закройте табель за ${period}.`,
+          link: '/#/my-timesheet',
+          type: 'timesheet_close_reminder'
+        }
+      });
+      toast.success(`Напоминание отправлено: ${pmLock.fio}`);
+    } catch (e) {
+      if (e?.status === 403) {
+        toast.warn('Недостаточно прав для отправки напоминания');
+      } else {
+        toast.error('Не удалось отправить: ' + (e?.serverMsg || e?.message || e));
+      }
+    }
   };
 
   /* ─── Entry change (callback из TimesheetGrid) ─── */
@@ -260,6 +284,8 @@ export default function TimesheetPage({ mode: modeProp }) {
         toast.warn('Месяц закрыт — изменение запрещено');
       } else if (e?.status === 403) {
         toast.warn('Нет прав на эту отметку');
+      } else if (e?.status === 400 && e?.serverMsg === 'work_id_required') {
+        toast.error('Выберите работу для этой отметки');
       } else if (e?.status === 422 || e?.status === 400) {
         toast.error('Некорректные данные: ' + (e?.serverMsg || ''));
       } else {

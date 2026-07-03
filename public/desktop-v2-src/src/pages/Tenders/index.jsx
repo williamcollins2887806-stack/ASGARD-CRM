@@ -81,6 +81,9 @@ export default function TendersPage() {
   const [sort, setSort] = useState({ key: 'id', dir: -1 });
   const [tenders, setTenders] = useState([]);
   const [feedItems, setFeedItems] = useState([]);
+  // 26.06.2026: отдельные счётчики «всех» источников (всегда грузятся в фоне),
+  // чтобы цифры на главных табах не зависели от активной вкладки.
+  const [feedCounts, setFeedCounts] = useState({ applications: 0, all: 0 });
   const [pms, setPms] = useState([]);
   const [loading, setLoading] = useState(true);
   // S-31.1 F-4: ErrorCard вместо ложного EmptyState при сетевой ошибке.
@@ -94,7 +97,8 @@ export default function TendersPage() {
     const wantTenders = (main === 'tenders');
     const wantFeed    = (main !== 'tenders');
     const tasks = [];
-    tasks.push(loadUsers('PM'));
+    // F2: тянем И PM, И HEAD_PM (vanilla tenders.js:717). Backend поддерживает comma-list.
+    tasks.push(loadUsers('PM,HEAD_PM'));
     if (wantTenders) {
       tasks.push(loadTenders({ archived: tab === 'archive', limit: 1000 }));
     } else {
@@ -118,11 +122,39 @@ export default function TendersPage() {
     } else {
       tasks.push(Promise.resolve({ items: [], total: 0 }));
     }
-    Promise.all(tasks)
-      .then(([pmList, tList, feed]) => {
+    // 26.06.2026: всегда параллельно дёргаем applications и all целиком
+    // (limit=200), чтобы счётчики «📥 Заявки», «🌐 Все», а также sub-tab'ы
+    // 📧 Почта / 📞 Телефония / 👤 От РП были актуальны независимо от
+    // активной вкладки. Каждый item имеет поле `kind` (inbox_application |
+    // pre_tender | call), по нему считаем sub-counters.
+    const periodMap = { today: '3d', week: '7d', month: '30d', quarter: 'year', year: 'year', all: 'all' };
+    const feedPeriod = periodMap[filters.period] || 'all';
+    const countTasks = [
+      loadHubFeed({ tab: 'applications', period: feedPeriod, limit: 200 }).catch(() => ({ items: [], total: 0 })),
+      loadHubFeed({ tab: 'all',          period: feedPeriod, limit: 200 }).catch(() => ({ items: [], total: 0 }))
+    ];
+    Promise.all([...tasks, ...countTasks])
+      .then(([pmList, tList, feed, appsFeed, allFeed]) => {
         setPms(pmList);
         setTenders(tList);
         setFeedItems(feed?.items || []);
+        const appsItems = appsFeed?.items || [];
+        // kind → bucket для sub-табов вкладки «📥 Заявки»
+        const apps = { mail: 0, phone: 0, pm: 0 };
+        for (const it of appsItems) {
+          const k = String(it.kind || it.source_kind || '');
+          if (k === 'inbox_application' || k === 'mail' || k === 'email_invite' || k === 'platform') apps.mail++;
+          else if (k === 'call' || k === 'phone' || k === 'telephony') apps.phone++;
+          else if (k === 'pre_tender' || k === 'manual' || k === 'pm' || k === 'extra_volume') apps.pm++;
+          else apps.mail++; // unknown → почта (минимизируем «теряемся»)
+        }
+        setFeedCounts({
+          applications: Number(appsFeed?.total ?? appsItems.length),
+          all:          Number(allFeed?.total  ?? (allFeed?.items?.length ?? 0)),
+          apps_mail:    apps.mail,
+          apps_phone:   apps.phone,
+          apps_pm:      apps.pm
+        });
       })
       .catch((e) => {
         // S-31.1 F-4: фиксируем ошибку в state, чтобы отрендерить ErrorCard
@@ -252,13 +284,20 @@ export default function TendersPage() {
     ]);
     for (const t of tenders) {
       const created = t.created_at && new Date(t.created_at).getTime();
+      // 23.06.2026 BUG-FIX (🟡 #7): «Выиграно за месяц» теперь по won_at (V117), не created_at —
+      // created_at = когда тендер ЗАВЕДЁН, won_at = когда фактически выиграли. Fallback на
+      // created_at для исторических записей до V117.
+      const wonMs = t.won_at ? new Date(t.won_at).getTime() : created;
+      const lostMs = t.lost_at ? new Date(t.lost_at).getTime() : created;
       if (Number.isFinite(created) && created >= todayMs) inboxToday++;
       if (ACTIVE_STATUSES.has(t.tender_status)) inWork++;
       if (t.tender_status === 'Дозапрос') addendum++;
-      if (t.tender_status === 'Выиграли' && Number.isFinite(created) && created >= month30) wonMonth++;
+      if (t.tender_status === 'Выиграли' && Number.isFinite(wonMs) && wonMs >= month30) wonMonth++;
       // Burn — активный + deadline ≤ 3 дня
-      if (ACTIVE_STATUSES.has(t.tender_status) && (t.deadline_at || t.deadline)) {
-        const dl = new Date(t.deadline_at || t.deadline).getTime();
+      // 23.06.2026 BUG-FIX (P0 #1 уточнение): первичная колонка БД — docs_deadline.
+      // deadline_at/deadline оставлены для обратной совместимости со старыми feed-источниками.
+      if (ACTIVE_STATUSES.has(t.tender_status) && (t.docs_deadline || t.deadline_at || t.deadline)) {
+        const dl = new Date(t.docs_deadline || t.deadline_at || t.deadline).getTime();
         if (Number.isFinite(dl)) {
           const days = Math.round((dl - todayMs) / 86400000);
           if (days >= 0 && days <= 3) {
@@ -272,24 +311,28 @@ export default function TendersPage() {
     let lostMonth = 0;
     for (const t of tenders) {
       const created = t.created_at && new Date(t.created_at).getTime();
-      if (Number.isFinite(created) && created >= month30 && t.tender_status === 'Проиграли') lostMonth++;
+      // 23.06.2026 BUG-FIX (🟡 #7): lost_at вместо created_at, fallback — created_at.
+      const lostMs = t.lost_at ? new Date(t.lost_at).getTime() : created;
+      if (Number.isFinite(lostMs) && lostMs >= month30 && t.tender_status === 'Проиграли') lostMonth++;
     }
     const total = wonMonth + lostMonth;
     const win_pct = total > 0 ? Math.round((wonMonth / total) * 100) : null;
     return { inbox_today: inboxToday, in_work: inWork, burn, addendum, won_month: wonMonth, win_pct, hotIds };
   }, [tenders]);
 
-  /* Счётчики на главных табах. tenders — snapshot length после base-фильтра
-     (не подходит=archive, sub=platforms). applications/all — из feedItems
-     (что прилетело на этом запросе). */
+  /* Счётчики на главных табах.
+     26.06.2026 FIX: раньше counts зависели от активной вкладки (если main='tenders',
+     заявки/all показывались 0/undefined, а при переключении считались из feedItems
+     — несогласованные цифры). Теперь applications/all берутся из feedCounts,
+     которые грузятся в фоне каждый refresh независимо от текущей вкладки. */
   const mainCounts = useMemo(() => {
     const tendersCount = tenders.filter((t) => t.tender_status !== 'Не подходит').length;
-    let appsCount = 0;
-    let allCount  = 0;
-    if (main === 'applications') appsCount = feedItems.length;
-    if (main === 'all')          allCount  = feedItems.length;
-    return { tenders: tendersCount, applications: appsCount || undefined, all: allCount || undefined };
-  }, [tenders, feedItems, main]);
+    return {
+      tenders:      tendersCount,
+      applications: feedCounts.applications || undefined,
+      all:          feedCounts.all || undefined
+    };
+  }, [tenders, feedCounts]);
 
   const onOpen = (t) => {
     // Универсальный onOpen — для kind='tender' открываем редактор, остальное —
@@ -323,7 +366,9 @@ export default function TendersPage() {
   const ACTION_COMMANDS = [
     'won', 'lost', 'cancel', 'archive', 'unarchive',
     'change_author', 'pass_request', 'tmc_request',
-    'addendum', 'back_to_sent', 'handoff'
+    'addendum', 'back_to_sent', 'handoff',
+    // S-13F: переход в реестр официальной переписки по этому тендеру.
+    'correspondence'
   ];
 
   const _statusTransition = async (tenderId, toStatus, successMsg) => {
@@ -349,6 +394,13 @@ export default function TendersPage() {
       case 'addendum':      return _statusTransition(t.id, 'Дозапрос', 'Переведено в «Дозапрос»');
       case 'back_to_sent':  return _statusTransition(t.id, 'КП отправлено', 'Возврат в «КП отправлено»');
       case 'handoff':       return _statusTransition(t.id, 'На анализе', 'Переведено «На анализе»');
+      // S-13F Stage 4 React v2: реестр переписки по тендеру. Роут /correspondence
+      // существует (App.jsx:304), HashRouter → URL станет #/correspondence?...
+      case 'correspondence': {
+        const tid = String(t.id || '').replace(/^TND-/, '');
+        window.location.hash = `#/correspondence?parent_entity_type=tender&parent_entity_id=${tid}`;
+        return;
+      }
     }
     const known = ACTION_COMMANDS.join(', ');
     console.error('[Tenders] Unknown action command:', cmd, '— ожидался один из:', known);
@@ -383,7 +435,27 @@ export default function TendersPage() {
     );
   }
 
-  const subTabs = SUB_TABS[main];
+  // 26.06.2026 FIX: sub-табы получают count через useMemo (раньше были прочерки —
+  // const SUB_TABS не содержит .count). tenders sub-counts читаются из snapshot,
+  // applications sub-counts — из feedCounts (полный applications-feed, считается в refresh).
+  const subTabs = useMemo(() => {
+    if (main === 'tenders') {
+      const platforms = tenders.filter((t) => t.source_kind === 'platform' || t.source_kind === 'email_invite').length;
+      const inWork    = tenders.filter((t) => t.tender_status !== 'Не подходит').length;
+      return [
+        { ...SUB_TABS.tenders[0], count: platforms },
+        { ...SUB_TABS.tenders[1], count: inWork }
+      ];
+    }
+    if (main === 'applications') {
+      return [
+        { ...SUB_TABS.applications[0], count: feedCounts.apps_mail || 0 },
+        { ...SUB_TABS.applications[1], count: feedCounts.apps_phone || 0 },
+        { ...SUB_TABS.applications[2], count: feedCounts.apps_pm || 0 }
+      ];
+    }
+    return null;
+  }, [main, tenders, feedCounts]);
   const showPanels = main === 'tenders' && sub === 'in_work' && tab === 'active';
   const showArchiveToggle = main === 'tenders' && sub === 'in_work';
   const showPlatformStub = main === 'tenders' && sub === 'platforms';

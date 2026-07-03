@@ -319,6 +319,13 @@
   grid-template-columns: minmax(220px, 2fr) repeat(4, minmax(140px, 1fr));
   gap: 8px;
 }
+/* 26.06.2026 FIX: ячейки грида должны уметь сжиматься, иначе содержимое
+   (нативный <select> с длинным <option>) ломает раскладку — страница уезжает
+   вправо/влево. min-width:0 на cells разрешает overflow внутри них. */
+.filter-grid > *,
+.filter-grid-2 > *,
+.filter-grid-3 > *,
+.filter-grid-4 > * { min-width: 0; }
 .filter-grid-3 {
   display: grid;
   grid-template-columns: minmax(220px, 2fr) repeat(2, minmax(160px, 1fr));

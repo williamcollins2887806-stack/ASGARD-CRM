@@ -60,7 +60,14 @@ export default function PreTendersWidget() {
         ) : (
           <div className="flex flex-col">
             {items.map((item, i) => {
-              const badge = aiBadge(item.ai_score);
+              // 23.06.2026 BUG-FIX (PreTenders D-9): реальные поля pre_tender_requests —
+              //   `customer_name` (заголовок), `work_description` (описание),
+              //   `ai_work_match_score` (AI score 0-100), `estimated_sum` (сумма).
+              // До фикса виджет читал несуществующие `title/ai_score/nmck` → ВСЕ карточки были без названия и без суммы.
+              const titleText = item.customer_name || item.work_description || item.title || item.name || '—';
+              const aiScore   = item.ai_work_match_score ?? item.ai_score;
+              const amount    = item.estimated_sum ?? item.nmck ?? item.NMCK ?? item.nmck_amount;
+              const badge     = aiBadge(aiScore);
               return (
                 <div
                   key={item.id || i}
@@ -78,7 +85,7 @@ export default function PreTendersWidget() {
                       textOverflow: 'ellipsis',
                     }}
                   >
-                    {item.title || item.name || '—'}
+                    {titleText}
                   </div>
 
                   <div className="flex items-center gap-2 mt-1.5">
@@ -95,15 +102,15 @@ export default function PreTendersWidget() {
                       {badge.label}
                     </span>
 
-                    {/* NMCK */}
-                    {(item.nmck || item.NMCK || item.nmck_amount) && (
+                    {/* Сумма (НМЦК / оценка) */}
+                    {amount && (
                       <span
                         style={{
                           fontSize: 12,
                           color: 'var(--text-secondary)',
                         }}
                       >
-                        НМЦК: {formatMoney(item.nmck || item.NMCK || item.nmck_amount)}
+                        Сумма: {formatMoney(amount)}
                       </span>
                     )}
                   </div>

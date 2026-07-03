@@ -27,8 +27,11 @@ const TAB_GROUPS = [
   { id: 'training',   label: '📚 Обучение' },
 ];
 
-const STATUS_COLORS = { confirmed: '#22c55e', sent: '#3b82f6', pending: '#f59e0b', ready: '#6366f1' };
-const STATUS_LABELS = { confirmed: 'Подтверждено', sent: 'Отправлено', pending: 'Ожидает', ready: 'Готово' };
+// Канон бэка field_logistics.status (V183 + field-logistics.js): pending → purchased → ready → sent.
+// До 23.06.2026 здесь были `confirmed` (никогда не пишется бэком) и не было `purchased` —
+// рабочий видел латинскую строку «purchased» на карточке купленного билета.
+const STATUS_COLORS = { pending: '#f59e0b', purchased: '#22c55e', ready: '#6366f1', sent: '#3b82f6' };
+const STATUS_LABELS = { pending: 'Не куплено', purchased: 'Куплено', ready: 'Готово', sent: 'Отправлено' };
 
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('ru-RU') : '';
 

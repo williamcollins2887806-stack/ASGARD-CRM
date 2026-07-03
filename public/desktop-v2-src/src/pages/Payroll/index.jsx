@@ -32,14 +32,13 @@ import { useDebounce } from '@/api/useListHelpers';
 
 import {
   loadSheets, createSheet,
-  loadWorks, loadStats, loadPayments,
-  fmtMoney, fmtMoneyShort, fmtDate, fmtDateTime,
-  statusMeta, regStatusMeta, hasAccess, canCreate,
-  SHEET_STATUS_TABS, MONTHS_RU,
+  loadWorks,
+  fmtMoney, fmtMoneyShort, fmtDate,
+  statusMeta, hasAccess, canCreate,
+  SHEET_STATUS_TABS,
   parseHashParams
 } from './api';
 import PayrollSheet from './PayrollSheet';
-import PayrollGrid  from './PayrollGrid';
 import ExportModal  from './modals/ExportModal';
 import './payroll.css';
 
@@ -93,12 +92,11 @@ export default function PayrollPage({ mode }) {
   }
 
   /* Маршрутизация внутри страницы */
+  // Grid-вид удалён 18.06.2026 — Excel-сетка баллов перенесена на /my-timesheet (Timesheet v2 pm mode).
+  // Если из URL пришёл view=grid (legacy) — переходим на /my-timesheet.
   if (activeView === 'grid') {
-    return (
-      <PayrollGridView
-        onBack={() => navigate('/payroll')}
-      />
-    );
+    navigate('/my-timesheet', { replace: true });
+    return null;
   }
 
   if (activeView === 'sheet' && sheetId) {
@@ -110,10 +108,8 @@ export default function PayrollPage({ mode }) {
     );
   }
 
-  if (activeView === 'report') {
-    return <PayrollReport onBack={() => navigate('/payroll')} />;
-  }
-
+  // activeView==='report' удалён 18.06.2026 — отчёт перенесён на /payments-report.
+  // activeView==='grid' редиректит на /my-timesheet (TimesheetPage в mode='pm').
   return <PayrollList user={user} modal={modal} navigate={navigate} />;
 }
 
@@ -198,7 +194,7 @@ function PayrollList({ user, modal, navigate }) {
     { size: 'wide' }
   );
 
-  const onOpenGrid = () => navigate('/payroll?view=grid');
+  // onOpenGrid удалён 18.06.2026 — Excel-сетка теперь на /my-timesheet.
 
   const onOpenSheet = (s) => navigate(`/payroll-sheet?id=${s.id}`);
 
@@ -213,8 +209,8 @@ function PayrollList({ user, modal, navigate }) {
         actions={
           <>
             <Btn variant="ghost" onClick={refresh}>↻ Обновить</Btn>
-            <Btn variant="ghost" onClick={onOpenGrid}>📋 Ведомость-сетка</Btn>
-            <Btn variant="ghost" onClick={() => navigate('/reports/payroll')}>📊 Отчёт</Btn>
+            <Btn variant="ghost" onClick={() => navigate('/my-timesheet')}>📋 Табель</Btn>
+            <Btn variant="ghost" onClick={() => navigate('/payments-report')}>📊 Отчёт</Btn>
             <Btn variant="ghost" onClick={onExport}>📥 Excel</Btn>
             {canCreate(user.role) && <Btn variant="primary" onClick={onCreate}>＋ Новая ведомость</Btn>}
           </>
@@ -314,267 +310,9 @@ function KpiCell({ label, value, tone }) {
   );
 }
 
-/* ═══════════════════ Excel-сетка (вид) ═══════════════════ */
+/* Excel-сетка (вид) удалена 18.06.2026 — перенесена на /my-timesheet (Timesheet v2). */
 
-function PayrollGridView({ onBack }) {
-  return (
-    <div className="col gap-12">
-      <TopActionsBar
-        kicker="Ведомость"
-        title="📋 Ведомость-сетка"
-        subtitle="Табель, баллы, суточные — вся ведомость на одном экране."
-        actions={<Btn variant="ghost" onClick={onBack}>← К ведомостям</Btn>}
-      />
-      <PayrollGrid />
-    </div>
-  );
-}
-
-/* ═══════════════════ Отчёт по выплатам ═══════════════════ */
-
-function PayrollReport({ onBack }) {
-  const { user: _user } = useAuth();
-  const modal = useModal();
-  const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [stats, setStats] = useState(null);
-  const [statusFilter, setStatusFilter] = useState('');
-  const [methodFilter, setMethodFilter] = useState('');
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
-  const [payments, setPayments] = useState([]);
-  const [loadingStats, setLoadingStats] = useState(true);
-  const [loadingPayments, setLoadingPayments] = useState(true);
-
-  const refresh = async () => {
-    setLoadingStats(true);
-    setLoadingPayments(true);
-    try {
-      const s = await loadStats({ year });
-      setStats(s);
-    } catch (e) {
-      toast.error('Не удалось загрузить статистику: ' + (e?.message || e));
-      setStats(null);
-    } finally { setLoadingStats(false); }
-
-    try {
-      const p = await loadPayments({
-        status: statusFilter || undefined,
-        payment_method: methodFilter || undefined,
-        date_from: fromDate || undefined,
-        date_to: toDate || undefined,
-        limit: 1000
-      });
-      setPayments(p);
-    } catch (e) {
-      toast.error('Не удалось загрузить выплаты: ' + (e?.message || e));
-      setPayments([]);
-    } finally { setLoadingPayments(false); }
-  };
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { refresh(); /* eslint-disable-next-line */ }, [year, statusFilter, methodFilter, fromDate, toDate]);
-
-  const yearOpts = [-2, -1, 0].map((d) => ({ value: String(now.getFullYear() + d), label: String(now.getFullYear() + d) }));
-  const statusOpts = [
-    { value: '',           label: 'Все статусы' },
-    { value: 'pending',    label: 'Ожидает' },
-    { value: 'processing', label: 'В работе' },
-    { value: 'paid',       label: 'Оплачено' },
-    { value: 'failed',     label: 'Ошибка' },
-    { value: 'cancelled',  label: 'Отменено' }
-  ];
-  const methodOpts = [
-    { value: '',         label: 'Все типы' },
-    { value: 'salary',   label: '💰 Зарплата' },
-    { value: 'one_time', label: '💸 Разовая' },
-    { value: 'cash',     label: '💵 Наличные' },
-    { value: 'card',     label: '💳 На карту' }
-  ];
-
-  const totals = useMemo(() => ({
-    sum: payments.reduce((s, p) => s + Number(p.amount || 0), 0),
-    paid: payments.filter((p) => p.status === 'paid').reduce((s, p) => s + Number(p.amount || 0), 0),
-    pending: payments.filter((p) => p.status === 'pending' || p.status === 'processing').reduce((s, p) => s + Number(p.amount || 0), 0)
-  }), [payments]);
-
-  const onExport = () => modal.open(<ExportModal defaultMode="payments" />);
-
-  return (
-    <div className="col gap-12">
-      <TopActionsBar
-        kicker="Отчёты"
-        title="📊 Отчёт по выплатам"
-        subtitle={`${payments.length} операций в выборке · Σ ${fmtMoney(totals.sum)}`}
-        actions={
-          <>
-            <Btn variant="ghost" onClick={refresh}>↻ Обновить</Btn>
-            <Btn variant="ghost" onClick={onExport}>📥 Excel</Btn>
-            <Btn variant="ghost" onClick={onBack}>← К ведомостям</Btn>
-          </>
-        }
-      />
-
-      {/* Годовая статистика */}
-      {!loadingStats && stats && (
-        <>
-          <div className="grid-auto-160 gap-10">
-            <KpiCell label={`Начислено ${year}`} value={fmtMoneyShort(stats.total_accrued) + ' ₽'} />
-            <KpiCell label="Выплачено" value={fmtMoneyShort(stats.total_paid) + ' ₽'} tone="ok" />
-            <KpiCell label="Ожидают" value={fmtMoneyShort(stats.total_pending) + ' ₽'} tone="amber" />
-            <KpiCell label="Ведомостей" value={stats.sheets_count} />
-            <KpiCell label="Рабочих" value={stats.workers_count} />
-            <KpiCell label="Ср. ставка" value={fmtMoney(stats.avg_day_rate) + '/д'} tone="info" />
-          </div>
-
-          {/* По месяцам + по работам (мини-чарты по строкам) */}
-          {stats.by_month?.length > 0 && (
-            <div className="card p-14">
-              <h3 className="mt-0 fs-15">По месяцам</h3>
-              <MonthBars data={stats.by_month} year={year} />
-            </div>
-          )}
-
-          {stats.by_work?.length > 0 && (
-            <div className="card p-14">
-              <h3 className="mt-0 fs-15">Топ работ по ФОТ</h3>
-              <div className="col gap-6">
-                {stats.by_work.slice(0, 10).map((w) => (
-                  <div key={w.work_id} className="pyr-work-row">
-                    <span className="pyr-work-title">
-                      {w.customer_name && <span className="c-t3">{w.customer_name} · </span>}
-                      <b>{w.work_title || `Работа #${w.work_id}`}</b>
-                    </span>
-                    <span className="pyr-work-paid">{fmtMoney(w.paid)} / {fmtMoney(w.accrued)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {stats.top_workers?.length > 0 && (
-            <div className="card p-14">
-              <h3 className="mt-0 fs-15">Топ рабочих по выплатам</h3>
-              <div className="col gap-6">
-                {stats.top_workers.slice(0, 10).map((w, i) => (
-                  <div key={w.employee_id} className="pyr-work-row">
-                    <span className="pyr-worker-rank">{i + 1}.</span>
-                    <span className="pyr-worker-name"><b>{w.employee_name}</b></span>
-                    <span className="pyr-worker-amt">{fmtMoney(w.total_earned)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Фильтры */}
-      <div className="card pyr-rep-filter">
-        <div className="mw-120">
-          <Label>Год</Label>
-          <SelectInput value={String(year)} onChange={(v) => setYear(Number(v))} options={yearOpts} />
-        </div>
-        <div className="mw-170">
-          <Label>Статус</Label>
-          <SelectInput value={statusFilter} onChange={setStatusFilter} options={statusOpts} />
-        </div>
-        <div className="mw-170">
-          <Label>Тип выплаты</Label>
-          <SelectInput value={methodFilter} onChange={setMethodFilter} options={methodOpts} />
-        </div>
-        <div className="mw-160">
-          <Label>С даты</Label>
-          <DatePicker value={fromDate} onChange={setFromDate} />
-        </div>
-        <div className="mw-160">
-          <Label>По дату</Label>
-          <DatePicker value={toDate} onChange={setToDate} />
-        </div>
-        <Btn variant="ghost" onClick={() => { setStatusFilter(''); setMethodFilter(''); setFromDate(''); setToDate(''); }}>↺ Сброс</Btn>
-      </div>
-
-      {/* Таблица выплат */}
-      {loadingPayments ? (
-        <div className="card card-loader">⏳ Грузим выплаты…</div>
-      ) : payments.length === 0 ? (
-        <EmptyState icon="📊" title="Нет выплат в выборке" hint="Измените фильтры или дату." />
-      ) : (
-        <div className="card p-0">
-          <div className="pyr-rep-totals-row">
-            <span>Всего: <b className="c-t1">{fmtMoney(totals.sum)}</b></span>
-            <span className="c-ok">Оплачено: <b>{fmtMoney(totals.paid)}</b></span>
-            <span className="c-amber">Ожидают: <b>{fmtMoney(totals.pending)}</b></span>
-          </div>
-          <div className="ov-x-auto">
-            <table className="pyr-rep-table">
-              <thead>
-                <tr className="bg-inner">
-                  <th className="pyr-rep-th">Дата</th>
-                  <th className="pyr-rep-th pyr-rep-th--left">Ведомость</th>
-                  <th className="pyr-rep-th pyr-rep-th--left">Рабочий</th>
-                  <th className="pyr-rep-th">Тип</th>
-                  <th className="pyr-rep-th pyr-rep-th--right">Сумма</th>
-                  <th className="pyr-rep-th">Статус</th>
-                </tr>
-              </thead>
-              <tbody>
-                {payments.slice(0, 500).map((p) => {
-                  const sM = regStatusMeta(p.status);
-                  return (
-                    <tr key={p.id} className="pyr-rep-row">
-                      <td className="pyr-rep-td">{fmtDateTime(p.created_at)}</td>
-                      <td className="pyr-rep-td pyr-rep-td--left">{p.sheet_title || (p.sheet_id ? `#${p.sheet_id}` : '—')}</td>
-                      <td className="pyr-rep-td pyr-rep-td--left">{p.employee_name || `#${p.employee_id}`}</td>
-                      <td className="pyr-rep-td">{p.payment_type || '—'}</td>
-                      <td className="pyr-rep-td pyr-rep-td--rgold">{fmtMoney(p.amount)}</td>
-                      <td className="pyr-rep-td"><StatusBadge tone={sM.tone} label={sM.label} /></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {payments.length > 500 && (
-            <div className="pyr-rep-tail">
-              Показано первые 500 из {payments.length}. Сузьте фильтры или скачайте Excel.
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MonthBars({ data, year }) {
-  const max = Math.max(1, ...data.map((m) => Number(m.accrued || 0)));
-  return (
-    <div className="col gap-6">
-      {data.map((m) => {
-        const month = Number(m.month);
-        const accrued = Number(m.accrued || 0);
-        const paid    = Number(m.paid || 0);
-        const wA = (accrued / max) * 100;
-        const wP = (accrued > 0 ? (paid / accrued) : 0) * wA;
-        return (
-          <div key={month} className="pyr-month-row">
-            <span className="pyr-month-lbl">{MONTHS_RU[month - 1]} {year}</span>
-            <div className="pyr-month-bar">
-              <div className="pyr-month-fill-acc" style={{ width: wA + '%' }} />
-              <div className="pyr-month-fill-paid" style={{ width: wP + '%' }} />
-            </div>
-            <span className="pyr-month-val-acc">{fmtMoney(accrued)}</span>
-            <span className="pyr-month-val-paid">{fmtMoney(paid)}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function Label({ children }) {
-  return <div className="pyr-label">{children}</div>;
-}
+/* Отчёт по выплатам (локальный) удалён 18.06.2026 — единый отчёт на /payments-report. */
 
 /* ═══════════════════ Создание ведомости ═══════════════════ */
 

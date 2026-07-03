@@ -38,29 +38,54 @@ import { TopActionsBar, EmptyState } from '@/blocks/Blocks';
 
 import CreateRequestModal from './CreateRequestModal';
 import DetailModal from './DetailModal';
+import ReceiveFromSeModal from './ReceiveFromSeModal';
+import StatementTable from './StatementTable';
 import {
-  loadMyBalance, loadMyRequests,
+  loadMyBalance, loadMyRequests, loadMyHandovers,
   ADVANCE_STEPS, LOAN_STEPS, STEP_LABELS,
-  TYPE_LABELS,
+  TYPE_LABELS, STATUS_LABELS,
   fmtMoney, fmtDate, deadlineMeta
 } from './api';
+
+// RBAC: кто может смотреть чужие выписки (показывается селектор PM в /cash «Выписка»).
+const STATEMENT_ADMIN_ROLES = new Set([
+  'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_TECH', 'BUH'
+]);
+function canPickAnyPm(role) {
+  return STATEMENT_ADMIN_ROLES.has(role || '');
+}
 
 import './cash.css';
 
 export default function CashPage() {
-  const { user: _user } = useAuth();
+  const { user } = useAuth();
   const modal = useModal();
 
   const [balance, setBalance] = useState(null);
   const [list, setList] = useState([]);
+  const [handovers, setHandovers] = useState([]);
   const [loading, setLoading] = useState(true);
+  // Фильтр источника пополнения: 'all' | 'kassa' | 'handover'
+  const [sourceFilter, setSourceFilter] = useState('all');
+
+  // ─── вкладки страницы /cash ─────────────────────────────────────────────
+  // 'requests' — текущая лента/карточки заявок (по умолчанию).
+  // 'statement' — банковская выписка (StatementTable).
+  // Сохраняем активную вкладку в hash (?tab=) чтобы выдержать перезагрузку.
+  const initialTab = (() => {
+    const m = (typeof window !== 'undefined' ? window.location.hash : '').match(/[?&]tab=(\w+)/);
+    return (m && m[1] === 'statement') ? 'statement' : 'requests';
+  })();
+  const [tab, setTab] = useState(initialTab);
+  const isAdmin = canPickAnyPm(user?.role);
 
   const refresh = () => {
     setLoading(true);
-    Promise.all([loadMyBalance(), loadMyRequests()])
-      .then(([b, l]) => {
+    Promise.all([loadMyBalance(), loadMyRequests(), loadMyHandovers()])
+      .then(([b, l, h]) => {
         setBalance(b);
         setList(Array.isArray(l) ? l : []);
+        setHandovers(Array.isArray(h) ? h : []);
       })
       .catch((e) => toast.error('Не удалось загрузить: ' + (e?.message || e)))
       .finally(() => setLoading(false));
@@ -71,7 +96,12 @@ export default function CashPage() {
   useEffect(() => {
     const h = () => refresh();
     window.addEventListener('asgard:cash:changed', h);
-    return () => window.removeEventListener('asgard:cash:changed', h);
+    // Реагируем и на handover-события (Stage W подтверждение в /my-timesheet → актуализировать ленту)
+    window.addEventListener('asgard:handover:changed', h);
+    return () => {
+      window.removeEventListener('asgard:cash:changed', h);
+      window.removeEventListener('asgard:handover:changed', h);
+    };
   }, []);
 
   // Deep-link ?id=NN
@@ -95,12 +125,90 @@ export default function CashPage() {
     return { active: a, done: d };
   }, [list]);
 
+  /**
+   * Сводная разбивка пополнений/расходов под балансом (4 числа из спеки 5C):
+   *   💼 Авансы из кассы (issued по cash_requests типа advance/office/other)
+   *   💵 От СЗ           (Σ received_amount по handovers status=received|partial)
+   *   ❌ Возвраты        (balance.returned)
+   *   🧑‍🔧 Выдано рабочим (balance.spent — то, что РП передал дальше)
+   *
+   * Считаем на клиенте, чтобы не зависеть от расширения /my-balance.
+   * issued — из balance (это уже сумма из кассы Асгарда), handovers — сами.
+   */
+  const breakdown = useMemo(() => {
+    const fromSe = handovers
+      .filter((h) => h.status === 'received' || h.status === 'partial')
+      .reduce((s, h) => s + Number(h.received_amount || 0), 0);
+    return {
+      fromKassa: Number(balance?.issued || 0),
+      fromSe,
+      returned: Number(balance?.returned || 0),
+      spent: Number(balance?.spent || 0)
+    };
+  }, [balance, handovers]);
+
+  /**
+   * Объединённая лента «История пополнений и расходов» (спека раздел 5C).
+   * Колонки: Дата | Источник | Тип | Сумма | Статус | (клик → DetailModal для cash_requests).
+   *   • cash_requests → source='kassa'
+   *   • handovers     → source='handover'
+   * Фильтр sourceFilter применяется до сортировки.
+   */
+  const history = useMemo(() => {
+    const items = [];
+    if (sourceFilter === 'all' || sourceFilter === 'kassa') {
+      list.forEach((r) => {
+        items.push({
+          key: `r-${r.id}`,
+          date: r.created_at,
+          source: 'kassa',
+          typeLabel: TYPE_LABELS[r.type] || r.type || '—',
+          amount: Number(r.amount || 0),
+          status: r.status,
+          statusLabel: STATUS_LABELS[r.status] || r.status || '—',
+          ref: { kind: 'request', request: r }
+        });
+      });
+    }
+    if (sourceFilter === 'all' || sourceFilter === 'handover') {
+      handovers.forEach((h) => {
+        const dt = h.received_at || h.created_at;
+        items.push({
+          key: `h-${h.id}`,
+          date: dt,
+          source: 'handover',
+          typeLabel: 'Передача от СЗ' + (h.worker_fio ? ` · ${h.worker_fio}` : ''),
+          amount: Number(h.received_amount || h.expected_amount || 0),
+          status: h.status,
+          statusLabel: handoverStatusLabel(h.status),
+          ref: { kind: 'handover', handover: h }
+        });
+      });
+    }
+    return items.sort((a, b) => {
+      const ad = a.date ? new Date(a.date).getTime() : 0;
+      const bd = b.date ? new Date(b.date).getTime() : 0;
+      return bd - ad;
+    });
+  }, [list, handovers, sourceFilter]);
+
   const onCreate = () => {
     modal.open(<CreateRequestModal onCreated={refresh} />, { size: 'wide' });
   };
 
+  const onReceiveFromSe = () => {
+    modal.open(<ReceiveFromSeModal onSubmitted={refresh} />, { size: 'wide' });
+  };
+
   const onOpen = (r) => {
     modal.open(<DetailModal requestId={r.id} onChanged={refresh} />, { size: 'wide' });
+  };
+
+  const onHistoryClick = (item) => {
+    if (item.ref?.kind === 'request') {
+      onOpen(item.ref.request);
+    }
+    // handover клик — пока без модалки (детали смотрят в /my-timesheet → Передачи)
   };
 
   return (
@@ -110,13 +218,74 @@ export default function CashPage() {
         title="Казна Дружины"
         subtitle="Авансы, расходы и расчёты"
         actions={
-          <>
-            <Btn variant="ghost" onClick={refresh}>↻ Обновить</Btn>
-            <Btn variant="primary" onClick={onCreate}>+ Новая заявка</Btn>
-          </>
+          tab === 'requests' ? (
+            <>
+              <Btn variant="ghost" onClick={refresh}>↻ Обновить</Btn>
+              <Btn variant="ghost" onClick={onReceiveFromSe}>📥 Получил нал от СЗ</Btn>
+              <Btn variant="primary" onClick={onCreate}>+ Запросить аванс</Btn>
+            </>
+          ) : null
         }
       />
 
+      {/* Табы страницы (Заявки / Выписка) */}
+      <div className="statement-tabs" role="tablist" aria-label="Разделы казны">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'requests'}
+          className={'statement-tab' + (tab === 'requests' ? ' active' : '')}
+          onClick={() => setTab('requests')}
+        >
+          📋 Заявки и баланс
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'statement'}
+          className={'statement-tab' + (tab === 'statement' ? ' active' : '')}
+          onClick={() => setTab('statement')}
+        >
+          📋 Выписка
+        </button>
+      </div>
+
+      {tab === 'statement' ? (
+        <StatementTable
+          pmId={isAdmin ? null : (user?.id || null)}
+          showPmSelector={isAdmin}
+        />
+      ) : (
+        <RequestsView
+          balance={balance}
+          breakdown={breakdown}
+          loading={loading}
+          list={list}
+          handovers={handovers}
+          active={active}
+          done={done}
+          sourceFilter={sourceFilter}
+          setSourceFilter={setSourceFilter}
+          history={history}
+          onOpen={onOpen}
+          onCreate={onCreate}
+          onHistoryClick={onHistoryClick}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Извлекаем «Заявки и баланс» из основного return в отдельный компонент,
+ * чтобы вкладка «Выписка» рендерилась независимо.
+ */
+function RequestsView({
+  balance, breakdown, loading, list, handovers, active, done,
+  sourceFilter, setSourceFilter, history, onOpen, onCreate, onHistoryClick
+}) {
+  return (
+    <>
       {/* Баланс-виджет */}
       {balance && (
         <div className="cash-balance-grid">
@@ -139,17 +308,37 @@ export default function CashPage() {
         </div>
       )}
 
+      {/* Разбивка под балансом — 4 числа из спеки 5C */}
+      <div className="cash-breakdown-grid">
+        <div className="cash-breakdown-cell info">
+          <div className="cash-breakdown-label">💼 Авансы из кассы</div>
+          <div className="cash-breakdown-value">{fmtMoney(breakdown.fromKassa)}</div>
+        </div>
+        <div className="cash-breakdown-cell gold">
+          <div className="cash-breakdown-label">💵 От СЗ</div>
+          <div className="cash-breakdown-value">{fmtMoney(breakdown.fromSe)}</div>
+        </div>
+        <div className="cash-breakdown-cell ok">
+          <div className="cash-breakdown-label">❌ Возвраты</div>
+          <div className="cash-breakdown-value">{fmtMoney(breakdown.returned)}</div>
+        </div>
+        <div className="cash-breakdown-cell err">
+          <div className="cash-breakdown-label">🧑‍🔧 Выдано рабочим</div>
+          <div className="cash-breakdown-value">{fmtMoney(breakdown.spent)}</div>
+        </div>
+      </div>
+
       {/* Список */}
       {loading ? (
         <div className="card card-empty">
           ⏳ Загружаем заявки…
         </div>
-      ) : list.length === 0 ? (
+      ) : list.length === 0 && handovers.length === 0 ? (
         <EmptyState
           icon="💰"
-          title="Нет заявок"
-          hint="Создайте первую заявку на аванс или долг"
-          action={<Btn variant="primary" onClick={onCreate}>+ Новая заявка</Btn>}
+          title="Нет операций"
+          hint="Создайте первую заявку на аванс или зафиксируйте получение нала от СЗ"
+          action={<Btn variant="primary" onClick={onCreate}>+ Запросить аванс</Btn>}
         />
       ) : (
         <>
@@ -169,10 +358,101 @@ export default function CashPage() {
               </div>
             </>
           )}
+
+          {/* Объединённая лента «История пополнений и расходов» — спека 5C */}
+          <div className="cash-section-h">История пополнений и расходов</div>
+          <div className="cash-source-filter" role="tablist" aria-label="Фильтр источника">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={sourceFilter === 'all'}
+              className={'cash-source-chip' + (sourceFilter === 'all' ? ' active' : '')}
+              onClick={() => setSourceFilter('all')}
+            >
+              Все · {list.length + handovers.length}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={sourceFilter === 'kassa'}
+              className={'cash-source-chip' + (sourceFilter === 'kassa' ? ' active' : '')}
+              onClick={() => setSourceFilter('kassa')}
+            >
+              🏦 Касса · {list.length}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={sourceFilter === 'handover'}
+              className={'cash-source-chip' + (sourceFilter === 'handover' ? ' active' : '')}
+              onClick={() => setSourceFilter('handover')}
+            >
+              💵 От СЗ · {handovers.length}
+            </button>
+          </div>
+
+          <div className="cash-history-wrap mt-8">
+            {history.length === 0 ? (
+              <div className="cash-history-empty">
+                Нет записей по выбранному фильтру
+              </div>
+            ) : (
+              <table className="cash-history-tbl">
+                <thead>
+                  <tr>
+                    <th>Дата</th>
+                    <th>Источник</th>
+                    <th>Тип</th>
+                    <th className="num">Сумма</th>
+                    <th>Статус</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map((it) => (
+                    <tr
+                      key={it.key}
+                      className={'cash-history-row ' + (it.ref?.kind === 'handover' ? 'row-handover' : '')}
+                      onClick={() => onHistoryClick(it)}
+                      onKeyDown={(e) => {
+                        if ((e.key === 'Enter' || e.key === ' ') && it.ref?.kind === 'request') {
+                          e.preventDefault();
+                          onHistoryClick(it);
+                        }
+                      }}
+                      tabIndex={it.ref?.kind === 'request' ? 0 : -1}
+                      role={it.ref?.kind === 'request' ? 'button' : undefined}
+                    >
+                      <td>{fmtDate(it.date)}</td>
+                      <td>
+                        <span className={'cash-src-badge ' + (it.source === 'kassa' ? 'kassa' : 'handover')}>
+                          {it.source === 'kassa' ? '🏦 Касса Асгарда' : '💵 От СЗ'}
+                        </span>
+                      </td>
+                      <td>{it.typeLabel}</td>
+                      <td className="num">{fmtMoney(it.amount)}</td>
+                      <td>{it.statusLabel}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </>
       )}
-    </div>
+    </>
   );
+}
+
+/** Локализованные подписи статусов handover (worker_to_pm_handovers). */
+function handoverStatusLabel(status) {
+  switch (status) {
+    case 'pending':       return 'Ожидает подтверждения';
+    case 'received':      return 'Получено';
+    case 'partial':       return 'Получено частично';
+    case 'not_received':  return 'Не получено';
+    case 'cancelled':     return 'Отменено';
+    default:              return status || '—';
+  }
 }
 
 function RequestCard({ req, onOpen }) {

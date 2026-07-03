@@ -1,0 +1,39 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * Timesheet v2 — единые токены цветов для типов клеток (MOBILE).
+ *
+ * Зеркало `public/assets/css/timesheet-types-tokens.css` (агент 3).
+ * Используется TimesheetMobile.jsx для согласованности с vanilla/v2.
+ *
+ * ВАЖНО: vanilla/v2 ссылаются на --ok-bg/--info-bg/..., которых на мобиле
+ * нет; здесь привязка к мобильным переменным --green/--blue/--purple/...,
+ * сохраняя те же ключи --ts-day-bg/--ts-day-fg/...
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ☀️ Дневная смена */
+  --ts-day-bg:       color-mix(in srgb, var(--green) 14%, transparent);
+  --ts-day-fg:       var(--green);
+
+  /* 🌙 Ночная смена */
+  --ts-night-bg:     color-mix(in srgb, var(--blue) 14%, transparent);
+  --ts-night-fg:     var(--blue);
+
+  /* 📦 Склад */
+  --ts-warehouse-bg: color-mix(in srgb, var(--cyan) 14%, transparent);
+  --ts-warehouse-fg: var(--cyan);
+
+  /* 🏥 Медосмотр */
+  --ts-medical-bg:   color-mix(in srgb, var(--red-soft) 14%, transparent);
+  --ts-medical-fg:   var(--red-soft);
+
+  /* ✈️ Дорога */
+  --ts-travel-bg:    color-mix(in srgb, var(--orange) 14%, transparent);
+  --ts-travel-fg:    var(--orange);
+
+  /* ⏰ Ожидание — оранжевый (UX #13: серый = пустая клетка) */
+  --ts-waiting-bg:   color-mix(in srgb, var(--orange) 14%, transparent);
+  --ts-waiting-fg:   var(--orange);
+}
+
+/* Светлая тема — если переменные --green/--blue/... переопределены,
+ * автоматически пересчитается. Отдельных алиасов не требуется. */

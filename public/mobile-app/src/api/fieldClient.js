@@ -33,7 +33,10 @@ class FieldApiClient {
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
-      throw new Error(err.error || err.message || `HTTP ${response.status}`);
+      const e = new Error(err.error || err.message || `HTTP ${response.status}`);
+      e.status = response.status;
+      e.body = err;
+      throw e;
     }
 
     return response.json();

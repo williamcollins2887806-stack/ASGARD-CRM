@@ -41,11 +41,27 @@ window.AsgardBuhRegistryPage = (function(){
       return;
     }
 
-    // Загружаем данные
+    // Реестр расходов бухгалтерии — works/tenders/users прямым fetch
+    // (IDB не отражает soft-delete/RBAC). work_expenses — из IDB (sync).
+    const _tok = (window.AsgardAuth && window.AsgardAuth.token) || localStorage.getItem('asgard_token');
+    const _hdr = { Authorization: 'Bearer ' + _tok };
+    async function _fetchList(url, key, fallbackTable){
+      try {
+        const r = await fetch(url, { headers: _hdr, cache: 'no-store' });
+        if (!r.ok) throw new Error('GET ' + url + ' ' + r.status);
+        const j = await r.json();
+        return j[key] || j.items || j.data || [];
+      } catch (e) {
+        console.warn('[buh_registry] fetch ' + url + ' failed, fallback to IDB:', e.message);
+        return await AsgardDB.all(fallbackTable) || [];
+      }
+    }
     const allExpenses = await AsgardDB.all("work_expenses");
-    const works = await AsgardDB.all("works");
-    const tenders = await AsgardDB.all("tenders");
-    const users = await AsgardDB.all("users");
+    const [works, tenders, users] = await Promise.all([
+      _fetchList('/api/works?limit=1000', 'works', 'works'),
+      _fetchList('/api/tenders?limit=1000', 'tenders', 'tenders'),
+      _fetchList('/api/users?limit=1000', 'users', 'users')
+    ]);
 
     const worksMap = new Map(works.map(w => [w.id, w]));
     const tendersMap = new Map(tenders.map(t => [t.id, t]));

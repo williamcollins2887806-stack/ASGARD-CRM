@@ -27,12 +27,17 @@ export function loadPmBalanceList() {
       return list.map((pm) => {
         const cash_in = Number(pm.cash_in) || 0;
         const se_cash_in = Number(pm.se_cash_in) || 0;
-        const expenses = Number(pm.cash_out_expenses ?? pm.cash_out ?? 0) || 0;
-        const returns  = Number(pm.cash_out_returns ?? pm.cash_returned ?? 0) || 0;
-        const salaries = Number(pm.cash_out_salaries) || 0;
-        const cash_out = expenses + salaries;
-        const cash_returned = returns;
-        const balance = pm.balance != null ? Number(pm.balance) : (cash_in + se_cash_in - expenses - returns - salaries);
+        // Единый отток: backend отдаёт cash_out (= расходы подотчёт + выплаты рабочим
+        // + прямые расходы РП work_expenses_direct). Фолбэк для старых backend'ов —
+        // сумма компонентов (обязательно включая work_expenses_direct, иначе занижение).
+        const cash_out = pm.cash_out != null
+          ? Number(pm.cash_out) || 0
+          : (Number(pm.cash_out_expenses) || 0) + (Number(pm.cash_out_salaries) || 0) + (Number(pm.work_expenses_direct) || 0);
+        // Возвраты в кассу — ОТДЕЛЬНО (не входят в cash_out, иначе двойной счёт).
+        const cash_returned = pm.cash_returned != null
+          ? Number(pm.cash_returned) || 0
+          : (Number(pm.cash_out_returns) || 0);
+        const balance = pm.balance != null ? Number(pm.balance) : (cash_in + se_cash_in - cash_out - cash_returned);
         return {
           ...pm,
           pm_id: pm.pm_id ?? pm.id,
@@ -40,8 +45,6 @@ export function loadPmBalanceList() {
           cash_in,
           se_cash_in,
           cash_out,
-          cash_out_expenses: expenses,
-          cash_out_salaries: salaries,
           cash_returned,
           balance
         };
@@ -64,6 +67,7 @@ export function loadPmBalanceDetail(pmId) {
       cash_returned: Number(d?.cash_returned) || 0,
       cash_requests:    d?.cash_requests    || items.cash_requests    || [],
       se_returns:       d?.se_returns       || d?.se_transfer_returns || items.se_transfers || [],
+      handovers:        d?.handovers        || items.handovers        || [],
       salary_payments:  d?.salary_payments  || d?.worker_payments     || items.worker_payments || [],
       expenses:         d?.expenses         || d?.cash_expenses       || items.cash_expenses || [],
       cash_returns:     d?.cash_returns     || items.cash_returns     || []

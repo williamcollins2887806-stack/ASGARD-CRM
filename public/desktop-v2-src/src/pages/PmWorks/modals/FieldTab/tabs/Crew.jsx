@@ -76,7 +76,9 @@ export default function CrewTab({ work }) {
   const [available, setAvailable] = useState([]);
   const [employees, setEmployees] = useState([]); // полный справочник для имени/телефона
   const [payments, setPayments] = useState([]);   // для столбца «Заработано»
-  const [category, setCategory] = useState(work?.field_category || 'offshore');
+  // Дефолт совпадает с field_tariff_grid.category в БД: mlsp/ground/ground_hard/warehouse.
+  // До 23.06.2026 здесь стоял устаревший 'offshore' — dropdown фильтровал по нему и не находил тарифы.
+  const [category, setCategory] = useState(work?.field_category || 'mlsp');
   const [perDiem, setPerDiem] = useState(work?.field_per_diem || 0);
   const [showAdd, setShowAdd] = useState(false);
   const [editingMemberId, setEditingMemberId] = useState(null); // employee_id строки в режиме редактирования тарифа

@@ -1046,8 +1046,7 @@ body.nav-open .nav-overlay {
      MOBILE FIX: Dropdown menus stay on screen
      ═══════════════════════════════════════════════════════════ */
   .dropdown-menu {
-    max-width: calc(100vw - 16px) !important;
-    right: 8px !important;
+    /* Handled by responsive.css and cr-select.js positioning */
   }
 
   /* ═══════════════════════════════════════════════════════════

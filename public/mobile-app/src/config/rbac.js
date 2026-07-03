@@ -1,8 +1,8 @@
 export const ROLE_PERMISSIONS = {
   ADMIN:          ['*'],
   DIRECTOR_GEN:   ['*'],
-  HEAD_PM:        ['dashboard', 'tasks', 'chat', 'tenders', 'approvals', 'finances', 'works', 'personnel', 'profile', 'settings', 'inbox', 'personal_kanban'],
-  PM:             ['dashboard', 'tasks', 'chat', 'tenders', 'works', 'finances', 'profile', 'settings', 'personal_kanban'],
+  HEAD_PM:        ['dashboard', 'tasks', 'chat', 'tenders', 'approvals', 'finances', 'works', 'personnel', 'profile', 'settings', 'inbox', 'personal_kanban', 'marketplace'],
+  PM:             ['dashboard', 'tasks', 'chat', 'tenders', 'works', 'finances', 'profile', 'settings', 'personal_kanban', 'marketplace'],
   TO:             ['dashboard', 'tasks', 'chat', 'tenders', 'works', 'personnel', 'profile', 'settings'],
   BUH:            ['dashboard', 'tasks', 'chat', 'tenders', 'approvals', 'finances', 'works', 'personnel', 'profile', 'settings'],
   DIRECTOR_DEV:   ['dashboard', 'tasks', 'chat', 'tenders', 'approvals', 'finances', 'works', 'personnel', 'profile', 'settings', 'inbox', 'personal_kanban'],
@@ -37,6 +37,11 @@ export const ROUTE_SECTIONS = {
   '/settings':       'settings',
   '/call-analytics': 'dashboard',
   '/global-timesheet':   'personnel',
+  '/timesheet':              'personnel',
+  '/timesheet-warehouse':    'personnel',
+  '/timesheet-medical':      'personnel',
+  '/timesheet-travel':       'personnel',
+  '/my-timesheet':           'works',
   '/training-board':     'personnel',
   '/payroll-dashboard':  'finances',
   '/official-employees': 'finances',
@@ -45,4 +50,5 @@ export const ROUTE_SECTIONS = {
   '/personal-kanban':        'personal_kanban',
   '/personal-kanban-config': 'personal_kanban',
   '/director-inbox':         'inbox',
+  '/marketplace':            'marketplace',
 };

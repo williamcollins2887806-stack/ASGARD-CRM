@@ -11,21 +11,14 @@
  *   GET    /api/users?role=PM&is_active=true           → список РП для группировки (директор)
  */
 import { api } from '@/api/client';
+// 23.06.2026 BUG-FIX (Sites D-M10/D-M11): единые статусы из helpers/work-status.
+import { PREP_SET, isClosedWork } from '@/helpers/work-status';
 
-/* Статусы «в подготовке» (зеркало PREP_STATUSES backend). */
-export const PREP_STATUSES = new Set(['Новая', 'Подготовка', 'Мобилизация']);
-
-/* Зеркало helpers/work-status.js — закрытые/завершённые. */
-const CLOSED_RAW = [
-  'Закрыт', 'Закрыта', 'Закрыто', 'Работы сдали',
-  'Завершена', 'Завершено', 'Завершен', 'Завершён',
-  'Сдан', 'Сдана', 'Сдано',
-  'Отменена', 'Отменено', 'Отменён', 'Отменен', 'Отмена'
-];
-const CLOSED_NORM = new Set(CLOSED_RAW.map((s) => s.trim().toLowerCase()));
+/* Статусы «в подготовке» (Set re-export для совместимости с .has()). */
+export const PREP_STATUSES = PREP_SET;
 
 export function isClosed(workStatus) {
-  return CLOSED_NORM.has(String(workStatus || '').trim().toLowerCase());
+  return isClosedWork(workStatus);
 }
 
 export function isPrep(workStatus) {

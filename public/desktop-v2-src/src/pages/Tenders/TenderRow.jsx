@@ -83,11 +83,14 @@ export default function TenderRow({ tender, pmName, onOpen, onAction, selected, 
   const typeMeta = TYPE_META[t.tender_type] || TYPE_META.commercial;
   const ctxActions = actionsForStatus(t.tender_status);
 
+  // 23.06.2026 BUG-FIX (P0 #1): реальная колонка БД — `docs_deadline`, не `deadline_at`.
+  // До фикса DeadlinePill всегда показывал «—», KPI «горит» = 0, сортировка не работала.
+  const deadlineVal = t.docs_deadline || t.deadline_at || t.deadline;
   // Цветная полоска слева по urgency (1:1 vanilla .hub-row-burn/soon — но
   // здесь через data-urgency атрибут, чтобы не ломать существующий data-status).
   let urgency = '';
-  if (t.deadline_at || t.deadline) {
-    const d = new Date(t.deadline_at || t.deadline);
+  if (deadlineVal) {
+    const d = new Date(deadlineVal);
     if (Number.isFinite(d.getTime())) {
       const today = new Date(); today.setHours(0, 0, 0, 0);
       const days = Math.round((d.getTime() - today.getTime()) / 86400000);
@@ -113,9 +116,12 @@ export default function TenderRow({ tender, pmName, onOpen, onAction, selected, 
       </td>
       <td className="tnd-id">#{t.id}</td>
       <td>
-        <div className="tnd-customer">{t.customer_name || '—'}</div>
-        {t.tender_name && (
-          <div className="tnd-title">{t.tender_name}</div>
+        {/* 23.06.2026 BUG-FIX (P0 #2 + #6): реальная колонка БД — tender_title (не tender_name);
+            backend GET /:id отдаёт `customer_display` (COALESCE(c.name, t.customer_name)) — если оно есть,
+            используем его, иначе fallback на customer_name. */}
+        <div className="tnd-customer">{t.customer_display || t.customer_name || '—'}</div>
+        {(t.tender_title || t.tender_name) && (
+          <div className="tnd-title">{t.tender_title || t.tender_name}</div>
         )}
       </td>
       <td>
@@ -128,7 +134,7 @@ export default function TenderRow({ tender, pmName, onOpen, onAction, selected, 
         </span>
       </td>
       <td className="tnd-price">{fmtMoney(t.tender_price)}</td>
-      <td><DeadlinePill value={t.deadline_at || t.deadline} /></td>
+      <td><DeadlinePill value={deadlineVal} /></td>
       <td className="tnd-pm">{pmName || '—'}</td>
       <td><StatusBadge tone={tone} label={statusMeta.label} /></td>
       <td className="tnd-actions">

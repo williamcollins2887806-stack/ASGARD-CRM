@@ -244,6 +244,20 @@ export function TenderCalcModal({ tender }) {
                   >📝 Быстрый просчёт</Btn>
                 )}
                 <Btn size="sm" variant="ghost" onClick={() => { window.location.hash = `#/tenders?id=${t.id}`; close(); }}>📋 Открыть тендер</Btn>
+                {/* S-13F Stage 4 React v2 — паритет с vanilla pm_calcs.js:956+1103.
+                    Привязка к тендеру (parent_entity_type=tender), т.к. просчёт
+                    всегда относится к конкретному тендеру (t.id). */}
+                {t?.id && (
+                  <Btn
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      window.location.hash = `#/correspondence?parent_entity_type=tender&parent_entity_id=${t.id}`;
+                      close();
+                    }}
+                    title="Реестр официальных писем по тендеру"
+                  >📜 Переписка</Btn>
+                )}
               </div>
             </div>
 

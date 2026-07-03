@@ -54,6 +54,9 @@ export default function PersonnelPage() {
   // v2 BONUS: persist специальности и статус-фильтра между сессиями (vanilla сбрасывала)
   const [spec, setSpec] = useLocalStorage('prs-spec', '');
   const [status, setStatus] = useLocalStorage('prs-status', '');
+  // 25.06.2026: фильтры по городу и пропускам (БОСИЕТ/РУКАВ/МЛСП/ФСБ)
+  const [city, setCity] = useLocalStorage('prs-city', '');
+  const [passFilter, setPassFilter] = useLocalStorage('prs-pass', '');
   const [page, setPage] = useState(1);
 
   const refresh = () => {
@@ -108,12 +111,38 @@ export default function PersonnelPage() {
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'ru'));
   }, [employees]);
 
+  // 25.06.2026: уникальные города для фильтра
+  const cities = useMemo(() => {
+    const set = new Set();
+    employees.forEach((e) => { if (e.city && e.city.trim()) set.add(e.city.trim()); });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'ru'));
+  }, [employees]);
+
   // Фильтрация
   const filtered = useMemo(() => {
     let rows = employees;
     rows = filterByQuery(rows, dQuery);
     if (spec) rows = rows.filter((e) => (e.role_tag || '') === spec);
     if (status) rows = rows.filter((e) => (e.effective_status || e.readiness_status || '') === status);
+    if (city) rows = rows.filter((e) => (e.city || '').trim() === city);
+    // passFilter: 'BOSIET' | 'SLEEVE' | 'MLSP_PASS' | 'FSB' | 'expired:BOSIET' и т.п.
+    if (passFilter) {
+      const [mode, code] = passFilter.includes(':') ? passFilter.split(':') : ['has', passFilter];
+      const today = new Date().toISOString().slice(0, 10);
+      rows = rows.filter((e) => {
+        const kp = (e.key_permits || {})[code];
+        if (mode === 'has')     return !!kp;
+        if (mode === 'missing') return !kp;
+        if (mode === 'expired') return !!kp && kp.expiry_date && String(kp.expiry_date).slice(0, 10) < today;
+        if (mode === 'expiring') {
+          if (!kp || !kp.expiry_date) return false;
+          const d = String(kp.expiry_date).slice(0, 10);
+          const in30 = new Date(); in30.setDate(in30.getDate() + 30);
+          return d >= today && d < in30.toISOString().slice(0, 10);
+        }
+        return true;
+      });
+    }
     // Сортировка: по статусу (on_site → ready → not_ready → archive), внутри — ФИО
     const order = { on_site: 0, approved: 1, ready: 2, not_ready: 3, archive: 4 };
     return rows.slice().sort((a, b) => {
@@ -127,7 +156,7 @@ export default function PersonnelPage() {
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, pages);
   const slice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-  useEffect(() => { setPage(1); }, [dQuery, spec, status]);
+  useEffect(() => { setPage(1); }, [dQuery, spec, status, city, passFilter]);
 
   // Группировка отображаемого среза по статусу
   const grouped = useMemo(() => {
@@ -145,7 +174,7 @@ export default function PersonnelPage() {
 
   const onAdd = () => {
     if (!userCanEdit) {
-      toast.warn('Добавлять рабочих могут только HR, ADMIN или директора');
+      toast.warn('Добавлять рабочих могут HR, ADMIN, директора, руководитель РП и офис-менеджер');
       return;
     }
     modal.open(<AddEmployeeModal onSaved={() => refresh()} />, { size: 'wide' });
@@ -189,7 +218,12 @@ export default function PersonnelPage() {
       { key: 'city', label: 'Город' },
       { key: 'readiness_date', label: 'Готовность', format: (d) => d ? fmtDate(d) : '' },
       { key: 'rating_avg', label: 'Рейтинг' },
-      { key: 'se_transferred_year', label: 'Переведено СЗ ₽' }
+      { key: 'se_transferred_year', label: 'Переведено СЗ ₽' },
+      // 25.06.2026: ключевые пропуска (даты истечения) — для HR/директора чтобы планировать продление
+      { key: 'key_permits', label: 'БОСИЕТ до',  format: (kp) => kp?.BOSIET?.expiry_date    ? fmtDate(kp.BOSIET.expiry_date)    : (kp?.BOSIET    ? 'действует' : '') },
+      { key: 'key_permits', label: 'РУКАВ до',   format: (kp) => kp?.SLEEVE?.expiry_date    ? fmtDate(kp.SLEEVE.expiry_date)    : (kp?.SLEEVE    ? 'действует' : '') },
+      { key: 'key_permits', label: 'МЛСП до',    format: (kp) => kp?.MLSP_PASS?.expiry_date ? fmtDate(kp.MLSP_PASS.expiry_date) : (kp?.MLSP_PASS ? 'действует' : '') },
+      { key: 'key_permits', label: 'ФСБ до',     format: (kp) => kp?.FSB?.expiry_date       ? fmtDate(kp.FSB.expiry_date)       : (kp?.FSB       ? 'действует' : '') }
     ]);
     toast.success(`Экспортировано ${filtered.length} рабочих`);
   };
@@ -279,6 +313,38 @@ export default function PersonnelPage() {
             ...STATUSES.map((s) => ({ value: s.code, label: s.label })),
           ]}
         />
+        {/* 25.06.2026: фильтры по городу и пропускам */}
+        <SelectInput
+          value={city}
+          onChange={setCity}
+          options={[
+            { value: '', label: 'Город: все' },
+            ...cities.map((c) => ({ value: c, label: c })),
+          ]}
+        />
+        <SelectInput
+          value={passFilter}
+          onChange={setPassFilter}
+          options={[
+            { value: '',             label: 'Пропуска: все' },
+            { value: 'BOSIET',       label: '✓ Есть БОСИЕТ' },
+            { value: 'SLEEVE',       label: '✓ Есть РУКАВ' },
+            { value: 'MLSP_PASS',    label: '✓ Есть МЛСП' },
+            { value: 'FSB',          label: '✓ Есть ФСБ' },
+            { value: 'missing:BOSIET',    label: '✗ Нет БОСИЕТ' },
+            { value: 'missing:SLEEVE',    label: '✗ Нет РУКАВ' },
+            { value: 'missing:MLSP_PASS', label: '✗ Нет МЛСП' },
+            { value: 'missing:FSB',       label: '✗ Нет ФСБ' },
+            { value: 'expired:BOSIET',    label: '🔴 Просрочен БОСИЕТ' },
+            { value: 'expired:SLEEVE',    label: '🔴 Просрочен РУКАВ' },
+            { value: 'expired:MLSP_PASS', label: '🔴 Просрочен МЛСП' },
+            { value: 'expired:FSB',       label: '🔴 Просрочен ФСБ' },
+            { value: 'expiring:BOSIET',   label: '⚠ Истекает БОСИЕТ (≤30д)' },
+            { value: 'expiring:SLEEVE',   label: '⚠ Истекает РУКАВ (≤30д)' },
+            { value: 'expiring:MLSP_PASS',label: '⚠ Истекает МЛСП (≤30д)' },
+            { value: 'expiring:FSB',      label: '⚠ Истекает ФСБ (≤30д)' },
+          ]}
+        />
       </div>
 
       {loading ? (
@@ -305,6 +371,8 @@ export default function PersonnelPage() {
                     <th>Объект / РП</th>
                     <th>Начало работ</th>
                     <th style={{ textAlign: 'center', width: 80 }}>Документы</th>
+                    <th style={{ textAlign: 'center', width: 170 }} title="БОСИЕТ · РУКАВ · МЛСП · ФСБ">Ключевые допуски</th>
+                    <th style={{ width: 120 }}>Город</th>
                     <th className="w-150">Лимит СЗ</th>
                     <th style={{ textAlign: 'right', width: 90 }}>Рейтинг</th>
                   </tr>
@@ -346,7 +414,7 @@ function PersonnelGroup({ status, rows, onOpen }) {
   return (
     <>
       <tr className="prs-group-row">
-        <td colSpan={8}>{status.icon} {status.label} · {rows.length}</td>
+        <td colSpan={10}>{status.icon} {status.label} · {rows.length}</td>
       </tr>
       {rows.map((e) => (
         <PersonnelRow key={e.id} emp={e} onOpen={onOpen} />
@@ -393,6 +461,12 @@ function PersonnelRow({ emp, onOpen }) {
       <td className="t-center">
         <DocIndicator permits={emp.permits} />
       </td>
+      <td className="t-center">
+        <KeyPermitChips kp={emp.key_permits} />
+      </td>
+      <td className="prs-city">
+        {emp.city ? <span>{emp.city}</span> : <span className="prs-dim">—</span>}
+      </td>
       <td>
         {emp.is_self_employed
           ? <SeBar transferred={seTrans} limit={SE_YEAR_LIMIT} />
@@ -402,6 +476,45 @@ function PersonnelRow({ emp, onOpen }) {
         <RatingCell value={emp.rating_avg} />
       </td>
     </tr>
+  );
+}
+
+/**
+ * 25.06.2026: компактные чипы 4 ключевых пропусков.
+ * Цвет: зелёный — действует, оранжевый — истекает (≤30 дней), красный — просрочен,
+ * серый — отсутствует. Дата истечения — мелким шрифтом снизу. Tooltip с полной информацией.
+ */
+function KeyPermitChips({ kp }) {
+  const today = new Date(); const todayStr = today.toISOString().slice(0, 10);
+  const in30 = new Date(); in30.setDate(in30.getDate() + 30); const in30Str = in30.toISOString().slice(0, 10);
+  const ITEMS = [
+    { code: 'BOSIET',    short: 'Б', label: 'БОСИЕТ' },
+    { code: 'SLEEVE',    short: 'Р', label: 'РУКАВ' },
+    { code: 'MLSP_PASS', short: 'М', label: 'МЛСП' },
+    { code: 'FSB',       short: 'Ф', label: 'ФСБ' }
+  ];
+  return (
+    <div className="prs-keyperms">
+      {ITEMS.map(({ code, short, label }) => {
+        const p = kp && kp[code];
+        let cls = 'prs-kp prs-kp--none';
+        let date = '';
+        let title = label + ': нет';
+        if (p) {
+          const exp = p.expiry_date ? String(p.expiry_date).slice(0, 10) : null;
+          if (!exp) { cls = 'prs-kp prs-kp--ok';      title = label + ': действует (без срока)'; }
+          else if (exp < todayStr)  { cls = 'prs-kp prs-kp--err';      title = label + ': ПРОСРОЧЕН ' + fmtDate(exp); date = fmtDate(exp); }
+          else if (exp < in30Str)   { cls = 'prs-kp prs-kp--warn';     title = label + ': истекает ' + fmtDate(exp); date = fmtDate(exp); }
+          else                      { cls = 'prs-kp prs-kp--ok';       title = label + ': до ' + fmtDate(exp); date = fmtDate(exp); }
+        }
+        return (
+          <div key={code} className={cls} title={title}>
+            <div className="prs-kp__short">{short}</div>
+            {date && <div className="prs-kp__date">{date.slice(0, 5)}</div>}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

@@ -22,12 +22,17 @@ window.AsgardTimesheetV2 = (function () {
 
   // FIX 7 — цвета через CSS-токены (assets/css/timesheet-types-tokens.css).
   // Передаём в style.background/color как var(--ts-*-bg)/var(--ts-*-fg).
+  // V255 (23.06.2026): добавлен 'ship' — Корабль, альтернатива дороги за повышенную
+  // ставку (12 баллов × 500 ₽). Токенов --ts-ship-* пока нет — используем travel-цвет
+  // и явный текст-эмодзи 🚢 для отличия. Это не противоречит color-gate — токены
+  // те же что у travel.
   const TYPE_META = {
     day:       { icon: '☀️', label: 'Дневная смена', color: 'var(--ts-day-bg)',       textColor: 'var(--ts-day-fg)' },
     night:     { icon: '🌙', label: 'Ночная смена',  color: 'var(--ts-night-bg)',     textColor: 'var(--ts-night-fg)' },
     warehouse: { icon: '📦', label: 'Склад',         color: 'var(--ts-warehouse-bg)', textColor: 'var(--ts-warehouse-fg)' },
     medical:   { icon: '🏥', label: 'Медосмотр',     color: 'var(--ts-medical-bg)',   textColor: 'var(--ts-medical-fg)' },
     travel:    { icon: '✈️', label: 'Дорога',        color: 'var(--ts-travel-bg)',    textColor: 'var(--ts-travel-fg)' },
+    ship:      { icon: '🚢', label: 'Корабль',       color: 'var(--ts-ship-bg)',      textColor: 'var(--ts-ship-fg)' },
     waiting:   { icon: '⏰', label: 'Ожидание',      color: 'var(--ts-waiting-bg)',   textColor: 'var(--ts-waiting-fg)' }
   };
 
@@ -53,12 +58,14 @@ window.AsgardTimesheetV2 = (function () {
   const MONTHS_RU = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 
   // Какие типы могут выставлять разные mode
+  // V255 (23.06.2026): TO/HEAD_TO (medical) теперь могут ставить и «Корабль» (ship).
+  // global (ADMIN/DIRECTOR_*) видит и редактирует все типы.
   const MODE_ALLOWED_TYPES = {
     pm:        ['day','night','waiting'],
     warehouse: ['warehouse'],
-    medical:   ['medical'],
+    medical:   ['medical','ship'],
     travel:    ['travel'],
-    global:    ['day','night','warehouse','medical','travel','waiting']
+    global:    ['day','night','warehouse','medical','travel','ship','waiting']
   };
 
   // По какому scope мы запираем месяц
@@ -141,7 +148,7 @@ window.AsgardTimesheetV2 = (function () {
       .tsv2-tooltip .tt-meta { color:var(--t3); font-size:10px; margin-top:4px; }
 
       .tsv2-scroll {
-        overflow:auto; max-height:calc(100vh - 280px);
+        overflow-x:auto;
         border:1px solid var(--brd); border-radius:var(--r-md); background:var(--bg1);
       }
       .tsv2-table { border-collapse:separate; border-spacing:0; font-size:12px; width:max-content; min-width:100%; }
@@ -721,6 +728,8 @@ window.AsgardTimesheetV2 = (function () {
   }
 
   // FIX 8 + FIX 11 — расширенный tooltip с телефоном и локализованной ролью
+  // FIX (23.06.2026): добавляем «отработано/оплачено часов» — пользователь
+  // путал баллы (13/16/18) с часами. Теперь часы видны явно.
   function tooltipLinesForEntry(emp, dateISO, entry) {
     const meta = TYPE_META[entry.type] || {};
     const dt = new Date(dateISO).toLocaleDateString('ru-RU');
@@ -730,6 +739,12 @@ window.AsgardTimesheetV2 = (function () {
     if (entry.points != null) row1 += ` · ${esc(String(entry.points))} баллов`;
     if (entry.amount != null) row1 += ` · ${esc(fmt(entry.amount))} ₽`;
     lines.push(`<div class="tt-row">${row1}</div>`);
+    // Часы — отдельной строкой, чтобы их не путали с баллами
+    if (entry.hours_worked != null || entry.hours_paid != null) {
+      const hw = entry.hours_worked != null ? entry.hours_worked : '—';
+      const hp = entry.hours_paid != null ? entry.hours_paid : '—';
+      lines.push(`<div class="tt-row">⏱ Часы: отработано ${esc(String(hw))} ч · оплачено ${esc(String(hp))} ч</div>`);
+    }
     if (entry.work_title) lines.push(`<div class="tt-row">Объект: ${esc(entry.work_title)}</div>`);
     if (entry.entered_by_fio) {
       const role = entry.entered_by_role ? ` (${esc(roleLabel(entry.entered_by_role))})` : '';
@@ -799,21 +814,37 @@ window.AsgardTimesheetV2 = (function () {
       ? `Через ${emp.payee_fio || 'получателя'} · ${emp.payee_phone}`
       : srcLabel;
     html += `<td><span class="tsv2-src-cell ${srcCls}" title="${esc(srcTitle)}">${esc(srcLabel)}</span></td>`;
-    // Заработано ₽
-    html += `<td class="tsv2-total">${emp.earned != null ? fmt(emp.earned) + ' ₽' : '—'}</td>`;
+    // Заработано ₽ — итоговая сумма «к выплате на руки» с учётом премий и штрафов.
+    // Tooltip объясняет это явно, чтобы юзер не искал отдельной колонки «К выплате».
+    const earnedTitle = 'Итоговая сумма к выплате на руки за месяц.\nФормула: смены (ставка × дни + баллы × коэф) + премия − штраф';
+    html += `<td class="tsv2-total" title="${esc(earnedTitle)}">${emp.earned != null ? fmt(emp.earned) + ' ₽' : '—'}</td>`;
     // Stage S — 📤 Уже выплачено в поле ₽ (через worker_payments status IN paid/confirmed)
-    const paidTotal = Number(emp.paid_total || 0);
-    if (paidTotal > 0) {
+    //   Фикс (23.06.2026): значение в колонке = paid_salary_total (зп + аванс + бонус),
+    //   суточные ИСКЛЮЧЕНЫ. paid_total оставлен для обратной совместимости в tooltip.
+    const paidSalaryTotal = Number(
+      emp.paid_salary_total != null
+        ? emp.paid_salary_total
+        : (Number(emp.paid_breakdown?.salary  || 0)
+         + Number(emp.paid_breakdown?.advance || 0)
+         + Number(emp.paid_breakdown?.bonus   || 0))
+    );
+    const paidTotalWithPerDiem = Number(emp.paid_total || 0);
+    if (paidSalaryTotal > 0 || paidTotalWithPerDiem > 0) {
       const breakdown = emp.paid_breakdown || {};
       const parts = [];
-      if (Number(breakdown.per_diem || 0) > 0) parts.push(`сут ${fmt(breakdown.per_diem)}`);
-      if (Number(breakdown.bonus    || 0) > 0) parts.push(`бонус ${fmt(breakdown.bonus)}`);
       if (Number(breakdown.salary   || 0) > 0) parts.push(`зп ${fmt(breakdown.salary)}`);
       if (Number(breakdown.advance  || 0) > 0) parts.push(`аванс ${fmt(breakdown.advance)}`);
-      const tt = parts.length
-        ? `Налом: ${fmt(emp.paid_cash)} ₽ · Переводом: ${fmt(emp.paid_transfer)} ₽\n` + parts.join(' · ')
-        : `Налом: ${fmt(emp.paid_cash)} ₽ · Переводом: ${fmt(emp.paid_transfer)} ₽`;
-      html += `<td><span class="tsv2-paid-cell" title="${esc(tt)}">${fmt(paidTotal)} ₽</span></td>`;
+      if (Number(breakdown.bonus    || 0) > 0) parts.push(`бонус ${fmt(breakdown.bonus)}`);
+      const perDiemNote = Number(breakdown.per_diem || 0) > 0
+        ? `\nСуточные ${fmt(breakdown.per_diem)} ₽ — НЕ входят в эту колонку (компенсация командировочных, не ЗП)`
+        : '';
+      const ttHead = `Уже выплачено ЗП (зп + аванс + бонус) в поле: ${fmt(paidSalaryTotal)} ₽`;
+      const tt = (parts.length ? `${ttHead}\n` + parts.join(' · ') : ttHead) + perDiemNote;
+      if (paidSalaryTotal > 0) {
+        html += `<td><span class="tsv2-paid-cell" title="${esc(tt)}">${fmt(paidSalaryTotal)} ₽</span></td>`;
+      } else {
+        html += `<td class="tsv2-mute" title="${esc(tt)}">—</td>`;
+      }
     } else {
       html += `<td class="tsv2-mute">—</td>`;
     }
@@ -1261,11 +1292,40 @@ window.AsgardTimesheetV2 = (function () {
           catch (e) { toast('Ошибка', e.message, 'err'); }
         });
       });
-      // Кнопки «Напомнить» (FIX 2 — пока TODO endpoint)
+      // Кнопки «Напомнить» (FIX 2): реальный push через /api/notifications/push.
+      // RBAC сервера: ADMIN, DIRECTOR_GEN, DIRECTOR_COMM, BUH, HR_MANAGER.
       box.querySelectorAll('.tsv2-pm-remind').forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
           const fio = btn.dataset.fio || '';
-          toast('Напоминание', `Поставлено в очередь для ${fio} (TODO: endpoint)`, 'ok');
+          const uid = parseInt(btn.dataset.uid || '0', 10);
+          if (!uid) { toast('Ошибка', 'Не удалось определить РП', 'err'); return; }
+          const period = new Date(curYear, curMonth - 1).toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
+          try {
+            btn.disabled = true;
+            const r = await fetch('/api/notifications/push', {
+              method: 'POST',
+              headers: {
+                'Authorization': 'Bearer ' + auth.token,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                user_id: uid,
+                title: 'Напоминание: закрытие табеля',
+                message: `Пожалуйста, заполните и закройте табель за ${period}.`,
+                link: '/#/my-timesheet',
+                type: 'timesheet_close_reminder'
+              })
+            });
+            if (!r.ok) {
+              const msg = r.status === 403 ? 'Недостаточно прав' : `HTTP ${r.status}`;
+              throw new Error(msg);
+            }
+            toast('Напоминание', `Отправлено: ${fio}`, 'ok');
+          } catch (e) {
+            toast('Ошибка', e.message || String(e), 'err');
+          } finally {
+            btn.disabled = false;
+          }
         });
       });
       // Кнопка inline lock (FIX 15 — заменяет toolbar-lock в global)
@@ -1301,7 +1361,7 @@ window.AsgardTimesheetV2 = (function () {
         ? `<button class="unlock" data-lockid="${p.lock_id}" title="Открыть месяц ${esc(p.fio)}">🔓</button>`
         : '';
       const remind = !locked
-        ? `<button class="tsv2-pm-remind" data-fio="${esc(p.fio)}" title="Напомнить РП закрыть">Напомнить</button>`
+        ? `<button class="tsv2-pm-remind" data-fio="${esc(p.fio)}" data-uid="${p.user_id || ''}" title="Напомнить РП закрыть">Напомнить</button>`
         : '';
       const status = locked
         ? `<span class="status" title="Закрыл: ${esc(p.fio)}\n${dt}">${esc(dt)}${un}</span>`
@@ -1414,6 +1474,10 @@ window.AsgardTimesheetV2 = (function () {
       const paidCash     = Number(sum.total_paid_cash     || 0);
       const paidTransfer = Number(sum.total_paid_transfer || 0);
       const paidTotal    = Number(sum.total_paid_total    || (paidCash + paidTransfer));
+      // Фикс (23.06.2026): выплачено по ЗП без суточных — для блока «УЖЕ ВЫПЛАЧЕНО В ПОЛЕ».
+      const paidSalaryTotal = Number(sum.total_paid_salary_total != null
+        ? sum.total_paid_salary_total
+        : Math.max(0, paidTotal - Number((data?.employees || []).reduce((s, e) => s + Number(e.paid_breakdown?.per_diem || 0), 0))));
       const cashRemain   = Number(sum.total_cash_needed_remaining != null
                               ? sum.total_cash_needed_remaining
                               : Math.max(0, cashOut - paidCash));
@@ -1513,6 +1577,13 @@ window.AsgardTimesheetV2 = (function () {
         const hint = hintParts.length
           ? `<div class="tsv2-dash-paid-hint">💡 ${hintParts.join(' · ')}</div>`
           : '';
+        // Фикс (23.06.2026): отдельная строка «ЗП без суточных» — то, что попадает в
+        // колонку «📤 Выплачено ₽» в таблице (зп + аванс + бонус, без per_diem).
+        const perDiemRow = paidBreakSum.per_diem > 0
+          ? `<div class="tsv2-dash-paid-row" style="opacity:.75">
+               <span>🌙 Суточные (отдельно):</span>
+               <span>${fmt(paidBreakSum.per_diem)} ₽</span>
+             </div>` : '';
         paidBlock = `
           <div class="tsv2-dash-paid">
             <div class="tsv2-dash-paid-title">📤 УЖЕ ВЫПЛАЧЕНО В ПОЛЕ</div>
@@ -1524,10 +1595,11 @@ window.AsgardTimesheetV2 = (function () {
               <span>Переводом:</span>
               <span>${fmt(paidTransfer)} ₽</span>
             </div>
-            <div class="tsv2-dash-paid-row total">
-              <span>Всего:</span>
-              <span>${fmt(paidTotal)} ₽</span>
+            <div class="tsv2-dash-paid-row total" title="ЗП-выплаты без суточных (зп + аванс + бонус). Это число и стоит в колонке «📤 Выплачено ₽» в таблице.">
+              <span>Всего ЗП (без суточных):</span>
+              <span>${fmt(paidSalaryTotal)} ₽</span>
             </div>
+            ${perDiemRow}
             ${hint}
           </div>
         `;
@@ -1722,8 +1794,8 @@ window.AsgardTimesheetV2 = (function () {
       if (mode === 'global') {
         header += `<th class="tsv2-total" title="Тип занятости: СЗ — самозанятый, Оф — официально, Нал — наличка">Тип</th>`;
         header += `<th class="tsv2-total" title="Получает выплаты сам / через родственника / окладом / наличкой">Получает</th>`;
-        header += `<th class="tsv2-total">Заработано ₽</th>`;
-        header += `<th class="tsv2-total" title="Уже выплачено через полевой модуль (worker_payments paid/confirmed): суточные / бонусы / зп / авансы">📤 Выплачено ₽</th>`;
+        header += `<th class="tsv2-total" title="Итоговая сумма к выплате на руки за месяц (смены + премия − штраф). Это и есть «к получению».">Заработано ₽</th>`;
+        header += `<th class="tsv2-total" title="Уже выплачено по ЗП через полевой модуль (worker_payments status paid/confirmed): зп + аванс + бонус. Суточные НЕ учитываются — это компенсация командировочных, не ЗП.">📤 Выплачено ₽</th>`;
         header += `<th class="tsv2-total" title="Премии за месяц (worker_payments type=bonus)">🎁 Премия ₽</th>`;
         header += `<th class="tsv2-total" title="Штрафы за месяц (worker_payments type=penalty)">⚠ Штраф ₽</th>`;
         header += `<th class="tsv2-total">Оклад ₽</th>`;
@@ -1812,6 +1884,106 @@ window.AsgardTimesheetV2 = (function () {
       });
     }
 
+    // Типы требующие work_id (синхрон с backend src/routes/timesheet-v2.js)
+    const REQUIRE_WORK_ID = new Set(['day', 'night', 'waiting', 'ship', 'warehouse']);
+
+    // Кэш списка работ (по empId или 'pm' для глобального)
+    const _worksCache = new Map();
+
+    // Загружает работы доступные для отметки сотруднику.
+    // Стратегия:
+    //   1) data.employees[empId].works[] если backend прислал
+    //   2) GET /api/pm/works (для PM режима)
+    //   3) GET /api/works?my=1 (fallback)
+    async function loadWorksForEmployee(empId) {
+      const cacheKey = mode === 'pm' ? `pm:${empId}` : `g:${empId}`;
+      if (_worksCache.has(cacheKey)) return _worksCache.get(cacheKey);
+      // 1) emp.works в данных табеля
+      try {
+        const emp = (data?.employees || []).find(e => Number(e.id) === Number(empId));
+        if (emp && Array.isArray(emp.works) && emp.works.length) {
+          _worksCache.set(cacheKey, emp.works);
+          return emp.works;
+        }
+      } catch (_) {}
+      // 2) /api/pm/works
+      try {
+        const auth = await AsgardAuth.getAuth();
+        const r = await fetch('/api/pm/works', { headers: { 'Authorization': 'Bearer ' + auth.token } });
+        if (r.ok) {
+          const d = await r.json();
+          const works = (d.works || d.items || d.rows || []);
+          if (works.length) {
+            _worksCache.set(cacheKey, works);
+            return works;
+          }
+        }
+      } catch (_) {}
+      // 3) /api/works?my=1
+      try {
+        const auth = await AsgardAuth.getAuth();
+        const r = await fetch('/api/works?my=1', { headers: { 'Authorization': 'Bearer ' + auth.token } });
+        if (r.ok) {
+          const d = await r.json();
+          const works = (d.works || d.items || d.rows || []);
+          _worksCache.set(cacheKey, works);
+          return works;
+        }
+      } catch (_) {}
+      _worksCache.set(cacheKey, []);
+      return [];
+    }
+
+    // Открывает модалку выбора работы и возвращает workId через колбэк.
+    function openWorkPicker(empId, typeLabel, onPick) {
+      _editing = true;
+      showModal({
+        title: 'Выберите работу',
+        html: `
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="font-size:12px;color:var(--t2)">
+              Для отметки «${esc(typeLabel)}» нужно указать работу.
+            </div>
+            <select id="tsv2_pick_work" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border)">
+              <option value="">⏳ Загружаем работы…</option>
+            </select>
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
+              <button class="btn ghost" id="tsv2_pick_cancel">Отмена</button>
+              <button class="btn primary" id="tsv2_pick_ok" disabled>Подтвердить</button>
+            </div>
+          </div>`,
+        wide: false,
+        onMount: ({ body }) => {
+          const sel = body.querySelector('#tsv2_pick_work');
+          const ok  = body.querySelector('#tsv2_pick_ok');
+          const cancel = body.querySelector('#tsv2_pick_cancel');
+          (async () => {
+            const works = await loadWorksForEmployee(empId);
+            if (!works.length) {
+              sel.innerHTML = '<option value="">Нет доступных работ</option>';
+              sel.disabled = true;
+              return;
+            }
+            sel.innerHTML = '<option value="">— выбрать работу —</option>' +
+              works.map(w => `<option value="${w.id}">${esc(w.work_title || w.title || ('Объект #' + w.id))}${w.city ? ' · ' + esc(w.city) : ''}</option>`).join('');
+            if (works.length === 1) {
+              sel.value = String(works[0].id);
+              ok.disabled = false;
+            }
+          })();
+          sel.addEventListener('change', () => { ok.disabled = !sel.value; });
+          cancel.addEventListener('click', () => { _editing = false; closeModal(); });
+          ok.addEventListener('click', () => {
+            const v = sel.value ? Number(sel.value) : null;
+            if (!v) return;
+            _editing = false;
+            closeModal();
+            onPick(v);
+          });
+        }
+      });
+    }
+
     // ── Popover редактирования ячейки ──────────────────────────────
     function openCellPopover(cell) {
       document.querySelectorAll('.tsv2-popover').forEach(p => p.remove());
@@ -1825,30 +1997,49 @@ window.AsgardTimesheetV2 = (function () {
       pop.className = 'tsv2-popover';
       _editing = true; // FIX 13 — пауза авторефреша
 
+      // Сохраняет отметку. Если backend вернёт 400 work_id_required —
+      // откроем picker и попробуем снова с выбранным workId.
+      async function saveEntry(t, effectiveWorkId) {
+        try {
+          await editCell({
+            employee_id: empId, work_id: effectiveWorkId || null, date: dateISO,
+            type: t, shift: (t === 'night') ? 'night' : 'day', delete: false
+          });
+          cell.classList.add('tsv2-saved');
+          setTimeout(() => cell.classList.remove('tsv2-saved'), 700);
+          toast('Табель','Отметка сохранена','ok');
+          await refresh();
+        } catch (e) {
+          // Backend сигналит что нужен work_id — показываем picker.
+          // apiSend кладёт err.error в e.message (см. apiSend).
+          if (e.status === 400 && /work_id_required|work_id/i.test(e.message || '')) {
+            toast('Табель', 'Выберите работу для этой отметки', 'err');
+            openWorkPicker(empId, (TYPE_META[t] || {}).label || t, async (pickedId) => {
+              await saveEntry(t, pickedId);
+            });
+            return;
+          }
+          if (e.status === 423) toast('Заперто', 'Месяц закрыт — редактирование запрещено', 'err');
+          else if (e.status === 409) toast('Уже есть отметка', e.message, 'err');
+          else toast('Ошибка', e.message, 'err');
+        }
+      }
+
       allowedTypes.forEach(t => {
-        // day/night без work_id поставить нельзя
-        if ((t === 'day' || t === 'night') && !workId && mode === 'pm') return;
         const meta = TYPE_META[t];
         const btn = document.createElement('button');
         btn.innerHTML = `<span class="tsv2-cell" style="background:${meta.color};color:${meta.textColor}">${meta.icon}</span> ${meta.label}`;
         btn.addEventListener('click', async () => {
           pop.remove();
           _editing = false; // FIX 13
-          try {
-            await editCell({
-              employee_id: empId, work_id: workId, date: dateISO,
-              type: t, shift: (t === 'night') ? 'night' : 'day', delete: false
+          // Если тип требует work_id и нет — открыть picker
+          if (REQUIRE_WORK_ID.has(t) && !workId) {
+            openWorkPicker(empId, meta.label, async (pickedId) => {
+              await saveEntry(t, pickedId);
             });
-            // Зелёный пульс на ячейке
-            cell.classList.add('tsv2-saved');
-            setTimeout(() => cell.classList.remove('tsv2-saved'), 700);
-            toast('Табель','Отметка сохранена','ok');
-            await refresh();
-          } catch (e) {
-            if (e.status === 423) toast('Заперто', 'Месяц закрыт — редактирование запрещено', 'err');
-            else if (e.status === 409) toast('Уже есть отметка', e.message, 'err');
-            else toast('Ошибка', e.message, 'err');
+            return;
           }
+          await saveEntry(t, workId);
         });
         pop.appendChild(btn);
       });

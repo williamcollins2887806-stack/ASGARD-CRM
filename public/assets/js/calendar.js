@@ -38,15 +38,33 @@ window.AsgardCalendarPage = (function(){
     return d === 0 ? 6 : d - 1; // Пн = 0
   }
   
+  // Календарь — прямой fetch (IDB-кэш не отражает удаления и события других пользователей).
+  async function _fetchEvents(params){
+    try {
+      const tok = (window.AsgardAuth && window.AsgardAuth.token) || localStorage.getItem('asgard_token');
+      const qs = params ? ('?' + new URLSearchParams(params).toString()) : '';
+      const r = await fetch('/api/calendar' + qs, {
+        headers: { Authorization: 'Bearer ' + tok },
+        cache: 'no-store'
+      });
+      if (!r.ok) throw new Error('GET /api/calendar ' + r.status);
+      const j = await r.json();
+      return j.events || j.items || j.data || [];
+    } catch (e) {
+      console.warn('[calendar] fetch failed, fallback to IDB:', e.message);
+      return await AsgardDB.all('calendar_events') || [];
+    }
+  }
+
   async function loadEvents(year, month) {
-    const all = await AsgardDB.all('calendar_events') || [];
     const startYmd = `${year}-${String(month+1).padStart(2,'0')}-01`;
     const endYmd = `${year}-${String(month+1).padStart(2,'0')}-${daysInMonth(year, month)}`;
+    const all = await _fetchEvents({ date_from: startYmd, date_to: endYmd, limit: 1000 });
     return all.filter(e => e.date >= startYmd && e.date <= endYmd);
   }
-  
+
   async function loadAllEvents() {
-    return await AsgardDB.all('calendar_events') || [];
+    return await _fetchEvents({ limit: 1000 });
   }
   
   async function saveEvent(event) {

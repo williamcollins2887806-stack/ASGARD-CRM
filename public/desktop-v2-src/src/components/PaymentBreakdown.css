@@ -1,0 +1,295 @@
+/* ──────────────────────────────────────────────────────────────────────────
+ * PaymentBreakdown.css — стили модалки детализации выплат работнику.
+ *
+ * Темы: dark + light (используются ТОЛЬКО CSS-токены из theme.css).
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/* ── Loading / Error ──────────────────────────────────────────────────── */
+.pb-loading {
+  padding: 36px 16px;
+  text-align: center;
+  color: var(--t-3);
+  font-size: 14px;
+}
+.pb-error {
+  padding: 16px;
+  border-radius: var(--r-md);
+  background: var(--err-bg);
+  color: var(--err);
+  border: 1px solid color-mix(in srgb, var(--err) 25%, var(--brd-1));
+  font-weight: 600;
+}
+
+/* ── Head ─────────────────────────────────────────────────────────────── */
+.pb-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding-bottom: 14px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--brd-1);
+}
+.pb-head-left { min-width: 0; flex: 1; }
+.pb-fio {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-family: 'Cinzel', 'Times New Roman', serif;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--t-1);
+  letter-spacing: 0.02em;
+}
+.pb-head-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--t-2);
+}
+.pb-head-meta .pb-sep { color: var(--t-4); }
+.pb-head-meta .pb-mut { color: var(--t-3); }
+
+/* ── Бейджи типа работника ─────────────────────────────────────────────── */
+.pb-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.pb-badge-off {
+  background: var(--blue-bg);
+  color: var(--blue-l);
+  border-color: color-mix(in srgb, var(--blue-l) 30%, var(--brd-1));
+}
+.pb-badge-se {
+  background: var(--purple-bg);
+  color: var(--purple-l);
+  border-color: color-mix(in srgb, var(--purple-l) 30%, var(--brd-1));
+}
+.pb-badge-cash {
+  background: var(--ok-bg);
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 30%, var(--brd-1));
+}
+
+/* ── Breakdown grid 2 колонки ──────────────────────────────────────────── */
+.pb-breakdown {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--inner-bg);
+}
+.pb-col {
+  padding: 16px;
+}
+.pb-col-accrued {
+  border-right: 1px solid var(--brd-1);
+}
+.pb-col-h {
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--t-3);
+  letter-spacing: 0.1em;
+  margin-bottom: 14px;
+  font-weight: 700;
+}
+.pb-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--brd-2);
+  font-size: 13px;
+}
+.pb-row:last-of-type { border-bottom: none; }
+.pb-row-l {
+  color: var(--t-2);
+  min-width: 0;
+}
+.pb-row-v {
+  color: var(--t-1);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+  font-weight: 500;
+  white-space: nowrap;
+}
+.pb-row-v-mut { color: var(--t-3); }
+.pb-row-v-neg { color: var(--err); }
+.pb-row-empty {
+  color: var(--t-3);
+  font-style: italic;
+  justify-content: center;
+  padding: 12px 0;
+}
+.pb-row-total {
+  border-top: 2px solid var(--gold);
+  border-bottom: none;
+  margin-top: 10px;
+  padding-top: 12px;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--gold);
+}
+.pb-row-total .pb-row-v { color: var(--gold); font-weight: 800; }
+
+/* ── Delta banner ──────────────────────────────────────────────────────── */
+.pb-delta {
+  margin-top: 14px;
+  padding: 12px 16px;
+  border-radius: var(--r-sm);
+  font-weight: 600;
+  text-align: center;
+  font-size: 14px;
+  border: 1px solid transparent;
+}
+.pb-delta-zero {
+  background: var(--ok-bg);
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 25%, transparent);
+}
+.pb-delta-pos {
+  background: var(--warn-bg);
+  color: var(--amber);
+  border-color: color-mix(in srgb, var(--amber) 25%, transparent);
+}
+.pb-delta-neg {
+  background: var(--err-bg);
+  color: var(--err);
+  border-color: color-mix(in srgb, var(--err) 25%, transparent);
+}
+
+/* ── PM Kassa Impact ──────────────────────────────────────────────────── */
+.pb-pm-kassa {
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: var(--gold-bg);
+  border-left: 3px solid var(--gold);
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  color: var(--t-2);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.pb-pm-kassa-icon { font-size: 18px; flex-shrink: 0; }
+.pb-pm-kassa-text b {
+  color: var(--gold);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Source chips (используются и в таблицах/выписке) ─────────────────── */
+.pb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.pb-chip-cash {
+  background: var(--ok-bg);
+  color: var(--ok);
+  border-color: color-mix(in srgb, var(--ok) 25%, var(--brd-1));
+}
+.pb-chip-bank {
+  background: var(--blue-bg);
+  color: var(--blue-l);
+  border-color: color-mix(in srgb, var(--blue-l) 25%, var(--brd-1));
+}
+.pb-chip-se {
+  background: var(--purple-bg);
+  color: var(--purple-l);
+  border-color: color-mix(in srgb, var(--purple-l) 25%, var(--brd-1));
+}
+.pb-chip-auto {
+  background: var(--gold-bg);
+  color: var(--gold);
+  border-color: color-mix(in srgb, var(--gold) 25%, var(--brd-1));
+}
+.pb-chip-other {
+  background: var(--inner-bg);
+  color: var(--t-3);
+  border-color: var(--brd-1);
+}
+
+/* ── Таблица операций ─────────────────────────────────────────────────── */
+.pb-ops-h {
+  margin: 20px 0 10px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--t-1);
+}
+.pb-ops-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  background: var(--card-bg);
+}
+.pb-ops-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.pb-ops-tbl th {
+  text-align: left;
+  padding: 10px 12px;
+  color: var(--t-3);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--brd-1);
+  background: var(--inner-bg);
+  white-space: nowrap;
+}
+.pb-ops-tbl td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--brd-2);
+  color: var(--t-1);
+  vertical-align: middle;
+}
+.pb-ops-tbl tbody tr:last-child td { border-bottom: none; }
+.pb-ops-tbl tr.pb-ops-row:hover td {
+  background: var(--hover-bg);
+}
+.pb-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+  white-space: nowrap;
+  font-weight: 600;
+}
+.pb-num-neg { color: var(--err); }
+.pb-ops-comment {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--t-2);
+}
+
+/* ── Mobile ───────────────────────────────────────────────────────────── */
+@media (max-width: 720px) {
+  .pb-breakdown { grid-template-columns: 1fr; }
+  .pb-col-accrued { border-right: none; border-bottom: 1px solid var(--brd-1); }
+  .pb-ops-tbl th,
+  .pb-ops-tbl td { padding: 8px 10px; }
+  .pb-ops-comment { max-width: 120px; }
+  .pb-fio { font-size: 16px; }
+}

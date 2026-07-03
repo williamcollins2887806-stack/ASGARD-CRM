@@ -72,11 +72,12 @@ export default function TimesheetGrid({
     setEditing({ employee, day, dateIso });
   }, [canEdit, year, month]);
 
-  const handleSave = useCallback(async (type) => {
+  const handleSave = useCallback(async (type, opts = {}) => {
     if (!editing) return;
     // FIX 5 — корректный work_id: primary_work_id ИЛИ last-filled day.work_id ИЛИ существующий cell.work_id
+    // opts.workId — переопределение из CellEditor work-picker'а
     const cell = editing.employee.days?.[editing.day];
-    const workId = cell?.work_id || inferWorkIdForEmployee(editing.employee);
+    const workId = opts.workId || cell?.work_id || inferWorkIdForEmployee(editing.employee);
     const payload = {
       employee_id: editing.employee.id,
       work_id: workId,
@@ -267,6 +268,11 @@ export default function TimesheetGrid({
             requireWorkForDayNight &&
             !(editing.employee.days?.[editing.day]?.work_id || inferWorkIdForEmployee(editing.employee))
           }
+          resolvedWorkId={
+            editing.employee.days?.[editing.day]?.work_id ||
+            inferWorkIdForEmployee(editing.employee) ||
+            null
+          }
           readonly={isLocked}
         />
       )}
@@ -424,27 +430,33 @@ function FinanceCells({ employee, monthlyLimit }) {
       <td className="ts-total-cell money ts-fin-cell">
         {employee.earned != null ? fmtMoney(employee.earned) : '—'}
       </td>
-      {/* Stage S — 📤 Выплачено ₽: оранжевый бейдж с tooltip разбивки;
-          прочерк когда paid_total<=0. */}
+      {/* Stage S — 📤 Выплачено ₽: paid_salary_total (зп+аванс+бонус БЕЗ суточных).
+          До 23.06.2026 здесь рендерился paid_total, который включал per_diem —
+          колонка некорректно показывала суммы вместе с суточными. */}
       {(() => {
-        const paidTotal = Number(employee.paid_total || 0);
-        if (paidTotal <= 0) {
+        const b = employee.paid_breakdown || {};
+        const paidSalaryTotal = Number(
+          employee.paid_salary_total != null
+            ? employee.paid_salary_total
+            : (Number(b.salary || 0) + Number(b.advance || 0) + Number(b.bonus || 0))
+        );
+        if (paidSalaryTotal <= 0) {
           return <td className="ts-total-cell money ts-fin-cell ts-mute">—</td>;
         }
-        const b = employee.paid_breakdown || {};
         const parts = [];
-        if (Number(b.per_diem || 0) > 0) parts.push(`сут ${fmtMoney(b.per_diem)}`);
         if (Number(b.bonus    || 0) > 0) parts.push(`бонус ${fmtMoney(b.bonus)}`);
         if (Number(b.salary   || 0) > 0) parts.push(`зп ${fmtMoney(b.salary)}`);
         if (Number(b.advance  || 0) > 0) parts.push(`аванс ${fmtMoney(b.advance)}`);
+        const perDiem = Number(b.per_diem || 0);
         const tooltip =
           `Налом: ${fmtMoney(employee.paid_cash)} ₽ · ` +
           `Переводом: ${fmtMoney(employee.paid_transfer)} ₽` +
-          (parts.length > 0 ? `\n${parts.join(' · ')}` : '');
+          (parts.length > 0 ? `\n${parts.join(' · ')}` : '') +
+          (perDiem > 0 ? `\nСуточные ${fmtMoney(perDiem)} ₽ — не входят` : '');
         return (
           <td className="ts-total-cell money ts-fin-cell">
             <span className="ts-paid-cell" title={tooltip}>
-              {fmtMoney(paidTotal)} ₽
+              {fmtMoney(paidSalaryTotal)} ₽
             </span>
           </td>
         );
@@ -633,7 +645,12 @@ function Tooltip({ x, y, employee, day, cell, dateIso }) {
     transform: 'translate(-50%, -100%)'
   };
   // FIX 8 — формат с телефоном автора
+  // FIX (24.06.2026) — добавлены «Часы» отдельной строкой. Раньше юзер видел
+  // только «N баллов» и путал это с часами (13 баллов ≠ 13 часов). Часы теперь
+  // явные. Стейджи (warehouse/medical/travel/ship/waiting) часов не имеют —
+  // поэтому показываем только если backend прислал hours_worked/hours_paid.
   const dt = dateIso ? dateIso.split('-').reverse().join('.') : '';
+  const hasHours = (cell.hours_worked != null || cell.hours_paid != null);
   return (
     <div className="ts-tooltip" style={style} role="tooltip">
       <div className="ts-tooltip-title">{employee.fio} · {dt}</div>
@@ -642,6 +659,12 @@ function Tooltip({ x, y, employee, day, cell, dateIso }) {
         {cell.points != null && ` · ${cell.points} баллов`}
         {cell.amount != null && cell.amount > 0 && ` · ${fmtMoney(cell.amount)}`}
       </div>
+      {hasHours && (
+        <div className="ts-tooltip-row">
+          ⏱ Часы: отработано {cell.hours_worked != null ? cell.hours_worked : '—'} ч
+          {' · '}оплачено {cell.hours_paid != null ? cell.hours_paid : '—'} ч
+        </div>
+      )}
       {cell.work_title && (
         <div className="ts-tooltip-row">Объект: {cell.work_title}</div>
       )}

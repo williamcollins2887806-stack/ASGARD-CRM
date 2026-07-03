@@ -71,7 +71,10 @@ export function loadEmployees() {
       : [];
     return arr.map((e) => ({
       id: e.id,
-      full_name: e.full_name || e.fio || e.name || `#${e.id}`
+      full_name: e.full_name || e.fio || e.name || `#${e.id}`,
+      // 2026-06-29 — нужны для радио-карточек «Источник денег» (bank/self disabled)
+      is_officially_employed: !!(e.is_officially_employed === true || e.is_officially_employed === 1),
+      is_self_employed:       !!(e.is_self_employed === true || e.is_self_employed === 1)
     }));
   };
   return api('/api/staff/employees?limit=2000')

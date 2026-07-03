@@ -12,6 +12,29 @@ const fmt = (n) => n != null ? Math.round(n).toString().replace(/\B(?=(\d{3})+(?
 
 const PAY_TYPES  = { salary: 'Зарплата', advance: 'Аванс', per_diem: 'Суточные', bonus: 'Бонус', penalty: 'Штраф' };
 const PAY_COLORS = { salary: C.green, advance: C.blue, per_diem: C.amber, bonus: C.rune, penalty: C.red };
+
+/*
+ * Способы выплаты с человеко-читаемыми надписями.
+ *   cash      — 📤 я выдал наличкой        → paid_by = текущий пользователь (PM)
+ *   transfer  — 💳 я перевёл со своей карты → paid_by = текущий пользователь (PM)
+ *   bank      — 🏦 бухгалтерия через банк   → paid_by = NULL (платит компания)
+ *   self      — 📱 СЗ-сервис                → paid_by = NULL (платит компания)
+ */
+const PAY_METHODS = [
+  { code: 'cash',     icon: '📤', label: 'Я выдал наличкой',         desc: 'Из кассы РП',          payerSelf: true,  needs: null },
+  { code: 'transfer', icon: '💳', label: 'Я перевёл со своей карты', desc: 'PM-перевод',           payerSelf: true,  needs: null },
+  { code: 'bank',     icon: '🏦', label: 'Бухгалтерия через банк',   desc: 'Компания (штатный)',   payerSelf: false, needs: 'is_officially_employed' },
+  { code: 'self',     icon: '📱', label: 'Через СЗ-сервис',           desc: 'Компания (самозан.)',  payerSelf: false, needs: 'is_self_employed' },
+];
+
+/** Дефолт payment_method по типу выплаты + типу работника. */
+function defaultPaymentMethod(payType, worker) {
+  if (payType === 'salary') {
+    if (worker?.is_officially_employed) return 'bank';
+    if (worker?.is_self_employed) return 'self';
+  }
+  return 'cash';
+}
 const STATUS_CFG = {
   pending:   { label: 'Ожидает',    color: C.amber },
   paid:      { label: 'Выплачено',  color: C.green },
@@ -35,7 +58,10 @@ export default function PmPayments() {
   const [form, setForm]         = useState({
     employee_id: '', work_id: '', type: 'advance', amount: '',
     pay_month: now.getMonth() + 1, pay_year: now.getFullYear(), comment: '',
+    payment_method: 'cash',
   });
+  // Признаки штатник/СЗ для выбранного рабочего (асинхронно из /employees/:id).
+  const [employeeFlags, setEmployeeFlags] = useState({ is_self_employed: false, is_officially_employed: false });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg]       = useState('');
 
@@ -43,6 +69,52 @@ export default function PmPayments() {
     api.get('/pm/works').then(r => setWorks(r.works || []));
     api.get('/pm/workers').then(r => setWorkers(r.workers || []));
   }, []);
+
+  /* Подтягиваем признаки работника (штатник/СЗ) при выборе из селекта.
+     /pm/workers не возвращает эти поля, поэтому идём в /employees/:id. */
+  useEffect(() => {
+    if (!form.employee_id) {
+      setEmployeeFlags({ is_self_employed: false, is_officially_employed: false });
+      return;
+    }
+    let cancelled = false;
+    api.get(`/employees/${form.employee_id}`)
+      .then((emp) => {
+        if (cancelled || !emp) return;
+        const flags = {
+          is_self_employed: !!emp.is_self_employed,
+          is_officially_employed: !!emp.is_officially_employed,
+        };
+        setEmployeeFlags(flags);
+        // Если текущий способ оплаты теперь disabled — выставим дефолт.
+        setForm((f) => {
+          const m = PAY_METHODS.find((p) => p.code === f.payment_method);
+          const disabled = m && m.needs && !flags[m.needs];
+          if (disabled) {
+            return { ...f, payment_method: defaultPaymentMethod(f.type, flags) };
+          }
+          return f;
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setEmployeeFlags({ is_self_employed: false, is_officially_employed: false });
+      });
+    return () => { cancelled = true; };
+  }, [form.employee_id]);
+
+  /* При смене типа выплаты — пересчёт дефолтного payment_method, если текущий
+     не подходит. Иначе оставляем выбор пользователя. */
+  useEffect(() => {
+    setForm((f) => {
+      const def = defaultPaymentMethod(f.type, employeeFlags);
+      const m = PAY_METHODS.find((p) => p.code === f.payment_method);
+      const stillOk = m && (!m.needs || employeeFlags[m.needs]);
+      if (!stillOk) return { ...f, payment_method: def };
+      return f;
+    });
+    // intentionally only on type change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.type]);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -73,10 +145,15 @@ export default function PmPayments() {
         pay_month: form.pay_month,
         pay_year: form.pay_year,
         comment: form.comment,
+        payment_method: form.payment_method,
+        // paid_by:
+        //   cash/transfer → выставит сервер из req.user (выдавал я)
+        //   bank/self     → NULL (платит компания)
+        paid_by_self: PAY_METHODS.find((p) => p.code === form.payment_method)?.payerSelf || false,
       });
       setMsg('Выплата создана');
       setShowNew(false);
-      setForm(f => ({ ...f, employee_id: '', amount: '', comment: '' }));
+      setForm(f => ({ ...f, employee_id: '', amount: '', comment: '', payment_method: 'cash' }));
       load();
     } catch (e) { setMsg('Ошибка: ' + e.message); }
     finally { setSaving(false); }
@@ -193,6 +270,59 @@ export default function PmPayments() {
             </div>
             <input value={form.comment} onChange={e => setForm(f => ({ ...f, comment: e.target.value }))}
               placeholder="Комментарий" style={inputStyle} />
+
+            {/* ── Способ выплаты (радио-карточки) ────────────────── */}
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: C.muted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Способ выплаты
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {PAY_METHODS.map((m) => {
+                  const disabled = !!m.needs && !employeeFlags[m.needs];
+                  const active = form.payment_method === m.code;
+                  const tint = m.payerSelf ? C.green : C.blue;
+                  return (
+                    <button
+                      key={m.code}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => setForm((f) => ({ ...f, payment_method: m.code }))}
+                      style={{
+                        textAlign: 'left',
+                        background: active ? tint + '20' : C.card,
+                        border: `1px solid ${active ? tint + '60' : '#ffffff15'}`,
+                        borderRadius: 10,
+                        padding: '10px 12px',
+                        color: disabled ? C.muted : (active ? tint : C.text),
+                        cursor: disabled ? 'not-allowed' : 'pointer',
+                        opacity: disabled ? 0.5 : 1,
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        minHeight: 44,
+                      }}
+                    >
+                      <span style={{ fontSize: 20, lineHeight: 1 }}>{m.icon}</span>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: 'block', fontSize: 13, fontWeight: 700 }}>
+                          {m.label}
+                        </span>
+                        <span style={{ display: 'block', fontSize: 11, color: C.muted, marginTop: 1 }}>
+                          {m.desc}
+                          {disabled && m.needs === 'is_officially_employed' && ' · только для штатных'}
+                          {disabled && m.needs === 'is_self_employed' && ' · только для самозанятых'}
+                        </span>
+                      </span>
+                      <span style={{
+                        width: 18, height: 18, borderRadius: '50%',
+                        border: `2px solid ${active ? tint : '#ffffff30'}`,
+                        background: active ? tint : 'transparent',
+                        flexShrink: 0,
+                      }} />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <button type="submit" disabled={saving}
               style={{ width: '100%', padding: '10px 0', borderRadius: 10, border: 'none', cursor: 'pointer', background: C.green, color: '#000', fontWeight: 700 }}>
               {saving ? '...' : 'Создать'}
@@ -241,6 +371,21 @@ export default function PmPayments() {
           payments.map(p => {
             const st = STATUS_CFG[p.status] || STATUS_CFG.pending;
             const typeColor = PAY_COLORS[p.type] || C.text;
+            // Бэйдж источника. Если есть source_kind — мапим напрямую,
+            // иначе вычисляем из payment_method (cash/transfer → касса РП, bank → банк, self → СЗ).
+            const srcKind = p.source_kind || (
+              p.payment_method === 'bank' ? 'company_bank' :
+              p.payment_method === 'self' ? 'company_se'   :
+              (p.payment_method === 'cash' || p.payment_method === 'transfer' || p.payment_method === 'card') ? 'pm_cash' :
+              null
+            );
+            const srcMeta = srcKind ? ({
+              pm_cash:        { icon: '📤', label: 'Касса РП', color: C.green },
+              pm_cash_legacy: { icon: '📤', label: 'Касса РП', color: C.green },
+              company_bank:   { icon: '🏦', label: 'Банк',     color: C.blue  },
+              company_se:     { icon: '📱', label: 'СЗ-серв.', color: C.rune  },
+              auto_fot:       { icon: '⚙',  label: 'Авто-ФОТ', color: C.muted },
+            })[srcKind] : null;
             return (
               <div key={p.id} style={{ background: C.card, borderRadius: 14, padding: '12px 14px', marginBottom: 8, border: `1px solid ${p.status === 'pending' ? C.amber + '30' : '#ffffff0d'}` }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -252,6 +397,18 @@ export default function PmPayments() {
                     </div>
                     <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>{p.work_title}</div>
                     {p.comment && <div style={{ fontSize: 11, color: C.muted, marginTop: 2, fontStyle: 'italic' }}>{p.comment}</div>}
+                    {srcMeta && (
+                      <div style={{ marginTop: 4 }}>
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 4,
+                          fontSize: 10, fontWeight: 700,
+                          background: srcMeta.color + '20', color: srcMeta.color,
+                          padding: '2px 7px', borderRadius: 999,
+                        }}>
+                          <span>{srcMeta.icon}</span>{srcMeta.label}
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 10 }}>
                     <div style={{ fontSize: 16, fontWeight: 900, color: C.text }}>{fmt(p.amount)}</div>

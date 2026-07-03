@@ -5995,3 +5995,56 @@ html[data-theme="light"] .sg-key.biometric svg {
 }
 
 /* ─── §50 END — Ink & Stone ─── */
+
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * §50. PK3 STICKERS & NOTEBOARD — доска заметок (личный канбан)
+ * ───────────────────────────────────────────────────────────────────────
+ * Проблема: personal_kanban.js:455-505 инжектит inline-CSS с
+ * color:#fff + tex-shadow:0 2px 0 rgba(0,0,0,.7) — на светлой теме
+ * белый текст с тёмной тенью становится «грязным дымом» на пастельном
+ * фоне. Стикеры (.pk3-sticker:nth-child) уже пастельные (жёлтый/розовый/
+ * голубой/зелёный/оранжевый) — читаются на обеих темах. Чиним только
+ * заголовок, hint, empty-state и тень.
+ * ─────────────────────────────────────────────────────────────────────── */
+
+/* Заголовок доски «Заметки» — тёмно-кофейный без светящейся тени */
+html[data-theme="light"] .pk3-noteboard-head {
+  color: #3a2f08 !important;
+  text-shadow: none !important;
+}
+html[data-theme="light"] .pk3-noteboard-head .pk3-noteboard-emoji {
+  filter: drop-shadow(0 1px 2px rgba(60, 40, 10, 0.18)) !important;
+}
+
+/* Подсказка под заголовком — мягкий кофейный полупрозрачный */
+html[data-theme="light"] .pk3-noteboard-hint {
+  color: rgba(40, 30, 8, 0.7) !important;
+  text-shadow: none !important;
+}
+
+/* Empty-state «нет стикеров» */
+html[data-theme="light"] .pk3-stk-list-empty {
+  color: #5a4a1a !important;
+  opacity: 0.8 !important;
+  text-shadow: none !important;
+}
+
+/* Сам холдер доски — добавляем мягкий пастельный беж-фон с лёгкой рамкой,
+   на тёмной теме оставлен transparent (наследуется из inline-CSS). */
+html[data-theme="light"] .pk3-noteboard {
+  background: linear-gradient(180deg, #f0e5d0, #e8dabe) !important;
+  border-radius: 14px !important;
+  padding: 14px 12px !important;
+  box-shadow: 0 8px 24px rgba(60, 40, 10, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
+}
+
+/* Мягче тень стикеров на светлой теме */
+html[data-theme="light"] .pk3-sticker {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.10) !important;
+}
+html[data-theme="light"] .pk3-sticker:hover {
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.15), 0 2px 6px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* ─── §50 PK3 END ─── */

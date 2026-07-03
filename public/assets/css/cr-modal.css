@@ -76,9 +76,22 @@
 }
 
 .cr-m--fullscreen {
-  width: min(1600px, 98vw);
-  height: 95vh;
-  max-height: 95vh;
+  /* FIX 24.06: модалка занимает всю ширину; высота — по контенту, минимум
+     100vh. Если контент длиннее — растёт вниз, скроллит сам overlay
+     (overflow-y:auto на .cr-m-overlay стр.21) — а не внутренний body.
+     Поэтому inline-добавление строки в Бригаду «дописывает снизу» как
+     обычная страница, без внутренней «рамки со скроллом». */
+  width: 100vw;
+  min-height: 100vh;
+  max-height: none;
+  height: auto;
+  border-radius: 0;
+  margin: 0;
+}
+/* Внутренний body модалки в fullscreen НЕ скроллит — пускай скроллит overlay */
+.cr-m--fullscreen .cr-m__body {
+  overflow: visible;
+  max-height: none;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -620,6 +633,7 @@
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease !important;
   outline: none !important;
   width: 100%;
+  max-width: 100%;
   box-sizing: border-box;
   min-width: 0;
 }

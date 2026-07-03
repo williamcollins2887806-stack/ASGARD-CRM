@@ -73,9 +73,14 @@ export default function Works() {
   const filtered = useMemo(() => {
     let list = works;
     if (filter === 'active') {
+      // 23.06.2026 BUG-FIX (🟡 S7): substring 'работ' раньше матчил 'Работы сдали'
+      // (closeout-этап), которая по isDone уже завершена. Два фильтра друг другу
+      // противоречили — одна работа была одновременно active и done. Используем
+      // оба условия: попадает в подготовку/мобилизацию/работу И НЕ помечена done.
       list = list.filter((w) => {
+        if (isDone(w.work_status)) return false;
         const s = (w.work_status || '').toLowerCase();
-        return ['работ', 'выполнен', 'мобилиз', 'подготовк'].some((k) => s.includes(k));
+        return ['в работе', 'выполнен', 'мобилиз', 'подготовк'].some((k) => s.includes(k));
       });
     } else if (filter === 'done') {
       list = list.filter((w) => isDone(w.work_status));

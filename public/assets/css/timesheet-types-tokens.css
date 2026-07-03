@@ -1,0 +1,60 @@
+/* ═══════════════════════════════════════════════════════════════════════
+ * Timesheet v2 — единые токены цветов для типов клеток.
+ *
+ * Используются и vanilla (timesheet-v2.js TYPE_META), и React v2
+ * (Timesheet/api.js TYPE_META + timesheet.css). Цвета — через CSS-переменные
+ * темы (design-tokens.css), чтобы color-gate не валился.
+ *
+ * Подключается в:
+ *   - public/index.html (после design-tokens.css)
+ *   - public/desktop-v2-src/src/pages/Timesheet/timesheet.css (через @import "../../../../assets/css/timesheet-types-tokens.css"
+ *     или резерв в самом timesheet.css — поэтому копия фолбэков лежит и тут, и в исходнике v2)
+ *
+ * Темы — токены автоматически переключаются по [data-theme], так как они
+ * ссылаются на --ok-bg/--info-bg/--purple-bg и т.д., которые сами зависят от темы.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ☀️ Дневная смена */
+  --ts-day-bg:       var(--ok-bg,   rgba(45,134,89,0.12));
+  --ts-day-fg:       var(--ok,      #2D8659);
+
+  /* 🌙 Ночная смена */
+  --ts-night-bg:     var(--info-bg, rgba(59,130,246,0.12));
+  --ts-night-fg:     var(--info,    #3B82F6);
+
+  /* 📦 Склад */
+  --ts-warehouse-bg: var(--purple-bg, rgba(139,92,246,0.12));
+  --ts-warehouse-fg: var(--purple-l,  #A78BFA);
+
+  /* 🏥 Медосмотр */
+  --ts-medical-bg:   var(--err-bg, rgba(200,41,59,0.12));
+  --ts-medical-fg:   var(--err,    #C8293B);
+
+  /* ✈️ Дорога */
+  --ts-travel-bg:    var(--cyan-bg, rgba(6,182,212,0.12));
+  --ts-travel-fg:    var(--cyan-l,  #22D3EE);
+
+  /* 🚢 Корабль (V255 — альтернатива дороги, повышенная ставка) */
+  --ts-ship-bg:      var(--gold-bg, rgba(212,168,67,0.14));
+  --ts-ship-fg:      var(--gold,    #D4A843);
+
+  /* ⏰ Ожидание */
+  --ts-waiting-bg:   var(--orange-bg, rgba(249,115,22,0.12));
+  --ts-waiting-fg:   var(--orange,    #F97316);
+}
+
+/* Светлая тема — те же переменные источника уже переопределены
+ * в design-tokens.css [data-theme="light"], так что отдельные ALIAS'ы
+ * не нужны. На случай, если темовый --ok/--err не пересчитают контраст
+ * подписей, можно подкрутить здесь: */
+[data-theme="light"] {
+  /* Светлая тема: уменьшим яркость подписей, чтобы читалось на пастельном фоне */
+  --ts-day-fg:       var(--ok,      #2D6A4F);
+  --ts-night-fg:     var(--info,    #1A3F74);
+  --ts-warehouse-fg: var(--purple,  #5D3100);
+  --ts-medical-fg:   var(--err,     #A82030);
+  --ts-travel-fg:    var(--cyan,    #06B6D4);
+  --ts-ship-fg:      var(--gold,    #B07E12);   /* V255 */
+  --ts-waiting-fg:   var(--orange,  #E25510);
+}

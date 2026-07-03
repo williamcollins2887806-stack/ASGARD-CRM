@@ -25,6 +25,12 @@
   padding: 4px 8px;
   gap: 8px;
   transition: all 0.15s ease;
+  /* 26.06.2026 FIX: длинные option (например название тендера, длинное ФИО РП)
+     раньше растягивали нативный <select> под самый длинный пункт → wrap вылезал
+     за grid-ячейку и страница сдвигалась влево. min-width:0 + max-width:100%
+     запирают компонент в выделенную ширину. */
+  min-width: 0;
+  max-width: 100%;
 }
 .inp-wrap:focus-within {
   border-color: var(--gold);
@@ -123,6 +129,11 @@
   -webkit-appearance: none;
   cursor: pointer;
   background: transparent;
+  /* 26.06.2026 FIX: запираем нативный <select> в ширину родительской ячейки;
+     иначе самый длинный <option> растягивает select и ломает раскладку
+     грид-фильтров. text-overflow:ellipsis сжимает длинные label'ы. */
+  max-width: 100%;
+  text-overflow: ellipsis;
 }
 /* Опции нативного <select> не наследуют CSS из родителя — стилизуем явно,
    иначе в тёмной теме браузер рисует их в системной светлой палитре

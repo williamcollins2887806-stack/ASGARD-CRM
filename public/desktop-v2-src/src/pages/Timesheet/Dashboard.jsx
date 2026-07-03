@@ -31,10 +31,24 @@ export default function Dashboard({ summary, cashCoverage, employees = [] }) {
   const totalBonus   = Number(summary.total_bonus   || 0);
   const totalPenalty = Number(summary.total_penalty || 0);
 
-  /* Stage S — суммы уже выплаченных в поле */
+  /* Stage S — суммы уже выплаченных в поле.
+     total_paid_total = всё (включая суточные) — оставляем для бэк-совместимости,
+     но в UI «Всего» теперь рисуем paidSalaryTotal (зп+аванс+бонус, БЕЗ per_diem),
+     а суточные выводим отдельной строкой как в vanilla (timesheet-v2.js:1547-1550). */
   const paidCash     = Number(summary.total_paid_cash     || 0);
   const paidTransfer = Number(summary.total_paid_transfer || 0);
   const paidTotal    = Number(summary.total_paid_total    || 0);
+  const paidSalaryTotal = Number(
+    summary.total_paid_salary_total != null
+      ? summary.total_paid_salary_total
+      : Math.max(
+          0,
+          paidTotal - (employees || []).reduce(
+            (s, e) => s + Number(e?.paid_breakdown?.per_diem || 0), 0
+          )
+        )
+  );
+  const paidPerDiemTotal = Math.max(0, paidTotal - paidSalaryTotal);
   const cashNeededRemaining = Number(summary.total_cash_needed_remaining || 0);
   const transferRemaining   = Number(summary.total_transfer_remaining    || 0);
 
@@ -213,9 +227,16 @@ function PaidInFieldCard({ summary, employees }) {
     breakdown.advance  += Number(b.advance  || 0);
     breakdown.bonus    += Number(b.bonus    || 0);
   });
+  // «Всего ЗП» = зп + аванс + бонус (БЕЗ суточных). Если бэк отдаёт готовое
+  // summary.total_paid_salary_total — используем его; иначе считаем из breakdown
+  // (паттерн как в vanilla timesheet-v2.js:1442-1450, 1547-1566).
+  const paidSalaryTotal = Number(
+    summary.total_paid_salary_total != null
+      ? summary.total_paid_salary_total
+      : (breakdown.salary + breakdown.advance + breakdown.bonus)
+  );
   const hints = [];
   if (breakdown.bonus > 0)    hints.push(`${fmtMoney(breakdown.bonus)} премии`);
-  if (breakdown.per_diem > 0) hints.push(`${fmtMoney(breakdown.per_diem)} суточные`);
   if (breakdown.salary > 0)   hints.push(`${fmtMoney(breakdown.salary)} зп`);
   if (breakdown.advance > 0)  hints.push(`${fmtMoney(breakdown.advance)} авансы`);
 
@@ -231,9 +252,15 @@ function PaidInFieldCard({ summary, employees }) {
         <span>{fmtMoney(summary.total_paid_transfer)} ₽</span>
       </div>
       <div className="ts-dash-paid-row total">
-        <span>Всего</span>
-        <span>{fmtMoney(summary.total_paid_total)} ₽</span>
+        <span>Всего ЗП (без суточных)</span>
+        <span>{fmtMoney(paidSalaryTotal)} ₽</span>
       </div>
+      {breakdown.per_diem > 0 && (
+        <div className="ts-dash-paid-row">
+          <span>🌙 Суточные (отдельно)</span>
+          <span>{fmtMoney(breakdown.per_diem)} ₽</span>
+        </div>
+      )}
       {hints.length > 0 && (
         <div className="ts-dash-paid-hint">💡 {hints.join(' · ')}</div>
       )}

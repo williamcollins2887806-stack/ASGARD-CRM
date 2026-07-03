@@ -36,6 +36,41 @@ export function putEntry(data) {
   return api(`${BASE}/entry`, { method: 'PUT', body: data });
 }
 
+/**
+ * Список работ, которые видит текущий пользователь.
+ * Используется для work-picker когда сотрудник не привязан к работе,
+ * а тип отметки (day/night/waiting/ship/warehouse) требует work_id.
+ *
+ * Возвращает массив { id, work_title, city, ... }.
+ */
+export async function loadWorks() {
+  // 1) /api/pm/works — PM/HEAD_PM видит свои работы (бэкенд фильтрует pm_id)
+  try {
+    const r = await api('/api/pm/works');
+    const arr = Array.isArray(r) ? r : (r?.works || r?.items || r?.rows || []);
+    if (arr.length) return arr;
+  } catch (_) {}
+  // 2) /api/works?my=1 — fallback для остальных ролей
+  try {
+    const r = await api('/api/works?my=1');
+    const arr = Array.isArray(r) ? r : (r?.works || r?.items || r?.rows || []);
+    if (arr.length) return arr;
+  } catch (_) {}
+  // 3) последний шанс — /api/works без фильтра (директор/админ)
+  try {
+    const r = await api('/api/works');
+    const arr = Array.isArray(r) ? r : (r?.works || r?.items || r?.rows || []);
+    return arr;
+  } catch (_) {}
+  return [];
+}
+
+/**
+ * Типы отметок которые требуют work_id (синхрон с backend src/routes/timesheet-v2.js).
+ * medical/travel — БЕЗ work_id (межработные этапы).
+ */
+export const REQUIRE_WORK_ID = new Set(['day', 'night', 'waiting', 'ship', 'warehouse']);
+
 export function lockMonth(data) {
   return api(`${BASE}/lock`, { method: 'POST', body: data });
 }
@@ -97,18 +132,22 @@ export const MODES = {
     lockScope: 'warehouse',
     editableTypes: ['warehouse'],
     requireWorkFor: [],
-    columns: { points: 'none', amount: 'none', perDiem: 'none' },
+    // V255: свои отметки — с баллами, чужие — только иконка.
+    columns: { points: 'mine', amount: 'none', perDiem: 'none' },
     roles: ['WAREHOUSE']
   },
   medical: {
     title: 'Табель учёта МО',
-    subtitle: 'Медосмотры рабочих по дням',
+    subtitle: 'Медосмотры, обучение и корабль',
     kicker: 'ТО',
     icon: '🏥',
     lockScope: 'medical',
-    editableTypes: ['medical'],
+    // V255 (23.06.2026): TO/HEAD_TO теперь могут ставить и «Корабль» (альтернатива
+    // дороги за повышенную ставку 12 баллов × 500 ₽).
+    editableTypes: ['medical', 'ship'],
     requireWorkFor: [],
-    columns: { points: 'none', amount: 'none', perDiem: 'none' },
+    // V255: свои отметки — с баллами, чужие — только иконка.
+    columns: { points: 'mine', amount: 'none', perDiem: 'none' },
     roles: ['TO', 'HEAD_TO']
   },
   travel: {
@@ -120,16 +159,18 @@ export const MODES = {
     // FIX 4 — OFFICE_MANAGER ставит только 'travel'. 'waiting' исключён по ТЗ.
     editableTypes: ['travel'],
     requireWorkFor: [],
-    columns: { points: 'none', amount: 'none', perDiem: 'none' },
+    // V255: свои отметки — с баллами, чужие — только иконка.
+    columns: { points: 'mine', amount: 'none', perDiem: 'none' },
     roles: ['OFFICE_MANAGER']
   },
   global: {
     title: 'Общий табель — Табель дружины',
-    subtitle: 'Все отметки от всех ролей: чекины, склад, МО, дорога',
+    subtitle: 'Все отметки от всех ролей: чекины, склад, МО, дорога, корабль',
     kicker: 'Дружина',
     icon: '📊',
     lockScope: 'global',
-    editableTypes: ['day', 'night', 'warehouse', 'medical', 'travel', 'waiting'],
+    // V255: добавлен 'ship' (Корабль).
+    editableTypes: ['day', 'night', 'warehouse', 'medical', 'travel', 'ship', 'waiting'],
     requireWorkFor: ['day', 'night'],
     columns: { points: 'always', amount: 'show', perDiem: 'none' },
     roles: ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'ADMIN', 'BUH', 'HR', 'HR_MANAGER']
@@ -180,6 +221,10 @@ export const TYPE_META = {
   warehouse: { icon: '📦', label: 'Склад',    short: 'Скл',bgVar: '--ts-warehouse-bg', fgVar: '--ts-warehouse-fg', title: 'Работа на складе' },
   medical:   { icon: '🏥', label: 'Медосмотр',short: 'МО', bgVar: '--ts-medical-bg',   fgVar: '--ts-medical-fg',   title: 'Медосмотр' },
   travel:    { icon: '✈️', label: 'Дорога',   short: 'ДР', bgVar: '--ts-travel-bg',    fgVar: '--ts-travel-fg',    title: 'Дорога' },
+  // V255 (23.06.2026): «Корабль» — альтернатива «Дороги» за повышенную ставку
+  // (12 баллов × 500 ₽). Цветовые токены делим с travel (color-gate безопасно),
+  // отличаемся эмодзи 🚢.
+  ship:      { icon: '🚢', label: 'Корабль',  short: 'КР', bgVar: '--ts-ship-bg',      fgVar: '--ts-ship-fg',      title: 'Дорога кораблём' },
   waiting:   { icon: '⏰', label: 'Ожидание', short: 'ОЖ', bgVar: '--ts-waiting-bg',   fgVar: '--ts-waiting-fg',   title: 'Ожидание' }
 };
 

@@ -6,7 +6,9 @@ import { BottomSheet } from '@/components/shared/BottomSheet';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
-import { Wallet, Plus, ChevronRight, Check, X as XIcon, Search } from 'lucide-react';
+import {
+  Wallet, Plus, ChevronRight, Check, X as XIcon, Search, ArrowDownCircle,
+} from 'lucide-react';
 import { formatMoney, relativeTime } from '@/lib/utils';
 
 const STATUS_MAP = {
@@ -18,13 +20,24 @@ const STATUS_MAP = {
   closed:       { label: 'Закрыто',         color: 'var(--green)' },
   rejected:     { label: 'Отклонено',       color: 'var(--red-soft)' },
   question:     { label: 'Вопрос',          color: 'var(--gold)' },
+  // handover-статусы:
+  pending:      { label: 'Ожидает подтв.',  color: 'var(--blue)' },
+  partial:      { label: 'Частично',        color: 'var(--gold)' },
+  not_received: { label: 'Не получено',     color: 'var(--red-soft)' },
+  cancelled:    { label: 'Отменено',        color: 'var(--text-tertiary)' },
 };
 
-const FILTERS = [
+const STATUS_FILTERS = [
   { id: 'all',      label: 'Все' },
   { id: 'pending',  label: 'Ожидание' },
   { id: 'approved', label: 'Одобрено' },
   { id: 'closed',   label: 'Закрыто' },
+];
+
+const SOURCE_FILTERS = [
+  { id: 'all',       label: 'Все',        icon: '🗂️' },
+  { id: 'cash',      label: 'Из кассы',   icon: '🏦' },
+  { id: 'handover',  label: 'От СЗ',      icon: '💵' },
 ];
 
 /* ── 12 категорий (Stage W) ────────────────────────────────────── */
@@ -50,26 +63,44 @@ const TYPES = [
 ];
 // ❌ 'loan' — убран из UI (Stage W)
 
+/* ── Источники операций (source_kind из cash statement) ──────────── */
+const SOURCE_KIND_META = {
+  pm_cash:        { icon: '📤', label: 'Касса РП',  color: 'var(--green)'  },
+  pm_cash_legacy: { icon: '📤', label: 'Касса РП',  color: 'var(--green)'  },
+  company_bank:   { icon: '🏦', label: 'Банк',       color: 'var(--blue)'   },
+  company_se:     { icon: '📱', label: 'СЗ-сервис',  color: 'var(--purple)' },
+  auto_fot:       { icon: '⚙',  label: 'Авто-ФОТ',   color: 'var(--text-secondary)' },
+};
+/** Информационные источники — отображаются приглушённо и могут быть скрыты. */
+const INFO_SOURCES = new Set(['company_bank', 'company_se', 'auto_fot']);
+
 export default function Cash() {
   const haptic   = useHaptic();
   const [balance,     setBalance]     = useState(null);
   const [requests,    setRequests]    = useState([]);
+  const [handovers,   setHandovers]   = useState([]);
   const [loading,     setLoading]     = useState(true);
-  const [filter,      setFilter]      = useState('all');
+  const [statusFilter,setStatusFilter]= useState('all');
+  const [sourceFilter,setSourceFilter]= useState('all');
   const [detail,      setDetail]      = useState(null);
   const [showCreate,  setShowCreate]  = useState(false);
+  const [showReceive, setShowReceive] = useState(false);
+  const [hideInfo,    setHideInfo]    = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [balRes, reqRes] = await Promise.all([
+      const [balRes, reqRes, hRes] = await Promise.all([
         api.get('/cash/my-balance').catch(() => null),
         api.get('/cash/my'),
+        api.get('/handovers').catch(() => null),
       ]);
       setBalance(balRes);
       setRequests(api.extractRows(reqRes) || []);
+      setHandovers(api.extractRows(hRes) || []);
     } catch {
       setRequests([]);
+      setHandovers([]);
     } finally {
       setLoading(false);
     }
@@ -77,13 +108,56 @@ export default function Cash() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // Объединённый поток: cash_requests + handovers, помеченные _source.
+  const merged = useMemo(() => {
+    const rs = (requests || []).map((r) => ({
+      ...r,
+      _source: 'cash',
+      _sortDate: r.created_at || r.updated_at || '',
+    }));
+    const hs = (handovers || []).map((h) => {
+      const expected = Number(h.expected_amount || 0);
+      const received = Number(h.received_amount || 0);
+      const isReceivedKind = h.status === 'received' || h.status === 'partial';
+      // Для строки в потоке: «сумма» = полученная (если уже подтверждено), иначе ожидаемая.
+      const amount = isReceivedKind ? received : expected;
+      return {
+        id: `h${h.id}`,
+        _rawId: h.id,
+        _source: 'handover',
+        _h: h,
+        amount,
+        status: h.status,
+        purpose: h.worker_fio
+          ? `Нал от СЗ: ${h.worker_fio}`
+          : `Передача нала #${h.id}`,
+        work_title: h.work_title || null,
+        created_at: h.received_at || h.created_at,
+        _sortDate: h.received_at || h.created_at || '',
+        comment: h.note || null,
+      };
+    });
+    const all = [...rs, ...hs];
+    all.sort((a, b) => String(b._sortDate).localeCompare(String(a._sortDate)));
+    return all;
+  }, [requests, handovers]);
+
   const filtered = useMemo(() => {
-    let list = requests;
-    if (filter === 'pending')  list = list.filter((r) => r.status === 'requested' || r.status === 'question');
-    if (filter === 'approved') list = list.filter((r) => ['approved', 'money_issued', 'received'].includes(r.status));
-    if (filter === 'closed')   list = list.filter((r) => ['closed', 'reporting'].includes(r.status));
+    let list = merged;
+    if (sourceFilter !== 'all') list = list.filter((r) => r._source === sourceFilter);
+    if (statusFilter === 'pending') {
+      list = list.filter((r) => r.status === 'requested' || r.status === 'question' || r.status === 'pending');
+    } else if (statusFilter === 'approved') {
+      list = list.filter((r) => ['approved', 'money_issued', 'received', 'partial'].includes(r.status));
+    } else if (statusFilter === 'closed') {
+      list = list.filter((r) => ['closed', 'reporting', 'not_received', 'cancelled'].includes(r.status));
+    }
+    // Скрыть «справочные» строки (bank/se/auto_fot — для информации, не affecting кассу РП).
+    if (hideInfo) {
+      list = list.filter((r) => !INFO_SOURCES.has(r.source_kind));
+    }
     return list;
-  }, [requests, filter]);
+  }, [merged, statusFilter, sourceFilter, hideInfo]);
 
   const confirmReceive = async (id) => {
     haptic.success();
@@ -94,21 +168,36 @@ export default function Cash() {
     } catch {}
   };
 
-  const totalOnHand = balance?.balance ?? balance?.on_hand ?? 0;
-  const totalIssued = balance?.issued ?? balance?.total_issued ?? 0;
-  const totalReturned = balance?.returned ?? 0;
+  const totalOnHand        = Number(balance?.balance ?? balance?.on_hand) || 0;
+  const totalIssued        = Number(balance?.issued ?? balance?.total_issued) || 0;
+  const totalReturned      = Number(balance?.returned) || 0;
+  const handoversReceived  = Number(balance?.handovers_received) || 0;
+  const cashPayoutsWorkers = Number(balance?.cash_payouts_workers) || 0;
+  const hasStageW          = balance && Object.prototype.hasOwnProperty.call(balance, 'handovers_received');
 
   return (
     <PageShell
       title="Касса"
       headerRight={
-        <button
-          onClick={() => { haptic.light(); setShowCreate(true); }}
-          className="flex items-center justify-center spring-tap"
-          style={{ width: 44, height: 44, color: 'var(--blue)' }}
-        >
-          <Plus size={22} />
-        </button>
+        <>
+          <button
+            onClick={() => { haptic.light(); setShowReceive(true); }}
+            className="flex items-center justify-center spring-tap"
+            style={{ width: 44, height: 44, color: 'var(--green)' }}
+            aria-label="Получил нал от СЗ"
+            title="Получил нал от СЗ"
+          >
+            <ArrowDownCircle size={22} />
+          </button>
+          <button
+            onClick={() => { haptic.light(); setShowCreate(true); }}
+            className="flex items-center justify-center spring-tap"
+            style={{ width: 44, height: 44, color: 'var(--blue)' }}
+            aria-label="Новая заявка"
+          >
+            <Plus size={22} />
+          </button>
+        </>
       }
     >
       <PullToRefresh onRefresh={fetchData}>
@@ -127,27 +216,73 @@ export default function Cash() {
             <p className="text-[28px] font-bold leading-tight" style={{ color: 'var(--gold)' }}>
               {formatMoney(totalOnHand)}
             </p>
-            <div className="flex items-center gap-5 mt-2">
-              <span className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
-                Выдано: {formatMoney(totalIssued, { short: true })}
-              </span>
-              <span className="text-[12px]" style={{ color: 'var(--green)' }}>
-                Возврат: {formatMoney(totalReturned, { short: true })}
-              </span>
-            </div>
+            {hasStageW ? (
+              <div className="grid grid-cols-2 gap-2 mt-3">
+                <BalanceCell label="Авансы кассы" value={totalIssued} color="var(--blue)" />
+                <BalanceCell label="От СЗ"         value={handoversReceived} color="var(--green)" />
+                <BalanceCell label="Возвраты"      value={totalReturned} color="var(--text-secondary)" />
+                <BalanceCell label="Выдано раб."   value={cashPayoutsWorkers} color="var(--warn-t)" />
+              </div>
+            ) : (
+              <div className="flex items-center gap-5 mt-2">
+                <span className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+                  Выдано: {formatMoney(totalIssued, { short: true })}
+                </span>
+                <span className="text-[12px]" style={{ color: 'var(--green)' }}>
+                  Возврат: {formatMoney(totalReturned, { short: true })}
+                </span>
+              </div>
+            )}
           </div>
         )}
 
-        <div className="flex gap-1.5 pb-3 overflow-x-auto no-scrollbar">
-          {FILTERS.map((f) => (
+        {/* Source filter (Касса / От СЗ) */}
+        <div className="flex gap-1.5 pb-2 overflow-x-auto no-scrollbar">
+          {SOURCE_FILTERS.map((f) => (
             <button
               key={f.id}
-              onClick={() => { haptic.light(); setFilter(f.id); }}
+              onClick={() => { haptic.light(); setSourceFilter(f.id); }}
+              className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold spring-tap flex items-center gap-1"
+              style={{
+                background: sourceFilter === f.id ? 'color-mix(in srgb, var(--blue) 15%, var(--bg-surface))' : 'transparent',
+                color:      sourceFilter === f.id ? 'var(--blue)' : 'var(--text-tertiary)',
+                border:     sourceFilter === f.id
+                  ? '0.5px solid color-mix(in srgb, var(--blue) 35%, var(--border-light))'
+                  : '0.5px solid transparent',
+              }}
+            >
+              <span>{f.icon}</span> {f.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Hide info rows toggle (bank/se/auto_fot — справочные) */}
+        <div className="flex items-center justify-end pb-2">
+          <label
+            className="flex items-center gap-1.5 text-[11px] spring-tap"
+            style={{ color: 'var(--text-tertiary)', cursor: 'pointer', userSelect: 'none' }}
+          >
+            <input
+              type="checkbox"
+              checked={hideInfo}
+              onChange={(e) => { haptic.light(); setHideInfo(e.target.checked); }}
+              style={{ width: 16, height: 16, accentColor: 'var(--blue)' }}
+            />
+            Скрыть справочные
+          </label>
+        </div>
+
+        {/* Status filter */}
+        <div className="flex gap-1.5 pb-3 overflow-x-auto no-scrollbar">
+          {STATUS_FILTERS.map((f) => (
+            <button
+              key={f.id}
+              onClick={() => { haptic.light(); setStatusFilter(f.id); }}
               className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold spring-tap"
               style={{
-                background: filter === f.id ? 'var(--bg-elevated)' : 'transparent',
-                color:      filter === f.id ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                border:     filter === f.id ? '0.5px solid var(--border-light)' : '0.5px solid transparent',
+                background: statusFilter === f.id ? 'var(--bg-elevated)' : 'transparent',
+                color:      statusFilter === f.id ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                border:     statusFilter === f.id ? '0.5px solid var(--border-light)' : '0.5px solid transparent',
               }}
             >
               {f.label}
@@ -162,19 +297,26 @@ export default function Cash() {
             icon={Wallet}
             iconColor="var(--gold)"
             iconBg="color-mix(in srgb, var(--gold) 10%, transparent)"
-            title="Нет заявок"
-            description="Создайте первую заявку"
+            title="Нет записей"
+            description={sourceFilter === 'handover'
+              ? 'Передач от СЗ пока нет — нажмите 💵 в шапке чтобы зафиксировать'
+              : 'Создайте первую заявку'}
           />
         ) : (
           <div className="flex flex-col gap-2 pb-4">
-            {filtered.map((req, i) => {
-              const st = STATUS_MAP[req.status] || { label: req.status, color: 'var(--text-tertiary)' };
-              const isActionable = req.status === 'money_issued';
-              const catIcon = (CASH_CATEGORIES.find((c) => c.code === req.category) || {}).icon;
+            {filtered.map((item, i) => {
+              const st = STATUS_MAP[item.status] || { label: item.status, color: 'var(--text-tertiary)' };
+              const isActionable = item._source === 'cash' && item.status === 'money_issued';
+              const catIcon = item._source === 'cash'
+                ? (CASH_CATEGORIES.find((c) => c.code === item.category) || {}).icon
+                : '💵';
+              const isHandover = item._source === 'handover';
+              const srcMeta = item.source_kind ? SOURCE_KIND_META[item.source_kind] : null;
+              const isInfo = INFO_SOURCES.has(item.source_kind);
               return (
                 <button
-                  key={req.id}
-                  onClick={() => { haptic.light(); setDetail(req); }}
+                  key={item.id}
+                  onClick={() => { haptic.light(); setDetail(item); }}
                   className="w-full text-left rounded-2xl px-4 py-3.5 spring-tap"
                   style={{
                     background:    'color-mix(in srgb, var(--bg-surface) 92%, transparent)',
@@ -183,6 +325,7 @@ export default function Cash() {
                       ? '0.5px solid color-mix(in srgb, var(--gold) 30%, var(--border-norse))'
                       : '0.5px solid var(--border-norse)',
                     animation:     `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both`,
+                    opacity:       isInfo ? 0.55 : 1,
                   }}
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -190,23 +333,48 @@ export default function Cash() {
                       {catIcon && <span style={{ fontSize: 18 }}>{catIcon}</span>}
                       <div className="flex-1 min-w-0">
                         <p className="text-[15px] font-semibold leading-tight truncate" style={{ color: 'var(--text-primary)' }}>
-                          {req.purpose || req.description || `Заявка #${req.id}`}
+                          {item.purpose || item.description || `Заявка #${item.id}`}
                         </p>
-                        {req.work_title && (
+                        {item.work_title && (
                           <p className="text-[12px] mt-0.5 truncate" style={{ color: 'var(--text-secondary)' }}>
-                            {req.work_title}
+                            {item.work_title}
                           </p>
                         )}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-[15px] font-bold" style={{ color: 'var(--gold)' }}>
-                        {formatMoney(req.amount || 0, { short: true })}
+                      <span className="text-[15px] font-bold" style={{ color: isHandover ? 'var(--green)' : 'var(--gold)' }}>
+                        {isHandover ? '+' : ''}{formatMoney(item.amount || 0, { short: true })}
                       </span>
                       <ChevronRight size={16} style={{ color: 'var(--text-tertiary)' }} />
                     </div>
                   </div>
                   <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    {/* Source badge */}
+                    <span
+                      className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                      style={{
+                        background: isHandover
+                          ? 'color-mix(in srgb, var(--green) 14%, transparent)'
+                          : 'color-mix(in srgb, var(--blue) 14%, transparent)',
+                        color: isHandover ? 'var(--green)' : 'var(--blue)',
+                      }}
+                    >
+                      {isHandover ? '💵 От СЗ' : '🏦 Касса'}
+                    </span>
+                    {/* Источник (source_kind) — если backend вернул */}
+                    {srcMeta && (
+                      <span
+                        className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
+                        style={{
+                          background: `color-mix(in srgb, ${srcMeta.color} 14%, transparent)`,
+                          color: srcMeta.color,
+                        }}
+                      >
+                        {srcMeta.icon} {srcMeta.label}
+                      </span>
+                    )}
+                    {/* Status badge */}
                     <span
                       className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
                       style={{
@@ -216,7 +384,7 @@ export default function Cash() {
                     >
                       {st.label}
                     </span>
-                    {req.use_se_payee && (
+                    {item.use_se_payee && (
                       <span
                         className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
                         style={{ background: 'color-mix(in srgb, var(--green) 14%, transparent)', color: 'var(--green)' }}
@@ -224,9 +392,9 @@ export default function Cash() {
                         💳 через СЗ
                       </span>
                     )}
-                    {req.created_at && (
+                    {item.created_at && (
                       <span className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
-                        {relativeTime(req.created_at)}
+                        {relativeTime(item.created_at)}
                       </span>
                     )}
                     {isActionable && (
@@ -245,19 +413,43 @@ export default function Cash() {
         )}
       </PullToRefresh>
 
-      <CashDetailSheet request={detail} onClose={() => setDetail(null)} onConfirm={confirmReceive} />
+      <CashDetailSheet item={detail} onClose={() => setDetail(null)} onConfirm={confirmReceive} />
       <CreateCashSheet open={showCreate} onClose={() => setShowCreate(false)} onCreated={fetchData} />
+      <ReceiveFromSeSheet open={showReceive} onClose={() => setShowReceive(false)} onCreated={fetchData} />
     </PageShell>
   );
 }
 
-function CashDetailSheet({ request, onClose, onConfirm }) {
-  if (!request) return null;
-  const r  = request;
-  const st = STATUS_MAP[r.status] || { label: r.status, color: 'var(--text-tertiary)' };
-  const cat = CASH_CATEGORIES.find((c) => c.code === r.category);
+function BalanceCell({ label, value, color }) {
+  return (
+    <div className="flex items-center justify-between rounded-lg px-2.5 py-1.5"
+      style={{ background: 'color-mix(in srgb, var(--bg-primary) 50%, transparent)' }}>
+      <span className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>{label}</span>
+      <span className="text-[12px] font-bold" style={{ color }}>
+        {formatMoney(value, { short: true })}
+      </span>
+    </div>
+  );
+}
 
-  const fields = [
+function CashDetailSheet({ item, onClose, onConfirm }) {
+  if (!item) return null;
+  const r  = item;
+  const st = STATUS_MAP[r.status] || { label: r.status, color: 'var(--text-tertiary)' };
+  const isHandover = r._source === 'handover';
+  const cat = !isHandover && CASH_CATEGORIES.find((c) => c.code === r.category);
+
+  const fields = isHandover ? [
+    { label: 'Тип',          value: 'Передача нала от СЗ' },
+    { label: 'Самозанятый',  value: r._h?.worker_fio || `#${r._h?.worker_id}` },
+    r._h?.expected_amount != null && { label: 'Ожидалось', value: formatMoney(Number(r._h.expected_amount) || 0) },
+    r._h?.received_amount != null && { label: 'Получено',  value: formatMoney(Number(r._h.received_amount) || 0) },
+    r._h?.work_title && { label: 'Работа',  value: r._h.work_title },
+    r._h?.received_at && { label: 'Передано', value: relativeTime(r._h.received_at) },
+    r._h?.received_by_name && { label: 'Подтвердил', value: r._h.received_by_name },
+    r._h?.source_se_transfer_id && { label: 'СЗ-перевод', value: `#${r._h.source_se_transfer_id}` },
+    r.comment && { label: 'Комментарий', value: r.comment, full: true },
+  ].filter(Boolean) : [
     { label: 'Назначение',   value: r.purpose || r.description || '—' },
     { label: 'Сумма',        value: formatMoney(r.amount || 0) },
     cat && { label: 'Категория', value: `${cat.icon} ${cat.label}` },
@@ -269,7 +461,7 @@ function CashDetailSheet({ request, onClose, onConfirm }) {
   ].filter(Boolean);
 
   return (
-    <BottomSheet open={!!request} onClose={onClose} title={r.purpose || `Заявка #${r.id}`}>
+    <BottomSheet open={!!item} onClose={onClose} title={r.purpose || `Заявка #${r.id}`}>
       <div className="flex flex-col gap-3 pb-4">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-tertiary)' }}>
@@ -280,6 +472,17 @@ function CashDetailSheet({ request, onClose, onConfirm }) {
             style={{ background: `color-mix(in srgb, ${st.color} 14%, transparent)`, color: st.color }}
           >
             {st.label}
+          </span>
+          <span
+            className="px-3 py-1.5 rounded-full text-[13px] font-semibold inline-block ml-2"
+            style={{
+              background: isHandover
+                ? 'color-mix(in srgb, var(--green) 14%, transparent)'
+                : 'color-mix(in srgb, var(--blue) 14%, transparent)',
+              color: isHandover ? 'var(--green)' : 'var(--blue)',
+            }}
+          >
+            {isHandover ? '💵 От СЗ' : '🏦 Касса'}
           </span>
           {r.use_se_payee && (
             <span
@@ -311,7 +514,7 @@ function CashDetailSheet({ request, onClose, onConfirm }) {
           ))}
         </div>
 
-        {r.status === 'money_issued' && (
+        {r.status === 'money_issued' && !isHandover && (
           <button
             onClick={() => onConfirm(r.id)}
             className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-semibold text-[15px] spring-tap"
@@ -321,6 +524,288 @@ function CashDetailSheet({ request, onClose, onConfirm }) {
             Подтвердить получение
           </button>
         )}
+      </div>
+    </BottomSheet>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   ReceiveFromSeSheet — PM фиксирует получение нала от СЗ
+   POST /handovers/manual { worker_id, work_id?, amount, year, month, note? }
+   ══════════════════════════════════════════════════════════════ */
+function ReceiveFromSeSheet({ open, onClose, onCreated }) {
+  const haptic = useHaptic();
+  const now = new Date();
+  const [worker,      setWorker]      = useState(null);
+  const [workerQuery, setWorkerQuery] = useState('');
+  const [candidates,  setCandidates]  = useState([]);
+  const [amount,      setAmount]      = useState('');
+  const [year,        setYear]        = useState(now.getFullYear());
+  const [month,       setMonth]       = useState(now.getMonth() + 1);
+  const [workId,      setWorkId]      = useState('');
+  const [works,       setWorks]       = useState([]);
+  const [note,        setNote]        = useState('');
+  const [warning,     setWarning]     = useState(null);
+  const [pendingHint, setPendingHint] = useState(null);
+  const [saving,      setSaving]      = useState(false);
+
+  const reset = () => {
+    setWorker(null); setWorkerQuery(''); setCandidates([]);
+    setAmount(''); setNote(''); setWorkId(''); setWarning(null); setPendingHint(null);
+    setYear(now.getFullYear()); setMonth(now.getMonth() + 1);
+  };
+
+  /* SE-employees autocomplete */
+  useEffect(() => {
+    if (!open) return;
+    if (!workerQuery.trim() || workerQuery.trim().length < 2) { setCandidates([]); return; }
+    let cancel = false;
+    const t = setTimeout(async () => {
+      try {
+        const res  = await api.get(`/employees?se=1&q=${encodeURIComponent(workerQuery)}`);
+        const rows = api.extractRows(res);
+        if (!cancel) setCandidates(rows.slice(0, 8));
+      } catch {
+        if (!cancel) setCandidates([]);
+      }
+    }, 250);
+    return () => { cancel = true; clearTimeout(t); };
+  }, [workerQuery, open]);
+
+  /* Загрузка списка моих работ (для опционального work_id) */
+  useEffect(() => {
+    if (!open) return;
+    (async () => {
+      try {
+        const res = await api.get('/works?mine=1');
+        const rows = api.extractRows(res) || [];
+        setWorks(rows.slice(0, 50));
+      } catch { setWorks([]); }
+    })();
+  }, [open]);
+
+  /* Проверка pending handover на выбранного СЗ */
+  useEffect(() => {
+    if (!worker) { setPendingHint(null); return; }
+    let cancel = false;
+    (async () => {
+      try {
+        const res = await api.get(`/handovers?worker_id=${worker.id}&status=pending&year=${year}&month=${month}`);
+        const rows = api.extractRows(res) || [];
+        if (cancel) return;
+        if (rows.length > 0) {
+          const total = rows.reduce((s, r) => s + (Number(r.expected_amount) || 0), 0);
+          setPendingHint({
+            count: rows.length,
+            total,
+            id: rows[0].id,
+          });
+        } else {
+          setPendingHint(null);
+        }
+      } catch {
+        if (!cancel) setPendingHint(null);
+      }
+    })();
+    return () => { cancel = true; };
+  }, [worker, year, month]);
+
+  const canSubmit = useMemo(() => {
+    if (!worker) return false;
+    if (!amount || Number(amount) <= 0) return false;
+    if (!Number.isFinite(Number(year)) || !Number.isFinite(Number(month))) return false;
+    return true;
+  }, [worker, amount, year, month]);
+
+  const handleSubmit = async () => {
+    if (!canSubmit) return;
+    haptic.medium();
+    setSaving(true);
+    setWarning(null);
+    try {
+      const payload = {
+        worker_id: worker.id,
+        amount: Number(amount),
+        year: Number(year),
+        month: Number(month),
+        ...(workId ? { work_id: Number(workId) } : {}),
+        ...(note.trim() ? { note: note.trim() } : {}),
+      };
+      const res = await api.post('/handovers/manual', payload);
+      haptic.success();
+      if (res?.warning) {
+        setWarning(res.warning);
+        // дать пользователю прочитать варнинг 1.5 сек, потом закрыть
+        setTimeout(() => { reset(); onClose(); onCreated(); }, 1500);
+      } else {
+        reset();
+        onClose();
+        onCreated();
+      }
+    } catch (e) {
+      haptic.error();
+      window.alert('Ошибка: ' + (e.message || 'не удалось зафиксировать'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <BottomSheet open={open} onClose={onClose} title="📥 Получил нал от СЗ">
+      <div className="flex flex-col gap-3 pb-4">
+        {warning && (
+          <div className="text-[12px] px-3 py-2 rounded-lg"
+            style={{ backgroundColor: 'color-mix(in srgb, var(--gold) 14%, transparent)', color: 'var(--gold)' }}>
+            ⚠️ {warning}
+          </div>
+        )}
+
+        {/* ── СЗ-сотрудник ──────────────────────────────────── */}
+        <div>
+          <label className="input-label">Самозанятый *</label>
+          {worker ? (
+            <div
+              className="flex items-center justify-between gap-2"
+              style={{
+                padding: '10px 14px',
+                borderRadius: 12,
+                background: 'color-mix(in srgb, var(--green) 8%, var(--bg-surface))',
+                border: '0.5px solid color-mix(in srgb, var(--green) 25%, var(--border-norse))',
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+                  {worker.fio || worker.full_name || worker.name || `#${worker.id}`}
+                </p>
+                {(worker.position || worker.role) && (
+                  <p style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                    {worker.position || worker.role}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => { setWorker(null); setWorkerQuery(''); setPendingHint(null); }}
+                className="spring-tap p-1"
+                style={{ color: 'var(--text-tertiary)' }}
+              >
+                <XIcon size={16} />
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="relative">
+                <Search size={14} style={{ position: 'absolute', left: 10, top: 14, color: 'var(--text-tertiary)' }} />
+                <input
+                  type="text" value={workerQuery} onChange={(e) => setWorkerQuery(e.target.value)}
+                  placeholder="ФИО самозанятого..."
+                  className="input-field"
+                  style={{ paddingLeft: 32 }}
+                />
+              </div>
+              {candidates.length > 0 && (
+                <div
+                  className="mt-1 rounded-xl overflow-hidden"
+                  style={{ border: '0.5px solid var(--border-norse)' }}
+                >
+                  {candidates.map((emp) => (
+                    <button
+                      key={emp.id}
+                      onClick={() => { haptic.light(); setWorker(emp); setCandidates([]); setWorkerQuery(''); }}
+                      className="w-full text-left spring-tap"
+                      style={{
+                        padding: '10px 14px',
+                        background: 'var(--bg-surface)',
+                        borderBottom: '0.5px solid var(--border-norse)',
+                        color: 'var(--text-primary)',
+                        fontSize: 13,
+                      }}
+                    >
+                      {emp.fio || emp.full_name || emp.name || `#${emp.id}`}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {pendingHint && (
+          <div className="text-[12px] px-3 py-2 rounded-lg"
+            style={{ backgroundColor: 'color-mix(in srgb, var(--blue) 10%, transparent)', color: 'var(--text-secondary)' }}>
+            ℹ️ У этого СЗ уже есть {pendingHint.count} pending handover (ID #{pendingHint.id}) на {formatMoney(pendingHint.total)}.
+            Если это та же передача — лучше подтвердить её. Этот ручной — отдельная запись.
+          </div>
+        )}
+
+        {/* ── Сумма ─────────────────────────────────────────── */}
+        <div>
+          <label className="input-label">Сумма (₽) *</label>
+          <input
+            type="number" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)}
+            placeholder="50 000"
+            className="input-field"
+          />
+        </div>
+
+        {/* ── Период ────────────────────────────────────────── */}
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="input-label">Год</label>
+            <input
+              type="number" inputMode="numeric" value={year} onChange={(e) => setYear(e.target.value)}
+              className="input-field"
+            />
+          </div>
+          <div>
+            <label className="input-label">Месяц</label>
+            <input
+              type="number" inputMode="numeric" min="1" max="12" value={month} onChange={(e) => setMonth(e.target.value)}
+              className="input-field"
+            />
+          </div>
+        </div>
+
+        {/* ── Работа (опционально) ──────────────────────────── */}
+        {works.length > 0 && (
+          <div>
+            <label className="input-label">Работа (опционально)</label>
+            <select
+              value={workId} onChange={(e) => setWorkId(e.target.value)}
+              className="input-field"
+            >
+              <option value="">— Без привязки —</option>
+              {works.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.work_title || w.title || `Работа #${w.id}`}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* ── Заметка ──────────────────────────────────────── */}
+        <div>
+          <label className="input-label">Заметка</label>
+          <textarea
+            value={note} onChange={(e) => setNote(e.target.value)}
+            placeholder="Передал лично 15.07.2026..."
+            rows={2}
+            className="input-field resize-none"
+          />
+        </div>
+
+        <button
+          onClick={handleSubmit}
+          disabled={!canSubmit || saving}
+          className="btn-primary spring-tap mt-1"
+          style={{
+            opacity: (!canSubmit || saving) ? 0.5 : 1,
+            background: 'linear-gradient(135deg, var(--green), var(--blue))',
+            color: 'var(--text-on-accent)',
+          }}
+        >
+          {saving ? 'Сохранение...' : '💵 Зафиксировать получение'}
+        </button>
       </div>
     </BottomSheet>
   );

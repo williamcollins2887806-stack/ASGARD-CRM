@@ -102,6 +102,11 @@ export default function ProcurementPage({ mode }) {
 
   const [view, setView] = useState(() => localStorage.getItem(VIEW_KEY) || 'kanban');
   const [filters, setFilters] = useState({ search: '', status: '' });
+  // 23.06.2026 BUG-FIX (🟡 P-22): отдельный клиентский scope-фильтр для KPI-карточек
+  // дашборда. До этого «Просрочено»/«Дедлайн <7д» оба переключали setStatus('paid'),
+  // что показывало ВСЕ оплаченные — пользователь не видел собственно просроченных.
+  // Теперь храним id'шники из dashboard.overdue/upcoming и фильтруем items по ним.
+  const [dashScope, setDashScope] = useState(null); // 'overdue' | 'upcoming' | null
   // G-11: debounce 300мс — без него каждый символ /api/procurement?search=… запрос на сервер.
   const dSearch = useDebounce(filters.search, 300);
   const [sort, setSort] = useState({ key: 'id', dir: -1 });
@@ -190,6 +195,19 @@ export default function ProcurementPage({ mode }) {
   const setSearch = (q) => setFilters((s) => ({ ...s, search: q }));
   const setStatus = (st) => setFilters((s) => ({ ...s, status: st }));
 
+  // 23.06.2026 BUG-FIX (🟡 P-22): фильтруем items по выбранному scope (overdue/upcoming)
+  // используя списки id'шников из dashboard. Когда пользователь меняет статус-фильтр или
+  // переключает вид/сортировку — scope сбрасывается через клики выше.
+  const scopeIdSet = useMemo(() => {
+    if (!dashScope || !dashboard) return null;
+    const rows = (dashScope === 'overdue' ? dashboard.overdue : dashboard.upcoming) || [];
+    return new Set(rows.map((r) => r.id));
+  }, [dashScope, dashboard]);
+  const displayItems = useMemo(() => {
+    if (!scopeIdSet) return items;
+    return items.filter((it) => scopeIdSet.has(it.id));
+  }, [items, scopeIdSet]);
+
   const onOpen = (row) => {
     openDetailModal(modal, row.id, () => window.dispatchEvent(new CustomEvent('asgard:procurement:changed')));
   };
@@ -244,8 +262,12 @@ export default function ProcurementPage({ mode }) {
         title={myMode ? 'Мои заявки на закупку' : 'Закупки'}
         subtitle={
           myMode
-            ? `${items.length} ${plural(items.length, ['заявка', 'заявки', 'заявок'])} · ваши`
-            : `${items.length} ${plural(items.length, ['заявка', 'заявки', 'заявок'])} в выборке`
+            ? `${displayItems.length} ${plural(displayItems.length, ['заявка', 'заявки', 'заявок'])} · ваши`
+            : (dashScope === 'overdue'
+                ? `${displayItems.length} ${plural(displayItems.length, ['заявка', 'заявки', 'заявок'])} · просрочены`
+                : dashScope === 'upcoming'
+                  ? `${displayItems.length} ${plural(displayItems.length, ['заявка', 'заявки', 'заявок'])} · дедлайн <7д`
+                  : `${displayItems.length} ${plural(displayItems.length, ['заявка', 'заявки', 'заявок'])} в выборке`)
         }
         actions={
           <>
@@ -270,19 +292,21 @@ export default function ProcurementPage({ mode }) {
       {/* Dashboard KPI */}
       {showDashboard && (
         <div className="proc-dash" role="group" aria-label="Сводка по статусам закупок">
-          <button type="button" className="proc-dash-card proc-dash-card--pending" onClick={() => setStatus('sent_to_proc')} aria-label={`На обработке: ${pendCnt}`}>
+          <button type="button" className="proc-dash-card proc-dash-card--pending" onClick={() => { setDashScope(null); setStatus('sent_to_proc'); }} aria-label={`На обработке: ${pendCnt}`}>
             <div className="proc-dash-card__count">{pendCnt}</div>
             <div className="proc-dash-card__label">На обработке</div>
           </button>
-          <button type="button" className="proc-dash-card proc-dash-card--overdue" onClick={() => setStatus('paid')} aria-label={`Просрочено: ${overCnt}`}>
+          {/* 23.06.2026 BUG-FIX (🟡 P-22): «Просрочено»/«Дедлайн <7д»/«Ждут доставку»
+              переключают разные scope, а не одинаковый setStatus('paid'). */}
+          <button type="button" className="proc-dash-card proc-dash-card--overdue" onClick={() => { setDashScope('overdue'); setStatus(''); }} aria-label={`Просрочено: ${overCnt}`}>
             <div className="proc-dash-card__count">{overCnt}</div>
             <div className="proc-dash-card__label">Просрочено</div>
           </button>
-          <button type="button" className="proc-dash-card proc-dash-card--upcoming" onClick={() => setStatus('paid')} aria-label={`Дедлайн менее 7 дней: ${upCnt}`}>
+          <button type="button" className="proc-dash-card proc-dash-card--upcoming" onClick={() => { setDashScope('upcoming'); setStatus(''); }} aria-label={`Дедлайн менее 7 дней: ${upCnt}`}>
             <div className="proc-dash-card__count">{upCnt}</div>
             <div className="proc-dash-card__label">Дедлайн &lt;7д</div>
           </button>
-          <button type="button" className="proc-dash-card" onClick={() => setStatus('paid')} aria-label={`Ждут доставку: ${paidCnt}`}>
+          <button type="button" className="proc-dash-card" onClick={() => { setDashScope(null); setStatus('paid'); }} aria-label={`Ждут доставку: ${paidCnt}`}>
             <div className="proc-dash-card__count">{paidCnt}</div>
             <div className="proc-dash-card__label">Ждут доставку</div>
           </button>
@@ -309,10 +333,21 @@ export default function ProcurementPage({ mode }) {
           <div className="proc-toolbar-select">
             <SelectInput
               value={filters.status}
-              onChange={setStatus}
+              onChange={(v) => { setDashScope(null); setStatus(v); }}
               options={STATUS_OPTIONS}
             />
           </div>
+        )}
+        {dashScope && (
+          <button
+            type="button"
+            className="proc-kbadge"
+            onClick={() => setDashScope(null)}
+            style={{ cursor: 'pointer', border: 'none' }}
+            title="Сбросить scope"
+          >
+            {dashScope === 'overdue' ? 'просрочено' : 'дедлайн <7д'} ✕
+          </button>
         )}
 
         <div className="proc-toolbar-search" data-searchbox="procurement">
@@ -338,10 +373,10 @@ export default function ProcurementPage({ mode }) {
           <span className="sr-only">Загружаем заявки на закупку…</span>
         </div>
       ) : view === 'kanban' ? (
-        <Kanban items={items} onOpen={onOpen} onMove={onMove} />
+        <Kanban items={displayItems} onOpen={onOpen} onMove={onMove} />
       ) : (
         <Table
-          items={items}
+          items={displayItems}
           onOpen={onOpen}
           sort={sort}
           onSortChange={(key) => setSort((s) => ({ key, dir: s.key === key ? -s.dir : -1 }))}

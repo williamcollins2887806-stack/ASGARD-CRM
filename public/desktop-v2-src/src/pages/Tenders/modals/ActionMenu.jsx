@@ -22,7 +22,10 @@ export function ActionMenuModal({ onClose, tender, onCommand }) {
     { id: 'unarchive',     label: '♻️ Из архива',                 show: s === 'Не подходит' },
     { id: 'change_author', label: '👤 Сменить автора (ADMIN)',    show: true },
     { id: 'pass_request',  label: '🔑 Создать заявку на пропуск', show: true },
-    { id: 'tmc_request',   label: '📦 Создать заявку на ТМЦ',     show: true }
+    { id: 'tmc_request',   label: '📦 Создать заявку на ТМЦ',     show: true },
+    // S-13F Stage 4 React v2 — пункт «Официальная переписка» (паритет с vanilla
+    // tenders.js:~3917). Открывает реестр переписки, отфильтрованный по тендеру.
+    { id: 'correspondence', label: '📜 Официальная переписка',   show: true }
   ];
   return (
     <MCard className="modal-sm">

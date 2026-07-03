@@ -1,3 +1,11 @@
+// 23.06.2026 FIX (🟡 P-17 → CLOSED): мобильная приёмка позиций.
+// Добавлен ReceiveSheet (множественный выбор позиций + select ячейки склада + прогресс-бар),
+// цикл PUT /api/procurement/:id/items/:itemId/deliver. Фото подтверждения пока не пишется
+// (backend /deliver принимает только {location_id}; photo — отдельный D-NN).
+// 23.06.2026 FIX (🟡 P-21 → CLOSED): item-cancel UX. Кнопка «❌ Отменить» на карточке позиции,
+// PUT /api/procurement/:id/items/:itemId body {item_status:'cancelled'} — endpoint уже умеет.
+// 23.06.2026 FIX (scroll): infinite scroll вместо hard cap limit=50. IntersectionObserver
+// на sentinel, limit=30, append. Cache-bust _t=Date.now() только на pull-to-refresh.
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useHaptic } from '@/hooks/useHaptic';
 import { api } from '@/api/client';
@@ -10,10 +18,11 @@ import AsgardSelect from '@/components/ui/AsgardSelect';
 import { formatMoney, relativeTime } from '@/lib/utils';
 import {
   ShoppingCart, Plus, ChevronRight, FileText, Copy, Send,
-  Check, Package, Truck, Sparkles,
+  Check, Package, Truck, Sparkles, X, ArrowDownToLine, Loader2,
 } from 'lucide-react';
 
 // ─── Справочник статусов ────────────────────────────────────────────────────
+// STATUS_MAP — для request-уровня (procurement_requests.status). 12 значений.
 const STATUS_MAP = {
   draft:               { label: 'Черновик',          color: 'var(--text-tertiary)' },
   sent_to_proc:        { label: 'У закупщика',        color: 'var(--blue)' },
@@ -28,6 +37,16 @@ const STATUS_MAP = {
   delivered:           { label: 'Доставлено',         color: 'var(--green)' },
   closed:              { label: 'Закрыта',            color: 'var(--text-tertiary)' },
 };
+// 23.06.2026 BUG-FIX (Procurement P-01): отдельный справочник для item-уровня
+// (procurement_items.item_status, 5 значений). Раньше item рендерился через request-STATUS_MAP,
+// поэтому из 5 статусов отображался только `delivered` (случайно совпал), остальные были пустыми.
+const ITEM_STATUS_MAP = {
+  pending:   { label: 'Не заказана',  color: 'var(--text-tertiary)' },
+  ordered:   { label: 'Заказана',     color: 'var(--blue)' },
+  shipped:   { label: 'В пути',       color: 'var(--gold)' },
+  delivered: { label: 'Доставлена',   color: 'var(--green)' },
+  cancelled: { label: 'Отменена',     color: 'var(--red-soft)' }
+};
 
 const PRIORITY_MAP = {
   low:    { label: 'Низкий',   color: 'var(--text-tertiary)' },
@@ -36,11 +55,15 @@ const PRIORITY_MAP = {
   urgent: { label: 'Очень срочно', color: 'var(--red-soft)' },
 };
 
+// 23.06.2026 BUG-FIX (🟡 P-21): добавлен чип "Частично" — статус partially_delivered у
+// мобилки был недоступен для фильтрации, кладовщик/PM не видели заявки, где приехала
+// только часть позиций.
 const FILTERS = [
-  { id: 'all',          label: 'Все' },
-  { id: 'sent_to_proc', label: 'У закупщика' },
-  { id: 'proc_responded', label: 'Ответ' },
-  { id: 'delivered',    label: 'Доставлено' },
+  { id: 'all',                 label: 'Все' },
+  { id: 'sent_to_proc',        label: 'У закупщика' },
+  { id: 'proc_responded',      label: 'Ответ' },
+  { id: 'partially_delivered', label: 'Частично' },
+  { id: 'delivered',           label: 'Доставлено' },
 ];
 
 const PM_ROLES = ['PM', 'HEAD_PM'];
@@ -74,14 +97,21 @@ async function extractInvoiceText(file) {
 }
 
 // ─── Главный экран ──────────────────────────────────────────────────────────
+// 23.06.2026 FIX (scroll): пагинация. Лимит на страницу — 30 (раньше hard cap 50).
+const PAGE_LIMIT = 30;
+
 export default function Procurement() {
   const haptic = useHaptic();
   const [requests, setRequests]     = useState([]);
   const [loading, setLoading]       = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore]       = useState(true);
+  const [offset, setOffset]         = useState(0);
   const [filter, setFilter]         = useState('all');
   const [detail, setDetail]         = useState(null); // { id } чтобы открыть детали
   const [showCreate, setShowCreate] = useState(false);
   const [userRole, setUserRole]     = useState(null);
+  const sentinelRef = useRef(null);
 
   // Получаем роль один раз
   useEffect(() => {
@@ -93,20 +123,46 @@ export default function Procurement() {
       .catch(() => {});
   }, []);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
+  // Базовый загрузчик страницы. cacheBust=true → добавляем _t=Date.now() (только pull-to-refresh).
+  // hasMore эвристика: rows.length === PAGE_LIMIT (бэкенд не отдаёт total — см. план фиксера).
+  const fetchPage = useCallback(async ({ nextOffset = 0, append = false, cacheBust = false } = {}) => {
+    if (append) setLoadingMore(true); else setLoading(true);
     try {
-      const res = await api.get('/api/procurement?limit=50');
+      const qs = `limit=${PAGE_LIMIT}&offset=${nextOffset}${cacheBust ? `&_t=${Date.now()}` : ''}`;
+      const res = await api.get(`/api/procurement?${qs}`);
       const rows = res?.items || api.extractRows(res) || [];
-      setRequests(rows);
+      setRequests((prev) => (append ? [...prev, ...rows] : rows));
+      setOffset(nextOffset + rows.length);
+      setHasMore(rows.length === PAGE_LIMIT);
     } catch {
-      setRequests([]);
+      if (!append) setRequests([]);
+      setHasMore(false);
     } finally {
-      setLoading(false);
+      if (append) setLoadingMore(false); else setLoading(false);
     }
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  // Pull-to-refresh: сбрасываем пагинацию + cache-bust.
+  const fetchData = useCallback(async () => {
+    await fetchPage({ nextOffset: 0, append: false, cacheBust: true });
+  }, [fetchPage]);
+
+  useEffect(() => { fetchPage({ nextOffset: 0, append: false, cacheBust: false }); }, [fetchPage]);
+
+  // Infinite scroll: IntersectionObserver на sentinel.
+  useEffect(() => {
+    if (!sentinelRef.current) return;
+    if (!hasMore || loading || loadingMore) return;
+    const el = sentinelRef.current;
+    const io = new IntersectionObserver((entries) => {
+      const entry = entries[0];
+      if (entry?.isIntersecting && hasMore && !loading && !loadingMore) {
+        fetchPage({ nextOffset: offset, append: true, cacheBust: false });
+      }
+    }, { rootMargin: '200px 0px' });
+    io.observe(el);
+    return () => { io.disconnect(); };
+  }, [fetchPage, offset, hasMore, loading, loadingMore]);
 
   const filtered = useMemo(() => {
     if (filter === 'all') return requests;
@@ -229,6 +285,19 @@ export default function Procurement() {
                 </button>
               );
             })}
+            {/* 23.06.2026 FIX (scroll): IntersectionObserver-target для пагинации */}
+            {hasMore && (
+              <div ref={sentinelRef} className="flex items-center justify-center py-3">
+                {loadingMore ? (
+                  <Loader2 size={18} className="animate-spin c-tertiary" />
+                ) : (
+                  <span className="text-[11px] c-tertiary">Подгружаю…</span>
+                )}
+              </div>
+            )}
+            {!hasMore && requests.length > 0 && (
+              <p className="text-center text-[11px] c-tertiary py-2">Это всё. Загружено {requests.length}.</p>
+            )}
           </div>
         )}
       </PullToRefresh>
@@ -265,6 +334,10 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
   const [invSupName, setInvSupName] = useState('');
   const [invDays, setInvDays] = useState('');
   const invFileRef = useRef(null);
+  // 23.06.2026 FIX (P-17): мобильная приёмка позиций
+  const [showReceive, setShowReceive] = useState(false);
+  // 23.06.2026 FIX (P-21): локальное отслеживание отменённых позиций (оптимистично)
+  const [cancellingId, setCancellingId] = useState(null);
 
   useEffect(() => {
     if (!request) { setFull(null); return; }
@@ -292,15 +365,71 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
   const canAddItem   = CAN_ADD_ITEM_ROLES.includes(userRole) && item.status === 'draft';
   const hasItems     = items.length > 0;
 
-  const canSend      = isPM && item.status === 'draft';
-  const canApprove   = isPM && item.status === 'proc_responded';
+  // 23.06.2026 BUG-FIX (Procurement P-03/04/05): расширены условия видимости кнопок
+  // в мобильном UI, чтобы соответствовать тому, что разрешает backend procurement.js.
+  //   - DIR тоже может отправить из draft в sent_to_proc
+  //   - PM может повторно отправить из dir_rework (заявка не «зависает»)
+  //   - PM может ответить директору из dir_question
+  const canSend      = (isPM || isDIR) && item.status === 'draft';
+  const canApprove   = isPM && (item.status === 'proc_responded' || item.status === 'dir_question');
   const canReturn    = isPM && item.status === 'proc_responded';
+  const canResend    = isPM && item.status === 'dir_rework';
   // закупщик: проставить цены + ответить РП
   const canProcRespond = isPROC && item.status === 'sent_to_proc';
   // директор: согласование с телефона (главное)
   const canDirAct    = isDIR && item.status === 'pm_approved';
   // бухгалтер: оплата
   const canMarkPaid  = isBUH && item.status === 'dir_approved';
+  // 23.06.2026 FIX (P-17): мобильная приёмка позиций. Кладовщик + PM + ADMIN, при paid/partially_delivered.
+  const isWH         = ['WAREHOUSE', 'ADMIN'].includes(userRole);
+  const canReceive   = (isWH || isPM || isDIR) &&
+                       (item.status === 'paid' || item.status === 'partially_delivered' || item.status === 'dir_approved') &&
+                       items.some((it) => it.item_status !== 'delivered' && it.item_status !== 'cancelled');
+  // 23.06.2026 FIX (P-21): item-cancel — PM + PROC + DIR (backend RBAC PUT /items/:itemId)
+  const canCancelItem = isPM || isPROC || isDIR;
+
+  // 23.06.2026 FIX (P-21): отмена позиции через существующий PUT /items/:itemId {item_status:'cancelled'}.
+  // Confirm через window.confirm, оптимистично обновляем локально + refetch.
+  const handleCancelItem = async (it) => {
+    if (!canCancelItem) return;
+    if (it.item_status === 'delivered' || it.item_status === 'cancelled') return;
+    const ok = window.confirm(`Отменить позицию «${it.name}»?\nЭто действие записывается в историю заявки.`);
+    if (!ok) return;
+    haptic.light();
+    setCancellingId(it.id);
+    // Оптимистично
+    setFull((prev) => {
+      if (!prev) return prev;
+      return { ...prev, items: (prev.items || []).map((x) => x.id === it.id ? { ...x, item_status: 'cancelled' } : x) };
+    });
+    try {
+      await api.put(`/api/procurement/${item.id}/items/${it.id}`, { item_status: 'cancelled' });
+      haptic.success();
+      const res = await api.get(`/api/procurement/${item.id}`);
+      setFull(res?.item ? res : { item: res, items: res.items || [], history: res.history || [] });
+      onRefresh();
+    } catch (err) {
+      haptic.error();
+      window.alert('Не удалось отменить позицию: ' + (err?.message || err));
+      // Откат
+      try {
+        const res = await api.get(`/api/procurement/${item.id}`);
+        setFull(res?.item ? res : { item: res, items: res.items || [], history: res.history || [] });
+      } catch {/* ignore */}
+    } finally {
+      setCancellingId(null);
+    }
+  };
+
+  // 23.06.2026 FIX (P-17): после успешной приёмки — refetch + закрыть sheet
+  const handleReceiveDone = async () => {
+    setShowReceive(false);
+    try {
+      const res = await api.get(`/api/procurement/${item.id}`);
+      setFull(res?.item ? res : { item: res, items: res.items || [], history: res.history || [] });
+    } catch {/* ignore */}
+    onRefresh();
+  };
 
   const doAction = async (endpoint, label, body) => {
     haptic.light();
@@ -447,8 +576,10 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
               </p>
               <div className="flex flex-col gap-1.5">
                 {items.map((it, i) => {
+                  // 23.06.2026 BUG-FIX (Procurement P-01): item-уровневые статусы из ITEM_STATUS_MAP,
+                  // не из STATUS_MAP (это словарь для request).
                   const itSt = it.item_status
-                    ? (STATUS_MAP[it.item_status] || null)
+                    ? (ITEM_STATUS_MAP[it.item_status] || null)
                     : null;
                   return (
                     <div
@@ -491,6 +622,20 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
                           )}
                         </div>
                       </div>
+                      {/* 23.06.2026 FIX (P-21): кнопка «Отменить позицию» */}
+                      {canCancelItem && it.item_status !== 'delivered' && it.item_status !== 'cancelled' && (
+                        <div className="flex justify-end mt-1.5">
+                          <button
+                            onClick={() => handleCancelItem(it)}
+                            disabled={cancellingId === it.id}
+                            className="spring-tap rounded-lg px-2 py-1 text-[10px] font-semibold flex items-center gap-1"
+                            style={{ background: 'rgba(255,92,92,.10)', color: 'var(--red, #ff5c5c)' }}
+                          >
+                            <X size={11} />
+                            {cancellingId === it.id ? 'Отменяю…' : 'Отменить'}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -525,7 +670,7 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
           )}
 
           {/* Действия по статусу */}
-          {(canSend || canApprove || canReturn) && (
+          {(canSend || canApprove || canReturn || canResend) && (
             <div className="flex flex-col gap-2">
               <p className="text-[11px] font-semibold uppercase tracking-wider c-tertiary">Действия</p>
               {canSend && (
@@ -536,6 +681,16 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
                 >
                   <Send size={16} />
                   {acting === 'send-to-proc' ? 'Отправляю...' : 'Отправить закупщику'}
+                </button>
+              )}
+              {canResend && (
+                <button
+                  onClick={() => doAction('send-to-proc', 'Отправить снова')}
+                  disabled={acting === 'send-to-proc'}
+                  className="btn-primary spring-tap flex items-center justify-center gap-2"
+                >
+                  <Send size={16} />
+                  {acting === 'send-to-proc' ? 'Отправляю...' : 'Отправить снова закупщику'}
                 </button>
               )}
               {canApprove && (
@@ -659,6 +814,20 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
             </div>
           )}
 
+          {/* СКЛАД/PM: Приёмка позиций (P-17) */}
+          {canReceive && (
+            <div className="flex flex-col gap-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wider c-tertiary">Приёмка</p>
+              <button
+                onClick={() => { haptic.light(); setShowReceive(true); }}
+                className="btn-primary spring-tap flex items-center justify-center gap-2"
+                style={{ background: 'var(--green)', color: '#04210d' }}
+              >
+                <ArrowDownToLine size={16} /> Принять позиции
+              </button>
+            </div>
+          )}
+
           {/* БУХГАЛТЕР: оплата */}
           {canMarkPaid && (
             <div className="flex flex-col gap-2">
@@ -771,6 +940,314 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
           )}
         </div>
       )}
+      {/* 23.06.2026 FIX (P-17): мобильная sheet-приёмка позиций */}
+      <ReceiveSheet
+        open={showReceive}
+        procId={item.id}
+        items={items}
+        onClose={() => setShowReceive(false)}
+        onDone={handleReceiveDone}
+      />
+    </BottomSheet>
+  );
+}
+
+// ─── Приёмка позиций (P-17) ────────────────────────────────────────────────
+// 23.06.2026 FIX: множественный выбор + select ячейки + прогресс-бар.
+// Эталон поведения — vanilla procurement-page.js openDeliverModal (line 453-563).
+// Endpoint: PUT /api/procurement/:id/items/:itemId/deliver body {location_id?}.
+function ReceiveSheet({ open, procId, items, onClose, onDone }) {
+  const haptic = useHaptic();
+  // Кандидаты: не доставленные и не отменённые
+  const candidates = useMemo(
+    () => (items || []).filter((it) => it.item_status !== 'delivered' && it.item_status !== 'cancelled'),
+    [items],
+  );
+  const [selected, setSelected] = useState(() => new Set());
+  const [perItemLoc, setPerItemLoc] = useState({}); // { [itemId]: location_id }
+  const [globalLoc, setGlobalLoc] = useState(''); // применяется ко всем, кто без своей ячейки
+  const [locations, setLocations] = useState([]);
+  const [locLoading, setLocLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(0); // 0..100
+  const [doneStats, setDoneStats] = useState(null); // {accepted,eqCreated,failed}
+  const [errors, setErrors] = useState([]); // [{itemId,name,err}]
+
+  // Дефолтная отметка всех при открытии
+  useEffect(() => {
+    if (!open) return;
+    setSelected(new Set(candidates.map((it) => it.id)));
+    setPerItemLoc({});
+    setGlobalLoc('');
+    setProgress(0);
+    setDoneStats(null);
+    setErrors([]);
+  }, [open, candidates]);
+
+  // Подгрузка ячеек склада (как в vanilla)
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setLocLoading(true);
+    api.get('/api/warehouse/locations?is_active=true&limit=500')
+      .then((r) => {
+        if (cancelled) return;
+        const list = r?.items || r?.rows || r?.locations || (Array.isArray(r) ? r : []) || [];
+        setLocations(Array.isArray(list) ? list : []);
+      })
+      .catch(() => { if (!cancelled) setLocations([]); })
+      .finally(() => { if (!cancelled) setLocLoading(false); });
+    return () => { cancelled = true; };
+  }, [open]);
+
+  const toggleItem = (id) => {
+    haptic.light();
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const setItemLoc = (id, locId) => {
+    setPerItemLoc((prev) => ({ ...prev, [id]: locId }));
+  };
+
+  const submit = async () => {
+    if (busy) return;
+    const ids = [...selected];
+    if (!ids.length) return;
+    setBusy(true);
+    setProgress(0);
+    setErrors([]);
+    let accepted = 0;
+    let eqCreated = 0;
+    const failed = [];
+    for (let i = 0; i < ids.length; i++) {
+      const itemId = ids[i];
+      const it = candidates.find((x) => x.id === itemId);
+      const locId = perItemLoc[itemId] || globalLoc || null;
+      const body = locId ? { location_id: parseInt(locId, 10) } : {};
+      try {
+        const r = await api.put(`/api/procurement/${procId}/items/${itemId}/deliver`, body);
+        accepted++;
+        if (r?.item?.equipment_id) eqCreated++;
+        haptic.success();
+      } catch (err) {
+        failed.push({ itemId, name: it?.name || `#${itemId}`, err: err?.message || String(err) });
+        haptic.error();
+      }
+      setProgress(Math.round(((i + 1) / ids.length) * 100));
+    }
+    setDoneStats({ accepted, eqCreated, failed: failed.length });
+    setErrors(failed);
+    setBusy(false);
+  };
+
+  const finishAndClose = () => {
+    onDone();
+  };
+
+  const allChecked = candidates.length > 0 && selected.size === candidates.length;
+  const toggleAll = () => {
+    if (allChecked) setSelected(new Set());
+    else setSelected(new Set(candidates.map((it) => it.id)));
+  };
+
+  return (
+    <BottomSheet open={open} onClose={onClose} title={`Приёмка заявки #${procId}`}>
+      <div className="flex flex-col gap-3 pb-4">
+        {!doneStats && candidates.length === 0 && (
+          <EmptyState
+            icon={Package}
+            iconColor="var(--green)"
+            iconBg="rgba(48,209,88,0.1)"
+            title="Нечего принимать"
+            description="Все позиции уже доставлены или отменены"
+          />
+        )}
+
+        {!doneStats && candidates.length > 0 && (
+          <>
+            {/* Глобальная ячейка */}
+            <div>
+              <label className="text-[11px] font-semibold uppercase tracking-wider c-tertiary mb-1 block">
+                Ячейка склада (по умолчанию)
+              </label>
+              <select
+                value={globalLoc}
+                onChange={(e) => setGlobalLoc(e.target.value)}
+                disabled={locLoading || busy}
+                className="w-full rounded-xl px-3 py-2.5 text-[13px]"
+                style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)', color: 'var(--text-primary)' }}
+              >
+                <option value="">— без ячейки —</option>
+                {locations.map((c) => (
+                  <option key={c.id} value={c.id}>{c.label || `#${c.id}`}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Выбрать всё */}
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-semibold uppercase tracking-wider c-tertiary">
+                Позиции ({selected.size} / {candidates.length})
+              </p>
+              <button
+                onClick={toggleAll}
+                disabled={busy}
+                className="text-[11px] c-blue font-semibold spring-tap"
+              >
+                {allChecked ? 'Снять все' : 'Выбрать все'}
+              </button>
+            </div>
+
+            {/* Список позиций */}
+            <div className="flex flex-col gap-1.5">
+              {candidates.map((it) => {
+                const checked = selected.has(it.id);
+                return (
+                  <div
+                    key={it.id}
+                    className="rounded-xl px-3 py-2.5 flex flex-col gap-2"
+                    style={{ background: 'var(--bg-surface-alt)', border: `0.5px solid ${checked ? 'var(--green)' : 'var(--border-norse)'}` }}
+                  >
+                    <button
+                      onClick={() => toggleItem(it.id)}
+                      disabled={busy}
+                      className="flex items-start gap-2 text-left spring-tap"
+                    >
+                      <div
+                        className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0"
+                        style={{
+                          background: checked ? 'var(--green)' : 'transparent',
+                          border: `1.5px solid ${checked ? 'var(--green)' : 'var(--border-norse)'}`,
+                          marginTop: 2,
+                        }}
+                      >
+                        {checked && <Check size={13} style={{ color: '#04210d' }} />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-medium c-primary leading-tight truncate">
+                          {it.name}
+                          {it.article ? <span className="c-tertiary text-[11px] ml-1">({it.article})</span> : null}
+                        </p>
+                        <p className="text-[11px] c-secondary mt-0.5">
+                          {it.quantity} {it.unit}
+                          {it.supplier ? <span className="c-tertiary"> · {it.supplier}</span> : null}
+                        </p>
+                      </div>
+                    </button>
+                    {/* Per-item ячейка (опц.) */}
+                    {checked && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] c-tertiary flex-shrink-0">Ячейка:</span>
+                        <select
+                          value={perItemLoc[it.id] || ''}
+                          onChange={(e) => setItemLoc(it.id, e.target.value)}
+                          disabled={busy}
+                          className="flex-1 rounded-lg px-2 py-1 text-[12px]"
+                          style={{ background: 'var(--bg-surface)', border: '0.5px solid var(--border-norse)', color: 'var(--text-primary)' }}
+                        >
+                          <option value="">{globalLoc ? `по умолчанию (${locations.find((l) => String(l.id) === String(globalLoc))?.label || '—'})` : '— без ячейки —'}</option>
+                          {locations.map((c) => (
+                            <option key={c.id} value={c.id}>{c.label || `#${c.id}`}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Прогресс-бар */}
+            {busy && (
+              <div className="rounded-xl px-3 py-2" style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <Loader2 size={14} className="animate-spin c-blue" />
+                  <span className="text-[12px] c-secondary">Принимаю… {progress}%</span>
+                </div>
+                <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--bg-surface)' }}>
+                  <div
+                    className="h-full transition-all"
+                    style={{ width: `${progress}%`, background: 'var(--green)' }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Кнопки */}
+            <div className="flex gap-2 mt-1">
+              <button
+                onClick={onClose}
+                disabled={busy}
+                className="flex-1 spring-tap rounded-xl px-3 py-2.5 text-[13px] font-semibold"
+                style={{ background: 'var(--bg-surface-alt)', color: 'var(--text-secondary)' }}
+              >
+                Отмена
+              </button>
+              <button
+                onClick={submit}
+                disabled={busy || selected.size === 0}
+                className="btn-primary flex-1 spring-tap rounded-xl px-3 py-2.5 text-[13px] font-semibold flex items-center justify-center gap-1.5"
+                style={{ background: 'var(--green)', color: '#04210d' }}
+              >
+                <ArrowDownToLine size={14} />
+                {busy ? `${progress}%` : `Принять (${selected.size})`}
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* Финал */}
+        {doneStats && (
+          <div className="flex flex-col items-center gap-3 py-4 text-center">
+            <div
+              className="w-14 h-14 rounded-full flex items-center justify-center"
+              style={{ background: 'rgba(48,209,88,0.12)' }}
+            >
+              <Check size={28} style={{ color: 'var(--green)' }} />
+            </div>
+            <div>
+              <p className="text-[16px] font-semibold c-primary">Приёмка завершена</p>
+              <p className="text-[12px] c-secondary mt-0.5">Заявка #{procId}</p>
+            </div>
+            <div className="flex gap-4">
+              <div className="text-center">
+                <p className="text-[20px] font-semibold c-green">{doneStats.accepted}</p>
+                <p className="text-[10px] c-tertiary">Принято</p>
+              </div>
+              {doneStats.eqCreated > 0 && (
+                <div className="text-center">
+                  <p className="text-[20px] font-semibold c-gold">{doneStats.eqCreated}</p>
+                  <p className="text-[10px] c-tertiary">Оборудование</p>
+                </div>
+              )}
+              {doneStats.failed > 0 && (
+                <div className="text-center">
+                  <p className="text-[20px] font-semibold" style={{ color: 'var(--red, #ff5c5c)' }}>{doneStats.failed}</p>
+                  <p className="text-[10px] c-tertiary">Ошибки</p>
+                </div>
+              )}
+            </div>
+            {errors.length > 0 && (
+              <div className="w-full rounded-xl px-3 py-2 text-left" style={{ background: 'rgba(255,92,92,.08)', border: '0.5px solid rgba(255,92,92,.25)' }}>
+                <p className="text-[11px] font-semibold mb-1" style={{ color: 'var(--red, #ff5c5c)' }}>Не приняты:</p>
+                {errors.map((e, i) => (
+                  <p key={i} className="text-[11px] c-secondary">• {e.name}: {e.err}</p>
+                ))}
+              </div>
+            )}
+            <button
+              onClick={finishAndClose}
+              className="btn-primary spring-tap rounded-xl px-6 py-2.5 text-[13px] font-semibold mt-1"
+            >
+              Готово
+            </button>
+          </div>
+        )}
+      </div>
     </BottomSheet>
   );
 }

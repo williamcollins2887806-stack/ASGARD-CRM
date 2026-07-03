@@ -22,9 +22,13 @@ export default function MyMail() {
   const [detail, setDetail] = useState(null);
   const [showCompose, setShowCompose] = useState(false);
 
+  // 23.06.2026 BUG-FIX (Mail R3, 5 уровней):
+  // 1) backend ожидает имя папки в параметре `folder=inbox|sent|drafts|...`,
+  //    а не числовой `folder_id` (parseInt('inbox') = NaN → пустой ответ).
+  // 2) Эндпоинта POST /my-mail/emails/:id/read нет — отметка прочитанным идёт через PUT /:id { is_read:true }.
   const fetchEmails = useCallback(async () => {
     setLoading(true);
-    try { const res = await api.get(`/my-mail/emails?folder_id=${folder}&limit=50`); setEmails(api.extractRows(res) || []); }
+    try { const res = await api.get(`/my-mail/emails?folder=${encodeURIComponent(folder)}&limit=50`); setEmails(api.extractRows(res) || []); }
     catch { setEmails([]); } finally { setLoading(false); }
   }, [folder]);
   useEffect(() => { fetchEmails(); }, [fetchEmails]);
@@ -33,7 +37,7 @@ export default function MyMail() {
     haptic.light();
     setDetail(email);
     if (!email.is_read && !email.seen) {
-      api.post(`/my-mail/emails/${email.id}/read`).catch(() => {});
+      api.put(`/my-mail/emails/${email.id}`, { is_read: true }).catch(() => {});
     }
   };
 
@@ -57,8 +61,11 @@ export default function MyMail() {
                   </div>
                   <p className="text-[12px] mt-0.5 truncate c-secondary">{email.from_name || email.from || '—'}</p>
                   <div className="flex items-center gap-1.5 mt-1.5">
-                    {email.attachments?.length > 0 && <Paperclip size={10} className="c-tertiary" />}
-                    {email.date && <span className="text-[10px] c-tertiary">{relativeTime(email.date)}</span>}
+                    {/* 23.06.2026 BUG-FIX (Mail R3.4): SELECT возвращает только has_attachments (boolean),
+                        списка attachments в списке писем нет — он есть только в детальном /:id. */}
+                    {(email.has_attachments || email.attachments?.length > 0) && <Paperclip size={10} className="c-tertiary" />}
+                    {/* 23.06.2026 BUG-FIX (Mail R3.3): backend отдаёт email_date, а не date. */}
+                    {(email.email_date || email.date) && <span className="text-[10px] c-tertiary">{relativeTime(email.email_date || email.date)}</span>}
                   </div>
                 </button>
               );
@@ -83,10 +90,11 @@ function EmailDetailSheet({ email, onClose }) {
             <p className="text-[13px] font-semibold c-primary">{e.from_name || e.from || '—'}</p>
             {e.to && <p className="text-[11px] c-tertiary">Кому: {e.to}</p>}
           </div>
-          {e.date && <span className="text-[10px] c-tertiary">{relativeTime(e.date)}</span>}
+          {(e.email_date || e.date) && <span className="text-[10px] c-tertiary">{relativeTime(e.email_date || e.date)}</span>}
         </div>
         <div className="rounded-xl p-3" style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}>
-          <p className="text-[13px] whitespace-pre-wrap c-primary">{e.text || e.body || e.html_text || e.preview || '—'}</p>
+          {/* 23.06.2026 BUG-FIX (Mail R3): backend поля — body_html и body_text, не body/html_text. */}
+          <p className="text-[13px] whitespace-pre-wrap c-primary">{e.body_text || e.text || e.body_html || e.body || e.html_text || e.preview || '—'}</p>
         </div>
         {e.attachments?.length > 0 && (
           <div>
@@ -115,7 +123,9 @@ function ComposeSheet({ open, onClose, onSent }) {
     if (!to.trim() || !body.trim()) return;
     haptic.light(); setSaving(true);
     try {
-      await api.post('/my-mail/send', { to: to.trim(), subject: subject || null, body: body.trim() });
+      // 23.06.2026 BUG-FIX (Mail R3.5): backend схема /send требует body_html и/или body_text,
+      // ключ `body` без html/text → 400 validation error.
+      await api.post('/my-mail/send', { to: to.trim(), subject: subject || null, body_text: body.trim(), body_html: body.trim() });
       haptic.success(); setTo(''); setSubject(''); setBody(''); onClose(); onSent();
     } catch {} setSaving(false);
   };

@@ -38,11 +38,15 @@ window.AsgardFieldTab = (function () {
   }
 
   // ── Category labels ──────────────────────────────────────────────
+  // Значения должны совпадать с field_tariff_grid.category в БД:
+  // ground, ground_hard, mlsp, special, warehouse. До 23.06.2026 в UI стояли
+  // устаревшие 'offshore'/'ground_heavy' — dropdown возвращал 0 строк
+  // для МЛСП (30 тарифов) и «Земля тяж.» (11 тарифов).
   const CATEGORIES = [
-    { value: 'offshore', label: 'МЛСП' },
-    { value: 'ground', label: 'Земля' },
-    { value: 'ground_heavy', label: 'Земля тяж.' },
-    { value: 'warehouse', label: 'Склад' },
+    { value: 'mlsp',       label: 'МЛСП' },
+    { value: 'ground',     label: 'Земля' },
+    { value: 'ground_hard',label: 'Земля тяж.' },
+    { value: 'warehouse',  label: 'Склад' },
   ];
 
   const ROLES = [
@@ -281,8 +285,12 @@ window.AsgardFieldTab = (function () {
     container.appendChild(settingsBar);
 
     // ── Crew table ──
+    // FIX 24.06 (#108, итерация 2): overflow-x:auto появляется только когда
+    // таблица реально не помещается (на узких экранах). Когда влезает —
+    // скролла нет вообще. `min-width:0` на flex/grid-родителях не критично,
+    // но добавлено для надёжности.
     const tableWrap = document.createElement('div');
-    tableWrap.style.cssText = 'overflow-x:auto;margin-bottom:16px';
+    tableWrap.style.cssText = 'overflow-x:auto;margin-bottom:16px;min-width:0';
 
     const table = document.createElement('table');
     table.style.cssText = 'width:100%;border-collapse:collapse;font-size:13px';
@@ -344,7 +352,10 @@ window.AsgardFieldTab = (function () {
     const actions = document.createElement('div');
     actions.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap';
 
-    // Add employee button
+    // Add employee button — добавляет пустую inline-строку в таблицу.
+    // FIX 24.06 (#108): юзер вернул прежний вариант — нравится больше, чем
+    // модалка. Скролл уже убран (overflow-x с tableWrap снят). Модалка
+    // openAddCrewModal оставлена в коде но не вызывается отсюда.
     const addBtn = document.createElement('button');
     addBtn.className = 'btn ghost';
     addBtn.textContent = '➕ Добавить сотрудника';
@@ -508,6 +519,188 @@ window.AsgardFieldTab = (function () {
 
       container.appendChild(depSection);
     }
+  }
+
+  // ─── Модалка: добавить сотрудника в бригаду (24.06.2026) ─────────────
+  // Раньше «➕ Добавить сотрудника» сразу дописывал пустую строку в <tbody>
+  // (с inline-селектами) — это РАЗДРАЖАЛО юзера. Теперь — нормальная модалка
+  // поверх страницы. После submit — POST /api/field/manage/projects/:id/crew
+  // тот же endpoint что и «Сохранить бригаду» (upsert) → renderCrewTab.
+  function openAddCrewModal(ctx) {
+    var work = ctx.work, user = ctx.user, settingsData = ctx.settingsData;
+    var container = ctx.container;
+    var allEmployees = ctx.allEmployees || [];
+    var filteredTariffs = ctx.filteredTariffs || [];
+    var comboTariffs = (ctx.comboTariffs || []).filter(function(t) { return t.is_combinable; });
+    var assignedIds = ctx.assignedIds || new Set();
+    var defaultPerDiem = ctx.defaultPerDiem || 0;
+    var isActive = ctx.isActive;
+
+    // Доступные = активные, не в бригаде
+    var freeEmps = allEmployees.filter(function(e) { return !assignedIds.has(Number(e.id)); });
+
+    var empOptsHtml = '<option value="">— Выберите —</option>';
+    freeEmps.forEach(function(e) {
+      var baseName = e.fio || e.full_name || ((e.last_name || '') + ' ' + (e.first_name || '')).trim() || ('ID ' + e.id);
+      var busyTag = '';
+      if (e.is_busy && e.busy_with && e.busy_with.length) {
+        var w = e.busy_with[0];
+        var endStr = w.end_date ? new Date(w.end_date).toLocaleDateString('ru-RU') : '';
+        busyTag = ' 🔴 занят (до ' + endStr + ')';
+      }
+      empOptsHtml += '<option value="' + e.id + '" data-busy="' + (e.is_busy ? '1' : '0') + '">' + esc(baseName + busyTag) + '</option>';
+    });
+
+    var tariffOptsHtml = '<option value="">— выберите —</option>';
+    filteredTariffs.forEach(function(t) {
+      tariffOptsHtml += '<option value="' + t.id + '">' + esc(t.position_name + ' (' + t.points + 'б · ' + money(t.rate_per_shift) + '₽)') + '</option>';
+    });
+
+    var comboOptsHtml = '<option value="">— Нет —</option>';
+    comboTariffs.forEach(function(t) {
+      comboOptsHtml += '<option value="' + t.id + '">' + esc(t.position_name + ' (+' + (t.points || 1) + 'б)') + '</option>';
+    });
+
+    var html = '' +
+      '<div style="padding:6px 4px 4px">' +
+        '<div id="acErr" style="display:none;background:rgba(239,68,68,0.12);border:1px solid #ef4444;color:#ef4444;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px;font-weight:600"></div>' +
+        '<label style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:14px">' +
+          'Сотрудник' +
+          '<select id="acEmp" class="inp" style="width:100%;margin-top:6px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--t1)">' + empOptsHtml + '</select>' +
+        '</label>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">' +
+          '<label style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">' +
+            'Тариф' +
+            '<select id="acTariff" class="inp" style="width:100%;margin-top:6px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--t1)">' + tariffOptsHtml + '</select>' +
+          '</label>' +
+          '<label style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">' +
+            'Совмещение' +
+            '<select id="acCombo" class="inp" style="width:100%;margin-top:6px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--t1)">' + comboOptsHtml + '</select>' +
+          '</label>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">' +
+          '<label style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">' +
+            'Роль' +
+            '<select id="acRole" class="inp" style="width:100%;margin-top:6px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--t1)">' +
+              ROLES.map(function(r) { return '<option value="' + r.value + '">' + esc(r.label) + '</option>'; }).join('') +
+            '</select>' +
+          '</label>' +
+          '<label style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">' +
+            'Смена' +
+            '<select id="acShift" class="inp" style="width:100%;margin-top:6px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--t1)">' +
+              SHIFTS.map(function(s) { return '<option value="' + s.value + '">' + esc(s.label) + '</option>'; }).join('') +
+            '</select>' +
+          '</label>' +
+          '<label style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">' +
+            'Суточные, ₽/день' +
+            '<input id="acPerDiem" type="number" min="0" step="50" class="inp" value="' + defaultPerDiem + '" style="width:100%;margin-top:6px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--t1)">' +
+          '</label>' +
+        '</div>' +
+        (freeEmps.length === 0
+          ? '<div style="padding:14px;text-align:center;color:var(--t3);font-size:13px;background:var(--bg2);border-radius:8px;margin-bottom:14px">Все доступные сотрудники уже в бригаде</div>'
+          : '') +
+        '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">' +
+          '<button class="btn ghost ac-close" type="button">Отмена</button>' +
+          '<button class="btn" id="acSubmit" type="button" style="background:linear-gradient(135deg,#D4A843,#b8922e);color:#000;font-weight:700;min-width:160px"' + (freeEmps.length === 0 ? ' disabled' : '') + '>✓ Добавить</button>' +
+        '</div>' +
+      '</div>';
+
+    AsgardUI.showModal({
+      title: '➕ Добавить в бригаду',
+      subtitle: work.work_title || ('Работа #' + work.id),
+      icon: '👥',
+      wide: true,
+      html: html
+    });
+
+    var _visOvs = document.querySelectorAll('.cr-m-overlay--visible');
+    var body = _visOvs.length ? _visOvs[_visOvs.length - 1].querySelector('[id="modalBody"]') : null;
+    if (!body) body = document.getElementById('modalBody');
+
+    function acErr(msg) {
+      var errBox = body ? body.querySelector('#acErr') : null;
+      if (errBox) {
+        errBox.textContent = '⚠ ' + msg;
+        errBox.style.display = 'block';
+        setTimeout(function() { if (errBox) errBox.style.display = 'none'; }, 5000);
+      } else {
+        toast('Ошибка', msg, 'err');
+      }
+    }
+
+    var closeBtn = body ? body.querySelector('.ac-close') : null;
+    if (closeBtn) closeBtn.addEventListener('click', function() { AsgardUI.hideModal(); });
+
+    // Предупреждение если выбрали занятого
+    var empSel = body ? body.querySelector('#acEmp') : null;
+    if (empSel) empSel.addEventListener('change', function() {
+      var opt = empSel.options[empSel.selectedIndex];
+      if (opt && opt.dataset.busy === '1') {
+        var ok = window.confirm('⚠️ Этот сотрудник уже занят на другой работе.\nНазначить всё равно?');
+        if (!ok) empSel.value = '';
+      }
+    });
+
+    var submitBtn = body ? body.querySelector('#acSubmit') : null;
+    if (submitBtn) submitBtn.addEventListener('click', async function() {
+      var empId = empSel ? parseInt(empSel.value) : 0;
+      var tariffId = parseInt((body.querySelector('#acTariff') || {}).value || '');
+      var comboId = parseInt((body.querySelector('#acCombo') || {}).value || '');
+      var role = (body.querySelector('#acRole') || {}).value || 'worker';
+      var shift = (body.querySelector('#acShift') || {}).value || 'day';
+      var perDiem = parseFloat((body.querySelector('#acPerDiem') || {}).value);
+
+      if (!empId) { acErr('Выберите сотрудника'); return; }
+      if (!tariffId) { acErr('Выберите тариф'); return; }
+      if (isNaN(perDiem) || perDiem < 0) { acErr('Некорректные суточные'); return; }
+
+      submitBtn.disabled = true;
+      var origText = submitBtn.innerHTML;
+      submitBtn.innerHTML = '⏳ Добавление…';
+      try {
+        // Если field-проект ещё не активирован — активируем с текущими настройками,
+        // иначе POST /crew упадёт (нет field_project_settings).
+        if (!isActive) {
+          await fetch('/api/field/manage/projects/' + work.id + '/activate', {
+            method: 'POST', headers: hdr(),
+            body: JSON.stringify({
+              site_category: settingsData?.site_category || 'ground',
+              per_diem: perDiem,
+              schedule_type: 'shift',
+              shift_hours: 11,
+            })
+          });
+        }
+
+        var result = await api('/projects/' + work.id + '/crew', {
+          method: 'POST',
+          body: JSON.stringify({
+            employees: [{
+              employee_id: empId,
+              field_role: role,
+              shift_type: shift,
+              tariff_id: tariffId,
+              combination_tariff_id: comboId || null,
+              per_diem: perDiem,
+            }]
+          })
+        });
+        if (result.error) {
+          acErr(result.error);
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = origText;
+          return;
+        }
+        AsgardUI.hideModal();
+        toast('Бригада', 'Сотрудник добавлен', 'ok');
+        // Перерисовываем всю вкладку — она перечитает assignments
+        renderCrewTab(container, work, user, settingsData, isActive || true);
+      } catch (err) {
+        acErr(err.message || 'Не удалось отправить запрос');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = origText;
+      }
+    });
   }
 
   // ── Add a crew row ──
@@ -936,7 +1129,14 @@ window.AsgardFieldTab = (function () {
           const statusColor = STATUS_COLORS[item.status] || '#6b7280';
           const badge = document.createElement('span');
           badge.style.cssText = `display:inline-block;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:500;background:${statusColor}22;color:${statusColor}`;
-          badge.textContent = item.status === 'confirmed' ? '✅' : item.status === 'sent' ? '📨' : item.status === 'booked' ? '📋' : '⏳';
+          // Канон field_logistics.status: pending → purchased → ready → sent.
+          // До 23.06.2026 проверялись несуществующие 'confirmed' и 'booked' (V183-канон их не пишет) —
+          // купленный билет рисовался как pending ⏳, готовый — тоже ⏳.
+          badge.textContent =
+              item.status === 'sent'      ? '📨'
+            : item.status === 'ready'     ? '📋'
+            : item.status === 'purchased' ? '✅'
+            : '⏳';
           badge.title = `${item.title || lt.short} — ${item.status}`;
           td.appendChild(badge);
 
@@ -1246,6 +1446,32 @@ window.AsgardFieldTab = (function () {
 
       try {
         const data = await api(`/projects/${work.id}/timesheet?from=${from}&to=${to}`);
+
+        // FIX (23.06.2026): если timesheet пустой (никто ещё не отмечался) —
+        // ВСЕГДА подтягиваем бригаду из /dashboard.crew и показываем пустые ячейки.
+        // 23.06.2026 update: убрал условие `&& editMode` — пустая таблица бесполезна и в view-режиме.
+        // PM/HEAD_PM откроет, увидит сотрудников × дни (все пустые), и сможет переключиться
+        // в редактор для проставления первого чекина одним кликом «+».
+        if (!data.timesheet || data.timesheet.length === 0) {
+          try {
+            const dash = await api('/projects/' + work.id + '/dashboard');
+            const crew = (dash && dash.crew) || [];
+            if (crew.length) {
+              data.timesheet = crew.map(c => ({
+                employee_id: c.employee_id,
+                fio: c.fio || c.employee_name || ('ID ' + c.employee_id),
+                days: [],
+                days_count: 0,
+                total_hours: 0,
+                total_paid_hours: 0,
+                total_earned: 0,
+                per_diem_total: 0,
+                grand_total: 0
+              }));
+            }
+          } catch (_) { /* dashboard endpoint недоступен — оставляем пустоту */ }
+        }
+
         renderTimesheetTable(tableWrap, data, from, to, editMode, work, pointValue);
       } catch (e) {
         tableWrap.innerHTML = '<div class="help" style="color:#ef4444">Ошибка загрузки табеля</div>';
@@ -1315,8 +1541,10 @@ window.AsgardFieldTab = (function () {
     const perDiem = data.per_diem_rate || 0;
     pv = pv || 500; // point_value из тарифа, fallback 500
 
-    if (!timesheet.length && !editMode) {
-      wrap.innerHTML = '<div class="help" style="text-align:center;padding:40px;color:var(--t2)">Нет данных за выбранный период</div>';
+    if (!timesheet.length) {
+      // 23.06.2026: бригада не назначена (даже в dashboard.crew пусто) — единственный
+      // оставшийся случай. Показываем подсказку с переходом к назначению бригады.
+      wrap.innerHTML = '<div class="help" style="text-align:center;padding:40px;color:var(--t2)">На проекте пока никого нет в бригаде. Сначала добавьте сотрудников через «Сборы» / «Бригада», потом возвращайтесь — табель появится автоматически.</div>';
       return;
     }
 
@@ -1383,45 +1611,62 @@ window.AsgardFieldTab = (function () {
       // Day cells — нормализуем ключи к YYYY-MM-DD (checkin.date может быть ISO timestamp)
       const dayMap = {};
       (emp.days || []).forEach(d => { dayMap[String(d.date).slice(0,10)] = d; });
+      // 25.06.2026: чужие чекины — рендерим как «занят» с tooltip, клик блокируем
+      const foreignMap = {};
+      (emp.foreign_days || []).forEach(d => { foreignMap[String(d.date).slice(0,10)] = d; });
 
       dates.forEach(d => {
         const td = document.createElement('td');
         td.style.cssText = 'padding:4px 6px;text-align:center';
         const day = dayMap[d];
+        const foreign = !day ? foreignMap[d] : null;
 
-        if (editMode) {
-          // Editable mode — show points + shift icon
+        if (day) {
+          // Свой чекин — обычный рендер.
+          // Баллы считаем из amount_earned (всегда в рублях), НЕ из day_rate:
+          // в БД day_rate местами загрязнён баллами (13/17) вместо рублей (6500/8500),
+          // из-за чего del-ние на pv давало ☀0. amount_earned консистентен (см. итог).
+          const ptsRub = parseFloat(day.amount ?? day.amount_earned ?? day.day_rate ?? 0);
+          const pts = Math.round(ptsRub / pv) || 0;
+          const si = _shiftIcon(day.shift);
+          td.innerHTML = si.icon + pts;
+          td.style.color = pts >= 18 ? '#D4A843' : pts >= 12 ? '#10b981' : pts >= 6 ? '#3b82f6' : 'var(--t2)';
+          if (si.bg) td.style.background = si.bg;
+          td.title = `${si.label} ${pts} бал. = ${money(pts * pv)} ₽` + (editMode ? '. Клик для редактирования' : '');
+          if (editMode) {
+            td.style.cursor = 'pointer';
+            td.style.border = '1px dashed var(--brd)';
+            td.style.borderRadius = '4px';
+            td.addEventListener('click', () => editCheckinCell(td, day, emp, d, work, pv));
+          }
+        } else if (foreign) {
+          // Чужой чекин — замок + tooltip с РП/работой, клик не открывает попап
+          td.textContent = '🔒';
+          td.style.color = 'var(--t3)';
+          td.style.background = 'rgba(245,158,11,0.10)';
+          td.style.opacity = '0.65';
+          td.style.cursor = 'not-allowed';
+          const pmFio = foreign.pm_fio || '—';
+          const wTitle = foreign.work_title || '—';
+          td.title = 'Занят на работе «' + wTitle + '» (РП ' + pmFio + '). Поставить чекин нельзя.';
+          if (editMode) {
+            td.addEventListener('click', () => {
+              if (window.toast) window.toast('Занят на другой работе', td.title, 'warn');
+              else alert(td.title);
+            });
+          }
+        } else if (editMode) {
+          td.textContent = '+';
           td.style.cursor = 'pointer';
           td.style.border = '1px dashed var(--brd)';
           td.style.borderRadius = '4px';
-          if (day) {
-            const pts = Math.round(parseFloat(day.day_rate || 0) / pv) || 0;
-            const si = _shiftIcon(day.shift);
-            td.innerHTML = si.icon + pts;
-            td.style.color = pts >= 18 ? '#D4A843' : pts >= 12 ? '#10b981' : '#3b82f6';
-            if (si.bg) td.style.background = si.bg;
-            td.title = `${si.label} ${pts} бал. = ${money(pts * pv)} ₽. Клик для редактирования`;
-            td.addEventListener('click', () => editCheckinCell(td, day, emp, d, work, pv));
-          } else {
-            td.textContent = '+';
-            td.style.color = 'var(--t3)';
-            td.style.opacity = '0.5';
-            td.title = 'Добавить смену';
-            td.addEventListener('click', () => addCheckinCell(td, emp, d, work, pv));
-          }
+          td.style.color = 'var(--t3)';
+          td.style.opacity = '0.5';
+          td.title = 'Добавить смену';
+          td.addEventListener('click', () => addCheckinCell(td, emp, d, work, pv));
         } else {
-          // View mode — show points + shift icon
-          if (day) {
-            const pts = Math.round(parseFloat(day.day_rate || 0) / pv) || 0;
-            const si = _shiftIcon(day.shift);
-            td.innerHTML = si.icon + pts;
-            td.style.color = pts >= 18 ? '#D4A843' : pts >= 12 ? '#10b981' : pts >= 6 ? '#3b82f6' : 'var(--t2)';
-            if (si.bg) td.style.background = si.bg;
-            td.title = `${d}: ${si.label} ${pts} бал. = ${money(pts * pv)} ₽`;
-          } else {
-            td.textContent = '—';
-            td.style.color = 'var(--t3)';
-          }
+          td.textContent = '—';
+          td.style.color = 'var(--t3)';
         }
         tr.appendChild(td);
       });
@@ -1596,7 +1841,9 @@ window.AsgardFieldTab = (function () {
 
   function editCheckinCell(td, day, emp, date, work, pv) {
     pv = pv || 500;
-    const origPts = Math.round(parseFloat(day.day_rate || 0) / pv) || 0;
+    // origPts из amount_earned (рубли), не из day_rate (местами загрязнён баллами).
+    const origRub = parseFloat(day.amount ?? day.amount_earned ?? day.day_rate ?? 0);
+    const origPts = Math.round(origRub / pv) || 0;
     const origShift = day.shift || 'day';
 
     function restore() {
@@ -2978,9 +3225,27 @@ window.AsgardFieldTab = (function () {
       wide: true,
       html: '<div style="text-align:center;padding:60px"><div style="font-size:40px;margin-bottom:12px">⏳</div><div style="color:var(--t2)">Загружаем баланс…</div></div>'
     });
-    fetch('/api/worker-payments/employee-summary?work_id=' + work.id + '&employee_id=' + employeeId, { headers: hdr() })
-      .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, status: r.status, data: j }; }); })
-      .then(function(res) {
+    // 2026-06-29 — параллельно тянем breakdown для is_officially_employed/is_self_employed
+    // (нужно для разделения способов оплаты: bank-disabled для не-штатников, self-disabled для не-СЗ).
+    // Период за текущий месяц достаточно — нам нужны только флаги, balance/operations второстепенны.
+    var _today = new Date();
+    var _pad = function(n){ return String(n).padStart(2,'0'); };
+    var _from = _today.getFullYear() + '-' + _pad(_today.getMonth()+1) + '-01';
+    var _lastDay = new Date(_today.getFullYear(), _today.getMonth()+1, 0).getDate();
+    var _to = _today.getFullYear() + '-' + _pad(_today.getMonth()+1) + '-' + _pad(_lastDay);
+    var _bdUrl = '/api/payroll-dashboard/worker/' + employeeId
+               + '/breakdown?work_id=' + work.id
+               + '&from=' + _from + '&to=' + _to;
+
+    var summaryReq = fetch('/api/worker-payments/employee-summary?work_id=' + work.id + '&employee_id=' + employeeId, { headers: hdr() })
+      .then(function(r){ return r.json().then(function(j){ return { ok: r.ok, status: r.status, data: j }; }); });
+    var breakdownReq = fetch(_bdUrl, { headers: hdr() })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .catch(function(){ return null; });
+
+    Promise.all([summaryReq, breakdownReq])
+      .then(function(arr) {
+        var res = arr[0], bd = arr[1];
         if (!res.ok) {
           var msg = (res.data && (res.data.error || res.data.details)) || ('HTTP ' + res.status);
           var errHtml = '<div style="padding:20px"><div style="background:rgba(239,68,68,0.15);border:1px solid #ef4444;color:#ef4444;padding:12px;border-radius:8px;font-size:14px">⚠ ' + esc(msg) + '</div><div style="margin-top:16px;text-align:right"><button class="btn ghost" onclick="window.AsgardUI.hideModal()">Закрыть</button></div></div>';
@@ -2988,7 +3253,11 @@ window.AsgardFieldTab = (function () {
           else { AsgardUI.hideModal(); toast('Ошибка: ' + msg, '', 'err'); }
           return;
         }
-        renderPayWorkerModal(res.data, fio, work, user, container);
+        // Слепляем флаги в summary (если bd доступен), иначе оба false → доступны только cash/transfer
+        var data = res.data || {};
+        data._is_officially_employed = !!(bd && bd.is_officially_employed);
+        data._is_self_employed       = !!(bd && bd.is_self_employed);
+        renderPayWorkerModal(data, fio, work, user, container);
       })
       .catch(function(err) {
         console.error('[pay-worker] summary error', err);
@@ -3005,6 +3274,14 @@ window.AsgardFieldTab = (function () {
     var pdColor = pd.balance < 0 ? '#3b82f6' : pd.balance > 0 ? '#f59e0b' : '#10b981';
     var salLabel = sal.balance > 0 ? 'Должны' : sal.balance < 0 ? 'Переплата' : 'Закрыто';
     var salColor = sal.balance > 0 ? '#f59e0b' : sal.balance < 0 ? '#ef4444' : '#10b981';
+
+    // 2026-06-29 — флаги для способа выплат:
+    //   штатник → доступен 🏦 bank, дефолт salary→bank
+    //   СЗ      → доступен 📱 self, дефолт salary→self
+    //   прочее  → только cash/transfer (касса РП)
+    // Флаги заполнены в openPayWorkerModal из /breakdown.
+    var isOfficial     = !!summary._is_officially_employed;
+    var isSelfEmployed = !!summary._is_self_employed;
 
     // Define inline styles via <style> tag inside modal so CSS is scoped
     var css = '<style>' +
@@ -3031,12 +3308,17 @@ window.AsgardFieldTab = (function () {
       '.pw-quick{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}' +
       '.pw-quick-btn{padding:6px 12px;background:var(--bg1,transparent);border:1px solid var(--brd);border-radius:8px;font-size:12px;color:var(--t2);cursor:pointer;font-weight:600}' +
       '.pw-quick-btn:hover{border-color:var(--gold);color:var(--gold)}' +
+      // 2026-06-29 — 4 источника денег (вместо 2):
+      // cash/transfer (касса РП), bank (компания), self (СЗ-сервис).
       '.pw-method-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}' +
-      '.pw-method{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 4px;border:2px solid var(--brd);border-radius:10px;cursor:pointer;background:var(--bg1,transparent);transition:all 0.15s}' +
-      '.pw-method:hover{border-color:var(--gold)}' +
+      '.pw-method{display:flex;flex-direction:row;align-items:center;gap:8px;padding:10px 12px;border:2px solid var(--brd);border-radius:10px;cursor:pointer;background:var(--bg1,transparent);transition:all 0.15s;text-align:left}' +
+      '.pw-method:hover:not(.is-disabled){border-color:var(--gold)}' +
       '.pw-method.is-active{border-color:var(--gold);background:rgba(212,168,67,0.12)}' +
-      '.pw-method .ic{font-size:18px;line-height:1}' +
-      '.pw-method .nm{font-size:11px;font-weight:700}' +
+      '.pw-method.is-disabled{opacity:0.45;cursor:not-allowed;background:var(--bg3, transparent)}' +
+      '.pw-method.is-disabled .nm{color:var(--t3)}' +
+      '.pw-method .ic{font-size:18px;line-height:1;flex:0 0 auto}' +
+      '.pw-method .nm{font-size:12px;font-weight:700;line-height:1.2}' +
+      '.pw-method .hint{font-size:10px;font-weight:500;color:var(--t3);line-height:1.1;margin-top:2px}' +
       '.pw-method input{position:absolute;opacity:0;pointer-events:none}' +
       '.pw-note{width:100%;padding:10px 12px;border:1px solid var(--brd);border-radius:8px;background:var(--bg1,transparent);color:var(--t1);font-size:13px;box-sizing:border-box}' +
       '.pw-note:focus{outline:none;border-color:var(--gold)}' +
@@ -3106,11 +3388,48 @@ window.AsgardFieldTab = (function () {
         '<div style="font-size:11px;color:var(--t2);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-top:4px">Сумма <span style="color:#ef4444">*</span></div>' +
         '<div class="pw-amount"><input id="pwAmount" type="number" min="0" step="100" placeholder="0"/><span class="cur">₽</span></div>' +
         '<div id="pwQuick" class="pw-quick"></div>' +
-        // Способ
-        '<div style="font-size:11px;color:var(--t2);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Способ <span style="color:#ef4444">*</span></div>' +
+        // Способ — 2026-06-29 — 4 источника:
+        // 📤 cash (Я выдал нал), 💳 transfer (Я перевёл с карты),
+        // 🏦 bank (Бухгалтерия банком — только штатные),
+        // 📱 self (СЗ-сервис — только самозанятые).
+        '<div style="font-size:11px;color:var(--t2);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Источник денег <span style="color:#ef4444">*</span></div>' +
         '<div class="pw-method-grid">' +
-          '<label class="pw-method is-active" data-method="cash"><input type="radio" name="pwMethod" value="cash" checked><span class="ic">💵</span><span class="nm">Нал</span></label>' +
-          '<label class="pw-method" data-method="transfer"><input type="radio" name="pwMethod" value="transfer"><span class="ic">🏦</span><span class="nm">Перевод</span></label>' +
+          '<label class="pw-method" data-method="cash">' +
+            '<input type="radio" name="pwMethod" value="cash">' +
+            '<span class="ic">📤</span>' +
+            '<span><span class="nm">Я выдал наличкой</span><div class="hint">из вашей кассы</div></span>' +
+          '</label>' +
+          '<label class="pw-method" data-method="transfer">' +
+            '<input type="radio" name="pwMethod" value="transfer">' +
+            '<span class="ic">💳</span>' +
+            '<span><span class="nm">Я перевёл с карты</span><div class="hint">из вашей кассы</div></span>' +
+          '</label>' +
+          (isOfficial ?
+            '<label class="pw-method" data-method="bank">' +
+              '<input type="radio" name="pwMethod" value="bank">' +
+              '<span class="ic">🏦</span>' +
+              '<span><span class="nm">Бухгалтерия через банк</span><div class="hint">безнал с р/с</div></span>' +
+            '</label>'
+            :
+            '<label class="pw-method is-disabled" data-method="bank" title="Только для штатных">' +
+              '<input type="radio" name="pwMethod" value="bank" disabled>' +
+              '<span class="ic">🏦</span>' +
+              '<span><span class="nm">Бухгалтерия через банк</span><div class="hint">только штатный</div></span>' +
+            '</label>'
+          ) +
+          (isSelfEmployed ?
+            '<label class="pw-method" data-method="self">' +
+              '<input type="radio" name="pwMethod" value="self">' +
+              '<span class="ic">📱</span>' +
+              '<span><span class="nm">Через СЗ-сервис</span><div class="hint">НПД-перевод</div></span>' +
+            '</label>'
+            :
+            '<label class="pw-method is-disabled" data-method="self" title="Только для самозанятых">' +
+              '<input type="radio" name="pwMethod" value="self" disabled>' +
+              '<span class="ic">📱</span>' +
+              '<span><span class="nm">Через СЗ-сервис</span><div class="hint">только самозанятый</div></span>' +
+            '</label>'
+          ) +
         '</div>' +
         // Коммент
         '<div style="font-size:11px;color:var(--t2);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Комментарий</div>' +
@@ -3199,7 +3518,40 @@ window.AsgardFieldTab = (function () {
       preview.style.display = 'block';
     }
 
+    // 2026-06-29 — выбор дефолтного «Источник денег» по типу выплаты
+    //   штатник + salary  → bank
+    //   СЗ      + salary  → self
+    //   любой   + bonus / per_diem / advance / penalty → cash
+    function pickDefaultMethod(type) {
+      if (!body) return 'cash';
+      var t = type || 'per_diem';
+      if (t === 'salary') {
+        if (isOfficial)     return 'bank';
+        if (isSelfEmployed) return 'self';
+        return 'cash';
+      }
+      return 'cash';
+    }
+    function applyMethodSelection(method) {
+      if (!body) return;
+      body.querySelectorAll('label.pw-method').forEach(function(l) {
+        var inp = l.querySelector('input[type="radio"]');
+        var isThis = l.getAttribute('data-method') === method;
+        if (l.classList.contains('is-disabled')) {
+          // disabled — не активируем
+          l.classList.remove('is-active');
+          if (inp) inp.checked = false;
+          return;
+        }
+        l.classList.toggle('is-active', isThis);
+        if (inp) inp.checked = isThis;
+      });
+    }
+
     if (body) {
+      // Применить дефолт сразу (тип = per_diem)
+      applyMethodSelection(pickDefaultMethod('per_diem'));
+
       // Tile activation для типа выплаты
       body.querySelectorAll('label.pw-type-tile').forEach(function(tile) {
         tile.addEventListener('click', function() {
@@ -3207,6 +3559,9 @@ window.AsgardFieldTab = (function () {
           if (inp) { inp.checked = true; inp.dispatchEvent(new Event('change', { bubbles: true })); }
           body.querySelectorAll('label.pw-type-tile').forEach(function(l) { l.classList.remove('is-active'); });
           tile.classList.add('is-active');
+          // 2026-06-29 — при смене типа подставляем правильный дефолтный способ
+          var type = inp ? inp.value : 'per_diem';
+          applyMethodSelection(pickDefaultMethod(type));
           updateQuickButtons();
           updatePreview();
         });
@@ -3214,6 +3569,8 @@ window.AsgardFieldTab = (function () {
       // Method tile activation
       body.querySelectorAll('label.pw-method').forEach(function(tile) {
         tile.addEventListener('click', function() {
+          // 2026-06-29 — кликать по disabled нельзя
+          if (tile.classList.contains('is-disabled')) return;
           var inp = tile.querySelector('input[type="radio"]');
           if (inp) { inp.checked = true; inp.dispatchEvent(new Event('change', { bubbles: true })); }
           body.querySelectorAll('label.pw-method').forEach(function(l) { l.classList.remove('is-active'); });
@@ -3244,12 +3601,12 @@ window.AsgardFieldTab = (function () {
 
       if (!amount || amount <= 0) { showInlineErr('Введите сумму'); return; }
       if (!type) { showInlineErr('Выберите тип выплаты'); return; }
-      if (!method) { showInlineErr('Выберите способ выплаты (Нал / Карта / Перевод)'); return; }
+      if (!method) { showInlineErr('Выберите источник денег (Касса / Банк / СЗ-сервис)'); return; }
 
       confirmBtn.disabled = true;
       var origText = confirmBtn.innerHTML;
       confirmBtn.innerHTML = '⏳ Обработка...';
-      console.log('[pay-worker] sending', { employee_id: summary.employee.id, work_id: work.id, type: type, amount: amount, payment_method: method });
+      if (window.ASGARD_DEBUG) console.log('[pay-worker] sending', { employee_id: summary.employee.id, work_id: work.id, type: type, amount: amount, payment_method: method });
 
       var payload = {
         employee_id: parseInt(summary.employee.id),
@@ -3291,7 +3648,7 @@ window.AsgardFieldTab = (function () {
     });
     var data;
     try { data = await resp.json(); } catch (_) { data = {}; }
-    console.log('[pay-worker] response', resp.status, data);
+    if (window.ASGARD_DEBUG) console.log('[pay-worker] response', resp.status, data);
 
     if (resp.status === 409 && data && data.requires_confirmation) {
       var lines = (data.already_paid || []).map(function (p) {
@@ -3316,7 +3673,7 @@ window.AsgardFieldTab = (function () {
         body: JSON.stringify(p2)
       });
       try { data = await resp.json(); } catch (_) { data = {}; }
-      console.log('[pay-worker] retry response', resp.status, data);
+      if (window.ASGARD_DEBUG) console.log('[pay-worker] retry response', resp.status, data);
     }
 
     if (!resp.ok) {
@@ -3329,70 +3686,130 @@ window.AsgardFieldTab = (function () {
     return data || {};
   }
 
-  // ─── Inline form: массовые суточные (рендерится внутри вкладки, не в отдельной модалке) ──
+  // ─── Модалка: массовые суточные ──────────────────────────────────────
+  // 24.06.2026: переписано на AsgardUI.showModal (раньше inline-форма).
   async function openBulkPerDiemModal(work, parentContainer, user) {
-    // Load crew
+    AsgardUI.showModal({
+      title: '🌙 Начислить суточные',
+      subtitle: 'Массовое начисление',
+      icon: '🌙',
+      wide: true,
+      fullscreen: true,
+      html: '<div style="padding:60px;text-align:center;color:var(--t2)"><div style="font-size:32px;margin-bottom:10px">⏳</div>Загружаем сотрудников…</div>'
+    });
+
+    // FIX 24.06: на закрытых/безбригадных работах dashboard.crew пустой —
+    // юзер не мог даже начислить суточные «за прошлый период». Берём crew
+    // из worker-payments/crew-all on_site (assignments ∪ checkins).
     let crewOptions = [];
     try {
-      const dash = await api('/projects/' + work.id + '/dashboard');
-      if (dash?.crew) crewOptions = dash.crew.map(c => ({ id: c.employee_id, fio: c.fio || c.employee_name || 'ID ' + c.employee_id }));
-    } catch (_) {}
+      const cr = await fetch('/api/worker-payments/project/' + work.id + '/crew-all', { headers: hdr() }).then(r => r.json());
+      const onSite = (cr?.on_site || []);
+      if (window.ASGARD_DEBUG) console.log('[bulk-per-diem] on_site loaded:', onSite.length);
+      crewOptions = onSite.map(c => ({ id: c.employee_id, fio: c.employee_name || 'ID ' + c.employee_id }));
+    } catch (e) {
+      console.warn('[bulk-per-diem] crew-all failed, fallback dashboard:', e?.message);
+      try {
+        const dash = await api('/projects/' + work.id + '/dashboard');
+        if (dash?.crew) crewOptions = dash.crew.map(c => ({ id: c.employee_id, fio: c.fio || c.employee_name || 'ID ' + c.employee_id }));
+      } catch (_) {}
+    }
 
     const today = new Date().toISOString().slice(0, 10);
 
     let checkboxesHtml = crewOptions.map(c =>
-      `<label style="display:flex;align-items:center;gap:6px;padding:4px 0">
-        <input type="checkbox" class="pd-emp-cb" value="${c.id}" checked> ${esc(c.fio)}
+      `<label style="display:flex;align-items:center;gap:8px;padding:6px 4px;cursor:pointer;border-radius:6px" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background=''">
+        <input type="checkbox" class="pd-emp-cb" value="${c.id}" checked> <span>${esc(c.fio)}</span>
       </label>`
     ).join('');
 
-    // Remove previous inline form if exists
-    parentContainer.querySelector('.pd-inline-form')?.remove();
-
-    // Insert form directly into payments tab container (no nested modal)
-    const formDiv = document.createElement('div');
-    formDiv.className = 'pd-inline-form';
-    formDiv.style.cssText = 'background:var(--bg2);border:1px solid var(--gold);border-radius:10px;padding:16px;margin:12px 0;';
-    formDiv.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <div style="font-weight:600;font-size:14px;color:var(--gold)">🌙 Начислить суточные</div>
-        <button class="pd-close" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:18px">✕</button>
-      </div>
-      <div style="font-size:13px;margin-bottom:8px">Сотрудники:</div>
-      <div style="max-height:160px;overflow-y:auto;border:1px solid var(--brd);border-radius:8px;padding:8px;margin-bottom:10px">
-        ${checkboxesHtml || '<span class="help">Нет сотрудников в бригаде</span>'}
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
-        <label style="font-size:12px">С<input id="pdFrom" type="date" class="inp" value="${today}" style="width:100%"></label>
-        <label style="font-size:12px">По<input id="pdTo" type="date" class="inp" value="${today}" style="width:100%"></label>
-        <label style="font-size:12px">₽/день<input id="pdRate" type="number" class="inp" value="1000" style="width:100%"></label>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <input id="pdComment" type="text" class="inp" style="flex:1" placeholder="Комментарий...">
-        <button id="pdSubmit" class="btn" style="background:linear-gradient(135deg,#D4A843,#b8922e);color:#000;font-weight:600;white-space:nowrap">Начислить</button>
+    const html = `
+      <div style="padding:6px 4px 4px">
+        <div id="pdErr" style="display:none;background:rgba(239,68,68,0.12);border:1px solid #ef4444;color:#ef4444;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px;font-weight:600"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">Сотрудники <span id="pdCount" style="color:var(--gold);margin-left:6px">${crewOptions.length}</span></div>
+          <div>
+            <button type="button" id="pdCheckAll" class="btn ghost" style="font-size:11px;padding:3px 10px">Все</button>
+            <button type="button" id="pdUncheckAll" class="btn ghost" style="font-size:11px;padding:3px 10px">Снять</button>
+          </div>
+        </div>
+        <div style="border:1px solid var(--brd);border-radius:8px;padding:8px 10px;margin-bottom:14px;background:var(--bg1,transparent)">
+          ${checkboxesHtml || '<div style="padding:14px;text-align:center;color:var(--t3);font-size:13px">Нет сотрудников в бригаде</div>'}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">
+          <label style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">
+            С даты
+            <input id="pdFrom" type="date" class="inp" value="${today}" style="width:100%;margin-top:6px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--t1)">
+          </label>
+          <label style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">
+            По дату
+            <input id="pdTo" type="date" class="inp" value="${today}" style="width:100%;margin-top:6px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--t1)">
+          </label>
+          <label style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">
+            ₽/день
+            <input id="pdRate" type="number" class="inp" value="1000" style="width:100%;margin-top:6px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--t1)">
+          </label>
+        </div>
+        <label style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:14px">
+          Комментарий
+          <input id="pdComment" type="text" class="inp" style="width:100%;margin-top:6px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--t1)" placeholder="Например: «За май»">
+        </label>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
+          <button class="btn ghost pd-close" type="button">Отмена</button>
+          <button class="btn" id="pdSubmit" type="button" style="background:linear-gradient(135deg,#D4A843,#b8922e);color:#000;font-weight:700;min-width:160px">🌙 Начислить</button>
+        </div>
       </div>
     `;
 
-    // Insert before the "Нет выплат" or table
-    const firstChild = parentContainer.querySelector('.fk-table, .help');
-    if (firstChild) parentContainer.insertBefore(formDiv, firstChild);
-    else parentContainer.appendChild(formDiv);
+    if (AsgardUI.replaceModal) {
+      AsgardUI.replaceModal({ title: '🌙 Начислить суточные', subtitle: 'Массовое начисление', icon: '🌙', html: html, fullscreen: true });
+    } else {
+      AsgardUI.hideModal();
+      AsgardUI.showModal({ title: '🌙 Начислить суточные', subtitle: 'Массовое начисление', icon: '🌙', wide: true, fullscreen: true, html: html });
+    }
 
-    // Close button
-    formDiv.querySelector('.pd-close').addEventListener('click', () => formDiv.remove());
+    var _visOvs = document.querySelectorAll('.cr-m-overlay--visible');
+    var body = _visOvs.length ? _visOvs[_visOvs.length - 1].querySelector('[id="modalBody"]') : null;
+    if (!body) body = document.getElementById('modalBody');
 
-    // Submit
-    formDiv.querySelector('#pdSubmit').addEventListener('click', async () => {
-      const empIds = Array.from(formDiv.querySelectorAll('.pd-emp-cb:checked')).map(cb => parseInt(cb.value));
-      const from = formDiv.querySelector('#pdFrom').value;
-      const to = formDiv.querySelector('#pdTo').value;
-      const rate = parseFloat(formDiv.querySelector('#pdRate').value);
-      const comment = formDiv.querySelector('#pdComment').value.trim();
+    function pdErr(msg) {
+      var errBox = body ? body.querySelector('#pdErr') : null;
+      if (errBox) {
+        errBox.textContent = '⚠ ' + msg;
+        errBox.style.display = 'block';
+        setTimeout(function() { if (errBox) errBox.style.display = 'none'; }, 5000);
+      } else {
+        toast('Ошибка', msg, 'err');
+      }
+    }
 
-      if (empIds.length === 0) { toast('Выберите сотрудников'); return; }
-      if (!from || !to) { toast('Укажите период'); return; }
-      if (!rate || rate <= 0) { toast('Укажите ставку'); return; }
+    var closeBtn = body ? body.querySelector('.pd-close') : null;
+    if (closeBtn) closeBtn.addEventListener('click', function() { AsgardUI.hideModal(); });
 
+    var checkAllBtn = body ? body.querySelector('#pdCheckAll') : null;
+    if (checkAllBtn) checkAllBtn.addEventListener('click', function() {
+      body.querySelectorAll('.pd-emp-cb').forEach(function(cb) { cb.checked = true; });
+    });
+    var uncheckAllBtn = body ? body.querySelector('#pdUncheckAll') : null;
+    if (uncheckAllBtn) uncheckAllBtn.addEventListener('click', function() {
+      body.querySelectorAll('.pd-emp-cb').forEach(function(cb) { cb.checked = false; });
+    });
+
+    var submitBtn = body ? body.querySelector('#pdSubmit') : null;
+    if (submitBtn) submitBtn.addEventListener('click', async function() {
+      const empIds = Array.from(body.querySelectorAll('.pd-emp-cb:checked')).map(cb => parseInt(cb.value));
+      const from = (body.querySelector('#pdFrom') || {}).value;
+      const to = (body.querySelector('#pdTo') || {}).value;
+      const rate = parseFloat((body.querySelector('#pdRate') || {}).value);
+      const comment = ((body.querySelector('#pdComment') || {}).value || '').trim();
+
+      if (empIds.length === 0) { pdErr('Выберите сотрудников'); return; }
+      if (!from || !to) { pdErr('Укажите период'); return; }
+      if (!rate || rate <= 0) { pdErr('Укажите ставку'); return; }
+
+      submitBtn.disabled = true;
+      var origText = submitBtn.innerHTML;
+      submitBtn.innerHTML = '⏳ Начисление…';
       try {
         const result = await apiPayments('/bulk-per-diem', {
           method: 'POST',
@@ -3402,117 +3819,266 @@ window.AsgardFieldTab = (function () {
             rate_per_day: rate, comment: comment || null
           })
         });
-        if (result.error) { toast('Ошибка', result.error, 'err'); return; }
+        if (result.error) {
+          pdErr(result.error);
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = origText;
+          return;
+        }
+        AsgardUI.hideModal();
         toast('Суточные', `Начислено: ${result.count} чел.`, 'ok');
-        formDiv.remove();
         renderPaymentsTab(parentContainer, work, user);
-      } catch (err) { toast('Ошибка', err.message, 'err'); }
+      } catch (err) {
+        pdErr(err.message || 'Не удалось отправить запрос');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = origText;
+      }
     });
   }
 
-  // ─── Inline form: одиночная выплата (аванс/премия/удержание) ─────────
+  // ─── Модалка: одиночная выплата (аванс/премия/удержание) ─────────────
+  // 24.06.2026: переписано на AsgardUI.showModal — раньше inline-форма
+  // вставлялась поверх таблицы и давала вложенный скролл, юзеру не нравилось.
   async function openSinglePaymentModal(work, parentContainer, user, type) {
     const typeLabel = { advance: 'Аванс', bonus: 'Премия', penalty: 'Удержание' }[type] || type;
     const typeIcon = { advance: '💸', bonus: '🎁', penalty: '⚠️' }[type] || '💳';
 
-    parentContainer.querySelector('.sp-inline-form')?.remove();
+    // Показываем модалку-плейсхолдер, потом replaceModal с готовой формой
+    AsgardUI.showModal({
+      title: typeIcon + ' ' + typeLabel,
+      subtitle: 'Создание выплаты',
+      icon: typeIcon,
+      wide: true,
+      fullscreen: true,
+      html: '<div style="padding:60px;text-align:center;color:var(--t2)"><div style="font-size:32px;margin-bottom:10px">⏳</div>Загружаем сотрудников…</div>'
+    });
 
+    // FIX 24.06 v2: используем родные группы CRSelect ({group,items}) вместо
+    // плоского массива с disabled-заголовками — иначе на некоторых сборках
+    // селект рендерил пустой список. on_site = assignments ∪ checkins, others
+    // = все остальные активные сотрудники компании.
     let crewOpts = [];
     try {
-      const dash = await api('/projects/' + work.id + '/dashboard');
-      if (dash?.crew) crewOpts = dash.crew.map(c => ({ value: String(c.employee_id), label: c.fio || c.employee_name || 'ID ' + c.employee_id }));
-    } catch (_) {}
+      const cr = await fetch('/api/worker-payments/project/' + work.id + '/crew-all', { headers: hdr() }).then(r => r.json());
+      const onSite = (cr?.on_site || []).map(c => ({ value: String(c.employee_id), label: c.employee_name || 'ID ' + c.employee_id }));
+      const others = (cr?.others  || []).map(c => ({ value: String(c.employee_id), label: c.employee_name || 'ID ' + c.employee_id }));
+      if (window.ASGARD_DEBUG) console.log('[pay-single] crew-all loaded: on_site=' + onSite.length + ' others=' + others.length);
+      if (onSite.length && others.length) {
+        crewOpts = [
+          { group: 'На объекте', items: onSite },
+          { group: 'Прочие сотрудники', items: others }
+        ];
+      } else if (onSite.length || others.length) {
+        // Если есть только одна группа — отдаём её плоским массивом
+        crewOpts = onSite.length ? onSite : others;
+      }
+    } catch (e) {
+      console.warn('[pay-single] crew-all failed, fallback to dashboard.crew:', e?.message);
+      try {
+        const dash = await api('/projects/' + work.id + '/dashboard');
+        if (dash?.crew) crewOpts = dash.crew.map(c => ({ value: String(c.employee_id), label: c.fio || c.employee_name || 'ID ' + c.employee_id }));
+      } catch (_) {}
+    }
+    if (!crewOpts || (Array.isArray(crewOpts) && crewOpts.length === 0)) {
+      console.warn('[pay-single] crewOpts is empty after all fallbacks!');
+    }
 
-    const formDiv = document.createElement('div');
-    formDiv.className = 'sp-inline-form';
-    formDiv.style.cssText = 'background:var(--bg2);border:1px solid var(--brd);border-radius:10px;padding:16px;margin:12px 0;';
-    formDiv.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <div style="font-weight:600;font-size:14px">${typeIcon} ${esc(typeLabel)}</div>
-        <button class="sp-close" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:18px">✕</button>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
-        <label style="font-size:12px">Сотрудник<div id="spEmpWrap" style="width:100%"></div></label>
-        <label style="font-size:12px">Сумма, ₽<input id="spAmount" type="number" step="0.01" class="inp" style="width:100%" placeholder="10000"></label>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <input id="spComment" type="text" class="inp" style="flex:1" placeholder="Комментарий...">
-        <button id="spSubmit" class="btn" style="background:linear-gradient(135deg,#D4A843,#b8922e);color:#000;font-weight:600;white-space:nowrap">Создать</button>
+    // Собираем нативный <select> с <optgroup> (FIX 24.06 v3:
+    // CRSelect молча падал на некоторых сборках, нативный select надёжнее.)
+    var optsHtml = '<option value="">— Выберите —</option>';
+    var renderOpt = function (o) {
+      return '<option value="' + esc(String(o.value)) + '">' + esc(o.label) + '</option>';
+    };
+    if (Array.isArray(crewOpts) && crewOpts.length > 0 && crewOpts[0] && crewOpts[0].group) {
+      for (var i = 0; i < crewOpts.length; i++) {
+        var g = crewOpts[i];
+        optsHtml += '<optgroup label="' + esc(g.group) + '">';
+        for (var j = 0; j < (g.items || []).length; j++) {
+          optsHtml += renderOpt(g.items[j]);
+        }
+        optsHtml += '</optgroup>';
+      }
+    } else if (Array.isArray(crewOpts)) {
+      for (var k = 0; k < crewOpts.length; k++) {
+        optsHtml += renderOpt(crewOpts[k]);
+      }
+    }
+
+    const html = `
+      <div style="padding:6px 4px 4px">
+        <div id="spErr" style="display:none;background:rgba(239,68,68,0.12);border:1px solid #ef4444;color:#ef4444;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px;font-weight:600"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+          <label style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">
+            Сотрудник
+            <select id="spEmp" class="inp" style="width:100%;margin-top:6px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--t1)">${optsHtml}</select>
+          </label>
+          <label style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">
+            Сумма, ₽
+            <input id="spAmount" type="number" step="0.01" class="inp" style="width:100%;margin-top:6px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--t1)" placeholder="10000">
+          </label>
+        </div>
+        <label style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:14px">
+          Комментарий
+          <input id="spComment" type="text" class="inp" style="width:100%;margin-top:6px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--t1)" placeholder="Например: «За май, выдано на руки»">
+        </label>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
+          <button class="btn ghost sp-close" type="button">Отмена</button>
+          <button class="btn" id="spSubmit" type="button" style="background:linear-gradient(135deg,#D4A843,#b8922e);color:#000;font-weight:700;min-width:140px">${typeIcon} Создать</button>
+        </div>
       </div>
     `;
 
-    const firstChild = parentContainer.querySelector('.fk-table, .help');
-    if (firstChild) parentContainer.insertBefore(formDiv, firstChild);
-    else parentContainer.appendChild(formDiv);
-
-    // Employee selector
-    const wrap = formDiv.querySelector('#spEmpWrap');
-    if (wrap && window.CRSelect) {
-      wrap.appendChild(CRSelect.create({ id: 'spEmp', options: crewOpts, placeholder: '— Выберите —', fullWidth: true }));
+    if (AsgardUI.replaceModal) {
+      AsgardUI.replaceModal({ title: typeIcon + ' ' + typeLabel, subtitle: 'Создание выплаты', icon: typeIcon, html: html, fullscreen: true });
+    } else {
+      AsgardUI.hideModal();
+      AsgardUI.showModal({ title: typeIcon + ' ' + typeLabel, subtitle: 'Создание выплаты', icon: typeIcon, wide: true, fullscreen: true, html: html });
     }
 
-    formDiv.querySelector('.sp-close').addEventListener('click', () => { try { CRSelect.destroy('spEmp'); } catch(_){} formDiv.remove(); });
+    // Field-tab сам внутри модалки — getElementById вернёт первый matching.
+    // Берём топ overlay явно.
+    var _visOvs = document.querySelectorAll('.cr-m-overlay--visible');
+    var body = _visOvs.length ? _visOvs[_visOvs.length - 1].querySelector('[id="modalBody"]') : null;
+    if (!body) body = document.getElementById('modalBody');
 
-    formDiv.querySelector('#spSubmit').addEventListener('click', async () => {
-      const empId = window.CRSelect ? CRSelect.getValue('spEmp') : '';
-      const amount = parseFloat(formDiv.querySelector('#spAmount').value);
-      const comment = formDiv.querySelector('#spComment').value.trim();
-      if (!empId) { toast('Выберите сотрудника'); return; }
-      if (!amount || amount <= 0) { toast('Укажите сумму'); return; }
+    function spErr(msg) {
+      var errBox = body ? body.querySelector('#spErr') : null;
+      if (errBox) {
+        errBox.textContent = '⚠ ' + msg;
+        errBox.style.display = 'block';
+        setTimeout(function() { if (errBox) errBox.style.display = 'none'; }, 5000);
+      } else {
+        toast('Ошибка', msg, 'err');
+      }
+    }
+
+    var closeBtn = body ? body.querySelector('.sp-close') : null;
+    if (closeBtn) closeBtn.addEventListener('click', function() { AsgardUI.hideModal(); });
+
+    var submitBtn = body ? body.querySelector('#spSubmit') : null;
+    if (submitBtn) submitBtn.addEventListener('click', async function() {
+      const empSel = body.querySelector('#spEmp');
+      const empId = empSel ? empSel.value : '';
+      const amount = parseFloat((body.querySelector('#spAmount') || {}).value);
+      const comment = ((body.querySelector('#spComment') || {}).value || '').trim();
+      if (!empId) { spErr('Выберите сотрудника'); return; }
+      if (!amount || amount <= 0) { spErr('Укажите сумму'); return; }
+      submitBtn.disabled = true;
+      var origText = submitBtn.innerHTML;
+      submitBtn.innerHTML = '⏳ Создание…';
       try {
-        const result = await apiPayments('/', { method: 'POST', body: JSON.stringify({ employee_id: parseInt(empId), work_id: work.id, type, amount, comment: comment || null }) });
-        if (result.error) { toast('Ошибка', result.error, 'err'); return; }
+        // payment_method обязателен (NOT NULL в БД). Аванс/Премия/Удержание
+        // здесь — по дефолту наличные; для других способов — через большую
+        // модалку «💰 Выплатить».
+        // mark_paid:true — backend сразу проставит status=paid + paid_at.
+        const result = await apiPayments('/', { method: 'POST', body: JSON.stringify({ employee_id: parseInt(empId), work_id: work.id, type, amount, payment_method: 'cash', mark_paid: true, comment: comment || null }) });
+        if (result.error) {
+          spErr(result.error);
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = origText;
+          return;
+        }
+        AsgardUI.hideModal();
         toast(typeLabel, 'Создано!', 'ok');
-        try { CRSelect.destroy('spEmp'); } catch(_){}
-        formDiv.remove();
         renderPaymentsTab(parentContainer, work, user);
-      } catch (err) { toast('Ошибка', err.message, 'err'); }
+      } catch (err) {
+        spErr(err.message || 'Не удалось отправить запрос');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = origText;
+      }
     });
   }
 
-  // ─── Inline form: генерация ведомости ЗП ─────────────────────────────
+  // ─── Модалка: генерация ведомости ЗП ─────────────────────────────────
+  // 24.06.2026: переписано на AsgardUI.showModal (раньше inline-форма).
   function openGenerateSalaryModal(work, parentContainer, user) {
     const now = new Date();
     const curMonth = now.getMonth() + 1;
     const curYear = now.getFullYear();
 
-    parentContainer.querySelector('.sal-inline-form')?.remove();
-
-    const formDiv = document.createElement('div');
-    formDiv.className = 'sal-inline-form';
-    formDiv.style.cssText = 'background:var(--bg2);border:1px solid var(--brd);border-radius:10px;padding:16px;margin:12px 0;';
-    formDiv.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <div style="font-weight:600;font-size:14px">📋 Сгенерировать ведомость ЗП</div>
-        <button class="sal-close" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:18px">✕</button>
+    const html = `
+      <div style="padding:6px 4px 4px">
+        <div id="salErr" style="display:none;background:rgba(239,68,68,0.12);border:1px solid #ef4444;color:#ef4444;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px;font-weight:600"></div>
+        <div style="font-size:13px;color:var(--t2);margin-bottom:14px;line-height:1.5">
+          Считаем зарплату по баллам за выбранный месяц: <span style="color:var(--t1);font-weight:600">баллы × ₽/балл</span>.
+          Уже выплаченные авансы вычтутся при выплате.
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">
+          <label style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">
+            Месяц
+            <input id="salMonth" type="number" min="1" max="12" class="inp" value="${curMonth}" style="width:100%;margin-top:6px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--t1)">
+          </label>
+          <label style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">
+            Год
+            <input id="salYear" type="number" min="2024" max="2099" class="inp" value="${curYear}" style="width:100%;margin-top:6px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--t1)">
+          </label>
+          <label style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">
+            ₽ / балл
+            <input id="salPointVal" type="number" class="inp" value="500" style="width:100%;margin-top:6px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--t1)">
+          </label>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
+          <button class="btn ghost sal-close" type="button">Отмена</button>
+          <button class="btn" id="salSubmit" type="button" style="background:linear-gradient(135deg,#D4A843,#b8922e);color:#000;font-weight:700;min-width:170px">📋 Сгенерировать</button>
+        </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
-        <label style="font-size:12px">Месяц<input id="salMonth" type="number" min="1" max="12" class="inp" value="${curMonth}" style="width:100%"></label>
-        <label style="font-size:12px">Год<input id="salYear" type="number" min="2024" max="2099" class="inp" value="${curYear}" style="width:100%"></label>
-        <label style="font-size:12px">₽/балл<input id="salPointVal" type="number" class="inp" value="500" style="width:100%"></label>
-      </div>
-      <button id="salSubmit" class="btn" style="background:linear-gradient(135deg,#D4A843,#b8922e);color:#000;font-weight:600">Сгенерировать</button>
     `;
 
-    const firstChild = parentContainer.querySelector('.fk-table, .help');
-    if (firstChild) parentContainer.insertBefore(formDiv, firstChild);
-    else parentContainer.appendChild(formDiv);
+    AsgardUI.showModal({
+      title: '📋 Ведомость ЗП',
+      subtitle: 'Генерация по баллам',
+      icon: '📋',
+      wide: true,
+      fullscreen: true,
+      html: html
+    });
 
-    formDiv.querySelector('.sal-close').addEventListener('click', () => formDiv.remove());
+    var _visOvs = document.querySelectorAll('.cr-m-overlay--visible');
+    var body = _visOvs.length ? _visOvs[_visOvs.length - 1].querySelector('[id="modalBody"]') : null;
+    if (!body) body = document.getElementById('modalBody');
 
-    formDiv.querySelector('#salSubmit').addEventListener('click', async () => {
-      const month = parseInt(formDiv.querySelector('#salMonth').value);
-      const year = parseInt(formDiv.querySelector('#salYear').value);
-      const pv = parseFloat(formDiv.querySelector('#salPointVal').value);
-      if (!month || month < 1 || month > 12) { toast('Некорректный месяц'); return; }
-      if (!year) { toast('Некорректный год'); return; }
+    function salErr(msg) {
+      var errBox = body ? body.querySelector('#salErr') : null;
+      if (errBox) {
+        errBox.textContent = '⚠ ' + msg;
+        errBox.style.display = 'block';
+        setTimeout(function() { if (errBox) errBox.style.display = 'none'; }, 5000);
+      } else {
+        toast('Ошибка', msg, 'err');
+      }
+    }
+
+    var closeBtn = body ? body.querySelector('.sal-close') : null;
+    if (closeBtn) closeBtn.addEventListener('click', function() { AsgardUI.hideModal(); });
+
+    var submitBtn = body ? body.querySelector('#salSubmit') : null;
+    if (submitBtn) submitBtn.addEventListener('click', async function() {
+      const month = parseInt((body.querySelector('#salMonth') || {}).value);
+      const year = parseInt((body.querySelector('#salYear') || {}).value);
+      const pv = parseFloat((body.querySelector('#salPointVal') || {}).value);
+      if (!month || month < 1 || month > 12) { salErr('Некорректный месяц'); return; }
+      if (!year) { salErr('Некорректный год'); return; }
+      if (!pv || pv <= 0) { salErr('Укажите ₽/балл'); return; }
+
+      submitBtn.disabled = true;
+      var origText = submitBtn.innerHTML;
+      submitBtn.innerHTML = '⏳ Генерация…';
       try {
         const result = await apiPayments(`/generate-salary/${year}/${month}`, { method: 'POST', body: JSON.stringify({ point_value: pv, work_id: work.id }) });
-        if (result.error) { toast('Ошибка', result.error, 'err'); return; }
+        if (result.error) {
+          salErr(result.error);
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = origText;
+          return;
+        }
+        AsgardUI.hideModal();
         toast('Ведомость', `${result.count} чел. по ${pv}₽/балл`, 'ok');
-        formDiv.remove();
         renderPaymentsTab(parentContainer, work, user);
-      } catch (err) { toast('Ошибка', err.message, 'err'); }
+      } catch (err) {
+        salErr(err.message || 'Не удалось отправить запрос');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = origText;
+      }
     });
   }
 

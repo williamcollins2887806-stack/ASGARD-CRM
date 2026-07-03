@@ -91,6 +91,8 @@ export default function AddWorkerModal({ workId, year, month, mode = 'pm', onAdd
     setBusy(true);
     try {
       // Инсертим сегодняшний день (если в текущем месяце) ИЛИ 1-е число выбранного.
+      // V255: для medical-моды дефолтим в 'medical' — «Корабль» юзер ставит точечно
+      // через клетку (один клик → CellEditor → выбор medical/ship).
       const typeByMode = {
         pm: 'day',
         warehouse: 'warehouse',

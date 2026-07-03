@@ -91,6 +91,10 @@ window.AsgardCustomersPage = (function(){
       return; 
     }
     
+    // customers PK = inn (не id). AsgardDB.put шлёт PUT по val.id, если он есть.
+    // Без delete out.id ушёл бы PUT /api/data/customers/<id> → backend WHERE inn=<id> → 404.
+    // Без id уходит POST → UPSERT с ON CONFLICT(inn) — корректный путь для customers.
+    delete out.id;
     await AsgardDB.put("customers", out);
     return inn;
   }

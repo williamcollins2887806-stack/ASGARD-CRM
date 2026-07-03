@@ -136,8 +136,8 @@
   font-weight: 700;
 }
 
-.corr-dir-pill.tone-info { background: rgba(59,130,246,.13); color: var(--info); }
-.corr-dir-pill.tone-ok   { background: rgba(34,197,94,.13);  color: var(--ok); }
+.corr-dir-pill.tone-info { background: var(--info-bg, rgba(59,130,246,.13)); color: var(--info); }
+.corr-dir-pill.tone-ok   { background: var(--ok-bg, rgba(34,197,94,.13));  color: var(--ok); }
 
 .corr-number {
   font-family: ui-monospace, monospace;
@@ -264,3 +264,131 @@
   .corr-form-grid .span-2 { grid-column: 1; }
   .corr-kv { grid-template-columns: 1fr; gap: 2px 0; }
 }
+
+/* ─────────────────────── V252: signing_status pill ─────────────────────── */
+/* 3 цвета через токены тем — никакого хардкода #fff/#000.
+   Светлая/тёмная — обе ветки уже отдают --info-bg/--ok-bg/--muted-bg и --t-* парные.
+   --muted-bg на отдельных темах может отсутствовать — fallback на полупрозрачный --muted. */
+.corr-sstatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: var(--r-xs);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.corr-sstatus.tone-muted {
+  background: var(--muted-bg, rgba(148, 163, 184, .14));
+  color: var(--muted, var(--t-3));
+}
+
+.corr-sstatus.tone-info {
+  background: var(--info-bg);
+  color: var(--info, var(--info-t));
+}
+
+.corr-sstatus.tone-ok {
+  background: var(--ok-bg);
+  color: var(--ok, var(--ok-t));
+}
+
+/* ─────────────────────── V252: letter_kind chip ─────────────────────── */
+.corr-kind-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--r-xs);
+  background: var(--gold-bg);
+  color: var(--gold);
+  font-size: 11px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+/* ─────────────────────── V252: version chip ─────────────────────── */
+.corr-version {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: var(--r-xs);
+  background: var(--info-bg);
+  color: var(--info, var(--info-t));
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  margin-left: 6px;
+  font-family: ui-monospace, monospace;
+}
+
+.corr-number--placeholder {
+  background: var(--muted-bg, rgba(148, 163, 184, .14));
+  color: var(--muted, var(--t-3));
+  font-style: italic;
+  font-weight: 600;
+}
+
+/* ─────────────────────── Banner редакции внутри ViewModal ─────────────────────── */
+.corr-revision-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--info-bg);
+  color: var(--info, var(--info-t));
+  border-radius: var(--r-sm);
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+/* ─────────────────────── Кнопки скачивания PDF/Word ─────────────────────── */
+.corr-dl-btns {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--inner-bg);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--brd-2);
+}
+
+/* ─────────────────────── Badge фильтра по родительской сущности ─────────────────────── */
+.corr-parent-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: var(--info-bg);
+  color: var(--info, var(--info-t));
+  border-radius: var(--r-md);
+  font-size: 13px;
+  align-self: flex-start;
+}
+
+.corr-parent-badge__icon {
+  font-size: 16px;
+}
+
+.corr-parent-badge__close {
+  background: none;
+  border: 0;
+  color: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 4px;
+  opacity: .65;
+  transition: opacity .15s;
+}
+
+.corr-parent-badge__close:hover {
+  opacity: 1;
+}
+
+/* tone-muted для KPI-карточки «Черновики» */
+.corr-kpi-value.tone-muted { color: var(--muted, var(--t-3)); }
+
+/* Ширины колонок (для новой колонки «Статус» + расширенный actions) */
+.corr-table th.w-150 { width: 150px; }
+.corr-table th.w-160 { width: 160px; }
+.corr-table th.w-200 { width: 200px; }
+

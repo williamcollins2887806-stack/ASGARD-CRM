@@ -37,12 +37,13 @@ export const NAV_ITEMS = [
   { r: '/modals',           l: 'Каталог компонентов',   d: 'Все 85 элементов UI 2.0',    i: '🎨', g: 'v2',      roles: ['ADMIN'],                         ready: true },
 
   // ── ТЕНДЕРЫ ──
-  { r: '/pre-tenders',  l: 'Заявки',              d: 'Предварительные (AI)',  i: '📨', g: 'tenders', roles: ['ADMIN','TO','HEAD_TO', ...DIRECTOR_ROLES] },
+  // 27.06.2026: пункты «Заявки (ТО)» и «Входящие заявки» сведены в единый
+  // «Маркетплейс заявок» /director-inbox. Раньше 3 страницы дублировали данные
+  // и путали директора. Теперь — один экран, RBAC прячет/показывает нужное.
   { r: '/funnel',       l: 'Воронка продаж',      d: 'Канбан тендеров',       i: '🪶', g: 'tenders', roles: ['ADMIN','TO','HEAD_TO', ...DIRECTOR_ROLES] },
   { r: '/tenders',      l: 'Сага Тендеров',       d: 'Реестр тендеров',       i: '📋', g: 'tenders', roles: ['ADMIN','TO','HEAD_TO', ...DIRECTOR_ROLES] },
   { r: '/customers',    l: 'Карта Контрагентов',  d: 'Справочник организаций',i: '🏢', g: 'tenders', roles: ['ADMIN','TO','HEAD_TO','PM','HEAD_PM','OFFICE_MANAGER', ...DIRECTOR_ROLES] },
-  { r: '/inbox-applications', l: 'Входящие заявки', d: 'AI-обработка писем',  i: '📥', g: 'tenders', roles: ['ADMIN','HEAD_TO', ...DIRECTOR_ROLES] },
-  { r: '/director-inbox', l: 'Корзина заявок',   d: 'Назначение РП на заявки', i: '📭', g: 'tenders', roles: ['ADMIN', ...DIRECTOR_ROLES, 'HEAD_PM'], ready: true },
+  { r: '/director-inbox', l: 'Маркетплейс заявок',   d: 'Новые письма + работа РП в одном экране', i: '📭', g: 'tenders', roles: ['ADMIN', ...DIRECTOR_ROLES, 'HEAD_PM', 'PM', 'TO', 'HEAD_TO'], ready: true },
 
   // ── РАБОТЫ ──
   { r: '/pm-calcs',     l: 'Просчёты (inbox)',    d: 'Входящие от ТО',        i: '🧮', g: 'works', roles: ['ADMIN','PM','HEAD_PM', ...DIRECTOR_ROLES] },
@@ -70,10 +71,9 @@ export const NAV_ITEMS = [
   { r: '/cash',         l: 'Касса',               d: 'Авансовые отчёты',      i: '💵', g: 'finance', roles: ['ADMIN','PM', ...DIRECTOR_ROLES] },
   { r: '/cash-admin',   l: 'Касса (управление)',  d: 'Согласование и контроль',i: '💵', g: 'finance', roles: ['ADMIN','BUH', ...DIRECTOR_ROLES] },
   { r: '/payroll',      l: 'Расчёты с рабочими',  d: 'Ведомости и выплаты',   i: '💰', g: 'finance', roles: ['ADMIN','PM','HEAD_PM','TO','HEAD_TO','PROC','BUH', ...DIRECTOR_ROLES] },
-  { r: '/payroll-grid', l: 'Ведомость (табель)',  d: 'Сетка баллов',          i: '📊', g: 'finance', roles: ['ADMIN','PM','HEAD_PM','TO','HEAD_TO','PROC','BUH', ...DIRECTOR_ROLES] },
   { r: '/self-employed',l: 'Самозанятые',         d: 'Реестр СЗ',             i: '👤', g: 'finance', roles: ['ADMIN','BUH', ...DIRECTOR_ROLES] },
   { r: '/one-time-pay', l: 'Разовые оплаты',      d: 'Такси, топливо',        i: '💸', g: 'finance', roles: ['ADMIN','PM','HEAD_PM','BUH', ...DIRECTOR_ROLES] },
-  { r: '/reports/payroll', l: 'Отчёты по выплатам',d: 'Сводный табель, ФОТ',  i: '📊', g: 'finance', roles: ['ADMIN','BUH', ...DIRECTOR_ROLES] },
+  { r: '/payments-report', l: 'Отчёты по выплатам',d: 'Сводный табель, ФОТ',  i: '📊', g: 'finance', roles: ['ADMIN','BUH', ...DIRECTOR_ROLES] },
 
   // ── РЕСУРСЫ ──
   { r: '/tkp',          l: 'ТКП',                 d: 'Коммерческие предложения', i: '📨', g: 'resources', roles: ['ADMIN','PM','HEAD_PM','TO','HEAD_TO', ...DIRECTOR_ROLES] },
@@ -85,7 +85,8 @@ export const NAV_ITEMS = [
   { r: '/assembly',     l: 'Сбор на складе',      d: 'Ведомости сборки',      i: '📦', g: 'resources', roles: ['ADMIN','PM','HEAD_PM','WAREHOUSE', ...DIRECTOR_ROLES] },
   { r: '/warehouse-v2', l: 'Склад',               d: 'Каталог, наличие',      i: '🏭', g: 'resources', roles: ALL_ROLES },
   { r: '/my-equipment', l: 'Моё оборудование',    d: 'Выданное мне',          i: '🔧', g: 'resources', roles: ['PM','HEAD_PM','CHIEF_ENGINEER', ...DIRECTOR_ROLES, 'ADMIN'] },
-  { r: '/correspondence',l:'Корреспонденция',     d: 'Входящие/исходящие',    i: '✉️', g: 'resources', roles: ['ADMIN','OFFICE_MANAGER', ...DIRECTOR_ROLES] },
+  // S-13I: переименование «Корреспонденция» → «Официальная переписка», иконка 📜, расширены роли (PM/HEAD_PM/TO/HEAD_TO) под модуль писем ГНШ-формата (см. _LETTER_CONTRACT.md §5).
+  { r: '/correspondence',l:'Официальная переписка',d: 'Письма ГНШ-формата (вх./исх.)', i: '📜', g: 'resources', roles: ['ADMIN','OFFICE_MANAGER','PM','HEAD_PM','TO','HEAD_TO', ...DIRECTOR_ROLES] },
   { r: '/contracts',    l: 'Реестр договоров',    d: 'Договора',              i: '📄', g: 'resources', roles: ['ADMIN','OFFICE_MANAGER','BUH', ...DIRECTOR_ROLES] },
   { r: '/seals',        l: 'Реестр печатей',      d: 'Учёт и передача',       i: '🛡', g: 'resources', roles: ['ADMIN','OFFICE_MANAGER', ...DIRECTOR_ROLES] },
   { r: '/proxies',      l: 'Доверенности',        d: '7 шаблонов',            i: '📑', g: 'resources', roles: ['ADMIN','OFFICE_MANAGER', ...DIRECTOR_ROLES] },
@@ -102,7 +103,12 @@ export const NAV_ITEMS = [
   { r: '/workers-schedule', l: 'График: Рабочие', d: 'Бронь и доступность',   i: '📅', g: 'personnel', roles: ['ADMIN','HR','HR_MANAGER', ...DIRECTOR_ROLES] },
   { r: '/hr-rating',    l: 'Рейтинг Дружины',     d: 'Оценки и средний балл', i: '⭐', g: 'personnel', roles: ['ADMIN','HR','HR_MANAGER', ...DIRECTOR_ROLES] },
   { r: '/travel',       l: 'Логистика дружины',   d: 'Жильё, билеты, направления, обучение',  i: '🏨', g: 'personnel', roles: ['ADMIN','OFFICE_MANAGER','HR','HR_MANAGER','PM', ...DIRECTOR_ROLES] },
-  { r: '/global-timesheet', l: 'Общий табель',    d: 'Все рабочие за месяц',  i: '📅', g: 'personnel', roles: ['ADMIN','TO','HEAD_TO','WAREHOUSE','HR','HR_MANAGER', ...DIRECTOR_ROLES] },
+  // Timesheet v2 (5 mode'ов — см. TIMESHEET_V2_CONTRACT.md). /global-timesheet и /payroll-grid редиректят на новые URL.
+  { r: '/my-timesheet',        l: 'Табель моей дружины',           d: 'Чекины моих рабочих',          i: '📅', g: 'personnel', roles: ['PM','HEAD_PM'] },
+  { r: '/timesheet-warehouse', l: 'Табель учёта работы на складе', d: 'Дни рабочих на складе',        i: '📦', g: 'personnel', roles: ['WAREHOUSE'] },
+  { r: '/timesheet-medical',   l: 'Табель учёта МО',               d: 'Медосмотры по дням',           i: '🏥', g: 'personnel', roles: ['TO','HEAD_TO'] },
+  { r: '/timesheet-travel',    l: 'Табель учёта дороги',           d: 'Дни в дороге и ожидании',      i: '✈️', g: 'personnel', roles: ['OFFICE_MANAGER'] },
+  { r: '/timesheet',           l: 'Общий табель',                  d: 'Все рабочие за месяц',         i: '📊', g: 'personnel', roles: ['ADMIN','BUH','HR','HR_MANAGER', ...DIRECTOR_ROLES] },
   { r: '/payroll-dashboard', l: 'Финансы персонала', d:'Дашборд выплат',      i: '💰', g: 'personnel', roles: ['ADMIN','BUH', ...DIRECTOR_ROLES] },
   { r: '/official-employees', l: 'Официально устроенные', d:'Оклады и статусы',i:'👔',g:'personnel', roles: ['ADMIN','BUH', ...DIRECTOR_ROLES] },
   { r: '/training-board', l: 'Обучение и допуски',d: 'Допуски и обучение',    i: '🎓', g: 'personnel', roles: ['ADMIN','TO','HEAD_TO', ...DIRECTOR_ROLES] },
@@ -136,6 +142,7 @@ export const NAV_ITEMS = [
 
   // ── СИСТЕМА ──
   { r: '/settings',     l: 'Настройки',           d: 'Справочники',           i: '⚙️', g: 'system', roles: ['ADMIN'] },
+  { r: '/admin/timesheet-settings', l: 'Баллы табеля', d: 'Очки за склад / МО / дорогу', i: '📊', g: 'system', roles: ['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','BUH'] },
   { r: '/backup',       l: 'Резервные копии',     d: 'Экспорт/импорт',        i: '💾', g: 'system', roles: ['ADMIN'] },
   { r: '/sync',         l: 'PostgreSQL Sync',     d: 'Синхронизация',         i: '🔄', g: 'system', roles: ['ADMIN'] },
   { r: '/diag',         l: 'Диагностика',         d: 'Self-test',             i: '🔬', g: 'system', roles: ['ADMIN'] },

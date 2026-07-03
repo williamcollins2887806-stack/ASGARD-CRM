@@ -22,10 +22,25 @@ import {
   loadV3Board, loadV3Counts, v3Transition, v3StartQuick, v3StartConductor,
   v3ConvertToPretender, v3SearchReferences,
   tkpFromCard, tkpLoadBlocks, tkpSaveBlocks, tkpRenderPdf, tkpAttachToCard, tkpSendToClient,
+  patchCard,
 } from './api';
 // S-31.1 F-1: «＋ Создать вручную» теперь открывает реальный wizard (раньше — toast-stub).
 import { TenderEditorModal } from '../Tenders/modals/TenderEditor.dispatch';
+// 22.06.2026 P0-F2/F3: customer picker + noteboard (паритет с vanilla personal_kanban.js)
+import NoteBoard from './NoteBoard';
+import CustomerPicker from './CustomerPicker';
+import CreateCustomerModal from './CreateCustomerModal';
 import './personal-kanban-v3.css';
+
+// 22.06.2026 P0-F1: шутки для click-guard на overlay (паритет с
+// personal_kanban.js:3186-3199). Юзер случайно кликал на оверлей и терял работу.
+const OVERLAY_JOKES = [
+  'Эй, не клацай в пустоту 😅 Закрой крестиком',
+  'Закрыть карту? Жми ✕ справа сверху, не лень же 🙃',
+  'Тут пусто, как в холодильнике перед зарплатой 🥪 Жми ✕',
+  'Тык-тык по воздуху не помогает. Крестик в углу 🎯',
+  'Стой, куда! Карта закрывается только через ✕ 🛑',
+];
 
 const FLOW_TABS = [
   { id: 'all',         label: 'Все типы' },
@@ -99,6 +114,15 @@ export default function BoardV3({ onSwitchToSubstages }) {
       // S-21: гарантируем 9 ключей даже если backend на устаревшем клоне вернул 8 (graceful fallback).
       const cols = board.columns || {};
       for (const k of V3_COLUMNS) if (!Array.isArray(cols[k])) cols[k] = [];
+      // 23.06.2026 BUG-FIX (D-1 BLOCKER): backend отдаёт `card.v3_column`,
+      // а карточный код ожидает `card.col` (секции, _tkpStatus, drag-checks, action-bar).
+      // Без нормализации раздел ТКП заблокирован, кнопки контекста не показываются.
+      // Паритет с vanilla `personal_kanban.js:2724-2731`.
+      for (const colKey of Object.keys(cols)) {
+        for (const card of (cols[colKey] || [])) {
+          if (card && !card.col) card.col = card.v3_column || colKey;
+        }
+      }
       setColumns(cols);
       const c = cnts || {};
       if (typeof c.addendum !== 'number') c.addendum = 0;
@@ -337,6 +361,71 @@ function DrawerV3({ card, onClose, onChanged, openModal }) {
   const aiSummary = card.ai_summary || '(AI ещё не разобрал заявку)';
   const tkpAttached = !!card.tkp_attached;
 
+  // 22.06.2026 P0-F2: локальное состояние клиента, синк с card.* на маунте.
+  // Любой выбор/изменение → PATCH /cards/:id/update (backend whitelist в
+  // src/routes/personal-kanban.js:854; работает только для pre_tender и tender).
+  const [customer, setCustomer] = useState({
+    id: null,
+    name: card.customer_name || card.customer || '',
+    inn: card.customer_inn || '',
+    email: card.customer_email || '',
+    phone: card.contact_phone || '',
+    contact_person: card.contact_person || '',
+    address: card.customer_city || card.work_location || '',
+  });
+  // Когда меняется карта (открыли другую) — обновить customer.
+  useEffect(() => {
+    setCustomer({
+      id: null,
+      name: card.customer_name || card.customer || '',
+      inn: card.customer_inn || '',
+      email: card.customer_email || '',
+      phone: card.contact_phone || '',
+      contact_person: card.contact_person || '',
+      address: card.customer_city || card.work_location || '',
+    });
+  }, [card.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Состояние пикеров (используется только в pre_tender/tender — для прочих
+  // entity_kind backend вернёт 400 entity_not_editable).
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const canEditCustomer = card.entity_kind === 'pre_tender' || card.entity_kind === 'tender';
+
+  async function applyCustomer(c) {
+    // c: {name, inn, email, phone, address, contact_person}
+    setCustomer((prev) => ({ ...prev, ...c }));
+    if (!canEditCustomer) {
+      toast.info('Контрагент выбран. Сохранение в карту недоступно для этого типа.');
+      return;
+    }
+    try {
+      const body = {
+        customer_name: c.name || null,
+        customer_inn: c.inn || null,
+        customer_email: c.email || null,
+        contact_phone: c.phone || null,
+        contact_person: c.contact_person || null,
+        work_location: c.address || null,
+      };
+      const r = await patchCard(card.id, body);
+      if (r && r.error) {
+        toast.error(r.message || r.error);
+      } else {
+        toast.success('Контрагент: ' + (c.name || '—'));
+        // Подмешиваем в card на месте, чтобы при следующем reopen не перезатёрло.
+        Object.assign(card, {
+          customer_name: c.name, customer: c.name,
+          customer_inn: c.inn, customer_email: c.email,
+          contact_phone: c.phone, contact_person: c.contact_person,
+          work_location: c.address,
+        });
+      }
+    } catch (e) {
+      toast.error('Сохранение: ' + (e?.message || e));
+    }
+  }
+
   function scrollTo(id) {
     const el = drawerRef.current?.querySelector(`#${id}`);
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -356,6 +445,34 @@ function DrawerV3({ card, onClose, onChanged, openModal }) {
       const r = await v3ConvertToPretender(card.id);
       if (r && !r.error) { toast.success('Заявка → пре-тендер'); onChanged(); onClose(); }
       else toast.error((r && r.error) || 'Не удалось');
+      return;
+    }
+    // 21.06.2026: открыть автосозданную работу (после tender→win хук в personal-kanban.js:2076-2159
+    // автоматически создал works запись). РП кликает кнопку → переходит на /pm-works.
+    // Backend пока не поддерживает transition tender→work (см. personal-kanban.js:368 default null).
+    if (act === 'open-work') {
+      // Ищем работу: для tender-карточки — по tender_id, для pre_tender — по source_pre_tender_id
+      // (заявочная работа создаётся с tender_id=NULL, связь через source_pre_tender_id).
+      try {
+        const q = card.entity_kind === 'pre_tender'
+          ? `source_pre_tender_id=${card.entity_id}`
+          : `tender_id=${card.entity_id || card.tender_id}`;
+        const r = await fetch(`/api/works?${q}`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('asgard_token') || ''}` }
+        });
+        const j = await r.json().catch(() => ({}));
+        const works = (j && (j.works || j.items || j.data)) || (Array.isArray(j) ? j : []);
+        const work = Array.isArray(works) && works[0];
+        if (work && work.id) {
+          window.location.hash = `#/pm-works?work_id=${work.id}`;
+        } else {
+          window.location.hash = '#/pm-works';
+        }
+        onClose();
+      } catch (_) {
+        window.location.hash = '#/pm-works';
+        onClose();
+      }
       return;
     }
     if (act.startsWith('trans-')) {
@@ -408,15 +525,44 @@ function DrawerV3({ card, onClose, onChanged, openModal }) {
       <Btn key="tw" variant="primary" onClick={() => onAction('trans-win')}>🏆 Выиграли</Btn>,
       <Btn key="tl" variant="danger" onClick={() => onAction('trans-lose')}>❌ Проиграли</Btn>,
     ];
-    else if (card.col === 'win')  ctx = [<Btn key="tw" variant="gold" onClick={() => onAction('trans-work')}>🏗 Перевести в работу</Btn>];
+    // 21.06.2026: в win-колонке работа уже создана автохуком при tender→win
+    // (personal-kanban.js:2076-2159). Раньше кнопка trans-work вызывала transition
+    // который backend отбивал 409. Теперь — прямой переход в карточку работы.
+    else if (card.col === 'win')  ctx = [<Btn key="ow" variant="gold" onClick={() => onAction('open-work')}>🏗 Открыть работу</Btn>];
     else if (card.col === 'work') ctx = [<Btn key="cl" variant="gold" onClick={() => toast.info('Закрытие актом — через /works')}>📦 Закрыть актом</Btn>];
     return [...ghost, <div key="sp" style={{flex:1}}/>, ...ctx];
   }
 
+  // 22.06.2026 P0-F1: click-guard на overlay — НЕ закрывать, показать joke-toast.
+  // Зыкрытие только через ✕ в шапке drawer. Паритет с vanilla 3186-3199.
+  const onOverlayClick = (e) => {
+    if (e.target !== e.currentTarget) return;
+    const msg = OVERLAY_JOKES[Math.floor(Math.random() * OVERLAY_JOKES.length)];
+    toast.info(msg);
+  };
+
   return (
     <>
-      <div className="pk3-drawer-overlay" onClick={onClose} />
+      {/* P0-F3: NoteBoard рендерим ВНУТРИ overlay — backdrop-filter создаёт
+          новый stacking context, дочерние элементы overlay рендерятся НАД
+          размытием (паритет с personal_kanban.js:3206-3210). */}
+      <div className="pk3-drawer-overlay" onClick={onOverlayClick}>
+        <NoteBoard cardId={card.id} />
+      </div>
       <div className="pk3-drawer" ref={drawerRef} onClick={e => e.stopPropagation()}>
+      {pickerOpen && (
+        <CustomerPicker
+          onClose={() => setPickerOpen(false)}
+          onPicked={(c) => { setPickerOpen(false); applyCustomer(c); }}
+          onNew={() => { setPickerOpen(false); setCreateOpen(true); }}
+        />
+      )}
+      {createOpen && (
+        <CreateCustomerModal
+          onClose={() => setCreateOpen(false)}
+          onCreated={(c) => { setCreateOpen(false); applyCustomer(c); }}
+        />
+      )}
         <div className="pk3-drawer-head">
           <div className="pk3-row1">
             <span className={`pk3-badge pk3-${(card.kind || '').split('_')[0]}`}>{card.kindLabel || ''}</span>
@@ -460,12 +606,71 @@ function DrawerV3({ card, onClose, onChanged, openModal }) {
         </Section>
 
         <Section id="sec-client" ic="👤" title="Клиент и контакты" open={openSections['sec-client']} onToggle={() => toggle('sec-client')}>
-          <Row label="Заказчик"><input defaultValue={card.customer_name || card.customer || ''} /></Row>
-          <Row label="ИНН"><div className="pk3-twocol"><input defaultValue={card.customer_inn || ''} placeholder="ИНН для подгрузки"/><Btn variant="ghost" size="sm">🔎 egrul</Btn></div></Row>
-          <Row label="Контактное лицо"><input defaultValue={card.contact_person || ''} /></Row>
-          <Row label="Email"><input defaultValue={card.customer_email || ''} /></Row>
-          <Row label="Телефон"><input defaultValue={card.contact_phone || ''} placeholder="+7 (___) ___-__-__" /></Row>
-          <Row label="Город / Объект"><input defaultValue={card.customer_city || card.work_location || ''} /></Row>
+          {/* P0-F2: pill «Заказчик» + ✎ (открыть picker) и «＋ Новый».
+              Паритет с personal_kanban.js:3522-3540 (_secClient). */}
+          <Row label="Заказчик">
+            <div style={{ display: 'flex', gap: 6, alignItems: 'stretch' }}>
+              <input
+                value={customer.name}
+                readOnly
+                placeholder="Кликни — выбрать из справочника"
+                onClick={() => canEditCustomer && setPickerOpen(true)}
+                style={{ cursor: canEditCustomer ? 'pointer' : 'not-allowed', flex: 1 }}
+                title={canEditCustomer ? 'Выбрать контрагента из справочника' : 'Недоступно для этого типа карты'}
+              />
+              <Btn
+                variant="ghost"
+                size="sm"
+                onClick={() => canEditCustomer && setPickerOpen(true)}
+                disabled={!canEditCustomer}
+                title="Найти в справочнике"
+              >✎</Btn>
+              <Btn
+                variant="gold"
+                size="sm"
+                onClick={() => canEditCustomer && setCreateOpen(true)}
+                disabled={!canEditCustomer}
+                title="Создать нового контрагента"
+              >＋ Новый</Btn>
+            </div>
+          </Row>
+          <Row label="ИНН">
+            <input
+              value={customer.inn}
+              readOnly
+              placeholder="будет подставлен"
+              style={{ background: 'var(--bg-3,var(--bg3))', color: 'var(--t-2,var(--t2))' }}
+            />
+          </Row>
+          <Row label="Контактное лицо">
+            <input
+              value={customer.contact_person}
+              onChange={(e) => setCustomer({ ...customer, contact_person: e.target.value })}
+              onBlur={() => canEditCustomer && patchCard(card.id, { contact_person: customer.contact_person || null }).catch(() => {})}
+            />
+          </Row>
+          <Row label="Email">
+            <input
+              value={customer.email}
+              onChange={(e) => setCustomer({ ...customer, email: e.target.value })}
+              onBlur={() => canEditCustomer && patchCard(card.id, { customer_email: customer.email || null }).catch(() => {})}
+            />
+          </Row>
+          <Row label="Телефон">
+            <input
+              value={customer.phone}
+              onChange={(e) => setCustomer({ ...customer, phone: e.target.value })}
+              onBlur={() => canEditCustomer && patchCard(card.id, { contact_phone: customer.phone || null }).catch(() => {})}
+              placeholder="+7 (___) ___-__-__"
+            />
+          </Row>
+          <Row label="Город / Объект">
+            <input
+              value={customer.address}
+              onChange={(e) => setCustomer({ ...customer, address: e.target.value })}
+              onBlur={() => canEditCustomer && patchCard(card.id, { work_location: customer.address || null }).catch(() => {})}
+            />
+          </Row>
         </Section>
 
         <Section id="sec-work" ic="🔧" title="Что делать" open={openSections['sec-work']} onToggle={() => toggle('sec-work')}>
@@ -522,12 +727,22 @@ function DrawerV3({ card, onClose, onChanged, openModal }) {
         </Section>
 
         <Section id="sec-hist" ic="🕘" title="История" count={card.history?.length || 0} open={openSections['sec-hist']} onToggle={() => toggle('sec-hist')}>
-          {(card.history || []).length ? (card.history || []).map((h, i) => (
-            <div key={i} style={{padding:'6px 0',borderBottom:'1px solid var(--brd-2)',fontSize:12,color:'var(--t-2)'}}>
-              <b>{h.when || ''}</b> · {h.who || ''} — {h.action || ''}
-              {h.note && <div style={{color:'var(--t-3)',fontSize:11,marginTop:2}}>{h.note}</div>}
-            </div>
-          )) : <div style={{color:'var(--t-3)',fontSize:12}}>История пока пуста</div>}
+          {(card.history || []).length ? (card.history || []).map((h, i) => {
+            // Backend /personal-kanban/history отдаёт `moved_at` (ISO timestamp)
+            // + `moved_by_name`/`actor_name` + `event_label`/`note`. Раньше JSX
+            // читал h.when/h.who/h.action — этих полей не существует, поэтому
+            // вся история отображалась пустой.
+            const ts = h.moved_at || h.when || h.created_at;
+            const tsLabel = ts ? new Date(ts).toLocaleString('ru-RU') : '';
+            const who = h.moved_by_name || h.actor_name || h.who_name || h.who || '';
+            const action = h.event_label || h.action_label || h.action || h.event || '';
+            return (
+              <div key={i} style={{padding:'6px 0',borderBottom:'1px solid var(--brd-2)',fontSize:12,color:'var(--t-2)'}}>
+                <b>{tsLabel}</b>{who ? ` · ${who}` : ''}{action ? ` — ${action}` : ''}
+                {h.note && <div style={{color:'var(--t-3)',fontSize:11,marginTop:2}}>{h.note}</div>}
+              </div>
+            );
+          }) : <div style={{color:'var(--t-3)',fontSize:12}}>История пока пуста</div>}
         </Section>
 
         <div style={{height:80}}/>
@@ -1064,6 +1279,15 @@ function TKPConstructorV3({ card, onClose, onAttached }) {
               )}
               {blocks.find(b => b.block_key === 'preamble') && (<><h2>Преамбула</h2><p>ООО «АСГАРД-Сервис» благодарит вас за обращение и предлагает выполнить работы согласно ТЗ.</p><p>Настоящее ТКП действительно 30 календарных дней. Стоимость в рублях без НДС / с НДС 20%.</p></>)}
               {blocks.find(b => b.block_key === 'smeta') && (
+                <SmetaTableEditable
+                  block={blocks.find(b => b.block_key === 'smeta')}
+                  onChange={(newData) => {
+                    setBlocks(bs => bs.map(b => b.block_key === 'smeta' ? { ...b, block_data: newData } : b));
+                    setDirty(true);
+                  }}
+                />
+              )}
+              {false && (
                 <><h2>Смета работ</h2><table>
                   <thead><tr><th>№</th><th>Наименование</th><th className="pk3-right">Ед.</th><th className="pk3-right">Кол-во</th><th className="pk3-right">Цена</th><th className="pk3-right">Сумма</th></tr></thead>
                   <tbody>
@@ -1136,6 +1360,12 @@ function SendV3({ card, onClose, onSent }) {
   ].join('\n'));
   const [sending, setSending] = useState(false);
 
+  // FIX B1: XSS защита — escape HTML перед инжектом + отправкой как HTML.
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
+    );
+  }
   async function send() {
     if (!to || !to.includes('@')) { toast.error('Укажи корректный email'); return; }
     if (!subject) { toast.error('Укажи тему'); return; }
@@ -1143,7 +1373,7 @@ function SendV3({ card, onClose, onSent }) {
     const r = await tkpSendToClient(card.id, {
       tkp_id: card.tkp_id,
       to, cc: cc || undefined, subject,
-      body_text: body, body_html: body.replace(/\n/g, '<br>'),
+      body_text: body, body_html: escapeHtml(body).replace(/\n/g, '<br>'),
       attach_pdf: true, attach_estimate: true,
     });
     setSending(false);
@@ -1188,7 +1418,7 @@ function SendV3({ card, onClose, onSent }) {
                 <b>Кому:</b> {to}<br/>
                 <b>Тема:</b> {subject}
               </div>
-              <div dangerouslySetInnerHTML={{ __html: body.replace(/\n/g, '<br>') }}/>
+              <div dangerouslySetInnerHTML={{ __html: escapeHtml(body).replace(/\n/g, '<br>') }}/>
               <div style={{marginTop:14,paddingTop:11,borderTop:'1px solid #cdb87e',fontSize:11,color:'#7a5a22'}}>
                 📎 <b>2 вложения:</b> ТКП.pdf, Смета.xlsx
               </div>
@@ -1203,5 +1433,112 @@ function SendV3({ card, onClose, onSent }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * SmetaTableEditable — Excel-style редактируемая таблица сметы.
+ * РП может изменить название/единицу/количество/цену любой позиции,
+ * добавить новую, удалить, изменить НДС. Авто-пересчёт сумм.
+ * Сохраняется в block_data.items[] и block_data.vat_pct через onChange.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+function SmetaTableEditable({ block, onChange }) {
+  const DEFAULT_ITEMS = [
+    { name: 'Подготовка',         unit: 'шт',     qty: 1,  price: 28500  },
+    { name: 'Основные работы',    unit: 'м²',     qty: 42, price: 14500  },
+    { name: 'Контроль качества',  unit: 'точек',  qty: 16, price: 3000   },
+    { name: 'Логистика',          unit: 'компл',  qty: 1,  price: 144000 },
+    { name: 'Реагенты',           unit: 'компл',  qty: 1,  price: 370500 },
+  ];
+  const data = block.block_data || {};
+  const items = (Array.isArray(data.items) && data.items.length) ? data.items : DEFAULT_ITEMS;
+  const vatPct = data.vat_pct != null ? Number(data.vat_pct) : 20;
+
+  function update(newItems, newVat) {
+    onChange({
+      ...data,
+      items: newItems,
+      vat_pct: newVat != null ? newVat : vatPct,
+    });
+  }
+  function changeRow(i, field, value) {
+    const arr = [...items];
+    const v = (field === 'qty' || field === 'price') ? (parseFloat(value) || 0) : value;
+    arr[i] = { ...arr[i], [field]: v };
+    update(arr);
+  }
+  function addRow() {
+    update([...items, { name: '', unit: 'шт', qty: 1, price: 0 }]);
+  }
+  function delRow(i) {
+    const arr = items.filter((_, j) => j !== i);
+    update(arr.length ? arr : DEFAULT_ITEMS);
+  }
+  function changeVat(v) {
+    update(items, parseFloat(v) || 0);
+  }
+  const fmt = (n) => Math.round(n).toLocaleString('ru-RU');
+  const total = items.reduce((s, it) => s + ((Number(it.qty) || 0) * (Number(it.price) || 0)), 0);
+  const vatAmount = total * vatPct / 100;
+  const totalWithVat = total + vatAmount;
+
+  const inputStyle = {
+    width:'100%', background:'transparent', border:'1px solid transparent',
+    padding:'3px 4px', color:'#2a1f0a', font:'inherit',
+  };
+  const inputFocusable = (e) => { e.target.style.border = '1px solid #b89860'; e.target.style.background = '#fff'; };
+  const inputBlur     = (e) => { e.target.style.border = '1px solid transparent'; e.target.style.background = 'transparent'; };
+
+  return (
+    <>
+      <h2 style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+        <span>Смета работ</span>
+        <span style={{fontSize:11,color:'#7a5a22',fontStyle:'italic',fontWeight:'normal'}}>✏️ Редактируйте поля прямо в таблице</span>
+      </h2>
+      <table>
+        <thead>
+          <tr>
+            <th style={{width:28}}>№</th>
+            <th>Наименование</th>
+            <th style={{width:60}} className="pk3-right">Ед.</th>
+            <th style={{width:70}} className="pk3-right">Кол-во</th>
+            <th style={{width:110}} className="pk3-right">Цена</th>
+            <th style={{width:130}} className="pk3-right">Сумма</th>
+            <th style={{width:24}}></th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((it, i) => {
+            const sum = (Number(it.qty) || 0) * (Number(it.price) || 0);
+            return (
+              <tr key={i}>
+                <td>{i + 1}</td>
+                <td><input type="text"   value={it.name || ''} onChange={e => changeRow(i, 'name', e.target.value)}  onFocus={inputFocusable} onBlur={inputBlur} style={inputStyle}/></td>
+                <td><input type="text"   value={it.unit || ''} onChange={e => changeRow(i, 'unit', e.target.value)}  onFocus={inputFocusable} onBlur={inputBlur} style={{...inputStyle, textAlign:'right'}}/></td>
+                <td><input type="number" min="0" step="0.01" value={Number(it.qty) || 0}   onChange={e => changeRow(i, 'qty', e.target.value)}   onFocus={inputFocusable} onBlur={inputBlur} style={{...inputStyle, textAlign:'right'}}/></td>
+                <td><input type="number" min="0" step="1"    value={Number(it.price) || 0} onChange={e => changeRow(i, 'price', e.target.value)} onFocus={inputFocusable} onBlur={inputBlur} style={{...inputStyle, textAlign:'right'}}/></td>
+                <td className="pk3-right" style={{fontWeight:600}}>{fmt(sum)}</td>
+                <td><button onClick={() => delRow(i)} title="Удалить" style={{background:'transparent',border:0,color:'#a94440',cursor:'pointer',fontSize:14}}>✕</button></td>
+              </tr>
+            );
+          })}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colSpan={7} style={{padding:'7px 4px'}}>
+              <button onClick={addRow} style={{background:'#e8d8a8',border:'1px solid #b89860',padding:'5px 10px',borderRadius:4,color:'#3d2a08',cursor:'pointer',fontWeight:600,fontFamily:'Cinzel,serif'}}>+ Добавить позицию</button>
+            </td>
+          </tr>
+          <tr><td colSpan={5} className="pk3-right">Итого без НДС:</td><td className="pk3-right">{fmt(total)}</td><td/></tr>
+          <tr>
+            <td colSpan={5} className="pk3-right">
+              НДС <input type="number" min="0" max="100" step="1" value={vatPct} onChange={e => changeVat(e.target.value)} style={{width:42,background:'transparent',border:'1px solid #b89860',padding:'1px 4px',color:'#2a1f0a',font:'inherit',textAlign:'right'}}/>%:
+            </td>
+            <td className="pk3-right">{fmt(vatAmount)}</td><td/>
+          </tr>
+          <tr><td colSpan={5} className="pk3-right" style={{fontSize:13}}><b>Итого с НДС:</b></td><td className="pk3-right" style={{fontSize:13}}><b>{fmt(totalWithVat)}</b></td><td/></tr>
+        </tfoot>
+      </table>
+    </>
   );
 }

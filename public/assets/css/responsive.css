@@ -3136,15 +3136,13 @@ html, body {
   /* Action dropdown */
   .dropdown-menu {
     position: fixed !important;
-    bottom: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    top: auto !important;
-    border-radius: 16px 16px 0 0 !important;
+    /* Allow JS positioning; constrain width to viewport minus padding */
+    max-width: calc(100vw - 16px) !important;
+    border-radius: 8px !important;
     max-height: 60vh !important;
     overflow-y: auto !important;
     z-index: 9999 !important;
-    animation: m-slide-up 0.25s ease-out !important;
+    animation: dropdown-slide 0.2s ease-out !important;
   }
 
   .dropdown-menu .dropdown-item {

@@ -149,6 +149,11 @@ window.AsgardPmBalancePage = (function () {
       const bal      = pm.balance || 0;
       const bColor   = balanceColor(bal);
       const name     = pm.pm_name || pm.name || '—';
+      // Единый отток = расходы + выплаты + прямые расходы РП (backend cash_out).
+      // Возвраты в кассу — отдельная колонка (иначе двойной счёт).
+      const cashOut      = pm.cash_out != null ? pm.cash_out
+                         : (pm.cash_out_expenses || 0) + (pm.cash_out_salaries || 0) + (pm.work_expenses_direct || 0);
+      const cashReturned = pm.cash_returned != null ? pm.cash_returned : (pm.cash_out_returns || 0);
       return `
         <tr class="pmb-row" data-pm="${pm.pm_id || pm.id}"
             style="border-bottom:1px solid var(--brd);cursor:pointer;transition:background .12s;"
@@ -156,8 +161,8 @@ window.AsgardPmBalancePage = (function () {
           <td style="padding:10px 14px;color:var(--t1);font-weight:500;">${esc(name)}</td>
           <td style="padding:10px 14px;color:var(--t2);">${rub(pm.cash_in)}</td>
           <td style="padding:10px 14px;color:var(--t2);">${rub(pm.se_cash_in)}</td>
-          <td style="padding:10px 14px;color:var(--t2);">${rub(pm.cash_out)}</td>
-          <td style="padding:10px 14px;color:var(--t2);">${rub(pm.cash_returned)}</td>
+          <td style="padding:10px 14px;color:var(--t2);">${rub(cashOut)}</td>
+          <td style="padding:10px 14px;color:var(--t2);">${rub(cashReturned)}</td>
           <td style="padding:10px 14px;font-weight:700;font-size:15px;color:${bColor};">
             ${rub(bal)}
           </td>
@@ -167,8 +172,9 @@ window.AsgardPmBalancePage = (function () {
     /* totals */
     const totalIn      = list.reduce((s, p) => s + (p.cash_in    || 0), 0);
     const totalSeIn    = list.reduce((s, p) => s + (p.se_cash_in || 0), 0);
-    const totalOut     = list.reduce((s, p) => s + (p.cash_out   || 0), 0);
-    const totalReturn  = list.reduce((s, p) => s + (p.cash_returned || 0), 0);
+    const totalOut     = list.reduce((s, p) => s + (p.cash_out != null ? p.cash_out
+                         : (p.cash_out_expenses || 0) + (p.cash_out_salaries || 0) + (p.work_expenses_direct || 0)), 0);
+    const totalReturn  = list.reduce((s, p) => s + (p.cash_returned != null ? p.cash_returned : (p.cash_out_returns || 0)), 0);
     const totalBal     = list.reduce((s, p) => s + (p.balance    || 0), 0);
     const tColor       = balanceColor(totalBal);
 
@@ -495,6 +501,18 @@ window.AsgardPmBalancePage = (function () {
             { key: 'cash_return_amount',   type: 'money', label: 'Сумма'       },
             { key: 'employee_name',                        label: 'Рабочий'     },
             { key: 'comment',                              label: 'Комментарий' },
+          ],
+          'var(--info-t)'
+        )}
+
+        ${sectionTable(
+          '📥 Передачи от рабочих',
+          data.handovers || [],
+          [
+            { key: 'received_at',    type: 'date',  label: 'Дата'        },
+            { key: 'amount',         type: 'money', label: 'Сумма'       },
+            { key: 'employee_name',                 label: 'Рабочий'     },
+            { key: 'note',                          label: 'Комментарий' },
           ],
           'var(--info-t)'
         )}

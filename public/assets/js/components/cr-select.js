@@ -89,17 +89,47 @@ const CRSelect = (() => {
     // Auto-detect dropup and right-overflow
     const rect = inst.root.getBoundingClientRect();
     const spaceBelow = window.innerHeight - rect.bottom;
-    if (spaceBelow < 260 && rect.top > spaceBelow) {
-      inst.root.classList.add('cr-select--dropup');
-    } else {
-      inst.root.classList.remove('cr-select--dropup');
-    }
+    const dropUp = spaceBelow < 260 && rect.top > spaceBelow;
+    if (dropUp) inst.root.classList.add('cr-select--dropup');
+    else        inst.root.classList.remove('cr-select--dropup');
     // Align right if dropdown would overflow viewport right edge
     const dropWidth = Math.max(rect.width, 260);
-    if (rect.left + dropWidth > window.innerWidth - 8) {
-      inst.root.classList.add('cr-select--align-right');
-    } else {
-      inst.root.classList.remove('cr-select--align-right');
+    const alignRight = (rect.left + dropWidth > window.innerWidth - 8);
+    if (alignRight) inst.root.classList.add('cr-select--align-right');
+    else            inst.root.classList.remove('cr-select--align-right');
+
+    // FIX 24.06: position:fixed координаты — чтобы dropdown НЕ обрезался
+    // overflow:hidden родительской модалки/контейнера. CSS теперь fixed,
+    // здесь выставляем абсолютные координаты относительно viewport.
+    if (inst.dropdown) {
+      const dropWidth = Math.max(rect.width, 260);
+      inst.dropdown.style.position = 'fixed';
+      inst.dropdown.style.width = dropWidth + 'px';
+      // FIX: при position:fixed CSS-правило min-width:max(100%,260px) считает
+      // 100% от viewport → панель раздувалась на весь экран. Перебиваем min/max-width.
+      inst.dropdown.style.minWidth = dropWidth + 'px';
+      inst.dropdown.style.maxWidth = dropWidth + 'px';
+      inst.dropdown.style.zIndex = '99999';
+
+      // FIX: dropdown лежит внутри модалки. Если у предка есть CSS transform,
+      // position:fixed отсчитывается от этого предка, а не от viewport → панель
+      // уезжала вправо. Замеряем фактическое смещение контейнера (ставим в 0,0
+      // и читаем реальные координаты) и компенсируем его.
+      inst.dropdown.style.left = '0px';
+      inst.dropdown.style.top = '0px';
+      inst.dropdown.style.right = '';
+      inst.dropdown.style.bottom = '';
+      const ddRect = inst.dropdown.getBoundingClientRect();
+      const offX = ddRect.left;            // сдвиг содержащего блока по X
+      const offY = ddRect.top;             // сдвиг содержащего блока по Y
+      const ddH = ddRect.height;
+
+      // желаемые координаты в системе viewport
+      const wantLeft = alignRight ? (rect.right - dropWidth) : rect.left;
+      const wantTop  = dropUp ? (rect.top - 4 - ddH) : (rect.bottom + 4);
+
+      inst.dropdown.style.left = (wantLeft - offX) + 'px';
+      inst.dropdown.style.top  = (wantTop - offY) + 'px';
     }
 
     // Focus search if visible

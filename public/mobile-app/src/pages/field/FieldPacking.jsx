@@ -241,7 +241,10 @@ export default function FieldPacking() {
 
                     {/* Actions */}
                     <div className="flex gap-2 mt-2">
-                      {(list.status === 'active' || list.status === 'sent') && (
+                      {/* 23.06.2026 BUG-FIX (🟡 S-FIELD-06): убрана мёртвая ветка status==='active'
+                          (field_packing_lists.status — canon draft/sent/in_progress/completed/shipped, V061:84-85;
+                          'active' бэкенд не записывает). */}
+                      {list.status === 'sent' && (
                         <button onClick={() => startList(list.id)} className="flex-1 py-2 rounded-lg text-xs font-medium flex items-center justify-center gap-1" style={{ backgroundColor: '#3b82f620', color: '#3b82f6' }}>
                           <PlayCircle size={14} /> Начать сборку
                         </button>

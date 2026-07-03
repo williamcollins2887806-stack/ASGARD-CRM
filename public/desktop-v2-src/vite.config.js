@@ -28,10 +28,27 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (id.includes('node_modules')) {
-            if (id.includes('react-router')) return 'router';
-            if (id.includes('react-dom') || id.includes('scheduler')) return 'react-dom';
-            if (id.includes('/react/')) return 'react';
+          // Нормализуем разделители путей для Windows (\) и Linux (/).
+          const norm = id.replace(/\\/g, '/');
+          if (norm.includes('/node_modules/')) {
+            if (norm.includes('/node_modules/react-router')) return 'router';
+            // ВАЖНО: react + react-dom + scheduler в ОДНОМ chunk.
+            // Узкое матчирование по точным путям — иначе пакеты типа
+            // @floating-ui/react цепляются в react-vendor → цикл импорта
+            // react-vendor ↔ editor (TipTap) → runtime error
+            // «__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED».
+            if (norm.includes('/node_modules/react/') ||
+                norm.includes('/node_modules/react-dom/') ||
+                norm.includes('/node_modules/scheduler/')) {
+              return 'react-vendor';
+            }
+            // S-13H: TipTap composer (~160 KB gzip) — отдельный lazy chunk,
+            // загружается только при открытии /correspondence/composer.
+            if (norm.includes('/node_modules/@tiptap/') ||
+                norm.includes('/node_modules/prosemirror') ||
+                norm.includes('/node_modules/tiptap-markdown')) {
+              return 'editor';
+            }
             return 'vendor';
           }
         }

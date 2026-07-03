@@ -18,6 +18,9 @@
   --ts-medical-fg:   var(--err,    #C8293B);
   --ts-travel-bg:    var(--cyan-bg, rgba(6,182,212,0.12));
   --ts-travel-fg:    var(--cyan-l,  #22D3EE);
+  /* V255 — 🚢 Корабль (повышенная ставка) */
+  --ts-ship-bg:      var(--gold-bg, rgba(212,168,67,0.14));
+  --ts-ship-fg:      var(--gold,    #D4A843);
   --ts-waiting-bg:   var(--orange-bg, rgba(249,115,22,0.12));
   --ts-waiting-fg:   var(--orange,    #F97316);
 }
@@ -605,18 +608,13 @@
 .ts-dash-chip--dot-grey  .ts-dash-chip-dot { background: #9E9E9E; }
 
 /* ─── 2) Большая карточка «Заработали» ─── */
+/* Пара bg+color через токены: тёплый amber/warn — автоматическая адаптация под тёмную/светлую */
 .ts-dash-earned-big {
   padding: 14px 18px;
   border-radius: var(--r-sm);
-  background: #FFF8E1;
-  color: #5D4037;
-  border: 1px solid #FFE082;
-}
-
-[data-theme="dark"] .ts-dash-earned-big {
-  background: rgba(255, 193, 7, 0.08);
-  color: #FFE082;
-  border-color: rgba(255, 193, 7, 0.30);
+  background: var(--warn-bg);
+  color: var(--warn-t);
+  border: 1px solid var(--warn-t);
 }
 
 .ts-dash-earned-label {
@@ -644,10 +642,8 @@
   flex-wrap: wrap;
 }
 
-.ts-dash-sub-bonus   { color: #2E7D32; }
-.ts-dash-sub-penalty { color: #C62828; }
-[data-theme="dark"] .ts-dash-sub-bonus   { color: #A5D6A7; }
-[data-theme="dark"] .ts-dash-sub-penalty { color: #EF9A9A; }
+.ts-dash-sub-bonus   { color: var(--ok); }
+.ts-dash-sub-penalty { color: var(--err); }
 
 /* ─── 3) 2 колонки «На карту» + «Из кассы» ─── */
 .ts-dash-split {
@@ -693,19 +689,9 @@
   margin-top: 2px;
 }
 
-.ts-dash-split-card--blue   { background: #E3F2FD; color: #0D47A1; border-color: #BBDEFB; }
-.ts-dash-split-card--orange { background: #FFF3E0; color: #E65100; border-color: #FFCC80; }
-
-[data-theme="dark"] .ts-dash-split-card--blue {
-  background: rgba(33, 150, 243, 0.10);
-  color: #BBDEFB;
-  border-color: rgba(33, 150, 243, 0.30);
-}
-[data-theme="dark"] .ts-dash-split-card--orange {
-  background: rgba(255, 152, 0, 0.10);
-  color: #FFCC80;
-  border-color: rgba(255, 152, 0, 0.30);
-}
+/* Пары bg+color через токены theme.css — автоматическая адаптация под тёмную/светлую */
+.ts-dash-split-card--blue   { background: var(--info-bg);   color: var(--info);   border-color: var(--info); }
+.ts-dash-split-card--orange { background: var(--orange-bg); color: var(--orange); border-color: var(--orange); }
 
 /* ─── 4) 🏦 Касса ─── */
 .ts-dash-cash {
@@ -759,11 +745,9 @@
 .ts-dash-cash-num--bold { font-weight: 800; font-size: 14px; }
 .ts-dash-cash-num--mut { opacity: 0.75; }
 
-.cash-diff-neg { color: #C62828; }
-.cash-diff-pos { color: #2E7D32; }
+.cash-diff-neg  { color: var(--err); }
+.cash-diff-pos  { color: var(--ok); }
 .cash-diff-zero { opacity: 0.7; }
-[data-theme="dark"] .cash-diff-neg { color: #EF9A9A; }
-[data-theme="dark"] .cash-diff-pos { color: #A5D6A7; }
 
 .ts-dash-cash-pct {
   font-size: 11px;
@@ -804,10 +788,8 @@
   padding: 6px 0;
 }
 
-.cash-action-bad { color: #B71C1C; }
-.cash-action-good { color: #1B5E20; }
-[data-theme="dark"] .cash-action-bad { color: #EF9A9A; }
-[data-theme="dark"] .cash-action-good { color: #A5D6A7; }
+.cash-action-bad  { color: var(--err); }
+.cash-action-good { color: var(--ok); }
 
 .ts-dash-cash-advances {
   font-size: 12px;
@@ -816,32 +798,11 @@
   border-top: 1px dashed currentColor;
 }
 
-/* Постельные тона по статусу cash-coverage */
-.ts-dash-cash.cash-status-ok              { background: #E8F5E9; color: #1B5E20; border-color: #66BB6A; }
-.ts-dash-cash.cash-status-ok_with_returns { background: #F1F8E9; color: #33691E; border-color: #9CCC65; }
-.ts-dash-cash.cash-status-tight           { background: #FFF8E1; color: #E65100; border-color: #FFB300; }
-.ts-dash-cash.cash-status-shortage        { background: #FFEBEE; color: #B71C1C; border-color: #E57373; }
-
-[data-theme="dark"] .ts-dash-cash.cash-status-ok {
-  background: rgba(76, 175, 80, 0.10);
-  color: #A5D6A7;
-  border-color: rgba(76, 175, 80, 0.40);
-}
-[data-theme="dark"] .ts-dash-cash.cash-status-ok_with_returns {
-  background: rgba(124, 179, 66, 0.10);
-  color: #C5E1A5;
-  border-color: rgba(124, 179, 66, 0.40);
-}
-[data-theme="dark"] .ts-dash-cash.cash-status-tight {
-  background: rgba(255, 179, 0, 0.10);
-  color: #FFE082;
-  border-color: rgba(255, 179, 0, 0.40);
-}
-[data-theme="dark"] .ts-dash-cash.cash-status-shortage {
-  background: rgba(229, 115, 115, 0.12);
-  color: #EF9A9A;
-  border-color: rgba(229, 115, 115, 0.45);
-}
+/* Постельные тона по статусу cash-coverage — через токены theme.css (автомат-адаптация тем) */
+.ts-dash-cash.cash-status-ok              { background: var(--ok-bg);   color: var(--ok);     border-color: var(--ok); }
+.ts-dash-cash.cash-status-ok_with_returns { background: var(--ok-bg);   color: var(--ok);     border-color: var(--ok); }
+.ts-dash-cash.cash-status-tight           { background: var(--warn-bg); color: var(--warn-t); border-color: var(--warn-t); }
+.ts-dash-cash.cash-status-shortage        { background: var(--err-bg);  color: var(--err);    border-color: var(--err); }
 
 /* ─── 5) Лимиты СЗ (компактная карточка) ─── */
 .ts-dash-limits-card {

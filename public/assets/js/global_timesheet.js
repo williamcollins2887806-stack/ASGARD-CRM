@@ -99,7 +99,7 @@ window.AsgardGlobalTimesheetPage=(function(){
           </div>
         </div>
         <div id="ts_stats" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px"></div>
-        <div id="ts_wrap" class="timesheet-wrap" style="overflow:auto;max-height:calc(100vh - 240px);border:1px solid var(--brd);border-radius:var(--r-md)">
+        <div id="ts_wrap" class="timesheet-wrap" style="overflow-x:auto;border:1px solid var(--brd);border-radius:var(--r-md)">
           <div style="padding:40px;text-align:center;color:var(--t3)">Загрузка...</div>
         </div>
       </div>

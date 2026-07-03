@@ -2,17 +2,20 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '@/api/client';
 import StackedBar from '@/components/StackedBar';
+import { useAuth } from '@/api/useAuth';
+import AccessDenied from '@/blocks/AccessDenied';
+import { toast } from '@/modals/Notifications';
+// 23.06.2026 BUG-FIX (Sites D-M10/D-M11): DONE_SET/isDone — из единого helpers/work-status.
+import { isDone } from '@/helpers/work-status';
 
 const MONTHS = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
 const WON = ['Выиграли'];
 const LOST = ['Проиграли'];
-const DONE_SET = new Set([
-  'Закрыт', 'Закрыта', 'Закрыто', 'Работы сдали',
-  'Завершена', 'Завершено', 'Завершен', 'Завершён',
-  'Сдан', 'Сдана', 'Сдано',
-  'Отменена', 'Отменено', 'Отменён', 'Отменен', 'Отмена'
-].map((s) => s.trim().toLowerCase()));
-const isDone = (s) => DONE_SET.has(String(s || '').trim().toLowerCase());
+
+// 23.06.2026 BUG-FIX (Sites D-M4): internal RBAC gate (vanilla dashboard.js:31 отрезала
+// не-директоров на UI; до фикса v2 Dashboard рендерил виджеты даже для PM/TO, а 403 от
+// backend ловился silent → пустой дашборд без объяснения).
+const ALLOWED = ['ADMIN', 'DIRECTOR_COMM', 'DIRECTOR_GEN', 'DIRECTOR_DEV'];
 
 function money(n) {
   return (Number(n) || 0).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽';
@@ -67,6 +70,7 @@ function fmtCsvMoney(n) {
 }
 
 export default function Dashboard() {
+  const { user, ready } = useAuth();
   const now = useMemo(() => new Date(), []);
   const year = now.getFullYear();
   const month = now.getMonth();
@@ -75,7 +79,18 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
 
+  // 23.06.2026 BUG-FIX (Sites D-M4): RBAC gate перед загрузкой данных. До фикса
+  // PM/TO/HR попадали на страницу через прямой URL и видели «пустой» дашборд
+  // (виджеты ловили 403 silently). Теперь — toast + AccessDenied.
+  const allowed = !!user && ALLOWED.includes(user.role);
   useEffect(() => {
+    if (ready && user && !allowed) {
+      toast?.error?.('Раздел доступен только директорам') || toast?.('Доступ', 'Раздел доступен только директорам', 'err');
+    }
+  }, [ready, user, allowed]);
+
+  useEffect(() => {
+    if (!allowed) return undefined;
     const ctrl = new AbortController();
     Promise.all([
       api('/api/tenders?limit=2000', { signal: ctrl.signal }).then((d) => d.tenders || []).catch(() => []),
@@ -93,7 +108,7 @@ export default function Dashboard() {
       .catch((e) => { setErr(e); setLoading(false); });
 
     return () => ctrl.abort();
-  }, [year]);
+  }, [year, allowed]);
 
   const stats = useMemo(() => {
     const { tenders, works, users, workExpenses, officeExpenses, travelExpenses } = data;
@@ -166,6 +181,8 @@ export default function Dashboard() {
     return { ...s, monthly };
   }, [data, year, month]);
 
+  if (!ready) return <div className="p-24 c-t3">⏳ Загружаем…</div>;
+  if (!user || !allowed) return <AccessDenied title="Раздел для директоров" hint="Дашборд руководителя доступен только ADMIN и DIRECTOR_*." />;
   if (loading) return <SkeletonDash />;
   if (err) return <div className="p-24 c-err">Ошибка: {err.message}</div>;
 

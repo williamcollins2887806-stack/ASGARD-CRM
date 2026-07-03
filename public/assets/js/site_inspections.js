@@ -14,6 +14,7 @@ window.AsgardSiteInspection = (function () {
   'use strict';
 
   const { $, $$, esc, toast, showModal, hideModal } = AsgardUI;
+  const fmtDate = (iso) => iso ? (AsgardUI.formatDate ? AsgardUI.formatDate(iso) : new Date(iso).toLocaleDateString('ru-RU')) : '—';
 
   // Helpers
   function isoNow() { return new Date().toISOString(); }
@@ -520,7 +521,7 @@ window.AsgardSiteInspection = (function () {
           <div class="help"><b>Командировки:</b></div>
           ${si.trips.map(t => `
             <div class="pill" style="margin-top:6px; padding:10px; border:1px solid var(--brd); border-radius:8px">
-              <span>${t.date_from || '?'} — ${t.date_to || '?'}</span>
+              <span>${t.date_from ? fmtDate(t.date_from) : '?'} — ${t.date_to ? fmtDate(t.date_to) : '?'}</span>
               <span style="color:var(--t3); margin-left:12px">${esc(STATUS_LABELS[t.status] || t.status)}</span>
             </div>
           `).join('')}
@@ -700,7 +701,7 @@ window.AsgardSiteInspection = (function () {
       showModal('Предпросмотр командировки', `
         <div class="help"><b>${esc(inspection.object_name)}</b></div>
         <div style="margin-top:12px">
-          <div><b>Даты:</b> ${d.date_from || '—'} — ${d.date_to || '—'}</div>
+          <div><b>Даты:</b> ${d.date_from ? fmtDate(d.date_from) : '—'} — ${d.date_to ? fmtDate(d.date_to) : '—'}</div>
           <div><b>Транспорт:</b> ${transportLabel}</div>
           <div><b>Сотрудники:</b> ${empList.map(e => e.fio).join(', ') || '—'}</div>
           ${needs.length ? `<div><b>Потребности:</b> ${needs.join(', ')}</div>` : ''}

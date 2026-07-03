@@ -39,8 +39,24 @@ window.AsgardAllWorksPage=(function(){
     const settings = await getSettings();
     const refs = await getRefs();
 
-    const works = await AsgardDB.all("works");
-    const tenders = await AsgardDB.all("tenders");
+    // Реестр работ — прямой fetch (IDB-кэш не отражает soft-delete и серверный RBAC).
+    const _tok = (window.AsgardAuth && window.AsgardAuth.token) || localStorage.getItem('asgard_token');
+    const _hdr = { Authorization: 'Bearer ' + _tok };
+    async function _fetchList(url, key, fallbackTable){
+      try {
+        const r = await fetch(url, { headers: _hdr, cache: 'no-store' });
+        if (!r.ok) throw new Error('GET ' + url + ' ' + r.status);
+        const j = await r.json();
+        return j[key] || j.items || j.data || [];
+      } catch (e) {
+        console.warn('[all_works] fetch ' + url + ' failed, fallback to IDB:', e.message);
+        return await AsgardDB.all(fallbackTable) || [];
+      }
+    }
+    const [works, tenders] = await Promise.all([
+      _fetchList('/api/works?limit=1000', 'works', 'works'),
+      _fetchList('/api/tenders?limit=1000', 'tenders', 'tenders')
+    ]);
 
     let sortKey="id", sortDir=-1;
 
@@ -107,7 +123,13 @@ window.AsgardAllWorksPage=(function(){
       const got = (Number(w.advance_received||0)+Number(w.balance_received||0))||0;
       const left = (w.contract_value||0) ? Math.max(0, Number(w.contract_value||0)-got) : 0;
       const fmtDate = AsgardUI.formatDate;
-      const start = fmtDate(w.start_in_work_date || t?.work_start_plan);
+      // 23.06.2026 BUG-FIX (🟡 S3): канон-цепочка через AsgardWorksShared. Раньше
+      // здесь было `start_in_work_date || t?.work_start_plan` — у работ из тендера
+      // start_in_work_date пуст, t?.work_start_plan на v1-работе нет → колонка «Сроки»
+      // показывала «—» для большинства строк. Канон: start_plan first.
+      const start = fmtDate((window.AsgardWorksShared && window.AsgardWorksShared.workStartIso)
+        ? window.AsgardWorksShared.workStartIso(w, t)
+        : (w.start_plan || w.start_in_work_date || w.start_date || w.start_fact || t?.work_start_plan || w.created_at));
       const end = fmtDate(w.end_fact || w.end_plan || t?.work_end_plan);
       return `<tr data-id="${w.id}" data-tender-id="${w.tender_id||""}">
         <td><b>${esc(w.customer_name||t?.customer_name||"")}</b><div class="help">${esc(w.work_title||t?.tender_title||"")}</div></td>
@@ -131,7 +153,13 @@ window.AsgardAllWorksPage=(function(){
       const contractVal = Number(w.contract_value||0);
       const pct = contractVal > 0 ? Math.min(100, Math.round((got / contractVal) * 100)) : 0;
       const fmtDate = AsgardUI.formatDate;
-      const start = fmtDate(w.start_in_work_date || t?.work_start_plan);
+      // 23.06.2026 BUG-FIX (🟡 S3): канон-цепочка через AsgardWorksShared. Раньше
+      // здесь было `start_in_work_date || t?.work_start_plan` — у работ из тендера
+      // start_in_work_date пуст, t?.work_start_plan на v1-работе нет → колонка «Сроки»
+      // показывала «—» для большинства строк. Канон: start_plan first.
+      const start = fmtDate((window.AsgardWorksShared && window.AsgardWorksShared.workStartIso)
+        ? window.AsgardWorksShared.workStartIso(w, t)
+        : (w.start_plan || w.start_in_work_date || w.start_date || w.start_fact || t?.work_start_plan || w.created_at));
       const end = fmtDate(w.end_fact || w.end_plan || t?.work_end_plan);
 
       return '<div class="m-work-card" data-id="' + w.id + '" data-tender-id="' + (w.tender_id||'') + '">' +
@@ -288,8 +316,10 @@ window.AsgardAllWorksPage=(function(){
       const defaultStart=(settings.gantt_start_iso||"2026-01-01T00:00:00.000Z").slice(0,10);
       const rows = works.map(w=>{
         const t=tenders.find(x=>x.id===w.tender_id);
-        const start = w.start_in_work_date || t?.work_start_plan || w.end_plan || "2026-01-01";
-        const end = w.end_fact || w.end_plan || t?.work_end_plan || start;
+        // FIX (23.06.2026): canonical fallback chain — start_plan приоритет, потом start_in_work_date, потом тендер.work_start_plan, потом created_at.
+        // НЕ скатываемся к end_plan (это был баг — work 353 с end_plan=окт-30 показывался не там).
+        const start = w.start_plan || w.start_in_work_date || t?.work_start_plan || w.start_fact || w.created_at || "2026-01-01";
+        const end = w.end_plan || w.end_date || w.end_fact || t?.work_end_plan || start;
         return {start,end,label:(w.customer_name||t?.customer_name||""),sub:(w.work_title||t?.tender_title||""),barText:w.work_status||"",status:w.work_status||""};
       });
       const colors=settings.status_colors?.work||{};

@@ -241,7 +241,21 @@ window.AsgardTendersPage = (function(){
 
   // Поиск похожих тендеров
   async function findDuplicates(customerInn, customerName, tenderTitle) {
-    const allTenders = await AsgardDB.all('tenders') || [];
+    // Тянем актуальный список с backend (не из IndexedDB-кэша — иначе видим
+    // устаревшие/удалённые записи). Endpoint /api/tenders уже фильтрует
+    // soft-deleted и Auto-tender placeholders на backend-уровне.
+    const allTenders = await (async () => {
+      try {
+        const tok = (window.AsgardAuth && window.AsgardAuth.token) || localStorage.getItem('asgard_token');
+        const r = await fetch('/api/tenders?limit=1000', {
+          headers: { Authorization: 'Bearer ' + tok },
+          cache: 'no-store'
+        });
+        if (!r.ok) return [];
+        const j = await r.json();
+        return j.tenders || j.items || j.data || [];
+      } catch (_) { return []; }
+    })();
     const duplicates = [];
     
     for (const t of allTenders) {
@@ -700,10 +714,28 @@ window.AsgardTendersPage = (function(){
     _showAutoEstBtn = ['TO','HEAD_TO','ADMIN'].includes(user.role);
 
     const users = await getUsers();
-    const pms = users.filter(u=>u.role==="PM" || (Array.isArray(u.roles) && u.roles.includes("PM")));
+    const pms = users.filter(u=>u.role==="PM" || u.role==="HEAD_PM" || (Array.isArray(u.roles) && (u.roles.includes("PM") || u.roles.includes("HEAD_PM"))));
     const byId = new Map(users.map(u=>[u.id,u]));
     const refs = await getRefs();
-    const tenders = await AsgardDB.all("tenders");
+    // Реестр тендеров — прямой fetch с backend. Раньше использовался
+    // IndexedDB-кэш AsgardDB.all('tenders'), но он не отражает удаления/
+    // обновления с сервера (показывал устаревшие записи + Auto-tender stubs).
+    // RBAC, soft-delete и фильтр стабов делает /api/tenders на backend.
+    const tenders = await (async () => {
+      try {
+        const tok = (window.AsgardAuth && window.AsgardAuth.token) || localStorage.getItem('asgard_token');
+        const r = await fetch('/api/tenders?limit=1000', {
+          headers: { Authorization: 'Bearer ' + tok },
+          cache: 'no-store'
+        });
+        if (!r.ok) throw new Error('GET /api/tenders ' + r.status);
+        const j = await r.json();
+        return j.tenders || j.items || j.data || [];
+      } catch (e) {
+        console.warn('[tenders] fetch failed, fallback to IndexedDB:', e.message);
+        return await AsgardDB.all('tenders') || [];
+      }
+    })();
 
     let sortKey="id", sortDir=-1;
 
@@ -1076,8 +1108,10 @@ window.AsgardTendersPage = (function(){
 
       const _winOptsMap = new Map();
       const rows = items.map(t => {
-        const ds = t.work_start_plan || "—";
-        const de = t.work_end_plan || "—";
+        // ISO timestamp от backend → русский формат через fmtDate (есть в этом
+        // же файле, используется во всех других местах renderа).
+        const ds = t.work_start_plan ? fmtDate(t.work_start_plan) : "—";
+        const de = t.work_end_plan   ? fmtDate(t.work_end_plan)   : "—";
         const srcPm = t.calc_pm_name || (byId.get(t.responsible_pm_id)||{}).name || "—";
         const price = t.submission_price || t.tender_price || 0;
 
@@ -1540,10 +1574,12 @@ window.AsgardTendersPage = (function(){
           // Активные: исключаем "Не подходит"
           if(t.tender_status === 'Не подходит') return false;
         }
-        // Sub-tab «🛡 Тендеры → 📡 С площадок» — только source_kind='platform'|'email_invite'
+        // Sub-tab «🛡 Тендеры → 📡 С площадок» — source_kind ∈ {platform, email_invite, to_manual}.
+        // 23.06.2026 BUG-FIX (🟡 #4): включён to_manual. По V250 это «тендер заведён вручную ТО»,
+        // т.е. тоже требует разбора в очереди площадок (фронт-юзер ожидает увидеть его здесь).
         if (currentMainTab === 'tenders' && currentSubTab === 'platforms') {
           const sk = t.source_kind || 'manual';
-          if (sk !== 'platform' && sk !== 'email_invite') return false;
+          if (sk !== 'platform' && sk !== 'email_invite' && sk !== 'to_manual') return false;
         }
         // Sub-tab «🛡 Тендеры → 🧮 В работе ТО» — фильтр по моим/ТО (active activity)
         if (currentMainTab === 'tenders' && currentSubTab === 'in_work') {
@@ -1657,9 +1693,15 @@ window.AsgardTendersPage = (function(){
       // Дозапрос ждёт
       let kpiAddendum = 0;
       // Конверсия мес: won / (won + lost) за текущий месяц
+      // 23.06.2026 BUG-FIX (🟡 #7): считаем по won_at/lost_at (V117) — это «когда выиграли»,
+      // а t.period — это «отчётный период тендера» (YYYY-MM), может быть прошлым. Для тендеров
+      // без won_at (исторические) — fallback по period === ymCur.
       const ymCur = ymNow();
       let monWin = 0, monLose = 0;
+      const tsMonthStart = (() => { const d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d.getTime(); })();
       // sub-tab counts (для бейджей в hub-sub-tabs)
+      // 23.06.2026 BUG-FIX (🟡 #4): добавлен to_manual в счётчик «📡 С площадок»,
+      // т.к. вкладка показывает все «надо разобрать»-источники включая ручные ТО.
       let cPlatforms = 0, cInWork = 0;
       tenders.forEach(t => {
         const ca = t.created_at ? new Date(t.created_at).getTime() : 0;
@@ -1670,12 +1712,16 @@ window.AsgardTendersPage = (function(){
           if (days <= 3 && days >= 0 && inWorkStatuses.has(t.tender_status)) kpiBurn++;
         }
         if (t.tender_status === 'Дозапрос') kpiAddendum++;
-        if (t.period === ymCur) {
-          if (t.tender_status === 'Выиграли') monWin++;
-          if (t.tender_status === 'Проиграли') monLose++;
+        if (t.tender_status === 'Выиграли') {
+          const wonMs = t.won_at ? new Date(t.won_at).getTime() : ca;
+          if (wonMs >= tsMonthStart || (!t.won_at && t.period === ymCur)) monWin++;
+        }
+        if (t.tender_status === 'Проиграли') {
+          const lostMs = t.lost_at ? new Date(t.lost_at).getTime() : ca;
+          if (lostMs >= tsMonthStart || (!t.lost_at && t.period === ymCur)) monLose++;
         }
         const sk = t.source_kind || 'manual';
-        if (sk === 'platform' || sk === 'email_invite') cPlatforms++;
+        if (sk === 'platform' || sk === 'email_invite' || sk === 'to_manual') cPlatforms++;
         if (inWorkStatuses.has(t.tender_status)) cInWork++;
       });
       const setTxt = (id,v)=>{ const el=document.getElementById(id); if(el) el.textContent = String(v); };
@@ -3911,6 +3957,16 @@ window.AsgardTendersPage = (function(){
               if(window.AsgardTmcRequests && AsgardTmcRequests.openFromTender){
                 AsgardTmcRequests.openFromTender(t, user);
               } else { location.hash = "#/tmc-requests"; }
+            }
+          });
+
+          // ─── Переписка ───
+          actions.push({ section: 'Переписка' });
+          actions.push({
+            icon: '📜', label: 'Официальная переписка',
+            desc: 'Письма по тендеру',
+            onClick: () => {
+              location.hash = `#/correspondence?parent_entity_type=tender&parent_entity_id=${tenderId}`;
             }
           });
 

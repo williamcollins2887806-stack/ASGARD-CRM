@@ -49,8 +49,25 @@ window.AsgardAllEstimatesPage = (function() {
     const byId = new Map(users.filter(u => u.is_active).map(u => [u.id, u]));
     const settings = await AsgardDB.get('settings', 'app');
     const vatPct = settings ? (JSON.parse(settings.value_json || '{}').vat_pct || 22) : 22;
-    const tenders = await AsgardDB.all('tenders');
-    let estimates = await AsgardDB.all('estimates');
+    // Реестр смет — прямой fetch (IDB-кэш не отражает soft-delete/серверный RBAC).
+    const _tok = (window.AsgardAuth && window.AsgardAuth.token) || localStorage.getItem('asgard_token');
+    const _hdr = { Authorization: 'Bearer ' + _tok };
+    async function _fetchList(url, key, fallbackTable){
+      try {
+        const r = await fetch(url, { headers: _hdr, cache: 'no-store' });
+        if (!r.ok) throw new Error('GET ' + url + ' ' + r.status);
+        const j = await r.json();
+        return j[key] || j.items || j.data || [];
+      } catch (e) {
+        console.warn('[all_estimates] fetch ' + url + ' failed, fallback to IDB:', e.message);
+        return await AsgardDB.all(fallbackTable) || [];
+      }
+    }
+    const [tenders, _estList] = await Promise.all([
+      _fetchList('/api/tenders?limit=1000', 'tenders', 'tenders'),
+      _fetchList('/api/estimates?limit=1000', 'estimates', 'estimates')
+    ]);
+    let estimates = _estList;
     let sortKey = 'sent_for_approval_at';
     let sortDir = -1;
 
@@ -239,7 +256,7 @@ window.AsgardAllEstimatesPage = (function() {
           });
           if (!resp.ok) { const err = await resp.json(); throw new Error(err.error || 'Ошибка'); }
           await AsgardDB.put('estimates', { ...(await AsgardDB.get('estimates', id)), approval_status: newStatus, approval_comment: comm });
-          estimates = await AsgardDB.all('estimates');
+          estimates = await _fetchList('/api/estimates?limit=1000', 'estimates', 'estimates');
           toast('Готово', statusLabel(newStatus), 'ok');
           apply();
           AsgardUI.hideModal();
@@ -254,7 +271,7 @@ window.AsgardAllEstimatesPage = (function() {
           });
           if (!resp.ok) { const err = await resp.json(); throw new Error(err.error || 'Ошибка'); }
           await AsgardDB.put('estimates', { ...(await AsgardDB.get('estimates', id)), approval_status: 'sent' });
-          estimates = await AsgardDB.all('estimates');
+          estimates = await _fetchList('/api/estimates?limit=1000', 'estimates', 'estimates');
           toast('Готово', 'Отправлено повторно', 'ok');
           apply();
           AsgardUI.hideModal();
@@ -275,7 +292,7 @@ window.AsgardAllEstimatesPage = (function() {
     }
 
     // ─── Events ───
-    estimates = await AsgardDB.all('estimates');
+    estimates = await _fetchList('/api/estimates?limit=1000', 'estimates', 'estimates');
     apply();
     $('#f_q').addEventListener('input', apply);
     $$('[data-sort]').forEach(th => {

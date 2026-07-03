@@ -57,11 +57,32 @@ window.AsgardGanttFullPage=(function(){
     const s = await AsgardDB.get("settings","app");
     return s ? JSON.parse(s.value_json||"{}") : {vat_pct:22, gantt_start_iso:"2026-01-01T00:00:00Z", status_colors:{tender:{}, work:{}}};
   }
+
+  // Гантт читает tenders/works/users напрямую с backend (IDB не отражает soft-delete/RBAC).
+  async function _gfFetchList(url, key, fallbackTable){
+    try {
+      const tok = (window.AsgardAuth && window.AsgardAuth.token) || localStorage.getItem('asgard_token');
+      const r = await fetch(url, {
+        headers: { Authorization: 'Bearer ' + tok },
+        cache: 'no-store'
+      });
+      if (!r.ok) throw new Error('GET ' + url + ' ' + r.status);
+      const j = await r.json();
+      return j[key] || j.items || j.data || [];
+    } catch (e) {
+      console.warn('[gantt_full] fetch ' + url + ' failed, fallback to IDB:', e.message);
+      return await AsgardDB.all(fallbackTable) || [];
+    }
+  }
   function renderSafeList(items, title){
     const fmtDate = AsgardUI.formatDate || (d => d ? new Date(d).toLocaleDateString('ru-RU') : '—');
     const rows = (items||[]).map(it=>{
       const name = it.title || it.work_title || it.tender_title || ("ID "+it.id);
-      const start = fmtDate(it.start || it.start_in_work_date || it.start_plan || it.work_start_plan);
+      // 23.06.2026 BUG-FIX (🟡 S2): инверсия fallback — start_in_work_date был ПЕРЕД
+      // start_plan, хотя на проде start_in_work_date почти не заполняется. Это давало
+      // пустой «Старт» в safe-mode таблице для работ из тендера. Выровнено с канон-цепочкой
+      // из основной функции renderBoard (гл. 482-501 в этом же файле) и AsgardGantt.workStartIso.
+      const start = fmtDate(it.start || it.start_plan || it.start_in_work_date || it.work_start_plan || it.created_at);
       const end = fmtDate(it.end || it.end_plan || it.work_end_plan);
       const st = it.work_status || it.status || it.tender_status || "";
       return `<tr><td>${esc(name)}</td><td class="mono">${start}</td><td class="mono">${end}</td><td>${esc(st)}</td></tr>`;
@@ -93,10 +114,11 @@ window.AsgardGanttFullPage=(function(){
 
     const refsRec = await AsgardDB.get("settings","refs");
     const refs = refsRec ? JSON.parse(refsRec.value_json||"{}") : {};
-    const pmUsers = (await AsgardDB.all("users")).filter(u=>u.is_active && !String(u.login||'').startsWith('test_') && u.login !== 'mimir_bot' && (u.role==="PM" || (Array.isArray(u.roles) && u.roles.includes("PM"))));
+    const _usersAll = await _gfFetchList('/api/users?limit=1000', 'users', 'users');
+    const pmUsers = _usersAll.filter(u=>u.is_active && !String(u.login||'').startsWith('test_') && u.login !== 'mimir_bot' && (u.role==="PM" || u.role==="HEAD_PM" || (Array.isArray(u.roles) && (u.roles.includes("PM") || u.roles.includes("HEAD_PM")))));
 
     // Load tenders visible
-    let tenders = (await AsgardDB.all("tenders")).filter(t => t.handoff_at);
+    let tenders = (await _gfFetchList('/api/tenders?limit=1000', 'tenders', 'tenders')).filter(t => t.handoff_at);
     if(!isDir){ tenders = tenders.filter(t=>t.responsible_pm_id===user.id); }
 
     // only those in pipeline (not отказ) unless show
@@ -324,9 +346,10 @@ await layout(body,{title:"Гантт • Просчёты", motto:"Сроки в
 
     const refsRec = await AsgardDB.get("settings","refs");
     const refs = refsRec ? JSON.parse(refsRec.value_json||"{}") : {};
-    const pmUsers = (await AsgardDB.all("users")).filter(u=>u.is_active && !String(u.login||'').startsWith('test_') && u.login !== 'mimir_bot' && (u.role==="PM" || (Array.isArray(u.roles) && u.roles.includes("PM"))));
+    const _usersAll = await _gfFetchList('/api/users?limit=1000', 'users', 'users');
+    const pmUsers = _usersAll.filter(u=>u.is_active && !String(u.login||'').startsWith('test_') && u.login !== 'mimir_bot' && (u.role==="PM" || u.role==="HEAD_PM" || (Array.isArray(u.roles) && (u.roles.includes("PM") || u.roles.includes("HEAD_PM")))));
 
-    let works = await AsgardDB.all("works");
+    let works = await _gfFetchList('/api/works?limit=1000', 'works', 'works');
     if(!isDir){ works = works.filter(w=>w.pm_id===user.id); }
 
     const body = `
@@ -445,9 +468,15 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
       if(pmV && pmV!=="all") items = items.filter(w=> String(w.pm_id||"") === String(pmV));
       if(stV && stV!=="all") items = items.filter(w=> String(w.work_status||"") === String(stV));
 
-      const doneSet=new Set(["Работы сдали","Подписание акта"]);
-      if(flt==="active") items=items.filter(w=> !doneSet.has(w.work_status));
-      if(flt==="done") items=items.filter(w=> doneSet.has(w.work_status));
+      // 23.06.2026 BUG-FIX (🟡 S1): расширенный done-список из AsgardWorksShared
+      // вместо узкого Set из 2 значений. Раньше «Завершена/Сдан/Закрыт» (легаси-статусы)
+      // выпадали из обеих веток фильтра. Также «Подписание акта» — это closeout (работа
+      // ещё в работе), а не done; убрано из done.
+      const _isDoneW = (window.AsgardWorksShared && window.AsgardWorksShared.isClosedWork)
+        ? (s => window.AsgardWorksShared.isClosedWork(s))
+        : (s => ['Работы сдали','Закрыт','Закрыта','Завершена','Отменена'].includes(s));
+      if(flt==="active") items=items.filter(w=> !_isDoneW(w.work_status));
+      if(flt==="done") items=items.filter(w=>  _isDoneW(w.work_status));
 
       let windowFrom = null, windowTo = null;
       if(perV==="all"){
@@ -460,8 +489,9 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
         const f = windowFrom || windowTo;
         const t = windowTo || windowFrom;
         items = items.filter(w=>{
-          const st = w.start_in_work_date || w.end_plan || w.end_fact || f;
-          const en = w.end_fact || w.end_plan || w.start_in_work_date || f;
+          // FIX (23.06.2026): используем общую цепочку start_plan → start_in_work_date → created_at
+          const st = AsgardGantt.workStartIso(w, f);
+          const en = AsgardGantt.workEndIso(w, f);
           return overlap(st, en, f, t);
         });
       }
@@ -476,8 +506,9 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
       weeks = clamp(weeks, 4, 104);
 
       const rows = items.map(w=>{
-        const st = w.start_in_work_date || w.end_plan || startIso;
-        const en = w.end_fact || w.end_plan || w.start_in_work_date || startIso;
+        // FIX (23.06.2026): корректный fallback — start_plan приоритетнее end_plan
+        const st = AsgardGantt.workStartIso(w, startIso);
+        const en = AsgardGantt.workEndIso(w, startIso);
         return {
           id: w.id,
           label: `${w.customer_name||""} — ${w.work_title||""}`,
@@ -558,11 +589,16 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
 
     const refsRec = await AsgardDB.get("settings","refs");
     const refs = refsRec ? JSON.parse(refsRec.value_json||"{}") : {};
-    const pmUsers = (await AsgardDB.all("users")).filter(u=>u.is_active && !String(u.login||'').startsWith('test_') && u.login !== 'mimir_bot' && (u.role==="PM" || (Array.isArray(u.roles) && u.roles.includes("PM"))));
+    const _usersAll = await _gfFetchList('/api/users?limit=1000', 'users', 'users');
+    const pmUsers = _usersAll.filter(u=>u.is_active && !String(u.login||'').startsWith('test_') && u.login !== 'mimir_bot' && (u.role==="PM" || u.role==="HEAD_PM" || (Array.isArray(u.roles) && (u.roles.includes("PM") || u.roles.includes("HEAD_PM")))));
 
     // Загружаем ОБА типа данных
-    let tenders = (await AsgardDB.all("tenders")).filter(t => t.handoff_at);
-    let works = await AsgardDB.all("works");
+    const [_tAll, _wAll] = await Promise.all([
+      _gfFetchList('/api/tenders?limit=1000', 'tenders', 'tenders'),
+      _gfFetchList('/api/works?limit=1000', 'works', 'works')
+    ]);
+    let tenders = _tAll.filter(t => t.handoff_at);
+    let works = _wAll;
     if(!isDir){
       tenders = tenders.filter(t=>t.responsible_pm_id===user.id);
       works = works.filter(w=>w.pm_id===user.id);
@@ -716,8 +752,9 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
             _type: 'work',
             _label: `${w.customer_name||""} — ${w.work_title||""}`,
             _status: w.work_status || "",
-            _start: w.start_in_work_date || w.end_plan,
-            _end: w.end_fact || w.end_plan || w.start_in_work_date,
+            // FIX (23.06.2026): полный fallback chain — start_plan приоритет
+            _start: AsgardGantt.workStartIso(w, null),
+            _end: AsgardGantt.workEndIso(w, null),
             _pmId: w.pm_id
           });
         });
@@ -727,18 +764,24 @@ await layout(body,{title:"Гантт • Работы", motto:"Клятва да
       if(q) items=items.filter(it=> norm(it._label).includes(q));
       if(pmV && pmV!=="all") items = items.filter(it=> String(it._pmId||"") === String(pmV));
 
+      // 23.06.2026 BUG-FIX (🟡 S1): расширенный done-список для работ из
+      // AsgardWorksShared (легаси-статусы Завершена/Сдан/Закрыт раньше выпадали
+      // из обеих веток фильтра). Тендерный set оставлен как есть — у него
+      // отдельная семантика.
       const doneSetTender = new Set(["Проиграли", "Не подходит"]);
-      const doneSetWork = new Set(["Работы сдали", "Подписание акта"]);
+      const _isDoneWorkSt = (window.AsgardWorksShared && window.AsgardWorksShared.isClosedWork)
+        ? (s => window.AsgardWorksShared.isClosedWork(s))
+        : (s => ['Работы сдали','Закрыт','Закрыта','Завершена','Отменена'].includes(s));
       if(flt==="active"){
         items=items.filter(it=>{
           if(it._type==='tender') return !doneSetTender.has(it._status);
-          return !doneSetWork.has(it._status);
+          return !_isDoneWorkSt(it._status);
         });
       }
       if(flt==="done"){
         items=items.filter(it=>{
           if(it._type==='tender') return doneSetTender.has(it._status) || it._status==='Выиграли';
-          return doneSetWork.has(it._status);
+          return _isDoneWorkSt(it._status);
         });
       }
 

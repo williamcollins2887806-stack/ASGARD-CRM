@@ -16,6 +16,7 @@
 import { useState } from 'react';
 import { Field, TextareaInput } from '@/inputs/Inputs';
 import { toast } from '@/modals/Notifications';
+import { api } from '@/api/client';
 
 // Паттерны для парсинга банковских SMS (1:1 из vanilla telegram.js:47)
 const BANK_SMS_PATTERNS = [
@@ -102,27 +103,34 @@ export default function SmsParser() {
 
   async function handleCreateIncome() {
     if (!result) return;
+    if (!result.amount || result.amount <= 0) {
+      toast.warn('Не распознана сумма поступления');
+      return;
+    }
     setCreating(true);
     try {
-      // TODO: endpoint /api/incomes/from-sms ещё не реализован на бэкенде.
-      // В vanilla (telegram.js:383-385) тоже стоит заглушка «В разработке».
-      // Когда роут появится — раскомментировать вызов ниже.
-      //
-      // const body = {
-      //   sms,
-      //   parsed: {
-      //     amount: result.amount,
-      //     from:   result.sender,
-      //     comment: `Распознано из ${result.bank}`
-      //   }
-      // };
-      // const r = await api('/api/incomes/from-sms', { method: 'POST', body });
-      // toast.success(`Создано поступление #${r.id}`);
-
-      await new Promise((res) => setTimeout(res, 200));
-      toast.warn('Автосоздание поступления будет добавлено (бэкенд /api/incomes/from-sms в разработке)');
+      const body = {
+        sms_text: sms,
+        parsed: {
+          amount:  result.amount,
+          sender:  result.sender || null,
+          comment: `Распознано из SMS (${result.bank})`,
+        },
+      };
+      const r = await api('/api/incomes/from-sms', { method: 'POST', body });
+      const id = r?.income?.id;
+      toast.success(id ? `Создано поступление #${id}` : 'Поступление создано');
+      // После успеха — очищаем форму, чтобы случайно не задвоить.
+      setSms('');
+      setResult(null);
+      setParsed(false);
     } catch (e) {
-      toast.error('Ошибка создания: ' + (e.message || e));
+      // api/client сам кидает toast для 5xx/401/403/429/network.
+      // Здесь подстраховка для 400/422 (бизнес-валидация) и прочих кейсов.
+      const status = e?.status;
+      if (status !== 401 && status !== 403 && status !== 429 && (status < 500 || status >= 600)) {
+        toast.error('Ошибка создания: ' + (e?.message || e));
+      }
     } finally {
       setCreating(false);
     }

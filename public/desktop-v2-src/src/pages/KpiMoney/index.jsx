@@ -87,7 +87,9 @@ export default function KpiMoneyPage() {
   const [month, setMonth] = useState(now.getMonth() + 1); // 1..12 для period=YYYY-MM
   const [works, setWorks] = useState([]);
   const [users, setUsers] = useState([]);
-  const [expenses, setExpenses] = useState([]); // [{date, category, amount, ...}]
+  // Серверный агрегат /api/kpi-money/expenses-by-category за выбранный месяц
+  // ({ items:[{category,subcategory,sum,count}], total }).
+  const [catAgg, setCatAgg] = useState({ items: [], total: 0 });
   const [loading, setLoading] = useState(true);
 
   // RBAC inline-литералы — синхронно с vanilla kpi_money.js (ADMIN/PM/OFFICE_MANAGER/BUH/DIRECTOR_*)
@@ -95,29 +97,23 @@ export default function KpiMoneyPage() {
 
   const refresh = () => {
     setLoading(true);
-    const dateFrom = `${year}-01-01`;
-    const dateTo   = `${year}-12-31`;
-    const q = new URLSearchParams({ date_from: dateFrom, date_to: dateTo, limit: '10000' }).toString();
+    const period = `${year}-${String(month).padStart(2, '0')}`;
 
-    // TODO(backend): endpoint /api/kpi-money/expenses-by-category?period=YYYY-MM пока НЕ существует
-    // (см. src/routes/expenses.js — есть только /work и /office). Когда появится — заменить
-    // двойной fetch ниже на одиночный к серверному агрегату. Пока агрегируем на клиенте
-    // по тем же источникам, что и vanilla kpi_money.js (work_expenses + office_expenses + travel).
+    // Серверный агрегат: src/routes/kpi-money.js — /expenses-by-category?period=YYYY-MM.
+    // Возвращает { items, total } по work_expenses GROUP BY category, subcategory.
+    // RBAC на endpoint жёстче (ADMIN/DIRECTOR_GEN/DIRECTOR_COMM/BUH) — для PM/HEAD_PM
+    // ответ может быть 403, тогда оставляем пустой агрегат.
     Promise.all([
       api('/api/works?limit=2000').then((d) => d?.works || d?.items || []).catch(() => []),
       api('/api/users?limit=500').then((d) => d?.users || []).catch(() => []),
-      api('/api/expenses/work?' + q).then((d) => d?.expenses || []).catch(() => []),
-      api('/api/expenses/office?' + q).then((d) => d?.expenses || []).catch(() => [])
+      api(`/api/kpi-money/expenses-by-category?period=${encodeURIComponent(period)}`)
+        .then((d) => ({ items: Array.isArray(d?.items) ? d.items : [], total: Number(d?.total) || 0 }))
+        .catch(() => ({ items: [], total: 0 }))
     ])
-      .then(([w, u, we, oe]) => {
+      .then(([w, u, agg]) => {
         setWorks(w);
         setUsers(u);
-        // Унифицируем источник expenses: для office проставим category='office' если пусто
-        const merged = [
-          ...we.map((e) => ({ ...e, _src: 'work' })),
-          ...oe.map((e) => ({ ...e, category: e.category || 'office', _src: 'office' }))
-        ];
-        setExpenses(merged);
+        setCatAgg(agg);
       })
       .catch((e) => toast.error('Не удалось загрузить: ' + (e?.message || e)))
       .finally(() => setLoading(false));
@@ -132,7 +128,7 @@ export default function KpiMoneyPage() {
     }
     refresh();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.role, year]);
+  }, [user?.role, year, month]);
 
   const inYear = (w) => {
     const d = w.start_fact || w.start_plan || w.start_in_work_date || w.created_at;
@@ -197,22 +193,22 @@ export default function KpiMoneyPage() {
   }, [yearWorks]);
 
   // Расходы за выбранный месяц (period=YYYY-MM) — 12 категорий из EXPENSE_CATEGORIES.
-  // Источник: те же expenses, что и vanilla kpi_money.js (work + office + позже travel).
+  // Источник: серверный агрегат /api/kpi-money/expenses-by-category (catAgg).
+  // Сервер возвращает items=[{category,subcategory,sum,count}] GROUP BY category, subcategory;
+  // сворачиваем подкатегории и нормализуем имя категории к 12 каноническим ключам.
   const expensesByCategory = useMemo(() => {
     const period = `${year}-${String(month).padStart(2, '0')}`;
     const byCat = Object.fromEntries(EXPENSE_CATEGORIES.map((c) => [c.key, 0]));
     let totalAll = 0;
-    for (const e of expenses) {
-      const d = e.date || e.created_at;
-      if (!d || String(d).slice(0, 7) !== period) continue;
-      // фильтр approval / rejected — 1:1 с vanilla shouldCount()
-      if (e.requires_approval && e.approval_status !== 'approved') continue;
-      if (e.status === 'rejected' || e.status === 'rework') continue;
-      const cat = normalizeCategory(e.category);
-      const amt = Number(e.amount) || 0;
+    for (const it of (catAgg.items || [])) {
+      const cat = normalizeCategory(it.category);
+      const amt = Number(it.sum) || 0;
       byCat[cat] += amt;
       totalAll += amt;
     }
+    // Если сервер дал total — доверяем ему (могут быть копейки на округлении),
+    // иначе используем посчитанную сумму.
+    if (Number(catAgg.total) > 0) totalAll = Number(catAgg.total);
     const rows = EXPENSE_CATEGORIES.map((c) => ({
       key: c.key,
       label: c.label,
@@ -221,7 +217,7 @@ export default function KpiMoneyPage() {
       pct: totalAll > 0 ? (byCat[c.key] / totalAll) * 100 : 0
     }));
     return { rows, total: totalAll, period };
-  }, [expenses, year, month]);
+  }, [catAgg, year, month]);
 
   if (user && !_allowed) return null;
 

@@ -32,10 +32,12 @@ import { api } from '@/api/client';
 import { CashCoverageCard, OfficialEmploymentCard } from '../Timesheet/Dashboard';
 import { AgreementTransferModal } from './AgreementTransferModal';
 import { FinanceLimitsModal } from './FinanceLimitsModal';
+import { BulkSeTransferModal } from './BulkSeTransferModal';
+import PaymentBreakdown from '@/components/PaymentBreakdown';
 import {
   ACCESS_ROLES, LIMIT_EDITORS,
   CASH_CALC_TABS, OPERATION_OPTIONS, OPERATION_TYPES,
-  getSummary, getCashCalc, getSeTransfers, getSelfEmployedLimits,
+  getSummary, getCashCalc, getSeTransfers, getSelfEmployedLimits, getPayoutsBySource,
   confirmReturn, cancelTransfer,
   fmtMoney, fmtPeriod, statusMeta, payTypeMeta, shiftPeriod
 } from './api';
@@ -61,26 +63,39 @@ export default function PayrollDashboardPage() {
   const [limits, setLimits] = useState({ employees: [], yearly_limit: 2400000, monthly_limit: 350000 });
   // Phase 1E (2026-06-20) — карточка «🏦 Касса» (хватит ли нала на ЗП)
   const [cashCoverage, setCashCoverage] = useState(null);
+  // 2026-06-29 — таблица выплат с разбивкой по источникам (Касса РП / Банк / СЗ-сервис / Авто-ФОТ)
+  const [payoutsBySource, setPayoutsBySource] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const [ccTab, setCcTab] = useState('all');
   const [opType, setOpType] = useState('');
 
+  // Период для payouts-by-source — YYYY-MM-DD от первого до последнего дня месяца
+  const periodRange = useMemo(() => {
+    const from = new Date(year, month - 1, 1);
+    const to = new Date(year, month, 0); // последний день месяца
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return { from: iso(from), to: iso(to) };
+  }, [year, month]);
+
   const refresh = async () => {
     setLoading(true);
     try {
-      const [s, cc, tr, lm, ccv] = await Promise.allSettled([
+      const [s, cc, tr, lm, ccv, pbs] = await Promise.allSettled([
         getSummary(year, month),
         getCashCalc(year, month),
         getSeTransfers(year, month),
         getSelfEmployedLimits(),
         // Phase 1E — cash-coverage (403/ошибки silent)
-        api(`/api/payroll-dashboard/cash-coverage/${year}/${month}`)
+        api(`/api/payroll-dashboard/cash-coverage/${year}/${month}`),
+        // 2026-06-29 — payouts-by-source (тихий — если бэк 404/403, просто не рендерим секцию)
+        getPayoutsBySource({ from: periodRange.from, to: periodRange.to }).catch(() => null)
       ]);
       if (s.status === 'fulfilled')  setSummary(s.value); else { setSummary(null); toast.error('Сводка: ' + (s.reason?.message || '')); }
       if (cc.status === 'fulfilled') setCashCalc(cc.value); else { setCashCalc(null); toast.error('Расчёт кассы: ' + (cc.reason?.message || '')); }
       if (tr.status === 'fulfilled') setTransfers(tr.value); else { setTransfers([]); }
       if (ccv.status === 'fulfilled') setCashCoverage(ccv.value); else { setCashCoverage(null); }
+      if (pbs.status === 'fulfilled') setPayoutsBySource(pbs.value); else { setPayoutsBySource(null); }
       if (lm.status === 'fulfilled') {
         const arr = lm.value.employees || lm.value.limits || [];
         const normalized = arr.map((w) => ({
@@ -157,10 +172,29 @@ export default function PayrollDashboardPage() {
     { size: 'wide' }
   );
 
+  const openBulkSeTransfer = () => modal.open(
+    <BulkSeTransferModal year={year} month={month} onDone={refresh} />,
+    { size: 'wide' }
+  );
+
   const openLimitsEditor = () => modal.open(
     <FinanceLimitsModal onDone={refresh} />,
     { size: 'wide' }
   );
+
+  // 2026-06-29 — открыть детализацию выплат конкретному работнику.
+  const openBreakdown = (worker) => {
+    const empId = worker?.employee_id ?? worker?.id;
+    if (!empId) return;
+    modal.open(
+      <PaymentBreakdown
+        employeeId={empId}
+        periodFrom={periodRange.from}
+        periodTo={periodRange.to}
+      />,
+      { size: 'wide' }
+    );
+  };
 
   const onConfirmReturn = (t) => {
     modal.open(
@@ -227,6 +261,11 @@ export default function PayrollDashboardPage() {
       {/* Stage S (2026-06-20) — «📤 Уже выплачено в поле» (рендер только если есть выплаты) */}
       {Number(summary?.total_paid_total || 0) > 0 && (
         <PaidInFieldCard summary={summary} items={cashCalc?.items || []} />
+      )}
+
+      {/* 2026-06-29 — Разбивка выплат по источникам денег (Касса РП / Банк / СЗ-сервис / Авто-ФОТ) */}
+      {payoutsBySource && Array.isArray(payoutsBySource.workers) && payoutsBySource.workers.length > 0 && (
+        <PayoutsBySourceCard data={payoutsBySource} onRowClick={openBreakdown} />
       )}
 
       {/* Stage U (2026-06-20) — «🏢 Официально устроены» (рендер только если есть оф-сотрудники) */}
@@ -334,7 +373,8 @@ export default function PayrollDashboardPage() {
             <div className="mw-200">
               <SelectInput value={opType} onChange={setOpType} options={OPERATION_OPTIONS} placeholder="Все операции" />
             </div>
-            <Btn variant="primary" onClick={openAgreement}>+ По договорённости</Btn>
+            <Btn variant="primary" onClick={openBulkSeTransfer}>🚀 Массовая выплата СЗ</Btn>
+            <Btn variant="ghost" onClick={openAgreement}>🤝 Перевод по договорённости</Btn>
           </div>
         </div>
 
@@ -504,6 +544,186 @@ function QuickNav({ to, icon, title, sub }) {
       </div>
       <span className="pyd-quick-nav-arrow">›</span>
     </Link>
+  );
+}
+
+/**
+ * 2026-06-29 — Разбивка выплат по источникам денег.
+ *
+ * Backend: GET /api/payroll-dashboard/payouts-by-source
+ * Возвращает summary{pm_cash, company_bank, company_se, auto_fot, total}
+ * + workers[]{employee_id, fio, accrued_total, by_source, to_pay_remainder, ...}.
+ *
+ * source_kind: pm_cash_legacy склеиваем с pm_cash (страховка фронта).
+ */
+function PayoutsBySourceCard({ data, onRowClick }) {
+  const summary = data?.summary || {};
+  const workers = data?.workers || [];
+
+  // Склейка pm_cash_legacy → pm_cash (страховка)
+  const mergeLegacy = (s) => Number(s?.pm_cash || 0) + Number(s?.pm_cash_legacy || 0);
+
+  const pmCashTotal = mergeLegacy(summary);
+  const bankTotal   = Number(summary.company_bank || 0);
+  const seTotal     = Number(summary.company_se || 0);
+  const autoTotal   = Number(summary.auto_fot || 0);
+  const grandTotal  = Number(summary.total || (pmCashTotal + bankTotal + seTotal + autoTotal));
+
+  const totalRow = workers.reduce((acc, w) => {
+    const bs = w.by_source || {};
+    acc.accrued += Number(w.accrued_total || 0);
+    acc.pm_cash += mergeLegacy(bs);
+    acc.bank    += Number(bs.company_bank || 0);
+    acc.se      += Number(bs.company_se || 0);
+    acc.auto    += Number(bs.auto_fot || 0);
+    acc.remain  += Number(w.to_pay_remainder || 0);
+    return acc;
+  }, { accrued: 0, pm_cash: 0, bank: 0, se: 0, auto: 0, remain: 0 });
+
+  const hasAuto = autoTotal > 0 || totalRow.auto > 0;
+
+  return (
+    <div className="card pyd-card pbs-card">
+      <div className="pyd-card-row">
+        <div>
+          <h3 className="pyd-card-h3">📊 Разбивка выплат по источникам</h3>
+          <div className="pyd-card-sub">
+            Сколько из кассы РП, сколько от компании, сколько через СЗ-сервис
+          </div>
+        </div>
+      </div>
+
+      {/* Сводные числа */}
+      <div className="pbs-summary">
+        <div className="pbs-summary-cell pbs-tone-cash">
+          <div className="pbs-summary-num">{fmtMoney(pmCashTotal)}</div>
+          <div className="pbs-summary-label">📤 Из кассы РП (наличка/карта)</div>
+        </div>
+        <div className="pbs-summary-cell pbs-tone-bank">
+          <div className="pbs-summary-num">{fmtMoney(bankTotal)}</div>
+          <div className="pbs-summary-label">🏦 От компании (банк)</div>
+        </div>
+        <div className="pbs-summary-cell pbs-tone-se">
+          <div className="pbs-summary-num">{fmtMoney(seTotal)}</div>
+          <div className="pbs-summary-label">📱 Через СЗ-сервис</div>
+        </div>
+        {hasAuto && (
+          <div className="pbs-summary-cell pbs-tone-auto">
+            <div className="pbs-summary-num">{fmtMoney(autoTotal)}</div>
+            <div className="pbs-summary-label">⚙ Авто-ФОТ</div>
+          </div>
+        )}
+      </div>
+
+      {/* Таблица работников */}
+      <div className="pyd-overflow-x">
+        <table className="t-list pyd-table pbs-table">
+          <thead>
+            <tr className="pyd-table-head-tr">
+              <th className="pyd-th">Работник</th>
+              <th className="pyd-th">Тип</th>
+              <th className="pyd-th pyd-th-r">Начислено</th>
+              <th className="pyd-th pyd-th-r">📤 Моя касса</th>
+              <th className="pyd-th pyd-th-r">🏦 Банк</th>
+              <th className="pyd-th pyd-th-r">📱 СЗ-сервис</th>
+              {hasAuto && <th className="pyd-th pyd-th-r">⚙ Авто-ФОТ</th>}
+              <th className="pyd-th pyd-th-r">К доплате</th>
+              <th className="pyd-th pyd-th-r">Действия</th>
+            </tr>
+          </thead>
+          <tbody>
+            {workers.map((w) => {
+              const bs = w.by_source || {};
+              const pmCash = mergeLegacy(bs);
+              const bank = Number(bs.company_bank || 0);
+              const se = Number(bs.company_se || 0);
+              const auto = Number(bs.auto_fot || 0);
+              const accrued = Number(w.accrued_total || 0);
+              const remain = Number(w.to_pay_remainder || 0);
+              const isOff = !!w.is_officially_employed;
+              const isSe = !!w.is_self_employed;
+              const empBadge = isOff
+                ? { cls: 'pbs-b-off', text: 'штатник' }
+                : isSe
+                ? { cls: 'pbs-b-se', text: 'СЗ' }
+                : { cls: 'pbs-b-cash', text: 'нал' };
+
+              const handleClick = () => onRowClick?.(w);
+
+              return (
+                <tr
+                  key={w.employee_id}
+                  className="pyd-row pbs-row"
+                  onClick={handleClick}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleClick();
+                    }
+                  }}
+                  tabIndex={0}
+                  role="button"
+                  aria-label={`Детализация выплат: ${w.fio}`}
+                >
+                  <td className="pyd-cell pyd-cell-fw6">{w.fio || '—'}</td>
+                  <td className="pyd-cell">
+                    <span className={'pbs-badge ' + empBadge.cls}>{empBadge.text}</span>
+                  </td>
+                  <td className="pyd-cell pyd-cell-r">{fmtMoney(accrued)}</td>
+                  <td className={'pyd-cell pyd-cell-r ' + (pmCash > 0 ? 'pbs-c-cash' : 'pyd-cell-mut')}>
+                    {pmCash > 0 ? fmtMoney(pmCash) : '—'}
+                  </td>
+                  <td className={'pyd-cell pyd-cell-r ' + (bank > 0 ? 'pbs-c-bank' : 'pyd-cell-mut')}>
+                    {bank > 0 ? fmtMoney(bank) : '—'}
+                  </td>
+                  <td className={'pyd-cell pyd-cell-r ' + (se > 0 ? 'pbs-c-se' : 'pyd-cell-mut')}>
+                    {se > 0 ? fmtMoney(se) : '—'}
+                  </td>
+                  {hasAuto && (
+                    <td className={'pyd-cell pyd-cell-r ' + (auto > 0 ? 'pbs-c-auto' : 'pyd-cell-mut')}>
+                      {auto > 0 ? fmtMoney(auto) : '—'}
+                    </td>
+                  )}
+                  <td className={'pyd-cell pyd-cell-r pyd-cell-fw6 ' + (remain > 0 ? 'pbs-c-warn' : 'pbs-c-ok')}>
+                    {remain > 0 ? '⚠ ' + fmtMoney(remain) : '✓ 0 ₽'}
+                  </td>
+                  <td className="pyd-cell pyd-cell-r">
+                    <Btn
+                      size="sm"
+                      variant="ghost"
+                      onClick={(e) => { e.stopPropagation(); handleClick(); }}
+                    >
+                      📋 Детали
+                    </Btn>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr className="pyd-foot-tr">
+              <td className="pyd-cell" colSpan={2}>ИТОГО</td>
+              <td className="pyd-cell pyd-cell-r">{fmtMoney(totalRow.accrued)}</td>
+              <td className="pyd-cell pyd-cell-r pbs-c-cash">{fmtMoney(totalRow.pm_cash)}</td>
+              <td className="pyd-cell pyd-cell-r pbs-c-bank">{fmtMoney(totalRow.bank)}</td>
+              <td className="pyd-cell pyd-cell-r pbs-c-se">{fmtMoney(totalRow.se)}</td>
+              {hasAuto && (
+                <td className="pyd-cell pyd-cell-r pbs-c-auto">{fmtMoney(totalRow.auto)}</td>
+              )}
+              <td className={'pyd-cell pyd-cell-r ' + (totalRow.remain > 0 ? 'pbs-c-warn' : 'pbs-c-ok')}>
+                {totalRow.remain > 0 ? fmtMoney(totalRow.remain) : '✓ 0 ₽'}
+              </td>
+              <td className="pyd-cell"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <div className="pbs-hint">
+        💡 Клик по строке — открывает <b>детализацию выплат</b> (что начислено, что выплачено и из какого источника).
+        Сумма «Из кассы РП» = <b>{fmtMoney(grandTotal > 0 ? pmCashTotal : 0)}</b> (реально ушло у РП с баланса).
+      </div>
+    </div>
   );
 }
 

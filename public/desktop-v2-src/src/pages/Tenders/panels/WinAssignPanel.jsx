@@ -114,7 +114,8 @@ export default function WinAssignPanel({ user }) {
 
   useEffect(() => {
     if (!allowed) return;
-    Promise.all([loadWinPending(), loadUsers('PM')]).then(([list, pmList]) => {
+    // F2: и PM, и HEAD_PM (vanilla tenders.js:717). Backend comma-list.
+    Promise.all([loadWinPending(), loadUsers('PM,HEAD_PM')]).then(([list, pmList]) => {
       setItems(list);
       setPms(pmList);
     });
@@ -228,7 +229,11 @@ export default function WinAssignPanel({ user }) {
                   onChange={(v) => onPickPm(t, v)}
                   options={[
                     { value: '', label: '— РП —' },
-                    ...pms.map((u) => ({ value: String(u.id), label: u.name || u.login }))
+                    ...pms.map((u) => ({
+                      value: String(u.id),
+                      // F2: HEAD_PM визуально отличаем префиксом «(Ст.РП)».
+                      label: (u.role === 'HEAD_PM' ? '(Ст.РП) ' : '') + (u.name || u.login)
+                    }))
                   ]}
                 />
                 <Btn

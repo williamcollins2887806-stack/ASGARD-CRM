@@ -43,7 +43,10 @@ function fmtDate(d) {
 export default function Personnel() {
   const haptic = useHaptic();
   const user = useAuthStore((s) => s.user);
-  const isHR = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN'].includes(user?.role);
+  // 23.06.2026 BUG-FIX (🟡 Staff-1, D-10): добавлены DIRECTOR_COMM/DIRECTOR_DEV в APPROVE_ROLES.
+  // Backend worker-readiness.js:16 READINESS_ROLES включает DIRECTOR_COMM — мобилка должна это
+  // отражать. Без фикса DIRECTOR_COMM/DEV не видели кнопок "Готов/Не готов" хотя backend позволял.
+  const isHR = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(user?.role);
 
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -222,8 +225,14 @@ function FilterPill({ active, label, onClick }) {
 function EmployeeCard({ emp, cfg, index, onTap }) {
   const name = emp.fio || 'Сотрудник';
   const rating = Number(emp.rating_avg) || 0;
-  const hasExpired = emp.expired_permits > 0;
-  const hasExpiring = emp.expiring_permits > 0;
+  // 23.06.2026 BUG-FIX (Staff D-01): backend worker-readiness.js:230 отдаёт
+  // вложенный объект `permits: { expired: N, expiring: M }`. До фикса mobile
+  // читал плоские `expired_permits` / `expiring_permits` которых нет в ответе →
+  // иконки 🔴/⚠️ документов на карточке рабочего никогда не зажигались.
+  const expiredCnt  = Number(emp.permits?.expired ?? emp.expired_permits ?? 0);
+  const expiringCnt = Number(emp.permits?.expiring ?? emp.expiring_permits ?? 0);
+  const hasExpired  = expiredCnt > 0;
+  const hasExpiring = expiringCnt > 0;
 
   return (
     <button
@@ -242,9 +251,13 @@ function EmployeeCard({ emp, cfg, index, onTap }) {
           <p className="text-[14px] font-semibold leading-tight truncate c-primary">{name}</p>
           <p className="text-[11px] mt-0.5 c-secondary">
             {emp.position || emp.role_tag || '—'}
-            {emp.last_work_title || emp.work_title && <span className="c-tertiary"> · {emp.last_work_title || emp.work_title}</span>}
+            {/* 23.06.2026 BUG-FIX (🟡 Staff-2, D-04): JSX || приоритет — `a || b && <span>` =
+                `a || (b && <span>)`. Если last_work_title есть, рендерилась голая строка без обёртки
+                и точки. Обернул в скобки. */}
+            {(emp.last_work_title || emp.work_title) && <span className="c-tertiary"> · {emp.last_work_title || emp.work_title}</span>}
           </p>
-          {emp.last_pm_name || emp.pm_name && (
+          {/* 23.06.2026 BUG-FIX (🟡 Staff-2, D-04): то же — оборачиваем `||` в скобки. */}
+          {(emp.last_pm_name || emp.pm_name) && (
             <p className="text-[10px] mt-0.5 c-tertiary">РП: {emp.last_pm_name || emp.pm_name}</p>
           )}
         </div>
@@ -280,8 +293,11 @@ function EmployeeDetailSheet({ employee, onClose, isHR, onStatusChange, saving }
         {cfg.emoji} {cfg.label}
       </span>
     )},
-    e.last_work_title || e.work_title && { label: 'Объект', value: e.last_work_title || e.work_title },
-    e.last_pm_name || e.pm_name && { label: 'РП', value: e.last_pm_name || e.pm_name },
+    // 23.06.2026 BUG-FIX (🟡 Staff-2, D-04): JSX || приоритет — `a || b && {…}` парсится как
+    // `a || (b && {…})`. Если last_work_title задан, в массив попадает голая строка вместо
+    // объекта-описания поля, и Field-рендер падает. Оборачиваем `||` в скобки.
+    (e.last_work_title || e.work_title) && { label: 'Объект', value: e.last_work_title || e.work_title },
+    (e.last_pm_name || e.pm_name) && { label: 'РП', value: e.last_pm_name || e.pm_name },
     e.readiness_date && st === 'ready' && { label: 'Готов с', value: fmtDate(e.readiness_date) },
     e.readiness_reason && st === 'not_ready' && { label: 'Причина', value: REASONS[e.readiness_reason] || e.readiness_reason },
     e.readiness_comment && { label: 'Комментарий', value: e.readiness_comment },

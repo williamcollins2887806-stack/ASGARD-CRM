@@ -87,6 +87,8 @@ export function SupplierDetailModal({ id, canWrite, isAdmin }) {
   const onMakePrimary = async (c) => {
     try {
       await updateContact(id, c.id, { is_primary: true });
+      // P3-fix: контакт изменился — оповестить подписчиков (Procurence/Mimir используют contacts_count)
+      emitChanged();
       reload();
     } catch (e) {
       toast.error('Не удалось обновить: ' + (e?.message || e));
@@ -104,6 +106,8 @@ export function SupplierDetailModal({ id, canWrite, isAdmin }) {
           try {
             await deleteContact(id, c.id);
             toast.success('Контакт удалён');
+            // P3-fix: contacts_count изменился — оповестить подписчиков
+            emitChanged();
             reload();
           } catch (e) {
             toast.error('Не удалось удалить: ' + (e?.message || e));
@@ -302,6 +306,8 @@ function ContactEditModal({ supplierId, onSaved }) {
         is_primary: !!form.is_primary
       });
       toast.success('Контакт добавлен');
+      // P3-fix: contacts_count изменился — оповестить подписчиков
+      emitChanged();
       onSaved?.();
       close();
     } catch (e) {

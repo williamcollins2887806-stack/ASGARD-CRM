@@ -3,18 +3,24 @@
  * Источник: field-tab.js (vanilla).
  */
 
+// Значения совпадают с field_tariff_grid.category в БД:
+// ground, ground_hard, mlsp, special, warehouse. Раньше использовались
+// устаревшие offshore/ground_heavy — dropdown возвращал 0 строк для МЛСП и «Земля тяж.».
 export const CATEGORIES = [
-  { value: 'offshore',     label: 'МЛСП' },
-  { value: 'ground',       label: 'Земля' },
-  { value: 'ground_heavy', label: 'Земля тяж.' },
-  { value: 'warehouse',    label: 'Склад' }
+  { value: 'mlsp',       label: 'МЛСП' },
+  { value: 'ground',     label: 'Земля' },
+  { value: 'ground_hard',label: 'Земля тяж.' },
+  { value: 'warehouse',  label: 'Склад' }
 ];
 
+// Backend принимает только worker/shift_master/senior_master
+// (field-checkin.js:299,310, field-photos.js:278, field-stages.js:139).
+// До 23.06.2026 здесь были object_master/pm — сотрудник с такой ролью пропадал
+// из счётчиков бригады и preHandler'ов мастера.
 export const ROLES = [
-  { value: 'worker',       label: 'Рабочий' },
-  { value: 'shift_master', label: 'Мастер смены' },
-  { value: 'object_master',label: 'Мастер объекта' },
-  { value: 'pm',           label: 'РП' }
+  { value: 'worker',        label: 'Рабочий' },
+  { value: 'shift_master',  label: 'Мастер смены' },
+  { value: 'senior_master', label: 'Старший мастер' }
 ];
 
 export const SHIFTS = [
@@ -23,16 +29,17 @@ export const SHIFTS = [
   { value: 'swing', label: 'Качающаяся' }
 ];
 
-// Бэк (field-logistics.js:77,120) использует именно ticket_back, не ticket_from.
-// Vanilla field-tab.js:58-64 совпадает.
+// Бэк (field-logistics.js:71-77,120) использует item_type из канона
+// ticket_to, ticket_back, hotel, visa, insurance, transfer, directive_mo
+// (medical — это expense_type, не item_type, попадал бы мимо work-readiness и SMS-шаблонов).
 export const LOG_TYPES = [
-  { value: 'ticket_to',     label: '✈️ Билет туда',    short: 'Туда' },
-  { value: 'hotel',         label: '🏨 Отель',          short: 'Отель' },
-  { value: 'ticket_back',   label: '✈️ Билет обратно', short: 'Обратно' },
-  { value: 'visa',          label: '📄 Виза',           short: 'Виза' },
-  { value: 'insurance',     label: '🛡️ Страховка',     short: 'Страховка' },
-  { value: 'transfer',      label: '🚐 Трансфер',       short: 'Трансфер' },
-  { value: 'medical',       label: '⚕️ Мед.осмотр',     short: 'Медосмотр' }
+  { value: 'ticket_to',    label: '✈️ Билет туда',    short: 'Туда' },
+  { value: 'hotel',        label: '🏨 Отель',          short: 'Отель' },
+  { value: 'ticket_back',  label: '✈️ Билет обратно', short: 'Обратно' },
+  { value: 'visa',         label: '📄 Виза',           short: 'Виза' },
+  { value: 'insurance',    label: '🛡️ Страховка',     short: 'Страховка' },
+  { value: 'transfer',     label: '🚐 Трансфер',       short: 'Трансфер' },
+  { value: 'directive_mo', label: '⚕️ Направление на МО', short: 'МО' }
 ];
 
 // Для матричного UI логистики — 5 основных колонок (как в vanilla field-tab.js:58-64).
@@ -70,11 +77,15 @@ export const DISPUTE_TYPE_LABELS = {
   other:             'Другое'
 };
 
+// Канон бэка field_master_funds.status (V061:22-23): issued → confirmed → reporting → closed.
+// До 23.06.2026 здесь были {issued/spent/returned/closed} — но spent и returned это
+// денежные КОЛОНКИ (V061:18-19), а не значения статуса. Реальные confirmed/reporting
+// отображались сырыми английскими ключами на экране.
 export const FUND_STATUS_LABELS = {
-  issued:   'Выдано',
-  spent:    'Потрачено',
-  returned: 'Возвращено',
-  closed:   'Закрыто'
+  issued:    'Выдано',
+  confirmed: 'Подтверждено',
+  reporting: 'На отчёте',
+  closed:    'Закрыто'
 };
 
 // Старые ключи (mob/shift/rest/sick/vacation/demob) НЕ принимались бэкендом

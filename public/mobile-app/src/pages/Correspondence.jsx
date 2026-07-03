@@ -39,11 +39,18 @@ export default function Correspondence() {
 
   const filtered = useMemo(() => {
     let list = docs;
-    if (filter === 'incoming') list = list.filter((d) => (d.direction || '').toLowerCase().includes('вход') || d.direction === 'incoming');
-    else if (filter === 'outgoing') list = list.filter((d) => (d.direction || '').toLowerCase().includes('исход') || d.direction === 'outgoing');
+    // 23.06.2026 BUG-FIX (Mail R5 бонус): direction в схеме хранится англ-канонично `incoming|outgoing`,
+    // фильтр по русским 'вход'/'исход' раньше не работал на проде. Оставлен fallback для совместимости.
+    if (filter === 'incoming') list = list.filter((d) => d.direction === 'incoming' || (d.direction || '').toLowerCase().includes('вход'));
+    else if (filter === 'outgoing') list = list.filter((d) => d.direction === 'outgoing' || (d.direction || '').toLowerCase().includes('исход'));
     if (search) {
       const q = search.toLowerCase();
-      list = list.filter((d) => (d.title || '').toLowerCase().includes(q) || (d.number || '').toLowerCase().includes(q));
+      // 23.06.2026 BUG-FIX (Mail R5): в схеме correspondence нет поля `title`,
+      // тема живёт в subject/doc_title. До фикса поиск всегда возвращал пусто.
+      list = list.filter((d) =>
+        ((d.subject || d.doc_title || d.title) || '').toLowerCase().includes(q)
+        || (d.number || d.outgoing_number || '').toLowerCase().includes(q)
+      );
     }
     return list;
   }, [docs, filter, search]);

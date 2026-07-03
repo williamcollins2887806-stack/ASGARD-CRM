@@ -62,7 +62,10 @@ export default function WorkerProfile() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get(`/worker-profiles/${id}`);
+      // 23.06.2026 BUG-FIX (Staff D-02): backend worker_profiles.js:35 дефолтит lookupBy='user',
+      // и id рабочего отсутствует в users → 404 «Сотрудник не найден» или чужой профиль.
+      // Mobile передаёт ID employee, поэтому явно указываем by=employee.
+      const res = await api.get(`/worker-profiles/${id}?by=employee`);
       setProfile(res?.profile || null);
       setEmployee(res?.user || res?.employee || null);
       if (res?.profile) setForm(res.profile);
@@ -78,7 +81,7 @@ export default function WorkerProfile() {
   const handleSave = async () => {
     haptic.light(); setSaving(true);
     try {
-      await api.put(`/worker-profiles/${id}`, form);
+      await api.put(`/worker-profiles/${id}?by=employee`, form);
       haptic.success(); setEditing(false); fetchData();
     } catch {} setSaving(false);
   };

@@ -101,6 +101,25 @@ export default function GanttMiniWidget() {
                 >
                   {item.title || item.name || 'Без названия'}
                 </span>
+
+                {/* Urgent badge: ≤ 7 days */}
+                {days <= 7 && (
+                  <span
+                    className="urgent-badge flex-shrink-0"
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: 'var(--red)',
+                      backgroundColor: 'color-mix(in srgb, var(--red) 15%, transparent)',
+                      padding: '2px 8px',
+                      borderRadius: 999,
+                      whiteSpace: 'nowrap',
+                    }}
+                    title={`Дедлайн через ${days} ${days === 1 ? 'день' : days < 5 ? 'дня' : 'дней'}`}
+                  >
+                    🔥 {days} {days === 1 ? 'дн' : 'дн'}
+                  </span>
+                )}
               </div>
             );
           })}

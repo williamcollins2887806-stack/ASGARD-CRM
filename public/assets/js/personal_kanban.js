@@ -9,6 +9,7 @@
  */
 window.AsgardPersonalKanbanPage = (function () {
   const { $, $$, esc, toast, showModal, hideModal, emptyState, formatDateTime } = AsgardUI;
+  const fmtDate = (iso) => iso ? (AsgardUI.formatDate ? AsgardUI.formatDate(iso) : new Date(iso).toLocaleDateString('ru-RU')) : '—';
 
   // ── Канонические main_status × flow_type (зеркало backend §9.1) ───────
   const FLOWS = [
@@ -168,6 +169,15 @@ window.AsgardPersonalKanbanPage = (function () {
   // ── CSS (инжект однократный) ─────────────────────────────────────────
   function _injectStyles() {
     if (document.getElementById('asg-pk-styles')) return;
+    // 22.06.2026: подгружаем Caveat/Permanent Marker (Google Fonts) через <link> в head —
+    // надёжнее чем @import в CSS (некоторые SW/CSP режут @import).
+    if (!document.getElementById('asg-pk-fonts')) {
+      const fLink = document.createElement('link');
+      fLink.id = 'asg-pk-fonts';
+      fLink.rel = 'stylesheet';
+      fLink.href = 'https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Permanent+Marker&display=swap';
+      document.head.appendChild(fLink);
+    }
     const css = `
 .pk-page{padding:8px 4px}
 .pk-head{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
@@ -238,7 +248,7 @@ window.AsgardPersonalKanbanPage = (function () {
 .pk-cfg-tplbar{margin:14px 0;padding:10px 12px;background:var(--gold-bg);border:1px dashed var(--gold);border-radius:8px;font-size:12px;color:var(--text-secondary)}
 
 /* История/заметки/напоминания */
-.pk-tline{display:flex;flex-direction:column;gap:8px;max-height:380px;overflow-y:auto;padding-right:6px}
+.pk-tline{display:flex;flex-direction:column;gap:8px;padding-right:6px}
 .pk-tline-item{padding:8px 10px;background:var(--bg-elevated);border-left:3px solid var(--gold);border-radius:6px;font-size:12px;color:var(--text-primary)}
 .pk-tline-item.pk-tline-note{border-left-color:var(--blue, #5b8def)}
 .pk-tline-meta{font-size:11px;color:var(--text-secondary);margin-bottom:4px}
@@ -433,6 +443,66 @@ window.AsgardPersonalKanbanPage = (function () {
 
 /* Sticky actions bar */
 .pk3-actions-bar{position:sticky;bottom:0;padding:13px 24px;background:var(--bg2);backdrop-filter:blur(14px) saturate(140%);border-top:1px solid var(--brd);display:flex;gap:8px;z-index:5;flex-wrap:wrap}
+
+/* 22.06.2026 v2: НАСТОЯЩИЕ post-it стикеры. С нуля, wow-эффект.
+   - Доска: прозрачная панель слева от drawer, на blur'е overlay (sticky на широких экранах)
+   - Стикеры: квадратные 3M-style, пастельные, реальные тени, лёгкая текстура бумаги
+   - Шрифт: Kalam (Google Fonts) — рукописный, отлично работает с кириллицей
+   - Анимации: pop-in появление, поворот при hover выпрямляется, тень оживает */
+.pk3-noteboard{position:fixed;top:24px;bottom:24px;left:24px;width:460px;z-index:99999;display:none;flex-direction:column;background:transparent;pointer-events:none;overflow:hidden;font-family:'Kalam','Caveat','Permanent Marker','Comic Sans MS',cursive}
+.pk3-noteboard.pk3-show{display:flex}
+.pk3-noteboard>*{pointer-events:auto}
+.pk3-noteboard-head{display:flex;align-items:center;gap:12px;padding:0 6px 14px;font-size:28px;color:#fff;letter-spacing:.5px;text-shadow:0 2px 0 rgba(0,0,0,.7),0 0 18px rgba(0,0,0,.6),2px 3px 0 rgba(0,0,0,.5)}
+.pk3-noteboard-head .pk3-noteboard-emoji{filter:drop-shadow(0 2px 4px rgba(0,0,0,.5))}
+.pk3-noteboard-head .pk3-count-badge{margin-left:auto;font-size:16px;color:#3a2f08;font-weight:600;background:#fff8a1;border:1px solid rgba(0,0,0,.15);padding:2px 12px;border-radius:9999px;box-shadow:0 3px 6px rgba(0,0,0,.35);text-shadow:none}
+.pk3-noteboard-hint{font-size:14px;color:rgba(255,255,255,.85);font-family:'Kalam','Caveat',cursive;padding:0 8px 12px;text-shadow:0 1px 3px rgba(0,0,0,.7)}
+
+.pk3-stk-list{flex:1 !important;overflow:auto !important;display:block !important;padding:14px !important;scrollbar-width:none;position:relative !important;width:100% !important;min-height:560px !important;height:auto !important;box-sizing:border-box}
+.pk3-stk-list::-webkit-scrollbar{display:none}
+.pk3-stk-list-empty{grid-column:1/-1;text-align:center;color:#fff;opacity:.7;padding:40px 18px;font-size:18px;font-family:'Kalam','Caveat',cursive;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+
+/* === КАНОНИЧНЫЙ 3M POST-IT === */
+.pk3-sticker{position:relative;aspect-ratio:1/1;min-height:180px;padding:18px 16px 36px;display:flex;flex-direction:column;color:#2a1f08;font-size:21px;line-height:1.18;font-weight:400;cursor:default;background:#fff782;background-image:linear-gradient(135deg,rgba(255,255,255,.45) 0%,transparent 40%),linear-gradient(180deg,rgba(0,0,0,.04) 0%,transparent 18%),repeating-linear-gradient(45deg,rgba(0,0,0,.012) 0 2px,transparent 2px 6px);box-shadow:1px 1px 1px rgba(255,255,255,.25) inset,-1px -1px 1px rgba(0,0,0,.04) inset,3px 8px 16px -2px rgba(0,0,0,.4),0 2px 5px rgba(0,0,0,.18);transition:transform .25s cubic-bezier(.34,1.56,.64,1),box-shadow .25s ease,filter .25s ease;transform:rotate(-2.3deg);animation:pk3-sticker-pop .35s cubic-bezier(.34,1.56,.64,1)}
+.pk3-sticker::before{content:'';position:absolute;top:0;left:0;right:0;height:8px;background:linear-gradient(180deg,rgba(0,0,0,.06),transparent);pointer-events:none}
+.pk3-sticker::after{content:'';position:absolute;bottom:0;right:0;width:26px;height:26px;background:linear-gradient(135deg,transparent 49%,rgba(0,0,0,.18) 50%,rgba(0,0,0,.07) 65%,transparent 66%);pointer-events:none;filter:drop-shadow(-1px -1px 1px rgba(0,0,0,.08))}
+.pk3-sticker:hover{transform:rotate(0) translateY(-6px) scale(1.06);box-shadow:1px 1px 1px rgba(255,255,255,.3) inset,-1px -1px 1px rgba(0,0,0,.05) inset,4px 16px 28px -4px rgba(0,0,0,.55),0 4px 10px rgba(0,0,0,.28);z-index:5;filter:brightness(1.04)}
+.pk3-sticker:nth-child(5n+1){background-color:#fff782;transform:rotate(-2.3deg)}
+.pk3-sticker:nth-child(5n+2){background-color:#ffc7a8;transform:rotate(1.8deg)}
+.pk3-sticker:nth-child(5n+3){background-color:#bcebbc;transform:rotate(-1.2deg)}
+.pk3-sticker:nth-child(5n+4){background-color:#ffc4d8;transform:rotate(2.4deg)}
+.pk3-sticker:nth-child(5n+5){background-color:#b9deff;transform:rotate(-1.7deg)}
+.pk3-sticker:nth-child(5n+1):hover,.pk3-sticker:nth-child(5n+2):hover,.pk3-sticker:nth-child(5n+3):hover,.pk3-sticker:nth-child(5n+4):hover,.pk3-sticker:nth-child(5n+5):hover{transform:rotate(0) translateY(-6px) scale(1.06)}
+
+.pk3-sticker-body{flex:1;white-space:pre-wrap;word-break:break-word;color:#2a1f08;font-family:inherit;overflow:hidden;text-overflow:ellipsis;font-weight:400;line-height:1.16}
+.pk3-sticker-foot{position:absolute;bottom:10px;left:16px;right:16px;display:flex;align-items:baseline;gap:8px;font-size:13.5px;color:rgba(60,40,10,.65);font-family:inherit;font-weight:400;font-style:italic}
+.pk3-sticker-foot .pk3-sticker-author{color:rgba(60,40,10,.85);font-weight:500;font-style:normal}
+.pk3-sticker-foot .pk3-sticker-when{margin-left:auto;color:rgba(60,40,10,.55)}
+
+.pk3-sticker-tools{position:absolute;top:6px;right:6px;display:flex;gap:4px;opacity:0;transition:opacity .2s ease}
+.pk3-sticker:hover .pk3-sticker-tools{opacity:1}
+.pk3-sticker-tools button{background:rgba(60,40,10,.15);border:1px solid rgba(60,40,10,.25);border-radius:6px;width:26px;height:26px;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:all .15s ease;font-family:inherit;color:#2a1f08;box-shadow:0 1px 2px rgba(0,0,0,.15)}
+.pk3-sticker-tools button:hover{background:rgba(60,40,10,.3);transform:scale(1.12)}
+.pk3-sticker-tools button.pk3-del:hover{background:rgba(180,30,30,.7);color:#fff;border-color:rgba(180,30,30,.8)}
+
+/* === EDIT MODE — пишем прямо на стикере === */
+.pk3-sticker.pk3-edit{transform:rotate(0)!important;animation:pk3-sticker-focus .3s ease;cursor:text;padding:14px 14px 12px}
+.pk3-sticker.pk3-edit textarea{flex:1;width:100%;border:none;outline:none;background:transparent;color:#2a1f08;font:inherit;font-size:21px;line-height:1.18;resize:none;padding:0;font-family:inherit;font-weight:400;min-height:90px}
+.pk3-sticker.pk3-edit textarea::placeholder{color:rgba(60,40,10,.4);font-style:italic}
+.pk3-sticker-edit-bar{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:8px;padding-top:8px;border-top:1px dashed rgba(60,40,10,.2)}
+.pk3-sticker-edit-bar .pk3-sticker-hint{font-size:11px;color:rgba(60,40,10,.5);font-family:var(--font-sans);font-style:italic}
+.pk3-sticker-edit-bar button{font-family:'Kalam',cursive;font-size:14px;font-weight:600;padding:4px 11px;border-radius:6px;cursor:pointer;border:1px solid rgba(60,40,10,.25);background:rgba(60,40,10,.1);color:#2a1f08;transition:all .15s ease;box-shadow:0 1px 2px rgba(0,0,0,.15)}
+.pk3-sticker-edit-bar button:hover{transform:translateY(-1px);box-shadow:0 3px 6px rgba(0,0,0,.22)}
+.pk3-sticker-edit-bar button.pk3-save{background:linear-gradient(180deg,#ffd95e,#e8a93a);border-color:#b07814;color:#2a1f08;text-shadow:0 1px 0 rgba(255,255,255,.3)}
+.pk3-sticker-edit-bar button.pk3-cancel{background:rgba(255,255,255,.4)}
+
+/* Анимации */
+@keyframes pk3-sticker-pop{from{opacity:0;transform:rotate(-2.3deg) scale(.6)}to{opacity:1;transform:rotate(-2.3deg) scale(1)}}
+@keyframes pk3-sticker-focus{from{transform:rotate(-2.3deg) scale(1)}to{transform:rotate(0) scale(1)}}
+
+@media (max-width:1280px){.pk3-noteboard{width:380px}}
+@media (max-width:1100px){.pk3-noteboard{width:320px;left:16px}}
+@media (max-width:880px){.pk3-noteboard{width:280px;left:10px;top:14px;bottom:14px} .pk3-stk-list{grid-template-columns:1fr}}
+@media (max-width:680px){.pk3-noteboard{display:none}}
 
 /* Tags */
 .pk3-tag{display:inline-block;padding:2px 8px;border-radius:9999px;font-size:10.5px;font-weight:700;letter-spacing:.3px}
@@ -1361,7 +1431,7 @@ window.AsgardPersonalKanbanPage = (function () {
         <div style="margin-top:8px;font-size:12px;line-height:1.5">
           ${item.work_description ? `<div><b>Описание работ:</b><br>${esc(item.work_description.slice(0, 600))}${item.work_description.length > 600 ? '…' : ''}</div>` : ''}
           ${item.work_location ? `<div style="margin-top:4px"><b>Объект:</b> ${esc(item.work_location)}</div>` : ''}
-          ${item.work_deadline ? `<div style="margin-top:4px"><b>Срок:</b> ${esc(String(item.work_deadline).slice(0, 10))}</div>` : ''}
+          ${item.work_deadline ? `<div style="margin-top:4px"><b>Срок:</b> ${esc(fmtDate(item.work_deadline))}</div>` : ''}
           ${item.estimated_sum ? `<div style="margin-top:4px"><b>Бюджет (оценка):</b> ${Number(item.estimated_sum).toLocaleString('ru-RU')} ₽</div>` : ''}
         </div>`;
 
@@ -1423,7 +1493,17 @@ window.AsgardPersonalKanbanPage = (function () {
   // ── Wave A: кнопки действий по entity_kind ─────────────────────────────
   function renderCardActionsForCard(card, actionsEl, detailItem) {
     if (!actionsEl) return;
+    // Маппинг entity_kind → parent_entity_type для модуля писем.
+    // Backend /api/correspondence принимает: tender|work|calc|pre_tender|request.
+    const _PE_MAP = { tender:'tender', work:'work', pre_tender:'pre_tender', inbox_application:'pre_tender' };
+    const _peType = _PE_MAP[card.entity_kind];
+    const _peId = card.entity_id;
+    const letterBtn = (_peType && _peId)
+      ? `<button class="btn ghost" id="pk-card-letter" title="Написать официальное письмо по этой карточке">✉ Письмо</button>`
+      : '';
+
     const universalButtons = `
+      ${letterBtn}
       <button class="btn ghost" id="pk-card-transfer">↻ Передать другому РП</button>
       <button class="btn ghost" id="pk-card-note">＋ Заметка</button>
       <button class="btn ghost" id="pk-card-remind">⏰ Напоминание</button>
@@ -1473,6 +1553,14 @@ window.AsgardPersonalKanbanPage = (function () {
     actionsEl.innerHTML = entityButtons + universalButtons;
 
     // bind universal
+    $('#pk-card-letter')?.addEventListener('click', () => {
+      const qs = new URLSearchParams({
+        parent_entity_type: _peType,
+        parent_entity_id: String(_peId),
+        return_to: window.location.href
+      }).toString();
+      window.location.href = '/v2/#/correspondence/composer?' + qs;
+    });
     $('#pk-card-transfer')?.addEventListener('click', () => openTransferModal(card));
     $('#pk-card-note')?.addEventListener('click', () => openAddNoteModal(card));
     $('#pk-card-remind')?.addEventListener('click', () => openAddReminderModal(card));
@@ -1599,7 +1687,20 @@ window.AsgardPersonalKanbanPage = (function () {
     const options = pmList
       .filter(u => u.id !== card.owner_user_id)
       .map(u => `<option value="${u.id}">${esc(u.name || u.login)} (${esc(u.role)})</option>`).join('');
+
+    // 23.06.2026 Маркетплейс: для pre_tender передача = reassign самого pre_tender'а
+    // (а не только карты канбана). Эндпоинт /api/pre-tenders/:id/transfer
+    // делает: обновляет assigned_to + закрывает карту у старого + создаёт у нового
+    // + проверяет лимит 5 у получателя. Карта личного канбана для tender/work и проч.
+    // идёт через legacy /personal-kanban/cards/:id/transfer.
+    const isPreTender = card.entity_kind === 'pre_tender';
+    const titleLabel = isPreTender ? 'Передать заявку другому РП' : 'Передать карту';
+    const hint = isPreTender
+      ? '<div style="font-size:11px;color:var(--text-secondary);margin-bottom:10px">У получателя должно быть < 5 активных заявок.</div>'
+      : '';
+
     const html = `
+      ${hint}
       <div class="pk-form-grp">
         <label>Кому передать</label>
         <select id="pk-transfer-pm">
@@ -1615,7 +1716,7 @@ window.AsgardPersonalKanbanPage = (function () {
         <button class="btn primary" id="pk-transfer-ok">Передать</button>
       </div>`;
     showModal({
-      title: 'Передать карту',
+      title: titleLabel,
       html, icon: '↻',
       onMount: () => {
         $('#pk-transfer-cancel').addEventListener('click', hideModal);
@@ -1624,19 +1725,51 @@ window.AsgardPersonalKanbanPage = (function () {
           const to = Number(sel.value || 0);
           if (!to) { toast('Ошибка', 'Выберите РП', 'err'); return; }
           const note = $('#pk-transfer-note').value.trim() || null;
-          const r = await api(`/cards/${card.id}/transfer`, { method: 'POST', body: { to_user_id: to, note }});
-          if (r.ok && r.data.success) {
-            // Карта больше не наша
+
+          let r;
+          if (isPreTender) {
+            // Pre-tender: маршрут /api/pre-tenders/:id/transfer.
+            r = await apiPreTender(`/${card.entity_id}/transfer`, {
+              method: 'POST',
+              body: { to_user_id: to, reason: note }
+            });
+          } else {
+            r = await api(`/cards/${card.id}/transfer`, {
+              method: 'POST', body: { to_user_id: to, note }
+            });
+          }
+
+          if (r.ok && r.data && r.data.success) {
             _cards = _cards.filter(c => c.id !== card.id);
             hideModal();
-            hideModal(); // и предыдущую модалку карты
+            hideModal();
             renderPage();
-            toast('Готово', 'Карта передана', 'ok');
-          } else if (r.status === 409 && r.data && r.data.error === 'already_owns') {
-            toast('Ошибка', 'У этого РП уже есть карта на эту сущность', 'err');
-          } else {
-            toast('Ошибка', (r.data && (r.data.message || r.data.error)) || 'Не удалось передать', 'err');
+            toast('Готово', isPreTender ? 'Заявка передана' : 'Карта передана', 'ok');
+            return;
           }
+          // Специальные 409 от pre-tender transfer.
+          if (isPreTender && r.status === 409 && r.data) {
+            if (r.data.error === 'recipient_limit_reached') {
+              const name = r.data.recipient_name || 'у получателя';
+              toast('Лимит', `🚫 ${name}: уже ${r.data.current_count}/${r.data.limit} заявок`, 'err');
+              return;
+            }
+            if (r.data.error === 'already_owns') {
+              toast('Ошибка', 'У этого РП уже есть эта заявка', 'err');
+              return;
+            }
+          }
+          if (r.status === 409 && r.data && r.data.error === 'already_owns') {
+            toast('Ошибка', 'У этого РП уже есть карта на эту сущность', 'err');
+            return;
+          }
+          if (r.status === 400 && r.data && r.data.error === 'to_user_not_pm') {
+            toast('Ошибка', 'Получатель не является РП', 'err'); return;
+          }
+          if (r.status === 403) {
+            toast('Ошибка', 'Нет прав на передачу этой заявки', 'err'); return;
+          }
+          toast('Ошибка', (r.data && (r.data.message || r.data.error)) || 'Не удалось передать', 'err');
         });
       }
     });
@@ -2038,7 +2171,7 @@ window.AsgardPersonalKanbanV3 = (function () {
 .pk3-view-toggle button.active { background: var(--bg1); color: var(--gold-l); }
 
 /* ── Board ── */
-.pk3-board {
+.pk3-noteboard {
   flex: 1; padding: 14px 14px 24px; display: flex; gap: 9px;
   overflow-x: auto; overflow-y: hidden; align-items: flex-start;
 }
@@ -2588,6 +2721,14 @@ window.AsgardPersonalKanbanV3 = (function () {
       ['new','calc','approval','kp_prep','sent','addendum','win','lose','work'].forEach(k => {
         if (!Array.isArray(_columns[k])) _columns[k] = [];
       });
+      // 22.06.2026 BUG-FIX: backend отдаёт `v3_column`, фронт везде ждёт `card.col`.
+      // Без этого `_tkpStatus`, drag-checks, action-bar — падают в default (lock:true)
+      // → раздел ТКП заблокирован даже на calc, кнопки контекста не показываются.
+      Object.keys(_columns).forEach(colKey => {
+        (_columns[colKey] || []).forEach(c => {
+          if (!c.col) c.col = c.v3_column || colKey;
+        });
+      });
     }
     if (countsRes.ok && countsRes.data) {
       _counts = countsRes.data;
@@ -2636,7 +2777,7 @@ window.AsgardPersonalKanbanV3 = (function () {
         ${FLOW_TABS.map(t => `<div class="pk3-tab ${_flowFilter === t.id ? 'active' : ''}" data-flow="${t.id}">${esc(t.label)} <span class="pk3-cnt">${_countByFlow(t.id)}</span></div>`).join('')}
       </div>
       `}
-      <div class="pk3-board" id="pk3-board"></div>
+      <div class="pk3-noteboard" id="pk3-noteboard"></div>
     `;
   }
   function _countByFlow(flowId) {
@@ -2647,11 +2788,11 @@ window.AsgardPersonalKanbanV3 = (function () {
     return n;
   }
   function _v3RenderBoard() {
-    const board = $('#pk3-board');
+    const board = $('#pk3-noteboard');
     if (!board) return;
     // S-15: сохраняем скролл-позицию колонки addendum (и любых других) между ре-рендерами
     const prevScroll = {};
-    $$('#pk3-board .pk3-col-body').forEach(b => {
+    $$('#pk3-noteboard .pk3-col-body').forEach(b => {
       const cid = b.dataset.colId; if (cid) prevScroll[cid] = b.scrollTop;
     });
     const cardMatchesFlow = (c) => _flowFilter === 'all' || c.flow_type === _flowFilter;
@@ -2678,7 +2819,7 @@ window.AsgardPersonalKanbanV3 = (function () {
       `;
     }).join('');
     // S-15: восстанавливаем скролл-позиции
-    $$('#pk3-board .pk3-col-body').forEach(b => {
+    $$('#pk3-noteboard .pk3-col-body').forEach(b => {
       const cid = b.dataset.colId;
       if (cid && prevScroll[cid] != null) b.scrollTop = prevScroll[cid];
     });
@@ -2751,7 +2892,7 @@ window.AsgardPersonalKanbanV3 = (function () {
     // create manual
     const cm = $('#pk3-create-manual'); if (cm) cm.addEventListener('click', _v3OpenCreateManual);
     // cards click + DnD
-    $$('#pk3-board .pk3-card').forEach(el => {
+    $$('#pk3-noteboard .pk3-card').forEach(el => {
       el.addEventListener('click', () => {
         const cid = parseInt(el.dataset.cardId, 10);
         const card = _v3FindCard(cid);
@@ -2764,7 +2905,7 @@ window.AsgardPersonalKanbanV3 = (function () {
       });
       el.addEventListener('dragend', () => { el.classList.remove('pk3-dragging'); _draggingCardId = null; });
     });
-    $$('#pk3-board .pk3-col-body').forEach(body => {
+    $$('#pk3-noteboard .pk3-col-body').forEach(body => {
       body.addEventListener('dragover', (e) => { e.preventDefault(); body.classList.add('pk3-drop-hover'); });
       body.addEventListener('dragleave', () => body.classList.remove('pk3-drop-hover'));
       body.addEventListener('drop', async (e) => {
@@ -2796,11 +2937,28 @@ window.AsgardPersonalKanbanV3 = (function () {
       return;
     }
     if (!r.ok) {
+      // 22.06.2026: специальный кейс — нет ТКП при попытке отправить на согласование
+      if (r.data && r.data.error === 'tkp_required') {
+        toast('Нужен ТКП', r.data.message || 'Сначала создайте ТКП в разделе ниже', 'warn');
+        return;
+      }
       toast('Не получилось', (r.data && (r.data.error || r.data.message)) || 'Ошибка перехода', 'err');
       return;
     }
-    toast('Готово', 'Карта перемещена', 'ok');
+    // 22.06.2026: backend мог автопромоутить из approval в kp_prep (сумма < 50M)
+    if (r.data && r.data.auto_promoted_from_approval) {
+      toast('Согласование не требуется',
+        `Сумма ${(r.data.price_used || 0).toLocaleString('ru-RU')} ₽ < 50 млн — карта сразу в «КП готов»`, 'ok');
+    } else {
+      toast('Готово', 'Карта перемещена', 'ok');
+    }
     await _v3LoadAndRender();
+    // 22.06.2026 BUG-FIX: после перехода обновить открытый drawer (если это та же карта),
+    // иначе он держит старое card.col → разделы (ТКП и т.п.) не разблокируются после
+    // drag-and-drop в новую колонку. Требовалось закрывать-открывать вручную.
+    if (_currentCard && _currentCard.id === cardId) {
+      await _reopenCurrentCard();
+    }
   }
   function _v3OpenCreateManual() {
     // Полная форма ручного создания заявки (формат как через почту).
@@ -2899,23 +3057,67 @@ window.AsgardPersonalKanbanV3 = (function () {
     document.body.appendChild(overlay);
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
 
-    // egrul lookup (если есть endpoint)
+    // Автозаполнение по ИНН: сперва НАША карточка контрагента (с контактами),
+    // затем — DaData (findById) как fallback для названия/адреса новых клиентов.
     const inn = overlay.querySelector('#pk3mc-inn');
-    overlay.querySelector('#pk3mc-egrul').addEventListener('click', async () => {
+    const egrulBtn = overlay.querySelector('#pk3mc-egrul');
+    const setVal = (id, val) => { const el = overlay.querySelector('#' + id); if (el && val != null) el.value = val; };
+    const setIfEmpty = (id, val) => { const el = overlay.querySelector('#' + id); if (el && val && !el.value.trim()) el.value = val; };
+    egrulBtn.addEventListener('click', async () => {
       const v = (inn.value || '').trim();
       if (!v) { toast('Введи ИНН', '', 'warn'); return; }
-      // FIX B-2: реальный endpoint — /api/customers/lookup/:inn (см. src/routes/customers.js)
+      const digits = v.replace(/\D/g, '');
+      if (digits.length !== 10 && digits.length !== 12) { toast('ИНН', '10 или 12 цифр', 'warn'); return; }
+      egrulBtn.disabled = true; const _t = egrulBtn.textContent; egrulBtn.textContent = '⏳';
       try {
-        const r = await api('/api/customers/lookup/' + encodeURIComponent(v));
-        const found = r.ok && r.data && (r.data.name || r.data.value || r.data.customer_name);
-        if (found) {
-          const name = r.data.name || r.data.value || r.data.customer_name || '';
-          overlay.querySelector('#pk3mc-customer').value = name;
-          toast('Найдено', name, 'ok');
+        // 1) Наша карточка контрагента — тянем максимум (контакты, телефон, email, адрес)
+        let cardFilled = false;
+        try {
+          const cr = await api('/api/customers/' + encodeURIComponent(digits));
+          if (cr.ok && cr.data && cr.data.customer) {
+            const c = cr.data.customer;
+            let legacyContacts = [];
+            if (c.contacts_json && String(c.contacts_json).trim()) {
+              try {
+                const parsed = JSON.parse(String(c.contacts_json));
+                if (Array.isArray(parsed)) legacyContacts = parsed;
+              } catch (_) {}
+            }
+            const contacts = (Array.isArray(c.contacts) && c.contacts.length) ? c.contacts : legacyContacts;
+            const primary = contacts.find(x => x && x.is_primary) || contacts[0] || {};
+            setVal('pk3mc-customer', c.name || c.full_name || '');
+            setIfEmpty('pk3mc-contact',  (primary.name || c.contact_person || ''));
+            setIfEmpty('pk3mc-position', (primary.position || primary.role || ''));
+            setIfEmpty('pk3mc-email',    (primary.email || c.email || ''));
+            setIfEmpty('pk3mc-phone',    (primary.phone || c.phone || ''));
+            setIfEmpty('pk3mc-location', (c.address || ''));
+            cardFilled = !!(c.name || c.full_name);
+            if (cardFilled) {
+              const extra = contacts.length > 1 ? ` · ещё ${contacts.length - 1} контакт(а)` : '';
+              toast('Карточка найдена', (c.name || c.full_name) + extra, 'ok');
+              return;
+            }
+          }
+        } catch (_) { /* нет карточки — идём в DaData */ }
+
+        // 2) DaData findById — для новых клиентов (название + адрес)
+        const r = await api('/api/customers/lookup/' + encodeURIComponent(digits));
+        const data = (r.ok && r.data) || {};
+        const sug  = data.suggestion || {};
+        if (data.found === false && data.message) { toast('Не найдено', data.message, 'warn'); return; }
+        const name = sug.name || sug.full_name || '';
+        if (name) {
+          setVal('pk3mc-customer', name);
+          setIfEmpty('pk3mc-location', sug.address || '');
+          toast('ЕГРЮЛ', sug.kpp ? `${name} (КПП ${sug.kpp})` : name, 'ok');
         } else {
           toast('Не найдено', 'Заполни вручную', 'warn');
         }
-      } catch (_) { toast('egrul недоступен', 'Заполни вручную', 'warn'); }
+      } catch (_) {
+        toast('egrul недоступен', 'Заполни вручную', 'warn');
+      } finally {
+        egrulBtn.disabled = false; egrulBtn.textContent = _t;
+      }
     });
 
     overlay.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', async () => {
@@ -3025,18 +3227,39 @@ window.AsgardPersonalKanbanV3 = (function () {
     if (_drawerEl) _closeDrawer();
     const overlay = document.createElement('div');
     overlay.className = 'pk3-drawer-overlay show';
-    overlay.addEventListener('click', _closeDrawer);
+    // 22.06.2026: клик на overlay НЕ закрывает drawer (раньше теряли работу случайным кликом).
+    // Показываем шуточный toast — карта закрывается только через X в углу.
+    const _jokes = [
+      'Эй, не клацай в пустоту 😅 Закрой крестиком',
+      'Закрыть карту? Жми ✕ справа сверху, не лень же 🙃',
+      'Тут пусто, как в холодильнике перед зарплатой 🥪 Жми ✕',
+      'Тык-тык по воздуху не помогает. Крестик в углу 🎯',
+      'Стой, куда! Карта закрывается только через ✕ 🛑'
+    ];
+    overlay.addEventListener('click', (e) => {
+      if (e.target !== overlay) return;
+      const msg = _jokes[Math.floor(Math.random() * _jokes.length)];
+      toast('Эй', msg, 'info');
+    });
     const drawer = document.createElement('div');
     drawer.className = 'pk3-drawer show';
     drawer.innerHTML = _renderDrawerHtml(card);
+    // 22.06.2026 v2: доска заметок СЛЕВА от drawer'a (см. CSS .pk3-noteboard)
+    // ВАЖНО: appendChild доска ВНУТРИ overlay — иначе backdrop-filter blur у overlay
+    // создаёт новый stacking context и доска (даже с z-index 99999) уходит «за» blur.
+    const notesBoard = document.createElement('div');
+    notesBoard.className = 'pk3-noteboard pk3-show';
+    notesBoard.innerHTML = _renderNotesBoardHtml(card);
     document.body.appendChild(overlay);
+    overlay.appendChild(notesBoard); // ← внутрь overlay, не в body
     document.body.appendChild(drawer);
-    _drawerEl = { overlay, drawer };
+    _drawerEl = { overlay, drawer, notesBoard };
     _attachDrawerEvents(card);
   }
   function _closeDrawer() {
     if (!_drawerEl) return;
     try { _drawerEl.overlay.remove(); _drawerEl.drawer.remove(); } catch (_) {}
+    try { if (_drawerEl.notesBoard) _drawerEl.notesBoard.remove(); } catch (_) {}
     _drawerEl = null; _currentCard = null;
   }
   function _kindLabelFromEntity(k) {
@@ -3113,6 +3336,203 @@ window.AsgardPersonalKanbanV3 = (function () {
     `;
   }
 
+  // 22.06.2026: доска заметок — ОТДЕЛЬНАЯ панель СЛЕВА от drawer'a (НЕ внутри).
+  // Появляется вместе с открытием карты, исчезает при закрытии. Свой DOM-элемент.
+  // 22.06.2026 v5: голая доска с absolute-стикерами (drag&drop). Inline width 100%.
+  function _renderNotesBoardHtml(card) {
+    return `<div class="pk3-stk-list" id="pk3-stk-list" style="position:relative;flex:1;overflow:auto;padding:14px;width:100%;min-height:560px;display:block;box-sizing:border-box"></div>
+            <span id="pk3-notes-count" style="display:none">0</span>`;
+  }
+
+  function _fmtNoteWhen(iso) {
+    if (!iso) return '';
+    try {
+      const d = new Date(iso);
+      if (isNaN(d)) return '';
+      const now = new Date();
+      const sameDay = d.toDateString() === now.toDateString();
+      const yesterday = new Date(now.getTime() - 24 * 3600 * 1000);
+      const isYesterday = d.toDateString() === yesterday.toDateString();
+      const t = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+      if (sameDay) return `сегодня ${t}`;
+      if (isYesterday) return `вчера ${t}`;
+      return d.toLocaleDateString('ru-RU') + ' ' + t;
+    } catch (_) { return ''; }
+  }
+
+  // 22.06.2026: адаптивный шрифт стикера по длине текста (чем длиннее — мельче)
+  function _stkFontSize(len) {
+    if (len <= 20)  return 22;
+    if (len <= 60)  return 18;
+    if (len <= 100) return 15;
+    if (len <= 130) return 13;
+    return 11;
+  }
+  const NOTE_MAX = 150;
+
+  // 22.06.2026 v4: стикер inline + absolute positioning + drag&drop
+  function _renderNoteCard(n) {
+    const author = esc(n.author_name || (n.author_id ? '#' + n.author_id : '—'));
+    const when = esc(_fmtNoteWhen(n.created_at));
+    const body = esc(n.body || '').replace(/\n/g, '<br>');
+    const variant = (n.color_variant != null) ? (Number(n.color_variant) % 5) : (Math.abs(parseInt(n.id || 0)) % 5);
+    const colors = ['#fff782', '#ffc7a8', '#bcebbc', '#ffc4d8', '#b9deff'];
+    const rotates = [-2.3, 1.8, -1.2, 2.4, -1.7];
+    const bg = colors[variant];
+    const rot = rotates[variant];
+    const posX = (n.pos_x != null) ? Number(n.pos_x) : Math.floor(Math.random()*100);
+    const posY = (n.pos_y != null) ? Number(n.pos_y) : Math.floor(Math.random()*150);
+    const zIdx = (n.z_index != null) ? Number(n.z_index) : 1;
+    const fz = _stkFontSize((n.body || '').length);
+    const styleBox = [
+      'position:absolute',
+      `left:${posX}px`,
+      `top:${posY}px`,
+      `z-index:${zIdx}`,
+      'width:170px',
+      'height:170px',
+      'box-sizing:border-box',
+      'padding:22px 14px 30px',
+      'overflow:hidden',
+      'display:flex',
+      'flex-direction:column',
+      'background:' + bg,
+      'color:#2a1f08',
+      `transform:rotate(${rot}deg)`,
+      'font-family:Kalam,Caveat,"Permanent Marker","Comic Sans MS",cursive',
+      `font-size:${fz}px`,
+      'line-height:1.18',
+      'font-weight:400',
+      'box-shadow:1px 1px 1px rgba(255,255,255,.3) inset, -1px -1px 1px rgba(0,0,0,.05) inset, 3px 8px 16px -2px rgba(0,0,0,.4), 0 2px 5px rgba(0,0,0,.18)',
+      'transition:transform .25s cubic-bezier(.34,1.56,.64,1), box-shadow .25s ease',
+      'cursor:grab',
+      'user-select:none',
+      'touch-action:none',
+      'animation:pk3-sticker-pop .35s cubic-bezier(.34,1.56,.64,1)',
+    ].join(';');
+    const styleBody  = `flex:1;white-space:pre-wrap;word-break:break-word;color:#2a1f08;overflow:hidden;font-weight:400;font-size:${fz}px;line-height:1.18;font-family:inherit`;
+    const styleFoot  = 'position:absolute;bottom:9px;left:16px;right:16px;display:flex;align-items:baseline;gap:8px;font-size:13.5px;color:rgba(60,40,10,.65);font-family:inherit;font-style:italic';
+    const styleTools = 'position:absolute;top:10px;right:10px;display:flex;gap:6px;opacity:0;transition:opacity .25s ease,transform .25s ease;transform:translateY(-4px);z-index:2';
+    const styleBtn   = 'background:rgba(255,255,255,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border:1px solid rgba(60,40,10,.18);border-radius:50%;width:30px;height:30px;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;color:#2a1f08;box-shadow:0 2px 6px rgba(0,0,0,.22),0 1px 2px rgba(0,0,0,.12);transition:all .18s cubic-bezier(.34,1.56,.64,1);font-family:inherit;line-height:1';
+    // Скотч-полоска сверху и загиб уголка — через инлайн SVG поверх
+    const styleScotch = 'position:absolute;top:-8px;left:50%;width:72px;height:18px;background:linear-gradient(180deg, rgba(220,220,220,.65), rgba(160,160,160,.5));transform:translateX(-50%) rotate(-3deg);box-shadow:0 2px 4px rgba(0,0,0,.25);opacity:.85;border-left:1px solid rgba(255,255,255,.5);border-right:1px solid rgba(0,0,0,.1);z-index:1;pointer-events:none';
+    return `
+      <div data-note-id="${n.id || ''}" data-pk3-sticker="1" data-rot="${rot}" data-z="${zIdx}" style="${styleBox}" onmouseenter="this.style.transform='rotate(0) translateY(-4px) scale(1.05)';const t=this.querySelector('[data-tools]');t.style.opacity=1;t.style.transform='translateY(0)'" onmouseleave="if(this.dataset.dragging!=='1')this.style.transform='rotate(${rot}deg)';const t=this.querySelector('[data-tools]');t.style.opacity=0;t.style.transform='translateY(-4px)'">
+        <div style="${styleScotch}"></div>
+        <div data-tools style="${styleTools}">
+          <button data-note-act="edit" title="Редактировать" style="${styleBtn}" onmouseover="this.style.transform='scale(1.18) rotate(-8deg)';this.style.background='rgba(255,235,150,.9)';this.style.boxShadow='0 4px 10px rgba(0,0,0,.3)'" onmouseout="this.style.transform='';this.style.background='rgba(255,255,255,.55)';this.style.boxShadow='0 2px 6px rgba(0,0,0,.22),0 1px 2px rgba(0,0,0,.12)'">✏️</button>
+          <button data-note-act="delete" title="Удалить" style="${styleBtn}" onmouseover="this.style.transform='scale(1.18) rotate(8deg)';this.style.background='rgba(255,80,80,.85)';this.style.color='#fff';this.style.boxShadow='0 4px 10px rgba(180,30,30,.45)'" onmouseout="this.style.transform='';this.style.background='rgba(255,255,255,.55)';this.style.color='#2a1f08';this.style.boxShadow='0 2px 6px rgba(0,0,0,.22),0 1px 2px rgba(0,0,0,.12)'">🗑</button>
+        </div>
+        <div style="${styleBody}">${body}</div>
+        <div style="${styleFoot}">
+          <span style="font-weight:500;font-style:normal;color:rgba(60,40,10,.85)">${author}</span>
+          <span style="margin-left:auto;color:rgba(60,40,10,.55)">${when}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  function _renderNotesList(notes) {
+    const list = document.getElementById('pk3-stk-list');
+    const cnt = document.getElementById('pk3-notes-count');
+    if (!list) return;
+    list.innerHTML = (notes && notes.length) ? notes.map(_renderNoteCard).join('') : '';
+    if (cnt) cnt.textContent = String((notes || []).length);
+    // Подключаем drag к каждому стикеру
+    list.querySelectorAll('[data-pk3-sticker]').forEach((el) => _bindStickerDrag(el));
+  }
+
+  // 22.06.2026 v4: native pointer-events drag для стикеров. Реалистично:
+  // — при захвате стикер выпрямляется и слегка приподнимается (как будто оторвали)
+  // — z-index растёт чтобы быть поверх
+  // — после отпускания возвращается лёгкий поворот + PATCH сохраняет позицию
+  function _bindStickerDrag(stk) {
+    let startX = 0, startY = 0, elStartX = 0, elStartY = 0, dragging = false;
+    let origRot = parseFloat(stk.dataset.rot) || 0;
+    let savedNoteId = null;
+    const onDown = (e) => {
+      // Не начинаем drag если кликнули по кнопке/textarea
+      if (e.target.closest('[data-note-act]') || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'BUTTON') return;
+      if (!stk.parentElement) return;
+      // Только левая кнопка
+      if (e.button !== undefined && e.button !== 0) return;
+      e.preventDefault();
+      dragging = true;
+      stk.dataset.dragging = '1';
+      savedNoteId = stk.dataset.noteId;
+      startX = e.clientX; startY = e.clientY;
+      const rect = stk.getBoundingClientRect();
+      const parentRect = stk.parentElement.getBoundingClientRect();
+      elStartX = rect.left - parentRect.left + stk.parentElement.scrollLeft;
+      elStartY = rect.top  - parentRect.top  + stk.parentElement.scrollTop;
+      // Зафиксировать позицию по реальной (а не по transform)
+      stk.style.left = elStartX + 'px';
+      stk.style.top  = elStartY + 'px';
+      // Поднять стикер
+      stk.style.cursor = 'grabbing';
+      stk.style.transition = 'box-shadow .15s ease, transform .15s ease';
+      stk.style.transform = 'rotate(2deg) scale(1.05)';
+      stk.style.boxShadow = '1px 1px 1px rgba(255,255,255,.4) inset,-1px -1px 1px rgba(0,0,0,.05) inset,8px 22px 32px -4px rgba(0,0,0,.55),0 6px 14px rgba(0,0,0,.3)';
+      stk.style.zIndex = 99999;
+      try { stk.setPointerCapture(e.pointerId); } catch (_) {}
+    };
+    const onMove = (e) => {
+      if (!dragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      const newX = Math.max(0, elStartX + dx);
+      const newY = Math.max(0, elStartY + dy);
+      stk.style.left = newX + 'px';
+      stk.style.top  = newY + 'px';
+    };
+    const onUp = async (e) => {
+      if (!dragging) return;
+      dragging = false;
+      delete stk.dataset.dragging;
+      stk.style.cursor = 'grab';
+      stk.style.transition = 'transform .35s cubic-bezier(.34,1.56,.64,1), box-shadow .25s ease';
+      stk.style.transform = `rotate(${origRot}deg)`;
+      stk.style.boxShadow = '1px 1px 1px rgba(255,255,255,.3) inset,-1px -1px 1px rgba(0,0,0,.05) inset,3px 8px 16px -2px rgba(0,0,0,.4),0 2px 5px rgba(0,0,0,.18)';
+      try { stk.releasePointerCapture(e.pointerId); } catch (_) {}
+      // Сохраняем позицию + поднимаем z-index
+      if (savedNoteId && _currentCard) {
+        const newX = parseInt(stk.style.left, 10) || 0;
+        const newY = parseInt(stk.style.top, 10) || 0;
+        try {
+          const r = await api(`/api/personal-kanban/cards/${_currentCard.id}/notes/${savedNoteId}/position`, {
+            method: 'PATCH', body: { pos_x: newX, pos_y: newY }
+          });
+          if (r.ok && r.data && r.data.item && r.data.item.z_index != null) {
+            stk.style.zIndex = String(r.data.item.z_index);
+            stk.dataset.z = String(r.data.item.z_index);
+          } else {
+            stk.style.zIndex = stk.dataset.z || '1';
+          }
+        } catch (_) {
+          stk.style.zIndex = stk.dataset.z || '1';
+        }
+      } else {
+        stk.style.zIndex = stk.dataset.z || '1';
+      }
+    };
+    stk.addEventListener('pointerdown', onDown);
+    stk.addEventListener('pointermove', onMove);
+    stk.addEventListener('pointerup', onUp);
+    stk.addEventListener('pointercancel', onUp);
+  }
+
+  async function _loadAndRenderNotes(card) {
+    if (!card || !card.id) return;
+    try {
+      const r = await api(`/api/personal-kanban/cards/${card.id}/history`);
+      const notes = (r.ok && r.data && Array.isArray(r.data.notes)) ? r.data.notes : [];
+      _renderNotesList(notes);
+    } catch (e) {
+      const list = document.getElementById('pk3-stk-list');
+      if (list) list.innerHTML = '<div class="pk3-stk-list-empty">не удалось загрузить</div>';
+    }
+  }
+
   function _section(id, ic, title, count, body) {
     return `
       <div class="pk3-section" id="${id}">
@@ -3144,14 +3564,225 @@ window.AsgardPersonalKanbanV3 = (function () {
     `);
   }
   function _secClient(card) {
+    // 22.06.2026: Заказчик теперь ТОЛЬКО из справочника контрагентов.
+    // Input — readonly «pill», клик → пикер поиска (по имени/ИНН). Рядом «+ Новый».
+    const customerName = card.customer_name || card.customer || '';
     return _section('sec-client', '👤', 'Клиент и контакты', null, `
-      ${_row('Заказчик', `<input id="pk3-f-customer" value="${esc(card.customer_name || card.customer || '')}" />`)}
-      ${_row('ИНН', `<div class="pk3-twocol"><input id="pk3-f-inn" value="${esc(card.customer_inn || '')}" placeholder="ИНН для подгрузки" /><button class="pk3-btn pk3-ghost pk3-sm" id="pk3-egrul" data-action="egrul-lookup">🔎 egrul</button></div>`)}
+      ${_row('Заказчик', `
+        <div style="display:flex;gap:6px;align-items:stretch">
+          <input id="pk3-f-customer" value="${esc(customerName)}" readonly placeholder="Кликни — выбрать из справочника"
+                 style="cursor:pointer;flex:1" data-action="customer-pick" title="Выбрать контрагента из справочника" />
+          <button class="pk3-btn pk3-ghost pk3-sm" data-action="customer-pick" title="Найти в справочнике">🔍</button>
+          <button class="pk3-btn pk3-gold pk3-sm" data-action="customer-new" title="Создать нового контрагента">＋ Новый</button>
+        </div>
+      `)}
+      ${_row('ИНН', `<input id="pk3-f-inn" value="${esc(card.customer_inn || '')}" readonly placeholder="будет подставлен" style="background:var(--bg3);color:var(--t2)" />`)}
       ${_row('Контактное лицо', `<input id="pk3-f-contact" value="${esc(card.contact_person || '')}" />`)}
       ${_row('Email', `<input id="pk3-f-email" value="${esc(card.customer_email || '')}" />`)}
       ${_row('Телефон', `<input id="pk3-f-phone" value="${esc(card.contact_phone || '')}" placeholder="+7 (___) ___-__-__" />`)}
       ${_row('Город / Объект', `<input id="pk3-f-city" value="${esc(card.customer_city || card.work_location || '')}" />`)}
     `);
+  }
+
+  // 22.06.2026: универсальные функции для подстановки контрагента в карту
+  function _fillCustomerFields(c) {
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+    set('pk3-f-customer', c.name || c.customer_name || '');
+    set('pk3-f-inn',      c.inn || c.customer_inn || '');
+    set('pk3-f-email',    c.email || c.customer_email || '');
+    set('pk3-f-phone',    c.phone || c.contact_phone || '');
+    set('pk3-f-contact',  c.contact_person || '');
+    set('pk3-f-city',     c.address || c.customer_address || '');
+  }
+
+  function _openCustomerPicker(card) {
+    const m = document.createElement('div');
+    m.style.cssText = 'position:fixed;inset:0;z-index:999999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6);backdrop-filter:blur(4px)';
+    m.innerHTML = `
+      <div style="background:var(--bg2);border:1px solid var(--brd);border-radius:14px;width:min(640px,92vw);max-height:80vh;display:flex;flex-direction:column;box-shadow:0 16px 48px rgba(0,0,0,.6)">
+        <div style="padding:14px 18px;border-bottom:1px solid var(--brd-m);display:flex;align-items:center;gap:10px">
+          <span style="font-size:18px">👤</span>
+          <h3 style="margin:0;font-family:'Cinzel',Georgia,serif;font-size:17px;color:var(--t1);flex:1">Выбрать контрагента</h3>
+          <button class="pk3-btn pk3-ghost pk3-sm" data-act="close">✕</button>
+        </div>
+        <div style="padding:14px 18px;display:flex;gap:8px;border-bottom:1px solid var(--brd-m)">
+          <input id="pk3-cust-q" placeholder="Поиск по имени или ИНН (минимум 2 символа)" autofocus
+                 style="flex:1;padding:9px 12px;border:1px solid var(--brd-m);border-radius:7px;background:var(--bg1);color:var(--t1);font-size:14px;outline:none" />
+          <button class="pk3-btn pk3-gold" data-act="new">＋ Новый</button>
+        </div>
+        <div id="pk3-cust-list" style="flex:1;overflow-y:auto;padding:6px"></div>
+      </div>
+    `;
+    document.body.appendChild(m);
+    const q = m.querySelector('#pk3-cust-q');
+    const list = m.querySelector('#pk3-cust-list');
+    let searchTimer = null;
+    const close = () => { try { m.remove(); } catch(_) {} };
+    const doSearch = async (query) => {
+      const qstr = query.length >= 2 ? '?search=' + encodeURIComponent(query) + '&limit=50' : '?limit=30';
+      list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--t3);font-style:italic">Ищу…</div>';
+      try {
+        const r = await api('/api/customers' + qstr);
+        const items = (r.ok && r.data && Array.isArray(r.data.customers)) ? r.data.customers : [];
+        if (!items.length) {
+          list.innerHTML = `<div style="padding:30px;text-align:center;color:var(--t3)"><b>Ничего не найдено.</b><br><br>Создайте нового через «＋ Новый»</div>`;
+          return;
+        }
+        list.innerHTML = items.map(c => `
+          <div class="pk3-cust-row" data-inn="${esc(c.inn||'')}" data-name="${esc(c.name||'')}" data-email="${esc(c.email||'')}" data-phone="${esc(c.phone||'')}" data-address="${esc(c.address||'')}" data-contact_person="${esc(c.contact_person||'')}"
+               style="padding:10px 12px;margin:4px;border:1px solid var(--brd-m);border-radius:8px;background:var(--bg3);cursor:pointer;display:flex;align-items:center;gap:10px;transition:all .15s"
+               onmouseover="this.style.background='var(--gold-bg,rgba(212,168,93,.12))';this.style.borderColor='var(--gold)'"
+               onmouseout="this.style.background='var(--bg3)';this.style.borderColor='var(--brd-m)'">
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:600;color:var(--t1);font-size:14px">${esc(c.name||'—')}</div>
+              <div style="font-size:11.5px;color:var(--t3);margin-top:2px">ИНН ${esc(c.inn||'—')}${c.address ? ' · ' + esc(c.address) : ''}${c.contact_person ? ' · 👤 ' + esc(c.contact_person) : ''}</div>
+            </div>
+            <button class="pk3-btn pk3-gold pk3-sm" data-act="pick" style="white-space:nowrap">Выбрать →</button>
+          </div>
+        `).join('');
+      } catch (e) {
+        list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--err-t)">Ошибка: ' + esc(String(e.message||e)) + '</div>';
+      }
+    };
+    q.addEventListener('input', (e) => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => doSearch(e.target.value.trim()), 250);
+    });
+    m.addEventListener('click', (e) => {
+      if (e.target === m) { close(); return; }
+      const act = e.target.closest('[data-act]')?.dataset.act;
+      if (act === 'close') return close();
+      if (act === 'new') { close(); return _openCreateCustomerModal(card); }
+      if (act === 'pick') {
+        const row = e.target.closest('.pk3-cust-row');
+        if (row) {
+          _fillCustomerFields({
+            name: row.dataset.name, inn: row.dataset.inn, email: row.dataset.email,
+            phone: row.dataset.phone, address: row.dataset.address,
+            contact_person: row.dataset.contact_person
+          });
+          toast('Контрагент', row.dataset.name, 'ok');
+          close();
+        }
+      }
+    });
+    document.addEventListener('keydown', function escH(e) {
+      if (e.key === 'Escape') { close(); document.removeEventListener('keydown', escH); }
+    });
+    // Загрузка списка сразу
+    doSearch('');
+    setTimeout(() => q.focus(), 50);
+  }
+
+  function _openCreateCustomerModal(card) {
+    const m = document.createElement('div');
+    m.style.cssText = 'position:fixed;inset:0;z-index:999999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6);backdrop-filter:blur(4px)';
+    m.innerHTML = `
+      <div style="background:var(--bg2);border:1px solid var(--brd);border-radius:14px;width:min(560px,92vw);box-shadow:0 16px 48px rgba(0,0,0,.6)">
+        <div style="padding:14px 18px;border-bottom:1px solid var(--brd-m);display:flex;align-items:center;gap:10px">
+          <span style="font-size:18px;color:var(--gold)">＋</span>
+          <h3 style="margin:0;font-family:'Cinzel',Georgia,serif;font-size:17px;color:var(--t1);flex:1">Новый контрагент</h3>
+          <button class="pk3-btn pk3-ghost pk3-sm" data-act="close">✕</button>
+        </div>
+        <div style="padding:16px 18px;display:flex;flex-direction:column;gap:9px">
+          <div style="display:flex;gap:8px">
+            <input id="nc-inn" placeholder="ИНН (10 или 12 цифр) *" maxlength="12"
+                   style="flex:1;padding:9px 11px;border:1px solid var(--brd-m);border-radius:7px;background:var(--bg1);color:var(--t1);font-size:14px" />
+            <button class="pk3-btn pk3-ghost" data-act="egrul" title="Подгрузить из ЕГРЮЛ">🔎 ЕГРЮЛ</button>
+          </div>
+          <input id="nc-name" placeholder="Название организации *"
+                 style="padding:9px 11px;border:1px solid var(--brd-m);border-radius:7px;background:var(--bg1);color:var(--t1);font-size:14px" />
+          <input id="nc-address" placeholder="Юридический адрес"
+                 style="padding:9px 11px;border:1px solid var(--brd-m);border-radius:7px;background:var(--bg1);color:var(--t1);font-size:14px" />
+          <div style="display:flex;gap:8px">
+            <input id="nc-email" placeholder="Email" type="email"
+                   style="flex:1;padding:9px 11px;border:1px solid var(--brd-m);border-radius:7px;background:var(--bg1);color:var(--t1);font-size:14px" />
+            <input id="nc-phone" placeholder="Телефон"
+                   style="flex:1;padding:9px 11px;border:1px solid var(--brd-m);border-radius:7px;background:var(--bg1);color:var(--t1);font-size:14px" />
+          </div>
+          <input id="nc-contact" placeholder="Контактное лицо"
+                 style="padding:9px 11px;border:1px solid var(--brd-m);border-radius:7px;background:var(--bg1);color:var(--t1);font-size:14px" />
+        </div>
+        <div style="padding:12px 18px;border-top:1px solid var(--brd-m);display:flex;justify-content:flex-end;gap:8px">
+          <button class="pk3-btn pk3-ghost" data-act="close">Отмена</button>
+          <button class="pk3-btn pk3-gold" data-act="save">💾 Создать и выбрать</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(m);
+    setTimeout(() => m.querySelector('#nc-inn').focus(), 50);
+    const close = () => { try { m.remove(); } catch(_) {} };
+    const saveBtn = m.querySelector('[data-act="save"]');
+    const egrulBtn = m.querySelector('[data-act="egrul"]');
+
+    egrulBtn.addEventListener('click', async () => {
+      const inn = m.querySelector('#nc-inn').value.trim();
+      if (!inn || inn.length < 10) { toast('ИНН', 'Введите 10+ цифр', 'warn'); return; }
+      egrulBtn.disabled = true; egrulBtn.textContent = '⏳';
+      try {
+        const r = await api('/api/customers/lookup/' + encodeURIComponent(inn));
+        if (r.ok && r.data && r.data.found && r.data.suggestion) {
+          const s = r.data.suggestion;
+          m.querySelector('#nc-name').value = s.name || s.full_name || '';
+          m.querySelector('#nc-address').value = s.address || '';
+          toast('ЕГРЮЛ', s.name || 'Найдено', 'ok');
+        } else {
+          toast('ЕГРЮЛ', 'Не найдено по этому ИНН', 'warn');
+        }
+      } catch (e) {
+        toast('ЕГРЮЛ', String(e.message || e), 'err');
+      } finally {
+        egrulBtn.disabled = false; egrulBtn.textContent = '🔎 ЕГРЮЛ';
+      }
+    });
+
+    m.addEventListener('click', async (e) => {
+      if (e.target === m) { close(); return; }
+      const act = e.target.closest('[data-act]')?.dataset.act;
+      if (act === 'close') return close();
+      if (act === 'save') {
+        const inn = m.querySelector('#nc-inn').value.trim();
+        const name = m.querySelector('#nc-name').value.trim();
+        if (!/^\d{10}$|^\d{12}$/.test(inn)) { toast('ИНН', '10 или 12 цифр', 'warn'); return; }
+        if (!name) { toast('Название', 'Обязательно', 'warn'); return; }
+        const body = {
+          inn, name,
+          email:          m.querySelector('#nc-email').value.trim() || null,
+          phone:          m.querySelector('#nc-phone').value.trim() || null,
+          contact_person: m.querySelector('#nc-contact').value.trim() || null,
+          address:        m.querySelector('#nc-address').value.trim() || null
+        };
+        saveBtn.disabled = true; saveBtn.textContent = '⏳ Сохраняю…';
+        try {
+          const r = await api('/api/customers', { method: 'POST', body });
+          if (!r.ok) {
+            const errMsg = (r.data && (r.data.error || r.data.message)) || 'Не сохранилось';
+            // Если контрагент с этим ИНН уже есть — предложить выбрать его
+            if (errMsg.toLowerCase().includes('уже существует') || r.status === 409) {
+              const gr = await api('/api/customers/' + encodeURIComponent(inn));
+              if (gr.ok && gr.data && gr.data.customer) {
+                _fillCustomerFields(gr.data.customer);
+                toast('Контрагент', 'Уже был в базе — выбран', 'info');
+                close();
+                return;
+              }
+            }
+            toast('Ошибка', errMsg, 'err');
+            saveBtn.disabled = false; saveBtn.textContent = '💾 Создать и выбрать';
+            return;
+          }
+          _fillCustomerFields(body);
+          toast('Создано', name, 'ok');
+          close();
+        } catch (e) {
+          toast('Ошибка', String(e.message || e), 'err');
+          saveBtn.disabled = false; saveBtn.textContent = '💾 Создать и выбрать';
+        }
+      }
+    });
+    document.addEventListener('keydown', function escH(e) {
+      if (e.key === 'Escape') { close(); document.removeEventListener('keydown', escH); }
+    });
   }
   function _secWork(card) {
     return _section('sec-work', '🔧', 'Что делать', null, `
@@ -3330,20 +3961,12 @@ window.AsgardPersonalKanbanV3 = (function () {
         <span class="pk3-tag ${stat.cls}">${stat.tag}</span>
         <span style="font-size:12px;color:var(--t2)">${stat.text}</span>
       </div>
-      ${stat.lock ? '' : (tkpAttached ? `
-        <div class="pk3-ai-block">
-          <p style="margin:0"><b>📄 Прикреплено к карте.</b> Документ в разделе «📤 Загружено РП».</p>
-        </div>
-        <div style="margin-top:9px;display:flex;gap:7px;flex-wrap:wrap">
-          <button class="pk3-btn" data-action="open-tkp">✏️ Открыть в конструкторе</button>
-          <button class="pk3-btn" data-action="tkp-pdf">📥 Скачать PDF</button>
-          ${card.col === 'kp_prep' ? '<button class="pk3-btn pk3-gold" data-action="open-send">📧 Отправить клиенту</button>' : ''}
-        </div>
-      ` : `
+      <div id="pk3-tkp-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px"></div>
+      ${stat.lock ? '' : `
         <div class="pk3-calc-panel" style="grid-template-columns:1fr 1fr;margin-bottom:10px">
           <div class="pk3-calc-card pk3-r" data-action="open-tkp" style="border-color:var(--gold);background:var(--gold-bg)">
             <span class="pk3-ic">🛠</span>
-            <div class="pk3-title">Конструктор ТКП</div>
+            <div class="pk3-title">Открыть/создать ТКП</div>
             <div class="pk3-sub">блоки + превью + шаблон по типу</div>
           </div>
           <div class="pk3-calc-card pk3-c" data-action="tkp-upload">
@@ -3352,9 +3975,119 @@ window.AsgardPersonalKanbanV3 = (function () {
             <div class="pk3-sub">если у тебя свой ТКП в Word/PDF</div>
           </div>
         </div>
-        <div class="pk3-hint">💡 После сохранения файл попадёт в раздел «📤 Загружено РП» и привяжется к карте.</div>
-      `)}
+        <div class="pk3-hint">💡 После создания ТКП появится здесь со ссылками на PDF/Excel. Сумма подтянется в Финансы.</div>
+      `}
     `);
+  }
+
+  // 22.06.2026: подгружаем прикреплённые ТКП по pre_tender_id (или tender_id)
+  // через GET /api/tkp?pre_tender_id=X и рендерим карточки со ссылками PDF/Excel.
+  function _fmtMoney(v) {
+    if (v == null || v === '' || isNaN(v)) return '—';
+    return Number(v).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽';
+  }
+  function _tkpStatusBadge(s) {
+    const m = {
+      draft:     { cls: 'pk3-warn', label: 'черновик' },
+      review:    { cls: 'pk3-info', label: 'на согл.' },
+      approved:  { cls: 'pk3-ok',   label: 'утверждено' },
+      sent:      { cls: 'pk3-ok',   label: 'отправлено' },
+      won:       { cls: 'pk3-ok',   label: 'принято' },
+      lost:      { cls: 'pk3-err',  label: 'отклонено' },
+      cancelled: { cls: 'pk3-err',  label: 'отменено' }
+    };
+    return m[s] || { cls: 'pk3-info', label: s || '?' };
+  }
+  function _renderTkpListItem(t) {
+    const b = _tkpStatusBadge(t.status);
+    const token = (() => { try { return localStorage.getItem('asgard_token'); } catch (_) { return ''; } })();
+    const tokenQs = token ? `?token=${encodeURIComponent(token)}` : '';
+    return `
+      <div class="pk3-doc-row" style="border:1px solid var(--brd-m);border-left:3px solid var(--gold);border-radius:8px;padding:10px 12px;background:var(--bg2)">
+        <span class="pk3-doc-ic">🛠</span>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <b style="color:var(--t1)">ТКП №${t.id}</b>
+            <span class="pk3-tag ${b.cls}">${b.label}</span>
+            <span style="margin-left:auto;color:var(--gold-l,var(--gold));font-weight:700;font-family:var(--ff-mono,monospace);font-size:14px">${_fmtMoney(t.total_sum)}</span>
+          </div>
+          <div style="font-size:11.5px;color:var(--t3);margin-top:3px">создано: ${esc(_fmtNoteWhen(t.created_at) || '')}${t.creator_name ? ' · ' + esc(t.creator_name) : ''}</div>
+        </div>
+        <div class="pk3-doc-actions" style="display:flex;gap:5px">
+          <a class="pk3-doc-btn" href="#/tkp?edit=${t.id}" title="Открыть в конструкторе">✏️</a>
+          <a class="pk3-doc-btn" href="/api/tkp/${t.id}/pdf${tokenQs}" target="_blank" title="Скачать PDF">📥 PDF</a>
+          <a class="pk3-doc-btn" href="/api/tkp/${t.id}/excel${tokenQs}" target="_blank" title="Скачать Excel">📊 XLSX</a>
+        </div>
+      </div>
+    `;
+  }
+  async function _loadAndRenderTkpList(card) {
+    const container = document.getElementById('pk3-tkp-list');
+    let qs = '';
+    if (card.entity_kind === 'pre_tender' || card.flow_type === 'pre_tender') qs = 'pre_tender_id=' + card.entity_id;
+    else if (card.entity_kind === 'tender' || card.flow_type === 'tender')    qs = 'tender_id='    + card.entity_id;
+    if (!qs) return; // application/work — нет связи
+    try {
+      const r = await api(`/api/tkp?${qs}&limit=20`);
+      const items = (r.ok && r.data && Array.isArray(r.data.items)) ? r.data.items : [];
+      // 22.06.2026: считаем max total_sum для порога 50M.
+      const maxSum = items.reduce((acc, t) => Math.max(acc, Number(t.total_sum) || 0), 0);
+      card._tkp_max_sum = items.length ? maxSum : null;
+      // Перерисовать action-bar — теперь кнопка зависит от наличия и суммы ТКП
+      const bar = document.getElementById('pk3-actions-bar');
+      if (bar) bar.innerHTML = _renderActionsBar(card);
+      if (container) {
+        if (!items.length) container.innerHTML = '';
+        else container.innerHTML = items.map(_renderTkpListItem).join('');
+      }
+      // 22.06.2026: автоподтяжка фин-карточек. Сначала смета (полные totals),
+      // если её нет — ТКП (только КП без НДС). Не ждём, делаем параллельно.
+      _autofillFinFromTkp(card);
+    } catch (_) {}
+  }
+
+  // 22.06.2026: автоподтяжка финансов в карту — единый endpoint /finance-source.
+  // Приоритет: 1) смета (totals из tkp_quick_sessions.finalized), 2) ТКП (total_sum), 3) ручной ввод.
+  // Раньше брали ТКП — отдавал только цену КП без с/с и маржи. Теперь смета даёт всё.
+  async function _autofillFinFromTkp(card) {
+    const fin = card.finance || {};
+    if (fin.kp_price_without_vat || fin.cost_planned) return; // ручной override
+    let qs = '';
+    if (card.entity_kind === 'pre_tender' || card.flow_type === 'pre_tender') qs = 'pre_tender_id=' + card.entity_id;
+    else if (card.entity_kind === 'tender' || card.flow_type === 'tender')    qs = 'tender_id='    + card.entity_id;
+    if (!qs) return;
+    try {
+      const r = await api(`/api/tkp-quick/finance-source?${qs}`);
+      if (!r.ok || !r.data || !r.data.totals) return;
+      const { source, totals, ref_id } = r.data;
+      const fmt = (n) => n != null ? Number(n).toLocaleString('ru-RU', { maximumFractionDigits: 0 }) + ' ₽' : '— ₽';
+      const cards = document.querySelectorAll('#sec-fin .pk3-fin-card .pk3-v');
+      if (cards.length < 4) return;
+      cards[0].textContent = fmt(totals.cost);
+      cards[1].textContent = fmt(totals.kp_no_vat);
+      cards[2].textContent = fmt(totals.kp_with_vat);
+      if (totals.margin_pct != null) {
+        cards[3].textContent = totals.margin_pct.toFixed(1) + '%';
+        cards[3].style.color = totals.margin_pct > 0 ? 'var(--ok-t)' : 'var(--err-t)';
+      } else {
+        cards[3].textContent = '— %';
+      }
+      // Маркер источника
+      const grid = document.querySelector('#sec-fin .pk3-fin-grid');
+      if (grid) {
+        let tag = grid.parentNode.querySelector('.pk3-fin-source');
+        if (!tag) {
+          tag = document.createElement('div');
+          tag.className = 'pk3-fin-source';
+          tag.style.cssText = 'font-size:11px;color:var(--t3);margin-top:6px;margin-bottom:6px';
+          grid.parentNode.insertBefore(tag, grid.nextSibling);
+        }
+        const srcLabel = source === 'estimate'
+          ? `🧮 Из сметы (Quick-сессия #${ref_id}). Поля ниже — для ручного override.`
+          : `📋 Из ТКП №${ref_id} (сметы ещё нет — только цена КП). Создайте смету через 🚀 Quick для полных финансов.`;
+        tag.innerHTML = srcLabel;
+      }
+    } catch (_) {}
   }
   function _tkpStatus(card, tkpAttached) {
     if (card.col === 'new')      return { tag:'—',          cls:'pk3-info', text:'Раздел станет доступен с этапа «Просчёт».', lock:true };
@@ -3384,6 +4117,7 @@ window.AsgardPersonalKanbanV3 = (function () {
       <button class="pk3-btn pk3-ghost" data-action="save">💾 Сохранить</button>
       <button class="pk3-btn pk3-ghost" data-action="note">📝 Заметка</button>
       <button class="pk3-btn pk3-ghost" data-action="remind">⏰ Напоминание</button>
+      <button class="pk3-btn pk3-ghost" data-action="letter">✉ Письмо</button>
       <div style="flex:1"></div>
     `;
     let context = '';
@@ -3393,9 +4127,31 @@ window.AsgardPersonalKanbanV3 = (function () {
         <button class="pk3-btn pk3-gold" data-action="trans-calc">🚀 К просчёту</button>
       `;
     } else if (card.col === 'calc') {
-      context = `
-        <button class="pk3-btn pk3-gold" data-action="trans-approval">⚖️ На согласование директору</button>
-      `;
+      // 22.06.2026: динамическая кнопка по сумме ТКП.
+      // Сумма (max total_sum) подтянется через _loadAndRenderTkpList → setCardPrice.
+      // По дефолту показываем gold-кнопку "На согласование" — backend сам решит:
+      //   если ТКП нет → 400 "Сначала создайте ТКП"
+      //   если сумма < 50M → автопромоут в kp_prep
+      //   если ≥ 50M → реальное согласование директором
+      const tkpSum = card._tkp_max_sum;
+      const hasTkp = tkpSum != null;
+      const under = hasTkp && tkpSum < 50_000_000;
+      if (!hasTkp) {
+        context = `
+          <span style="font-size:11px;color:var(--t3);align-self:center;margin-right:6px">📋 Сначала создайте ТКП в разделе ниже</span>
+          <button class="pk3-btn" disabled style="opacity:.55;cursor:not-allowed">⚖️ На согласование</button>
+        `;
+      } else if (under) {
+        context = `
+          <span style="font-size:11px;color:var(--ok-t);align-self:center;margin-right:6px">💰 ${Math.round(tkpSum).toLocaleString('ru-RU')} ₽ &lt; 50 млн — согл. не нужно</span>
+          <button class="pk3-btn pk3-ok" data-action="trans-kp_prep">✅ Утвердить и в КП</button>
+        `;
+      } else {
+        context = `
+          <span style="font-size:11px;color:var(--warn-t);align-self:center;margin-right:6px">💰 ${Math.round(tkpSum).toLocaleString('ru-RU')} ₽ ≥ 50 млн — нужно согласование</span>
+          <button class="pk3-btn pk3-gold" data-action="trans-approval">⚖️ На согласование директору</button>
+        `;
+      }
     } else if (card.col === 'approval') {
       context = `
         <button class="pk3-btn pk3-danger" data-action="trans-lose">❌ Отклонить</button>
@@ -3422,7 +4178,10 @@ window.AsgardPersonalKanbanV3 = (function () {
         <button class="pk3-btn pk3-danger" data-action="trans-lose">❌ Проиграли</button>
       `;
     } else if (card.col === 'win') {
-      context = `<button class="pk3-btn pk3-gold" data-action="trans-work">🏗 Перевести в работу</button>`;
+      // 21.06.2026: работа уже создана автохуком при tender→win
+      // (src/routes/personal-kanban.js:2076-2159). Кнопка ведёт прямо в карточку работы.
+      // Раньше "trans-work" возвращал 409 — backend не поддерживает tender→work transition.
+      context = `<button class="pk3-btn pk3-gold" data-action="open-work">🏗 Открыть работу</button>`;
     } else if (card.col === 'work') {
       context = `
         <button class="pk3-btn" data-action="fin-summary">📊 Финансовая сводка</button>
@@ -3469,12 +4228,34 @@ window.AsgardPersonalKanbanV3 = (function () {
       const target = document.getElementById(id);
       if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }));
-    // contextual actions
-    $$('.pk3-drawer [data-action]').forEach(b => b.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const act = b.dataset.action;
-      await _onDrawerAction(act, card);
-    }));
+    // 22.06.2026: event delegation — handler на drawer, ловит ВСЕ клики [data-action].
+    // Раньше биндились отдельно на каждую кнопку, но после перерисовок innerHTML
+    // (например _loadAndRenderTkpList → bar.innerHTML=...) обработчики слетали,
+    // и кнопки «📝 Заметка», «✅ Утвердить» и т.п. переставали реагировать.
+    if (_drawerEl && _drawerEl.drawer) {
+      _drawerEl.drawer.addEventListener('click', async (e) => {
+        const b = e.target.closest('[data-action]');
+        if (!b || !_drawerEl.drawer.contains(b)) return;
+        e.stopPropagation();
+        await _onDrawerAction(b.dataset.action, card);
+      });
+    }
+    // 22.06.2026 v3: event delegation для tools (✏️/🗑) inline-стикеров
+    if (_drawerEl && _drawerEl.notesBoard) {
+      _drawerEl.notesBoard.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-note-act]');
+        if (!btn) return;
+        const noteEl = btn.closest('[data-pk3-sticker]');
+        if (!noteEl) return;
+        const act = btn.dataset.noteAct;
+        if (act === 'edit')   _startNoteEdit(noteEl, card);
+        if (act === 'delete') _deleteNote(noteEl, card);
+      });
+    }
+    // Грузим заметки асинхронно — drawer уже виден
+    _loadAndRenderNotes(card);
+    // 22.06.2026: подгружаем прикреплённые ТКП в секции 📋 (с кнопками PDF/Excel)
+    _loadAndRenderTkpList(card);
   }
 
   async function _onDrawerAction(act, card) {
@@ -3483,19 +4264,64 @@ window.AsgardPersonalKanbanV3 = (function () {
     if (act === 'open-references') return _openReferencesModal(card);
     if (act === 'open-tkp')        return _openTkpConstructor(card);
     if (act === 'open-send')       return _openSendModal(card);
-    if (act === 'tkp-upload')      return toast('Загрузка ТКП', 'В следующей итерации — сейчас используй конструктор.', 'warn');
+    if (act === 'tkp-upload')      return _openTkpUploadModal(card);
     if (act === 'tkp-pdf')         return _downloadTkpPdf(card);
     if (act === 'save')            return _saveDrawerFields(card);
     if (act === 'save-fin')        return _saveDrawerFields(card);
     if (act === 'egrul-lookup')    return _doEgrulLookup();
+    if (act === 'customer-pick')   return _openCustomerPicker(card);
+    if (act === 'customer-new')    return _openCreateCustomerModal(card);
     if (act === 'doc-view' || act === 'doc-dl' || act === 'doc-dl-pdf') return _onDocClick(card, act);
     if (act === 'doc-preview-edit') return _onDocPreviewEditClick(card);
     if (act === 'doc-upload')      return _openDocUploadPicker(card);
     if (act === 'note')            return _addNote(card);
     if (act === 'remind')          return _addReminder(card);
+    if (act === 'letter') {
+      // ✉ Открыть Composer (React v2) с привязкой к этой карточке.
+      // Маппинг entity_kind → parent_entity_type (backend whitelist: tender|work|calc|pre_tender|request).
+      const _MAP = { tender:'tender', work:'work', pre_tender:'pre_tender', inbox_application:'pre_tender' };
+      const peType = _MAP[card.entity_kind];
+      const peId = card.entity_id;
+      const qs = new URLSearchParams({ return_to: window.location.href });
+      if (peType && peId) {
+        qs.set('parent_entity_type', peType);
+        qs.set('parent_entity_id', String(peId));
+      }
+      window.location.href = '/v2/#/correspondence/composer?' + qs.toString();
+      return;
+    }
     if (act === 'convert-pretender') return _doConvertPretender(card);
     if (act === 'fin-summary')     return toast('Финансовая сводка', 'Откроется в /finance', 'info');
     if (act === 'close-act')       return toast('Закрытие актом', 'Откроется в /works detail', 'info');
+    // 21.06.2026: открыть автосозданную работу. После tender→win backend хук
+    // (src/routes/personal-kanban.js:2076-2159) уже создал works запись; РП попадает
+    // прямо в /pm-works на конкретную работу.
+    if (act === 'open-work') {
+      try {
+        // pre_tender-карточки: ищем по source_pre_tender_id (backend support)
+        // tender-карточки: ищем по tender_id
+        const e = card.entity || card;
+        const query = (card.entity_kind === 'pre_tender' || card.col === 'pre_tenders')
+          ? `source_pre_tender_id=${card.entity_id || e.id}`
+          : `tender_id=${card.entity_id || card.tender_id || e.id}`;
+        const r = await fetch(`/api/works?${query}`, {
+          headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('asgard_token') || '') }
+        });
+        const j = await r.json().catch(() => ({}));
+        const works = (j && (j.works || j.items || j.data)) || (Array.isArray(j) ? j : []);
+        const work = Array.isArray(works) && works[0];
+        if (work && work.id) {
+          window.location.hash = `#/pm-works?work_id=${work.id}`;
+        } else {
+          window.location.hash = '#/pm-works';
+        }
+        _closeDrawer();
+      } catch (_) {
+        window.location.hash = '#/pm-works';
+        _closeDrawer();
+      }
+      return;
+    }
     if (act.startsWith('trans-')) {
       const toCol = act.replace('trans-', '');
       let note = null;
@@ -4393,12 +5219,293 @@ window.AsgardPersonalKanbanV3 = (function () {
       if (btn) { btn.disabled = false; btn.textContent = '🔎 egrul'; }
     }
   }
-  async function _addNote(card) {
-    const text = window.prompt('Текст заметки:');
-    if (!text || !text.trim()) return;
-    const r = await api(`/api/personal-kanban/cards/${card.id}/notes`, { method: 'POST', body: { body: text.trim() } });
-    if (r.ok) toast('Готово', 'Заметка добавлена', 'ok');
-    else toast('Ошибка', 'Не удалось', 'err');
+  // 22.06.2026: модалка загрузки готового ТКП (Word/PDF/Excel) для карты заявки/тендера
+  function _openTkpUploadModal(card) {
+    const existed = document.querySelector('.pk3-tkp-upload-modal');
+    if (existed) existed.remove();
+    const customerName = card.customer || card.customer_name || card.source_name || '';
+    const ptId = (card.entity_kind === 'pre_tender' || card.flow_type === 'pre_tender') ? card.entity_id : '';
+    const tdId = (card.entity_kind === 'tender' || card.flow_type === 'tender') ? card.entity_id : '';
+    const linkType = ptId ? 'direct_request' : (tdId ? 'tender' : 'standalone');
+    const m = document.createElement('div');
+    m.className = 'pk3-tkp-upload-modal';
+    m.style.cssText = 'position:fixed;inset:0;z-index:999999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.65);backdrop-filter:blur(4px)';
+    m.innerHTML = `
+      <div style="background:var(--bg2);border:1px solid var(--brd);border-radius:14px;padding:20px 22px;width:min(560px,92vw);box-shadow:0 16px 48px rgba(0,0,0,.6);max-height:90vh;overflow-y:auto">
+        <h3 style="margin:0 0 14px;font-family:'Cinzel',Georgia,serif;font-size:17px;color:var(--t1);display:flex;align-items:center;gap:8px">
+          📥 Загрузить готовый ТКП
+        </h3>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <label style="font-size:12px;color:var(--t2)">Тема ТКП <span style="color:var(--err-t)">*</span>
+            <input id="pk3-tkp-up-subj" type="text" maxlength="500" placeholder="например, ТКП на гидромеханическую очистку деаэратора"
+              style="width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--brd-m);border-radius:7px;background:var(--bg1);color:var(--t1);font-size:13px;outline:none" />
+          </label>
+          <div style="display:flex;gap:10px">
+            <label style="flex:1;font-size:12px;color:var(--t2)">Сумма ТКП (₽, без НДС)
+              <input id="pk3-tkp-up-sum" type="number" min="0" step="0.01" placeholder="2 739 175"
+                style="width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--brd-m);border-radius:7px;background:var(--bg1);color:var(--t1);font-size:13px;outline:none" />
+            </label>
+            <label style="flex:0 0 130px;font-size:12px;color:var(--t2)">НДС, %
+              <input id="pk3-tkp-up-vat" type="number" min="0" max="50" value="20"
+                style="width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--brd-m);border-radius:7px;background:var(--bg1);color:var(--t1);font-size:13px;outline:none" />
+            </label>
+          </div>
+          <label style="font-size:12px;color:var(--t2)">Срок действия (дн.)
+            <input id="pk3-tkp-up-validity" type="number" min="1" max="365" value="30"
+              style="width:160px;margin-top:4px;padding:8px 10px;border:1px solid var(--brd-m);border-radius:7px;background:var(--bg1);color:var(--t1);font-size:13px;outline:none" />
+          </label>
+          <label style="font-size:12px;color:var(--t2)">Файл ТКП (Word/PDF/Excel) <span style="color:var(--err-t)">*</span>
+            <input id="pk3-tkp-up-file" type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              style="display:block;width:100%;margin-top:4px;padding:8px;border:1px dashed var(--brd-m);border-radius:7px;background:var(--bg1);color:var(--t1);font-size:13px" />
+          </label>
+          <div style="font-size:11px;color:var(--t3)">Заказчик: <b>${esc(customerName || '—')}</b> · ${esc(linkType)}${ptId ? ` #${ptId}` : (tdId ? ` #${tdId}` : '')}</div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">
+          <button class="pk3-btn pk3-ghost" data-act="cancel">Отмена</button>
+          <button class="pk3-btn pk3-gold" data-act="submit">📥 Загрузить</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(m);
+    setTimeout(() => m.querySelector('#pk3-tkp-up-subj').focus(), 30);
+    const close = () => { try { m.remove(); } catch (_) {} };
+    const submit = async () => {
+      const subj = m.querySelector('#pk3-tkp-up-subj').value.trim();
+      const file = m.querySelector('#pk3-tkp-up-file').files[0];
+      const sum  = m.querySelector('#pk3-tkp-up-sum').value;
+      const vat  = m.querySelector('#pk3-tkp-up-vat').value;
+      const validity = m.querySelector('#pk3-tkp-up-validity').value;
+      if (!subj) { toast('Не хватает', 'Тема ТКП обязательна', 'warn'); return; }
+      if (!file) { toast('Не хватает', 'Выберите файл', 'warn'); return; }
+      const btn = m.querySelector('[data-act="submit"]');
+      if (btn) { btn.disabled = true; btn.textContent = '⏳ Загружаю…'; }
+      const fd = new FormData();
+      fd.append('subject', subj);
+      if (customerName) fd.append('customer_name', customerName);
+      if (ptId) fd.append('pre_tender_id', String(ptId));
+      if (tdId) fd.append('tender_id', String(tdId));
+      fd.append('link_type', linkType);
+      if (sum) fd.append('total_sum', String(sum));
+      if (vat) fd.append('vat_pct', String(vat));
+      if (validity) fd.append('validity_days', String(validity));
+      fd.append('file', file);
+      try {
+        const token = (() => { try { return localStorage.getItem('asgard_token'); } catch (_) { return ''; } })();
+        const res = await fetch('/api/tkp/upload-ready', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + token },
+          body: fd
+        });
+        if (!res.ok) {
+          let err = `HTTP ${res.status}`;
+          try { const j = await res.json(); err = j.error || j.message || err; } catch (_) {}
+          toast('Не загрузилось', err, 'err');
+          if (btn) { btn.disabled = false; btn.textContent = '📥 Загрузить'; }
+          return;
+        }
+        toast('Готово', 'ТКП загружено и привязано к карте', 'ok');
+        close();
+        await _loadAndRenderTkpList(card);
+      } catch (e) {
+        toast('Не загрузилось', String(e.message || e), 'err');
+        if (btn) { btn.disabled = false; btn.textContent = '📥 Загрузить'; }
+      }
+    };
+    m.addEventListener('click', (e) => {
+      if (e.target === m) close();
+      const act = e.target.closest('[data-act]')?.dataset.act;
+      if (act === 'cancel') close();
+      if (act === 'submit') submit();
+    });
+    document.addEventListener('keydown', function escH(e) {
+      if (e.key === 'Escape') { close(); document.removeEventListener('keydown', escH); }
+    });
+  }
+
+  // 22.06.2026: кнопка «📝 Заметка» добавляет НА ДОСКУ слева новый пустой стикер
+  // в режиме редактирования. Юзер пишет прямо в стикере → 💾 сохранить или 🗑 удалить.
+  // Никаких модалок поверх drawer'а.
+  function _addNote(card) {
+    const list = document.getElementById('pk3-stk-list');
+    if (!list) {
+      toast('Доска заметок недоступна', 'Узкий экран. Расширьте окно.', 'warn');
+      return;
+    }
+    // Если уже есть открытый пустой edit-стикер — фокусим его, не плодим
+    const existing = list.querySelector('.pk3-sticker.pk3-edit[data-new="1"]');
+    if (existing) { const ta = existing.querySelector('textarea'); if (ta) ta.focus(); return; }
+    // Снимаем плейсхолдер если был
+    const empty = list.querySelector('.pk3-stk-list-empty');
+    if (empty) empty.remove();
+    // Вставляем НОВЫЙ пустой стикер в начало — inline-стили на жёлтом фоне как реальный post-it
+    const stk = document.createElement('div');
+    stk.setAttribute('data-new', '1');
+    stk.setAttribute('data-pk3-sticker-edit', '1');
+    // Случайная позиция для нового стикера
+    const px = Math.floor(Math.random()*120);
+    const py = Math.floor(Math.random()*150);
+    const cv = Math.floor(Math.random()*5);
+    stk.dataset.colorVariant = String(cv);
+    const colors = ['#fff782', '#ffc7a8', '#bcebbc', '#ffc4d8', '#b9deff'];
+    const bg = colors[cv];
+    stk.style.cssText = `position:absolute;left:${px}px;top:${py}px;width:200px;height:200px;box-sizing:border-box;padding:18px 14px 12px;display:flex;flex-direction:column;background:${bg};color:#2a1f08;transform:rotate(0deg);z-index:99999;font-family:Kalam,Caveat,"Permanent Marker","Comic Sans MS",cursive;font-size:17px;line-height:1.18;font-weight:400;box-shadow:1px 1px 1px rgba(255,255,255,.3) inset, -1px -1px 1px rgba(0,0,0,.05) inset, 8px 18px 30px -4px rgba(0,0,0,.5), 0 4px 10px rgba(0,0,0,.25);animation:pk3-sticker-pop .35s cubic-bezier(.34,1.56,.64,1)`;
+    stk.innerHTML = `
+      <div style="position:absolute;top:-8px;left:50%;width:72px;height:18px;background:linear-gradient(180deg,rgba(220,220,220,.65),rgba(160,160,160,.5));transform:translateX(-50%) rotate(-3deg);box-shadow:0 2px 4px rgba(0,0,0,.25);opacity:.85;border-left:1px solid rgba(255,255,255,.5);border-right:1px solid rgba(0,0,0,.1);pointer-events:none"></div>
+      <textarea placeholder="Пиши…" maxlength="150" rows="4" style="flex:1;width:100%;border:none;outline:none;background:transparent;color:#2a1f08;font:inherit;resize:none;padding:0;font-family:inherit;box-sizing:border-box"></textarea>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:6px;padding-top:6px;border-top:1px dashed rgba(60,40,10,.2)">
+        <span data-cnt style="font-size:11px;color:rgba(60,40,10,.5);font-family:var(--font-sans);font-style:italic">0/150</span>
+        <div style="display:flex;gap:6px">
+          <button data-act="cancel" style="font-family:'Kalam',cursive;font-size:13px;padding:4px 12px;border-radius:16px;cursor:pointer;border:1px solid rgba(60,40,10,.3);background:rgba(255,255,255,.55);color:#2a1f08;box-shadow:0 2px 4px rgba(0,0,0,.15);transition:all .15s ease" onmouseover="this.style.background='rgba(255,255,255,.85)';this.style.transform='translateY(-1px)'" onmouseout="this.style.background='rgba(255,255,255,.55)';this.style.transform=''">Отмена</button>
+          <button data-act="save" style="font-family:'Kalam',cursive;font-size:13px;font-weight:600;padding:4px 14px;border-radius:16px;cursor:pointer;border:1px solid #b07814;background:linear-gradient(180deg,#ffd95e,#e8a93a);color:#2a1f08;box-shadow:0 3px 8px rgba(176,120,20,.35);transition:all .15s ease" onmouseover="this.style.transform='translateY(-1px)'" onmouseout="this.style.transform=''">💾</button>
+        </div>
+      </div>
+    `;
+    list.insertBefore(stk, list.firstChild);
+    const ta = stk.querySelector('textarea');
+    const cntEl = stk.querySelector('[data-cnt]');
+    const onInput = () => {
+      const len = ta.value.length;
+      if (cntEl) {
+        cntEl.textContent = `${len}/150`;
+        cntEl.style.color = len > 135 ? '#b13030' : 'rgba(60,40,10,.5)';
+      }
+      ta.style.fontSize = _stkFontSize(len) + 'px';
+    };
+    ta.addEventListener('input', onInput);
+    setTimeout(() => { ta.focus(); onInput(); }, 40);
+
+    const cancel = () => { try { stk.remove(); } catch (_) {} _refreshNotesEmpty(); };
+    const save = async () => {
+      const text = (ta.value || '').trim();
+      if (!text) { ta.focus(); return; }
+      const btn = stk.querySelector('[data-act="save"]');
+      if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
+      try {
+        const r = await api(`/api/personal-kanban/cards/${card.id}/notes`, {
+          method: 'POST', body: { body: text }
+        });
+        if (!r.ok) {
+          toast('Заметка', (r.data && (r.data.error || r.data.message)) || 'Не сохранилось', 'err');
+          if (btn) { btn.disabled = false; btn.textContent = '💾 Сохранить'; }
+          return;
+        }
+        const tmp = document.createElement('div');
+        tmp.innerHTML = _renderNoteCard(r.data.item).trim();
+        const newEl = tmp.firstChild;
+        list.replaceChild(newEl, stk);
+        _bindStickerDrag(newEl); // 22.06: drag-handler для свежего стикера
+        _updateNotesCount();
+      } catch (e) {
+        toast('Заметка', String(e.message || e), 'err');
+        if (btn) { btn.disabled = false; btn.textContent = '💾 Сохранить'; }
+      }
+    };
+    stk.addEventListener('click', (e) => {
+      const act = e.target.closest('[data-act]')?.dataset.act;
+      if (act === 'cancel') cancel();
+      if (act === 'save') save();
+    });
+    ta.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); save(); }
+    });
+  }
+
+  function _updateNotesCount() {
+    const list = document.getElementById('pk3-stk-list');
+    const cnt = document.getElementById('pk3-notes-count');
+    if (!list || !cnt) return;
+    cnt.textContent = String(list.querySelectorAll('.pk3-sticker:not(.pk3-edit)').length);
+  }
+  function _refreshNotesEmpty() {
+    // 22.06.2026 v3: пустую доску оставляем пустой — без надписей
+  }
+
+  // Edit существующего стикера — превращаем pk3-sticker в pk3-sticker.pk3-edit
+  function _startNoteEdit(noteEl, card) {
+    if (noteEl.dataset.editing === '1') return;
+    const noteId = noteEl.dataset.noteId;
+    const bodyDivs = noteEl.querySelectorAll('div[style*="white-space:pre-wrap"]');
+    const currentText = bodyDivs.length ? bodyDivs[0].innerText : (noteEl.textContent || '');
+    noteEl.dataset.editing = '1';
+    // выпрямляем поворот
+    noteEl.style.transform = 'rotate(0)';
+    noteEl.style.padding = '24px 16px 12px';
+    noteEl.innerHTML = `
+      <div style="position:absolute;top:-8px;left:50%;width:72px;height:18px;background:linear-gradient(180deg,rgba(220,220,220,.65),rgba(160,160,160,.5));transform:translateX(-50%) rotate(-3deg);box-shadow:0 2px 4px rgba(0,0,0,.25);opacity:.85;border-left:1px solid rgba(255,255,255,.5);border-right:1px solid rgba(0,0,0,.1);pointer-events:none"></div>
+      <textarea maxlength="150" rows="4" style="flex:1;width:100%;border:none;outline:none;background:transparent;color:#2a1f08;font:inherit;resize:none;padding:0;font-family:inherit;box-sizing:border-box"></textarea>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:6px;padding-top:6px;border-top:1px dashed rgba(60,40,10,.2)">
+        <span data-cnt style="font-size:11px;color:rgba(60,40,10,.5);font-family:var(--font-sans);font-style:italic">0/150</span>
+        <div style="display:flex;gap:6px">
+          <button data-act="cancel-edit" style="font-family:'Kalam',cursive;font-size:13px;padding:4px 12px;border-radius:16px;cursor:pointer;border:1px solid rgba(60,40,10,.3);background:rgba(255,255,255,.55);color:#2a1f08;box-shadow:0 2px 4px rgba(0,0,0,.15);transition:all .15s ease" onmouseover="this.style.background='rgba(255,255,255,.85)';this.style.transform='translateY(-1px)'" onmouseout="this.style.background='rgba(255,255,255,.55)';this.style.transform=''">Отмена</button>
+          <button data-act="save-edit" style="font-family:'Kalam',cursive;font-size:13px;font-weight:600;padding:4px 14px;border-radius:16px;cursor:pointer;border:1px solid #b07814;background:linear-gradient(180deg,#ffd95e,#e8a93a);color:#2a1f08;box-shadow:0 3px 8px rgba(176,120,20,.35);transition:all .15s ease" onmouseover="this.style.transform='translateY(-1px)'" onmouseout="this.style.transform=''">💾</button>
+        </div>
+      </div>
+    `;
+    const ta = noteEl.querySelector('textarea');
+    ta.value = currentText;
+    const cntEl = noteEl.querySelector('[data-cnt]');
+    const onInputEdit = () => {
+      const len = ta.value.length;
+      if (cntEl) {
+        cntEl.textContent = `${len}/150`;
+        cntEl.style.color = len > 135 ? '#b13030' : 'rgba(60,40,10,.5)';
+      }
+      ta.style.fontSize = _stkFontSize(len) + 'px';
+    };
+    ta.addEventListener('input', onInputEdit);
+    setTimeout(() => { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); onInputEdit(); }, 40);
+
+    const cancel = async () => { await _loadAndRenderNotes(card); };
+    const save = async () => {
+      const text = (ta.value || '').trim();
+      if (!text) { ta.focus(); return; }
+      const btn = noteEl.querySelector('[data-act="save-edit"]');
+      if (btn) { btn.disabled = true; btn.textContent = '⏳…'; }
+      try {
+        const r = await api(`/api/personal-kanban/cards/${card.id}/notes/${noteId}`, {
+          method: 'PUT', body: { body: text }
+        });
+        if (!r.ok) {
+          toast('Заметка', (r.data && (r.data.error || r.data.message)) || 'Не сохранилось', 'err');
+          if (btn) { btn.disabled = false; btn.textContent = '💾 Сохранить'; }
+          return;
+        }
+        const tmp = document.createElement('div');
+        tmp.innerHTML = _renderNoteCard(r.data.item).trim();
+        const newEl = tmp.firstChild;
+        noteEl.parentNode.replaceChild(newEl, noteEl);
+        _bindStickerDrag(newEl); // 22.06: drag-handler после редактирования
+      } catch (e) {
+        toast('Заметка', String(e.message || e), 'err');
+        if (btn) { btn.disabled = false; btn.textContent = '💾 Сохранить'; }
+      }
+    };
+    noteEl.addEventListener('click', (e) => {
+      const act = e.target.closest('[data-act]')?.dataset.act;
+      if (act === 'cancel-edit') cancel();
+      if (act === 'save-edit') save();
+    });
+    ta.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); save(); }
+    });
+  }
+
+  async function _deleteNote(noteEl, card) {
+    const noteId = noteEl.dataset.noteId;
+    if (!noteId || !window.confirm('Удалить заметку?')) return;
+    try {
+      const r = await api(`/api/personal-kanban/cards/${card.id}/notes/${noteId}`, { method: 'DELETE' });
+      if (!r.ok) { toast('Заметка', 'Не удалилось', 'err'); return; }
+      // Анимация падения и удаление
+      noteEl.style.transition = 'transform .3s ease, opacity .3s ease';
+      noteEl.style.transform = 'rotate(8deg) translateY(40px) scale(.8)';
+      noteEl.style.opacity = '0';
+      setTimeout(() => { noteEl.remove(); _updateNotesCount(); _refreshNotesEmpty(); }, 300);
+    } catch (e) {
+      toast('Заметка', String(e.message || e), 'err');
+    }
   }
   async function _addReminder(card) {
     const text = window.prompt('Текст напоминания:');
@@ -4450,11 +5557,33 @@ window.AsgardPersonalKanbanV3 = (function () {
     }
     toast('Эталоны', 'Модалка дописывается. Backend готов: GET /api/mimir/references/search', 'info');
   }
-  function _openTkpConstructor(card) {
-    if (window.AsgardPKv3Modals && window.AsgardPKv3Modals.openTkp) {
-      return window.AsgardPKv3Modals.openTkp(card, { onAttached: () => _v3LoadAndRender() });
+  // 22.06.2026: вместо локальной модалки-дубля (тёмная тема ломалась, функционал
+  // повторял основной модуль /tkp) → редирект на полноценную страницу #/tkp?edit=<id>.
+  // Создаём TKP-сущность из карты и открываем её в основном TKP-модуле.
+  // Backend POST /api/tkp/from-card/:cardId отдаёт { item: tkp, template_kind, ... }
+  // (НЕ tkp_id отдельно), нужно брать item.id или tkp_id как fallback.
+  async function _openTkpConstructor(card) {
+    try {
+      const r = await api(`/api/tkp/from-card/${card.id}`, {
+        method: 'POST', body: { template_kind: 'universal' }
+      });
+      if (!r.ok) {
+        const msg = (r.data && (r.data.message || r.data.error)) || `HTTP ${r.status}`;
+        toast('ТКП', `Не удалось создать ТКП: ${msg}`, 'err');
+        console.error('[TKP from-card] failed:', r.status, r.data);
+        return;
+      }
+      const tkpId = (r.data && (r.data.tkp_id || (r.data.item && r.data.item.id))) || null;
+      if (!tkpId) {
+        toast('ТКП', 'Не удалось создать ТКП: ответ без id', 'err');
+        console.error('[TKP from-card] no id in response:', r.data);
+        return;
+      }
+      location.hash = '#/tkp?edit=' + tkpId;
+    } catch (e) {
+      toast('ТКП', String(e.message || e), 'err');
+      console.error('[TKP from-card] exception:', e);
     }
-    toast('ТКП-конструктор', 'Модалка дописывается. Backend готов: /api/tkp/from-card/' + card.id, 'info');
   }
   function _openSendModal(card) {
     if (window.AsgardPKv3Modals && window.AsgardPKv3Modals.openSend) {
@@ -4727,7 +5856,7 @@ window.AsgardPKv3Modals = (function () {
           <button data-act="save-to-card" class="pk3-btn pk3-gold pk3-sm" type="button" title="Сохранить смету и отчёт в карточку заявки" style="margin-left:auto">💾 Сохранить в карточку</button>
         </div>
         <p style="margin-bottom:8px;color:var(--t2)">🤖 Ответ AI:</p>
-        <div class="pk3-ai-block" style="max-height:230px;overflow:auto">
+        <div class="pk3-ai-block">
           ${_markdownToHtml(lastChatMd) || '<span style="color:var(--t3)">AI не вернул текстовый ответ</span>'}
         </div>
         <div class="pk3-row" style="margin-top:14px">
@@ -4766,7 +5895,7 @@ window.AsgardPKv3Modals = (function () {
       const aiBlock = lastChatMd ? `
         <details style="margin-top:12px;background:var(--bg2);border:1px solid var(--brd-m);border-radius:10px;padding:8px 12px">
           <summary style="cursor:pointer;font-size:12px;color:var(--gold-l);font-weight:600">📝 Анализ Мимира (нажми чтобы развернуть)</summary>
-          <div style="margin-top:10px;font-size:12.5px;line-height:1.55;max-height:240px;overflow:auto">${_markdownToHtml(lastChatMd)}</div>
+          <div style="margin-top:10px;font-size:12.5px;line-height:1.55">${_markdownToHtml(lastChatMd)}</div>
         </details>` : '';
 
       return `
@@ -4780,7 +5909,7 @@ window.AsgardPKv3Modals = (function () {
             <button class="pk3-btn pk3-ghost pk3-sm" data-act="dl-md" title="Markdown-отчёт">📋 MD</button>
           </div>
         </div>
-        <div style="background:var(--bg2);border:1px solid var(--brd-m);border-radius:10px;padding:8px 10px;max-height:340px;overflow:auto">
+        <div style="background:var(--bg2);border:1px solid var(--brd-m);border-radius:10px;padding:8px 10px">
           <table id="pk3-q-smeta-tbl" style="width:100%;border-collapse:collapse;font-size:12px">
             <thead><tr style="border-bottom:1px solid var(--brd-m)">
               <th style="text-align:left;padding:7px 6px;color:var(--t3);font-size:11px">№</th>
@@ -6084,7 +7213,7 @@ tfoot .vat{color:var(--ok);font-size:18px}
                 <summary style="cursor:pointer;font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.4px;padding:6px 0">
                   📜 Журнал событий <span id="pk3-cond-conn" style="text-transform:none;letter-spacing:0;font-size:10px">отключено</span>
                 </summary>
-                <div id="pk3-cond-journal" style="max-height:28vh;overflow:auto;margin-top:6px;font-size:11px">${_journalHtml()}</div>
+                <div id="pk3-cond-journal" style="margin-top:6px;font-size:11px">${_journalHtml()}</div>
               </details>
             </div>
           </div>

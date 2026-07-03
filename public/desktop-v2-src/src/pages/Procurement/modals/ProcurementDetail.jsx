@@ -23,7 +23,7 @@ import { toast } from '@/modals/Notifications';
 import { useAuth } from '@/api/useAuth';
 import {
   STATUSES, money, fmtDate, fmtDateTime, isOverdue,
-  loadProcurementDetail, updateItem, deleteItem, unsplitItem,
+  loadProcurementDetail, updateItem, deleteItem, cancelItem, unsplitItem,
   transition, addItem, importText, aiParseSpec,
   loadPriceHints, loadPriceHint,
   cloneProcurement, saveAsTemplate,
@@ -195,6 +195,23 @@ export function ProcurementDetailModal({ procId, onChanged }) {
         try {
           await deleteItem(p.id, it.id);
           toast.success('Удалено');
+          load();
+        } catch (e) { toast.error(e?.message || 'Ошибка'); }
+      }}
+    />);
+  };
+
+  // ── Мягкая отмена позиции (история сохраняется) ──
+  const handleCancel = (it) => {
+    open(<ConfirmModal
+      title="Отменить позицию?"
+      message={`«${it.name}» (${it.quantity} ${it.unit}) — данные сохранятся в истории.`}
+      tone="warn"
+      okText="Отменить позицию"
+      onConfirm={async () => {
+        try {
+          await cancelItem(p.id, it.id);
+          toast.success('Позиция отменена');
           load();
         } catch (e) { toast.error(e?.message || 'Ошибка'); }
       }}
@@ -376,6 +393,9 @@ export function ProcurementDetailModal({ procId, onChanged }) {
     const it = row;
     const isChild = row._isChild;
     const isSplit = !isChild && childrenOf(it.id).length > 0;
+    const isCancelled = it.item_status === 'cancelled';
+    const canCancel = !isChild && !isSplit && !isCancelled
+      && (it.item_status === 'pending' || it.item_status === 'ordered' || !it.item_status);
     const hint = hints[it.id];
     const hintParts = [];
     if (hint?.last) hintParts.push(`посл. ${money(hint.last.unit_price)}${hint.last.supplier_name ? ' (' + hint.last.supplier_name + ')' : ''}`);
@@ -390,7 +410,11 @@ export function ProcurementDetailModal({ procId, onChanged }) {
     ) : <span>{it.name}</span>;
 
     return (
-      <tr key={it.id} className={isChild ? 'proc-row-child' : ''}>
+      <tr
+        key={it.id}
+        className={`${isChild ? 'proc-row-child' : ''}${isCancelled ? ' proc-item-cancelled' : ''}`.trim()}
+        style={isCancelled ? { opacity: 0.5, textDecoration: 'line-through' } : undefined}
+      >
         <td>{isChild ? '↳' : row._idx}</td>
         <td>
           {showIcon ? (
@@ -417,7 +441,11 @@ export function ProcurementDetailModal({ procId, onChanged }) {
               value={getEditedValue(it, 'supplier')}
               onChange={(e) => setEdit(it.id, 'supplier', e.target.value)}
             />
-          ) : (it.supplier || '—')}
+          ) : (it.supplier
+            /* P3-fix: deep-link на карточку поставщика (риск 5 аудита 01-suppliers-v2.md) */
+            ? <a href={'#/suppliers-catalog?search=' + encodeURIComponent(it.supplier)} title="Открыть в каталоге поставщиков">{it.supplier}</a>
+            : '—'
+          )}
           {it.supplier_delivery_days != null && (
             <span className="proc-kbadge proc-detail-mlchip">{it.supplier_delivery_days}д</span>
           )}
@@ -472,14 +500,17 @@ export function ProcurementDetailModal({ procId, onChanged }) {
         </td>
         {canEditItems && (
           <td className="proc-detail-actions">
-            {!isChild && !isSplit && parseFloat(it.quantity) >= 2 && (
+            {!isCancelled && !isChild && !isSplit && parseFloat(it.quantity) >= 2 && (
               <button className="m-btn ghost proc-detail-tinybtn" onClick={() => handleSplit(it)} title="Разбить по поставщикам">✂️</button>
             )}
-            {isSplit && (
+            {!isCancelled && isSplit && (
               <button className="m-btn ghost proc-detail-tinybtn" onClick={() => handleUnsplit(it)} title="Схлопнуть">⇲</button>
             )}
-            {!isChild && (
-              <button className="m-btn ghost proc-detail-tinybtn proc-detail-tinybtn--del" onClick={() => handleDelete(it)}>✕</button>
+            {canCancel && (
+              <button className="m-btn ghost proc-detail-tinybtn" onClick={() => handleCancel(it)} title="Отменить позицию">🚫</button>
+            )}
+            {!isCancelled && !isChild && (
+              <button className="m-btn ghost proc-detail-tinybtn proc-detail-tinybtn--del" onClick={() => handleDelete(it)} title="Удалить">✕</button>
             )}
           </td>
         )}
@@ -608,7 +639,11 @@ export function ProcurementDetailModal({ procId, onChanged }) {
             <div className="proc-section__title">🧾 Счета поставщиков ({invoiceImports.length})</div>
             {invoiceImports.map((iv) => (
               <div key={iv.id} className="proc-detail-invoice-row">
-                <b>{iv.supplier_name || 'Поставщик'}</b>
+                {/* P3-fix: deep-link на карточку поставщика (риск 5 аудита 01-suppliers-v2.md) */}
+                <b>{iv.supplier_name
+                  ? <a href={'#/suppliers-catalog?search=' + encodeURIComponent(iv.supplier_name)} title="Открыть в каталоге поставщиков">{iv.supplier_name}</a>
+                  : 'Поставщик'
+                }</b>
                 {iv.total_sum != null && <span>{money(iv.total_sum)}</span>}
                 {iv.delivery_days != null && <span className="proc-kbadge">{iv.delivery_days}д</span>}
                 <span className="proc-detail-invoice-cnt">{iv.matched_count || 0} поз.</span>

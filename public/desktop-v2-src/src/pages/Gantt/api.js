@@ -138,14 +138,28 @@ export function tenderToRow(t, startIso) {
 }
 
 export function workToRow(w, startIso) {
+  // FIX (23.06.2026): canonical fallback — start_plan ПРИОРИТЕТ (как в БД),
+  // затем start_in_work_date → start_date → start_fact → created_at → шкала.
+  // Конец: end_plan → end_date → end_fact → start (а НЕ start_in_work_date,
+  // т.к. при NULL start_in_work_date бар уходил на October конец работы).
+  const start = w.start_plan
+             || w.start_in_work_date
+             || w.start_date
+             || w.start_fact
+             || w.created_at
+             || startIso;
+  const end = w.end_plan
+           || w.end_date
+           || w.end_fact
+           || start;
   return {
     id: w.id,
     kind: 'work',
     label: `${w.customer_name || ''} — ${w.work_title || ''}`,
     sub: w.work_status || '',
     status: w.work_status || '',
-    start: w.start_in_work_date || w.start_date || w.start_plan || startIso,
-    end:   w.end_fact || w.end_plan || w.start_in_work_date || w.start_date || startIso,
+    start,
+    end,
     pmId:  w.pm_id || null
   };
 }

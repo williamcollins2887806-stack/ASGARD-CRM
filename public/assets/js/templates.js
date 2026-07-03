@@ -1,6 +1,7 @@
 
 window.AsgardTemplates=(function(){
   const {esc, toast} = AsgardUI;
+  const fmtDate = (iso) => iso ? (AsgardUI.formatDate ? AsgardUI.formatDate(iso) : new Date(iso).toLocaleDateString('ru-RU')) : '—';
 
   async function getDocsSettings(){
     const s = await AsgardDB.get("settings","docs");
@@ -91,7 +92,7 @@ window.AsgardTemplates=(function(){
       <div class="p"><b>Тема:</b> Запрос уточнений по закупке / объекту работ</div>
       <div class="p">Просим предоставить уточняющие данные и/или документы, необходимые для корректного расчёта и подготовки предложения.</div>
       <div class="p"><b>Закупка / ссылка:</b> ${tender?.purchase_url ? `<span>${esc(tender.purchase_url)}</span>` : `<span class="muted">не указано</span>`}</div>
-      <div class="p"><b>Плановые сроки работ:</b> ${esc(tender?.work_start_plan||"—")} — ${esc(tender?.work_end_plan||"—")}</div>
+      <div class="p"><b>Плановые сроки работ:</b> ${esc(fmtDate(tender?.work_start_plan))} — ${esc(fmtDate(tender?.work_end_plan))}</div>
       <div class="p">${esc(extraText||ds.request_extra||"")}</div>
       <div class="p" style="margin-top:14px"><b>Контакты:</b> ${esc(ds.contacts||"")} </div>
     `;
@@ -110,7 +111,7 @@ window.AsgardTemplates=(function(){
     const body = `
       <div class="p"><b>Заказчик:</b> ${esc(tender?.customer_name||"")}</div>
       <div class="p"><b>Работа:</b> ${esc(tender?.tender_title||"")}</div>
-      <div class="p"><b>Период:</b> ${esc(tender?.work_start_plan||"—")} — ${esc(tender?.work_end_plan||"—")}</div>
+      <div class="p"><b>Период:</b> ${esc(fmtDate(tender?.work_start_plan))} — ${esc(fmtDate(tender?.work_end_plan))}</div>
       <div class="p"><b>Цена (без НДС):</b> ${esc(price||"—")}</div>
       <div class="p"><b>НДС, %:</b> ${esc(vat)}</div>
       <div class="p"><b>Цена (с НДС):</b> ${esc(withVat||"—")}</div>

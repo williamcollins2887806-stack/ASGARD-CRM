@@ -31,7 +31,7 @@ export default function DistributionPanel({ user }) {
     if (!allowed) { setLoading(false); return; }
     Promise.all([
       api('/api/tenders?status=draft&limit=100').then((d) => d.tenders || d.items || []).catch(() => []),
-      loadUsers('PM')
+      loadUsers('PM,HEAD_PM') // F2: vanilla tenders.js:717 показывает обе роли
     ])
       .then(([list, pmList]) => {
         setPending(list.filter((t) => !t.pm_id).slice(0, 10));
@@ -101,7 +101,11 @@ export default function DistributionPanel({ user }) {
               onChange={(v) => setAssignments((a) => ({ ...a, [t.id]: v }))}
               options={[
                 { value: '', label: '— РП для просчёта —' },
-                ...pms.map((u) => ({ value: String(u.id), label: u.name || u.login || '?' }))
+                ...pms.map((u) => ({
+                  value: String(u.id),
+                  // F2: HEAD_PM визуально отличаем префиксом «(Ст.РП)».
+                  label: (u.role === 'HEAD_PM' ? '(Ст.РП) ' : '') + (u.name || u.login || '?')
+                }))
               ]}
             />
             <div className="tnd-panel-card-actions">

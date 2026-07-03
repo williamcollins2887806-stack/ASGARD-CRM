@@ -79,6 +79,18 @@ export function PmBalanceDetailModal({ pmId, pmName }) {
             />
 
             <SectionTable
+              heading="📥 Передачи от рабочих"
+              rows={data.handovers}
+              columns={[
+                { key: 'received_at',   label: 'Дата',        type: 'date' },
+                { key: 'amount',        label: 'Сумма',       type: 'money' },
+                { key: 'employee_name', label: 'Рабочий',     type: 'text' },
+                { key: 'note',          label: 'Комментарий', type: 'text' }
+              ]}
+              accent="var(--info)"
+            />
+
+            <SectionTable
               heading="💳 Выплаты наличкой"
               rows={data.salary_payments}
               columns={[

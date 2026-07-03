@@ -8,7 +8,7 @@
  * Endpoint: GET /api/works/:id/financial-summary (src/routes/works.js:699).
  * RBAC backend: ADMIN, DIRECTOR_GEN, DIRECTOR_COMM, DIRECTOR_DEV, HEAD_PM, PM, BUH.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/api/useAuth';
 import { TopActionsBar, EmptyState, LoadingCard } from '@/blocks/Blocks';
 import AccessDenied from '@/blocks/AccessDenied';
@@ -254,13 +254,56 @@ function Hero({ data, wm, statusColor, marginColor }) {
 }
 
 /* ─── 2. KPI STRIP ───────────────────────────────────────────────────── */
+// Анимация count-up KPI — паритет с vanilla work_report.js:749-788.
+// IntersectionObserver запускает анимацию когда карточка попадает в viewport (threshold 0.3),
+// 1200ms easeOutCubic, для |target| < 100 (маржа) → toFixed(1), иначе fmtMoney.
+function CountUp({ target, suffix = '' }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const num = Number(target) || 0;
+    const isPercent = Math.abs(num) < 100;
+    let stopped = false;
+
+    function animate() {
+      const duration = 1200;
+      const start = 0;
+      const startTime = performance.now();
+      function step(now) {
+        if (stopped) return;
+        const progress = Math.min((now - startTime) / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        const current = start + (num - start) * eased;
+        el.textContent = isPercent ? current.toFixed(1) : fmtMoney(current);
+        if (progress < 1) requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          animate();
+          observer.unobserve(el);
+        }
+      });
+    }, { threshold: 0.3 });
+    observer.observe(el);
+
+    return () => { stopped = true; observer.disconnect(); };
+  }, [target]);
+
+  return <><span ref={ref}>0</span>{suffix}</>;
+}
+
 function KpiStrip({ data, marginColor }) {
   const profitColor = data.profit.net >= 0 ? 'var(--ok)' : 'var(--err)';
   const cards = [
-    { label: 'Выручка',     value: fmtMoney(data.revenue.with_vat) + ' ₽', sub: 'Без НДС: ' + fmtMoneyR(data.revenue.ex_vat), color: 'var(--info)', icon: '↗' },
-    { label: 'Расходы + налоги', value: fmtMoney(data.expenses.total_with_tax) + ' ₽', sub: 'Расходы: ' + fmtMoneyR(data.expenses.total), color: 'var(--err)', icon: '↘' },
-    { label: 'Чистая прибыль',  value: fmtMoney(data.profit.net) + ' ₽', sub: 'До налога: ' + fmtMoneyR(data.profit.before_tax), color: profitColor, icon: '₽' },
-    { label: 'Маржа',           value: data.profit.margin + '%', sub: 'НДС: ' + data.vat_pct + '%', color: marginColor, icon: '◐' }
+    { label: 'Выручка',          target: data.revenue.with_vat,        suffix: ' ₽', sub: 'Без НДС: ' + fmtMoneyR(data.revenue.ex_vat),     color: 'var(--info)', icon: '↗' },
+    { label: 'Расходы + налоги', target: data.expenses.total_with_tax, suffix: ' ₽', sub: 'Расходы: ' + fmtMoneyR(data.expenses.total),     color: 'var(--err)',  icon: '↘' },
+    { label: 'Чистая прибыль',   target: data.profit.net,              suffix: ' ₽', sub: 'До налога: ' + fmtMoneyR(data.profit.before_tax), color: profitColor,   icon: '₽' },
+    { label: 'Маржа',            target: data.profit.margin,           suffix: '%',  sub: 'НДС: ' + data.vat_pct + '%',                      color: marginColor,   icon: '◐' }
   ];
   return (
     <div className="wr-kpi-strip">
@@ -269,7 +312,9 @@ function KpiStrip({ data, marginColor }) {
           <div className="wr-kpi-icon" style={{ fontSize: 28, color: c.color }}>{c.icon}</div>
           <div className="wr-kpi-body">
             <div className="wr-kpi-label">{c.label}</div>
-            <div className="wr-kpi-value" style={{ color: c.color }}>{c.value}</div>
+            <div className="wr-kpi-value" style={{ color: c.color }}>
+              <CountUp target={c.target} suffix={c.suffix} />
+            </div>
             <div className="wr-kpi-sub">{c.sub}</div>
           </div>
         </div>

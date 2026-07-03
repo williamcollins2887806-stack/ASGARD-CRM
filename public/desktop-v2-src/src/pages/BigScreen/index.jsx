@@ -22,20 +22,13 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/api/useAuth';
 import { api } from '@/api/client';
 import { toast } from '@/modals/Notifications';
+// 23.06.2026 BUG-FIX (Sites D-M10/D-M11): CLOSED_WORK/PREP — из единого helpers/work-status.
+import { CLOSED_WORK, isClosedWork, PREP_STATUSES } from '@/helpers/work-status';
 import './big-screen.css';
 
 const ALLOWED = ['ADMIN', 'DIRECTOR_COMM', 'DIRECTOR_GEN', 'DIRECTOR_DEV', 'HEAD_TO', 'HEAD_PM'];
 const SLIDE_INTERVAL = 60_000;
 const DATA_REFRESH = 300_000;
-
-const CLOSED_WORK = new Set([
-  'Закрыт', 'Закрыта', 'Закрыто', 'Работы сдали',
-  'Завершена', 'Завершено', 'Завершен', 'Завершён',
-  'Сдан', 'Сдана', 'Сдано',
-  'Отменена', 'Отменено', 'Отменён', 'Отменен', 'Отмена'
-].map((s) => s.trim().toLowerCase()));
-
-const isClosedWork = (ws) => CLOSED_WORK.has(String(ws || '').trim().toLowerCase());
 
 function esc(s) {
   return String(s ?? '');
@@ -116,7 +109,7 @@ export default function BigScreenPage() {
 
       // Готовность работ в подготовке
       let readiness = {};
-      const prepWorks = works.filter((w) => ['Новая', 'Подготовка', 'Мобилизация'].includes(w.work_status));
+      const prepWorks = works.filter((w) => PREP_STATUSES.includes(w.work_status));
       const prepIds = prepWorks.map((w) => w.id).slice(0, 200);
       if (prepIds.length) {
         try {
@@ -428,7 +421,7 @@ function slideFunnel(d) {
 function slidePreparation(d) {
   const summary = d.readiness || {};
   const prep = (d.works || [])
-    .filter((w) => ['Новая', 'Подготовка', 'Мобилизация'].includes(w.work_status))
+    .filter((w) => PREP_STATUSES.includes(w.work_status))
     .map((w) => ({ w, s: summary[w.id] }))
     .filter((x) => x.s)
     .sort((a, b) => (a.s.overall_percent || 0) - (b.s.overall_percent || 0));

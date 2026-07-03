@@ -62,8 +62,26 @@ window.AsgardFinancesPage = (function(){
     let mode = 'expenses'; // 'expenses' или 'income'
     let selectedMonth = null; // null = обзор года, 0-11 = конкретный месяц
 
-    const works = await AsgardDB.all("works");
-    const tenders = await AsgardDB.all("tenders");
+    // Финансовая аналитика — works/tenders прямым fetch (IDB не отражает soft-delete).
+    // work_expenses/office_expenses пока остаются из IDB (сейчас нет общего GET /api на all-rows
+    // с серверной агрегацией без фильтра по work_id; sync.js поддерживает их актуальными).
+    const _tok = (window.AsgardAuth && window.AsgardAuth.token) || localStorage.getItem('asgard_token');
+    const _hdr = { Authorization: 'Bearer ' + _tok };
+    async function _fetchList(url, key, fallbackTable){
+      try {
+        const r = await fetch(url, { headers: _hdr, cache: 'no-store' });
+        if (!r.ok) throw new Error('GET ' + url + ' ' + r.status);
+        const j = await r.json();
+        return j[key] || j.items || j.data || [];
+      } catch (e) {
+        console.warn('[finances] fetch ' + url + ' failed, fallback to IDB:', e.message);
+        return await AsgardDB.all(fallbackTable) || [];
+      }
+    }
+    const [works, tenders] = await Promise.all([
+      _fetchList('/api/works?limit=1000', 'works', 'works'),
+      _fetchList('/api/tenders?limit=1000', 'tenders', 'tenders')
+    ]);
     const workExpenses = await AsgardDB.all("work_expenses").catch(()=>[]);
     const officeExpenses = await AsgardDB.all("office_expenses").catch(()=>[]);
 

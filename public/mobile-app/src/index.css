@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "./styles/timesheet-types-tokens.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -18,6 +19,10 @@
   --text-primary: #F5F5F7;
   --text-secondary: #8E8E93;
   --text-tertiary: #48484A;
+  /* Text-on-color tokens (stable across themes — colored gradients keep
+     their dark hue in both modes, so white reads cleanly in either). */
+  --text-on-accent: #FFFFFF;     /* white on blue/green/red gradients */
+  --text-on-gold: #1a1300;       /* near-black on gold/warn gradients */
 
   /* Accents */
   --gold: #c8a84e;
@@ -104,6 +109,10 @@
   --text-primary: #1C1C1E;
   --text-secondary: #6C6C70;
   --text-tertiary: #AEAEB2;
+  /* On-color tokens stay the same in light theme — colored gradients
+     (blue/green/gold) are bright in both modes, so contrast holds. */
+  --text-on-accent: #FFFFFF;
+  --text-on-gold: #1a1300;
   --border-norse: #E5E5EA;
   --border-light: #D1D1D6;
   --bubble-other: #E9E9EB;

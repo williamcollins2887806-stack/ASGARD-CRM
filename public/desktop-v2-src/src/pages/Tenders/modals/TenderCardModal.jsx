@@ -34,6 +34,11 @@ function fmtMoney(n) {
   return new Intl.NumberFormat('ru-RU').format(Math.round(+n)) + ' ₽';
 }
 
+function fmtDate(s) {
+  if (!s) return '—';
+  try { return new Date(s).toLocaleDateString('ru-RU'); } catch { return '—'; }
+}
+
 function CardSummary({ tender, onEdit }) {
   if (!tender) return null;
   return (
@@ -69,7 +74,7 @@ function CardSummary({ tender, onEdit }) {
         </div>
         <div>
           <div className="tnd-card-label">Дедлайн КД</div>
-          <div className="tnd-card-val">{tender.docs_deadline || tender.deadline_at || '—'}</div>
+          <div className="tnd-card-val">{fmtDate(tender.docs_deadline || tender.deadline_at)}</div>
         </div>
         <div className="tnd-card-fullrow">
           <div className="tnd-card-label">Название</div>

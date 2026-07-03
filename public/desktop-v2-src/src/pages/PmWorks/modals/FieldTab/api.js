@@ -36,6 +36,19 @@ export function loadCrew(workId) {
     .catch(() => []);
 }
 
+// FIX 24.06: для PayWorkerModal (премия/удержание/аванс при пустой бригаде).
+// Возвращает {on_site:[], others:[]} — на объекте (assignments+checkins UNION)
+// и остальные активные сотрудники. Юзер просил «должна быть возможность
+// выбирать из всех кто был на объекте» — здесь обе группы с ФИО.
+export function loadCrewAll(workId) {
+  return api(`/api/worker-payments/project/${workId}/crew-all`)
+    .then((d) => ({
+      on_site: Array.isArray(d?.on_site) ? d.on_site : [],
+      others:  Array.isArray(d?.others)  ? d.others  : []
+    }))
+    .catch(() => ({ on_site: [], others: [] }));
+}
+
 export function loadAvailableEmployees(workId) {
   return api(`/api/staff/employees/available?work_id=${workId}`)
     .then((d) => d.employees || d.items || [])

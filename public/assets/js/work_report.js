@@ -28,6 +28,57 @@ window.AsgardWorkReport = (function () {
     tickets: { label: 'Билеты',          icon: '\u2708',        color: '#2ecc71' },
   };
 
+  // Подписи подкатегорий — синхронизировано с src/services/work-expense-categories.js
+  const SUBCAT_LABELS = {
+    cash: {
+      gsm: '⛽ ГСМ', accommodation: '🏨 Аренда жилья',
+      transport: '🚗 Транспорт/такси', food: '🍽 Питание',
+      supplies: '📦 Расходники', representational: '🎁 Представительские',
+      services: '🛠 Услуги', other: '📋 Прочее'
+    },
+    subcontract: { lathe: '⚙ Токарь', welder: '🔥 Сварщик', other_contractor: '👷 Прочий подрядчик' },
+    materials: {
+      ppe: '🦺 СИЗ/спецодежда', tools: '🔧 Инструмент',
+      consumables: '📦 Расходники', equipment: '⚙ Оборудование',
+      chemicals: '🧪 Химия/реагенты', other: '📋 Прочее'
+    },
+    tickets: { avia: '✈ Авиа', rail: '🚆 ЖД', bus: '🚌 Автобус', freight: '🚛 Груз', other: '📋 Прочее' },
+    accommodation: { hotel: '🏨 Гостиница', apartment: '🏢 Квартира', other: '📋 Прочее' },
+    transfer: { taxi: '🚕 Такси', delivery: '📦 Доставка груза', freight: '🚛 Перевозка груза', gsm: '⛽ ГСМ безнал', rental: '🚗 Аренда авто', other: '📋 Прочее' }
+  };
+
+  /**
+   * Группирует items внутри категории.
+   * - per_diem / fot → по сотруднику (fot_employee_name)
+   * - остальные      → по subcategory
+   */
+  function groupItemsForCategory(cat, items) {
+    if (!items || items.length === 0) return [];
+    if (cat === 'per_diem' || cat === 'fot') {
+      const map = new Map();
+      for (const it of items) {
+        const k = (it.fot_employee_name || it.supplier || '—').toString().trim() || '—';
+        if (!map.has(k)) map.set(k, { key: k, label: k, sum: 0, count: 0, items: [] });
+        const g = map.get(k);
+        g.sum += parseFloat(it.amount) || 0;
+        g.count++;
+        g.items.push(it);
+      }
+      return Array.from(map.values()).sort((a, b) => b.sum - a.sum);
+    }
+    const subMap = new Map();
+    for (const it of items) {
+      const sub = String(it.subcategory || 'other').toLowerCase();
+      const subLabel = (SUBCAT_LABELS[cat] && SUBCAT_LABELS[cat][sub]) || sub;
+      if (!subMap.has(sub)) subMap.set(sub, { key: sub, label: subLabel, sum: 0, count: 0, items: [] });
+      const g = subMap.get(sub);
+      g.sum += parseFloat(it.amount) || 0;
+      g.count++;
+      g.items.push(it);
+    }
+    return Array.from(subMap.values()).sort((a, b) => b.sum - a.sum);
+  }
+
   // 12 distinct chart colors
   const CHART_COLORS = [
     '#e74c3c','#3498db','#2ecc71','#f39c12','#9b59b6','#1abc9c',
@@ -292,23 +343,53 @@ window.AsgardWorkReport = (function () {
         ? '<span class="wr-acc-vat">' + m(c.vatDeductible) + ' НДС к вычету</span>'
         : '';
 
-      // Items table
+      // Items: для категорий с большим числом строк сворачиваем по сотруднику/подкатегории.
       let itemsHtml = '';
-      if (c.items && c.items.length > 0) {
-        const trs = c.items.map(it => `<tr>
-          <td>${esc(it.supplier || '\u2014')}</td>
-          <td class="wr-r">${m(it.amount)} \u20BD</td>
-          <td>${esc(it.comment || '')}</td>
-          <td>${esc(it.doc_number || '\u2014')}</td>
-          <td>${it.invoice_received ? '\u2705' : it.invoice_needed ? '\u23F3' : '\u2014'}</td>
-        </tr>`).join('');
+      const GROUPED_CATS = { per_diem:1, fot:1, tickets:1, materials:1, transfer:1, accommodation:1, cash:1, subcontract:1 };
+      const shouldGroup = c.items && c.items.length >= 5 && GROUPED_CATS[c.category];
 
-        itemsHtml = `<div class="wr-acc-body">
-          <table class="wr-acc-table">
-            <thead><tr><th>Поставщик</th><th class="wr-r">Сумма</th><th>Комментарий</th><th>Документ</th><th>С/Ф</th></tr></thead>
-            <tbody>${trs}</tbody>
-          </table>
-        </div>`;
+      if (shouldGroup) {
+        const groups = groupItemsForCategory(c.category, c.items);
+        const groupsHtml = groups.map(g => {
+          const detailTrs = g.items.map(it => '<tr>'
+            + '<td>' + fmtDate(it.date) + '</td>'
+            + '<td>' + esc(it.supplier || it.fot_employee_name || '\u2014') + '</td>'
+            + '<td class="wr-r">' + m(it.amount) + ' \u20BD</td>'
+            + '<td>' + esc(it.comment || it.description || '') + '</td>'
+            + '<td>' + esc(it.doc_number || '\u2014') + '</td>'
+            + '<td>' + (it.invoice_received ? '\u2705' : it.invoice_needed ? '\u23F3' : '\u2014') + '</td>'
+            + '</tr>').join('');
+          return '<div class="wr-subacc" data-open="0">'
+            + '<div class="wr-subacc-head" data-subtoggle>'
+            +   '<span class="wr-subacc-label">' + esc(g.label) + '</span>'
+            +   '<span class="wr-subacc-count">' + g.count + ' шт</span>'
+            +   '<span class="wr-subacc-sum">' + m(g.sum) + ' \u20BD</span>'
+            +   '<span class="wr-subacc-chevron">\u25B6</span>'
+            + '</div>'
+            + '<div class="wr-subacc-body">'
+            +   '<table class="wr-acc-table">'
+            +     '<thead><tr><th>Дата</th><th>Поставщик / Сотрудник</th><th class="wr-r">Сумма</th><th>Комментарий</th><th>Документ</th><th>С/Ф</th></tr></thead>'
+            +     '<tbody>' + detailTrs + '</tbody>'
+            +   '</table>'
+            + '</div>'
+          + '</div>';
+        }).join('');
+        itemsHtml = '<div class="wr-acc-body wr-acc-body-grouped">' + groupsHtml + '</div>';
+      } else if (c.items && c.items.length > 0) {
+        const trs = c.items.map(it => '<tr>'
+          + '<td>' + fmtDate(it.date) + '</td>'
+          + '<td>' + esc(it.supplier || it.fot_employee_name || '\u2014') + '</td>'
+          + '<td class="wr-r">' + m(it.amount) + ' \u20BD</td>'
+          + '<td>' + esc(it.comment || it.description || '') + '</td>'
+          + '<td>' + esc(it.doc_number || '\u2014') + '</td>'
+          + '<td>' + (it.invoice_received ? '\u2705' : it.invoice_needed ? '\u23F3' : '\u2014') + '</td>'
+          + '</tr>').join('');
+        itemsHtml = '<div class="wr-acc-body">'
+          + '<table class="wr-acc-table">'
+          +   '<thead><tr><th>Дата</th><th>Поставщик</th><th class="wr-r">Сумма</th><th>Комментарий</th><th>Документ</th><th>С/Ф</th></tr></thead>'
+          +   '<tbody>' + trs + '</tbody>'
+          + '</table>'
+        + '</div>';
       }
 
       return `<div class="wr-acc" data-open="0">
@@ -799,6 +880,15 @@ window.AsgardWorkReport = (function () {
         acc.dataset.open = isOpen ? '0' : '1';
       });
     });
+    // Подгруппы (subaccordion внутри per_diem/tickets/...)
+    document.querySelectorAll('.wr-subacc-head[data-subtoggle]').forEach(head => {
+      head.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const sa = head.closest('.wr-subacc');
+        if (!sa) return;
+        sa.dataset.open = sa.dataset.open === '1' ? '0' : '1';
+      });
+    });
   }
 
   // ════════════════════════════════════════
@@ -1091,6 +1181,20 @@ window.AsgardWorkReport = (function () {
 .wr-acc-table td{padding:4px 8px;border-bottom:1px solid var(--brd-m);color:var(--t1)}
 .wr-acc-total{display:flex;justify-content:space-between;padding:12px 0 2px;font-weight:700;font-size:14px;border-top:1px solid var(--brd);margin-top:8px}
 .wr-acc-total-sub{display:flex;justify-content:space-between;padding:2px 0 0;font-size:12px;color:var(--t2)}
+/* Подгруппы внутри аккордеона: один уровень вложенности */
+.wr-acc[data-open="1"] .wr-acc-body-grouped{max-height:none}
+.wr-acc-body-grouped{padding:4px 8px 8px}
+.wr-subacc{border-bottom:1px solid var(--brd-m)}
+.wr-subacc:last-child{border-bottom:none}
+.wr-subacc-head{display:flex;align-items:center;padding:8px 6px;cursor:pointer;gap:10px;user-select:none;font-size:12.5px;background:transparent;border-radius:6px}
+.wr-subacc-head:hover{background:var(--bg2)}
+.wr-subacc-label{flex:1;color:var(--t1);font-weight:500}
+.wr-subacc-count{color:var(--t2);font-size:11px;background:var(--bg3);padding:1px 6px;border-radius:8px}
+.wr-subacc-sum{font-weight:600;color:var(--t1);white-space:nowrap;min-width:90px;text-align:right}
+.wr-subacc-chevron{color:var(--t2);font-size:9px;transition:transform .2s;flex-shrink:0}
+.wr-subacc[data-open="1"] .wr-subacc-chevron{transform:rotate(90deg)}
+.wr-subacc-body{max-height:0;overflow:hidden;transition:max-height .25s ease}
+.wr-subacc[data-open="1"] .wr-subacc-body{max-height:2000px;padding:0 8px 8px}
 
 /* ── Profit card ── */
 .wr-profit-grid{display:flex;gap:20px;align-items:center}

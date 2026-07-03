@@ -103,6 +103,66 @@ export function loadMyRequests() {
   return api('/api/cash/my');
 }
 
+/**
+ * GET /api/handovers?year=X&month=Y — handovers от СЗ текущему РП.
+ *
+ * Бэкенд (src/routes/handovers.js GET /) ограничивает PM-роль своими записями
+ * через `pm_user_id = req.user.id`, поэтому фронт просто получает уже отфильтрованный список.
+ * year/month опциональны: без них вернутся все записи РП (limit 500).
+ *
+ * Используется в `Cash/index.jsx` для объединённой ленты «Касса + От СЗ».
+ */
+export function loadMyHandovers(year, month) {
+  const q = [];
+  if (year != null && year !== '')   q.push(`year=${encodeURIComponent(year)}`);
+  if (month != null && month !== '') q.push(`month=${encodeURIComponent(month)}`);
+  const qs = q.length ? '?' + q.join('&') : '';
+  return api(`/api/handovers${qs}`)
+    .then((d) => (Array.isArray(d?.handovers) ? d.handovers : []))
+    .catch(() => []);
+}
+
+/**
+ * POST /api/handovers/manual — РП сам зафиксировал получение нала от СЗ.
+ *
+ * Спека: API_SPEC_BULK_SE.md раздел 3.
+ * body: { worker_id, work_id?, amount, year, month, note? }
+ * response: { handover, warning? }
+ *
+ * silent:true — модалка отображает результат сама (включая warning о pending).
+ */
+export function createManualHandover(body) {
+  return api('/api/handovers/manual', { method: 'POST', body, silent: true });
+}
+
+/**
+ * GET /api/employees?is_self_employed=true — список СЗ для селекта в ReceiveFromSeModal.
+ * Совпадает с loadSelfEmployedEmployees (расширенный объект),
+ * но возвращает только {id, full_name} — для лёгкого селекта.
+ */
+export function loadSeWorkersLite() {
+  const parse = (d) => {
+    const arr = Array.isArray(d) ? d
+      : Array.isArray(d?.employees) ? d.employees
+      : Array.isArray(d?.items) ? d.items
+      : [];
+    return arr
+      .filter((e) => e.is_self_employed === true || e.is_self_employed === 1)
+      .map((e) => ({
+        id: Number(e.id),
+        full_name: e.full_name || e.fio || e.name || `СЗ #${e.id}`
+      }))
+      .filter((e) => Number.isFinite(e.id));
+  };
+  return api('/api/employees?is_self_employed=true&limit=500')
+    .then(parse)
+    .catch(() =>
+      api('/api/staff/employees?is_self_employed=true&limit=500')
+        .then(parse)
+        .catch(() => [])
+    );
+}
+
 /** GET /api/cash/:id — детали заявки (доступно владельцу/BUH/директору). */
 export function loadRequest(id) {
   return api(`/api/cash/${id}`);
@@ -189,6 +249,61 @@ export function loadSelfEmployedEmployees() {
 /** Stage W — GET /api/cash/balance — для preview «сейчас → после». */
 export function loadCashBalance() {
   return api('/api/cash/balance').catch(() => null);
+}
+
+/**
+ * GET /api/cash/statement — банковская выписка РП.
+ *
+ * Контракт: API_SPEC_PM_STATEMENT.md раздел 1.
+ * Возвращает { pm, period, summary, operations[] }.
+ *
+ *   • PM/HEAD_PM   — pm_id игнорируется бекендом, выписка только своя.
+ *   • ADMIN / DIRECTOR / BUH — обязан передать pm_id (иначе backend вернёт ошибку).
+ *
+ * Опции from/to: ISO YYYY-MM-DD. Если не передать — backend подставит
+ * первое число текущего месяца и сегодня.
+ *
+ * Ошибки 403/404/500 — пробрасываются, страница покажет toast + empty.
+ */
+export function loadStatement({ pm_id, from, to } = {}) {
+  const q = new URLSearchParams();
+  if (pm_id != null && pm_id !== '') q.set('pm_id', String(pm_id));
+  if (from) q.set('from', from);
+  if (to) q.set('to', to);
+  const qs = q.toString();
+  return api(`/api/cash/statement${qs ? '?' + qs : ''}`);
+}
+
+/**
+ * Сформировать URL для скачивания XLSX-выписки.
+ *
+ * Использовать ТОЛЬКО через fetch+Authorization (см. StatementTable.jsx):
+ * window.open() не передаст JWT и backend вернёт 401.
+ */
+export function getStatementXlsxUrl({ pm_id, from, to } = {}) {
+  const q = new URLSearchParams({ format: 'xlsx' });
+  if (pm_id != null && pm_id !== '') q.set('pm_id', String(pm_id));
+  if (from) q.set('from', from);
+  if (to) q.set('to', to);
+  return `/api/cash/statement?${q.toString()}`;
+}
+
+/**
+ * GET /api/users?role=PM — список РП для селектора (ADMIN/DIR/BUH).
+ *
+ * Возвращает [{id, full_name}], сортировка по full_name (бэкенд).
+ * Используется в StatementTable когда showPmSelector=true.
+ */
+export function loadPmsList() {
+  return api('/api/users?role=PM&is_active=true&limit=500')
+    .then((d) => {
+      const arr = Array.isArray(d) ? d : (d?.users || d?.items || []);
+      return arr.map((u) => ({
+        id: Number(u.id),
+        full_name: u.full_name || u.fio || u.name || `PM #${u.id}`
+      })).filter((u) => Number.isFinite(u.id));
+    })
+    .catch(() => []);
 }
 
 /** POST /api/cash/:id/expense — добавить расход (multipart). */

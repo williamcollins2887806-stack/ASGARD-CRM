@@ -167,6 +167,43 @@ export function quickTkpFinalize(uid, payload) {
 }
 
 /**
+ * GET /api/tkp-quick/sessions/:uid/preview-data
+ * Возвращает {ok, session_uid, project, customer, totals, analysis, estimate_brief}.
+ */
+export function quickTkpPreviewData(uid) {
+  return api(`/api/tkp-quick/sessions/${uid}/preview-data`);
+}
+
+/**
+ * POST /api/tkp-quick/sessions/:uid/direct-edit — прямая правка без AI.
+ * Body: { margin_pct?, markup_multiplier?, material_markup?, vat_pct?,
+ *         summary?, section_2_text?, recommendations?[], warnings?[] }
+ */
+export function quickTkpDirectEdit(uid, payload) {
+  return api(`/api/tkp-quick/sessions/${uid}/direct-edit`, { method: 'POST', body: payload });
+}
+
+/**
+ * POST /api/tkp-quick/sessions/:uid/save-to-card
+ * Сохраняет xlsx/docx в pre_tender_requests.manual_documents (без финализации в tkp).
+ */
+export function quickTkpSaveToCard(uid) {
+  return api(`/api/tkp-quick/sessions/${uid}/save-to-card`, { method: 'POST', body: {} });
+}
+
+/**
+ * Скачать предпросмотр документа (xlsx/docx) без сохранения в карточку.
+ * kind = 'smeta' | 'report'
+ */
+export async function quickTkpDownloadPreview(uid, kind) {
+  const url = `/api/tkp-quick/sessions/${uid}/preview-doc/${kind}`;
+  const ext = kind === 'smeta' ? 'xlsx' : 'docx';
+  const fname = `${kind === 'smeta' ? 'Смета' : 'Отчёт'}_preview_${String(uid).slice(0, 8)}.${ext}`;
+  const { downloadProtected } = await import('@/api/download');
+  return downloadProtected(url, fname);
+}
+
+/**
  * Открыть PDF ТКП в новой вкладке БЕЗ токена в URL (blob через Authorization header).
  */
 export async function openPdf(id, options = {}) {

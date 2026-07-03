@@ -32,6 +32,10 @@ import {
   filterByPeriod, filterByQuery, filterByMatch,
   exportWorksToCsv
 } from './api';
+// 23.06.2026 BUG-FIX (🟡 W3): единая истина по «закрытым» статусам — берём из
+// helpers/work-status вместо локальных new Set([...]) (раньше каждая страница
+// держала свою копию из 4-15 строк).
+import { isClosedWork } from '@/helpers/work-status';
 
 // Кто может создавать ТКП из работы — синхронно с vanilla all_works.js
 // (per-row кнопка «Создать ТКП», доступна РП/руководству/тендерному отделу).
@@ -93,7 +97,12 @@ export default function AllWorksPage() {
       (s, w) => s + Number(w.advance_received || 0) + Number(w.balance_received || 0),
       0
     );
-    return { total, received };
+    // 23.06.2026 BUG-FIX (🟡 W3): подсчёт активных через единый isClosedWork —
+    // покрывает все 15 финальных статусов (Закрыт/Завершена/Сдана/Отменена/...).
+    // Раньше «активные» считались либо никак, либо локальным узким Set'ом.
+    const activeCount = visible.filter((w) => !isClosedWork(w.work_status)).length;
+    const closedCount = visible.length - activeCount;
+    return { total, received, activeCount, closedCount };
   }, [visible]);
 
   const onOpen = (work) => {

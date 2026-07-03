@@ -98,11 +98,26 @@ window.AsgardKpiMoneyPage = (function(){
 
   // === Загрузка данных ===
   async function loadAllExpenses(year, user){
+    // works — прямой fetch (IDB не отражает soft-delete). Расходы — IDB (sync).
+    const _tok = localStorage.getItem('asgard_token');
+    const _worksFromApi = (async () => {
+      try {
+        const r = await fetch('/api/works?limit=1000', {
+          headers: { Authorization: 'Bearer ' + _tok }, cache: 'no-store'
+        });
+        if (!r.ok) throw new Error('GET /api/works ' + r.status);
+        const j = await r.json();
+        return j.works || j.items || j.data || [];
+      } catch (e) {
+        console.warn('[kpi_money] fetch /api/works failed, fallback to IDB:', e.message);
+        return await AsgardDB.all('works') || [];
+      }
+    })();
     const [workExp, officeExp, travelExp, works] = await Promise.all([
       AsgardDB.all('work_expenses'),
       AsgardDB.all('office_expenses'),
       AsgardDB.all('travel_expenses'),
-      AsgardDB.all('works')
+      _worksFromApi
     ]);
 
     const worksMap = new Map(works.map(w => [w.id, w]));
@@ -190,9 +205,24 @@ window.AsgardKpiMoneyPage = (function(){
   }
 
   async function loadAllIncomes(year, user){
+    // works — прямой fetch (IDB не отражает soft-delete).
+    const _tok = localStorage.getItem('asgard_token');
+    const _worksFromApi = (async () => {
+      try {
+        const r = await fetch('/api/works?limit=1000', {
+          headers: { Authorization: 'Bearer ' + _tok }, cache: 'no-store'
+        });
+        if (!r.ok) throw new Error('GET /api/works ' + r.status);
+        const j = await r.json();
+        return j.works || j.items || j.data || [];
+      } catch (e) {
+        console.warn('[kpi_money] fetch /api/works failed, fallback to IDB:', e.message);
+        return await AsgardDB.all('works') || [];
+      }
+    })();
     const [incomes, works] = await Promise.all([
       AsgardDB.all('incomes'),
-      AsgardDB.all('works')
+      _worksFromApi
     ]);
 
     const worksMap = new Map(works.map(w => [w.id, w]));

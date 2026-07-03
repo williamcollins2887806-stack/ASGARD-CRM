@@ -28,6 +28,8 @@ import { toast } from '@/modals/Notifications';
 import { Btn } from '@/modals/parts';
 import { TopActionsBar, EmptyState } from '@/blocks/Blocks';
 import AccessDenied from '@/blocks/AccessDenied';
+// 23.06.2026 BUG-FIX (Sites D-M10/D-M11): DONE_SET/PREP_SET — из единого helpers/work-status.
+import { isDone, PREP_SET } from '@/helpers/work-status';
 import './my-dashboard.css';
 
 // RBAC: vanilla dashboard.js / app.js NAV (строка 216) показывает /my-dashboard для
@@ -52,15 +54,6 @@ function shortMoney(n) {
   if (abs >= 1e3) return sign + (abs / 1e3).toFixed(0) + ' тыс ₽';
   return fmtMoney(x);
 }
-
-const DONE_SET = new Set([
-  'Закрыт', 'Закрыта', 'Закрыто', 'Работы сдали',
-  'Завершена', 'Завершено', 'Завершен', 'Завершён',
-  'Сдан', 'Сдана', 'Сдано',
-  'Отменена', 'Отменено', 'Отменён', 'Отменен', 'Отмена'
-].map((s) => s.trim().toLowerCase()));
-const isDone = (s) => DONE_SET.has(String(s || '').trim().toLowerCase());
-const PREP_SET = new Set(['Новая', 'Подготовка', 'Мобилизация']);
 
 export default function MyDashboardPage() {
   const { user } = useAuth();

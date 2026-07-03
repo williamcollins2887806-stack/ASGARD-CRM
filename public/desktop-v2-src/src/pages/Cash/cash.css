@@ -504,3 +504,479 @@
 .cash-pill.reporting { background: color-mix(in srgb, var(--info) 16%, transparent);  color: var(--info);  border-color: color-mix(in srgb, var(--info) 30%, transparent); }
 .cash-pill.closed    { background: var(--inner-bg); color: var(--t-3); border-color: var(--brd-1); }
 .cash-pill.rejected  { background: color-mix(in srgb, var(--err) 16%, transparent);   color: var(--err);   border-color: color-mix(in srgb, var(--err) 30%, transparent); }
+
+/* ╔══════════════════════════════════════════════════════════════
+   ║ Cash — фильтр по источнику + сводный баланс + унифицированная история
+   ║ (спека API_SPEC_BULK_SE.md раздел 5C, объединение касса/handovers).
+   ║ Все цвета — токены темы (--bg-*, --t-*, --gold, --info, --amber, --err, --ok).
+   ╚══════════════════════════════════════════════════════════════ */
+
+/* Сводный chip-фильтр над таблицей истории */
+.cash-source-filter {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 0;
+}
+.cash-source-chip {
+  background: var(--bg-3);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-pill, 999px);
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--t-2);
+  cursor: pointer;
+  font-weight: 600;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.cash-source-chip:hover { border-color: var(--gold); }
+.cash-source-chip.active {
+  background: var(--gold-bg);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+.cash-source-chip:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+/* Разбивка под балансом — 4 ячейки */
+.cash-breakdown-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin-top: 4px;
+}
+.cash-breakdown-cell {
+  padding: 10px 12px;
+  background: var(--bg-3);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-sm);
+}
+.cash-breakdown-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--t-3);
+  font-weight: 700;
+}
+.cash-breakdown-value {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--t-1);
+  margin-top: 4px;
+}
+.cash-breakdown-cell.gold .cash-breakdown-value { color: var(--gold); }
+.cash-breakdown-cell.info .cash-breakdown-value { color: var(--info); }
+.cash-breakdown-cell.err  .cash-breakdown-value { color: var(--err); }
+.cash-breakdown-cell.ok   .cash-breakdown-value { color: var(--ok); }
+
+/* Унифицированная таблица истории */
+.cash-history-wrap {
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  background: var(--card-bg);
+  overflow-x: auto;
+}
+.cash-history-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.cash-history-tbl th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--t-3);
+  font-weight: 700;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--brd-1);
+  white-space: nowrap;
+}
+.cash-history-tbl td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--brd-2);
+  color: var(--t-1);
+  vertical-align: middle;
+}
+.cash-history-tbl tr:hover td { background: var(--hover-bg); }
+.cash-history-tbl .num { text-align: right; font-weight: 700; }
+
+/* Бейдж источника */
+.cash-src-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: var(--r-pill, 999px);
+  border: 1px solid var(--brd-1);
+  background: var(--bg-3);
+  color: var(--t-2);
+  white-space: nowrap;
+}
+.cash-src-badge.kassa {
+  border-color: color-mix(in srgb, var(--info) 35%, var(--brd-1));
+  color: var(--info);
+  background: color-mix(in srgb, var(--info) 8%, transparent);
+}
+.cash-src-badge.handover {
+  border-color: color-mix(in srgb, var(--gold) 35%, var(--brd-1));
+  color: var(--gold);
+  background: var(--gold-bg);
+}
+
+.cash-history-empty {
+  padding: 30px;
+  text-align: center;
+  color: var(--t-3);
+  font-size: 13px;
+}
+
+.cash-history-row { cursor: pointer; }
+.cash-history-row.row-handover { cursor: default; }
+.cash-history-row:focus-visible td:first-child {
+  outline: 2px solid var(--gold);
+  outline-offset: -2px;
+}
+
+/* ╔══════════════════════════════════════════════════════════════
+   ║ StatementTable — выписка РП (банковский стиль).
+   ║ Источник: API_SPEC_PM_STATEMENT.md раздел 3.
+   ║ ТОЛЬКО токены темы (--bg, --ok, --err, --info, --brd, --t-*, --gold).
+   ╚══════════════════════════════════════════════════════════════ */
+
+/* Табы /cash (Заявки / Выписка) */
+.statement-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--brd-1);
+  padding: 0 2px;
+}
+.statement-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t-3);
+  cursor: pointer;
+  position: relative;
+  top: 1px;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.statement-tab:hover {
+  color: var(--t-1);
+  background: var(--inner-bg);
+}
+.statement-tab.active {
+  color: var(--gold);
+  background: var(--card-bg);
+  border-color: var(--brd-1);
+}
+.statement-tab:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: -2px;
+}
+
+.statement-wrap {
+  /* контейнер для tab «Выписка» — наследует col gap-14 от родителя */
+}
+
+/* Шапка с контролами (период + селектор + кнопки) */
+.statement-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  padding: 14px;
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+}
+.statement-control {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 160px;
+}
+.statement-control-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--t-3);
+  font-weight: 700;
+}
+.statement-control-actions {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  min-width: auto;
+}
+
+/* PM head — имя + период */
+.statement-pm-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 6px 2px;
+  flex-wrap: wrap;
+}
+.statement-pm-name {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--t-1);
+  letter-spacing: -0.01em;
+}
+.statement-pm-period {
+  font-size: 12px;
+  color: var(--t-3);
+}
+
+/* Сводка периода — 3 блока (приход / расход / остаток) */
+.statement-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+.statement-summary {
+  padding: 14px 16px;
+  background: var(--card-bg);
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.statement-summary.tone-income  { border-color: color-mix(in srgb, var(--ok)   35%, var(--brd-1)); }
+.statement-summary.tone-outflow { border-color: color-mix(in srgb, var(--err)  35%, var(--brd-1)); }
+.statement-summary.tone-balance { border-color: color-mix(in srgb, var(--info) 35%, var(--brd-1)); }
+
+.statement-summary-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--t-3);
+  font-weight: 700;
+}
+.statement-summary-total {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.statement-summary.tone-income  .statement-summary-total { color: var(--ok); }
+.statement-summary.tone-outflow .statement-summary-total { color: var(--err); }
+.statement-summary.tone-balance .statement-summary-total { color: var(--info); }
+
+.statement-summary-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+  border-top: 1px dashed var(--brd-2);
+  padding-top: 8px;
+}
+.statement-summary-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--t-2);
+  font-variant-numeric: tabular-nums;
+}
+.statement-summary-row-l { color: var(--t-3); }
+.statement-summary-row-v { color: var(--t-1); font-weight: 600; }
+
+/* Фильтры — переиспользуем .cash-source-chip из истории */
+.statement-filter-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 0;
+}
+.statement-filter-row.sub { margin-top: 2px; }
+.statement-filter-row .cash-source-chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Журнал операций — банковская таблица */
+.statement-table-wrap {
+  border: 1px solid var(--brd-1);
+  border-radius: var(--r-md);
+  background: var(--card-bg);
+  overflow-x: auto;
+  max-height: 70vh;
+  overflow-y: auto;
+  position: relative;
+}
+.statement-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.statement-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--t-3);
+  font-weight: 700;
+  padding: 10px 12px;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--brd-1);
+  white-space: nowrap;
+}
+.statement-table thead th.sticky-right {
+  position: sticky;
+  right: 0;
+  z-index: 3;
+  text-align: right;
+  background: var(--card-bg);
+  border-left: 1px solid var(--brd-1);
+}
+.statement-table tbody td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--brd-2);
+  color: var(--t-1);
+  vertical-align: middle;
+}
+.statement-table tbody tr:nth-child(even) td { background: var(--inner-bg); }
+.statement-table tbody tr:hover td { background: var(--hover-bg, var(--inner-bg)); }
+.statement-table .num {
+  text-align: right;
+  font-weight: 700;
+}
+.statement-table td.sticky-right {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  text-align: right;
+  background: var(--card-bg);
+  border-left: 1px solid var(--brd-1);
+  font-weight: 800;
+}
+.statement-table tbody tr:nth-child(even) td.sticky-right { background: var(--inner-bg); }
+.statement-table tbody tr:hover td.sticky-right { background: var(--hover-bg, var(--inner-bg)); }
+
+.statement-cell-date  { white-space: nowrap; color: var(--t-2); }
+.statement-cell-cat   { color: var(--t-2); }
+.statement-cell-desc  {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.statement-cell-work  {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--t-2);
+}
+.statement-cell-bal   { color: var(--t-1); }
+
+.amt-income  { color: var(--ok); }
+.amt-outflow { color: var(--err); }
+
+/* Бейджи источника */
+.statement-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: var(--r-pill, 999px);
+  border: 1px solid var(--brd-1);
+  background: var(--bg-3);
+  color: var(--t-2);
+  white-space: nowrap;
+}
+.statement-badge-income {
+  border-color: color-mix(in srgb, var(--ok) 35%, var(--brd-1));
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 10%, transparent);
+}
+.statement-badge-outflow {
+  border-color: color-mix(in srgb, var(--err) 35%, var(--brd-1));
+  color: var(--err);
+  background: color-mix(in srgb, var(--err) 8%, transparent);
+}
+
+/* Пустое состояние */
+.statement-empty {
+  padding: 36px 20px;
+  text-align: center;
+  color: var(--t-3);
+  font-size: 13px;
+  background: var(--card-bg);
+  border: 1px dashed var(--brd-1);
+  border-radius: var(--r-md);
+}
+.statement-empty.err {
+  color: var(--err);
+  border-color: color-mix(in srgb, var(--err) 35%, var(--brd-1));
+  background: color-mix(in srgb, var(--err) 8%, transparent);
+}
+
+/* ── 2026-06-29 — info-строки (справочные, не моя касса) ───────────────── */
+.statement-row-info {
+  opacity: 0.55;
+}
+.statement-row-info td {
+  color: var(--t-3);
+}
+.statement-badge-info {
+  border-color: color-mix(in srgb, var(--info) 30%, var(--brd-1));
+  color: var(--info);
+  background: var(--info-bg);
+}
+.amt-info { color: var(--t-3); }
+
+/* Чекбокс «Скрыть справочные» */
+.statement-hide-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  color: var(--t-2);
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid var(--brd-1);
+  background: var(--inner-bg);
+  transition: background 0.15s, border-color 0.15s;
+}
+.statement-hide-info:hover {
+  border-color: var(--gold);
+  background: var(--gold-bg);
+}
+.statement-hide-info input[type='checkbox'] {
+  accent-color: var(--gold);
+  cursor: pointer;
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .statement-controls { padding: 10px; }
+  .statement-control { min-width: 140px; }
+  .statement-control-actions { width: 100%; justify-content: flex-end; margin-left: 0; }
+  .statement-summary-total { font-size: 22px; }
+  .statement-table thead th,
+  .statement-table tbody td { padding: 8px 10px; }
+  .statement-cell-desc { max-width: 160px; }
+  .statement-cell-work { max-width: 120px; }
+}

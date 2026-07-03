@@ -35,7 +35,10 @@ export const WORK_STATUS_TRANSITIONS = {
   'Закрыт':           []
 };
 
-export const PREP_STATUSES = ['Новая', 'Подготовка', 'Мобилизация'];
+// 23.06.2026 BUG-FIX (Sites D-M10/D-M11): re-export канонических наборов из helpers/work-status,
+// чтобы локальные потребители PmWorks/api ничего не ломали, но истина — одна.
+export { PREP_STATUSES, isPrepWork } from '@/helpers/work-status';
+import { PREP_STATUSES as _PREP_STATUSES } from '@/helpers/work-status';
 export const ACTIVE_STATUSES = ['В работе', 'На паузе'];
 export const CLOSEOUT_STATUSES = ['Подписание акта', 'Работы сдали'];
 // Vanilla pm_works имел расширенный набор финальных статусов (см. MyDashboard DONE_SET).
@@ -47,10 +50,6 @@ export const CLOSED_STATUSES = [
   'Сдан', 'Сдана', 'Сдано',
   'Отменена', 'Отменено', 'Отменён', 'Отменен', 'Отмена'
 ];
-
-export function isPrepWork(work) {
-  return PREP_STATUSES.includes(work?.work_status);
-}
 
 export function loadWorks(params = {}) {
   const q = new URLSearchParams();
@@ -171,7 +170,7 @@ export function filterByStatus(works, status) {
 
 export function filterByGroup(works, group) {
   if (!group || group === 'all') return works;
-  const map = { prep: PREP_STATUSES, active: ACTIVE_STATUSES, closeout: CLOSEOUT_STATUSES, closed: CLOSED_STATUSES };
+  const map = { prep: _PREP_STATUSES, active: ACTIVE_STATUSES, closeout: CLOSEOUT_STATUSES, closed: CLOSED_STATUSES };
   const allowed = map[group];
   if (!allowed) return works;
   return works.filter((w) => allowed.includes(w.work_status));

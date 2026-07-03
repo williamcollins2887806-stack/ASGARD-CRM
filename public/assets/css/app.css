@@ -2600,6 +2600,7 @@ html[data-theme="light"] .funnel-card-meta {
   gap: 16px;
   margin-bottom: 16px;
 }
+.formrow > * { min-width: 0; }
 
 .formrow label {
   display: block;
@@ -2623,6 +2624,7 @@ html[data-theme="light"] .funnel-card-meta {
 .formrow select,
 .formrow textarea {
   width: 100%;
+  max-width: 100%;
   padding: 10px 14px;
   font-family: var(--ff);
   font-size: 13px;
@@ -2691,6 +2693,27 @@ select.inp,
    LIGHT THEME — All variables defined in design-tokens.css
    Only page-specific component overrides below.
    ───────────────────────────────────────────────────────────────────────────── */
+
+/* ── color-scheme: подсказка браузеру для native UI (scrollbar, select dropdown,
+   input password reveal, autofill цвета). Без этого <option> в <select> и
+   datepicker показываются с системным белым фоном даже в тёмной теме CRM. */
+html { color-scheme: dark; }
+html[data-theme="light"] { color-scheme: light; }
+
+/* Опции select / optgroup — native popup всё равно использует системные
+   цвета; color-scheme выше включает Dark Mode native styling, но мы
+   дополнительно даём fallback на наши токены для браузеров где
+   color-scheme=dark не превращает popup в тёмный (старые Firefox/Edge). */
+select option,
+select optgroup {
+  background: var(--bg2);
+  color: var(--t1);
+}
+html[data-theme="light"] select option,
+html[data-theme="light"] select optgroup {
+  background: #fff;
+  color: var(--t1);
+}
 
 /* Body background */
 html[data-theme="light"] body {

@@ -135,19 +135,34 @@ function drawSite(PIXI, palette, site) {
   // фон-кружок
   g.lineStyle(2, palette.gold, 0.85);
   g.beginFill(palette.card, 0.95); g.drawCircle(0, 0, 22); g.endFill();
-  // тип
-  const typeCol = site.site_type === 'platform' ? palette.blue
-                 : site.site_type === 'plant'   ? palette.amber
-                                                : palette.purple;
+  // 23.06.2026 BUG-FIX (Sites D-M2): добавлены 5 остальных типов
+  // (refinery/terminal/port/office/object). Раньше 5 из 7 типов рендерились дефолтным 🏗
+  // фиолетового цвета и были визуально неразличимы.
+  const SITE_TYPE_COLOR = {
+    platform: palette.blue,   plant:    palette.amber,
+    refinery: palette.amber,  terminal: palette.blue,
+    port:     palette.blue,   office:   palette.gold,
+    object:   palette.purple, other:    palette.purple
+  };
+  const SITE_TYPE_EMOJI = {
+    platform: '🛢', plant: '🏭', refinery: '🛢', terminal: '⛴',
+    port: '⚓', office: '🏢', object: '🏗', other: '🏗'
+  };
+  const typeCol = SITE_TYPE_COLOR[site.site_type] || palette.purple;
   g.beginFill(typeCol, 0.55); g.drawCircle(0, 0, 14); g.endFill();
   g.lineStyle(0);
   c.addChild(g);
   // эмодзи
-  const emoji = site.site_type === 'platform' ? '🛢' : site.site_type === 'plant' ? '🏭' : '🏗';
+  const emoji = SITE_TYPE_EMOJI[site.site_type] || '🏗';
   const txt = new PIXI.Text(emoji, { fontFamily: 'Segoe UI, Arial', fontSize: 18 });
   txt.anchor.set(0.5); c.addChild(txt);
-  // подпись
-  const lbl = new PIXI.Text(site.name || ('Объект #' + site.id),
+  // 23.06.2026 BUG-FIX (Sites D-M13 🟡): short_name приоритетнее name.
+  // sites.short_name создан в БД и заполнен у большинства площадок («Астрахань»,
+  // «АГПЗ» вместо длинного «Астраханский газоперерабатывающий завод»),
+  // но фронт его игнорировал → подписи рассыпались за круг точки и кривой UX.
+  // Канон: short_name → name → fallback.
+  const labelText = site.short_name || site.name || ('Объект #' + site.id);
+  const lbl = new PIXI.Text(labelText,
     { fontFamily: 'Segoe UI, Arial', fontSize: 11, fill: palette.t1, fontWeight: '700',
       stroke: 0x05070b, strokeThickness: 3, align: 'center' });
   lbl.anchor.set(0.5, 0); lbl.y = 24; c.addChild(lbl);

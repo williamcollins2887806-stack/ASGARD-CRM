@@ -125,12 +125,28 @@ window.AsgardKpiWorksPage=(function(){
     const refs=await getRefs();
     const app=await getApp();
 
-    const tenders=await AsgardDB.all("tenders");
-    const works=await AsgardDB.all("works");
+    // KPI по работам/тендерам — прямой fetch (IDB не отражает soft-delete/RBAC).
+    const _tok = (window.AsgardAuth && window.AsgardAuth.token) || localStorage.getItem('asgard_token');
+    const _hdr = { Authorization: 'Bearer ' + _tok };
+    async function _fetchList(url, key, fallbackTable){
+      try {
+        const r = await fetch(url, { headers: _hdr, cache: 'no-store' });
+        if (!r.ok) throw new Error('GET ' + url + ' ' + r.status);
+        const j = await r.json();
+        return j[key] || j.items || j.data || [];
+      } catch (e) {
+        console.warn('[kpi_works] fetch ' + url + ' failed, fallback to IDB:', e.message);
+        return await AsgardDB.all(fallbackTable) || [];
+      }
+    }
+    const [tenders, works] = await Promise.all([
+      _fetchList('/api/tenders?limit=1000', 'tenders', 'tenders'),
+      _fetchList('/api/works?limit=1000', 'works', 'works')
+    ]);
 
     /* PM = users with role PM + anyone assigned as pm_id on works */
     const pmById=new Map();
-    users.filter(u=>u.role==="PM" || (Array.isArray(u.roles) && u.roles.includes("PM"))).forEach(u=>pmById.set(u.id,u));
+    users.filter(u=>u.role==="PM" || u.role==="HEAD_PM" || (Array.isArray(u.roles) && (u.roles.includes("PM") || u.roles.includes("HEAD_PM")))).forEach(u=>pmById.set(u.id,u));
     works.forEach(w=>{ if(w.pm_id && byId.has(w.pm_id) && !pmById.has(w.pm_id)) pmById.set(w.pm_id, byId.get(w.pm_id)); });
     const pms=[...pmById.values()];
 
@@ -241,7 +257,13 @@ window.AsgardKpiWorksPage=(function(){
 
     function workDateForFilter(w){
       const t = tenders.find(x=>x.id===w.tender_id);
-      return toDate(w.start_in_work_date) || toDate(t?.work_start_plan) || toDate(w.created_at) || toDate(t?.created_at);
+      // 23.06.2026 BUG-FIX (🟡 S5): start_plan приоритет в фильтре периода.
+      // Раньше работы из тендера (где заполнен только start_plan) уезжали в
+      // fallback на created_at → KPI РП считал работу не в её фактическом периоде,
+      // а в периоде создания записи в БД.
+      return toDate(w.start_plan) || toDate(w.start_in_work_date) || toDate(w.start_date)
+          || toDate(w.start_fact) || toDate(t?.work_start_plan)
+          || toDate(w.created_at) || toDate(t?.created_at);
     }
 
     function tenderDateForFilter(t){
@@ -261,9 +283,13 @@ window.AsgardKpiWorksPage=(function(){
       const costS = deviationToScore(costPct);
 
       // 2. Time
-      const timeItems = items.filter(w=>w.start_in_work_date && w.end_plan && w.end_fact);
-      const planDur = timeItems.reduce((s,w)=>{ const d=durDays(w.start_in_work_date, w.end_plan); return s+(d||0); },0);
-      const factDur = timeItems.reduce((s,w)=>{ const d=durDays(w.start_in_work_date, w.end_fact); return s+(d||0); },0);
+      // 23.06.2026 BUG-FIX (🟡 S5): start_plan приоритет, иначе фильтр сразу отсекает
+      // 80%+ работ (start_in_work_date почти не заполняется). KPI «средняя длительность»
+      // считался по 1–2 работам у каждого РП.
+      const _kStart = (w) => w.start_plan || w.start_in_work_date || w.start_date || null;
+      const timeItems = items.filter(w => _kStart(w) && w.end_plan && w.end_fact);
+      const planDur = timeItems.reduce((s,w)=>{ const d=durDays(_kStart(w), w.end_plan); return s+(d||0); },0);
+      const factDur = timeItems.reduce((s,w)=>{ const d=durDays(_kStart(w), w.end_fact); return s+(d||0); },0);
       const timePct = safePct(planDur, factDur);
       const timeS = deviationToScore(timePct);
 
@@ -551,8 +577,9 @@ window.AsgardKpiWorksPage=(function(){
       const defaultStart=(st.gantt_start_iso||"2026-01-01T00:00:00.000Z").slice(0,10);
       const rows = works.map(w=>{
         const t=tenders.find(x=>x.id===w.tender_id);
-        const start = w.start_in_work_date || t?.work_start_plan || w.end_plan || "2026-01-01";
-        const end = w.end_fact || w.end_plan || t?.work_end_plan || start;
+        // FIX (23.06.2026): canonical fallback — start_plan приоритет, не end_plan.
+        const start = w.start_plan || w.start_in_work_date || t?.work_start_plan || w.start_fact || w.created_at || "2026-01-01";
+        const end = w.end_plan || w.end_date || w.end_fact || t?.work_end_plan || start;
         return {start,end,label:(w.customer_name||t?.customer_name||""),sub:(w.work_title||t?.tender_title||""),barText:w.work_status||"",status:w.work_status||""};
       });
       const colors=st.status_colors?.work||{};

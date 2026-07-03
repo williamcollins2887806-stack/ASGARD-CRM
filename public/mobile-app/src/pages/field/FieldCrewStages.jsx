@@ -4,9 +4,16 @@ import { fieldApi } from '@/api/fieldClient';
 import { useHaptic } from '@/hooks/useHaptic';
 import { ArrowLeft, Search, UserPlus, FileEdit } from 'lucide-react';
 
-const STAGE_LABELS = { medical: 'Медосмотр', travel: 'Дорога', waiting: 'Ожидание', warehouse: 'Склад', day_off: 'Выходной', object: 'Объект' };
-const STAGE_ICONS = { medical: '🟣', travel: '🔵', waiting: '🟡', warehouse: '🟠', day_off: '⚪', object: '🟢' };
-const STAGE_COLORS = { medical: '#9333EA', travel: '#3B82F6', waiting: '#F59E0B', warehouse: '#F97316', day_off: '#9CA3AF', object: '#22C55E' };
+// V255 (23.06.2026): добавлен 'ship' — Корабль (альтернатива «Дороги» за 12 баллов).
+const STAGE_LABELS = { medical: 'Медосмотр', travel: 'Дорога', ship: 'Корабль', waiting: 'Ожидание', warehouse: 'Склад', day_off: 'Выходной', object: 'Объект' };
+const STAGE_ICONS = { medical: '🟣', travel: '🔵', ship: '🚢', waiting: '🟡', warehouse: '🟠', day_off: '⚪', object: '🟢' };
+const STAGE_COLORS = { medical: '#9333EA', travel: '#3B82F6', ship: '#0EA5E9', waiting: '#F59E0B', warehouse: '#F97316', day_off: '#9CA3AF', object: '#22C55E' };
+
+// V255: 'ship' — медицинский scope (ставит ТО/HEAD_TO). В мобильном поле мастер сам
+// не CRM-роль, реальный RBAC — на бэкенде (deriveScope→medical). В UI кнопку «Корабль»
+// показываем только мастерам уровня senior_master (он же = HEAD_TO-эквивалент на объекте),
+// либо если ship уже встречается у бригады (старший ставил с десктопа).
+const SHIP_VISIBLE_FIELD_ROLES = ['senior_master', 'shift_master'];
 
 const fmt = (n) => (n || 0).toLocaleString('ru-RU');
 function stageDay(dateFrom) { return Math.max(1, Math.floor((Date.now() - new Date(dateFrom).getTime()) / 86400000) + 1); }
@@ -16,6 +23,8 @@ export default function FieldCrewStages() {
   const haptic = useHaptic();
   const [employees, setEmployees] = useState([]);
   const [workId, setWorkId] = useState(null);
+  // V255: field_role мастера — нужно для гейтинга кнопки «Корабль».
+  const [fieldRole, setFieldRole] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
@@ -34,6 +43,7 @@ export default function FieldCrewStages() {
       const projData = await fieldApi.get('/worker/active-project');
       const wid = projData?.project?.work_id;
       setWorkId(wid);
+      setFieldRole(projData?.project?.field_role || null);
       if (wid) {
         const data = await fieldApi.get(`/stages/my-crew/${wid}`);
         setEmployees(data?.employees || []);
@@ -161,13 +171,26 @@ export default function FieldCrewStages() {
           <div className="w-full max-w-md rounded-t-2xl p-5 space-y-3" style={{ backgroundColor: 'var(--bg-primary)' }} onClick={e => e.stopPropagation()}>
             <h2 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>Начать этап</h2>
             <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Отметить за {showOnBehalf.fio}</p>
-            {['medical', 'travel', 'warehouse', 'waiting', 'day_off'].map(type => (
-              <button key={type} onClick={() => startOnBehalf(showOnBehalf, type)} disabled={submitting}
-                className="w-full p-3 rounded-xl text-left text-sm font-medium disabled:opacity-50"
-                style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }}>
-                {STAGE_ICONS[type]} {STAGE_LABELS[type]}
-              </button>
-            ))}
+            {(() => {
+              // V255: «Корабль» виден только мастерам (senior_master/shift_master),
+              // т.к. это медицинский scope. Если уже есть ship у бригады — показываем
+              // принудительно, чтобы не «потерять» кнопку коррекции.
+              const hasShipInCrew = employees.some(e => (e.stages || []).some(s => s.stage_type === 'ship'));
+              const canSetShip = SHIP_VISIBLE_FIELD_ROLES.includes(fieldRole) || hasShipInCrew;
+              const types = ['medical', 'travel'];
+              if (canSetShip) types.push('ship');
+              types.push('warehouse', 'waiting', 'day_off');
+              return types.map(type => (
+                <button key={type} onClick={() => startOnBehalf(showOnBehalf, type)} disabled={submitting}
+                  className="w-full p-3 rounded-xl text-left text-sm font-medium disabled:opacity-50"
+                  style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }}>
+                  {STAGE_ICONS[type]} {STAGE_LABELS[type]}
+                  {type === 'ship' && (
+                    <span className="ml-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>· 12 баллов</span>
+                  )}
+                </button>
+              ));
+            })()}
           </div>
         </div>
       )}

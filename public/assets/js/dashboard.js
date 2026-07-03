@@ -27,24 +27,40 @@ window.AsgardDashboardPage = (function(){
     if(!auth){ location.hash = "#/login"; return; }
     const user = auth.user;
 
-    // Только директора и админ
-    const allowed = ["ADMIN", "DIRECTOR_COMM", "DIRECTOR_GEN", "DIRECTOR_DEV", "DIRECTOR"];
+    // Только директора и админ.
+    // 23.06.2026 BUG-FIX (Sites D-M3): удалена устаревшая роль "DIRECTOR" (без суффикса) —
+    // её нет в users.role на проде, проверка была мёртвой.
+    const allowed = ["ADMIN", "DIRECTOR_COMM", "DIRECTOR_GEN", "DIRECTOR_DEV"];
     if(!allowed.includes(user.role)){
       toast("Доступ", "Дашборд доступен руководителям", "err");
       location.hash = "#/home";
       return;
     }
 
-    // Загружаем все данные
+    // Загружаем все данные. tenders/estimates/works/users — прямой fetch (IDB-кэш
+    // не отражает soft-delete/RBAC; см. fix в tenders.js). Расходы — из IDB (sync).
+    const _tok = localStorage.getItem('asgard_token');
+    const _hdr = { Authorization: 'Bearer ' + _tok };
+    async function _fetchList(url, key, fallbackTable){
+      try {
+        const r = await fetch(url, { headers: _hdr, cache: 'no-store' });
+        if (!r.ok) throw new Error('GET ' + url + ' ' + r.status);
+        const j = await r.json();
+        return j[key] || j.items || j.data || [];
+      } catch (e) {
+        console.warn('[dashboard] fetch ' + url + ' failed, fallback to IDB:', e.message);
+        return await AsgardDB.all(fallbackTable) || [];
+      }
+    }
     const [tenders, estimates, works, users, workExpenses, officeExpenses, travelExpenses, callDashData] = await Promise.all([
-      AsgardDB.all('tenders'),
-      AsgardDB.all('estimates'),
-      AsgardDB.all('works'),
-      AsgardDB.all('users'),
+      _fetchList('/api/tenders?limit=1000', 'tenders', 'tenders'),
+      _fetchList('/api/estimates?limit=1000', 'estimates', 'estimates'),
+      _fetchList('/api/works?limit=1000', 'works', 'works'),
+      _fetchList('/api/users?limit=1000', 'users', 'users'),
       AsgardDB.all('work_expenses').catch(() => []),
       AsgardDB.all('office_expenses').catch(() => []),
       AsgardDB.all('travel_expenses').catch(() => []),
-      fetch('/api/call-reports/dashboard', { headers: { 'Authorization': 'Bearer ' + localStorage.getItem('asgard_token') } }).then(r => r.ok ? r.json() : null).catch(() => null)
+      fetch('/api/call-reports/dashboard', { headers: { 'Authorization': 'Bearer ' + _tok } }).then(r => r.ok ? r.json() : null).catch(() => null)
     ]);
 
     const now = new Date();

@@ -104,6 +104,38 @@ window.AsgardMimir = (function(){
         opacity:1; transform:translateY(-50%) translateX(0);
       }
 
+      /* ── FAB мини-меню (Письмо / Мимир) ── */
+      .mimir-fab.menu-open { transform:rotate(45deg) scale(0.92); }
+      #mimirFabMenu {
+        position:fixed; right:24px; bottom:96px;
+        z-index:502;
+        display:flex; flex-direction:column; gap:6px;
+        min-width:220px; padding:8px;
+        border-radius:12px;
+        background:var(--bg-card, #1c1c1e);
+        border:1px solid var(--brd-2, rgba(255,255,255,.08));
+        box-shadow:0 12px 32px rgba(0,0,0,.35);
+        animation:mimirFabMenuIn .14s ease-out;
+      }
+      @keyframes mimirFabMenuIn {
+        from { opacity:0; transform:translateY(8px) scale(.96); }
+        to   { opacity:1; transform:none; }
+      }
+      .mimir-fab-menu-item {
+        display:flex; align-items:center; gap:10px;
+        padding:10px 12px;
+        background:transparent; border:none;
+        color:var(--text-primary, #fff);
+        font:inherit; font-size:14px; text-align:left;
+        cursor:pointer; border-radius:8px;
+        transition:background .12s;
+      }
+      .mimir-fab-menu-item:hover {
+        background:var(--bg2, rgba(255,255,255,.06));
+      }
+      .mimir-fab-menu-ico { font-size:18px; width:24px; text-align:center; }
+      .mimir-fab-menu-label { flex:1; }
+
       /* ── iPhone модалка ── */
       .mimir-iphone {
         position:fixed; bottom:96px; right:24px;
@@ -602,8 +634,89 @@ window.AsgardMimir = (function(){
     const screen = document.getElementById('mimirScreen');
     const newChatBtn = document.getElementById('mimirNewChat');
 
-    fab?.addEventListener('click', () => {
-      if (isOpen) close(); else open();
+    // ✉ FAB-меню «Написать письмо» / «Спросить Мимира» — если у пользователя есть
+    // доступ к корреспонденции. Клик по FAB сначала показывает мини-меню;
+    // если меню уже открыто или у пользователя нет прав — поведение прежнее.
+    const LETTER_ROLES = ['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','OFFICE_MANAGER','PM','HEAD_PM','TO','HEAD_TO'];
+    // Определяем роль юзера из всех возможных источников:
+    //  1) window.AsgardAuth.user (свойство, ставится после requireUser)
+    //  2) JWT-token в localStorage — payload.role (декодим base64)
+    //  3) Запасной: считаем что доступ есть (FAB-меню всё равно — два пункта,
+    //     второй ведёт к Мимиру, ничего не сломается).
+    function _currentRole() {
+      try {
+        if (window.AsgardAuth && window.AsgardAuth.user && window.AsgardAuth.user.role) {
+          return window.AsgardAuth.user.role;
+        }
+      } catch (_) {}
+      try {
+        const token = localStorage.getItem('asgard_token') || localStorage.getItem('token');
+        if (token && token.split('.').length >= 2) {
+          const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+          if (payload && payload.role) return payload.role;
+        }
+      } catch (_) {}
+      return null;
+    }
+    function _canWriteLetter() {
+      const role = _currentRole();
+      if (!role) return true; // unknown role → показать меню всё равно (degraded mode)
+      return LETTER_ROLES.includes(role);
+    }
+
+    function _hideFabMenu() {
+      document.getElementById('mimirFabMenu')?.remove();
+      fab?.classList.remove('menu-open');
+    }
+    function _showFabMenu() {
+      if (document.getElementById('mimirFabMenu')) { _hideFabMenu(); return; }
+      const m = document.createElement('div');
+      m.id = 'mimirFabMenu';
+      m.setAttribute('role', 'menu');
+      m.innerHTML = `
+        <button class="mimir-fab-menu-item" data-act="letter" role="menuitem">
+          <span class="mimir-fab-menu-ico">✉</span>
+          <span class="mimir-fab-menu-label">Написать письмо</span>
+        </button>
+        <button class="mimir-fab-menu-item" data-act="mimir" role="menuitem">
+          <span class="mimir-fab-menu-ico">🧙</span>
+          <span class="mimir-fab-menu-label">Спросить Мимира</span>
+        </button>
+      `;
+      document.body.appendChild(m);
+      fab?.classList.add('menu-open');
+      m.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-act]');
+        if (!btn) return;
+        const act = btn.dataset.act;
+        _hideFabMenu();
+        if (act === 'letter') {
+          const qs = new URLSearchParams({ return_to: window.location.href }).toString();
+          window.location.href = '/v2/#/correspondence/composer?' + qs;
+        } else {
+          if (isOpen) close(); else open();
+        }
+      });
+      // Закрытие по клику вне меню
+      setTimeout(() => {
+        const onDoc = (ev) => {
+          if (!m.contains(ev.target) && ev.target !== fab) {
+            _hideFabMenu();
+            document.removeEventListener('click', onDoc);
+          }
+        };
+        document.addEventListener('click', onDoc);
+      }, 0);
+    }
+
+    fab?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const role = _currentRole();
+      const canWrite = _canWriteLetter();
+      console.log('[Mimir FAB] click — role:', role, 'canWriteLetter:', canWrite, 'isOpen:', isOpen);
+      if (isOpen) { close(); _hideFabMenu(); return; }
+      if (canWrite) { _showFabMenu(); return; }
+      open();
     });
 
     back?.addEventListener('click', (e) => {

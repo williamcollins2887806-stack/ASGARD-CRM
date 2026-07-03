@@ -415,7 +415,7 @@ window.AsgardPmWorksPage=(function(){
             const paid = (Number(w.advance_received||0)+Number(w.balance_received||0));
             const left = (Number(w.contract_value||0)-paid);
             const profit = (Number(w.contract_value||0) - Number(w.cost_fact||w.cost_plan||0));
-            const msg = `${w.customer_name||''} — ${w.work_title||''}\nФакт: конец ${w.end_fact||'—'}\nЦена: ${money(w.contract_value)} ₽\nСебест(факт): ${money(w.cost_fact)} ₽\nПрибыль(упр): ${money(Math.round(profit))} ₽\nОплачено: ${money(paid)} ₽ • Осталось: ${money(left)} ₽\nPM: ${pmUser.name||pmUser.login}`;
+            const msg = `${w.customer_name||''} — ${w.work_title||''}\nФакт: конец ${w.end_fact ? formatDate(w.end_fact) : '—'}\nЦена: ${money(w.contract_value)} ₽\nСебест(факт): ${money(w.cost_fact)} ₽\nПрибыль(упр): ${money(Math.round(profit))} ₽\nОплачено: ${money(paid)} ₽ • Осталось: ${money(left)} ₽\nPM: ${pmUser.name||pmUser.login}`;
 
             await notifyDirectors('Закрытие контракта (факт)', msg, '#/pm-works');
 
@@ -631,10 +631,28 @@ window.AsgardPmWorksPage=(function(){
     const refs=await getRefs();
     const settings=await getSettings();
 
-    const allWorks = await AsgardDB.all("works");
-    const allTenders = await AsgardDB.all("tenders");
+    // Реестр работ — прямой fetch (IDB-кэш не отражает soft-delete/RBAC).
+    const _tok = (window.AsgardAuth && window.AsgardAuth.token) || localStorage.getItem('asgard_token');
+    const _hdr = { Authorization: 'Bearer ' + _tok };
+    async function _fetchList(url, key, fallbackTable){
+      try {
+        const r = await fetch(url, { headers: _hdr, cache: 'no-store' });
+        if (!r.ok) throw new Error('GET ' + url + ' ' + r.status);
+        const j = await r.json();
+        return j[key] || j.items || j.data || [];
+      } catch (e) {
+        console.warn('[pm_works] fetch ' + url + ' failed, fallback to IDB:', e.message);
+        return await AsgardDB.all(fallbackTable) || [];
+      }
+    }
+    const [allWorks, allTenders] = await Promise.all([
+      _fetchList('/api/works?limit=1000', 'works', 'works'),
+      _fetchList('/api/tenders?limit=1000', 'tenders', 'tenders')
+    ]);
 
     // PM sees own, DIRECTOR sees all, ADMIN sees all
+    // Backend /api/works уже фильтрует PM по pm_id; клиентский фильтр оставлен
+    // как safety net на случай fallback'а на IDB.
     const works = (user.role==="PM") ? allWorks.filter(w=>w.pm_id===user.id) : allWorks;
 
     let sortKey="id", sortDir=-1;
@@ -962,8 +980,9 @@ window.AsgardPmWorksPage=(function(){
       const defaultStart = (settings.gantt_start_iso||"2026-01-01T00:00:00.000Z").slice(0,10);
       const rows = works.map(w=>{
         const t = allTenders.find(x=>x.id===w.tender_id);
-        const start = w.start_in_work_date || t?.work_start_plan || w.end_plan || "2026-01-01";
-        const end = w.end_fact || w.end_plan || t?.work_end_plan || start;
+        // FIX (23.06.2026): canonical fallback — start_plan приоритет, не end_plan.
+        const start = w.start_plan || w.start_in_work_date || t?.work_start_plan || w.start_fact || w.created_at || "2026-01-01";
+        const end = w.end_plan || w.end_date || w.end_fact || t?.work_end_plan || start;
         const label = `${w.customer_name||t?.customer_name||""}`;
         const sub = `${w.work_title||t?.tender_title||""}`;
         return { id:w.id, start, end, label, sub, barText:w.work_status||"" , status:w.work_status||"" };
@@ -1001,7 +1020,11 @@ window.AsgardPmWorksPage=(function(){
       // Чистая прибыль из financial-summary (единый источник), fallback на валовую
       const profit = finData?.profit?.net != null ? Math.round(finData.profit.net) : ((w.contract_value!=null && w.cost_fact!=null) ? (Number(w.contract_value)-Number(w.cost_fact)) : null);
       const margin = finData?.profit?.margin;
-      const start = w.start_in_work_date || t?.work_start_plan;
+      // 23.06.2026 BUG-FIX (🟡 R9/S2): мини-Гантт в openWork() использовал старую
+      // цепочку без start_plan — у работ из тендера полоса «съезжала» к началу шкалы
+      // или скрывалась (start_in_work_date пуст). Канон совпадает с openGantt
+      // выше (pm_works.js:984) и AsgardGantt.workStartIso.
+      const start = w.start_plan || w.start_in_work_date || w.start_date || w.start_fact || t?.work_start_plan;
       const end = w.end_fact || w.end_plan || t?.work_end_plan || start;
       const duration = (start && end) ? daysBetween(start,end) : null;
       const crew = (finData?.crew?.length) || Number(w.crew_size||0) || 0;
@@ -1037,7 +1060,7 @@ window.AsgardPmWorksPage=(function(){
         <div class="cr-f-section"><span class="cr-f-section__icon" style="color:var(--blue-l)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span><span>Статус и сроки</span></div>
         <div class="formrow">
           <div><label>Статус работ</label><div id="w_status_w"></div></div>
-          <div><label>Начало работ</label><input type="date" id="w_start" value="${esc(String(w.start_in_work_date||t?.work_start_plan||"").slice(0,10))}"/></div>
+          <div><label>Начало работ</label><input type="date" id="w_start" value="${esc(String(w.start_in_work_date||w.start_plan||t?.work_start_plan||"").slice(0,10))}"/></div><!-- 23.06.2026 BUG-FIX (🟡 R4): добавлен fallback на start_plan, иначе у работ из тендера поле было пустым, и РП «по умолчанию» сохранял пустоту, теряя плановую дату -->
           <div><label>Окончание план</label><input type="date" id="w_end_plan" value="${esc(String(w.end_plan||t?.work_end_plan||"").slice(0,10))}"/></div>
           <div><label>Окончание факт</label><input type="date" id="w_end_fact" value="${esc(String(w.end_fact||"").slice(0,10))}"/></div>
           <div style="grid-column:1/-1">
@@ -1300,6 +1323,19 @@ window.AsgardPmWorksPage=(function(){
             actions.push({ section: 'Закупки' });
             actions.push({ icon: '🛒', label: 'Закупки', desc: 'Заявки на закупку по работе', onClick: () => openProcurementForWork(w, user) });
           }
+
+          // ─── Переписка ───
+          actions.push({ section: 'Переписка' });
+          actions.push({
+            icon: '📜',
+            label: 'Официальная переписка',
+            desc: 'Письма по работе/контрагенту',
+            badge: 'NEW',
+            badgeType: 'new',
+            onClick: () => {
+              location.hash = `#/correspondence?parent_entity_type=work&parent_entity_id=${w.id}`;
+            }
+          });
 
           // ─── Завершение ───
           if(user.role==="PM" && String(w.work_status||"")===triggerStatus){
@@ -1623,7 +1659,7 @@ window.AsgardPmWorksPage=(function(){
                 return `<div class="pill"><div class="who"><b>${esc(name)}</b></div><div class="role">${days}${c.rows.length>3?'...':''}</div></div>`;
               }).join("");
               showModal("Конфликт при перебронировании", `
-                <div class="help">При смене дат обнаружен конфликт брони персонала на новый период ${esc(newStart)} — ${esc(newEnd)}.</div>
+                <div class="help">При смене дат обнаружен конфликт брони персонала на новый период ${esc(newStart ? formatDate(newStart) : '—')} — ${esc(newEnd ? formatDate(newEnd) : '—')}.</div>
                 <div style="margin-top:10px">${rows || ""}</div>
                 <div class="help" style="margin-top:10px">Работа будет сохранена, но бронь персонала НЕ обновлена. HR уведомлён.</div>
               `);
@@ -1632,7 +1668,7 @@ window.AsgardPmWorksPage=(function(){
               if (hrId) {
                 await notify(hrId,
                   'Конфликт перебронирования',
-                  `Работа "${esc(w.work_title||'')}" (${esc(w.customer_name||'')}): даты изменены ${newStart}—${newEnd}, бронь НЕ обновлена. Требуется ручная корректировка.`,
+                  `Работа "${esc(w.work_title||'')}" (${esc(w.customer_name||'')}): даты изменены ${newStart ? formatDate(newStart) : '—'}—${newEnd ? formatDate(newEnd) : '—'}, бронь НЕ обновлена. Требуется ручная корректировка.`,
                   '#/workers-schedule'
                 );
               }

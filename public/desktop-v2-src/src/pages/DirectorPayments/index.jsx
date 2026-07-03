@@ -213,8 +213,22 @@ export default function DirectorPaymentsPage() {
                   <tbody>
                     {items.map((it) => (
                       <tr key={it.id} className="tbl-row-brd">
-                        <td className="pad-cell c-t2 u-nowrap-cell">{fmtDateTime(it.paid_at || it.created_at)}</td>
-                        <td className="pad-cell fw-600">{it.employee_name || `#${it.employee_id}`}</td>
+                        {/* 23.06.2026 BUG-FIX (🟡 Payouts-4): tooltip с paid_by_name.
+                            Backend director-payments.js:208 уже отдаёт u.name AS paid_by_name
+                            (какой именно директор выплатил), но фронт ранее это поле игнорировал —
+                            для аудита (Кудряшов vs Андросов) показываем как title. */}
+                        <td
+                          className="pad-cell c-t2 u-nowrap-cell"
+                          title={it.paid_by_name ? `Выплатил: ${it.paid_by_name}` : undefined}
+                        >
+                          {fmtDateTime(it.paid_at || it.created_at)}
+                          {it.paid_by_name && (
+                            <span className="c-t3" style={{ display: 'block', fontSize: '0.78em', fontWeight: 400 }}>
+                              👤 {it.paid_by_name}
+                            </span>
+                          )}
+                        </td>
+                        <td className="pad-cell fw-600">{it.employee_fio || it.employee_name || it.fio || `#${it.employee_id}`}</td>
                         <td className="pad-cell c-t2">{it.work_title || (it.work_id ? `#${it.work_id}` : '—')}</td>
                         <td className="pad-cell">
                           <span className={'dp-type-pill ' + it.type}>{TYPE_LABEL[it.type] || it.type}</span>

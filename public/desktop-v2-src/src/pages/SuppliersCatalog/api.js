@@ -36,9 +36,10 @@ export const SOURCES = [
 
 export function loadSuppliers(params = {}) {
   const q = new URLSearchParams();
-  if (params.search)    q.set('search',    params.search);
-  if (params.category)  q.set('category',  params.category);
-  if (params.is_active) q.set('is_active', params.is_active);
+  if (params.search)     q.set('search',     params.search);
+  if (params.category)   q.set('category',   params.category);
+  if (params.is_active)  q.set('is_active',  params.is_active);
+  if (params.rating_gte) q.set('rating_gte', params.rating_gte);
   q.set('limit', String(params.limit || 500));
   return api('/api/suppliers?' + q.toString()).then((d) => d.items || []);
 }

@@ -12,19 +12,26 @@ import { StatCard, StatRow } from '@/components/shared/StatCard';
 import { relativeTime, formatDate } from '@/lib/utils';
 import AsgardSelect from '@/components/ui/AsgardSelect';
 
+// 23.06.2026 BUG-FIX (Staff D-03): мобильное и десктоп должны показывать ОДНО и то же —
+// заявки от РП на рабочих в бригаду (таблица staff_requests, status_v2).
+// До фикса мобильное читало `/api/data/hr_requests` (отпуска/больничные — теперь не актуальны),
+// а десктоп `/api/staff-requests` (новые status_v2). Юзер: «мои отпуска не актуально».
+// Теперь оба фронта подключены к одному endpoint — паритет 1:1.
 const STATUS_MAP = {
-  draft: { label: 'Черновик', color: 'var(--text-tertiary)' },
-  pending: { label: 'На рассмотрении', color: 'var(--blue)' },
-  approved: { label: 'Одобрена', color: 'var(--green)' },
-  rejected: { label: 'Отклонена', color: 'var(--red-soft)' },
-  in_progress: { label: 'В работе', color: 'var(--blue)' },
-  completed: { label: 'Завершена', color: 'var(--green)' },
-  cancelled: { label: 'Отменена', color: 'var(--text-tertiary)' },
+  draft:       { label: 'Черновик',     color: 'var(--text-tertiary)' },
+  new:         { label: 'Новая',        color: 'var(--blue)' },
+  in_progress: { label: 'В работе',     color: 'var(--blue)' },
+  added:       { label: 'Бригада собрана', color: 'var(--green)' },
+  cancelled:   { label: 'Отменена',     color: 'var(--text-tertiary)' },
+  closed:      { label: 'Закрыта',      color: 'var(--green)' },
 };
-const TYPE_MAP = { hire: 'Найм', dismiss: 'Увольнение', transfer: 'Перевод', vacation: 'Отпуск', sick: 'Больничный', document: 'Документ', other: 'Прочее' };
+const TYPE_MAP = { hire: 'Найм', dismiss: 'Увольнение', transfer: 'Перевод', document: 'Документ', other: 'Прочее' };
 const FILTERS = [
-  { id: 'all', label: 'Все' }, { id: 'pending', label: 'На рассмотрении' },
-  { id: 'approved', label: 'Одобрена' }, { id: 'in_progress', label: 'В работе' }, { id: 'rejected', label: 'Отклонена' },
+  { id: 'all',         label: 'Все' },
+  { id: 'new',         label: 'Новые' },
+  { id: 'in_progress', label: 'В работе' },
+  { id: 'added',       label: 'Собрано' },
+  { id: 'closed',      label: 'Закрыто' },
 ];
 const APPROVE_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM'];
 
@@ -40,25 +47,36 @@ export default function HrRequests() {
 
   const fetchRequests = useCallback(async () => {
     setLoading(true);
-    try { const res = await api.get('/data/hr_requests'); setRequests(api.extractRows(res) || []); }
+    try {
+      // 23.06.2026 BUG-FIX (Staff D-03): переключено на /api/staff-requests
+      // (заявки PM ↔ HR на рабочих в бригаду). status_v2 вместо устаревшего status.
+      const res = await api.get('/staff-requests');
+      setRequests(api.extractRows(res) || []);
+    }
     catch { setRequests([]); } finally { setLoading(false); }
   }, []);
   useEffect(() => { fetchRequests(); }, [fetchRequests]);
 
+  // status_v2 значения: draft / new / in_progress / added / cancelled / closed.
   const stats = useMemo(() => ({
     total: requests.length,
-    pending: requests.filter((r) => r.status === 'pending').length,
-    approved: requests.filter((r) => r.status === 'approved' || r.status === 'completed').length,
+    pending: requests.filter((r) => (r.status_v2 || r.status) === 'new' || (r.status_v2 || r.status) === 'in_progress').length,
+    approved: requests.filter((r) => (r.status_v2 || r.status) === 'added' || (r.status_v2 || r.status) === 'closed').length,
   }), [requests]);
 
   const filtered = useMemo(() => {
     if (filter === 'all') return requests;
-    return requests.filter((r) => r.status === filter);
+    return requests.filter((r) => (r.status_v2 || r.status) === filter);
   }, [requests, filter]);
 
   const handleAction = async (id, status) => {
     haptic.light();
-    try { await api.put(`/data/hr_requests/${id}`, { status }); setRequests((p) => p.map((r) => r.id === id ? { ...r, status } : r)); setDetail(null); haptic.success(); } catch {}
+    try {
+      await api.put(`/staff-requests/${id}`, { status_v2: status });
+      setRequests((p) => p.map((r) => r.id === id ? { ...r, status_v2: status } : r));
+      setDetail(null);
+      haptic.success();
+    } catch {}
   };
 
   return (

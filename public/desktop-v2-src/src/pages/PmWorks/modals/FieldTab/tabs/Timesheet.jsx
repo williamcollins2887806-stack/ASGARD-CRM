@@ -72,11 +72,49 @@ export default function TimesheetTab({ work }) {
   const [popState, setPopState] = useState(null);
   // { anchorEl, employee, date, day | null, isNew }
 
+  // Локальный флаг: текущий показ это «strawman из crew» (без чекинов)?
+  // Нужен, чтобы EmptyState показывался ТОЛЬКО когда и timesheet пустой, и crew пустая.
+  const [crewEmpty, setCrewEmpty] = useState(false);
+
   const reload = async () => {
     setLoading(true);
+    setCrewEmpty(false);
     try {
       const d = await loadTimesheet(work.id, { from, to });
-      setData(d || { timesheet: [], per_diem_rate: 0 });
+      const safe = d || { timesheet: [], per_diem_rate: 0 };
+      const tsArr = Array.isArray(safe.timesheet) ? safe.timesheet : [];
+
+      // Vanilla parity: field-tab.js:1254-1277 — если timesheet пустой (никто
+      // ещё не отмечался), всегда подтягиваем бригаду из /dashboard.crew и
+      // показываем пустые ячейки. РП тыкает «+» → создаётся первый чекин.
+      if (tsArr.length === 0) {
+        try {
+          const dash = await loadDashboard(work.id);
+          const crew = Array.isArray(dash?.crew) ? dash.crew : [];
+          if (crew.length) {
+            safe.timesheet = crew.map((c) => ({
+              employee_id: c.employee_id,
+              fio: c.fio || c.employee_name || ('ID ' + c.employee_id),
+              days: [],
+              days_count: 0,
+              total_hours: 0,
+              total_paid_hours: 0,
+              total_earned: 0,
+              per_diem_total: 0,
+              grand_total: 0
+            }));
+          } else {
+            // Никого не назначили на работу — покажем EmptyState с подсказкой
+            // про вкладку «Бригада» (см. рендер ниже).
+            setCrewEmpty(true);
+          }
+        } catch (_) {
+          // /dashboard недоступен — оставляем пустоту, EmptyState старого вида.
+          setCrewEmpty(true);
+        }
+      }
+
+      setData(safe);
     } finally {
       setLoading(false);
     }
@@ -109,6 +147,19 @@ export default function TimesheetTab({ work }) {
     rows.forEach((emp) => {
       const inner = {};
       (emp.days || []).forEach((d) => { inner[String(d.date).slice(0, 10)] = d; });
+      m.set(emp.employee_id, inner);
+    });
+    return m;
+  }, [rows]);
+
+  // 25.06.2026: чужие чекины — рендерим как «занят» с tooltip «РП X, работа Y».
+  // Раньше клетка была пустой, и РП мог случайно поставить свой чекин поверх
+  // (см. инцидент Климакин 23.06 → Пономарёв work=353).
+  const foreignMap = useMemo(() => {
+    const m = new Map();
+    rows.forEach((emp) => {
+      const inner = {};
+      (emp.foreign_days || []).forEach((d) => { inner[String(d.date).slice(0, 10)] = d; });
       m.set(emp.employee_id, inner);
     });
     return m;
@@ -252,8 +303,12 @@ export default function TimesheetTab({ work }) {
       {!loading && rows.length === 0 && (
         <EmptyState
           icon="📋"
-          title="Записей нет"
-          hint={editMode ? 'Бригада не назначена. Добавь людей во вкладке «Бригада».' : 'За выбранный период чекинов не было. Включи «Редактировать» чтобы добавить смены вручную.'}
+          title={crewEmpty ? 'Бригада не назначена' : 'Записей нет'}
+          hint={crewEmpty
+            ? 'Никого не назначено в бригаду — перейди на вкладку «Бригада» и добавь сотрудников.'
+            : (editMode
+                ? 'Бригада не назначена. Добавь людей во вкладке «Бригада».'
+                : 'За выбранный период чекинов не было. Включи «Редактировать» чтобы добавить смены вручную.')}
         />
       )}
 
@@ -283,16 +338,19 @@ export default function TimesheetTab({ work }) {
             <tbody>
               {enrichedRows.map((emp) => {
                 const inner = dayMap.get(emp.employee_id) || {};
+                const innerForeign = foreignMap.get(emp.employee_id) || {};
                 return (
                   <tr key={emp.employee_id} className="row-hover">
                     <td className="ft-ts-fio">{emp.fio || `#${emp.employee_id}`}</td>
                     {dates.map((d) => {
                       const day = inner[d];
+                      const foreign = !day ? innerForeign[d] : null;
                       const isWeekend = (() => { const dw = dayOfWeek(d); return dw === 0 || dw === 6; })();
                       return (
                         <ShiftCell
                           key={d}
                           day={day}
+                          foreign={foreign}
                           date={d}
                           isWeekend={isWeekend}
                           pointValue={pointValue}
@@ -300,7 +358,15 @@ export default function TimesheetTab({ work }) {
                           activeAnchor={popState?.anchorEl}
                           activeKey={popState ? popState.employee.employee_id + '|' + popState.date : null}
                           cellKey={emp.employee_id + '|' + d}
-                          onClick={(e) => editMode && openCell(e, emp, d, day)}
+                          onClick={(e) => {
+                            if (foreign) {
+                              toast('Занят на другой работе',
+                                'Работает у РП ' + (foreign.pm_fio || '—') + ' (работа: ' + (foreign.work_title || '—') + '). Свяжитесь с РП, чтобы перенести.',
+                                'warn');
+                              return;
+                            }
+                            if (editMode) openCell(e, emp, d, day);
+                          }}
                         />
                       );
                     })}
@@ -347,7 +413,7 @@ export default function TimesheetTab({ work }) {
             hours_paid: popState.day.hours_paid,
             day_rate: popState.day.day_rate,
             amount_earned: popState.day.amount,
-            points: Math.round(parseFloat(popState.day.day_rate || 0) / pointValue) || 0
+            points: Math.round(parseFloat(popState.day.amount ?? popState.day.amount_earned ?? popState.day.day_rate ?? 0) / pointValue) || 0
           } : null}
           pointValue={pointValue}
           isNew={popState.isNew}
@@ -368,7 +434,7 @@ export default function TimesheetTab({ work }) {
 }
 
 /* ─── Ячейка одного дня ─── */
-function ShiftCell({ day, date, isWeekend, pointValue, editMode, activeAnchor, cellKey, activeKey, onClick }) {
+function ShiftCell({ day, foreign, date, isWeekend, pointValue, editMode, activeAnchor, cellKey, activeKey, onClick }) {
   const ref = useRef(null);
   const isActive = activeKey && activeKey === cellKey;
   // Сохраняем ref активной ячейки в родительский активный якорь (нужен для popover)
@@ -378,24 +444,36 @@ function ShiftCell({ day, date, isWeekend, pointValue, editMode, activeAnchor, c
     }
   });
 
-  let content, color, bg;
+  let content, color, bg, titleTxt;
   if (day) {
-    const pts = Math.round(parseFloat(day.day_rate || 0) / pointValue) || 0;
+    // Баллы из amount_earned (рубли), НЕ из day_rate — он местами загрязнён
+    // баллами (13/17) вместо рублей (6500/8500), что давало ☀0. См. итог-колонку.
+    const pts = Math.round(parseFloat(day.amount ?? day.amount_earned ?? day.day_rate ?? 0) / pointValue) || 0;
     const meta = getShiftMeta(day.shift);
     content = <><span style={{ marginRight: 1 }}>{meta.icon}</span>{pts}</>;
     color = pointsColor(pts);
     bg = meta.bg;
+    titleTxt = `${getShiftMeta(day.shift).label} · ${pts} бал. · ${fmtMoney(parseFloat(day.amount || day.amount_earned || 0))}`;
+  } else if (foreign) {
+    // 25.06.2026: чужой чекин — показываем замок и tooltip, клик блокируем
+    content = '🔒';
+    color = 'var(--t-3)';
+    bg = 'rgba(245,158,11,0.10)';
+    titleTxt = 'Занят на работе «' + (foreign.work_title || '—') + '» (РП ' + (foreign.pm_fio || '—') + '). Поставить чекин нельзя.';
   } else if (editMode) {
     content = '+';
     color = 'var(--t-3)';
+    titleTxt = 'Добавить смену';
   } else {
     content = '—';
     color = 'var(--t-3)';
+    titleTxt = '';
   }
 
   const className = [
     'ft-ts-cell',
     day ? 'ft-ts-cell--filled' : '',
+    foreign ? 'ft-ts-cell--foreign' : '',
     editMode ? 'ft-ts-cell--edit' : '',
     isWeekend ? 'ft-ts-cell--we' : '',
     isActive ? 'ft-ts-cell--active' : ''
@@ -406,10 +484,12 @@ function ShiftCell({ day, date, isWeekend, pointValue, editMode, activeAnchor, c
       ref={ref}
       className={className}
       onClick={onClick}
-      style={{ color, background: bg, cursor: editMode ? 'pointer' : 'default' }}
-      title={day
-        ? `${getShiftMeta(day.shift).label} · ${Math.round(parseFloat(day.day_rate || 0) / pointValue) || 0} бал. · ${fmtMoney(parseFloat(day.amount || day.amount_earned || 0))}`
-        : (editMode ? 'Добавить смену' : '')}
+      style={{
+        color, background: bg,
+        cursor: foreign ? 'not-allowed' : (editMode ? 'pointer' : 'default'),
+        opacity: foreign ? 0.65 : 1
+      }}
+      title={titleTxt}
     >
       {content}
     </td>

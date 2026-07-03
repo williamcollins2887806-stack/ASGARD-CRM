@@ -117,222 +117,12 @@ window.AsgardPayrollPage = (function(){
     let filterWorkId = '';
     let sheets = [];
     let works = [];
-    let gridData = null;
-    let gridMonth = new Date().getMonth(); // 0-indexed for selectors but 1-indexed for API
-    let gridYear = new Date().getFullYear();
-    let gridEditMode = false;
-    let gridPendingEdits = {};
 
     const MONTHS_RU_INLINE = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
-    // Цвета из категорий тарифной сетки (dynamic)
-    // Цветовая схема по типу дня:
-    const CATEGORY_COLORS = {
-      'medical':   { bg: '#E8D5F5', fg: '#3D1560', label: 'Медосмотр / обучение' },
-      'road':      { bg: '#B3D9FF', fg: '#002255', label: 'Дорога / ожидание' },
-      'warehouse': { bg: '#FFE0B2', fg: '#5D3100', label: 'Склад' },
-      'work':      { bg: '#00D26A', fg: '#003300', label: 'Работа (смена)' },
-      'work_hard': { bg: '#00A854', fg: '#002200', label: 'Работа (сложная)' },
-      'senior':    { bg: '#2196F3', fg: '#FFFFFF', label: 'Мастер / ИТР' },
-      'overtime':  { bg: '#FFD700', fg: '#1a1200', label: 'Переработка / высокая' },
-      'combo':     { bg: '#CE93D8', fg: '#2A003D', label: 'Совмещение (+1)' }
-    };
+    // NB: inline-grid таб («Ведомость») удалён в Timesheet v2 (см. /my-timesheet).
 
-    // Маппинг баллов → тип (строится из тарифной сетки)
-    let pointsCategoryMap = {}; // будет заполнен из gridData.tariff_categories
+    // renderInlineGrid() — удалена в Timesheet v2 (см. timesheet-v2.js).
 
-    function buildPointsMap(tariffCats) {
-      pointsCategoryMap = {};
-      if (!tariffCats || !tariffCats.length) return;
-      for (const tc of tariffCats) {
-        const pts = tc.points;
-        const cat = tc.category;
-        const labels = (tc.labels || []).join(', ').toLowerCase();
-        let type = 'work';
-        if (pts === 1) type = 'combo';
-        else if (labels.includes('медосмотр') || labels.includes('обучение')) type = 'medical';
-        else if (labels.includes('дорог') || labels.includes('ожидание') || labels.includes('выходной') || labels.includes('карантин')) type = 'road';
-        else if (cat === 'warehouse') type = 'warehouse';
-        else if (cat === 'ground_hard') type = 'work_hard';
-        else if (labels.includes('мастер') || labels.includes('итр') || pts >= 19) type = 'senior';
-        else if (labels.includes('переработк') || labels.includes('высокая') || pts >= 18) type = 'overtime';
-        else if (cat === 'special' && pts >= 6 && pts <= 7) type = labels.includes('медосмотр') ? 'medical' : 'road';
-        pointsCategoryMap[pts] = type;
-      }
-    }
-
-    function ptsBg(pts) {
-      const type = pointsCategoryMap[pts] || guessType(pts);
-      return (CATEGORY_COLORS[type] || {}).bg || '';
-    }
-    function ptsFg(pts) {
-      const type = pointsCategoryMap[pts] || guessType(pts);
-      return (CATEGORY_COLORS[type] || {}).fg || 'var(--t2)';
-    }
-    // Fallback если тарифная сетка не загрузилась
-    function guessType(pts) {
-      if (pts <= 0) return '';
-      if (pts === 1) return 'combo';
-      if (pts <= 7) return 'road';
-      if (pts <= 10) return 'warehouse';
-      if (pts <= 14) return 'work';
-      if (pts <= 17) return 'work_hard';
-      return 'overtime';
-    }
-
-    async function loadGridData() {
-      try {
-        const authG = await AsgardAuth.getAuth();
-        const r = await fetch('/api/worker-payments/reports/payroll-grid/' + gridYear + '/' + (gridMonth + 1), {headers:{'Authorization':'Bearer '+authG.token}});
-        if (!r.ok) throw new Error((await r.json().catch(()=>({}))).error || 'Ошибка');
-        gridData = await r.json();
-        buildPointsMap(gridData.tariff_categories || []);
-      } catch (e) {
-        toast('Ошибка', e.message, 'error');
-        gridData = null;
-      }
-    }
-
-    function renderInlineGrid() {
-      const selMonth = gridMonth + 1;
-      // Month/year selectors
-      const monthOpts = MONTHS_RU_INLINE.map((m, i) => `<option value="${i}" ${i === gridMonth ? 'selected' : ''}>${m}</option>`).join('');
-      const curY = new Date().getFullYear();
-      const yearOpts = [curY-2, curY-1, curY, curY+1].map(y => `<option value="${y}" ${y === gridYear ? 'selected' : ''}>${y}</option>`).join('');
-
-      let selectorBar = `<div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
-        <select id="gridMonthSel" class="payroll-filters select" style="padding:6px 12px;background:var(--bg3);border:1px solid var(--border-input);border-radius:6px;color:var(--text);font-size:13px">${monthOpts}</select>
-        <select id="gridYearSel" class="payroll-filters select" style="padding:6px 12px;background:var(--bg3);border:1px solid var(--border-input);border-radius:6px;color:var(--text);font-size:13px">${yearOpts}</select>
-        <button class="btn primary" id="btnLoadGrid">Сформировать</button>
-        <button class="btn ghost" id="btnGridEdit" style="display:${gridData ? '' : 'none'}">✏ Редактировать</button>
-        <button class="btn ghost" id="btnGridSave" style="display:none">💾 Сохранить</button>
-        <button class="btn ghost" id="btnGridExcel" style="display:${gridData ? '' : 'none'}">📥 Excel</button>
-      </div>`;
-
-      if (!gridData || !gridData.employees || gridData.employees.length === 0) {
-        return selectorBar + '<div style="text-align:center;padding:40px;color:var(--muted)">Выберите месяц и нажмите «Сформировать»</div>';
-      }
-
-      const employees = gridData.employees;
-      const daysInMonth = gridData.month_days || new Date(gridYear, selMonth, 0).getDate();
-      const pointValue = gridData.point_value || 500;
-
-      // KPI
-      const totalWorkers = employees.length;
-      const totalShifts = employees.reduce((s, e) => s + Number(e.days_count || 0), 0);
-      const totalFOT = employees.reduce((s, e) => s + Number(e.total_amount || 0), 0);
-      const totalPerDiem = employees.reduce((s, e) => s + Number(e.per_diem_total || 0), 0);
-
-      let kpi = `<div class="payroll-kpi">
-        <div class="k"><div class="t">Рабочих</div><div class="v">${totalWorkers}</div></div>
-        <div class="k"><div class="t">Смен</div><div class="v">${totalShifts}</div></div>
-        <div class="k"><div class="t">ФОТ</div><div class="v">${moneyShort(totalFOT)} \u20BD</div></div>
-        <div class="k"><div class="t">Суточные</div><div class="v">${moneyShort(totalPerDiem)} \u20BD</div></div>
-      </div>`;
-
-      // === GRID TABLE (Excel-стиль) ===
-      const hBg = 'background:var(--bg4);color:var(--t1)';
-      const hS = 'padding:6px 4px;font-weight:700;font-size:11px;text-align:center;white-space:nowrap;border:1px solid var(--brd);' + hBg;
-
-      let dayHeaders = '';
-      for (let d = 1; d <= daysInMonth; d++) {
-        dayHeaders += '<th style="' + hS + ';min-width:32px">' + d + '</th>';
-      }
-
-      let thead = '<thead><tr>' +
-        '<th style="' + hS + ';text-align:left;min-width:180px;position:sticky;left:0;z-index:3;background:var(--bg4)">ФИО</th>' +
-        dayHeaders +
-        '<th style="' + hS + '">Дней</th>' +
-        '<th style="' + hS + '">Баллов</th>' +
-        '<th style="' + hS + '">Заработок</th>' +
-        '<th style="' + hS + '">Суточные</th>' +
-        '<th style="' + hS + ';background:var(--bg4);color:var(--ok-t)">ИТОГО</th>' +
-        '</tr></thead>';
-
-      let tbody = '<tbody>';
-      let colTotals = new Array(daysInMonth).fill(0);
-      let grandPts = 0, grandAmt = 0, grandPd = 0;
-      const cellBorder = 'border:1px solid var(--brd)';
-
-      employees.forEach((emp, idx) => {
-        const days = emp.days || {};
-        const rowBg = idx % 2 === 0 ? 'background:var(--bg2)' : 'background:var(--bg3)';
-        let cells = '';
-        for (let d = 1; d <= daysInMonth; d++) {
-          const pts = Number(days[d] || 0);
-          if (pts) colTotals[d-1] += pts;
-          const editKey = emp.employee_id + '_' + d;
-          if (gridEditMode) {
-            const val = gridPendingEdits[editKey] !== undefined ? gridPendingEdits[editKey] : (pts || '');
-            cells += '<td style="padding:2px;text-align:center;' + cellBorder + ';' + rowBg + '">' +
-              '<input type="number" class="pgrid-inp" data-emp="' + emp.employee_id + '" data-day="' + d + '"' +
-              ' value="' + val + '" min="0" max="24"' +
-              ' style="width:32px;padding:3px 0;text-align:center;background:transparent;border:1px dashed rgba(242,208,138,.4);border-radius:4px;color:var(--t1);font-size:12px;font-weight:700"/></td>';
-          } else {
-            const bg = pts ? ptsBg(pts) : '';
-            const fg = pts ? ptsFg(pts) : '';
-            const cellStyle = bg
-              ? 'padding:4px 2px;text-align:center;' + cellBorder + ';background:' + bg + ';color:' + fg + ';font-weight:800;font-size:13px;border-radius:0'
-              : 'padding:4px 2px;text-align:center;' + cellBorder + ';' + rowBg + ';color:var(--t3);font-size:11px';
-            cells += '<td style="' + cellStyle + '">' + (pts || '·') + '</td>';
-          }
-        }
-        const tPts = Number(emp.total_points || 0);
-        const tAmt = Number(emp.total_amount || 0);
-        const tPd = Number(emp.per_diem_total || 0);
-        grandPts += tPts; grandAmt += tAmt; grandPd += tPd;
-
-        const sumS = 'padding:6px 4px;text-align:center;font-size:12px;font-weight:600;' + cellBorder + ';' + rowBg;
-
-        tbody += '<tr>' +
-          '<td style="padding:6px 8px;font-weight:600;white-space:nowrap;font-size:13px;position:sticky;left:0;z-index:1;' + cellBorder + ';' + rowBg + '">' + esc(emp.fio || '—') + '</td>' +
-          cells +
-          '<td style="' + sumS + '">' + (emp.days_count || 0) + '</td>' +
-          '<td style="' + sumS + ';font-weight:800;color:#60a5fa">' + tPts + '</td>' +
-          '<td style="' + sumS + ';text-align:right;color:#10b981">' + money(Math.round(tAmt)) + ' \u20BD</td>' +
-          '<td style="' + sumS + ';text-align:right;color:#818cf8">' + money(Math.round(tPd)) + ' \u20BD</td>' +
-          '<td style="' + sumS + ';text-align:right;font-weight:800;color:#D4A843;background:rgba(212,168,67,.1)">' + money(Math.round(tAmt + tPd)) + ' \u20BD</td>' +
-          '</tr>';
-      });
-      tbody += '</tbody>';
-
-      // Footer ИТОГО (жёлтый фон как в Excel)
-      const ftBg = 'background:rgba(255,243,205,.12);color:#D4A843;font-weight:800;' + cellBorder;
-      let footCells = '';
-      for (let d = 0; d < daysInMonth; d++) {
-        footCells += '<td style="padding:5px 2px;text-align:center;font-size:11px;' + ftBg + '">' + (colTotals[d] || '') + '</td>';
-      }
-      let tfoot = '<tfoot><tr>' +
-        '<td style="padding:6px 8px;font-size:13px;position:sticky;left:0;z-index:1;' + ftBg + '">ИТОГО</td>' +
-        footCells +
-        '<td style="padding:5px 4px;text-align:center;font-size:12px;' + ftBg + '">' + totalShifts + '</td>' +
-        '<td style="padding:5px 4px;text-align:center;font-size:12px;' + ftBg + '">' + grandPts + '</td>' +
-        '<td style="padding:5px 4px;text-align:right;font-size:12px;' + ftBg + '">' + money(Math.round(grandAmt)) + ' \u20BD</td>' +
-        '<td style="padding:5px 4px;text-align:right;font-size:12px;' + ftBg + '">' + money(Math.round(grandPd)) + ' \u20BD</td>' +
-        '<td style="padding:5px 4px;text-align:right;font-size:13px;' + ftBg + ';color:#F5C542">' + money(Math.round(grandAmt + grandPd)) + ' \u20BD</td>' +
-        '</tr></tfoot>';
-
-      // Легенда цветов — динамическая из тарифной сетки
-      const usedTypes = new Set();
-      employees.forEach(emp => {
-        const days = emp.days || {};
-        for (const d in days) { if (days[d]) usedTypes.add(pointsCategoryMap[days[d]] || guessType(days[d])); }
-      });
-      let legendItems = '';
-      for (const [type, cfg] of Object.entries(CATEGORY_COLORS)) {
-        if (!usedTypes.has(type) && usedTypes.size > 0) continue; // показываем только используемые
-        const ptsRange = Object.entries(pointsCategoryMap).filter(([_, t]) => t === type).map(([p]) => p);
-        const ptsLabel = ptsRange.length ? ' (' + ptsRange.join('/') + ' бал.)' : '';
-        legendItems += '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;background:var(--bg3)">' +
-          '<span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:' + cfg.bg + '"></span> ' +
-          cfg.label + ptsLabel + '</span>';
-      }
-      let legend = '<div style="display:flex;gap:8px;margin-top:12px;font-size:11px;color:var(--t2);flex-wrap:wrap;padding:8px;border-radius:6px;background:var(--bg3)">' +
-        '<span style="font-weight:600;color:var(--t1)">Обозначения:</span>' + legendItems + '</div>';
-
-      let table = '<div style="overflow-x:auto;border-radius:8px;border:1px solid var(--brd-m)">' +
-        '<table style="width:100%;border-collapse:collapse">' + thead + tbody + tfoot + '</table></div>' + legend;
-      return selectorBar + kpi + table;
-    }
 
     async function load(){
       try{
@@ -351,7 +141,7 @@ window.AsgardPayrollPage = (function(){
 
     function renderContent(){
       const tabs = [
-        {key:'grid', label:'\uD83D\uDCCB Ведомость'},
+      // NB: inline-grid 'Ведомость' removed; now /my-timesheet.
         {key:'all', label:'Все', count: sheets.length},
         {key:'draft', label:'Черновик'},
         {key:'pending', label:'На согл.'},
@@ -376,27 +166,26 @@ window.AsgardPayrollPage = (function(){
       return `${CSS}
         <div class="payroll-header">
           <h2 style="margin:0;font-size:22px">\uD83D\uDCB0 ${esc(title||'')}</h2>
-          ${currentTab !== 'grid' && canCreate?`<button class="btn primary" id="btnNewSheet">+ Новая ведомость</button>`:''}
+          ${canCreate?`<button class="btn primary" id="btnNewSheet">+ Новая ведомость</button>`:''}
         </div>
 
-        ${currentTab !== 'grid' ? `<div class="payroll-kpi">
+        <div class="payroll-kpi">
           <div class="k"><div class="t">Всего ведомостей</div><div class="v">${sheets.length}</div></div>
           <div class="k"><div class="t">Ожидают согл.</div><div class="v" style="color:var(--amber)">${pendingCount}</div></div>
           <div class="k"><div class="t">К выплате</div><div class="v">${moneyShort(totalPayout)} \u20BD</div></div>
           <div class="k"><div class="t">Выплачено</div><div class="v" style="color:var(--ok-t)">${moneyShort(paidTotal)} \u20BD</div></div>
-        </div>` : ''}
+        </div>
 
         <div class="payroll-tabs" id="payrollTabs">
           ${tabs.map(t=>`<button class="payroll-tab${currentTab===t.key?' active':''}" data-tab="${t.key}">${esc(t.label)}${t.count!==undefined?`<span class="count">${t.count}</span>`:''}</button>`).join('')}
         </div>
 
-        ${currentTab === 'grid' ? '' : `<div class="payroll-filters">
+        <div class="payroll-filters">
           <div id="crselect-filterWork" style="min-width:200px"></div>
-        </div>`}
+        </div>
 
         <div id="sheetsList">
-          ${currentTab === 'grid' ? renderInlineGrid() :
-           (sheets.length===0 ? '<div style="text-align:center;color:var(--muted);padding:40px">Нет ведомостей</div>' :
+          ${(sheets.length===0 ? '<div style="text-align:center;color:var(--muted);padding:40px">Нет ведомостей</div>' :
             sheets.map(s=>{
               const workLabel = s.work_title ? esc((s.customer_name||'')+ ' — '+(s.work_title||'')) : 'Общая';
               return `<div class="payroll-card" data-id="${s.id}">
@@ -427,7 +216,7 @@ window.AsgardPayrollPage = (function(){
     bindHandlers();
 
     async function refreshPage() {
-      if (currentTab !== 'grid') await load();
+      await load();
       await layout(renderContent(), {title});
       bindHandlers();
     }
@@ -437,76 +226,7 @@ window.AsgardPayrollPage = (function(){
         const tab = e.target.closest('.payroll-tab');
         if(!tab) return;
         currentTab = tab.dataset.tab;
-        gridEditMode = false;
-        gridPendingEdits = {};
-        if (currentTab === 'grid' && !gridData) {
-          // Первое открытие grid таба — загрузить данные за предыдущий месяц
-          const prevDate = new Date();
-          prevDate.setMonth(prevDate.getMonth() - 1);
-          gridMonth = prevDate.getMonth();
-          gridYear = prevDate.getFullYear();
-          await loadGridData();
-        }
         await refreshPage();
-      });
-
-      // Grid handlers
-      document.getElementById('btnLoadGrid')?.addEventListener('click', async ()=>{
-        const ms = document.getElementById('gridMonthSel');
-        const ys = document.getElementById('gridYearSel');
-        if (ms) gridMonth = parseInt(ms.value);
-        if (ys) gridYear = parseInt(ys.value);
-        await loadGridData();
-        await refreshPage();
-      });
-      document.getElementById('btnGridEdit')?.addEventListener('click', async ()=>{
-        gridEditMode = !gridEditMode;
-        gridPendingEdits = {};
-        await refreshPage();
-      });
-      document.getElementById('btnGridSave')?.addEventListener('click', async ()=>{
-        const changes = Object.entries(gridPendingEdits).map(([k, v]) => {
-          const [empId, day] = k.split('_');
-          return { employee_id: Number(empId), day: Number(day), points: num(v) };
-        });
-        if (!changes.length) { toast('Нет изменений', '', 'info'); return; }
-        try {
-          const authG = await AsgardAuth.getAuth();
-          const r = await fetch('/api/worker-payments/reports/payroll-grid/' + gridYear + '/' + (gridMonth+1) + '/save', {
-            method: 'PUT', headers: {'Authorization': 'Bearer '+authG.token, 'Content-Type': 'application/json'},
-            body: JSON.stringify({ changes })
-          });
-          if (!r.ok) throw new Error((await r.json().catch(()=>({}))).error || 'Ошибка');
-          toast('Сохранено', 'Ведомость обновлена', 'ok');
-          gridEditMode = false; gridPendingEdits = {};
-          await loadGridData();
-          await refreshPage();
-        } catch(e) { toast('Ошибка', e.message, 'error'); }
-      });
-      document.getElementById('btnGridExcel')?.addEventListener('click', async ()=>{
-        try {
-          const authE = await AsgardAuth.getAuth();
-          const r = await fetch('/api/worker-payments/reports/payroll-grid/' + gridYear + '/' + (gridMonth+1) + '/export', {
-            headers: {'Authorization': 'Bearer ' + authE.token}
-          });
-          if (!r.ok) throw new Error('Ошибка скачивания');
-          const blob = await r.blob();
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = 'Ведомость_' + MONTHS_RU_INLINE[gridMonth] + '_' + gridYear + '.xlsx';
-          a.click();
-          URL.revokeObjectURL(url);
-          toast('Готово', 'Файл скачан', 'ok');
-        } catch(e) { toast('Ошибка', e.message, 'error'); }
-      });
-      // Input change tracking
-      document.querySelectorAll('.pgrid-inp').forEach(inp => {
-        inp.addEventListener('input', () => {
-          gridPendingEdits[inp.dataset.emp + '_' + inp.dataset.day] = inp.value;
-          const saveBtn = document.getElementById('btnGridSave');
-          if (saveBtn) saveBtn.style.display = '';
-        });
       });
 
       // CRSelect — filter work

@@ -218,7 +218,10 @@ export function WorkDetailModal({ work }) {
         ? Number(w.contract_value) - Number(w.cost_fact)
         : null;
     const margin = fin?.profit?.margin;
-    const start = w.start_in_work_date || w.start_date || w.tender_work_start_plan;
+    // 23.06.2026 BUG-FIX (Works R3): добавлен start_plan в начало цепочки.
+    // Канон vanilla gantt.js:278: start_plan → start_in_work_date → start_date → start_fact → created_at.
+    // До фикса работа из тендера со start_plan → KPI duration = null.
+    const start = w.start_plan || w.start_in_work_date || w.start_date || w.start_fact || w.tender_work_start_plan;
     const end = w.end_fact || w.end_plan || w.tender_work_end_plan || start;
     const duration = (start && end) ? daysBetween(start, end) : null;
     const crew = (fin?.crew?.length) || Number(w.crew_size || 0) || 0;
@@ -286,6 +289,17 @@ export function WorkDetailModal({ work }) {
       // Бэк: GET /api/files?work_id=, POST /api/files/upload (src/routes/files.js).
       { icon: '📁', label: 'Комплект документов', desc: 'Запрос/ТКП/договор/прочее', onClick: () => open(<DocsPackModal work={w} />) },
       { icon: '📋', label: 'История',        desc: 'Аудит-лог изменений',     onClick: () => open(<WorkHistoryModal work={w} />) },
+
+      // ── Документы (S-13F Stage 4) — паритет с vanilla pm_works.js:1304-1314 ──
+      { section: 'Документы' },
+      {
+        icon: '📜', label: 'Официальная переписка',
+        desc: 'Реестр писем по работе',
+        onClick: () => {
+          window.location.hash = `#/correspondence?parent_entity_type=work&parent_entity_id=${w.id}`;
+          close();
+        }
+      },
 
       // ── Полевой ──
       { section: 'Полевой модуль' },
@@ -407,8 +421,11 @@ export function WorkDetailModal({ work }) {
             </Field>
             <div className="grid-2 gap-8">
               <Field label="Старт">
+                {/* 23.06.2026 BUG-FIX (Works R4): добавлен start_plan в начало fallback цепочки.
+                    Раньше DatePicker «Старт» был пустой для работ из тендера, где start_plan заполнен,
+                    а start_in_work_date / start_date ещё нет. */}
                 <DatePicker
-                  value={(w.start_in_work_date || w.start_date || '').slice(0, 10)}
+                  value={(w.start_plan || w.start_in_work_date || w.start_date || '').slice(0, 10)}
                   onChange={(v) => setW({ ...w, start_in_work_date: v, start_date: v })}
                 />
               </Field>
@@ -421,12 +438,23 @@ export function WorkDetailModal({ work }) {
             </Field>
 
             {/* ── 📍 Объект / населённый пункт (vanilla pm_works.js:1044) ── */}
+            {/* 23.06.2026 BUG-FIX (Sites D-M9 🟡): badge «⚠ переименован».
+                works.object_name — снапшот названия места НА МОМЕНТ создания работы.
+                sites.name — текущее. Если площадку переименовали (например
+                «Астраханский ГПЗ» → «АГПЗ-Газпром»), работа продолжает показывать
+                старое имя. До фикса разрыв был невидим и PM путал площадки.
+                w.site_name приходит из works.js (LEFT JOIN sites). */}
             <Field label="📍 Объект / населённый пункт" required help="Без места работа не появится на карте директора">
               <TextInput
                 value={w.object_name || w.city || ''}
                 onChange={(v) => setW({ ...w, object_name: v })}
                 placeholder="Напр.: Усинск / Астрахань, АГПЗ"
               />
+              {w.site_name && w.object_name && w.site_name !== w.object_name && (
+                <div className="muted" style={{ fontSize: 12, marginTop: 4, color: '#d97706' }}>
+                  ⚠ Площадка переименована: в БД сейчас «{w.site_name}»
+                </div>
+              )}
             </Field>
 
             <Field label="Комментарий">
@@ -556,7 +584,8 @@ export function WorkDetailModal({ work }) {
                 </Btn>
               </div>
               <MiniGanttBar
-                startDate={w.start_in_work_date || w.start_date || w.tender_work_start_plan}
+                // 23.06.2026 BUG-FIX (Works R2): MiniGantt теперь начинается со start_plan, если он есть.
+                startDate={w.start_plan || w.start_in_work_date || w.start_date || w.start_fact || w.tender_work_start_plan}
                 endPlan={w.end_plan || w.tender_work_end_plan}
                 endFact={w.end_fact}
                 label={w.work_status || ''}

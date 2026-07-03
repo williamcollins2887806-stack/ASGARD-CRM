@@ -365,22 +365,17 @@ window.AsgardCustomDashboard = (function(){
 
   // ── Helpers готовности/статуса работ для виджетов РП и директора ──────────
   const _esc = (window.AsgardUI && AsgardUI.esc) ? AsgardUI.esc : (s => String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])));
-  const PREP_SET = new Set(['Новая','Подготовка','Мобилизация']);
-  // Закрытые/завершённые + отменённые — ЗЕРКАЛО src/helpers/work-status.js (CLOSED+CANCELLED).
-  // На проде work_status — свободный текст: «Завершена», «Закрыта», «Сдан», «Отменена» и т.п.
-  // Старый список ['Работы сдали','Закрыт'] пропускал «Завершена» → закрытые+оплаченные работы
-  // ложно висели как «просроченные». Сравнение толерантное (trim+lower).
-  const _CLOSED_RAW = [
-    'Закрыт','Закрыта','Закрыто','Работы сдали',
-    'Завершена','Завершено','Завершен','Завершён',
-    'Сдан','Сдана','Сдано',
-    'Отменена','Отменено','Отменён','Отменен','Отмена'
-  ];
-  const CLOSED_SET = new Set(_CLOSED_RAW.map(s => s.trim().toLowerCase()));
-  // Толерантная проверка «работа закрыта/завершена/отменена» — едина для всех виджетов.
-  function _isClosedWork(ws){ return CLOSED_SET.has(String(ws||'').trim().toLowerCase()); }
+  // 23.06.2026 BUG-FIX (🟡 S1): PREP/CLOSED — из единого AsgardWorksShared.
+  // Старая локальная копия CLOSED-списка (16 значений) расходилась с big_screen.js
+  // и PmWorks/api.js. Теперь единый канон для всех vanilla-страниц.
+  const _WS = window.AsgardWorksShared || null;
+  const _isClosedWork = (ws) => _WS && _WS.isClosedWork
+    ? _WS.isClosedWork(ws)
+    : ['закрыт','закрыта','закрыто','работы сдали','завершена','завершено','завершен','завершён','сдан','сдана','сдано','отменена','отменено','отменён','отменен','отмена'].includes(String(ws||'').trim().toLowerCase());
   // Признак «в подготовке» — ТОЛЬКО статус (start_in_work_date на проде почти не заполняется).
-  function _isPrep(w){ return PREP_SET.has(w.work_status||''); }
+  const _isPrep = (w) => _WS && _WS.isPrepWork
+    ? _WS.isPrepWork(w)
+    : ['Новая','Подготовка','Мобилизация'].includes(w && w.work_status || '');
   function _readyColor(p){ return p>=80?'var(--ok-t)':(p>=50?'var(--amber,#e0a500)':'var(--err-t)'); }
 
   async function _authToken(){ try{ const a=await AsgardAuth.getAuth(); return a.token; }catch(e){ return localStorage.getItem('asgard_token')||localStorage.getItem('auth_token'); } }
@@ -643,11 +638,15 @@ window.AsgardCustomDashboard = (function(){
     const tenderIds = new Set(t.filter(tenderMatchesYear).map(x => x.id));
 
     const yWorks = w.filter(x => {
-      const d = x.start_fact || x.start_plan || x.start_in_work_date;
+      // 23.06.2026 BUG-FIX (🟡 S4): унифицирована fallback-цепочка с :1040 ниже.
+      // Раньше тут было `start_fact || start_plan || start_in_work_date`,
+      // а ниже `start_fact || start_plan || created_at` — два разных порядка
+      // в одном файле приводили к расхождению агрегатов «Сумма за год» в двух
+      // дашборд-виджетах. Канон: start_fact (когда РП реально вышел) → start_plan
+      // → start_in_work_date → created_at.
+      const d = x.start_fact || x.start_plan || x.start_in_work_date || x.created_at;
       if (d && new Date(d).getFullYear() === y) return true;
       if (x.tender_id && tenderIds.has(x.tender_id)) return true;
-      const fb = x.created_at;
-      if (fb && new Date(fb).getFullYear() === y) return true;
       return false;
     });
 
@@ -924,7 +923,7 @@ window.AsgardCustomDashboard = (function(){
       badge(groups.upcoming.length, '#3b82f6', '< 60 \u0434\u043d.') +
     '</div>';
 
-    html += '<div style="max-height:320px;overflow-y:auto">';
+    html += '<div>';
     html += '<table style="width:100%;border-collapse:collapse">';
 
     if (groups.expired.length) {
@@ -1042,7 +1041,10 @@ window.AsgardCustomDashboard = (function(){
     const y = new Date().getFullYear();
     const yTenders = tenders.filter(t => String(t.year) === String(y) || (t.period || '').startsWith(y));
     const yWorks = works.filter(w => {
-      const d = w.start_fact || w.start_plan || w.created_at;
+      // 23.06.2026 BUG-FIX (🟡 S4): синхронизирована fallback-цепочка с другим
+      // годовым агрегатом на :641 (раньше тут не было start_in_work_date — работы
+      // с заполненным только start_in_work_date выпадали из «Сдано работ»).
+      const d = w.start_fact || w.start_plan || w.start_in_work_date || w.created_at;
       return d && new Date(d).getFullYear() === y;
     });
     const won = yTenders.filter(t => t.tender_status === 'Выиграли').length;
@@ -1436,7 +1438,7 @@ window.AsgardCustomDashboard = (function(){
       el.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
         '<div style="display:flex;align-items:center"><span style="font-size:14px;font-weight:700">\u2709\ufe0f \u041f\u043e\u0447\u0442\u0430</span>' + unreadBadge + '</div>' +
         '<a href="' + pageUrl + '" style="font-size:11px;color:var(--blue,#3498db);text-decoration:none">\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u2192</a></div>' +
-        '<div style="max-height:280px;overflow-y:auto">' + listHtml + '</div>';
+        '<div>' + listHtml + '</div>';
     } catch(e) {
       el.innerHTML = '<div class="help">\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0438 \u043f\u043e\u0447\u0442\u044b</div>';
       console.warn('[Dashboard] Mail widget error:', e);

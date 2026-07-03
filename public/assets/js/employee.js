@@ -62,10 +62,14 @@ window.AsgardEmployeePage=(function(){
       toast("Доступ","Недостаточно прав","err"); location.hash="#/home"; return;
     }
 
-    const canEdit = (user.role==="ADMIN" || user.role==="HR" || user.role==="TO" || isDirRole(user.role));
+    // FIX (23.06.2026): HEAD_PM и OFFICE_MANAGER редактируют контактные/паспортные/основные поля.
+    // Финансовые остаются под BUH/директорами. Статус увольнения/официальное трудоустройство — HR.
+    const canEdit = (user.role==="ADMIN" || user.role==="HR" || user.role==="HR_MANAGER" || user.role==="TO" || user.role==="HEAD_PM" || user.role==="OFFICE_MANAGER" || isDirRole(user.role));
     // Финансовые поля (Оклад/несгораемая/can_exceed_limit/offset) — правит только бухгалтер/директор/админ.
-    // HR/TO/прочие видят значения текстом, без input.
+    // HR/TO/HEAD_PM/OFFICE_MANAGER — видят значения текстом, без input.
     const canEditFinance = ["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","BUH"].includes(user.role);
+    // HR-only поля (увольнение/официальное трудоустройство/СЗ) — HEAD_PM/OFFICE_MANAGER редактировать НЕ должны.
+    const canEditHrSensitive = (user.role==="ADMIN" || user.role==="HR" || user.role==="HR_MANAGER" || isDirRole(user.role));
 
     const query = parseQuery();
     const id = Number(query.id||0);
@@ -278,10 +282,10 @@ window.AsgardEmployeePage=(function(){
           <div class="formrow" style="margin-top:12px">
             <div style="grid-column:1/-1">
               <label title="При включении блок «Официально устроен» будет недоступен (взаимоисключение)">
-                <input id="is_self_employed" type="checkbox" ${emp.is_self_employed?"checked":""} ${canEdit?"":"disabled"} ${emp.is_officially_employed?"disabled":""}/>
+                <input id="is_self_employed" type="checkbox" ${emp.is_self_employed?"checked":""} ${canEditHrSensitive?"":"disabled"} ${emp.is_officially_employed?"disabled":""}/>
                 Является самозанятым (плательщик НПД)
               </label>
-              ${emp.is_officially_employed && canEdit ? '<div class="help" style="margin-top:4px">Снимите «Официально устроен», чтобы включить.</div>' : ''}
+              ${emp.is_officially_employed && canEditHrSensitive ? '<div class="help" style="margin-top:4px">Снимите «Официально устроен», чтобы включить.</div>' : ''}
             </div>
             <div>
               <label title="12 цифр. Используется для проверки лимита самозанятого (2.4M/год).">ИНН</label>
@@ -364,10 +368,10 @@ window.AsgardEmployeePage=(function(){
           <div class="formrow" style="margin-top:12px">
             <div style="grid-column:1/-1">
               <label title="При включении блок «Самозанятый» будет недоступен (взаимоисключение)">
-                <input id="is_officially_employed" type="checkbox" ${emp.is_officially_employed?"checked":""} ${canEdit?"":"disabled"} ${emp.is_self_employed?"disabled":""}/>
+                <input id="is_officially_employed" type="checkbox" ${emp.is_officially_employed?"checked":""} ${canEditHrSensitive?"":"disabled"} ${emp.is_self_employed?"disabled":""}/>
                 Является официально устроенным (по ТД)
               </label>
-              ${emp.is_self_employed && canEdit ? '<div class="help" style="margin-top:4px">Снимите «Самозанятый», чтобы включить.</div>' : ''}
+              ${emp.is_self_employed && canEditHrSensitive ? '<div class="help" style="margin-top:4px">Снимите «Самозанятый», чтобы включить.</div>' : ''}
             </div>
             ${canEditFinance ? `
               <div>
@@ -413,9 +417,9 @@ window.AsgardEmployeePage=(function(){
                 <div class="help" style="font-size:12px;padding:8px;border:1px dashed var(--brd);border-radius:6px;color:var(--t2)">
                   <div><b>Оклад:</b> ${emp.official_salary!=null?esc(Number(emp.official_salary).toLocaleString('ru-RU'))+' ₽':'—'}</div>
                   <div><b>Несгораемая часть:</b> ${emp.official_non_burnable!=null?esc(Number(emp.official_non_burnable).toLocaleString('ru-RU'))+' ₽':'—'}</div>
-                  <div><b>Дата приёма:</b> ${emp.official_hire_date?esc(normalizeDateInput(emp.official_hire_date)):'—'}</div>
+                  <div><b>Дата приёма:</b> ${emp.official_hire_date ? esc(new Date(emp.official_hire_date).toLocaleDateString('ru-RU')) : '—'}</div>
                   <div><b>Статус:</b> ${esc(({active:'Активен',unpaid_leave:'Отпуск без сохранения',maternity:'Декрет',sick_leave:'Больничный',fired:'Уволен'})[emp.official_status||'active'])}</div>
-                  ${emp.official_status==='unpaid_leave' && (emp.official_leave_from||emp.official_leave_to) ? `<div><b>Отпуск:</b> ${esc(normalizeDateInput(emp.official_leave_from)||'—')} — ${esc(normalizeDateInput(emp.official_leave_to)||'—')}</div>` : ''}
+                  ${emp.official_status==='unpaid_leave' && (emp.official_leave_from||emp.official_leave_to) ? `<div><b>Отпуск:</b> ${esc(emp.official_leave_from ? new Date(emp.official_leave_from).toLocaleDateString('ru-RU') : '—')} — ${esc(emp.official_leave_to ? new Date(emp.official_leave_to).toLocaleDateString('ru-RU') : '—')}</div>` : ''}
                   <div style="margin-top:4px;opacity:0.7">Изменить может только бухгалтер/директор/админ.</div>
                 </div>
               </div>

@@ -679,7 +679,17 @@ window.AsgardChatGroups = (function(){
       const previewText = c.last_message_text
         ? (c.last_message_sender_name && c.is_group ? c.last_message_sender_name.split(' ')[0] + ': ' : '') + c.last_message_text.substring(0, 40)
         : (isDirect ? 'Личное сообщение' : (c.member_count || 0) + ' уч.');
-      const typeBadge = isEstimate ? ' <span class="chat-item-type-badge">просчёт</span>' : (isDirect ? '' : ' <span class="chat-item-type-badge">дружина</span>');
+      // 23.06.2026 BUG-FIX (Mail Y4 🟡): group_kind badge (паритет с React v2 GroupEditModal).
+      // V229 добавила поле chats.group_kind ('public'/'private'/'work'/'broadcast'),
+      // редактируется через v2, но vanilla никак не показывал семантику группы →
+      // в списке чатов «дружина» выглядела одинаково для отдела/проекта/рассылки.
+      const groupKindLabel = (() => {
+        if (!c.is_group || !c.group_kind || c.group_kind === 'public') return '';
+        const map = { private: '🔒 закрытая', work: '🛠 рабочая', broadcast: '📢 рассылка' };
+        const text = map[c.group_kind] || c.group_kind;
+        return ` <span class="chat-item-type-badge" title="group_kind: ${esc(c.group_kind)}">${text}</span>`;
+      })();
+      const typeBadge = (isEstimate ? ' <span class="chat-item-type-badge">просчёт</span>' : (isDirect ? '' : ' <span class="chat-item-type-badge">дружина</span>')) + groupKindLabel;
 
       return `
         <div class="chat-item ${currentChatId == c.id ? 'active' : ''}" data-chat-id="${c.id}" data-chat-type="${isDirect ? 'direct' : 'group'}" ${isEstimate ? 'data-entity-type="estimate"' : ''} onclick="AsgardChatGroups.openChat(${c.id})">

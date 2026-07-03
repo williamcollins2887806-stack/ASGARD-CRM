@@ -1,8 +1,32 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Briefcase, ChevronRight, TrendingUp, Calendar, Zap } from 'lucide-react';
+import { ArrowLeft, Briefcase, ChevronRight, TrendingUp, Calendar, Zap, Lock } from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
 import { useHaptic } from '@/hooks/useHaptic';
+
+/* ── Long-press helper: 550мс держим — показываем tooltip с «Внёс: …» ─ */
+function useLongPressTooltip(callback, ms = 550) {
+  const timerRef = useRef(null);
+  const triggeredRef = useRef(false);
+  const start = useCallback((e) => {
+    triggeredRef.current = false;
+    timerRef.current = setTimeout(() => {
+      triggeredRef.current = true;
+      callback(e);
+    }, ms);
+  }, [callback, ms]);
+  const clear = useCallback(() => clearTimeout(timerRef.current), []);
+  return {
+    onTouchStart: start,
+    onTouchEnd:   clear,
+    onTouchCancel:clear,
+    onTouchMove:  clear,
+    onMouseDown:  start,
+    onMouseUp:    clear,
+    onMouseLeave: clear,
+    wasLongPress: () => triggeredRef.current,
+  };
+}
 
 function fmtMoney(n) { return (n || 0).toLocaleString('ru-RU') + ' ₽'; }
 function fmtMoneyShort(n) { return (n || 0).toLocaleString('ru-RU'); }
@@ -50,6 +74,8 @@ function HistoryDetail({ workId, onBack }) {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [locks, setLocks] = useState([]); // [{scope, locked_at, locked_by_fio}]
+  const [tooltip, setTooltip] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -63,6 +89,32 @@ function HistoryDetail({ workId, onBack }) {
       setLoading(false);
     })();
   }, [workId]);
+
+  // Auto-dismiss tooltip (FIX 7 — 4000мс, чтобы прочитать ФИО + телефон)
+  useEffect(() => {
+    if (!tooltip) return;
+    const t = setTimeout(() => setTooltip(null), 4000);
+    return () => clearTimeout(t);
+  }, [tooltip]);
+
+  // Грузим локи периода для месяцов, которые упоминаются в данных табеля
+  useEffect(() => {
+    if (!data?.days?.length) return;
+    const dates = data.days.map(d => d.date).filter(Boolean).sort();
+    if (!dates.length) return;
+    const last = new Date(dates[dates.length - 1]);
+    const y = last.getFullYear();
+    const m = last.getMonth() + 1;
+    // Этот endpoint существует если backend (агент B) уже задеплоил v2
+    fieldApi.get(`/timesheet/v2/locks/${y}/${m}`)
+      .then((r) => {
+        const arr = Array.isArray(r) ? r : (r?.locks || []);
+        // Берём только активные глобальные локи (затрагивают рабочего)
+        const active = arr.filter(l => l.scope === 'global' && l.locked_at && !l.unlocked_at);
+        setLocks(active);
+      })
+      .catch(() => setLocks([])); // 404 — нет endpointа = нет лока, тихо
+  }, [data]);
 
   if (loading) return (
     <div className="p-4 space-y-4 animate-pulse">
@@ -176,6 +228,26 @@ function HistoryDetail({ workId, onBack }) {
           </div>
         </SlideIn>
 
+        {/* ─── Lock badge ─────────────────────────────────── */}
+        {locks.length > 0 && (
+          <SlideIn delay={0.14}>
+            <div className="rounded-xl px-4 py-3 flex items-center gap-2" style={{
+              backgroundColor: 'rgba(239,68,68,0.12)',
+              border: '1px solid rgba(239,68,68,0.3)',
+            }}>
+              <Lock size={16} style={{ color: '#ef4444' }} />
+              <div className="flex-1 text-xs" style={{ color: 'var(--text-primary)' }}>
+                <span className="font-semibold">🔒 Месяц закрыт</span>
+                {locks[0]?.locked_by_fio && (
+                  <span className="ml-2" style={{ color: 'var(--text-tertiary)' }}>
+                    {locks[0].locked_by_fio}
+                  </span>
+                )}
+              </div>
+            </div>
+          </SlideIn>
+        )}
+
         {/* ─── Timesheet ────────────────────────────────────── */}
         {days.length > 0 && (
           <SlideIn delay={0.16}>
@@ -197,32 +269,9 @@ function HistoryDetail({ workId, onBack }) {
 
               {/* Rows */}
               <div className="px-2">
-                {days.map((c, i) => {
-                  const shift = c.shift || 'day';
-                  const icon = SHIFT_ICONS[shift] || '☀️';
-                  const label = SHIFT_LABELS[shift] || 'День';
-                  const color = SHIFT_COLORS[shift] || '#f59e0b';
-                  const points = c.day_rate ? Math.round(parseFloat(c.day_rate) / 500) : 0;
-                  const earned = parseFloat(c.amount_earned) || 0;
-                  const isOdd = i % 2 === 1;
-
-                  return (
-                    <div key={i} className="flex items-center gap-2 px-2 py-2.5 rounded-lg mx-0"
-                      style={{ backgroundColor: isOdd ? 'rgba(255,255,255,0.02)' : 'transparent' }}>
-                      <span className="text-xs font-medium w-11 flex-shrink-0" style={{ color: 'var(--text-secondary)' }}>{fmtDateShort(c.date)}</span>
-                      <span className="w-7 text-center text-base flex-shrink-0">{icon}</span>
-                      <div className="flex-1 min-w-0">
-                        <span className="text-xs font-medium" style={{ color }}>{label}</span>
-                      </div>
-                      <span className="text-xs w-8 text-right flex-shrink-0" style={{ color: points > 0 ? 'var(--text-secondary)' : 'transparent' }}>
-                        {points > 0 ? points : ''}
-                      </span>
-                      <span className="text-sm font-bold w-16 text-right flex-shrink-0" style={{ color: 'var(--gold)' }}>
-                        {fmtMoneyShort(earned)}
-                      </span>
-                    </div>
-                  );
-                })}
+                {days.map((c, i) => (
+                  <DayRow key={i} day={c} idx={i} onLongPress={(info) => setTooltip(info)} />
+                ))}
               </div>
 
               {/* ─── Totals ─── */}
@@ -247,6 +296,86 @@ function HistoryDetail({ workId, onBack }) {
           </button>
         </SlideIn>
       </div>
+
+      {/* ─── Long-press tooltip ─── */}
+      {tooltip && (
+        <div className="fixed left-1/2 -translate-x-1/2 z-50 rounded-xl px-4 py-3 max-w-[88%]"
+          style={{
+            bottom: 'calc(env(safe-area-inset-bottom) + 24px)',
+            backgroundColor: 'var(--bg-elevated)',
+            border: '1px solid var(--border-norse)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+          }}
+        >
+          <p className="text-xs font-semibold mb-0.5" style={{ color: 'var(--text-primary)' }}>
+            {fmtDate(tooltip.date)}
+            {tooltip.shift && ` · ${SHIFT_ICONS[tooltip.shift] || ''} ${SHIFT_LABELS[tooltip.shift] || ''}`}
+          </p>
+          {tooltip.entered_by_fio ? (
+            <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+              {/* FIX 8 — телефон автора, если backend его прислал */}
+              Внёс: {tooltip.entered_by_fio}
+              {tooltip.entered_by_role && ` (${tooltip.entered_by_role})`}
+              {tooltip.entered_by_phone && (
+                <>
+                  {' '}·{' '}
+                  <a href={`tel:${tooltip.entered_by_phone}`}
+                     onClick={(e) => e.stopPropagation()}
+                     style={{ color: 'var(--gold)', textDecoration: 'none' }}>
+                    {tooltip.entered_by_phone}
+                  </a>
+                </>
+              )}
+            </p>
+          ) : (
+            <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Источник: автоматически</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* DayRow — строка в табеле с поддержкой long-press tooltip */
+function DayRow({ day, idx, onLongPress }) {
+  const shift = day.shift || 'day';
+  const icon = SHIFT_ICONS[shift] || '☀️';
+  const label = SHIFT_LABELS[shift] || 'День';
+  const color = SHIFT_COLORS[shift] || '#f59e0b';
+  const points = day.day_rate ? Math.round(parseFloat(day.day_rate) / 500) : 0;
+  const earned = parseFloat(day.amount_earned) || 0;
+  const isOdd = idx % 2 === 1;
+
+  const lp = useLongPressTooltip(() => {
+    onLongPress({
+      date: day.date,
+      shift,
+      entered_by_fio: day.entered_by_fio,
+      entered_by_role: day.entered_by_role,
+      entered_by_phone: day.entered_by_phone, /* FIX 8 — phone передаётся в tooltip */
+    });
+  });
+
+  return (
+    <div {...lp} className="flex items-center gap-2 px-2 py-2.5 rounded-lg mx-0"
+      style={{
+        backgroundColor: isOdd ? 'rgba(255,255,255,0.02)' : 'transparent',
+        minHeight: 44,
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
+        WebkitTouchCallout: 'none',
+      }}>
+      <span className="text-xs font-medium w-11 flex-shrink-0" style={{ color: 'var(--text-secondary)' }}>{fmtDateShort(day.date)}</span>
+      <span className="w-7 text-center text-base flex-shrink-0">{icon}</span>
+      <div className="flex-1 min-w-0">
+        <span className="text-xs font-medium" style={{ color }}>{label}</span>
+      </div>
+      <span className="text-xs w-8 text-right flex-shrink-0" style={{ color: points > 0 ? 'var(--text-secondary)' : 'transparent' }}>
+        {points > 0 ? points : ''}
+      </span>
+      <span className="text-sm font-bold w-16 text-right flex-shrink-0" style={{ color: 'var(--gold)' }}>
+        {fmtMoneyShort(earned)}
+      </span>
     </div>
   );
 }

@@ -375,7 +375,7 @@ window.AsgardKanban = (function(){
         `}
 
         <h4 class="mt-4 mb-2">💬 Комментарии</h4>
-        <div class="chat-messages" style="max-height: 200px; overflow-y: auto;">
+        <div class="chat-messages">
           ${commentsHtml}
         </div>
 

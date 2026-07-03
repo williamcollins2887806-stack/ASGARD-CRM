@@ -17,6 +17,7 @@ import MyWorksWidget from './MyWorksWidget';
 import NotificationsWidget from './NotificationsWidget';
 import OverdueWorksWidget from './OverdueWorksWidget';
 import PayrollPendingWidget from './PayrollPendingWidget';
+import PhotosWidget from './PhotosWidget';
 import PermitsExpiryWidget from './PermitsExpiryWidget';
 import PlatformAlertsWidget from './PlatformAlertsWidget';
 import PreTendersWidget from './PreTendersWidget';
@@ -51,6 +52,7 @@ export const WIDGET_REGISTRY = {
   notifications:    { component: NotificationsWidget,    name: 'Уведомления',           icon: '🔔', size: 'normal', roles: ['*'] },
   overdue_works:    { component: OverdueWorksWidget,     name: 'Просроченные работы',   icon: '⚠️', size: 'wide',   roles: ['ADMIN','PM','HEAD_PM','DIRECTOR_*'] },
   payroll_pending:  { component: PayrollPendingWidget,   name: 'Ведомости (ожидание)',   icon: '📋', size: 'normal', roles: ['ADMIN','BUH','PM','HEAD_PM','DIRECTOR_*'] },
+  photos:           { component: PhotosWidget,           name: 'Фото с полей',          icon: '📸', size: 'normal', roles: ['PM','HEAD_PM','ADMIN','DIRECTOR_*'] },
   permits_expiry:   { component: PermitsExpiryWidget,    name: 'Истекающие допуски',    icon: '🛡', size: 'wide',   roles: ['ADMIN','HR','HR_MANAGER','HEAD_TO','CHIEF_ENGINEER','DIRECTOR_*'] },
   platform_alerts:  { component: PlatformAlertsWidget,   name: 'Тендерные площадки',    icon: '🏗', size: 'normal', roles: ['ADMIN','TO','HEAD_TO','DIRECTOR_*'] },
   pre_tenders:      { component: PreTendersWidget,       name: 'Заявки',                icon: '🤖', size: 'normal', roles: ['ADMIN','HEAD_TO','DIRECTOR_*'] },
@@ -68,10 +70,10 @@ export const WIDGET_REGISTRY = {
 /** Дефолтный набор виджетов по роли */
 export const DEFAULT_LAYOUTS = {
   ADMIN:          ['welcome','director_approvals','academy','kpi_summary','call_analytics','pre_tenders','quick_actions','overdue_works','tenders_funnel','my_mail','notifications'],
-  PM:             ['welcome','academy','quick_actions','my_works','expense_wallet','my_cash_balance','gantt_mini','todo','my_mail','notifications','birthdays'],
+  PM:             ['welcome','academy','quick_actions','my_works','expense_wallet','my_cash_balance','gantt_mini','photos','todo','my_mail','notifications','birthdays'],
   TO:             ['welcome','academy','quick_actions','tenders_funnel','tender_dynamics','my_mail','notifications'],
   HEAD_TO:        ['welcome','academy','pre_tenders','platform_alerts','tender_dynamics','tenders_funnel','my_mail','notifications'],
-  HEAD_PM:        ['welcome','academy','team_workload','overdue_works','gantt_mini','my_mail','notifications'],
+  HEAD_PM:        ['welcome','academy','team_workload','overdue_works','gantt_mini','photos','my_mail','notifications'],
   CHIEF_ENGINEER: ['welcome','academy','equipment_value','equipment_alerts','my_mail','notifications'],
   HR:             ['welcome','academy','permits_expiry','birthdays','my_mail','notifications','calendar'],
   BUH:            ['welcome','academy','cash_balance','bank_summary','money_summary','my_mail','notifications'],

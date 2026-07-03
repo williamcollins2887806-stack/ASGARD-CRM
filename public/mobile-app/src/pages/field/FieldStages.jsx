@@ -7,6 +7,9 @@ import { ArrowLeft, Truck, Play, Square, MapPin, Plane, Building, Clock, Camera 
 const STAGE_CONFIG = {
   medical: { label: 'Медосмотр', icon: '🏥', color: '#9333EA' },
   travel: { label: 'Дорога', icon: '✈️', color: '#3B82F6' },
+  // V255 (23.06.2026): Корабль — альтернатива дороги за 12 баллов × 500 ₽.
+  // Рабочему сам ставить нельзя — только отображение, если поставили сверху.
+  ship: { label: 'Корабль', icon: '🚢', color: '#0EA5E9' },
   waiting: { label: 'Ожидание', icon: '⏳', color: '#F59E0B' },
   warehouse: { label: 'Склад', icon: '📦', color: '#F97316' },
   day_off: { label: 'Выходной', icon: '🛏', color: '#9CA3AF' },
@@ -19,6 +22,8 @@ const STATUS_ICONS = { completed: '✅', approved: '✅', adjusted: '✅', activ
 const QUOTES = {
   medical: '🏥 Здоровье воина — основа победы!',
   travel: '✈️ Дорога зовёт! Удачного пути, воин',
+  // V255: морская цитата для рабочего, которому поставили этап ship.
+  ship: '🚢 Морской переход — попутного ветра, воин!',
   warehouse: '📦 Склад ждёт крепких рук!',
   waiting: '⏳ Ожидание — тоже часть похода',
 };
@@ -273,8 +278,8 @@ function StageCard({ stage, isActive, onEnd }) {
       {/* Date / days / earned */}
       <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{dateStr} · {daysStr} · {earnStr}</p>
 
-      {/* Travel details: route, flight */}
-      {stage.stage_type === 'travel' && details.route && (
+      {/* Travel details: route, flight (V255: и для ship — морской маршрут/рейс) */}
+      {(stage.stage_type === 'travel' || stage.stage_type === 'ship') && details.route && (
         <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>
           {details.flight ? `${details.flight} ` : ''}{details.route}
         </p>

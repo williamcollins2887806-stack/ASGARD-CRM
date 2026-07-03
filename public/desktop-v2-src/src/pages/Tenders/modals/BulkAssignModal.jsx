@@ -40,7 +40,8 @@ export default function BulkAssignModal({ tenders, onDone }) {
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
-    loadUsers('PM').then(setPms);
+    // F2: и PM, и HEAD_PM (vanilla tenders.js:717). Backend поддерживает comma-list.
+    loadUsers('PM,HEAD_PM').then(setPms);
   }, []);
 
   // Считаем кол-во тендеров по статусам — для опций селекта «Статус».
@@ -162,7 +163,11 @@ export default function BulkAssignModal({ tenders, onDone }) {
               onChange={setPmId}
               options={[
                 { value: '', label: '— выбрать —' },
-                ...pms.map((u) => ({ value: String(u.id), label: u.name || u.login }))
+                ...pms.map((u) => ({
+                  value: String(u.id),
+                  // F2: HEAD_PM визуально отличаем префиксом «(Ст.РП)».
+                  label: (u.role === 'HEAD_PM' ? '(Ст.РП) ' : '') + (u.name || u.login)
+                }))
               ]}
             />
           </Field>

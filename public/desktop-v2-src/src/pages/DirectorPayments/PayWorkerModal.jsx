@@ -11,7 +11,7 @@
  * минимальная форма по контракту (без подгрузки SSoT-баланса, т.к. директор
  * платит «вне поля», без анализа баланса по работе).
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { MCard, MHead, MBody, MFoot, Btn, Field } from '@/modals/parts';
 import { TextInput, MoneyInput, SelectInput } from '@/inputs/Inputs';
 import { useModal } from '@/modals';
@@ -26,11 +26,59 @@ const TYPE_TILES = [
   { value: 'penalty',  icon: '⚠',  label: 'Удержание' }
 ];
 
-const METHOD_TILES = [
-  { value: 'cash',     icon: '💵', label: 'Наличные' },
-  { value: 'card',     icon: '💳', label: 'На карту' },
-  { value: 'transfer', icon: '🏦', label: 'Перевод' }
+// 2026-06-29 — радио-карточки источника денег (см. PayWorkerModal в FieldTab).
+const SOURCE_CARDS = [
+  {
+    value: 'cash',
+    icon: '📤',
+    title: 'Наличкой',
+    desc: 'Выдано рабочему наличными',
+    tech: "payment_method='cash'"
+  },
+  {
+    value: 'transfer',
+    icon: '💳',
+    title: 'Переводом с карты',
+    desc: 'Перевод от директора со своей карты',
+    tech: "payment_method='transfer'"
+  },
+  {
+    value: 'bank',
+    icon: '🏦',
+    title: 'Бухгалтерия через банк (оф)',
+    desc: 'Официальный перевод от компании',
+    tech: "payment_method='bank' · paid_by=NULL",
+    requireOfficial: true
+  },
+  {
+    value: 'self',
+    icon: '📱',
+    title: 'Через СЗ-сервис (ReStaff)',
+    desc: 'Бухгалтерия переведёт самозанятому',
+    tech: "payment_method='self' · paid_by=NULL",
+    requireSelfEmployed: true
+  }
 ];
+
+function defaultSourceFor({ isOfficial, isSelfEmployed, payType }) {
+  if (payType === 'salary' && isOfficial) return 'bank';
+  if (payType === 'salary' && isSelfEmployed) return 'self';
+  return 'transfer';
+}
+
+function isSourceDisabled(srcValue, { isOfficial, isSelfEmployed }) {
+  const card = SOURCE_CARDS.find((s) => s.value === srcValue);
+  if (!card) return false;
+  if (card.requireOfficial && !isOfficial) return true;
+  if (card.requireSelfEmployed && !isSelfEmployed) return true;
+  return false;
+}
+
+function disabledReason(card) {
+  if (card.requireOfficial) return 'Доступно только для штатников';
+  if (card.requireSelfEmployed) return 'Доступно только для самозанятых';
+  return '';
+}
 
 export default function PayWorkerModal({ onSaved, defaults }) {
   const { close } = useModal();
@@ -39,6 +87,7 @@ export default function PayWorkerModal({ onSaved, defaults }) {
   const [type, setType] = useState(defaults?.type || 'salary');
   const [amount, setAmount] = useState(defaults?.amount ? String(defaults.amount) : '');
   const [method, setMethod] = useState(defaults?.payment_method || 'transfer');
+  const [methodTouched, setMethodTouched] = useState(!!defaults?.payment_method);
   const [comment, setComment] = useState('');
   const [works, setWorks] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -49,6 +98,41 @@ export default function PayWorkerModal({ onSaved, defaults }) {
     loadWorks().then(setWorks);
     loadEmployees().then(setEmployees);
   }, []);
+
+  // 2026-06-29 — определяем тип работника (штатник / СЗ) из employees-списка.
+  const workerType = useMemo(() => {
+    const emp = employees.find((e) => String(e.id) === String(employeeId));
+    return {
+      isOfficial: !!emp?.is_officially_employed,
+      isSelfEmployed: !!emp?.is_self_employed
+    };
+  }, [employees, employeeId]);
+
+  // Дефолтный источник при смене работника / типа выплаты (если юзер не трогал).
+  useEffect(() => {
+    if (methodTouched) return;
+    if (!employeeId) return;
+    setMethod(defaultSourceFor({
+      isOfficial: workerType.isOfficial,
+      isSelfEmployed: workerType.isSelfEmployed,
+      payType: type
+    }));
+  }, [employeeId, type, workerType.isOfficial, workerType.isSelfEmployed, methodTouched]);
+
+  // Если выбранный source стал недоступен — пересчитать
+  useEffect(() => {
+    if (!employeeId) return;
+    if (isSourceDisabled(method, workerType)) {
+      setMethod(defaultSourceFor({
+        isOfficial: workerType.isOfficial,
+        isSelfEmployed: workerType.isSelfEmployed,
+        payType: type
+      }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employeeId, workerType.isOfficial, workerType.isSelfEmployed]);
+
+  const pickMethod = (v) => { setMethod(v); setMethodTouched(true); };
 
   const worksOpts = [
     { value: '', label: '— Выберите работу —' },
@@ -62,7 +146,7 @@ export default function PayWorkerModal({ onSaved, defaults }) {
 
   const amt = Number(amount) || 0;
 
-  const submit = async () => {
+  const submit = async (confirmDuplicate = false) => {
     setErr('');
     if (!employeeId) { setErr('Выберите сотрудника'); return; }
     if (!workId)     { setErr('Выберите работу'); return; }
@@ -72,19 +156,45 @@ export default function PayWorkerModal({ onSaved, defaults }) {
 
     setBusy(true);
     try {
-      await payAsDirector({
+      const payload = {
         employee_id: Number(employeeId),
         work_id: Number(workId),
         type,
         amount: amt,
         payment_method: method,
         comment: comment.trim() || null
-      });
+      };
+      // 23.06.2026 BUG-FIX (🟡 Payouts-1): пробрасываем confirm_duplicate, когда
+      // пользователь подтвердил повторную выплату (после 409 duplicate_payment).
+      if (confirmDuplicate) payload.confirm_duplicate = true;
+
+      await payAsDirector(payload);
       toast.success('Выплата зафиксирована');
       onSaved?.();
       close();
     } catch (e) {
-      setErr(e?.serverMsg || e?.message || String(e));
+      // 23.06.2026 BUG-FIX (🟡 Payouts-1): обработка 409 duplicate_payment.
+      // Backend director-payments.js:97-107 возвращает {error:'duplicate_payment',
+      // message, total_already_paid, requires_confirmation:true, ... }.
+      // До фикса фронт показывал сухое serverMsg «duplicate_payment» вместо UX-диалога.
+      const code = e?.status || e?.response?.status;
+      const body = e?.body || e?.data || e?.response?.data || null;
+      const isDup = code === 409 || body?.error === 'duplicate_payment' || body?.requires_confirmation;
+      if (isDup) {
+        const msg = body?.message || e?.serverMsg
+          || 'Похожая выплата уже зафиксирована за этот месяц. Подтвердить повторную выплату?';
+        // window.confirm — простейший UX-диалог, аналогичный vanilla field-tab.js
+        // eslint-disable-next-line no-alert
+        const ok = typeof window !== 'undefined' && window.confirm(msg);
+        if (ok) {
+          // повторяем запрос с confirm_duplicate:true
+          setBusy(false);
+          return submit(true);
+        }
+        setErr('Выплата отменена пользователем.');
+      } else {
+        setErr(e?.serverMsg || e?.message || String(e));
+      }
     } finally {
       setBusy(false);
     }
@@ -124,19 +234,38 @@ export default function PayWorkerModal({ onSaved, defaults }) {
           <MoneyInput value={amount} onChange={setAmount} />
         </Field>
 
-        <Field label="Способ выплаты" required>
-          <div className="dp-tile-grid">
-            {METHOD_TILES.map((m) => (
-              <button
-                key={m.value}
-                type="button"
-                className={'dp-tile' + (method === m.value ? ' is-active' : '')}
-                onClick={() => setMethod(m.value)}
-              >
-                <span className="ic">{m.icon}</span>
-                <span className="nm">{m.label}</span>
-              </button>
-            ))}
+        <Field label="Источник денег" required>
+          <div className="ft-pw-src-group" role="radiogroup" aria-label="Источник денег">
+            {SOURCE_CARDS.map((s) => {
+              const disabled = isSourceDisabled(s.value, workerType);
+              const selected = method === s.value;
+              return (
+                <label
+                  key={s.value}
+                  className={
+                    'ft-pw-src-card'
+                    + (selected ? ' is-selected' : '')
+                    + (disabled ? ' is-disabled' : '')
+                  }
+                  title={disabled ? disabledReason(s) : ''}
+                >
+                  <input
+                    type="radio"
+                    name="dp-src"
+                    value={s.value}
+                    checked={selected}
+                    disabled={disabled}
+                    onChange={() => !disabled && pickMethod(s.value)}
+                  />
+                  <span className="ft-pw-src-ico" aria-hidden="true">{s.icon}</span>
+                  <span className="ft-pw-src-body">
+                    <span className="ft-pw-src-ttl">{s.title}</span>
+                    <span className="ft-pw-src-desc">{disabled ? disabledReason(s) : s.desc}</span>
+                    <span className="ft-pw-src-tech">{s.tech}</span>
+                  </span>
+                </label>
+              );
+            })}
           </div>
         </Field>
 
@@ -146,7 +275,7 @@ export default function PayWorkerModal({ onSaved, defaults }) {
       </MBody>
       <MFoot>
         <Btn variant="ghost" onClick={close} disabled={busy}>Отмена</Btn>
-        <Btn variant="primary" onClick={submit} disabled={busy}>
+        <Btn variant="primary" onClick={() => submit(false)} disabled={busy}>
           {busy ? 'Сохраняем…' : '🏛 Выплатить ' + (amt > 0 ? fmtMoney(amt) : '')}
         </Btn>
       </MFoot>

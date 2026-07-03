@@ -5,6 +5,57 @@
  */
 window.AsgardWorksShared = (function(){
 
+  // ═══ work_status — единый словарь (23.06.2026 BUG-FIX 🟡 S1) ═══
+  // Раньше 4 разных копии CLOSED-списка жили в:
+  //   custom_dashboard.js:373, big_screen.js:21, helpers/work-status.js (backend),
+  //   PmWorks/api.js:44, mobile Works.jsx:21.
+  // Расхождения (количество значений, lowercase vs Pascal, наличие «Работы сдали»)
+  // приводили к тому что одна и та же работа считалась done в одном месте и
+  // active в другом. Здесь — единый канон для всех vanilla-страниц.
+  // ВАЖНО: zerкало src/helpers/work-status.js (backend, CommonJS). Меняем парой.
+  const PREP_STATUSES = ['Новая', 'Подготовка', 'Мобилизация'];
+  const ACTIVE_STATUSES = ['В работе', 'На паузе', 'Подписание акта'];
+  const CLOSED_STATUSES = [
+    'Закрыт', 'Закрыта', 'Закрыто',
+    'Работы сдали', 'Завершена', 'Завершено', 'Завершен', 'Завершён',
+    'Сдан', 'Сдана', 'Сдано'
+  ];
+  const CANCELLED_STATUSES = ['Отменена', 'Отменено', 'Отменён', 'Отменен', 'Отмена'];
+
+  const _PREP_SET = new Set(PREP_STATUSES.map(s => s.trim().toLowerCase()));
+  const _CLOSED_SET = new Set([...CLOSED_STATUSES, ...CANCELLED_STATUSES].map(s => s.trim().toLowerCase()));
+
+  function _normStatus(s){ return String(s == null ? '' : s).trim().toLowerCase(); }
+  function isPrepWork(w){ return _PREP_SET.has(_normStatus(w && w.work_status)); }
+  function isClosedWork(status){ return _CLOSED_SET.has(_normStatus(status)); }
+  function isActiveWork(status){ return !isClosedWork(status); }
+
+  // ═══ start-date canonical fallback chain (23.06.2026 BUG-FIX 🟡 S2/S3/S5) ═══
+  // Каноническая цепочка: start_plan → start_in_work_date → start_date(legacy)
+  //                     → start_fact → t.work_start_plan → created_at.
+  // start_plan приоритет: на проде у работ из тендера ВСЕГДА есть start_plan,
+  // а start_in_work_date РП почти не заполняют. Старый порядок (start_in_work_date
+  // первым) рендерил пустой «Старт» у большинства работ.
+  // Полная версия — AsgardGantt.workStartIso, эта — без тендер-аргумента для row-таблиц.
+  function workStartIso(w, tender){
+    if (!w) return null;
+    return w.start_plan
+        || w.start_in_work_date
+        || w.start_date
+        || w.start_fact
+        || (tender && tender.work_start_plan)
+        || w.created_at
+        || null;
+  }
+  function workEndIso(w, tender){
+    if (!w) return null;
+    return w.end_plan
+        || w.end_date
+        || w.end_fact
+        || (tender && tender.work_end_plan)
+        || null;
+  }
+
   // ═══ Базовые утилиты (F9) ═══
 
   function isoNow(){ return new Date().toISOString(); }
@@ -155,6 +206,10 @@ window.AsgardWorksShared = (function(){
     isoNow, ymNow, num, safeJson, toDate, diffDays, daysBetween,
     pctDelta, workDate, generatePeriodOptions,
     calcProfit, calcProfitPerDay, calcProfitPerManDay,
-    findHrUserId, audit, notify, notifyDirectors, sortBy, showToast
+    findHrUserId, audit, notify, notifyDirectors, sortBy, showToast,
+    // 23.06.2026 BUG-FIX (🟡 S1/S2/S3/S5): единый источник статусов и start-цепочки
+    PREP_STATUSES, ACTIVE_STATUSES, CLOSED_STATUSES, CANCELLED_STATUSES,
+    isPrepWork, isClosedWork, isActiveWork,
+    workStartIso, workEndIso
   };
 })();

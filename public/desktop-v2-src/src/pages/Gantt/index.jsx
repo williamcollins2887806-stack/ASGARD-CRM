@@ -203,7 +203,15 @@ export default function GanttPage() {
       if (filterMode === 'active') entities = entities.filter((e) => !lostSet.has(e.tender_status));
       if (filterMode === 'lost')   entities = entities.filter((e) =>  lostSet.has(e.tender_status));
     } else if (kind === 'works') {
-      const doneSet = new Set(['Работы сдали', 'Подписание акта', 'Закрыт', 'Закрыта']);
+      // 23.06.2026 BUG-FIX (Works R10): расширен набор «закрытых» статусов работ.
+      // Раньше в Set было 4 значения, и легаси-статусы «Завершена»/«Сдана»/«Закрыто»
+      // выпадали ОДНОВРЕМЕННО из обеих веток (active и done) — работа была невидима.
+      // Канон из vanilla helpers/work-status.js: 10 терминальных статусов.
+      const doneSet = new Set([
+        'Работы сдали', 'Сдана', 'Подписание акта',
+        'Закрыт', 'Закрыта', 'Закрыто', 'Завершена',
+        'Гарантия', 'Архив', 'Отменена'
+      ]);
       if (filterMode === 'active') entities = entities.filter((e) => !doneSet.has(e.work_status));
       if (filterMode === 'done')   entities = entities.filter((e) =>  doneSet.has(e.work_status));
     }
@@ -223,8 +231,10 @@ export default function GanttPage() {
           s  = e.work_start_plan || e.tender_deadline || f;
           en = e.work_end_plan   || e.work_start_plan || e.tender_deadline || f;
         } else {
-          s  = e.start_in_work_date || e.start_date || e.start_plan || f;
-          en = e.end_fact || e.end_plan || e.start_in_work_date || e.start_date || f;
+          // FIX (23.06.2026): canonical fallback — start_plan приоритет, не start_in_work_date.
+          // Раньше работы с start_plan=NULL и end_plan=октябрь падали в март/октябрь.
+          s  = e.start_plan || e.start_in_work_date || e.start_date || e.start_fact || e.created_at || f;
+          en = e.end_plan || e.end_date || e.end_fact || s || f;
         }
         return overlap(s, en, f, t);
       });

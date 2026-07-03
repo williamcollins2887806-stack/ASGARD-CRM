@@ -14,7 +14,7 @@ import {
   Users, UserPlus, Plane, ShieldCheck, Stamp, CalendarDays, Table2,
   // Документы
   Inbox, Calendar, HardHat, Warehouse, Package,
-  ShoppingCart, Disc3, GanttChartSquare, LayoutGrid,
+  ShoppingCart, Disc3, GanttChartSquare, LayoutGrid, Target,
   // Настройки
   Bell, GraduationCap, Mail, Cpu, Plug, Stethoscope, ListChecks,
   // Прочее
@@ -83,7 +83,12 @@ const GROUPS = [
       { path: '/personnel',        icon: Users,       label: 'Сотрудники',       section: 'personnel' },
       { path: '/hr-requests',      icon: UserPlus,    label: 'Заявки HR',        section: 'personnel' },
       { path: '/staff-requests',   icon: Users,       label: 'Заявки на персонал', section: 'works' },
-      { path: '/global-timesheet', icon: Table2,      label: 'Общий табель',     section: 'personnel' },
+      // v2-табели (агент E): one component, разные mode по роли
+      { path: '/timesheet',           icon: Table2,    label: 'Табель дружины',           section: 'personnel', roles: ['DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','ADMIN','BUH','HR','HR_MANAGER'] },
+      { path: '/my-timesheet',        icon: Table2,    label: 'Табель моей дружины',      section: 'works',     roles: ['PM','HEAD_PM'] },
+      { path: '/timesheet-warehouse', icon: Table2,    label: 'Табель работы на складе',  section: 'personnel', roles: ['WAREHOUSE','ADMIN','DIRECTOR_GEN'] },
+      { path: '/timesheet-medical',   icon: Table2,    label: 'Табель учёта МО',          section: 'personnel', roles: ['TO','HEAD_TO','ADMIN','DIRECTOR_GEN'] },
+      { path: '/timesheet-travel',    icon: Table2,    label: 'Табель учёта дороги',      section: 'personnel', roles: ['OFFICE_MANAGER','ADMIN','DIRECTOR_GEN'] },
       { path: '/training-board',   icon: GraduationCap,label: 'Обучение',        section: 'personnel' },
       { path: '/travel',           icon: Plane,       label: 'Командировки',     section: 'personnel' },
       { path: '/permits',          icon: ShieldCheck, label: 'Допуски',          section: 'personnel' },
@@ -106,6 +111,7 @@ const GROUPS = [
     color: 'var(--blue)',
     items: [
       { path: '/director-inbox', icon: Inbox,            label: 'Корзина заявок',  section: 'inbox' },
+      { path: '/marketplace',    icon: Target,           label: '🎯 Маркетплейс заявок', section: 'marketplace', roles: ['PM','HEAD_PM'] },
       { path: '/correspondence', icon: Inbox,            label: 'Корреспонденция', section: 'works' },
       { path: '/meetings',       icon: Calendar,         label: 'Совещания',       section: 'dashboard' },
       { path: '/works',          icon: HardHat,          label: 'Работы',          section: 'works' },
@@ -294,7 +300,12 @@ export default function More() {
 
       {/* ── Группы меню ───────────────────────────────────────────────── */}
       {GROUPS.map((group, gi) => {
-        const visible = group.items.filter((item) => hasPermission(role, item.section));
+        const visible = group.items.filter((item) => {
+          if (!hasPermission(role, item.section)) return false;
+          // Доп. role-фильтр: пункт виден только указанным ролям
+          if (Array.isArray(item.roles) && item.roles.length && !item.roles.includes(role)) return false;
+          return true;
+        });
         if (visible.length === 0) return null;
 
         return (

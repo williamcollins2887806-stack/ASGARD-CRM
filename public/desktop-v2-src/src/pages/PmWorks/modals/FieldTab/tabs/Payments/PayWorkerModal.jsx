@@ -14,11 +14,24 @@ import { MCard, MHead, MBody, MFoot, Btn, Field } from '@/modals/parts';
 import { TextInput, MoneyInput, SelectInput } from '@/inputs/Inputs';
 import { toast } from '@/modals/Notifications';
 import { useModal, ConfirmModal } from '@/modals';
-import { loadEmployeePaymentSummary, payWorkerDirect, loadCrew } from '../../api';
+import { api } from '@/api/client';
+import { loadEmployeePaymentSummary, payWorkerDirect, loadCrew, loadCrewAll } from '../../api';
 
 function fmtMoney(n) {
   if (!Number.isFinite(+n)) return '0 ₽';
   return new Intl.NumberFormat('ru-RU').format(Math.round(+n)) + ' ₽';
+}
+
+function workerHint({ isOfficial, isSelfEmployed }) {
+  if (isOfficial) return 'Работник оформлен как штатник — оф-часть обычно идёт через банк, доплаты налом из кассы РП.';
+  if (isSelfEmployed) return 'Работник — самозанятый, основные суммы идут через СЗ-сервис, мелочи можно налом.';
+  return 'Тип работника не определён — выберите источник вручную.';
+}
+
+function disabledReason(card, { isOfficial, isSelfEmployed }) {
+  if (card.requireOfficial && !isOfficial) return 'Доступно только для штатников';
+  if (card.requireSelfEmployed && !isSelfEmployed) return 'Доступно только для самозанятых';
+  return '';
 }
 
 function fmtDate(s) {
@@ -32,7 +45,7 @@ function fmtDate(s) {
   }
 }
 
-const METHOD_LBL = { cash: 'нал', card: 'карта', transfer: 'перевод', auto: 'авто' };
+const METHOD_LBL = { cash: 'нал', card: 'карта', transfer: 'перевод', bank: 'банк', self: 'СЗ-сервис', auto: 'авто' };
 
 const TYPE_TILES = [
   { value: 'per_diem', icon: '🌙', label: 'Суточные' },
@@ -42,32 +55,110 @@ const TYPE_TILES = [
   { value: 'penalty',  icon: '⚠',  label: 'Удержание' }
 ];
 
-const METHOD_TILES = [
-  { value: 'cash',     icon: '💵', label: 'Наличные' },
-  { value: 'card',     icon: '💳', label: 'На карту' },
-  { value: 'transfer', icon: '🏦', label: 'Перевод' }
+/**
+ * 2026-06-29 — радио-карточки «откуда деньги».
+ *  • cash     — я выдал наличкой из своей кассы (paid_by=me)
+ *  • transfer — я перевёл со своей карты (paid_by=me) — тоже «моя касса»
+ *  • bank     — бухгалтерия через банк (paid_by=NULL) — только для штатников
+ *  • self     — через СЗ-сервис (paid_by=NULL) — только для самозанятых
+ *
+ * Поле в БД — `payment_method`. paid_by_role вычисляется на бэке по этому методу.
+ */
+const SOURCE_CARDS = [
+  {
+    value: 'cash',
+    icon: '📤',
+    title: 'Я выдал наличкой из своей кассы',
+    desc: 'Уйдёт с баланса моей кассы РП',
+    tech: "payment_method='cash' · paid_by=Я"
+  },
+  {
+    value: 'transfer',
+    icon: '💳',
+    title: 'Я перевёл со своей карты',
+    desc: 'Тоже уйдёт с моей кассы (перевод считается налом)',
+    tech: "payment_method='transfer' · paid_by=Я"
+  },
+  {
+    value: 'bank',
+    icon: '🏦',
+    title: 'Бухгалтерия через банк (оф)',
+    desc: 'Не из моей кассы — справочно отметить',
+    tech: "payment_method='bank' · paid_by=NULL",
+    requireOfficial: true
+  },
+  {
+    value: 'self',
+    icon: '📱',
+    title: 'Через СЗ-сервис (ReStaff)',
+    desc: 'Бухгалтерия переведёт самозанятому. Не из моей кассы.',
+    tech: "payment_method='self' · paid_by=NULL",
+    requireSelfEmployed: true
+  }
 ];
 
-export function PayWorkerModal({ work, employeeId: initialEmpId, employeeName: initialEmpName, defaultType = 'salary', onSaved }) {
+/**
+ * Дефолтный источник по типу работника + типу выплаты.
+ *   штатник + salary → bank
+ *   СЗ + salary → self
+ *   иначе → cash
+ */
+function defaultSourceFor({ isOfficial, isSelfEmployed, payType }) {
+  if (payType === 'salary' && isOfficial) return 'bank';
+  if (payType === 'salary' && isSelfEmployed) return 'self';
+  return 'cash';
+}
+
+/** disabled-источник если работник не того типа. */
+function isSourceDisabled(srcValue, { isOfficial, isSelfEmployed }) {
+  const card = SOURCE_CARDS.find((s) => s.value === srcValue);
+  if (!card) return false;
+  if (card.requireOfficial && !isOfficial) return true;
+  if (card.requireSelfEmployed && !isSelfEmployed) return true;
+  return false;
+}
+
+export function PayWorkerModal({
+  work,
+  employeeId: initialEmpId,
+  employeeName: initialEmpName,
+  defaultType = 'salary',
+  crewOptions, // FIX (24.06): seed-список бригады с готовыми employee_name из summary
+  onSaved
+}) {
   const { open, close } = useModal();
   const [employeeId, setEmployeeId] = useState(initialEmpId ? String(initialEmpId) : '');
   const [employeeName, setEmployeeName] = useState(initialEmpName || '');
-  const [crew, setCrew] = useState([]);
+  const [crew, setCrew] = useState(Array.isArray(crewOptions) ? crewOptions : []);
   const [summary, setSummary] = useState(null);
   const [err, setErr] = useState(null);
   const [type, setType] = useState(defaultType);
   const [amount, setAmount] = useState('');
+  // 2026-06-29 — источник денег (payment_method).
+  // Initial='cash'; пересчитывается на изменение employee+type через эффект ниже.
   const [method, setMethod] = useState('cash');
+  const [methodTouched, setMethodTouched] = useState(false);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [submitErr, setSubmitErr] = useState('');
 
-  // Если сотрудник не задан изначально — грузим список бригады для выбора.
+  // FIX 24.06: используем новый /crew-all эндпоинт — он отдаёт «на объекте»
+  // (assignments ∪ checkins, с ФИО) и «остальные активные сотрудники».
+  // Это решает кейс: бригада пустая → раньше select был пустой → выплатить
+  // премию/удержание невозможно. Теперь юзер выбирает любого.
+  // Если родитель передал crewOptions из summary (быстрый кейс — бригада уже
+  // загружена в KPI-таблице) — используем их + догружаем «прочих» в фоне.
+  const [othersList, setOthersList] = useState([]);
   useEffect(() => {
-    if (!initialEmpId) {
-      loadCrew(work.id).then(setCrew);
-    }
-  }, [work.id, initialEmpId]);
+    if (initialEmpId) return;
+    loadCrewAll(work.id).then(({ on_site, others }) => {
+      // Если crewOptions передан и не пустой — используем его как on_site (там
+      // же дополнительно есть per_diem_rate из summary). Иначе берём из crew-all.
+      const seedOnSite = (Array.isArray(crewOptions) && crewOptions.length > 0) ? crewOptions : on_site;
+      setCrew(seedOnSite);
+      setOthersList(others);
+    });
+  }, [work.id, initialEmpId, crewOptions]);
 
   // Подгружаем баланс при выборе сотрудника.
   useEffect(() => {
@@ -78,6 +169,74 @@ export function PayWorkerModal({ work, employeeId: initialEmpId, employeeName: i
       .then(setSummary)
       .catch((e) => setErr(String(e?.message || e)));
   }, [work.id, employeeId]);
+
+  // 2026-06-29 — определяем тип работника (штатник / СЗ).
+  // Сперва пробуем crew-списки (если флаги пришли), затем — `summary.employee`,
+  // в крайнем случае — fetch /api/staff/employees/:id.
+  const [empInfo, setEmpInfo] = useState(null);
+  useEffect(() => {
+    if (!employeeId) { setEmpInfo(null); return; }
+    let cancel = false;
+    // Сначала ищем в crew
+    const empIdStr = String(employeeId);
+    const all = [...(crew || []), ...(othersList || [])];
+    const fromCrew = all.find((c) => String(c.employee_id ?? c.id) === empIdStr);
+    if (fromCrew && (fromCrew.is_officially_employed !== undefined || fromCrew.is_self_employed !== undefined)) {
+      setEmpInfo(fromCrew);
+      return;
+    }
+    // Иначе — fetch employee
+    api(`/api/staff/employees/${empIdStr}`)
+      .then((d) => { if (!cancel) setEmpInfo(d?.employee || d || null); })
+      .catch(() => {
+        // Fallback на список — может вернёт нужные поля
+        api(`/api/employees?limit=2000`).then((d) => {
+          if (cancel) return;
+          const arr = Array.isArray(d) ? d : (d?.employees || d?.items || []);
+          const e = arr.find((x) => String(x.id) === empIdStr);
+          if (e) setEmpInfo(e);
+        }).catch(() => {});
+      });
+    return () => { cancel = true; };
+  }, [employeeId, crew, othersList]);
+
+  const workerType = useMemo(() => {
+    const src = empInfo || summary?.employee || null;
+    return {
+      isOfficial: !!(src?.is_officially_employed),
+      isSelfEmployed: !!(src?.is_self_employed)
+    };
+  }, [empInfo, summary]);
+
+  // Дефолт source при смене работника или типа выплаты (если юзер не трогал руками).
+  useEffect(() => {
+    if (methodTouched) return;
+    if (!employeeId) return;
+    const next = defaultSourceFor({
+      isOfficial: workerType.isOfficial,
+      isSelfEmployed: workerType.isSelfEmployed,
+      payType: type
+    });
+    setMethod(next);
+  }, [employeeId, type, workerType.isOfficial, workerType.isSelfEmployed, methodTouched]);
+
+  // Если выбранный method стал недоступен (например, юзер сменил с СЗ на штатника) — переключим.
+  useEffect(() => {
+    if (!employeeId) return;
+    if (isSourceDisabled(method, workerType)) {
+      setMethod(defaultSourceFor({
+        isOfficial: workerType.isOfficial,
+        isSelfEmployed: workerType.isSelfEmployed,
+        payType: type
+      }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employeeId, workerType.isOfficial, workerType.isSelfEmployed]);
+
+  const pickMethod = (v) => {
+    setMethod(v);
+    setMethodTouched(true);
+  };
 
   const pd  = summary?.per_diem || { accrued: 0, paid: 0, balance: 0 };
   const sal = summary?.salary   || { fot_accrued: 0, advance_paid: 0, salary_paid: 0, balance: 0 };
@@ -220,11 +379,46 @@ export function PayWorkerModal({ work, employeeId: initialEmpId, employeeName: i
     }
   };
 
+  const labelOf = (c) => {
+    if (!c) return '';
+    if (c.employee_name) return c.employee_name;
+    if (c.name) return c.name;
+    if (c.fio) return c.fio;
+    if (c.full_name) return c.full_name;
+    const ln = c.last_name || '';
+    const fn = c.first_name || '';
+    const mn = c.middle_name || '';
+    const composed = [ln, fn, mn].filter(Boolean).join(' ').trim();
+    if (composed) return composed;
+    const id = c.employee_id || c.id;
+    return id ? `#${id}` : '—';
+  };
+
   const onPickEmployee = (id) => {
     setEmployeeId(id);
-    const c = crew.find((x) => String(x.employee_id || x.id) === String(id));
-    setEmployeeName(c?.employee_name || c?.name || `#${id}`);
+    const all = [...crew, ...othersList];
+    const c = all.find((x) => String(x.employee_id || x.id) === String(id));
+    setEmployeeName(labelOf(c) || `#${id}`);
   };
+
+  const selectOptions = useMemo(() => {
+    const out = [{ value: '', label: '— выбрать сотрудника —' }];
+    const onSite = crew
+      .filter((c) => c.employee_id || c.id)
+      .map((c) => ({ value: String(c.employee_id || c.id), label: labelOf(c) }));
+    if (onSite.length > 0) {
+      out.push({ value: '__hdr_on_site', label: '── На объекте ──', disabled: true });
+      out.push(...onSite);
+    }
+    const others = othersList
+      .filter((c) => c.employee_id || c.id)
+      .map((c) => ({ value: String(c.employee_id || c.id), label: labelOf(c) }));
+    if (others.length > 0) {
+      out.push({ value: '__hdr_others', label: '── Прочие сотрудники ──', disabled: true });
+      out.push(...others);
+    }
+    return out;
+  }, [crew, othersList]);
 
   return (
     <MCard className="modal-xl">
@@ -236,18 +430,17 @@ export function PayWorkerModal({ work, employeeId: initialEmpId, employeeName: i
               <SelectInput
                 value={employeeId}
                 onChange={onPickEmployee}
-                options={[
-                  { value: '', label: '— выбрать из бригады —' },
-                  ...crew.map((c) => ({
-                    value: String(c.employee_id || c.id),
-                    label: c.employee_name || c.name || `#${c.employee_id}`
-                  }))
-                ]}
+                options={selectOptions}
               />
             </Field>
-            {crew.length === 0 && (
+            {crew.length === 0 && othersList.length === 0 && (
               <div className="muted" style={{ fontSize: 12 }}>
-                В бригаде нет сотрудников — добавьте их на вкладке «Бригада».
+                Загрузка списка сотрудников…
+              </div>
+            )}
+            {crew.length === 0 && othersList.length > 0 && (
+              <div className="muted" style={{ fontSize: 12 }}>
+                На объекте нет назначений и чекинов — выберите из списка ниже.
               </div>
             )}
           </div>
@@ -350,19 +543,40 @@ export function PayWorkerModal({ work, employeeId: initialEmpId, employeeName: i
                 </div>
               )}
 
-              <Field label="Способ выплаты" required>
-                <div className="ft-pw-method-grid">
-                  {METHOD_TILES.map((m) => (
-                    <button
-                      key={m.value}
-                      type="button"
-                      className={'ft-pw-tile' + (method === m.value ? ' is-active' : '')}
-                      onClick={() => setMethod(m.value)}
-                    >
-                      <span className="ic">{m.icon}</span>
-                      <span className="nm">{m.label}</span>
-                    </button>
-                  ))}
+              <Field label="Источник денег" required help={workerHint(workerType)}>
+                <div className="ft-pw-src-group" role="radiogroup" aria-label="Источник денег">
+                  {SOURCE_CARDS.map((s) => {
+                    const disabled = isSourceDisabled(s.value, workerType);
+                    const selected = method === s.value;
+                    return (
+                      <label
+                        key={s.value}
+                        className={
+                          'ft-pw-src-card'
+                          + (selected ? ' is-selected' : '')
+                          + (disabled ? ' is-disabled' : '')
+                        }
+                        title={disabled ? disabledReason(s, workerType) : ''}
+                      >
+                        <input
+                          type="radio"
+                          name="ft-pw-source"
+                          value={s.value}
+                          checked={selected}
+                          disabled={disabled}
+                          onChange={() => !disabled && pickMethod(s.value)}
+                        />
+                        <span className="ft-pw-src-ico" aria-hidden="true">{s.icon}</span>
+                        <span className="ft-pw-src-body">
+                          <span className="ft-pw-src-ttl">{s.title}</span>
+                          <span className="ft-pw-src-desc">
+                            {disabled ? disabledReason(s, workerType) : s.desc}
+                          </span>
+                          <span className="ft-pw-src-tech">{s.tech}</span>
+                        </span>
+                      </label>
+                    );
+                  })}
                 </div>
               </Field>
 

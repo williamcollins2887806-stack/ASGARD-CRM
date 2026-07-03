@@ -73,10 +73,17 @@ export const AI_STATUS_MAP = {
   archived:      { label: 'Архив',           tone: 't2'     }
 };
 
+// 23.06.2026 BUG-FIX (Mail R2): добавлены классы, которые backend пишет (ai-email-analyzer.js:221)
+// с Wave-7: tender_invitation, addendum_response, information, personal. До фикса они показывались
+// сырой строкой («tender_invitation» вместо «Приглашение на тендер»).
 export const AI_CLASS_MAP = {
   direct_request:      'Прямой запрос',
   platform_tender:     'Тендер с площадки',
+  tender_invitation:   'Приглашение на тендер',
+  addendum_response:   'Ответ на дозапрос',
   commercial_offer:    'Коммерческое предложение',
+  information:         'Информационное',
+  personal:            'Личное',
   newsletter:          'Рассылка',
   spam:                'Спам',
   internal:            'Внутренняя',

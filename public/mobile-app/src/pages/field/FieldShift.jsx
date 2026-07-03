@@ -73,6 +73,13 @@ export default function FieldShift() {
     );
   });
 
+  // 423 period_locked → ставим понятный месседж вместо технической ошибки бэкенда
+  function describeLockError(e) {
+    const isLocked = e?.status === 423 || /period_locked|423|locked/i.test(e?.message || '');
+    if (isLocked) return '🔒 Месяц закрыт директором. Свяжитесь с РП.';
+    return e?.message || 'Ошибка';
+  }
+
   const handleStart = async () => {
     haptic.medium();
     setSubmitting(true);
@@ -85,7 +92,7 @@ export default function FieldShift() {
       const client_local_hour = now.getHours();
       await fieldApi.post('/checkin/', { work_id: data.assignment?.work_id, ...geo, client_date, client_time, client_local_hour });
       await fetchData();
-    } catch (e) { setError(e.message); }
+    } catch (e) { setError(describeLockError(e)); }
     finally { setSubmitting(false); }
   };
 
@@ -98,7 +105,7 @@ export default function FieldShift() {
       const client_time = new Date().toISOString();
       await fieldApi.post('/checkin/checkout', { ...geo, checkin_id: checkin?.id, client_time });
       await fetchData();
-    } catch (e) { setError(e.message); }
+    } catch (e) { setError(describeLockError(e)); }
     finally { setSubmitting(false); }
   };
 

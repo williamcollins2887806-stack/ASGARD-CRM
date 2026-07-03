@@ -157,7 +157,32 @@ export function moveCard(cardId, payload) {
     { method: 'POST', body: payload });
 }
 
-export function transferCard(cardId, payload) {
+// transferCard — единая обёртка передачи карты другому РП.
+//
+// 23.06.2026 Маркетплейс: для pre_tender'а передача = reassign самого pre_tender'а
+// (а не только карты канбана). Backend endpoint /api/pre-tenders/:id/transfer
+// делает: обновляет assigned_to + закрывает карту у старого + создаёт у нового
+// + проверяет лимит 5 у получателя.
+// Для остальных entity_kind (tender / work / inbox_application) — legacy
+// /personal-kanban/cards/:id/transfer.
+//
+// Опционально принимает контекст карты через `cardCtx` (объект, может содержать
+// `entity_kind`, `entity_id`). Если cardCtx.entity_kind === 'pre_tender' и есть entity_id —
+// маршрутизируем на pre-tender endpoint. Иначе — legacy.
+// Vanilla ref: personal_kanban.js:1691-1740.
+export function transferCard(cardId, payload, cardCtx) {
+  const entityKind = cardCtx?.entity_kind;
+  const entityId = cardCtx?.entity_id;
+  if (entityKind === 'pre_tender' && entityId != null) {
+    // Pre-tender backend: { to_user_id, reason } (а не note).
+    const body = {
+      to_user_id: payload?.to_user_id,
+      reason: (payload && (payload.reason ?? payload.note)) || null
+    };
+    // silent: вызывающий сам обработает 409 recipient_limit_reached / already_owns / self_transfer_forbidden.
+    return api('/api/pre-tenders/' + entityId + '/transfer',
+      { method: 'POST', body, silent: true });
+  }
   return api('/api/personal-kanban/cards/' + cardId + '/transfer',
     { method: 'POST', body: payload });
 }
@@ -307,11 +332,21 @@ export async function loadV3Counts(flowFilter, scope, ownerId, isToRole) {
   const qs = _buildV3Query(flowFilter, scope, ownerId, isToRole);
   return await api(`/api/personal-kanban/columns/counts?${qs}`) || {};
 }
+// 409 → возвращаем payload вместо throw (см. _handleErrorResponse: 409 silent, но Error всё равно).
+// Вызывающий обрабатывает {error:'confirm_required'} как подтверждение перехода.
+async function _v3Soft409(path, body) {
+  try {
+    return await api(path, { method: 'POST', body, silent: true });
+  } catch (e) {
+    if (e?.status === 409 && e?.data) return e.data;
+    throw e;
+  }
+}
 export async function v3Transition(cardId, toCol, note, confirm) {
-  return await api(`/api/personal-kanban/cards/${cardId}/transition`, {
-    method: 'POST',
-    body: { to_v3_column: toCol, note: note || null, confirm: !!confirm },
-  });
+  return await _v3Soft409(
+    `/api/personal-kanban/cards/${cardId}/transition`,
+    { to_v3_column: toCol, note: note || null, confirm: !!confirm },
+  );
 }
 export async function v3StartQuick(cardId) {
   return await api(`/api/personal-kanban/cards/${cardId}/start-quick`, { method: 'POST', body: {} });
@@ -350,4 +385,86 @@ export async function tkpAttachToCard(tkpId, cardId) {
 }
 export async function tkpSendToClient(cardId, payload) {
   return await api(`/api/tkp/${cardId}/send-tkp-to-client`, { method: 'POST', body: payload });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Notes (доска заметок) — паритет с vanilla personal_kanban.js:5279..5450
+ *   GET    /cards/:cardId/history             → { notes:[...] }
+ *   POST   /cards/:cardId/notes               { body }
+ *   PUT    /cards/:cardId/notes/:noteId       { body }
+ *   PATCH  /cards/:cardId/notes/:noteId/position { pos_x, pos_y }
+ *   DELETE /cards/:cardId/notes/:noteId
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+export async function loadNotes(cardId) {
+  const r = await api(`/api/personal-kanban/cards/${cardId}/history`);
+  return Array.isArray(r?.notes) ? r.notes : [];
+}
+
+export async function createNote(cardId, body) {
+  const r = await api(`/api/personal-kanban/cards/${cardId}/notes`, {
+    method: 'POST', body: { body }
+  });
+  return r?.item || r;
+}
+
+export async function updateNoteText(cardId, noteId, body) {
+  const r = await api(`/api/personal-kanban/cards/${cardId}/notes/${noteId}`, {
+    method: 'PUT', body: { body }
+  });
+  return r?.item || r;
+}
+
+export async function updateNotePosition(cardId, noteId, pos_x, pos_y) {
+  const r = await api(`/api/personal-kanban/cards/${cardId}/notes/${noteId}/position`, {
+    method: 'PATCH', body: { pos_x, pos_y }
+  });
+  return r?.item || r;
+}
+
+export async function deleteNote(cardId, noteId) {
+  return await api(`/api/personal-kanban/cards/${cardId}/notes/${noteId}`, {
+    method: 'DELETE'
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Контрагенты (customers) — паритет с vanilla personal_kanban.js:3554..3742
+ *   GET    /api/customers?search=&limit=
+ *   GET    /api/customers/:inn
+ *   GET    /api/customers/lookup/:inn  (dadata/ЕГРЮЛ)
+ *   POST   /api/customers              { inn, name, ... }
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+export async function searchCustomers(query) {
+  const q = (query || '').trim();
+  const qs = q.length >= 2
+    ? `?search=${encodeURIComponent(q)}&limit=50`
+    : '?limit=30';
+  const r = await api('/api/customers' + qs);
+  return Array.isArray(r?.customers) ? r.customers : [];
+}
+
+export async function lookupCustomerByInn(inn) {
+  // {found, suggestion:{inn,name,full_name,kpp,ogrn,address}, message?}
+  return await api('/api/customers/lookup/' + encodeURIComponent(inn));
+}
+
+export async function getCustomerByInn(inn) {
+  return await api('/api/customers/' + encodeURIComponent(inn));
+}
+
+export async function createCustomer(payload) {
+  return await api('/api/customers', { method: 'POST', body: payload });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Patch card fields (customer_*, work_*, contact_*) — backend whitelist в
+ * /cards/:cardId/update (см. routes/personal-kanban.js / vanilla строка 4290).
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+export async function patchCard(cardId, patch) {
+  return await api(`/api/personal-kanban/cards/${cardId}/update`, {
+    method: 'POST', body: patch
+  });
 }

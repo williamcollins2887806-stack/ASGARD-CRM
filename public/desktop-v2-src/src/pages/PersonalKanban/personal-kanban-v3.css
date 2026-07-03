@@ -579,3 +579,55 @@
 .pk3-shell *::-webkit-scrollbar-track,
 .pk3-drawer *::-webkit-scrollbar-track,
 .pk3-modal-overlay *::-webkit-scrollbar-track { background: transparent; }
+
+/* ── 22.06.2026 P0-F3: Sticky NoteBoard (паритет с vanilla 452-505) ── */
+.pk3-noteboard {
+  position: fixed; top: 24px; bottom: 24px; left: 24px;
+  width: 460px; z-index: 99999;
+  display: flex; flex-direction: column;
+  background: transparent; pointer-events: none; overflow: hidden;
+  font-family: 'Kalam','Caveat','Permanent Marker','Comic Sans MS',cursive;
+}
+.pk3-noteboard.pk3-show { display: flex; }
+.pk3-noteboard > * { pointer-events: auto; }
+.pk3-noteboard-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 6px 14px;
+  font-size: 28px; color: #fff; letter-spacing: .5px;
+  text-shadow: 0 2px 0 rgba(0,0,0,.7), 0 0 18px rgba(0,0,0,.6), 2px 3px 0 rgba(0,0,0,.5);
+}
+.pk3-noteboard-head .pk3-noteboard-emoji {
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,.5));
+}
+.pk3-noteboard-head .pk3-count-badge {
+  margin-left: auto;
+  font-size: 16px; color: #3a2f08; font-weight: 600;
+  background: #fff8a1; border: 1px solid rgba(0,0,0,.15);
+  padding: 2px 12px; border-radius: 9999px;
+  box-shadow: 0 3px 6px rgba(0,0,0,.35);
+  text-shadow: none;
+}
+.pk3-noteboard-hint {
+  font-size: 14px; color: rgba(255,255,255,.85);
+  font-family: 'Kalam','Caveat',cursive;
+  padding: 0 8px 12px;
+  text-shadow: 0 1px 3px rgba(0,0,0,.7);
+}
+.pk3-stk-list-empty {
+  text-align: center; color: #fff; opacity: .7;
+  padding: 40px 18px; font-size: 18px;
+  font-family: 'Kalam','Caveat',cursive;
+  text-shadow: 0 1px 3px rgba(0,0,0,.6);
+}
+.pk3-stk-list::-webkit-scrollbar { display: none; }
+
+/* Анимация всплытия стикера (паритет с vanilla 499-500) */
+@keyframes pk3-sticker-pop {
+  from { opacity: 0; transform: rotate(-2.3deg) scale(.6); }
+  to   { opacity: 1; transform: rotate(-2.3deg) scale(1); }
+}
+
+@media (max-width: 1280px) { .pk3-noteboard { width: 380px; } }
+@media (max-width: 1100px) { .pk3-noteboard { width: 320px; left: 16px; } }
+@media (max-width: 880px)  { .pk3-noteboard { width: 280px; left: 10px; top: 14px; bottom: 14px; } }
+@media (max-width: 680px)  { .pk3-noteboard { display: none; } }

@@ -75,7 +75,7 @@
 .vpb__legend-dot{width:8px;height:8px;border-radius:2px}
 
 /* -- Pool (left sidebar) -- */
-.vpb__pool{background:var(--bg1);border:2px solid var(--brd);border-radius:var(--r-md);padding:var(--sp-3);overflow-y:auto;max-height:680px;transition:border-color .3s,background .3s;animation:vpb-fadeUp .4s ease backwards}
+.vpb__pool{background:var(--bg1);border:2px solid var(--brd);border-radius:var(--r-md);padding:var(--sp-3);transition:border-color .3s,background .3s;animation:vpb-fadeUp .4s ease backwards}
 .vpb__pool.is-over{border-color:var(--blue);background:color-mix(in srgb,var(--blue) 3%,var(--bg1));animation:vpb-poolGlow 1.2s ease infinite}
 .vpb__pool-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--sp-2);padding-bottom:var(--sp-2);border-bottom:2px solid color-mix(in srgb,var(--blue) 20%,var(--brd))}
 .vpb__pool-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--t2)}

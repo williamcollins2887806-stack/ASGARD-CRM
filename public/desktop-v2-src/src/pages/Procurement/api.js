@@ -182,6 +182,10 @@ export function updateItem(procId, itemId, payload) {
 export function deleteItem(procId, itemId) {
   return api(`/api/procurement/${procId}/items/${itemId}`, { method: 'DELETE' });
 }
+/** Мягкая отмена позиции — данные остаются в истории, статус → cancelled. */
+export function cancelItem(procId, itemId) {
+  return api(`/api/procurement/${procId}/items/${itemId}/cancel`, { method: 'PUT', body: {} });
+}
 export function bulkItems(procId, items) {
   return api(`/api/procurement/${procId}/items/bulk`, { method: 'POST', body: { items } });
 }
@@ -300,7 +304,9 @@ export function loadWarehouseLocations() {
 export function getActions(p, role) {
   const a = [];
   const s = p.status;
-  if (s === 'draft' && isPM(role))
+  // 23.06.2026 BUG-FIX (Procurement P-03): backend разрешает «Отправить закупщику» И PM, И DIR
+  // (procurement.js:594-604 fromStatuses + roles). До фикса DIR не видел кнопку и не мог отправить.
+  if (s === 'draft' && (isPM(role) || isDIR(role)))
     a.push({ label: 'Отправить закупщику', action: 'send-to-proc', variant: 'primary' });
   if (s === 'sent_to_proc' && isPROC(role))
     a.push({ label: 'Ответить РП', action: 'proc-respond', variant: 'primary' });
@@ -308,6 +314,15 @@ export function getActions(p, role) {
     a.push({ label: 'Согласовать', action: 'pm-approve', variant: 'primary' });
     a.push({ label: 'Вернуть',     action: 'return-to-proc', variant: 'ghost' });
   }
+  // 23.06.2026 BUG-FIX (Procurement P-04): backend разрешает PM повторно отправить
+  // закупщику ИЗ dir_rework (procurement.js:595 fromStatuses:['draft','dir_rework']).
+  // До фикса UI не показывал кнопку — заявка «зависала» в колонке Согласование.
+  if (s === 'dir_rework' && isPM(role))
+    a.push({ label: 'Отправить снова', action: 'send-to-proc', variant: 'primary' });
+  // 23.06.2026 BUG-FIX (Procurement P-05): backend разрешает PM согласовать из dir_question
+  // (procurement.js:622). До фикса PM не мог ответить директору, заявка «зависала».
+  if (s === 'dir_question' && isPM(role))
+    a.push({ label: 'Ответить директору', action: 'pm-approve', variant: 'primary' });
   if (s === 'pm_approved' && isDIR(role)) {
     a.push({ label: 'Согласовать', action: 'dir-approve',   variant: 'primary' });
     a.push({ label: 'Доработка',   action: 'dir-rework',    variant: 'ghost' });

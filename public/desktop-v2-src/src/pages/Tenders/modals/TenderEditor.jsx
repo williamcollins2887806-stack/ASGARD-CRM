@@ -689,11 +689,16 @@ export function TenderEditorWizard({ tenderId, onSaved }) {
         tender_price: '', tag: '', comment: '',
         documents: []
       };
-      // Слиянием с серверным `t` затирать дефолты можно — но period/vat_pct/tender_price_with_vat
-      // вычисляем отдельно (см. выше) и проставляем ПОСЛЕ spread, иначе spread их перепишет.
+      // 23.06.2026 BUG-FIX (P0 #3): backend хранит `tender_title` и `docs_deadline`,
+      // а форма биндится на `tender_name` и `deadline_at`. До фикса spread `...t` клал
+      // правильные имена, но state видел ''/'' из base → PUT шёл с tender_title=''
+      // и docs_deadline=null → НЕОБРАТИМАЯ ПОТЕРЯ ДАННЫХ при сохранении существующего
+      // тендера. Решение — алиасить поля при чтении.
       const serverInitial = {
         ...base,
         ...t,
+        tender_name: (t && (t.tender_title ?? t.tender_name)) || '',
+        deadline_at: (t && (t.docs_deadline ?? t.deadline_at)) || '',
         period_month: t?.period ? t.period.slice(5, 7) : periodMonth,
         period_year: t?.period ? t.period.slice(0, 4) : periodYear,
         vat_pct: (t && t.vat_pct != null) ? t.vat_pct : 20,

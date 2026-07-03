@@ -953,7 +953,9 @@ window.AsgardMailboxPage = (function(){
     let fields = '';
     fields += `<div class="ai-popup-field"><div class="ai-popup-label">Цвет</div><div class="ai-popup-value"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${colorHex};margin-right:6px;vertical-align:middle;"></span>${esc(colorLabel[email.ai_color] || email.ai_color || '—')}</div></div>`;
     if (email.ai_classification) {
-      const classLabel = { direct_request: 'Прямой запрос', platform_tender: 'Тендер с площадки', commercial_offer: 'Коммерческое предложение', newsletter: 'Рассылка', spam: 'Спам', internal: 'Внутренняя', bounce_or_auto_reply: 'Автоответ/Bounce', other: 'Прочее' };
+      // 23.06.2026 BUG-FIX (Mail R2): добавлены классы Wave-7 (tender_invitation, addendum_response,
+      // information, personal) — backend ai-email-analyzer.js:221 их пишет, до фикса показывали сырое.
+      const classLabel = { direct_request: 'Прямой запрос', platform_tender: 'Тендер с площадки', tender_invitation: 'Приглашение на тендер', addendum_response: 'Ответ на дозапрос', commercial_offer: 'Коммерческое предложение', information: 'Информационное', personal: 'Личное', newsletter: 'Рассылка', spam: 'Спам', internal: 'Внутренняя', bounce_or_auto_reply: 'Автоответ/Bounce', other: 'Прочее' };
       const cls = String(email.ai_classification).replace(/"/g, '');
       fields += `<div class="ai-popup-field"><div class="ai-popup-label">Классификация</div><div class="ai-popup-value">${esc(classLabel[cls] || cls)}</div></div>`;
     }

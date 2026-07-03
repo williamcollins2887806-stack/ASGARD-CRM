@@ -15,16 +15,15 @@ window.AsgardBigScreen = (function(){
   const SLIDE_INTERVAL = 60000; // 60 секунд
   const DATA_REFRESH   = 300000; // обновление данных каждые 5 мин
 
-  // Закрытые/завершённые/отменённые работы — ЗЕРКАЛО src/helpers/work-status.js.
-  // Старый список ['Работы сдали','Закрыт'] пропускал «Завершена»/«Закрыта»/«Отменена» →
-  // закрытые+оплаченные работы ложно считались активными и «просроченными».
-  const _CLOSED_WORK = new Set([
-    'Закрыт','Закрыта','Закрыто','Работы сдали',
-    'Завершена','Завершено','Завершен','Завершён',
-    'Сдан','Сдана','Сдано',
-    'Отменена','Отменено','Отменён','Отменен','Отмена'
-  ].map(s => s.trim().toLowerCase()));
-  function _isClosedWork(ws){ return _CLOSED_WORK.has(String(ws||'').trim().toLowerCase()); }
+  // 23.06.2026 BUG-FIX (🟡 S1): закрытые-статусы из единого AsgardWorksShared.
+  // Раньше тут была локальная копия (16 значений), параллельно ещё 3 копии жили в
+  // custom_dashboard.js / works_shared.js / PmWorks/api.js. Расхождения приводили к
+  // тому что «Завершена»/«Сдан» считались done в одних виджетах и active в других.
+  // Локальная копия удалена; функция-обёртка оставлена для минимизации diff в местах
+  // использования. Fallback на старую константу — если works_shared.js не загружен.
+  const _isClosedWork = (ws) => (window.AsgardWorksShared && window.AsgardWorksShared.isClosedWork)
+    ? window.AsgardWorksShared.isClosedWork(ws)
+    : ['закрыт','закрыта','закрыто','работы сдали','завершена','завершено','завершен','завершён','сдан','сдана','сдано','отменена','отменено','отменён','отменен','отмена'].includes(String(ws||'').trim().toLowerCase());
 
   function _m(n) { return AsgardUI.money(n) + ' ₽'; }
   function _short(x) {

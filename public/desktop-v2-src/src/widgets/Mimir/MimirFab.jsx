@@ -32,11 +32,15 @@ function isHidden(hash) {
   return HIDDEN_HASHES.includes(h);
 }
 
+const LETTER_ROLES = ['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','OFFICE_MANAGER','PM','HEAD_PM','TO','HEAD_TO'];
+
 export default function MimirFab() {
   const { user, ready } = useAuth();
   const [hash, setHash] = useState(window.location.hash);
   const [open, setOpen] = useState(false);
+  const [menu, setMenu] = useState(false); // мини-меню FAB: Письмо / Мимир
   const [sidebar, setSidebar] = useState(false);
+  const canWriteLetter = !!(user && LETTER_ROLES.includes(user.role));
   const [messages, setMessages] = useState([]); // { role, content, results?, files?, isStreaming? }
   const [convId, setConvId] = useState(null);
   const [conversations, setConversations] = useState([]);
@@ -286,17 +290,52 @@ export default function MimirFab() {
     }
   };
 
+  // Перехват клика FAB: если право на письмо — открываем мини-меню; иначе сразу чат.
+  const onFabClick = () => {
+    if (open) { setOpen(false); setMenu(false); return; }
+    if (canWriteLetter) { setMenu((v) => !v); return; }
+    setOpen(true);
+  };
+
   return (
     <div className="mim-fab-wrap">
+      {/* Мини-меню FAB: «Написать письмо» + «Спросить Мимира» */}
+      {menu && !open && (
+        <div className="mim-fab-menu" role="menu" aria-label="Быстрые действия">
+          {canWriteLetter && (
+            <button
+              className="mim-fab-menu-item"
+              onClick={() => {
+                setMenu(false);
+                window.location.hash = '#/correspondence/composer';
+              }}
+              role="menuitem"
+              title="Открыть редактор официального письма (без привязки)"
+            >
+              <span className="mim-fab-menu-ico" aria-hidden="true">✉</span>
+              <span className="mim-fab-menu-label">Написать письмо</span>
+            </button>
+          )}
+          <button
+            className="mim-fab-menu-item"
+            onClick={() => { setMenu(false); setOpen(true); }}
+            role="menuitem"
+            title="Открыть чат с Мимиром"
+          >
+            <span className="mim-fab-menu-ico" aria-hidden="true">🧙</span>
+            <span className="mim-fab-menu-label">Спросить Мимира</span>
+          </button>
+        </div>
+      )}
       <button
-        className={'mim-fab' + (open ? ' open' : '')}
-        onClick={() => setOpen((v) => !v)}
-        title="🧙 Мимир — Хранитель Мудрости"
-        aria-label="Мимир — открыть чат"
-        aria-expanded={open}
-        aria-haspopup="dialog"
+        className={'mim-fab' + (open ? ' open' : '') + (menu ? ' menu-open' : '')}
+        onClick={onFabClick}
+        title={canWriteLetter ? 'Быстрые действия' : '🧙 Мимир — Хранитель Мудрости'}
+        aria-label={canWriteLetter ? 'Быстрые действия — письмо или Мимир' : 'Мимир — открыть чат'}
+        aria-expanded={open || menu}
+        aria-haspopup={canWriteLetter ? 'menu' : 'dialog'}
       >
-        <span className="mim-fab-emoji" aria-hidden="true">🧙</span>
+        <span className="mim-fab-emoji" aria-hidden="true">{menu ? '✕' : '🧙'}</span>
         <span className="mim-fab-rune" aria-hidden="true">ᛗ</span>
       </button>
 

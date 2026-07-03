@@ -22,7 +22,19 @@ function projector(sites) {
   });
 }
 
-const SITE_EMOJI = { platform: '🛢', plant: '🏭', other: '🏗' };
+// 23.06.2026 BUG-FIX (Sites D-M2): добавлены остальные значения sites.site_type
+// (terminal/refinery/port/office/object). До фикса все они рендерились дефолтным 🏗
+// и были визуально неразличимы на карте.
+const SITE_EMOJI = {
+  platform: '🛢',
+  plant:    '🏭',
+  refinery: '🛢',
+  terminal: '⛴',
+  port:     '⚓',
+  office:   '🏢',
+  object:   '🏗',
+  other:    '🏗'
+};
 
 export function MapStage({ sites, flights, onSite, onFlight }) {
   const ref = useRef(null);

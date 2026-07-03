@@ -72,7 +72,8 @@ export default function EmailPreviewModal({ id, onChanged }) {
             <div className="row gap-12 u-wrap fs-11 c-t3">
               {it.ai_confidence != null && <span>Уверенность: {Math.round(it.ai_confidence * 100)}%</span>}
               {it.ai_recommendation && <span>· Рекомендация: {it.ai_recommendation}</span>}
-              {it.ai_classification && <span>· Тип: {it.ai_classification}</span>}
+              {/* 23.06.2026 BUG-FIX (🟡 D-14): см. index.jsx — strip jsonb-кавычек. */}
+              {it.ai_classification && <span>· Тип: {String(it.ai_classification).replace(/^"|"$/g, '')}</span>}
               {it.estimated_budget && <span>· Бюджет: {it.estimated_budget}</span>}
               {it.estimated_days != null && <span>· Срок: {it.estimated_days} дн.</span>}
             </div>

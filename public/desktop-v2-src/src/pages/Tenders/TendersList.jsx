@@ -146,8 +146,11 @@ export default function TendersList({ tenders, pmsById, onOpen, onAction, sort, 
         t.tender_type || '',
         t.tender_price || t.contract_value || '',
         t.tender_status || '',
-        pmsById[t.pm_id]?.name || pmsById[t.pm_id]?.login || '',
-        t.deadline_at || '',
+        // 23.06.2026 BUG-FIX (P0 #5): реальная колонка БД — responsible_pm_id, не pm_id.
+        // До фикса колонка «РП» в CSV была пустая.
+        pmsById[t.responsible_pm_id ?? t.pm_id]?.name || pmsById[t.responsible_pm_id ?? t.pm_id]?.login || '',
+        // 23.06.2026 BUG-FIX (P0 #1): реальная колонка — docs_deadline.
+        t.docs_deadline || t.deadline_at || '',
         t.created_at || ''
       ]);
     }

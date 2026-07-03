@@ -247,6 +247,9 @@ function AddExpenseForm({ work, taxo, onCancel, onSaved }) {
 
   const subOptions = getSubcategoryOptions(form.category, taxo?.subcategories);
   const taxableSelected = ['cash', 'subcontract', 'per_diem', 'fot'].includes(form.category);
+  // НПД (self): оплата от компании с расчётного счёта, из кассы РП деньги НЕ уходят →
+  // на баланс РП не влияет (при этом 55% налоговая нагрузка всё равно начисляется).
+  const selfSelected = form.payment_method === 'self';
 
   const save = async () => {
     if (!(Number(form.amount) > 0)) return toast.error('Укажите сумму');
@@ -304,6 +307,13 @@ function AddExpenseForm({ work, taxo, onCancel, onSaved }) {
         <Field label="Способ оплаты">
           <SelectInput value={form.payment_method} onChange={(v) => set('payment_method', v)} options={taxo?.payment_methods || DEFAULT_PAYMENT_METHODS} />
         </Field>
+        {selfSelected && (
+          <Field label=" ">
+            <div className="fs-12 c-t3 p-6 bg-card r-sm">
+              👤 <b>НПД (самозанятый):</b> оплата от компании с расчётного счёта — из кассы РП деньги не уходят, на баланс РП не влияет.
+            </div>
+          </Field>
+        )}
         <Field label="№ документа">
           <TextInput value={form.doc_number} onChange={(v) => set('doc_number', v)} />
         </Field>

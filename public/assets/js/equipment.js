@@ -1116,7 +1116,7 @@ window.AsgardEquipment = (function () {
     if (!moves.length) return emptyState({ icon: '📍', title: 'Нет перемещений', message: 'История перемещений пуста' });
     var typeMap = { issue:'📤 Выдача', return:'📥 Возврат', transfer_out:'➡️ Передал', transfer_in:'⬅️ Получил',
       write_off:'🗑️ Списание', repair_start:'🔧 В ремонт', repair_end:'✅ Из ремонта' };
-    return '<div style="max-height:400px;overflow-y:auto">' + moves.map(function(m) {
+    return '<div>' + moves.map(function(m) {
       var det = '';
       if (m.from_holder_name) det += 'От: ' + esc(m.from_holder_name);
       if (m.to_holder_name) det += (det?' → ':'') + 'Кому: ' + esc(m.to_holder_name);
@@ -1135,7 +1135,7 @@ window.AsgardEquipment = (function () {
     var icons = { scheduled_to:'🔄', repair:'🔧', calibration:'📏', inspection:'🔍' };
     var html = isAdmin() ? '<button class="btn mini" style="margin-bottom:12px" onclick="AsgardEquipment.openMaintenanceForm(' + eq.id + ')">+ Добавить запись</button>' : '';
     if (!maint.length) return html + emptyState({ icon: '🔧', title: 'Нет записей ТО', message: 'Добавьте первую запись обслуживания' });
-    return html + '<div style="max-height:300px;overflow-y:auto">' + maint.map(function(m) {
+    return html + '<div>' + maint.map(function(m) {
       return '<div style="display:grid;grid-template-columns:auto 1fr 100px 80px;gap:10px;padding:10px;border-bottom:1px solid var(--border);font-size:13px;align-items:center">' +
         '<span>' + (icons[m.maintenance_type]||'📋') + ' ' + esc(m.maintenance_type||'') + '</span>' +
         '<span>' + esc(m.description||'—') + '</span>' +
@@ -1152,7 +1152,7 @@ window.AsgardEquipment = (function () {
       var seen = {};
       moves.forEach(function(m) { if (!seen[m.work_id]) { seen[m.work_id] = true; workIds.push(m.work_id); } });
       if (!workIds.length) return emptyState({ icon: '📊', title: 'Не привязано к работам', message: 'Оборудование не используется в работах' });
-      return '<div style="max-height:300px;overflow-y:auto">' + workIds.map(function(wid) {
+      return '<div>' + workIds.map(function(wid) {
         var m = moves.find(function(x){return x.work_id===wid;});
         return '<div style="display:flex;gap:12px;padding:10px;border-bottom:1px solid var(--border)">' +
           '<span style="font-size:18px">📊</span><div style="flex:1">' +
@@ -1491,7 +1491,7 @@ window.AsgardEquipment = (function () {
     try {
       var data = await api('/api/equipment/by-holder/'+userId);
       if (!data.equipment?.length) { toast('Информация', 'Нет закреплённого оборудования', 'info'); return; }
-      var html = '<div style="max-height:400px;overflow-y:auto">' + data.equipment.map(function(eq) {
+      var html = '<div>' + data.equipment.map(function(eq) {
         return '<div class="fk-work-item">' +
           '<div class="fk-work-item-icon">' + (eq.category_icon||'📦') + '</div>' +
           '<div class="fk-work-item-info">' +
@@ -1549,7 +1549,7 @@ window.AsgardEquipment = (function () {
         '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-muted);margin-bottom:16px">' +
           '<span>Собрано: ' + assigned + '/' + items.length + '</span><span>' + pct + '%</span></div>' +
         (kit.description?'<p style="font-size:13px;color:var(--text-muted);margin-bottom:16px">' + esc(kit.description) + '</p>':'') +
-        '<div style="max-height:400px;overflow-y:auto">' +
+        '<div>' +
         items.map(function(item) {
           var has = !!item.equipment_id;
           return '<div style="display:flex;gap:12px;align-items:center;padding:10px;background:var(--bg);border-radius:8px;margin-bottom:6px;border-left:3px solid ' + (has?'#22c55e':item.is_required?'#ef4444':'#f59e0b') + '">' +
@@ -1595,7 +1595,7 @@ window.AsgardEquipment = (function () {
         '</div><hr style="border:none;border-top:1px solid var(--border)"/>' +
         '<div><h4>📦 Доступное оборудование</h4>' +
           '<input class="fk-avail-search" placeholder="Поиск..." oninput="AsgardEquipment._filterAvailable(this.value)"/>' +
-          '<div id="fkAvailList" style="max-height:300px;overflow-y:auto">' +
+          '<div id="fkAvailList">' +
             available.slice(0,50).map(function(eq) {
               return '<label class="fk-work-item" style="cursor:pointer">' +
                 '<input type="checkbox" class="fk-avail-cb" value="' + eq.id + '"/>' +

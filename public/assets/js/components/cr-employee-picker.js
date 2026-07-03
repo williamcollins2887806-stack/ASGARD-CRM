@@ -763,3 +763,13 @@ const CREmployeePicker = (() => {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = CREmployeePicker;
 }
+
+// Глобальная регистрация (выполняется в classic-script context).
+// БАГ (21.06.2026): без этой строки `if (window.CREmployeePicker)` в payroll.js
+// (line 655 ведомость, line 949 «Разовые оплаты»/Удержания/Премии) был всегда
+// false — `const CREmployeePicker` в classic-script виден напрямую, но НЕ как
+// window.* property. Из-за этого пикер сотрудника не создавался → юзер не мог
+// выбрать рабочего в «Разовые оплаты» (Удержания/Премии).
+if (typeof window !== 'undefined') {
+  window.CREmployeePicker = CREmployeePicker;
+}

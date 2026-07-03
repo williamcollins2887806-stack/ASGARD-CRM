@@ -14,9 +14,10 @@ import { Field, TextInput, INNInput, TextareaInput, FileDrop } from '@/inputs/In
 import { toast } from '@/modals/Notifications';
 import {
   quickTkpCreate, quickTkpDadata, quickTkpUpload, quickTkpChat,
-  quickTkpCalculate, quickTkpFinalize, fmtMoney
+  quickTkpCalculate, quickTkpFinalize, quickTkpSaveToCard, fmtMoney
 } from '../api';
 import { validateFile, MAX_ATTACHMENT_SIZE } from '@/api/upload';
+import { ReportPreview } from './ReportPreview';
 
 // ── Рендер таблицы сметы (vanilla _renderEstTable, tkp-page.js:1415-1438) ──
 function EstimateTable({ est }) {
@@ -89,6 +90,10 @@ export function QuickMimirModal({ onCreated, prefill }) {
   const [messages, setMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [busy, setBusy] = useState(false);
+  // Вкладки фазы chat: chat | estimate | report
+  const [activeTab, setActiveTab] = useState('chat');
+  // Сохранение в карточку pre_tender_requests.manual_documents (без финализации)
+  const [savingToCard, setSavingToCard] = useState(false);
 
   // calc phase state
   const [estimate, setEstimate] = useState(null);
@@ -235,6 +240,26 @@ export function QuickMimirModal({ onCreated, prefill }) {
     }
   };
 
+  const saveToCard = async () => {
+    if (!uid) return;
+    setSavingToCard(true);
+    try {
+      await quickTkpSaveToCard(uid);
+      toast('Готово', 'Смета и отчёт сохранены в карточку заявки', 'ok');
+      window.dispatchEvent(new CustomEvent('asgard:pre-tender:docs:saved', {
+        detail: {
+          session_uid: uid,
+          pre_tender_id: _pre.pre_tender_id || null,
+          tender_id: _pre.tender_id || null
+        }
+      }));
+    } catch (e) {
+      toast('Ошибка', String(e?.message || e), 'err');
+    } finally {
+      setSavingToCard(false);
+    }
+  };
+
   const finalize = async () => {
     if (!uid) return;
     setBusy(true);
@@ -343,55 +368,111 @@ export function QuickMimirModal({ onCreated, prefill }) {
 
         {phase === 'chat' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minHeight: 400 }}>
-            {/* Кнопка свернуть/развернуть смету в chat-фазе — компактный блок сверху */}
-            {estimate && (
-              <details style={{ background: 'var(--inner-bg)', border: '1px solid var(--brd-2)', borderRadius: 'var(--r-sm)', padding: 8 }}>
-                <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--t-2)', fontWeight: 600 }}>
-                  📊 Смета — ИТОГО {fmtMoney(estimate.total_with_vat || 0)} (клик чтобы развернуть)
-                </summary>
-                <div style={{ marginTop: 8 }}>
-                  <EstimateTable est={estimate} />
+            {/* ── Таб-бар: чат / смета / отчёт ─────────────────────────── */}
+            <div
+              role="tablist"
+              style={{
+                display: 'flex',
+                gap: 4,
+                padding: 4,
+                background: 'var(--inner-bg)',
+                border: '1px solid var(--brd-2)',
+                borderRadius: 'var(--r-sm)'
+              }}
+            >
+              {[
+                { id: 'chat', label: '💬 Чат' },
+                { id: 'estimate', label: '📊 Смета' },
+                { id: 'report', label: '📋 Отчёт' }
+              ].map((t) => {
+                const active = activeTab === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setActiveTab(t.id)}
+                    style={{
+                      flex: 1,
+                      padding: '8px 10px',
+                      background: active ? 'var(--gold-bg)' : 'transparent',
+                      border: active ? '1px solid var(--gold)' : '1px solid transparent',
+                      borderRadius: 'var(--r-sm)',
+                      color: active ? 'var(--gold)' : 'var(--t-2)',
+                      fontWeight: active ? 700 : 500,
+                      fontSize: 13,
+                      cursor: 'pointer',
+                      transition: 'background 0.12s, color 0.12s, border 0.12s'
+                    }}
+                  >
+                    {t.label}
+                    {t.id === 'estimate' && estimate?.total_with_vat ? (
+                      <span style={{ marginLeft: 6, color: 'var(--t-3)', fontSize: 11, fontWeight: 500 }}>
+                        {fmtMoney(estimate.total_with_vat)}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* ── Контент активной вкладки ─────────────────────────────── */}
+            {activeTab === 'chat' && (
+              <>
+                <div style={{ flex: 1, padding: 10, background: 'var(--inner-bg)', borderRadius: 'var(--r-sm)', maxHeight: 320, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {messages.map((m, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
+                        maxWidth: '85%',
+                        padding: 8,
+                        background: m.role === 'user' ? 'var(--gold-bg)' : 'var(--card-bg)',
+                        border: `1px solid ${m.role === 'user' ? 'var(--gold)' : 'var(--brd-2)'}`,
+                        borderRadius: 'var(--r-sm)',
+                        fontSize: 13
+                      }}
+                    >
+                      <div className="fs-10 c-t3 mb-4">{m.role === 'user' ? 'Ты' : '🧙 Мимир'}</div>
+                      <div className="u-prewrap">{m.text}</div>
+                    </div>
+                  ))}
+                  {busy && <div style={{ color: 'var(--t-3)', fontStyle: 'italic' }}>⏳ Мимир думает…</div>}
                 </div>
-              </details>
+
+                <FileDrop
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.png"
+                  hint="📎 Прикрепи ТЗ или фото — Мимир посмотрит"
+                  onFiles={onFiles}
+                />
+
+                <div className="u-flex gap-6">
+                  <input
+                    className="m-input flex-1"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !busy) sendChat(); }}
+                    placeholder="Ответ Мимиру или уточнение"
+                  />
+                  <Btn variant="primary" disabled={busy || !chatInput.trim()} onClick={sendChat}>→</Btn>
+                </div>
+              </>
             )}
 
-            <div style={{ flex: 1, padding: 10, background: 'var(--inner-bg)', borderRadius: 'var(--r-sm)', maxHeight: 320, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {messages.map((m, i) => (
-                <div
-                  key={i}
-                  style={{
-                    alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
-                    maxWidth: '85%',
-                    padding: 8,
-                    background: m.role === 'user' ? 'var(--gold-bg)' : 'var(--card-bg)',
-                    border: `1px solid ${m.role === 'user' ? 'var(--gold)' : 'var(--brd-2)'}`,
-                    borderRadius: 'var(--r-sm)',
-                    fontSize: 13
-                  }}
-                >
-                  <div className="fs-10 c-t3 mb-4">{m.role === 'user' ? 'Ты' : '🧙 Мимир'}</div>
-                  <div className="u-prewrap">{m.text}</div>
-                </div>
-              ))}
-              {busy && <div style={{ color: 'var(--t-3)', fontStyle: 'italic' }}>⏳ Мимир думает…</div>}
-            </div>
+            {activeTab === 'estimate' && (
+              <div style={{ padding: 10, background: 'var(--inner-bg)', border: '1px solid var(--brd-2)', borderRadius: 'var(--r-sm)' }}>
+                {estimate ? (
+                  <EstimateTable est={estimate} />
+                ) : (
+                  <p style={{ color: 'var(--t-3)', fontSize: 12, margin: 0 }}>Смета не сформирована</p>
+                )}
+              </div>
+            )}
 
-            <FileDrop
-              accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.png"
-              hint="📎 Прикрепи ТЗ или фото — Мимир посмотрит"
-              onFiles={onFiles}
-            />
-
-            <div className="u-flex gap-6">
-              <input
-                className="m-input flex-1"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && !busy) sendChat(); }}
-                placeholder="Ответ Мимиру или уточнение"
-              />
-              <Btn variant="primary" disabled={busy || !chatInput.trim()} onClick={sendChat}>→</Btn>
-            </div>
+            {activeTab === 'report' && (
+              <ReportPreview sessionUid={uid} estimate={estimate} />
+            )}
           </div>
         )}
       </MBody>
@@ -414,7 +495,14 @@ export function QuickMimirModal({ onCreated, prefill }) {
           </div>
         )}
         {phase === 'chat' && (
-          <Btn variant="primary" disabled={busy} onClick={finalize}>{busy ? 'Финализируем…' : '✓ Создать ТКП'}</Btn>
+          <div className="u-flex gap-6">
+            <Btn
+              disabled={savingToCard || busy || (!_pre.pre_tender_id && !_pre.tender_id)}
+              onClick={saveToCard}
+              title={(!_pre.pre_tender_id && !_pre.tender_id) ? 'Сессия не привязана к заявке/тендеру' : 'Прикрепить смету и отчёт к карточке заявки'}
+            >{savingToCard ? 'Сохраняем…' : '📥 Сохранить в карточку'}</Btn>
+            <Btn variant="primary" disabled={busy || savingToCard} onClick={finalize}>{busy ? 'Финализируем…' : '✓ Создать ТКП'}</Btn>
+          </div>
         )}
       </MFoot>
     </MCard>

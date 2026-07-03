@@ -254,6 +254,50 @@ window.AsgardGantt = (function(){
     setScale('month', 0);
   }
 
-  return { renderMini, renderBoard, isoDate, navHtml, initNav };
+  // ─────────────────────────────────────────────────────────────────────
+  // FIX (23.06.2026): универсальные fallback-цепочки для дат Ганта работ.
+  // Раньше разные страницы (gantt_full / all_works / pm_works / kpi_works)
+  // делали `w.start_in_work_date || w.end_plan || ...` — при NULL у обоих
+  // полей и наличии end_plan «март месяц» бар уезжал в КОНЕЦ работы и
+  // визуально казался стартом не в том месяце (см. work id=353 «Пуровский»:
+  // start_plan=NULL, start_in_work_date=NULL, end_plan=2026-10-30 →
+  // бар уезжал на октябрь / март после сворачивания шкалы).
+  //
+  // Канонический порядок:
+  //   start: start_plan → start_in_work_date → start_date → start_fact → created_at
+  //   end:   end_plan   → end_date           → end_fact   → start + 30 дней
+  //
+  // Принимаем как объект работы, так и старые «тендерные» поля (work_start_plan)
+  // — fallback на них в самом конце, чтобы не ломать сценарии Ганта тендеров.
+  function _addDaysIso(iso, n){
+    const d = parseDate(iso);
+    if(!d) return iso;
+    d.setDate(d.getDate()+n);
+    return isoDate(d);
+  }
+  function workStartIso(w, fallback){
+    if(!w) return fallback || null;
+    return w.start_plan
+        || w.start_in_work_date
+        || w.start_date
+        || w.start_fact
+        || w.work_start_plan       // legacy alias из tenders
+        || w.created_at
+        || fallback || null;
+  }
+  function workEndIso(w, fallback){
+    if(!w) return fallback || null;
+    const e = w.end_plan
+           || w.end_date
+           || w.end_fact
+           || w.work_end_plan;      // legacy alias из tenders
+    if(e) return e;
+    // Если конца нет — start + 30 дней (как просил юзер), иначе fallback.
+    const s = workStartIso(w, null);
+    if(s) return _addDaysIso(s, 30);
+    return fallback || null;
+  }
+
+  return { renderMini, renderBoard, isoDate, navHtml, initNav, workStartIso, workEndIso };
 
 })();

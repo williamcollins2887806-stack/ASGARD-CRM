@@ -282,7 +282,7 @@ export function SelectInput({ value, onChange, options = [], placeholder = '— 
         {options.map((o) => (
           typeof o === 'string'
             ? <option key={o} value={o}>{o}</option>
-            : <option key={o.value} value={o.value}>{o.label}</option>
+            : <option key={o.value} value={o.value} disabled={!!o.disabled}>{o.label}</option>
         ))}
       </select>
       <span className="inp-suffix">▾</span>

@@ -20,37 +20,67 @@ import { openProtected } from '@/api/download';
 import { validateFile, MAX_ATTACHMENT_SIZE } from '@/api/upload';
 
 import {
-  DIRECTIONS, DOC_TYPES,
+  DIRECTIONS, DOC_TYPES, LETTER_KINDS,
   getNextOutgoingNumber, createOne, updateOne,
   uploadFile, linkDoc, mimirSuggestForm,
   loadCustomers, loadTenders, loadWorks,
   today, fmtDate
 } from './api';
 
+// Опции letter_kind для inline-формы. Полный UX (с автозаполнением doc_title/sub) — в composer (S-13H).
+const LETTER_KIND_OPTIONS = [
+  { value: '', label: '— не указан —' },
+  ...Object.entries(LETTER_KINDS).map(([value, label]) => ({ value, label }))
+];
+
+/** Преобразовать parent_entity_type → имя поля в payload. */
+function parentToField(type) {
+  switch (type) {
+    case 'tender':                 return 'tender_id';
+    case 'work':                   return 'work_id';
+    case 'calc':                   return 'calc_id';
+    case 'pre_tender':
+    case 'request':                return 'pre_tender_id';
+    default:                       return null;
+  }
+}
+
 /** Алиас vanilla openAddModal — пустой враппер для совместимости имён в аудите. */
 export function AddModal(props) { return <CorrFormModal {...props} />; }
 /** Алиас vanilla openEditModal — пустой враппер. */
 export function EditModal(props) { return <CorrFormModal {...props} />; }
 
-export function CorrFormModal({ direction: dirArg = 'incoming', item: editItem = null, onSaved }) {
+export function CorrFormModal({ direction: dirArg = 'incoming', item: editItem = null, parentFilter = null, onSaved }) {
   const { close } = useModal();
   const isEdit = !!editItem;
   const direction = isEdit ? editItem.direction : dirArg;
   const dir = DIRECTIONS[direction] || DIRECTIONS.incoming;
   const isOutgoing = direction === 'outgoing';
+  // V252: финализированное / отправленное письмо нельзя редактировать (создаётся new-revision).
+  // Backend это сам проверяет на PUT, фронт даёт ранний понятный сигнал.
+  const lockedBySigning = isEdit && editItem.signing_status && editItem.signing_status !== 'draft';
   const lockOutgoingIdentity = isEdit && isOutgoing && !!editItem.number;
 
   /* — Поля формы — */
   const [date, setDate] = useState(() => (editItem?.date || '').slice(0, 10) || today());
   const [number, setNumber] = useState(editItem?.number || '');
   const [docType, setDocType] = useState(editItem?.doc_type || 'letter');
+  const [letterKind, setLetterKind] = useState(editItem?.letter_kind || (isOutgoing ? 'free' : ''));
   const [subject, setSubject] = useState(editItem?.subject || '');
   const [counterparty, setCounterparty] = useState(editItem?.counterparty || '');
   const [contact, setContact] = useState(editItem?.contact_person || '');
   const [note, setNote] = useState(editItem?.note || '');
+  // Предзаполнить parent_entity_id из URL-фильтра (если есть и не редактируем).
+  const initialFromParent = !isEdit && parentFilter ? parentFilter : null;
   const [customerId, setCustomerId] = useState(editItem?.customer_id || '');
-  const [tenderId, setTenderId] = useState(editItem?.tender_id || '');
-  const [workId, setWorkId] = useState(editItem?.work_id || '');
+  const [tenderId, setTenderId] = useState(
+    editItem?.tender_id ||
+    (initialFromParent?.type === 'tender' ? initialFromParent.id : '')
+  );
+  const [workId, setWorkId] = useState(
+    editItem?.work_id ||
+    (initialFromParent?.type === 'work' ? initialFromParent.id : '')
+  );
   const [file, setFile] = useState(null);
   const [saving, setSaving] = useState(false);
   const [mimirBusy, setMimirBusy] = useState(false);
@@ -162,6 +192,13 @@ export function CorrFormModal({ direction: dirArg = 'incoming', item: editItem =
       if (customerId) payload.customer_id = customerId;
       if (tenderId)   payload.tender_id = tenderId;
       if (workId)     payload.work_id = workId;
+      // V252.letter_kind — для исходящих, чтобы на бэке корректно отрабатывал шаблон письма.
+      if (isOutgoing && letterKind) payload.letter_kind = letterKind;
+      // Если форма открыта с URL-фильтром по родителю (pre_tender/calc) — пробрасываем.
+      if (initialFromParent && parentToField(initialFromParent.type)) {
+        const f = parentToField(initialFromParent.type);
+        if (f && !payload[f]) payload[f] = initialFromParent.id;
+      }
 
       let res;
       if (isEdit) {
@@ -195,6 +232,15 @@ export function CorrFormModal({ direction: dirArg = 'incoming', item: editItem =
         onClose={close}
       />
       <MBody>
+        {lockedBySigning && (
+          <div className="corr-revision-banner" style={{ marginBottom: 12 }}>
+            <span>🔒</span>
+            <span>
+              Письмо <b>{editItem.signing_status === 'sent' ? 'отправлено' : 'финализировано'}</b>.
+              Изменения нельзя сохранить — закройте форму и создайте <b>новую редакцию</b>.
+            </span>
+          </div>
+        )}
         <div className="corr-form-grid">
           <Field label="Дата" required>
             <input
@@ -224,9 +270,22 @@ export function CorrFormModal({ direction: dirArg = 'incoming', item: editItem =
           <Field label="Тип документа">
             <SelectInput value={docType} onChange={setDocType} options={DOC_TYPES} />
           </Field>
-          <Field label={isOutgoing ? 'Получатель' : 'Отправитель'}>
-            <TextInput value={counterparty} onChange={setCounterparty} placeholder="Организация или ФИО" />
-          </Field>
+          {isOutgoing ? (
+            <Field label="Тип письма" help="Влияет на шапку шаблона ГНШ">
+              <SelectInput value={letterKind} onChange={setLetterKind} options={LETTER_KIND_OPTIONS} />
+            </Field>
+          ) : (
+            <Field label={isOutgoing ? 'Получатель' : 'Отправитель'}>
+              <TextInput value={counterparty} onChange={setCounterparty} placeholder="Организация или ФИО" />
+            </Field>
+          )}
+          {isOutgoing && (
+            <div className="span-2">
+              <Field label="Получатель">
+                <TextInput value={counterparty} onChange={setCounterparty} placeholder="Организация или ФИО" />
+              </Field>
+            </div>
+          )}
 
           <div className="span-2">
             <Field label="Тема" required>
@@ -294,7 +353,7 @@ export function CorrFormModal({ direction: dirArg = 'incoming', item: editItem =
         <Btn variant="ghost" disabled={mimirBusy} onClick={askMimir} title="Мимир заполнит часть полей">
           {mimirBusy ? '⏳ Мимир думает…' : '🧙 Мимир заполнит'}
         </Btn>
-        <Btn variant="primary" disabled={saving} onClick={submit}>
+        <Btn variant="primary" disabled={saving || lockedBySigning} onClick={submit} title={lockedBySigning ? 'Используйте «Новая редакция»' : undefined}>
           {saving ? '⏳ Сохраняем…' : (isEdit ? 'Сохранить' : 'Создать')}
         </Btn>
       </MFoot>

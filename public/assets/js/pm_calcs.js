@@ -432,13 +432,28 @@ window.AsgardPmCalcsPage = (function(){
     const refs = await getRefs();
     const users = await AsgardDB.all("users");
     const byId = new Map(users.map(u=>[u.id,u]));
-    const tendersAll = await AsgardDB.all("tenders");
+
+    // Реестр расчётов — tenders/works прямым fetch (IDB не отражает soft-delete/server RBAC).
+    const _tok = (window.AsgardAuth && window.AsgardAuth.token) || localStorage.getItem('asgard_token');
+    const _hdr = { Authorization: 'Bearer ' + _tok };
+    async function _fetchList(url, key, fallbackTable){
+      try {
+        const r = await fetch(url, { headers: _hdr, cache: 'no-store' });
+        if (!r.ok) throw new Error('GET ' + url + ' ' + r.status);
+        const j = await r.json();
+        return j[key] || j.items || j.data || [];
+      } catch (e) {
+        console.warn('[pm_calcs] fetch ' + url + ' failed, fallback to IDB:', e.message);
+        return await AsgardDB.all(fallbackTable) || [];
+      }
+    }
+    const tendersAll = await _fetchList('/api/tenders?limit=1000', 'tenders', 'tenders');
 
     const isDir = isDirRole(user.role) || user.role==="ADMIN";
     const isPM = user.role==="PM" || user.role==="HEAD_PM";
 
     // Тендеры с существующими работами → уже "выпускники", не показываем по умолчанию
-    const worksAll = await AsgardDB.all("works");
+    const worksAll = await _fetchList('/api/works?limit=1000', 'works', 'works');
     const tenderIdsWithWork = new Set(worksAll.filter(w => w.tender_id).map(w => w.tender_id));
 
     // PM sees only own; Director/Admin can see all handed-off
@@ -924,7 +939,7 @@ window.AsgardPmCalcsPage = (function(){
             <div style="grid-column:1/-1"><label>Тендер</label><input autocomplete="off" disabled value="${esc(tender.tender_title||"")}"/></div>
             <div><label>НМЦ без НДС</label><input autocomplete="off" disabled value="${tender.tender_price!=null?money(tender.tender_price):'—'}"/></div>
             <div><label style="color:#4cd964">Цена подачи без НДС</label><input autocomplete="off" disabled value="${tender.submission_price!=null?money(tender.submission_price):'—'}" style="color:#4cd964"/></div>
-            <div><label>Сроки (план)</label><input autocomplete="off" disabled value="${esc(tender.work_start_plan||"")} → ${esc(tender.work_end_plan||"")}"/></div>
+            <div><label>Сроки (план)</label><input autocomplete="off" disabled value="${esc(tender.work_start_plan ? (AsgardUI.formatDate ? AsgardUI.formatDate(tender.work_start_plan) : new Date(tender.work_start_plan).toLocaleDateString('ru-RU')) : '—')} → ${esc(tender.work_end_plan ? (AsgardUI.formatDate ? AsgardUI.formatDate(tender.work_end_plan) : new Date(tender.work_end_plan).toLocaleDateString('ru-RU')) : '—')}"/></div>
             <div><label>Документы</label><div style="padding-top:6px">${docs}</div></div>
             <div style="grid-column:1/-1"><label>Комментарий ТО</label><input autocomplete="off" disabled value="${esc(tender.tender_comment_to||"")}"/></div>
           </div>
@@ -954,6 +969,7 @@ window.AsgardPmCalcsPage = (function(){
           </div>
           <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px">
             <button class="btn" id="btnSaveStatus" ${canEditStatus?"":"disabled"}>Сохранить статус</button>
+            ${est ? `<button class="btn ghost" id="btnCorrespondence">📜 Официальная переписка</button>` : ``}
             ${(user.role==="ADMIN" || isDirRole(user.role)) ? `<button class="btn ghost" id="btnHistory">История</button>` : ``}
           </div>
         </div>
@@ -1097,6 +1113,13 @@ window.AsgardPmCalcsPage = (function(){
           const rows = logs.map(l=>`<div class="pill"><div class="who"><b>${esc(l.action)}</b> — ${esc(new Date(l.created_at).toLocaleString("ru-RU"))}</div><div class="role">${esc((byId.get(l.actor_user_id)||{}).login||"")}</div></div>
             <div class="help" style="margin:6px 0 10px">${esc(l.payload_json||"")}</div>`).join("");
           showModal("История тендера", rows || `<div class="help">Пока пусто.</div>`);
+        });
+      }
+
+      const btnCorr = $("#btnCorrespondence");
+      if (btnCorr) {
+        btnCorr.addEventListener("click", () => {
+          location.hash = `#/correspondence?parent_entity_type=calc&parent_entity_id=${est.id}`;
         });
       }
 

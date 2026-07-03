@@ -137,22 +137,28 @@ window.AsgardProcurementPage = (function() {
       const nameWrap = icon
         ? `<span style="display:inline-flex;align-items:center;gap:8px;vertical-align:middle">${icon}<span>${nameCell}</span></span>`
         : nameCell;
-      return `<tr class="${isChild?'proc-row-child':''}" data-row-id="${it.id}">
+      const isCancelled = it.item_status === 'cancelled';
+      const canCancel = !isChild && !isSplit && !isCancelled
+        && (it.item_status === 'pending' || it.item_status === 'ordered' || !it.item_status);
+      const rowStyle = isCancelled ? ' style="text-decoration:line-through;opacity:0.5"' : '';
+      const rowCls = `${isChild?'proc-row-child':''}${isCancelled?' proc-item-cancelled':''}`.trim();
+      return `<tr class="${rowCls}" data-row-id="${it.id}"${rowStyle}>
         <td>${isChild?'↳':(idx+1)}</td>
         <td>${nameWrap}${isSplit?' <span class="proc-kbadge">разбито</span>':''}</td>
         <td>${esc(it.article||'')}</td>
         <td>${esc(it.unit)}</td>
-        <td>${canEditItems&&!isSplit?`<input class="proc-items-table__input" type="number" value="${it.quantity}" data-id="${it.id}" data-field="quantity" style="width:64px">`:it.quantity}</td>
-        <td>${isPROC&&canEditItems&&!isSplit?`<input class="proc-items-table__input" value="${esc(it.supplier||'')}" data-id="${it.id}" data-field="supplier">`:esc(it.supplier||'—')}${it.supplier_delivery_days?` <span class="proc-kbadge">${it.supplier_delivery_days}д</span>`:''}</td>
-        <td>${isSplit?'—':(isPROC&&canEditItems?`<input class="proc-items-table__input" type="number" value="${it.unit_price||''}" data-id="${it.id}" data-field="unit_price" style="width:80px">`:money(it.unit_price))}<div class="proc-hint" data-hint-for="${it.id}"></div></td>
+        <td>${canEditItems&&!isSplit&&!isCancelled?`<input class="proc-items-table__input" type="number" value="${it.quantity}" data-id="${it.id}" data-field="quantity" style="width:64px">`:it.quantity}</td>
+        <td>${isPROC&&canEditItems&&!isSplit&&!isCancelled?`<input class="proc-items-table__input" value="${esc(it.supplier||'')}" data-id="${it.id}" data-field="supplier">`:esc(it.supplier||'—')}${it.supplier_delivery_days?` <span class="proc-kbadge">${it.supplier_delivery_days}д</span>`:''}</td>
+        <td>${isSplit?'—':(isPROC&&canEditItems&&!isCancelled?`<input class="proc-items-table__input" type="number" value="${it.unit_price||''}" data-id="${it.id}" data-field="unit_price" style="width:80px">`:money(it.unit_price))}<div class="proc-hint" data-hint-for="${it.id}"></div></td>
         <td>${money(it.total_price)}</td>
         <td>${statusCell(it)}</td>
         <td>${it.invoice_file_name?`<span class="proc-invoice-badge"><a href="${esc(it.invoice_file_path)}" class="proc-invoice-badge__link" target="_blank">📎 ${esc(it.invoice_file_name)}</a></span>`
-          :(isPROC&&canEditItems&&!isSplit?`<button class="btn ghost" style="font-size:11px;padding:2px 6px" onclick="AsgardProcurementPage._attachInvoice(${p.id},${it.id})">📎</button>`:'—')}</td>
+          :(isPROC&&canEditItems&&!isSplit&&!isCancelled?`<button class="btn ghost" style="font-size:11px;padding:2px 6px" onclick="AsgardProcurementPage._attachInvoice(${p.id},${it.id})">📎</button>`:'—')}</td>
         ${canEditItems?`<td style="white-space:nowrap">
-          ${!isChild&&!isSplit&&parseFloat(it.quantity)>=2?`<button class="btn ghost" style="font-size:11px;padding:2px 5px" data-split-id="${it.id}" title="Разбить по поставщикам">✂️</button>`:''}
-          ${isSplit?`<button class="btn ghost" style="font-size:11px;padding:2px 5px" data-unsplit-id="${it.id}" title="Схлопнуть">⇲</button>`:''}
-          ${!isChild?`<button class="btn ghost" style="font-size:11px;padding:2px 5px;color:var(--err)" onclick="AsgardProcurementPage._deleteItem(${p.id},${it.id})">✕</button>`:''}
+          ${!isCancelled&&!isChild&&!isSplit&&parseFloat(it.quantity)>=2?`<button class="btn ghost" style="font-size:11px;padding:2px 5px" data-split-id="${it.id}" title="Разбить по поставщикам">✂️</button>`:''}
+          ${!isCancelled&&isSplit?`<button class="btn ghost" style="font-size:11px;padding:2px 5px" data-unsplit-id="${it.id}" title="Схлопнуть">⇲</button>`:''}
+          ${canCancel?`<button class="btn ghost" style="font-size:11px;padding:2px 5px;color:var(--warn,#c8a84e)" onclick="AsgardProcurementPage._cancelItem(${p.id},${it.id})" title="Отменить позицию">🚫</button>`:''}
+          ${!isChild&&!isCancelled?`<button class="btn ghost" style="font-size:11px;padding:2px 5px;color:var(--err)" onclick="AsgardProcurementPage._deleteItem(${p.id},${it.id})">✕</button>`:''}
         </td>`:''}
       </tr>`;
     };
@@ -602,6 +608,25 @@ window.AsgardProcurementPage = (function() {
     openDetail(procId);
   }
 
+  // -- Cancel item (мягкая отмена с сохранением истории) --
+  async function _cancelItem(procId, itemId) {
+    if (!confirm('Отменить позицию? Данные сохранятся в истории.')) return;
+    try {
+      const r = await fetch(`/api/procurement/${procId}/items/${itemId}/cancel`, {
+        method: 'PUT', headers: hdr(), body: JSON.stringify({})
+      });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        toast('Ошибка', d.error || `HTTP ${r.status}`, 'err');
+        return;
+      }
+      toast('Готово', 'Позиция отменена', 'ok');
+      openDetail(procId);
+    } catch (e) {
+      toast('Ошибка', e.message || 'Не удалось отменить', 'err');
+    }
+  }
+
   // -- Create modal --
   // ═══ ВИТРИНА КАТАЛОГА: выбор позиций с остатком/ценой → корзина → bulk в заявку ═══
   const _cart = {}; // product_id|name → {name,unit,article,product_id,available,last_price,need}
@@ -624,7 +649,7 @@ window.AsgardProcurementPage = (function() {
         <input id="sc-q" placeholder="Поиск по каталогу…" value="${esc(search || '')}" style="flex:1;padding:9px 12px;border:1px solid var(--brd);border-radius:8px">
         <span class="badge" style="background:var(--warn-bg,rgba(200,168,78,.15));padding:4px 10px;border-radius:14px">🛒 ${cartArr.length}</span>
       </div>
-      <div style="max-height:320px;overflow:auto;border:1px solid var(--brd);border-radius:8px">
+      <div style="border:1px solid var(--brd);border-radius:8px">
         <table style="width:100%;border-collapse:collapse;font-size:13px">
           <thead><tr style="position:sticky;top:0;background:var(--bg-card,#1a1f29)">
             <th style="text-align:left;padding:8px 10px">Наименование</th><th style="padding:8px">В наличии</th>
@@ -667,7 +692,22 @@ window.AsgardProcurementPage = (function() {
         .map(c => ({ name: c.name, unit: c.unit || 'шт', article: c.article || null, product_id: c.product_id || null, quantity: Math.max(0, (c.need || 0) - (c.available || 0)), unit_price: c.last_price || null }))
         .filter(it => it.quantity > 0);
       if (!items.length) { toast('Всё в наличии', 'Докупать нечего — увеличьте «нужно», если требуется заказать сверх остатка', 'warn'); return; }
-      const r = await apiPost(`/api/procurement/${procId}/items/bulk`, { items });
+      // 23.06.2026 BUG-FIX (🟡 P-14): добавлен try/catch + обработка 409 stock_changed.
+      // Раньше apiPost при !ok бросал Error без UI-обратной связи — пользователь не понимал,
+      // почему ничего не добавилось.
+      let r;
+      try {
+        r = await apiPost(`/api/procurement/${procId}/items/bulk`, { items });
+      } catch (e) {
+        const msg = String(e && e.message || e);
+        if (/HTTP 409/.test(msg)) {
+          toast('Остатки изменились', 'Кто-то уже что-то изменил со склада. Обновите витрину и проверьте остатки.', 'warn');
+          try { const d = await apiFetch('/api/products/catalog-procurement?include_equipment=true&limit=400'); drawShowcase(procId, d.items || [], qEl ? qEl.value : ''); } catch (_) { /* no-op */ }
+        } else {
+          toast('Ошибка', msg, 'err');
+        }
+        return;
+      }
       if (r.error) { toast('Ошибка', r.error, 'err'); return; }
       toast('Добавлено', `${r.count} позиций`, 'ok'); Object.keys(_cart).forEach(k => delete _cart[k]); closeModal(); openDetail(procId);
     };
@@ -1029,7 +1069,7 @@ window.AsgardProcurementPage = (function() {
     </tr>`; }).join('');
     host.innerHTML = `
       <div style="font-weight:600;margin-bottom:6px">Сопоставление (${matches.length} авто, ${unmatched.length} вручную)</div>
-      <div style="max-height:320px;overflow:auto;border:1px solid var(--brd);border-radius:8px">
+      <div style="border:1px solid var(--brd);border-radius:8px">
         <table class="proc-items-table" style="margin:0"><thead><tr><th>Строка счёта</th><th>%</th><th>Позиция заявки</th><th>Цена</th></tr></thead><tbody>${rows || '<tr><td colspan="4" style="padding:14px;text-align:center;color:var(--t2)">Нет строк</td></tr>'}</tbody></table>
       </div>
       <div style="display:flex;justify-content:flex-end;margin-top:12px">
@@ -1051,5 +1091,5 @@ window.AsgardProcurementPage = (function() {
     };
   }
 
-  return { render, openDetail, openCreateModal, _attachInvoice, _deleteItem };
+  return { render, openDetail, openCreateModal, _attachInvoice, _deleteItem, _cancelItem };
 })();

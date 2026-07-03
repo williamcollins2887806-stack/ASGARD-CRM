@@ -174,7 +174,7 @@ export default function FieldLogin() {
           else navigate('/field/welcome');
         }}>←</button>
         <img
-          src="/asgard-logo.png"
+          src={import.meta.env.BASE_URL + 'asgard-logo.png'}
           alt="ASGARD"
           draggable={false}
           style={{

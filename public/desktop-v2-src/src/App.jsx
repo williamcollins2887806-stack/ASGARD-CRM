@@ -44,7 +44,7 @@ const ApprovalPayment = lazy(() => import('@/pages/ApprovalPayment'));
 const Tkp = lazy(() => import('@/pages/Tkp'));
 const TkpFollowup = lazy(() => import('@/pages/TkpFollowup'));
 const EstimateReport = lazy(() => import('@/pages/EstimateReport'));
-const PreTenders = lazy(() => import('@/pages/PreTenders'));
+// 27.06.2026: PreTenders удалён, маршрут /pre-tenders теперь редиректит на /director-inbox.
 const Telephony = lazy(() => import('@/pages/Telephony'));
 const MyMail = lazy(() => import('@/pages/MyMail'));
 const Chat = lazy(() => import('@/pages/Chat'));
@@ -98,11 +98,13 @@ const Sync = lazy(() => import('@/pages/Sync'));
 const MailSettings = lazy(() => import('@/pages/MailSettings'));
 const Mailbox = lazy(() => import('@/pages/Mailbox'));
 const Correspondence = lazy(() => import('@/pages/Correspondence'));
+// S-13H Composer (Stage 4 React v2 регистрация в S-13I, реализация TipTap-композера в отдельной сессии S-13H)
+const CorrespondenceComposer = lazy(() => import('@/pages/Correspondence/Composer'));
 const Procurement = lazy(() => import('@/pages/Procurement'));
 const SuppliersCatalog = lazy(() => import('@/pages/SuppliersCatalog'));
 const Assembly = lazy(() => import('@/pages/Assembly'));
 const TmcRequests = lazy(() => import('@/pages/TmcRequests'));
-const InboxApplications = lazy(() => import('@/pages/InboxApplications'));
+// 27.06.2026: InboxApplications удалён, маршрут /inbox-applications редиректит на /director-inbox.
 const Calculator = lazy(() => import('@/pages/Calculator'));
 const Cash = lazy(() => import('@/pages/Cash'));
 const CashAdmin = lazy(() => import('@/pages/CashAdmin'));
@@ -125,7 +127,7 @@ const CommandMap = lazy(() => import('@/pages/CommandMap'));
 const Collections = lazy(() => import('@/pages/Collections'));
 const Training = lazy(() => import('@/pages/Training'));
 const MyDashboard = lazy(() => import('@/pages/MyDashboard'));
-const PreTendersBoard = lazy(() => import('@/pages/PreTenders/Board'));
+// 27.06.2026: PreTendersBoard удалён, /pre-tenders/board редиректит на /director-inbox.
 const WorkersSchedule = lazy(() => import('@/pages/WorkersSchedule'));
 const CallReports = lazy(() => import('@/pages/CallReports'));
 const KpiWorks = lazy(() => import('@/pages/KpiWorks'));
@@ -262,7 +264,8 @@ export default function App() {
               <Route path="/pm-balance" element={<Protected title="Баланс РП"><PmBalance /></Protected>} />
               <Route path="/pm-balance/:pm_id" element={<Protected title="Баланс РП"><PmBalance /></Protected>} />
               <Route path="/estimate-report" element={<Protected title="Отчёт по смете"><EstimateReport /></Protected>} />
-              <Route path="/pre-tenders" element={<Protected title="Заявки (входящие)"><PreTenders /></Protected>} />
+              {/* 27.06.2026: страница «Заявки (ТО)» сведена в /director-inbox (единый маркетплейс). */}
+              <Route path="/pre-tenders" element={<Navigate to="/director-inbox" replace />} />
               <Route path="/telephony" element={<Protected title="Телефония"><Telephony /></Protected>} />
               <Route path="/my-mail" element={<Protected title="Моя почта"><MyMail /></Protected>} />
               <Route path="/chat" element={<Protected title="Хугинн (Чаты)"><Chat /></Protected>} />
@@ -272,7 +275,9 @@ export default function App() {
               <Route path="/kanban" element={<Protected title="Канбан-доска задач"><Kanban /></Protected>} />
               {/* ─── Волна 4б: Личный канбан + Корзина заявок директора ─── */}
               <Route path="/personal-kanban" element={<Protected title="Мой канбан" roles={['PM','HEAD_PM','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV']}><PersonalKanban /></Protected>} />
-              <Route path="/director-inbox" element={<Protected title="Корзина заявок" roles={['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','HEAD_PM']}><DirectorsInbox /></Protected>} />
+              {/* 27.06.2026: маркетплейс заявок — единая страница для всех ролей.
+                  RBAC внутри страницы показывает нужные кнопки/секции. */}
+              <Route path="/director-inbox" element={<Protected title="Маркетплейс заявок" roles={['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','HEAD_PM','PM','TO','HEAD_TO']}><DirectorsInbox /></Protected>} />
               <Route path="/big-screen" element={<ProtectedBare><BigScreen /></ProtectedBare>} />
               <Route path="/engineer-dashboard" element={<Protected title="Кузница Инженера"><EngineerDashboard /></Protected>} />
               <Route path="/pm-analytics" element={<Protected title="Хроники РП"><PmAnalytics /></Protected>} />
@@ -301,13 +306,17 @@ export default function App() {
               <Route path="/sync" element={<Protected title="Синхронизация"><Sync /></Protected>} />
               <Route path="/mail-settings" element={<Protected title="Настройки почты"><MailSettings /></Protected>} />
               <Route path="/mailbox" element={<Protected title="Почтовый ящик"><Mailbox /></Protected>} />
-              <Route path="/correspondence" element={<Protected title="Корреспонденция"><Correspondence /></Protected>} />
+              {/* S-13G/S-13H: Официальная переписка (письма ГНШ-формата). RBAC см. _LETTER_CONTRACT.md §5. */}
+              <Route path="/correspondence" element={<Protected title="Официальная переписка" roles={['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','OFFICE_MANAGER','PM','HEAD_PM','TO','HEAD_TO']}><Correspondence /></Protected>} />
+              <Route path="/correspondence/composer" element={<Protected title="Composer письма" roles={['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','OFFICE_MANAGER','PM','HEAD_PM','TO','HEAD_TO']}><CorrespondenceComposer /></Protected>} />
+              <Route path="/correspondence/composer/:id" element={<Protected title="Composer письма" roles={['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','OFFICE_MANAGER','PM','HEAD_PM','TO','HEAD_TO']}><CorrespondenceComposer /></Protected>} />
               <Route path="/procurement"    element={<Protected title="Закупки"><Procurement mode="all" /></Protected>} />
               <Route path="/my-procurement" element={<Protected title="Мои заявки на закупку"><Procurement mode="my" /></Protected>} />
               <Route path="/suppliers-catalog" element={<Protected title="Поставщики и цены"><SuppliersCatalog /></Protected>} />
               <Route path="/assembly" element={<Protected title="Ведомости сборки"><Assembly /></Protected>} />
               <Route path="/tmc-requests" element={<Protected title="Заявки на ТМЦ"><TmcRequests /></Protected>} />
-              <Route path="/inbox-applications" element={<Protected title="Входящие заявки (AI)"><InboxApplications /></Protected>} />
+              {/* 27.06.2026: «Входящие заявки (AI)» сведена в /director-inbox (единый маркетплейс). */}
+              <Route path="/inbox-applications" element={<Navigate to="/director-inbox" replace />} />
               <Route path="/calculator" element={<Protected title="Калькулятор работ"><Calculator /></Protected>} />
               <Route path="/cash" element={<Protected title="Казна Дружины"><Cash /></Protected>} />
               <Route path="/cash-admin" element={<Protected title="Казна. Управление"><CashAdmin /></Protected>} />
@@ -335,7 +344,8 @@ export default function App() {
               <Route path="/collections"            element={<Protected title="Подборки Дружины"><Collections /></Protected>} />
               <Route path="/training"               element={<Protected title="Заявки на обучение"><Training /></Protected>} />
               <Route path="/my-dashboard"           element={<Protected title="Дашборд РП"><MyDashboard /></Protected>} />
-              <Route path="/pre-tenders/board"      element={<Protected title="Канбан заявок"><PreTendersBoard /></Protected>} />
+              {/* 27.06.2026: канбан заявок ТО — в едином маркетплейсе /director-inbox. */}
+              <Route path="/pre-tenders/board" element={<Navigate to="/director-inbox" replace />} />
               <Route path="/workers-schedule"       element={<Protected title="График Дружины"><WorkersSchedule /></Protected>} />
               <Route path="/call-reports"           element={<Protected title="Отчёты по звонкам"><CallReports /></Protected>} />
               <Route path="/kpi-works"              element={<Protected title="Ярл • Аналитика Работ"><KpiWorks /></Protected>} />

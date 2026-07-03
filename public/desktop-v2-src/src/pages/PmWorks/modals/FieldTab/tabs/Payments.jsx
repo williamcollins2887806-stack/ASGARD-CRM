@@ -164,12 +164,25 @@ export default function PaymentsTab({ work }) {
   };
 
   /* ─── Открытие модалок (используем onSaved для reload) ─── */
+  // FIX (24.06): когда сотрудник не задан (+ Аванс / + Премия / + Удержание из шапки),
+  // прокидываем список рабочих из summary — у /api/data/employee_assignments полей с ФИО нет,
+  // и SelectInput внутри модалки показывал бесполезные «#123» либо вовсе пустой список.
+  // summary.workers пришёл с бэка worker-payments/summary и уже содержит {employee_id, employee_name}.
+  const crewOptions = useMemo(
+    () => (summary?.workers || []).map((w) => ({
+      employee_id: w.employee_id,
+      employee_name: w.employee_name,
+      per_diem_rate: w.per_diem_rate
+    })),
+    [summary]
+  );
   const openPayWorker = (employeeId, fio, defaultType = 'salary') => {
     open(<PayWorkerModal
       work={work}
       employeeId={employeeId}
       employeeName={fio}
       defaultType={defaultType}
+      crewOptions={crewOptions}
       onSaved={reload}
     />);
   };
@@ -261,13 +274,16 @@ export default function PaymentsTab({ work }) {
           Сводка по сотрудникам ({(summary?.workers || []).length})
         </strong>
         <Btn variant="ghost" size="sm" onClick={openBulkPerDiem}>🍱 Bulk суточные</Btn>
-        <Btn variant="ghost" size="sm" onClick={() => openPayWorker('', '', 'advance')} disabled={(summary?.workers || []).length === 0}>
+        {/* FIX 24.06: disabled убран — даже при пустой бригаде юзер должен иметь
+            возможность выбрать сотрудника (PayWorkerModal грузит и тех кто был
+            на объекте по чекинам, и остальных активных через /crew-all). */}
+        <Btn variant="ghost" size="sm" onClick={() => openPayWorker('', '', 'advance')}>
           + Аванс
         </Btn>
-        <Btn variant="ghost" size="sm" onClick={() => openPayWorker('', '', 'bonus')} disabled={(summary?.workers || []).length === 0}>
+        <Btn variant="ghost" size="sm" onClick={() => openPayWorker('', '', 'bonus')}>
           + Премия
         </Btn>
-        <Btn variant="ghost" size="sm" onClick={() => openPayWorker('', '', 'penalty')} disabled={(summary?.workers || []).length === 0}>
+        <Btn variant="ghost" size="sm" onClick={() => openPayWorker('', '', 'penalty')}>
           + Удержание
         </Btn>
         <Btn variant="ghost" size="sm" onClick={openGenerateSalary}>📋 Сгенерировать</Btn>

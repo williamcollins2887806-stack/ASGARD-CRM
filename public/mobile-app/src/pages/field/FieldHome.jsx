@@ -96,9 +96,12 @@ function getGeo() {
   });
 }
 
-const STAGE_LABELS = { medical: 'Медосмотр', travel: 'Дорога', waiting: 'Ожидание', warehouse: 'Склад', day_off: 'Выходной' };
-const STAGE_COLORS = { medical: '#9333EA', travel: '#3B82F6', waiting: '#F59E0B', warehouse: '#F97316', day_off: '#9CA3AF' };
-const STAGE_ICONS = { medical: '🏥', travel: '✈️', waiting: '⏳', warehouse: '📦', day_off: '🛏' };
+// 23.06.2026 BUG-FIX (🟡 S-FIELD-05): добавлен ключ `object` (Объект) — канон stage_type бэкенда
+// (src/routes/field-stages.js:33 STAGE_TYPES = ['medical','travel','waiting','warehouse','day_off','object']).
+// Без этого ключа баннер "current stage" рисовал бы сырой 'object' при stage_type='object'.
+const STAGE_LABELS = { medical: 'Медосмотр', travel: 'Дорога', waiting: 'Ожидание', warehouse: 'Склад', day_off: 'Выходной', object: 'Объект' };
+const STAGE_COLORS = { medical: '#9333EA', travel: '#3B82F6', waiting: '#F59E0B', warehouse: '#F97316', day_off: '#9CA3AF', object: '#22C55E' };
+const STAGE_ICONS = { medical: '🏥', travel: '✈️', waiting: '⏳', warehouse: '📦', day_off: '🛏', object: '🏗' };
 
 const GAMIFICATION_TILES = [
   { emoji: '🎰', label: 'Рулетка', path: '/field/wheel', bg: 'linear-gradient(135deg,#3a0a10,#1a0508)', border: 'rgba(232,64,87,.25)' },

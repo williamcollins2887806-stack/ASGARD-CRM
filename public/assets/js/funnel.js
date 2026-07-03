@@ -211,10 +211,27 @@ window.AsgardFunnelPage = (function(){
     const canMove = tmap.can_move;
     const transitions = tmap.transitions || {};
 
-    const tenders = await AsgardDB.all('tenders') || [];
-    const estimates = await AsgardDB.all('estimates') || [];
-    const works = await AsgardDB.all('works') || [];
-    const users = await AsgardDB.all('users') || [];
+    // Воронка тендеров — прямой fetch с backend (IDB-кэш не отражает
+    // удаления / soft-delete / server-side RBAC; см. fix в tenders.js).
+    const _tok = (window.AsgardAuth && window.AsgardAuth.token) || localStorage.getItem('asgard_token');
+    const _hdr = { Authorization: 'Bearer ' + _tok };
+    async function _fetchList(url, key, fallbackTable){
+      try {
+        const r = await fetch(url, { headers: _hdr, cache: 'no-store' });
+        if (!r.ok) throw new Error('GET ' + url + ' ' + r.status);
+        const j = await r.json();
+        return j[key] || j.items || j.data || [];
+      } catch (e) {
+        console.warn('[funnel] fetch ' + url + ' failed, fallback to IDB:', e.message);
+        return await AsgardDB.all(fallbackTable) || [];
+      }
+    }
+    const [tenders, estimates, works, users] = await Promise.all([
+      _fetchList('/api/tenders?limit=1000', 'tenders', 'tenders'),
+      _fetchList('/api/estimates?limit=1000', 'estimates', 'estimates'),
+      _fetchList('/api/works?limit=1000', 'works', 'works'),
+      _fetchList('/api/users?limit=1000', 'users', 'users')
+    ]);
     const usersById = new Map(users.map(u => [u.id, u]));
 
     // Группируем по стадиям

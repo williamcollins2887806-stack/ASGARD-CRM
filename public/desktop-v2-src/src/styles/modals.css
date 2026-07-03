@@ -366,13 +366,15 @@
 /* ═══════════════════════════════════════════════════════════════════════
  * Формы
  * ═══════════════════════════════════════════════════════════════════════ */
-.m-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.m-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; min-width: 0; }
 .m-field label { font-size: 12px; font-weight: 600; color: var(--t-2); letter-spacing: 0.04em; text-transform: uppercase; }
 .m-field .help { font-size: 11.5px; color: var(--t-3); }
 .m-field .req { color: var(--err); margin-left: 3px; }
 
 .m-input, .m-textarea, .m-select {
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   background: var(--inner-bg);
   border: 1.5px solid var(--brd-1);
   border-radius: var(--r-sm);

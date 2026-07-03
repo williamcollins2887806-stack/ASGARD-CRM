@@ -111,7 +111,7 @@ export function EmployeeWorkHistory({ employeeId }) {
                   <td className="u-nowrap">{a.date_to ? fmtDate(a.date_to) : '—'}</td>
                   <td><b>{w?.work_title || '—'}</b></td>
                   <td>{w?.customer_name || ''}</td>
-                  <td>{w?.city || w?.object_address || ''}</td>
+                  <td>{w?.object_name || w?.city || w?.tender_region || w?.object_address || ''}</td>
                   <td>{a.role || a.role_on_work || a.field_role || ''}</td>
                   <td>{w?.pm_name || (w?.pm_id ? `#${w.pm_id}` : '—')}</td>
                   <td>

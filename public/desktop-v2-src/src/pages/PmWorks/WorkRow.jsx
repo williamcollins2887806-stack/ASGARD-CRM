@@ -44,7 +44,10 @@ export default function WorkRow({ work, readiness, onOpen }) {
       </td>
       <td className="pmw-price">{fmtMoney(w.contract_value || w.tender_price)}</td>
       <td className="pmw-dates">
-        <span className="lab">план:</span> {fmtDate(w.start_date)} → {fmtDate(w.end_plan || w.end_date)}
+        {/* 23.06.2026 BUG-FIX (Works R1): канон цепочки старта
+            start_plan → start_in_work_date → start_date → start_fact → created_at.
+            До фикса колонка показывала только w.start_date, но у большинства работ оно NULL → пусто. */}
+        <span className="lab">план:</span> {fmtDate(w.start_plan || w.start_in_work_date || w.start_date || w.start_fact)} → {fmtDate(w.end_plan || w.end_date)}
         {w.end_fact && <div className="fact">факт: {fmtDate(w.end_fact)}</div>}
       </td>
       <td>

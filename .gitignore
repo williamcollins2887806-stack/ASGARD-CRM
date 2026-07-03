@@ -1,5 +1,6 @@
 node_modules/
 .env
+.secrets/
 *.log
 uploads/
 backups/
@@ -20,6 +21,8 @@ tests/report.json
 _deprecated/
 *.bak
 *.bak.*
+*.bak2
+*.bak2.*
 *.codex_backup
 *.pre_*
 public/temp_*
@@ -49,6 +52,9 @@ storage/letters/*
 # Claude Code workspace (skills, MCP settings, project memory)
 .claude/
 
+# Cursor workspace (rules, local IDE state)
+.cursor/
+
 # Audit prep / planning / session prompts (WIP local docs, не для прода)
 audit-prep/
 HR_SESSION_*.md
@@ -59,6 +65,16 @@ STAFF_EFFECTIVENESS_TZ.md
 CODEBASE-MAP.md
 WEBHOOK_SECRETS.txt
 .env.audit
+AUDIT_*.md
+API_SPEC_*.md
+TIMESHEET_V2_CONTRACT*.md
+_TIMESHEET_V2_STATE.md
+UNIFIED_INBOX_KANBAN_*.md
+ROUNDING_FIX_*.md
+FIX_CORRESPONDENCE_*.md
+DEPLOY_LOG_*.md
+tests/NIGHT-REPORT.md
+tests/UNIFIED-DEPLOY-PLAN.md
 
 # ESLint configs (локальная разработка, на сервере не нужны)
 .eslintignore

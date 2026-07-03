@@ -93,7 +93,20 @@ export default function SuppliersCatalogPage() {
 function SuppliersTab({ canWrite, isAdmin, modal }) {
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState({ search: '', category: '', is_active: '' });
+  // P3-fix: rating_gte фильтр (бэкенд suppliers.js:46 принимает, vanilla тоже умеет)
+  // + при заходе по `#/suppliers-catalog?search=<name>` (deep-link от Procurement) сразу
+  //   применяем подсказку поиска, чтобы пользователь увидел релевантную строку.
+  const [filters, setFilters] = useState(() => {
+    const hash = typeof window !== 'undefined' ? (window.location.hash || '') : '';
+    const qStart = hash.indexOf('?');
+    const params = qStart >= 0 ? new URLSearchParams(hash.slice(qStart + 1)) : new URLSearchParams();
+    return {
+      search:     params.get('search') || '',
+      category:   '',
+      is_active:  '',
+      rating_gte: ''
+    };
+  });
   // v2 BONUS: sortable columns по любому полю (vanilla не имеет — только статич. порядок)
   const [sort, setSort] = useState({ key: 'name', dir: 1 });
 
@@ -109,7 +122,7 @@ function SuppliersTab({ canWrite, isAdmin, modal }) {
     const t = setTimeout(refresh, 250);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.search, filters.category, filters.is_active]);
+  }, [filters.search, filters.category, filters.is_active, filters.rating_gte]);
 
   useEffect(() => {
     const on = () => refresh();
@@ -117,6 +130,33 @@ function SuppliersTab({ canWrite, isAdmin, modal }) {
     return () => window.removeEventListener('asgard:suppliers:changed', on);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // P3-fix: deep-link `#/suppliers-catalog?id=<n>` → автооткрытие SupplierDetailModal.
+  // Используется при переходе из Procurement / других модулей. Срабатывает один раз
+  // на mount + при изменении hash. Чтобы не открывать модалку повторно — храним
+  // последний обработанный id в ref-like state.
+  const [openedDeepId, setOpenedDeepId] = useState(null);
+  useEffect(() => {
+    const tryOpen = () => {
+      const hash = window.location.hash || '';
+      const qStart = hash.indexOf('?');
+      if (qStart < 0) return;
+      const params = new URLSearchParams(hash.slice(qStart + 1));
+      const idStr = params.get('id');
+      if (!idStr || !/^\d+$/.test(idStr)) return;
+      const id = +idStr;
+      if (id === openedDeepId) return;
+      setOpenedDeepId(id);
+      modal.open(
+        <SupplierDetailModal id={id} canWrite={canWrite} isAdmin={isAdmin} />,
+        { size: 'wide' }
+      );
+    };
+    tryOpen();
+    window.addEventListener('hashchange', tryOpen);
+    return () => window.removeEventListener('hashchange', tryOpen);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canWrite, isAdmin, openedDeepId]);
 
   const onCreate = () => {
     modal.open(<SupplierEditModal supplier={null} onSaved={refresh} />);
@@ -198,6 +238,19 @@ function SuppliersTab({ canWrite, isAdmin, modal }) {
             { value: 'false', label: 'Неактивные' }
           ]}
         />
+        {/* P3-fix: rating_gte фильтр (бэкенд suppliers.js:46 поддерживает) */}
+        <SelectInput
+          value={filters.rating_gte}
+          onChange={(v) => setFilters({ ...filters, rating_gte: v })}
+          options={[
+            { value: '',  label: 'Любой рейтинг' },
+            { value: '5', label: '★ 5' },
+            { value: '4', label: '★ 4+' },
+            { value: '3', label: '★ 3+' },
+            { value: '2', label: '★ 2+' },
+            { value: '1', label: '★ 1+' }
+          ]}
+        />
       </div>
 
       {loading ? (
@@ -205,8 +258,8 @@ function SuppliersTab({ canWrite, isAdmin, modal }) {
       ) : list.length === 0 ? (
         <EmptyState
           icon="🏭"
-          title={filters.search || filters.category || filters.is_active ? 'Никого не нашли' : 'Поставщиков нет'}
-          hint={filters.search || filters.category ? 'Попробуйте изменить фильтры' : canWrite ? 'Создайте первого через «+ Поставщик»' : 'Ждите, пока закупщики добавят'}
+          title={filters.search || filters.category || filters.is_active || filters.rating_gte ? 'Никого не нашли' : 'Поставщиков нет'}
+          hint={filters.search || filters.category || filters.rating_gte ? 'Попробуйте изменить фильтры' : canWrite ? 'Создайте первого через «+ Поставщик»' : 'Ждите, пока закупщики добавят'}
         />
       ) : (
         <div className="card card-pad-overflow">

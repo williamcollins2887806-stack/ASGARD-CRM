@@ -26,7 +26,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Popover } from '@/inputs/Popover';
 import { Btn } from '@/modals/parts';
-import { TYPE_META, fmtDateTime, fmtNum, roleShort } from './api';
+import { SelectInput } from '@/inputs/Inputs';
+import { TYPE_META, fmtDateTime, fmtNum, roleShort, REQUIRE_WORK_ID, loadWorks } from './api';
 
 export default function CellEditor({
   anchorRef,
@@ -40,16 +41,40 @@ export default function CellEditor({
   dateIso,
   workTitle,
   requireWorkForDayNight = false,
+  // resolvedWorkId — work_id который удалось вычислить (primary/last_work_id).
+  // Если null — для типов из REQUIRE_WORK_ID показываем picker.
+  resolvedWorkId = null,
   readonly = false
 }) {
   const [busy, setBusy] = useState(false);
   const firstBtnRef = useRef(null);
 
+  // Work-picker state: если юзер кликнул тип требующий work_id и нет workId,
+  // показываем select со списком работ и кнопку «Подтвердить».
+  const [pickerType, setPickerType] = useState(null);  // type который выбрали
+  const [worksList, setWorksList] = useState(null);    // null=загружаем, []=пусто
+  const [pickedWorkId, setPickedWorkId] = useState('');
+
+  // Ленивая загрузка списка работ при открытии picker'а
+  useEffect(() => {
+    if (!pickerType || worksList !== null) return;
+    let cancelled = false;
+    loadWorks().then((arr) => {
+      if (cancelled) return;
+      setWorksList(arr || []);
+      // Если ровно одна работа — авто-выбираем
+      if (arr && arr.length === 1) setPickedWorkId(String(arr[0].id));
+    });
+    return () => { cancelled = true; };
+  }, [pickerType, worksList]);
+
   // Esc/Enter — но Esc уже обрабатывает Popover; Enter — наш
   const handleSave = useCallback(async (type) => {
     if (busy || readonly) return;
-    if ((type === 'day' || type === 'night') && requireWorkForDayNight) {
-      // Сообщение уже покажет родитель в onSave — не блокируем здесь
+    // Если тип требует work_id и нет resolvedWorkId — открыть picker вместо save
+    if (REQUIRE_WORK_ID.has(type) && !resolvedWorkId) {
+      setPickerType(type);
+      return;
     }
     setBusy(true);
     try {
@@ -58,7 +83,26 @@ export default function CellEditor({
     } finally {
       setBusy(false);
     }
-  }, [busy, readonly, requireWorkForDayNight, onSave, onClose]);
+  }, [busy, readonly, resolvedWorkId, onSave, onClose]);
+
+  // Подтверждение из picker'а — сохраняем с выбранным work_id
+  const handlePickerConfirm = useCallback(async () => {
+    if (busy || !pickedWorkId || !pickerType) return;
+    setBusy(true);
+    try {
+      await onSave?.(pickerType, { workId: Number(pickedWorkId) });
+      onClose?.();
+    } finally {
+      setBusy(false);
+      setPickerType(null);
+      setPickedWorkId('');
+    }
+  }, [busy, pickedWorkId, pickerType, onSave, onClose]);
+
+  const handlePickerCancel = useCallback(() => {
+    setPickerType(null);
+    setPickedWorkId('');
+  }, []);
 
   const handleDelete = useCallback(async () => {
     if (busy || readonly || !currentEntry) return;
@@ -128,7 +172,38 @@ export default function CellEditor({
           </div>
         )}
 
-        {!readonly && editableTypes.length > 0 && (
+        {/* Work-picker — если кликнули тип требующий work_id и нет workId */}
+        {pickerType && !readonly && (
+          <div className="ts-pop-picker" role="group" aria-label="Выбор работы" style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 0' }}>
+            <div style={{ fontSize: 12, color: 'var(--t-2)' }}>
+              Для отметки «{TYPE_META[pickerType]?.label || pickerType}» выберите работу:
+            </div>
+            {worksList === null ? (
+              <div style={{ fontSize: 12, color: 'var(--t-2)' }}>⏳ Загружаем работы…</div>
+            ) : worksList.length === 0 ? (
+              <div className="ts-pop-warn" role="alert">Нет доступных работ</div>
+            ) : (
+              <SelectInput
+                value={pickedWorkId}
+                onChange={setPickedWorkId}
+                placeholder="— выбрать работу —"
+                options={worksList.map((w) => ({
+                  value: String(w.id),
+                  label: (w.work_title || w.title || `Объект #${w.id}`) + (w.city ? ` · ${w.city}` : '')
+                }))}
+                aria-label="Работа"
+              />
+            )}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <Btn variant="ghost" onClick={handlePickerCancel} disabled={busy}>Отмена</Btn>
+              <Btn variant="primary" onClick={handlePickerConfirm} disabled={busy || !pickedWorkId}>
+                Подтвердить
+              </Btn>
+            </div>
+          </div>
+        )}
+
+        {!readonly && !pickerType && editableTypes.length > 0 && (
           <>
             <div className="ts-pop-types" role="group" aria-label="Тип отметки">
               {editableTypes.map((type, i) => {

@@ -224,7 +224,10 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/help",l:"Помощь коллеги",d:"Любой → любому, с чатом",roles:ALL_ROLES,i:"approvals",p:"tasks",g:"comm"},
 
     // ── ТЕНДЕРЫ ──
-    {r:"/pre-tenders",l:"Заявки",d:"Предварительные заявки (AI)",roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES],i:"alerts",p:"pre_tenders",g:"tenders"},
+    // 21.06.2026: убрал DIRECTOR_ROLES из меню /pre-tenders — путаница с /director-inbox.
+    // У директоров вход в заявки только через «Распределение заявок по РП» (/director-inbox);
+    // ТО и HEAD_TO работают на /pre-tenders с reject-формами, документами и статусами обработки.
+    // 27.06.2026: пункт «Заявки (ТО)» сведён в /director-inbox (см. ниже).
     {r:"/funnel",l:"Воронка продаж",d:"Канбан тендеров",roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES],i:"tenders",p:"funnel",g:"tenders"},
     {r:"/tenders",l:"Сага Тендеров",d:"Реестр тендеров",roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES],i:"tenders",p:"tenders",g:"tenders"},
     {r:"/customers",l:"Карта Контрагентов",d:"Справочник организаций",roles:["ADMIN","TO","HEAD_TO","PM","HEAD_PM","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"customers",p:"customers",g:"tenders"},
@@ -244,8 +247,13 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/gantt-works",l:"Гантт: Работы",d:"План и факты",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"ganttworks",p:"gantt",g:"works"},
     {r:"/tasks-admin",l:"Управление задачами",d:"Контроль задач",roles:["ADMIN"],i:"approvals",p:"tasks_admin",g:"works"},
     {r:"/kanban",l:"Канбан-доска",d:"Визуальное управление задачами",roles:ALL_ROLES,i:"approvals",p:"kanban",g:"works"},
-    {r:"/personal-kanban",l:"Мой канбан",d:"Личный канбан с подэтапами",roles:["PM","HEAD_PM","ADMIN",...DIRECTOR_ROLES],i:"approvals",p:"personal_kanban",g:"works"},
-    {r:"/director-inbox",l:"Корзина заявок",d:"Назначение РП на входящие заявки",roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_PM"],i:"alerts",p:"director_inbox",g:"tenders"},
+    // Старый «Мой канбан» (substages) убран из NAV — функцию покрывает v3.
+    // Маршрут /personal-kanban ниже редиректит на /personal-kanban-v3 для обратной совместимости.
+    {r:"/personal-kanban-v3",l:"Мой канбан",d:"8 колонок: Новые → Просчёт → Согласование → КП → Победа → В работе",roles:["PM","HEAD_PM","ADMIN",...DIRECTOR_ROLES],i:"approvals",p:"personal_kanban",g:"works"},
+    // Вернул в NAV: v3-канбан не имеет UI «Назначить РП», эта функция нужна директору для маршрутизации заявок.
+    // 21.06.2026: переименован «Корзина заявок» → «Распределение заявок по РП» — теперь явно
+    // отличается от ТО-страницы /pre-tenders.
+    {r:"/director-inbox",l:"Маркетплейс заявок",d:"Свободные заявки + распределение РП",roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_PM","PM"],i:"alerts",p:"director_inbox",g:"tenders"},
 
     // ── ФИНАНСЫ ──
     {r:"/finances",l:"Финансы",d:"Аналитика и реестр",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"finances",g:"finance"},
@@ -278,7 +286,7 @@ console.log('[ASGARD] Global period functions loaded');
  i:"backup",p:"assembly",g:"resources"},
     {r:"/warehouse-v2",l:"Склад",d:"Каталог, наличие, оборудование, ячейки, сборка",roles:ALL_ROLES,i:"backup",p:"warehouse",g:"resources"},
     {r:"/my-equipment",l:"Моё оборудование",d:"Выданное мне",roles:["PM","HEAD_PM","CHIEF_ENGINEER",...DIRECTOR_ROLES,"ADMIN"],i:"pmworks",p:"my_equipment",g:"resources"},
-    {r:"/correspondence",l:"Корреспонденция",d:"Входящие и исходящие",roles:["ADMIN","OFFICE_MANAGER","DIRECTOR_COMM","DIRECTOR_GEN","DIRECTOR_DEV"],i:"correspondence",p:"correspondence",g:"resources"},
+    {r:"/correspondence",l:"Корреспонденция",d:"Входящие и исходящие",roles:["ADMIN","OFFICE_MANAGER","DIRECTOR_COMM","DIRECTOR_GEN","DIRECTOR_DEV","PM","HEAD_PM","TO","HEAD_TO"],i:"correspondence",p:"correspondence",g:"resources"},
     {r:"/contracts",l:"Реестр договоров",d:"Договора поставщиков",roles:["ADMIN","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES],i:"proxies",p:"contracts",g:"resources"},
     {r:"/seals",l:"Реестр печатей",d:"Учёт и передача",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"proxies",p:"seals",g:"resources"},
     {r:"/proxies",l:"Доверенности",d:"7 шаблонов документов",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"proxies",p:"proxies",g:"resources"},
@@ -318,7 +326,7 @@ console.log('[ASGARD] Global period functions loaded');
 
     // ── СИСТЕМА ──
     {r:"/settings",l:"Настройки",d:"Справочники и цвета",roles:["ADMIN"],i:"settings",p:"settings",g:"system"},
-    {r:"/admin/timesheet-settings",l:"Баллы табеля",d:"Очки за склад/МО/дорогу",roles:["ADMIN","DIRECTOR_GEN"],i:"settings",p:"admin_timesheet_settings",g:"system"},
+    {r:"/admin/timesheet-settings",l:"Баллы табеля",d:"Очки за склад/МО/дорогу",roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","BUH"],i:"settings",p:"admin_timesheet_settings",g:"system"},
     {r:"/backup",l:"Резервные копии",d:"Экспорт/импорт базы",roles:["ADMIN"],i:"backup",p:"backup",g:"system"},
     {r:"/sync",l:"PostgreSQL Sync",d:"Синхронизация с сервером",roles:["ADMIN"],i:"backup",p:"sync",g:"system"},
     {r:"/diag",l:"Диагностика",d:"Версия, база, self-test",roles:["ADMIN"],i:"diag",p:"diag",g:"system"},
@@ -2179,7 +2187,8 @@ var _setupPinKeypad = null;
     }, {auth:true, roles:["ADMIN","HR","HR_MANAGER","TO","HEAD_TO","PM","CHIEF_ENGINEER",...DIRECTOR_ROLES]});
     AsgardRouter.add("/permit-applications", ()=>AsgardPermitApplications.render({layout, title:"Заявки на оформление разрешений"}), {auth:true, roles:["ADMIN","HR","HR_MANAGER","TO","HEAD_TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/permit-application-form", ({query})=>AsgardPermitApplications.renderForm({layout, title: query?.id ? "Редактирование заявки" : "Новая заявка", query}), {auth:true, roles:["ADMIN","HR","HR_MANAGER","TO","HEAD_TO",...DIRECTOR_ROLES]});
-    AsgardRouter.add("/pre-tenders", ()=>AsgardPreTendersPage.render({layout, title:"Предварительные заявки"}), {auth:true, roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES]});
+    // 27.06.2026: /pre-tenders сведена в единый маркетплейс /director-inbox.
+    AsgardRouter.add("/pre-tenders", ()=>{ location.hash = "#/director-inbox"; }, {auth:true, roles:["ADMIN","TO","HEAD_TO"]});
     AsgardRouter.add("/funnel", ()=>AsgardFunnelPage.render({layout, title:"Воронка продаж"}), {auth:true, roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/tenders", ()=>AsgardTendersPage.render({layout, title:"Сага Тендеров"}), {auth:true, roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/customers", ()=>AsgardCustomersPage.renderList({layout, title:"Карта Контрагентов"}), {auth:true, roles:["ADMIN","TO","HEAD_TO","PM","HEAD_PM","OFFICE_MANAGER",...DIRECTOR_ROLES]});
@@ -2204,7 +2213,7 @@ var _setupPinKeypad = null;
       AsgardBuhRegistryPage.render({layout, title:"Реестр расходов • BUH"});
     }, {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/office-expenses", ()=>AsgardOfficeExpensesPage.render({layout, title:"Офисные расходы"}), {auth:true, roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES]});
-    AsgardRouter.add("/correspondence", ()=>AsgardCorrespondencePage.render({layout, title:"Корреспонденция"}), {auth:true, roles:["ADMIN","OFFICE_MANAGER","DIRECTOR_COMM","DIRECTOR_GEN","DIRECTOR_DEV"]});
+    AsgardRouter.add("/correspondence", ({query})=>AsgardCorrespondencePage.render({layout, title:"Корреспонденция", query}), {auth:true, roles:["ADMIN","OFFICE_MANAGER","DIRECTOR_COMM","DIRECTOR_GEN","DIRECTOR_DEV","PM","HEAD_PM","TO","HEAD_TO"]});
     AsgardRouter.add("/telephony", ()=>AsgardTelephonyPage.render({layout, title:"Телефония"}), {auth:true, roles:["ADMIN","TO","HEAD_TO","PM","HEAD_PM",...DIRECTOR_ROLES]});
     AsgardRouter.add("/call-reports", ()=>AsgardCallReportsPage.render({layout, title:"Аналитика звонков"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
     AsgardRouter.add("/proxies", ()=>AsgardProxiesPage.render({layout, title:"Доверенности"}), {auth:true, roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES]});
@@ -2219,7 +2228,7 @@ var _setupPinKeypad = null;
     }, {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
     AsgardRouter.add("/field-tariffs", ()=>AsgardFieldTariffsPage.render({layout, title:"Тарифная сетка • Поле"}), {auth:true, roles:["ADMIN"]});
     AsgardRouter.add("/settings", ()=>AsgardSettingsPage.render({layout, title:"Кузница Настроек"}), {auth:true, roles:["ADMIN"]});
-    AsgardRouter.add("/admin/timesheet-settings", ()=>AsgardAdminTimesheetSettingsPage.render({layout, title:"Настройки баллов табеля"}), {auth:true, roles:["ADMIN","DIRECTOR_GEN"]});
+    AsgardRouter.add("/admin/timesheet-settings", ()=>AsgardAdminTimesheetSettingsPage.render({layout, title:"Настройки баллов табеля"}), {auth:true, roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","BUH"]});
     AsgardRouter.add("/telegram", ()=>AsgardTelegram.renderSettings({layout, title:"Telegram"}), {auth:true, roles:["ADMIN"]});
     AsgardRouter.add("/sync", ()=>AsgardSync.renderSettings({layout, title:"PostgreSQL Sync"}), {auth:true, roles:["ADMIN"]});
     AsgardRouter.add("/mango", ()=>AsgardMango.renderSettings({layout, title:"Телефония"}), {auth:true, roles:["ADMIN"]});
@@ -2351,13 +2360,16 @@ AsgardRouter.add("/assembly", ()=>AsgardAssemblyPage.render({layout, title:"Сб
     AsgardRouter.add("/my-mail", ()=>AsgardMyMailPage.render({layout, title:"Моя почта"}), {auth:true});
     AsgardRouter.add("/mail-settings", ()=>AsgardMailSettingsPage.render({layout, title:"Настройки почты"}), {auth:true, roles:["ADMIN","DIRECTOR_GEN"]});
 
-    // Фаза 9: AI входящие заявки
-    AsgardRouter.add("/inbox-applications", ()=>AsgardInboxApplicationsPage.render({layout, title:"Входящие заявки (AI)"}), {auth:true, roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_TO"]});
+    // 27.06.2026: /inbox-applications сведена в единый маркетплейс /director-inbox.
+    AsgardRouter.add("/inbox-applications", ()=>{ location.hash = "#/director-inbox"; }, {auth:true, roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_TO"]});
 
     // Волна 4а: Личный канбан + Корзина заявок директора
-    AsgardRouter.add("/personal-kanban", ()=>AsgardPersonalKanbanPage.render({layout, title:"Мой канбан"}), {auth:true, roles:["PM","HEAD_PM","ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"]});
-    AsgardRouter.add("/personal-kanban-v3", ()=>AsgardPersonalKanbanV3.render({layout, title:"Канбан · полный цикл"}), {auth:true, roles:["PM","HEAD_PM","ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"]});
-    AsgardRouter.add("/director-inbox", ()=>AsgardDirectorInboxPage.render({layout, title:"Корзина заявок"}), {auth:true, roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_PM"]});
+    // /personal-kanban (старый substages-канбан) удалён из NAV; маршрут редиректит на v3.
+    AsgardRouter.add("/personal-kanban", ()=>{ location.hash = "#/personal-kanban-v3"; }, {auth:true, roles:["PM","HEAD_PM","ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"]});
+    AsgardRouter.add("/personal-kanban-v3", ()=>AsgardPersonalKanbanV3.render({layout, title:"Мой канбан"}), {auth:true, roles:["PM","HEAD_PM","ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"]});
+    // Откатил редирект: v3-канбан НЕ имеет UI «Назначить РП»; директорская кнопка
+    // распределения заявки по PM живёт в AsgardDirectorInboxPage. Возвращаю страницу.
+    AsgardRouter.add("/director-inbox", ()=>AsgardDirectorInboxPage.render({layout, title:"Маркетплейс заявок"}), {auth:true, roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_PM","PM"]});
 
     // ── Phase: TKP, Pass Requests, TMC ──
     AsgardRouter.add("/tkp", ()=>AsgardTkpPage.render({layout, title:"ТКП — Коммерческие предложения"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO",...DIRECTOR_ROLES]});

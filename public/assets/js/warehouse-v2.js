@@ -1123,7 +1123,7 @@ window.AsgardWarehouseV2 = (function () {
         <input id="wh2-ci-supplier" class="wh2-btn" style="text-align:left;flex:1;min-width:200px" placeholder="Поставщик (для цен)" value="${esc(_ciSupplier || '')}">
         <span style="font-size:12px;color:var(--t2)">Позиций: ${_ciItems.length}</span>
       </div>
-      <div style="max-height:340px;overflow:auto;border:1px solid var(--border,#262c38);border-radius:12px">
+      <div style="border:1px solid var(--border,#262c38);border-radius:12px">
       <table class="wh2-table" style="margin:0"><thead><tr>
         <th>Наименование</th><th>Артикул</th><th>Кол-во</th><th>Ед.</th><th>Цена ₽</th><th title="Оборудование (поштучно в equipment)">Обор.</th><th></th>
       </tr></thead><tbody id="wh2-ci-tbody">${rows}</tbody></table></div>

@@ -1,0 +1,14 @@
+﻿node_modules/
+dist/
+.env
+.env.*
+*.log
+.git/
+uploads/
+storage/
+test-results/
+audit-logs/
+backup_*.sql
+*.dump
+public/v2/
+coverage/
