@@ -252,6 +252,90 @@ async function routes(fastify, options) {
     return { employee: formatDates(result.rows[0]), reviews: reviews.rows };
   });
 
+  // GET /employees/:id/worklog — фактические периоды работы по объектам для ганта
+  // «История работ» в карточке рабочего. Периоды строятся по ЧЕК-ИНАМ (field_checkins),
+  // а не по датам назначения: показываем реально отработанное время.
+  //  • Сегмент = непрерывная серия чек-инов; разрыв > GAP_DAYS дней → новый заезд
+  //    (человек может приезжать на один объект несколько раз → бары с разрывами).
+  //  • Активное назначение без даты отъезда → последний сегмент помечается ongoing:
+  //    «текущая работа» (гант тянется до сегодня).
+  //  • Активная работа вообще без чек-инов → отдельный ongoing-сегмент от даты назначения.
+  fastify.get('/employees/:id/worklog', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const empId = parseInt(request.params.id, 10);
+    if (isNaN(empId)) return reply.code(400).send({ error: 'Invalid id' });
+    const GAP_DAYS = 7; // разрыв больше недели → отдельный заезд
+
+    const { rows: checkins } = await db.query(`
+      SELECT work_id, date::text AS date
+      FROM field_checkins
+      WHERE employee_id = $1 AND status != 'cancelled' AND work_id IS NOT NULL
+      ORDER BY work_id, date
+    `, [empId]);
+
+    const { rows: activeAssigns } = await db.query(`
+      SELECT work_id, COALESCE(date_from, created_at)::text AS date_from
+      FROM employee_assignments
+      WHERE employee_id = $1 AND COALESCE(is_active, true) = true AND departure_date IS NULL
+        AND work_id IS NOT NULL
+    `, [empId]);
+    const activeWorks = new Map();
+    for (const a of activeAssigns) if (!activeWorks.has(a.work_id)) activeWorks.set(a.work_id, a.date_from);
+
+    // Инфо о работах
+    const workIds = [...new Set(checkins.map(c => c.work_id).concat([...activeWorks.keys()]))];
+    const worksInfo = {};
+    if (workIds.length) {
+      const { rows } = await db.query(`
+        SELECT w.id, w.work_title, w.customer_name, w.pm_id, u.name AS pm_name
+        FROM works w LEFT JOIN users u ON u.id = w.pm_id
+        WHERE w.id = ANY($1::int[])
+      `, [workIds]);
+      for (const w of rows) worksInfo[w.id] = w;
+    }
+
+    // Сегментация по разрывам в датах чек-инов
+    const byWork = {};
+    for (const c of checkins) (byWork[c.work_id] = byWork[c.work_id] || []).push(c.date.slice(0, 10));
+
+    const segments = [];
+    for (const [widStr, dates] of Object.entries(byWork)) {
+      const wid = parseInt(widStr, 10);
+      let segStart = dates[0], prev = dates[0], days = 1;
+      const push = (end) => segments.push({ work_id: wid, start: segStart, end, days });
+      for (let i = 1; i < dates.length; i++) {
+        const gap = (new Date(dates[i]) - new Date(prev)) / 86400000;
+        if (gap > GAP_DAYS) { push(prev); segStart = dates[i]; days = 1; }
+        else days++;
+        prev = dates[i];
+      }
+      push(prev);
+    }
+
+    // Пометить «текущую работу»: последний по времени сегмент активного объекта.
+    for (const wid of activeWorks.keys()) {
+      const segs = segments.filter(s => s.work_id === wid);
+      if (segs.length) {
+        const lastSeg = segs.reduce((a, b) => (a.end >= b.end ? a : b));
+        lastSeg.ongoing = true;
+      } else {
+        // активное назначение без чек-инов — показываем как текущую от даты назначения
+        segments.push({ work_id: wid, start: (activeWorks.get(wid) || '').slice(0, 10) || null, end: null, days: 0, ongoing: true, no_checkins: true });
+      }
+    }
+
+    const result = segments
+      .map(s => ({
+        ...s,
+        ongoing: !!s.ongoing,
+        work_title: worksInfo[s.work_id]?.work_title || null,
+        customer_name: worksInfo[s.work_id]?.customer_name || null,
+        pm_name: worksInfo[s.work_id]?.pm_name || null,
+      }))
+      .sort((a, b) => String(a.start || '').localeCompare(String(b.start || '')));
+
+    return { segments: result };
+  });
+
   // GET /employees/:id/photo — фото/аватар сотрудника. v2 EmployeeDetailModal.jsx:204
   // запрашивает этот URL, без endpoint'а возвращался 404 на каждое открытие карточки.
   // Колонка на проде называется `active_avatar` (URL/путь). Если её нет — 404.
