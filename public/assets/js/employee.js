@@ -745,7 +745,8 @@ window.AsgardEmployeePage=(function(){
           var label = segIdx === 0 ? title.substring(0,25) : (s.days ? (s.days + ' дн.') : '');
           var periodTxt = fmtRu(s.start) + ' — ' + (s.ongoing ? 'по н.в. (текущая работа)' : fmtRu(s.end));
           var daysTxt = s.no_checkins ? 'нет отметок о выходах' : (s.days + ' дн. фактически');
-          var tooltip = title + '\n' + (s.customer_name||'') + '\nРП: ' + (s.pm_name||'') + '\n' + periodTxt + '\n' + daysTxt;
+          var depTxt = (!s.ongoing && s.departure) ? ('\nОтъезд: ' + fmtRu(s.departure)) : '';
+          var tooltip = title + '\n' + (s.customer_name||'') + '\nРП: ' + (s.pm_name||'') + '\n' + periodTxt + '\n' + daysTxt + depTxt;
           barsH += '<div style="position:absolute;left:'+left+'px;top:'+(idx*rowH+4)+'px;width:'+width+'px;height:'+(rowH-8)+'px;background:'+bg+';border-radius:6px;display:flex;align-items:center;padding:0 6px;font-size:10px;font-weight:600;color:#fff;cursor:pointer;overflow:hidden;white-space:nowrap;transition:transform 0.15s,box-shadow 0.15s;z-index:1" title="'+tooltip.replace(/"/g,'&quot;')+'" onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 4px 12px rgba(0,0,0,0.3)\';this.style.zIndex=10" onmouseout="this.style.transform=\'none\';this.style.boxShadow=\'none\';this.style.zIndex=1">'+label+'</div>';
         });
       });

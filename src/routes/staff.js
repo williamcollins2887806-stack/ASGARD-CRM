@@ -254,16 +254,19 @@ async function routes(fastify, options) {
 
   // GET /employees/:id/worklog — фактические периоды работы по объектам для ганта
   // «История работ» в карточке рабочего. Периоды строятся по ЧЕК-ИНАМ (field_checkins),
-  // а не по датам назначения: показываем реально отработанное время.
+  // а не по плановым датам назначения: показываем реально отработанное время.
   //  • Сегмент = непрерывная серия чек-инов; разрыв > GAP_DAYS дней → новый заезд
   //    (человек может приезжать на один объект несколько раз → бары с разрывами).
-  //  • Активное назначение без даты отъезда → последний сегмент помечается ongoing:
-  //    «текущая работа» (гант тянется до сегодня).
-  //  • Активная работа вообще без чек-инов → отдельный ongoing-сегмент от даты назначения.
+  //  • Конец периода: если есть ДАТА ОТЪЕЗДА (departure_date) — ставим по ней
+  //    (но не раньше последнего чек-ина). Если даты отъезда НЕТ — смотрим давность
+  //    последнего чек-ина: ≤ GAP_DAYS дней назад → «текущая работа» (∞ до сегодня),
+  //    иначе завершаем по последнему чек-ину (человек уехал, отъезд не отметили).
+  //  • Назначение без единого чек-ина: с датой отъезда → бар до отъезда «нет отметок»,
+  //    активное без отъезда → ongoing от даты назначения.
   fastify.get('/employees/:id/worklog', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const empId = parseInt(request.params.id, 10);
     if (isNaN(empId)) return reply.code(400).send({ error: 'Invalid id' });
-    const GAP_DAYS = 7; // разрыв больше недели → отдельный заезд
+    const GAP_DAYS = 10; // разрыв/давность больше 10 дней → отдельный заезд или конец работы
 
     const { rows: checkins } = await db.query(`
       SELECT work_id, date::text AS date
@@ -272,17 +275,21 @@ async function routes(fastify, options) {
       ORDER BY work_id, date
     `, [empId]);
 
-    const { rows: activeAssigns } = await db.query(`
-      SELECT work_id, COALESCE(date_from, created_at)::text AS date_from
+    // Сводка по назначениям на каждый объект: дата заезда, дата отъезда, активность.
+    const { rows: assignRows } = await db.query(`
+      SELECT work_id,
+             MIN(COALESCE(date_from, created_at))::text AS date_from,
+             MAX(departure_date)::text                  AS departure_date,
+             BOOL_OR(COALESCE(is_active, true) AND departure_date IS NULL) AS active
       FROM employee_assignments
-      WHERE employee_id = $1 AND COALESCE(is_active, true) = true AND departure_date IS NULL
-        AND work_id IS NOT NULL
+      WHERE employee_id = $1 AND work_id IS NOT NULL
+      GROUP BY work_id
     `, [empId]);
-    const activeWorks = new Map();
-    for (const a of activeAssigns) if (!activeWorks.has(a.work_id)) activeWorks.set(a.work_id, a.date_from);
+    const assignByWork = new Map();
+    for (const a of assignRows) assignByWork.set(a.work_id, a);
 
     // Инфо о работах
-    const workIds = [...new Set(checkins.map(c => c.work_id).concat([...activeWorks.keys()]))];
+    const workIds = [...new Set(checkins.map(c => c.work_id).concat([...assignByWork.keys()]))];
     const worksInfo = {};
     if (workIds.length) {
       const { rows } = await db.query(`
@@ -311,15 +318,31 @@ async function routes(fastify, options) {
       push(prev);
     }
 
-    // Пометить «текущую работу»: последний по времени сегмент активного объекта.
-    for (const wid of activeWorks.keys()) {
+    // Конец периода / «текущая работа» для последнего сегмента каждого объекта.
+    const todayMs = Date.now();
+    for (const [wid, a] of assignByWork) {
       const segs = segments.filter(s => s.work_id === wid);
+      const dep = a.departure_date ? a.departure_date.slice(0, 10) : null;
       if (segs.length) {
-        const lastSeg = segs.reduce((a, b) => (a.end >= b.end ? a : b));
-        lastSeg.ongoing = true;
+        const lastSeg = segs.reduce((x, y) => (x.end >= y.end ? x : y));
+        if (dep) {
+          lastSeg.departure = dep;                    // есть отъезд → конец по нему
+          if (dep > lastSeg.end) lastSeg.end = dep;   // но не раньше последнего чек-ина
+        } else {
+          // нет отъезда → правило давности: свежий чек-ин → текущая работа
+          const daysSince = (todayMs - new Date(lastSeg.end)) / 86400000;
+          if (daysSince <= GAP_DAYS) lastSeg.ongoing = true;
+          // иначе оставляем завершённым по последнему чек-ину
+        }
       } else {
-        // активное назначение без чек-инов — показываем как текущую от даты назначения
-        segments.push({ work_id: wid, start: (activeWorks.get(wid) || '').slice(0, 10) || null, end: null, days: 0, ongoing: true, no_checkins: true });
+        // назначение без чек-инов
+        const startRaw = a.date_from || dep;
+        const start = startRaw ? startRaw.slice(0, 10) : null;
+        if (dep) {
+          segments.push({ work_id: wid, start: start || dep, end: dep, days: 0, no_checkins: true, departure: dep });
+        } else if (a.active) {
+          segments.push({ work_id: wid, start, end: null, days: 0, ongoing: true, no_checkins: true });
+        }
       }
     }
 
@@ -327,6 +350,7 @@ async function routes(fastify, options) {
       .map(s => ({
         ...s,
         ongoing: !!s.ongoing,
+        departure: s.departure || null,
         work_title: worksInfo[s.work_id]?.work_title || null,
         customer_name: worksInfo[s.work_id]?.customer_name || null,
         pm_name: worksInfo[s.work_id]?.pm_name || null,
