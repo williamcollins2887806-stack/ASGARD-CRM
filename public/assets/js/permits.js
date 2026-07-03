@@ -31,17 +31,24 @@ window.AsgardPermitsPage = (function(){
 
   const CATEGORIES = {
     safety: { name: 'Безопасность', color: '#22c55e' },
+    siz: { name: 'СИЗ', color: '#14b8a6' },
     electric: { name: 'Электрика', color: '#f59e0b' },
+    height: { name: 'Высотные работы', color: '#84cc16' },
+    rigging: { name: 'Такелаж', color: '#a855f7' },
     special: { name: 'Спецработы', color: '#3b82f6' },
-    medical: { name: 'Медицина', color: '#ef4444' },
-    attest: { name: 'Аттестация', color: '#8b5cf6' },
-    offshore: { name: 'Шельф / Морские', color: '#06b6d4' },
+    welding: { name: 'Сварка', color: '#ea580c' },
+    ndt: { name: 'Неразрушающий контроль', color: '#0ea5e9' },
     gas: { name: 'Газоопасные', color: '#f97316' },
+    offshore: { name: 'Шельф / Морские', color: '#06b6d4' },
     transport: { name: 'Транспорт', color: '#64748b' },
     nuclear: { name: 'Ядерная безопасность', color: '#dc2626' },
-    welding: { name: 'Сварка', color: '#ea580c' },
-    docs: { name: 'Документы', color: '#0891b2' }
+    medical: { name: 'Медицина', color: '#ef4444' },
+    attest: { name: 'Аттестация', color: '#8b5cf6' },
+    docs: { name: 'Документы', color: '#0891b2' },
+    work: { name: 'Прочие работы', color: '#78716c' }
   };
+  // Порядок групп в модалке-чеклисте
+  const CHECKLIST_CAT_ORDER = ['safety','siz','electric','height','rigging','special','welding','ndt','gas','offshore','transport','nuclear','medical','attest','docs','work'];
 
   // Должности (синхронно с hr_requests.js POSITION_ROLES / staff_request_positions.role_key)
   const POSITION_ROLES = [
@@ -231,7 +238,7 @@ window.AsgardPermitsPage = (function(){
     let html = `
       <div style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
         <span class="help">Всего: ${permits.length}</span>
-        ${canEdit ? `<button class="btn mini" id="btnAddPermit" data-employee="${employeeId}">+ Добавить разрешение</button>` : ''}
+        ${canEdit ? `<button class="btn mini" id="btnAddPermit" data-employee="${employeeId}">Допуски (изменить)</button>` : ''}
       </div>
     `;
 
@@ -398,6 +405,155 @@ window.AsgardPermitsPage = (function(){
         AsgardUI.toast('Сохранено', isEdit ? 'Допуск обновлён' : 'Допуск добавлен', 'ok');
         if (onSave) onSave();
       } catch(e) {
+        AsgardUI.toast('Ошибка', e.message, 'err');
+      }
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // МОДАЛКА-ЧЕКЛИСТ «Единое окно» допусков сотрудника
+  // Массовый выбор/редактирование через PUT /employee/:id/bulk
+  // ═══════════════════════════════════════════════════════════════
+  async function openChecklistModal(employeeId, employeeName = null, onSave = null) {
+    const types = await getTypes();
+
+    // Имя сотрудника (если не передано — подтягиваем)
+    let empName = employeeName || ('ID:' + employeeId);
+    if (!employeeName) {
+      try {
+        const employees = await getEmployeesFromAPI();
+        const emp = employees?.find(e => String(e.id) === String(employeeId));
+        if (emp) empName = emp.fio || emp.name || empName;
+      } catch(e) {}
+    }
+
+    // Текущие активные допуски сотрудника → карта type_id → запись
+    let current = [];
+    try {
+      const resp = await api('/?employee_id=' + employeeId);
+      current = resp.permits || [];
+    } catch(e) {}
+    const byType = {};
+    current.forEach(p => { if (p.type_id != null && !byType[p.type_id]) byType[p.type_id] = p; });
+
+    // Группировка типов по категориям
+    const cats = {};
+    types.forEach(t => { const c = t.category || 'work'; (cats[c] = cats[c] || []).push(t); });
+    const orderedCats = CHECKLIST_CAT_ORDER.filter(c => cats[c])
+      .concat(Object.keys(cats).filter(c => !CHECKLIST_CAT_ORDER.includes(c)));
+
+    const rowHtml = (t) => {
+      const ex = byType[t.id];
+      const checked = !!ex;
+      const cat = CATEGORIES[t.category] || { color: '#94a3b8' };
+      return `
+        <div class="pchk-row" data-type="${t.id}" data-name="${esc(t.name).toLowerCase()}" style="border-bottom:1px solid var(--brd)">
+          <label style="display:flex;align-items:center;gap:8px;padding:8px 4px;cursor:pointer;margin:0">
+            <input type="checkbox" class="pchk-cb" ${checked ? 'checked' : ''}/>
+            <span style="border-left:3px solid ${cat.color};padding-left:8px;flex:1">${esc(t.name)}</span>
+          </label>
+          <div class="pchk-fields" style="display:${checked ? 'grid' : 'none'};grid-template-columns:1fr 1fr;gap:8px;padding:0 4px 10px 30px">
+            <div><label class="help">Выдан</label><input type="date" class="inp pchk-issue" value="${ex?.issue_date?.slice(0,10) || ''}"/></div>
+            <div><label class="help">Действует до</label><input type="date" class="inp pchk-expiry" value="${ex?.expiry_date?.slice(0,10) || ''}"/></div>
+            <div><label class="help">Номер</label><input class="inp pchk-num" value="${esc(ex?.doc_number || '')}"/></div>
+            <div><label class="help">Кем выдано</label><input class="inp pchk-issuer" value="${esc(ex?.issuer || '')}"/></div>
+            <div style="grid-column:1/3"><label class="help">Примечание</label><input class="inp pchk-notes" value="${esc(ex?.notes || '')}"/></div>
+          </div>
+        </div>
+      `;
+    };
+
+    const groupsHtml = orderedCats.map(c => {
+      const cat = CATEGORIES[c] || { name: c, color: '#94a3b8' };
+      return `
+        <div class="pchk-group" data-cat="${c}">
+          <div style="display:flex;align-items:center;gap:8px;margin:14px 0 4px;font-weight:600">
+            <span class="dot" style="width:10px;height:10px;border-radius:50%;display:inline-block;background:${cat.color}"></span> ${esc(cat.name)}
+          </div>
+          ${cats[c].map(rowHtml).join('')}
+        </div>
+      `;
+    }).join('');
+
+    const html = `
+      <div class="modal-overlay show" id="checklistModal">
+        <div class="modal-content" style="max-width:640px;max-height:90vh;display:flex;flex-direction:column">
+          <div class="modal-header">
+            <h3>Допуски сотрудника</h3>
+            <button class="btn ghost btnClose">&times;</button>
+          </div>
+          <div class="modal-body" style="overflow-y:auto">
+            <p style="margin-bottom:12px">Сотрудник: <strong>${esc(empName)}</strong></p>
+            <input id="pchkSearch" class="inp" placeholder="Поиск по названию..." style="margin-bottom:8px"/>
+            <div class="help" style="margin-bottom:8px">Отмечено: <span id="pchkCount">0</span></div>
+            <div id="pchkList">${groupsHtml}</div>
+          </div>
+          <div class="modal-footer" style="display:flex;gap:12px;justify-content:flex-end;padding:16px">
+            <button class="btn ghost btnClose">Отмена</button>
+            <button class="btn primary" id="btnSaveChecklist">Сохранить</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', html);
+    const modal = document.getElementById('checklistModal');
+    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
+    modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
+
+    const updateCount = () => {
+      const el = document.getElementById('pchkCount');
+      if (el) el.textContent = modal.querySelectorAll('.pchk-cb:checked').length;
+    };
+    updateCount();
+
+    modal.querySelectorAll('.pchk-row').forEach(row => {
+      const cb = row.querySelector('.pchk-cb');
+      const fields = row.querySelector('.pchk-fields');
+      cb.onchange = () => { fields.style.display = cb.checked ? 'grid' : 'none'; updateCount(); };
+    });
+
+    document.getElementById('pchkSearch').oninput = (e) => {
+      const q = e.target.value.trim().toLowerCase();
+      modal.querySelectorAll('.pchk-group').forEach(g => {
+        let visible = 0;
+        g.querySelectorAll('.pchk-row').forEach(row => {
+          const match = !q || row.dataset.name.includes(q);
+          row.style.display = match ? '' : 'none';
+          if (match) visible++;
+        });
+        g.style.display = visible ? '' : 'none';
+      });
+    };
+
+    document.getElementById('btnSaveChecklist').onclick = async () => {
+      const items = [];
+      modal.querySelectorAll('.pchk-row').forEach(row => {
+        const typeId = parseInt(row.dataset.type);
+        const present = row.querySelector('.pchk-cb').checked;
+        const wasPresent = !!byType[typeId];
+        if (!present && !wasPresent) return; // без изменений — не отправляем
+        items.push({
+          type_id: typeId,
+          present,
+          issue_date: row.querySelector('.pchk-issue').value || null,
+          expiry_date: row.querySelector('.pchk-expiry').value || null,
+          doc_number: row.querySelector('.pchk-num').value.trim() || null,
+          issuer: row.querySelector('.pchk-issuer').value.trim() || null,
+          notes: row.querySelector('.pchk-notes').value.trim() || null
+        });
+      });
+      if (!items.length) { AsgardUI.toast('Нет изменений', 'Отметьте допуски', 'err'); return; }
+      const btn = document.getElementById('btnSaveChecklist');
+      btn.disabled = true; btn.textContent = 'Сохранение...';
+      try {
+        const res = await api('/employee/' + employeeId + '/bulk', { method: 'PUT', body: { items } });
+        modal.remove();
+        const s = res.stats || {};
+        AsgardUI.toast('Сохранено', `Добавлено: ${s.inserted||0}, обновлено: ${s.updated||0}, снято: ${s.removed||0}`, 'ok');
+        if (onSave) onSave();
+      } catch(e) {
+        btn.disabled = false; btn.textContent = 'Сохранить';
         AsgardUI.toast('Ошибка', e.message, 'err');
       }
     };
@@ -788,8 +944,9 @@ window.AsgardPermitsPage = (function(){
         document.getElementById('btnConfirmEmp').onclick = () => {
           const empId = parseInt(CRSelect.getValue('empSelect') || '0', 10);
           if (!empId) { AsgardUI.toast('Ошибка', 'Выберите сотрудника', 'err'); return; }
+          const empLabel = (active.find(e => String(e.id) === String(empId)) || {}).fio || null;
           modal.remove();
-          openPermitModal(empId, null, loadList);
+          openChecklistModal(empId, empLabel, loadList);
         };
       };
     }
@@ -1303,6 +1460,7 @@ window.AsgardPermitsPage = (function(){
     render,
     renderEmployeePermits,
     openPermitModal,
+    openChecklistModal,
     getAll,
     save,
     remove,

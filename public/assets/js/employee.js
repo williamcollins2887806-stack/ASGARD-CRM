@@ -763,9 +763,14 @@ window.AsgardEmployeePage=(function(){
         const b = document.getElementById("permitsDetailBlock");
         if (b) {
           b.innerHTML = h;
-          // Bind "Add permit" button
+          // Bind "Add permit" button → единое окно (чеклист допусков)
           const btnAdd = b.querySelector("#btnAddPermit");
-          if (btnAdd && AsgardPermitsPage.openPermitModal) {
+          if (btnAdd && AsgardPermitsPage.openChecklistModal) {
+            const empFio = (typeof emp !== 'undefined' && emp) ? (emp.fio || emp.name || null) : null;
+            btnAdd.onclick = () => AsgardPermitsPage.openChecklistModal(id, empFio, () => {
+              AsgardPermitsPage.renderEmployeePermits(id, canEdit).then(h2 => { b.innerHTML = h2; });
+            });
+          } else if (btnAdd && AsgardPermitsPage.openPermitModal) {
             btnAdd.onclick = () => AsgardPermitsPage.openPermitModal(id, null, () => {
               AsgardPermitsPage.renderEmployeePermits(id, canEdit).then(h2 => { b.innerHTML = h2; });
             });
