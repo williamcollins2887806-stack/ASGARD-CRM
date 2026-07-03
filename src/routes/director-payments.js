@@ -199,8 +199,11 @@ async function routes(fastify) {
       const lim = Math.min(parseInt(limit, 10) || 200, 1000);
       const off = parseInt(offset, 10) || 0;
 
+      // Фикс (23.06.2026): React v2 ожидает employee_name (показывал #ID вместо ФИО,
+      // когда поле отсутствовало). Возвращаем оба имени для обратной совместимости.
       const { rows } = await db.query(`
         SELECT wp.*, e.fio AS employee_fio,
+               e.fio AS employee_name,
                w.work_title,
                u.name AS paid_by_name
         FROM worker_payments wp

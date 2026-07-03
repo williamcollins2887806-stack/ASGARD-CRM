@@ -80,6 +80,91 @@ async function routes(fastify, options) {
     return { session };
   });
 
+  // 22.06.2026: единый источник финансов для карты заявки/тендера.
+  // Приоритеты: 1) последняя finalized смета из tkp_quick_sessions, 2) последний ТКП.
+  // Возвращает {source, totals:{cost,kp_no_vat,kp_with_vat,markup_multiplier,vat_pct}, ref_id}.
+  fastify.get('/finance-source', {
+    preHandler: [fastify.authenticate]
+  }, async (request) => {
+    const { pre_tender_id, tender_id } = request.query;
+    const ptId = pre_tender_id ? Number(pre_tender_id) : null;
+    const tdId = tender_id ? Number(tender_id) : null;
+    if (!ptId && !tdId) return { source: 'none', totals: null };
+
+    // 1) Смета из любой последней сессии tkp_quick_sessions (по updated_at).
+    //    Не ограничиваемся status='finalized' — РП может перейти в kp_prep с draft-сметой.
+    try {
+      const r = await db.query(
+        `SELECT id, status, estimate_draft, finalized_at, updated_at
+           FROM tkp_quick_sessions
+          WHERE ((pre_tender_id IS NOT NULL AND pre_tender_id=$1)
+              OR (tender_id     IS NOT NULL AND tender_id    =$2))
+            AND estimate_draft IS NOT NULL
+          ORDER BY COALESCE(finalized_at, updated_at) DESC NULLS LAST, id DESC LIMIT 1`,
+        [ptId, tdId]);
+      const row0 = r.rows[0];
+      const ed0 = row0?.estimate_draft;
+      if (ed0) {
+        const ed = typeof ed0 === 'string' ? JSON.parse(ed0) : ed0;
+        // Поддерживаем 2 схемы:
+        // (A) ed.totals = {cost, kp_no_vat, kp_with_vat, markup_multiplier, vat_pct}
+        // (B) корневой уровень: ed.subtotal / ed.total_with_vat / ed.total_without_vat / ed.vat_pct + ed.items[].cost
+        const totalsBlock = ed?.totals || ed?.analysis?.totals || ed?.ai_meta?.estimate?.totals || null;
+        const vatPct = Number(totalsBlock?.vat_pct ?? ed.vat_pct ?? ed.ai_meta?.estimate?.vat_pct) || 20;
+        let kpNoVat = Number(totalsBlock?.kp_no_vat) || Number(ed.total_without_vat) || Number(ed.subtotal) || null;
+        let kpWithVat = Number(totalsBlock?.kp_with_vat) || Number(ed.total_with_vat) || (kpNoVat ? kpNoVat * (1 + vatPct/100) : null);
+        // markup — берём из явного поля (поддерживаем 3 пути)
+        let markup = Number(totalsBlock?.markup_multiplier) || Number(ed.markup_multiplier) || Number(ed.ai_meta?.estimate?.markup_multiplier) || null;
+        // cost = kp_no_vat / markup (стандартная формула)
+        let cost = Number(totalsBlock?.cost) || Number(ed.cost_total) || Number(ed.ai_meta?.estimate?.cost) || null;
+        if (!cost && kpNoVat && markup && markup > 0) {
+          cost = kpNoVat / markup;
+        }
+        // если cost так и не нашли — пробуем сумму items
+        if (!cost && Array.isArray(ed.items) && ed.items.length) {
+          const sum = ed.items.reduce((acc, it) => {
+            const c = Number(it.cost) || Number(it.cost_total) || Number(it.cost_planned) || 0;
+            return acc + c;
+          }, 0);
+          if (sum > 0) cost = sum;
+        }
+        // Обратная: markup из cost/kp если не было
+        if (!markup && cost && kpNoVat && cost > 0) markup = kpNoVat / cost;
+        const margin = (cost && kpNoVat && kpNoVat > 0) ? ((kpNoVat - cost) / kpNoVat * 100) : null;
+        if (kpNoVat || cost) {
+          return {
+            source: 'estimate',
+            ref_id: row0.id,
+            status: row0.status,
+            totals: { cost, kp_no_vat: kpNoVat, kp_with_vat: kpWithVat, markup_multiplier: markup, margin_pct: margin, vat_pct: vatPct }
+          };
+        }
+      }
+    } catch (_) { /* fallback на tkp */ }
+
+    // 2) Fallback: max(total_sum) из tkp
+    try {
+      const r = await db.query(
+        `SELECT id, total_sum, vat_pct FROM tkp
+          WHERE ((pre_tender_id IS NOT NULL AND pre_tender_id=$1)
+              OR (tender_id     IS NOT NULL AND tender_id    =$2))
+            AND total_sum > 0
+          ORDER BY total_sum DESC LIMIT 1`,
+        [ptId, tdId]);
+      if (r.rows[0]) {
+        const kp = Number(r.rows[0].total_sum) || 0;
+        const vatPct = Number(r.rows[0].vat_pct) || 20;
+        return {
+          source: 'tkp',
+          ref_id: r.rows[0].id,
+          totals: { cost: null, kp_no_vat: kp, kp_with_vat: kp * (1 + vatPct/100), markup_multiplier: null, margin_pct: null, vat_pct: vatPct }
+        };
+      }
+    } catch (_) {}
+
+    return { source: 'none', totals: null };
+  });
+
   // ─────────────────────────────────────────────────────────────────────────
   // GET /sessions — Список активных сессий текущего пользователя
   // ─────────────────────────────────────────────────────────────────────────
@@ -192,6 +277,36 @@ async function routes(fastify, options) {
     );
 
     return { ok: true, filename: data.filename, ocr_chars: ocrText.length };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // POST /sessions/:uid/text — добавить/заменить ручной ТЗ-текст в сессию.
+  // Юзер дописывает описание работы прямо в Quick wizard'е (например, если
+  // он переслал письмо без ТЗ и только с реквизитами клиента).
+  // body: { text: string, mode?: 'append'|'replace' } (default 'append')
+  // ─────────────────────────────────────────────────────────────────────────
+  fastify.post('/sessions/:uid/text', {
+    preHandler: [fastify.requireRoles(ROLES)]
+  }, async (request, reply) => {
+    const { text, mode } = request.body || {};
+    if (!text || !String(text).trim()) return reply.code(400).send({ error: 'Текст пустой' });
+    const cleanText = String(text).trim();
+
+    const { rows: [session] } = await db.query(
+      "SELECT id, tz_text, status FROM tkp_quick_sessions WHERE session_uid = $1 AND author_id = $2 AND status IN ('draft','error','calculating')",
+      [request.params.uid, request.user.id]
+    );
+    if (!session) return reply.code(404).send({ error: 'Сессия не найдена или уже рассчитана' });
+
+    const finalText = (mode === 'replace')
+      ? cleanText
+      : ((session.tz_text || '').trim() + (session.tz_text ? '\n\n— Дополнение от РП —\n' : '') + cleanText);
+
+    await db.query(
+      "UPDATE tkp_quick_sessions SET tz_text = $1, updated_at = NOW() WHERE session_uid = $2",
+      [finalText, request.params.uid]
+    );
+    return { ok: true, length: finalText.length };
   });
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -339,7 +454,11 @@ async function routes(fastify, options) {
         customer_data: session.customer_data,
         attachments_text: attachmentsText,
         settings,
-        onProgress: sendEvent
+        onProgress: sendEvent,
+        session_uid: request.params.uid,
+        author_id: session.author_id || request.user.id,
+        pre_tender_id: session.pre_tender_id || null,
+        tender_id: session.tender_id || null
       });
 
       // Сохраняем результат в сессию
@@ -472,6 +591,310 @@ async function routes(fastify, options) {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
+  // POST /sessions/:uid/direct-edit — Прямая правка estimate_draft (без AI).
+  // 21.06.2026: AI continueChat при простых правках типа «маржу 30%» переписывал
+  // смету ПОЛНОСТЬЮ с нуля (cost падал в 150 раз). Прямой endpoint обновляет
+  // только указанные поля и перегенерирует xlsx/docx.
+  //
+  // Body: { margin_pct?: 30, markup_multiplier?: 2.2, material_markup?: 1.25, vat_pct?: 22 }
+  // ─────────────────────────────────────────────────────────────────────────
+  fastify.post('/sessions/:uid/direct-edit', {
+    preHandler: [fastify.requireRoles(ROLES)]
+  }, async (request, reply) => {
+    const body = request.body || {};
+    const { rows: [session] } = await db.query(
+      "SELECT * FROM tkp_quick_sessions WHERE session_uid = $1 AND author_id = $2 AND status IN ('chatting', 'draft')",
+      [request.params.uid, request.user.id]
+    );
+    if (!session) return reply.code(404).send({ error: 'Сессия не найдена или финализирована' });
+    if (!session.estimate_draft) return reply.code(400).send({ error: 'Нет черновика для правки' });
+
+    const draft = JSON.parse(JSON.stringify(session.estimate_draft)); // deep clone
+    const meta = draft.ai_meta || (draft.ai_meta = {});
+    const totals = meta.totals || (meta.totals = {});
+
+    // Применяем правки
+    const fixedFields = [];
+    if (Number.isFinite(Number(body.margin_pct))) {
+      const pct = Number(body.margin_pct);
+      totals.margin_pct = pct;
+      // markup_multiplier = (100 + margin_pct) / 100. Маржа 100% → коэф 2.0; 30% → 1.3
+      // Однако в нашей системе "стандартная наценка" = 2.2 (margin 120%). Различаем:
+      // если margin_pct ≤ 100 — это GROSS MARGIN, иначе наценка.
+      // Делаем оба варианта пересчитанными синхронно.
+      totals.markup_multiplier = +(1 + pct / 100).toFixed(3);
+      fixedFields.push(`margin_pct=${pct}`);
+    }
+    if (Number.isFinite(Number(body.markup_multiplier))) {
+      totals.markup_multiplier = Number(body.markup_multiplier);
+      totals.margin_pct = +((Number(body.markup_multiplier) - 1) * 100).toFixed(1);
+      fixedFields.push(`markup_multiplier=${body.markup_multiplier}`);
+    }
+    if (Number.isFinite(Number(body.material_markup))) {
+      totals.material_markup = Number(body.material_markup);
+      fixedFields.push(`material_markup=${body.material_markup}`);
+    }
+    if (Number.isFinite(Number(body.vat_pct))) {
+      totals.vat_pct = Number(body.vat_pct);
+      fixedFields.push(`vat_pct=${body.vat_pct}`);
+    }
+    if (!fixedFields.length) return reply.code(400).send({ error: 'Не задано ни одного поля для правки' });
+
+    // Пересчёт total_with_margin и total_with_vat
+    const cost = Number(totals.total_cost) || 0;
+    const markup = Number(totals.markup_multiplier) || 2.2;
+    const vat = Number(totals.vat_pct) || 22;
+    totals.total_with_margin = +(cost * markup).toFixed(2);
+    totals.total_with_vat = +(totals.total_with_margin * (1 + vat / 100)).toFixed(2);
+
+    // КРИТИЧНО: дублируем markup в ai_meta.estimate.markup_multiplier — generator берёт
+    // его раньше чем totals.markup_multiplier (`est.markup_multiplier || totals.markup_multiplier`).
+    // Без этого xlsx показывал старое значение 2.2 после правки на 1.3.
+    if (meta.estimate) {
+      if (Number.isFinite(Number(body.margin_pct)) || Number.isFinite(Number(body.markup_multiplier))) {
+        meta.estimate.markup_multiplier = totals.markup_multiplier;
+      }
+      if (Number.isFinite(Number(body.material_markup))) {
+        meta.estimate.material_markup = totals.material_markup;
+      }
+      if (Number.isFinite(Number(body.vat_pct))) {
+        meta.estimate.vat_pct = totals.vat_pct;
+      }
+    }
+
+    // Текстовые правки секций отчёта (если переданы)
+    if (typeof body.summary === 'string') {
+      meta.analysis = meta.analysis || {};
+      meta.analysis.summary = body.summary.trim() || null;
+      fixedFields.push('summary');
+    }
+    if (typeof body.section_2_text === 'string') {
+      meta.analysis = meta.analysis || {};
+      meta.analysis.section_2_text = body.section_2_text.trim() || null;
+      fixedFields.push('section_2_text');
+    }
+    if (Array.isArray(body.recommendations)) {
+      meta.analysis = meta.analysis || {};
+      meta.analysis.recommendations = body.recommendations.filter(s => typeof s === 'string' && s.trim()).map(s => s.trim());
+      fixedFields.push(`recommendations(${meta.analysis.recommendations.length})`);
+    }
+    if (Array.isArray(body.warnings)) {
+      meta.analysis = meta.analysis || {};
+      meta.analysis.warnings = body.warnings.filter(Boolean).map(w => {
+        if (typeof w === 'string') return { title: 'Внимание', text: w.trim() };
+        return { title: String(w.title || 'Внимание'), text: String(w.text || '').trim() };
+      });
+      fixedFields.push(`warnings(${meta.analysis.warnings.length})`);
+    }
+
+    // Сбрасываем кэшированный summary/section2 только если они НЕ были изменены явно
+    // (изменение margin/markup → старый summary противоречит новым числам).
+    if (meta.analysis && !body.summary && (Number.isFinite(Number(body.margin_pct)) || Number.isFinite(Number(body.markup_multiplier)))) {
+      meta.analysis.summary = null;
+    }
+    if (meta.analysis && !body.section_2_text && (Number.isFinite(Number(body.margin_pct)) || Number.isFinite(Number(body.markup_multiplier)))) {
+      meta.analysis.section_2_text = null;
+    }
+
+    // Сохраняем — НО НЕ пишем в pre_tender_requests.manual_documents (это финал).
+    // Промежуточные правки только в session.estimate_draft.
+    const chatMessages = Array.isArray(session.chat_messages) ? session.chat_messages : [];
+    const updatedMessages = [
+      ...chatMessages,
+      {
+        role: 'user',
+        content: `Прямая правка: ${fixedFields.join(', ')}`,
+        ts: new Date().toISOString()
+      },
+      {
+        role: 'assistant',
+        content: `✓ Применил: ${fixedFields.join(', ')}. Новый total_with_vat = ${totals.total_with_vat.toLocaleString('ru-RU')} ₽`,
+        estimate: draft,
+        ts: new Date().toISOString()
+      }
+    ];
+
+    await db.query(
+      `UPDATE tkp_quick_sessions SET
+         estimate_draft = $1,
+         chat_messages = $2,
+         updated_at = NOW()
+       WHERE session_uid = $3`,
+      [JSON.stringify(draft), JSON.stringify(updatedMessages), request.params.uid]
+    );
+
+    return {
+      ok: true,
+      applied: fixedFields,
+      estimate: draft,
+      totals: {
+        cost,
+        margin_pct: totals.margin_pct,
+        markup_multiplier: totals.markup_multiplier,
+        total_with_margin: totals.total_with_margin,
+        total_with_vat: totals.total_with_vat,
+        vat_pct: totals.vat_pct
+      }
+    };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // GET /sessions/:uid/preview-data — JSON-данные отчёта для UI-предпросмотра.
+  // ─────────────────────────────────────────────────────────────────────────
+  fastify.get('/sessions/:uid/preview-data', {
+    preHandler: [fastify.requireRoles(ROLES)]
+  }, async (request, reply) => {
+    const { rows: [session] } = await db.query(
+      "SELECT * FROM tkp_quick_sessions WHERE session_uid = $1 AND author_id = $2",
+      [request.params.uid, request.user.id]
+    );
+    if (!session) return reply.code(404).send({ error: 'Сессия не найдена' });
+    if (!session.estimate_draft) return reply.code(400).send({ error: 'Нет черновика' });
+
+    const meta = session.estimate_draft.ai_meta || session.estimate_draft;
+    const totals = meta.totals || {};
+    const analysis = meta.analysis || {};
+
+    // Загружаем pre_tender / tender для project / customer
+    let project = {};
+    let customer = { name: session.customer_name, inn: session.customer_inn };
+    try {
+      if (session.pre_tender_id) {
+        const r = await db.query(
+          `SELECT customer_name, customer_inn, contact_person, work_description, work_location, work_deadline
+             FROM pre_tender_requests WHERE id = $1`, [session.pre_tender_id]
+        );
+        if (r.rows[0]) {
+          const pt = r.rows[0];
+          customer = {
+            name: pt.customer_name, inn: pt.customer_inn,
+            address: pt.work_location, contact_person: pt.contact_person
+          };
+          project = {
+            subject: pt.work_description,
+            object: pt.work_location,
+            deadline: pt.work_deadline ? new Date(pt.work_deadline).toLocaleDateString('ru-RU') : null
+          };
+        }
+      }
+    } catch (_) {}
+
+    return {
+      ok: true,
+      session_uid: request.params.uid,
+      project,
+      customer,
+      totals: {
+        total_cost: Number(totals.total_cost) || 0,
+        total_with_margin: Number(totals.total_with_margin) || 0,
+        total_with_vat: Number(totals.total_with_vat) || 0,
+        margin_pct: Number(totals.margin_pct) || null,
+        markup_multiplier: Number(totals.markup_multiplier) || 2.2,
+        material_markup: Number(totals.material_markup) || 1.25,
+        vat_pct: Number(totals.vat_pct) || 22
+      },
+      analysis: {
+        summary: analysis.summary || null,
+        section_2_text: analysis.section_2_text || null,
+        recommendations: Array.isArray(analysis.recommendations) ? analysis.recommendations : [],
+        warnings: Array.isArray(analysis.warnings) ? analysis.warnings : []
+      },
+      estimate_brief: {
+        crew_count: meta.estimate?.crew_count || null,
+        work_days: meta.estimate?.work_days || null,
+        road_days: meta.estimate?.road_days || null,
+        shifts_per_day: meta.estimate?.shifts_per_day || null
+      }
+    };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // GET /sessions/:uid/preview-doc/:kind — стрим xlsx/docx ИЗ ПАМЯТИ.
+  // НЕ сохраняет в pre_tender_requests.manual_documents.
+  // kind = 'smeta' | 'report'
+  // Поддержка ?token= для window.open (без Authorization header).
+  // ─────────────────────────────────────────────────────────────────────────
+  fastify.get('/sessions/:uid/preview-doc/:kind', {
+    preHandler: [
+      async (request) => {
+        if (!request.headers.authorization && request.query.token) {
+          request.headers.authorization = 'Bearer ' + request.query.token;
+        }
+      },
+      fastify.requireRoles(ROLES)
+    ]
+  }, async (request, reply) => {
+    const kind = request.params.kind;
+    if (!['smeta', 'report'].includes(kind)) return reply.code(400).send({ error: 'kind: smeta | report' });
+
+    const { rows: [session] } = await db.query(
+      "SELECT * FROM tkp_quick_sessions WHERE session_uid = $1 AND author_id = $2",
+      [request.params.uid, request.user.id]
+    );
+    if (!session) return reply.code(404).send({ error: 'Сессия не найдена' });
+    if (!session.estimate_draft) return reply.code(400).send({ error: 'Нет черновика' });
+
+    try {
+      const { xlsxBuf, docxBuf } = await mimirTkpQuick.generatePreviewBuffers({
+        estimate_draft: session.estimate_draft,
+        pre_tender_id: session.pre_tender_id,
+        tender_id: session.tender_id,
+        customer_name: session.customer_name,
+        customer_inn: session.customer_inn,
+        author_id: session.author_id,
+        work_type: session.work_type
+      });
+      const buf = kind === 'smeta' ? xlsxBuf : docxBuf;
+      const ext = kind === 'smeta' ? 'xlsx' : 'docx';
+      const mime = kind === 'smeta'
+        ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      const fname = `${kind === 'smeta' ? 'Смета' : 'Отчёт'}_preview_${request.params.uid.slice(0, 8)}.${ext}`;
+      reply.header('Content-Type', mime);
+      reply.header('Content-Disposition', `attachment; filename="${fname}"; filename*=UTF-8''${encodeURIComponent(fname)}`);
+      reply.send(buf);
+    } catch (e) {
+      request.log.error(e, '[preview-doc] failed');
+      return reply.code(500).send({ error: 'Не удалось сгенерировать предпросмотр: ' + e.message });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // POST /sessions/:uid/save-to-card — Сохранить смету+отчёт в карточку заявки
+  // (pre_tender_requests.manual_documents). Без финализации в tkp.
+  // Используется кнопкой «✓ Сохранить в карточку» в UI.
+  // ─────────────────────────────────────────────────────────────────────────
+  fastify.post('/sessions/:uid/save-to-card', {
+    preHandler: [fastify.requireRoles(ROLES)]
+  }, async (request, reply) => {
+    const { rows: [session] } = await db.query(
+      "SELECT * FROM tkp_quick_sessions WHERE session_uid = $1 AND author_id = $2",
+      [request.params.uid, request.user.id]
+    );
+    if (!session) return reply.code(404).send({ error: 'Сессия не найдена' });
+    if (!session.estimate_draft) return reply.code(400).send({ error: 'Нет черновика' });
+    if (!session.pre_tender_id && !session.tender_id) {
+      return reply.code(400).send({ error: 'Сессия не привязана к заявке/тендеру' });
+    }
+
+    try {
+      const saved = await mimirTkpQuick.saveDocsToCard({
+        estimate_draft: session.estimate_draft,
+        pre_tender_id: session.pre_tender_id,
+        tender_id: session.tender_id,
+        customer_name: session.customer_name,
+        customer_inn: session.customer_inn,
+        author_id: session.author_id,
+        work_type: session.work_type
+      });
+      return { ok: true, saved };
+    } catch (e) {
+      request.log.error(e, '[save-to-card] failed');
+      return reply.code(500).send({ error: 'Не удалось сохранить в карточку: ' + e.message });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
   // POST /sessions/:uid/finalize — Создать ТКП (+ ДС если parent_work_id)
   // ─────────────────────────────────────────────────────────────────────────
   fastify.post('/sessions/:uid/finalize', {
@@ -574,7 +997,24 @@ async function routes(fastify, options) {
       );
     }
 
-    return { tkp: newTkp, work_id: workId };
+    // 21.06.2026: при финализации СОХРАНЯЕМ смету+отчёт в карточку заявки.
+    // Раньше это делалось на каждой chat-правке (теперь только при финале).
+    let savedDocs = [];
+    try {
+      savedDocs = await mimirTkpQuick.saveDocsToCard({
+        estimate_draft: session.estimate_draft,
+        pre_tender_id: session.pre_tender_id,
+        tender_id: session.tender_id,
+        customer_name: session.customer_name,
+        customer_inn: session.customer_inn,
+        author_id: session.author_id,
+        work_type: session.work_type
+      });
+    } catch (e) {
+      request.log.warn({ err: e.message }, '[finalize] saveDocsToCard failed (non-blocking)');
+    }
+
+    return { tkp: newTkp, work_id: workId, saved_docs: savedDocs };
   });
 
   // ─────────────────────────────────────────────────────────────────────────

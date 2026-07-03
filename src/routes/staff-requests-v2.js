@@ -26,7 +26,10 @@
  */
 
 const PM_ROLES = ['PM', 'HEAD_PM', 'ADMIN'];
-const HR_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN'];
+// 23.06.2026 BUG-FIX (D-08): добавлены DIRECTOR_COMM и DIRECTOR_DEV.
+// Vanilla hr_requests.js:21+isDirRole и v2 HrRequests/api.js:87 пускают любого DIRECTOR_*
+// к кнопке «Утвердить», а бэк отвечал 403. Теперь все три директора могут утверждать заявки HR.
+const HR_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 const VIEW_ROLES = ['ADMIN', 'PM', 'HEAD_PM', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM'];
 
 const ROLE_LABELS = {
@@ -610,11 +613,33 @@ async function routes(fastify, options) {
         UPDATE staff_request_assignments SET status = 'added_to_crew' WHERE id = $1
       `, [a.id]);
 
+      // 23.06.2026 BUG-FIX (🟡 Staff-3, S-02): пишем переход в worker_readiness_log,
+      // иначе при добавлении в бригаду статус становится 'on_site' без аудит-следа,
+      // и при последующем «залипании» (см. S-02) непонятно кто/когда перевёл.
+      // Сначала читаем старый статус, затем UPDATE, потом INSERT в лог.
+      const { rows: [prev] } = await db.query(
+        'SELECT readiness_status FROM employees WHERE id = $1',
+        [a.employee_id]
+      );
+      const oldStatus = prev?.readiness_status || 'unknown';
+
       await db.query(`
         UPDATE employees SET readiness_status = 'on_site', last_pm_id = $1, last_work_id = $2,
                              readiness_updated_at = NOW(), updated_at = NOW()
         WHERE id = $3
       `, [request.user.id, req.work_id, a.employee_id]);
+
+      // V141 worker_readiness_log: source='system' (автомат из staff_requests), changed_by — HR.
+      try {
+        await db.query(`
+          INSERT INTO worker_readiness_log
+            (employee_id, old_status, new_status, source, changed_by, created_at)
+          VALUES ($1, $2, 'on_site', 'system', $3, NOW())
+        `, [a.employee_id, oldStatus, request.user.id]);
+      } catch (e) {
+        // лог не должен валить транзакцию приёмки в бригаду
+        fastify.log.error('[staff-requests] readiness log insert failed: ' + e.message);
+      }
 
       added++;
 

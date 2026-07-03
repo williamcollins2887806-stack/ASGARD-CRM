@@ -641,6 +641,20 @@ async function dataRoutes(fastify, options) {
     }
   });
 
+  // B5 (19.06.2026): Закрываем RBAC-дыру когда vanilla фронт через AsgardDB.put
+  // шлёт в /api/data вместо /api/staff. Финансовые поля employees доступны
+  // только ADMIN/DIRECTOR_GEN/BUH. Список синхронизирован с staff.js
+  // FIN_RESTRICTED_FIELDS — если меняешь здесь, поправь и там.
+  const FIN_FIELDS = [
+    'is_self_employed', 'is_officially_employed', 'can_exceed_limit',
+    'official_salary', 'official_non_burnable', 'official_hire_date',
+    'official_status', 'official_leave_from', 'official_leave_to',
+    'se_yearly_used_initial', 'se_monthly_used_initial',
+    // V240 (19.06.2026): привязка к СЗ-получателю — только FIN_ROLES.
+    'se_payee_id',
+  ];
+  const FIN_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH'];
+
   fastify.put('/:table/:id', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
@@ -654,6 +668,18 @@ async function dataRoutes(fastify, options) {
     const userRole = request.user.role;
     if (!checkAccess(userRole, table, 'update')) {
       return reply.code(403).send({ error: 'Нет прав на обновление записей в таблице ' + table });
+    }
+
+    // B5: финансовые поля employees — тихо отрезаем у не-финансовых ролей.
+    // Срабатывает на /api/data/employees/:id (vanilla AsgardDB.put),
+    // основной путь /api/staff/employees/:id уже защищён через FIN_RESTRICTED.
+    if (table === 'employees' && data && typeof data === 'object') {
+      const isFinUser = FIN_ROLES.includes(userRole);
+      if (!isFinUser) {
+        for (const f of FIN_FIELDS) {
+          if (f in data) delete data[f];
+        }
+      }
     }
 
     const dbTable = resolveTable(table);

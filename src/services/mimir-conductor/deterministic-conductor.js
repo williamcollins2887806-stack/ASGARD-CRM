@@ -220,6 +220,24 @@ async function _runDeterministicCore(runId, opts = {}) {
       message: `Pipeline завершён: success=${successCount}, skipped=${skippedCount}, errors=${errorCount}/${TOTAL_STEPS}`,
       final_estimate_artifact_id: finalArt.id
     });
+    // Опус-фикс 20.06.2026: в LLM-режиме генерация смет+отчёта вызывается из finalizeRun;
+    // в детерминированном — её не было. Добавляем здесь, иначе manual_documents
+    // не пополняются и фронт не показывает сметы/отчёты Conductor.
+    try {
+      const { _generateConductorArtifacts } = require('./conductor');
+      const final = (finalArt.content && (finalArt.content.ssr || finalArt.content)) || {};
+      const finalData = {
+        summary: final.summary || final.executive_summary || null,
+        decision_reasoning: final.decision_reasoning || null,
+        recommendation: final.recommendation || 'THINK',
+        key_assumptions: final.key_assumptions || []
+      };
+      await _generateConductorArtifacts(runId, finalData);
+      cr.addEvent(runId, null, 'mode', { message: 'Артефакты (смета+отчёт) сохранены в manual_documents' });
+    } catch (e) {
+      console.warn(`[deterministic-conductor] generateArtifacts failed for run ${runId}: ${e.message}`);
+      cr.addEvent(runId, null, 'warning', { text: `Артефакты не сгенерировались: ${e.message}` });
+    }
     return { ok: true, success: successCount, skipped: skippedCount, errors: errorCount, total: TOTAL_STEPS };
   } else {
     await cr.updateRunStatus(runId, 'ERROR', { blocked_reason: 'Pipeline завершён, но final_estimate не создан' });

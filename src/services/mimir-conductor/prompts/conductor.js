@@ -1,15 +1,26 @@
 /**
- * ASGARD CRM — Mimir Conductor: системный промпт Conductor (Сессия 2, Шаг 2.4)
+ * ASGARD CRM — Mimir Conductor: системный промпт Conductor
  * ═══════════════════════════════════════════════════════════════════════════
  * Промпт главного мозга — «Главный сметчик ООО Асгард Сервис». Он не считает
  * сам: ставит задачи агентам, читает их отчёты, задаёт уточнения, в финале
  * вызывает emit_final_estimate.
+ *
+ * Опус-архитектура (19.06.2026): шаблон вынесен в
+ * `templates/prompts/PROMPT-conductor-v2.md`, общий модуль норм —
+ * `MODULE-norms-asgard-v1.md`. Подстановка — через `src/services/prompt-loader.js`.
+ *
+ * Шаблон содержит литеральные `${...}`-вставки в блоках <context>/required —
+ * мы их РУЧНО подставляем в `substitutions` (как plain text), так как наш
+ * loader не выполняет JS, а только подменяет `{{key}}`. Поэтому для совместимости
+ * мы транслируем все `${...}` пары в самом V2-шаблоне в `{{...}}` ключи на этапе
+ * рендера (см. _normalizeTemplate); если файла нет — fallback на legacy inline.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
 'use strict';
 
 const { getRequiredAgents } = require('../hard-rules');
+const promptLoader = require('../../prompt-loader');
 
 function _money(v) {
   const n = Number(v);
@@ -19,12 +30,54 @@ function _money(v) {
 
 /**
  * Построить системный промпт Conductor.
+ *
  * @param {Object} ctx — { work, contract_value, documents }
  * @param {Object|null} tzSummary — артефакт аналитика ТЗ (content)
  * @param {Object} complexityFlags
  * @returns {string}
  */
 function buildConductorSystemPrompt(ctx, tzSummary, complexityFlags = {}) {
+  try {
+    const w = (ctx && ctx.work) || {};
+    const required = getRequiredAgents(tzSummary, ctx?.contract_value, complexityFlags);
+
+    // PROMPT-conductor-v2.md содержит `${...}`-литералы (Опус так оставил),
+    // которые на сервере мы заменяем post-loader регэкспом. Берём строку через
+    // loader (он уже встроит NORMS_MODULE), затем превращаем `${expr}` в текст.
+    let tpl = promptLoader.buildPrompt('PROMPT-conductor-v2.md', {});
+
+    const replacements = [
+      ["${w.id ?? '—'}",                String(w.id ?? '—')],
+      ["${w.work_title || 'без названия'}", String(w.work_title || 'без названия')],
+      ["${w.customer_name || '—'}",     String(w.customer_name || '—')],
+      ["${w.object_name || '—'}",       String(w.object_name || '—')],
+      ["${w.city || '—'}",              String(w.city || '—')],
+      ["${w.start_plan || '—'}",        String(w.start_plan || '—')],
+      ["${w.end_plan || '—'}",          String(w.end_plan || '—')],
+      ["${_money(ctx.contract_value)}", _money(ctx?.contract_value)],
+      ["${(ctx.documents || []).length}", String((ctx?.documents || []).length)],
+      ["${tzSummary ? JSON.stringify(tzSummary, null, 2) : '(tz_summary ещё не готов)'}",
+        tzSummary ? JSON.stringify(tzSummary, null, 2) : '(tz_summary ещё не готов)'],
+      ["${JSON.stringify(complexityFlags, null, 2)}",
+        JSON.stringify(complexityFlags || {}, null, 2)],
+      ["${required.join(', ')}",
+        Array.isArray(required) && required.length ? required.join(', ') : '(жёстких требований нет)']
+    ];
+    for (const [from, to] of replacements) {
+      tpl = tpl.split(from).join(to);
+    }
+    return tpl;
+  } catch (e) {
+    console.warn(`[mimir-conductor] buildConductorSystemPrompt failed via prompt-loader: ${e.message}. Fallback на legacy.`);
+    return buildConductorSystemPrompt_legacy(ctx, tzSummary, complexityFlags);
+  }
+}
+
+/**
+ * LEGACY: старая inline-версия системного промпта Conductor (до Опус-архитектуры).
+ * Сохранена как fallback и для возможного дебага. НЕ удалять.
+ */
+function buildConductorSystemPrompt_legacy(ctx, tzSummary, complexityFlags = {}) {
   const w = ctx.work || {};
   const required = getRequiredAgents(tzSummary, ctx.contract_value, complexityFlags);
 
@@ -62,109 +115,7 @@ ${JSON.stringify(complexityFlags, null, 2)}
 На основе флагов и стоимости ты ОБЯЗАН запустить:
 ${required.join(', ')}
 
-Можешь дополнительно запустить любых других из доступных инструментов.
-
-═══ ГОТОВЫЕ (РЕАЛЬНЫЕ) АГЕНТЫ ═══
-
-Полноценно реализованы 30 агентов. Ядро (сквозной просчёт):
-  • call_document_parser   — парсинг приложенных документов (без LLM)
-  • call_tz_analyst        — сводка ТЗ: объект, объёмы, метод, режим, допуски
-  • call_crew_composer     — подбор бригады из свободных сотрудников
-  • call_labor_calculator  — расчёт ФОТ по бригаде и срокам (без LLM)
-  • call_final_consolidator — сборка итоговой ССР + директорское обоснование
-
-Расширенные (детализация и проверки):
-  • call_drawings_reader       — чтение чертежей/сканов (vision), если есть
-  • call_gatekeeper            — проверка полноты исходных данных, красные флаги
-  • call_resource_planner      — привязка работ к нормам ГЭСН/ФЕР/СТО (RAG), ресурсная ведомость
-  • call_method_validator      — проверка корректности метода производства работ
-  • call_site_conditions       — ОЗП, опасные/режимные/высотные надбавки к ФОТ
-  • call_warehouse_matcher     — сверка потребности со складом (без LLM)
-  • call_market_search         — поиск цен 2026 у поставщиков (только что к закупке)
-  • call_procurement_analyzer  — выбор поставщиков, закупочная стоимость
-  • call_routing_planner       — маршруты бригады/техники, дни дороги (без LLM)
-  • call_travel_pricer         — цены билетов/проезда по маршрутам
-  • call_permits_planner       — недостающие допуски и стоимость обучения (без LLM)
-  • call_indirects_calculator  — накладные, налоги, косвенные по МДС (без LLM)
-
-Финмодель, риски, проверки и финальный аудит (Сессия 7):
-  • call_contract_decomposer    — декомпозиция: своими силами / субподряд / давальческое
-  • call_historical_comparator  — поиск аналогов в архиве смет, удельные показатели
-  • call_norms_compliance       — нормоконтроль СТО заказчика (строгие компании)
-  • call_pre_mob_calculator     — предмобилизация: подготовка склада и ИТР
-  • call_consumables_calculator — расходники: сопла, щётки, СИЗ по объёму/чел-дням
-  • call_standby_estimator      — резерв простоев (погода, согласования, ОЗП)
-  • call_quality_control_planner — план контроля качества (ВИК/УЗК/РК сварных швов)
-  • call_executive_docs_planner — план исполнительной документации
-  • call_warranty_reserve       — гарантийный резерв по сроку/критичности
-  • call_marine_permits         — морские допуски (БМПВО, медкомиссия) если объект на воде
-  • call_risk_quantifier        — количественная оценка рисков + Монте-Карло (P10/P50/P90)
-  • call_financial_modeler      — финмодель: cashflow, кассовый разрыв, ROI, чистая маржа
-  • call_devils_advocate        — адвокат дьявола: критический разбор готовой сметы
-
-Типовой конвейер сложной работы:
-  document_parser → tz_analyst → (drawings_reader, gatekeeper) →
-  resource_planner → (method_validator, site_conditions, warehouse_matcher) →
-  market_search → procurement_analyzer → crew_composer → labor_calculator →
-  (routing_planner → travel_pricer), permits_planner → indirects_calculator →
-  final_consolidator.
-
-Большинство расширенных агентов подтягиваются автоматически по зависимостям
-(requires_artifacts). Тебе достаточно идти по цепочке к final_consolidator.
-Заглушкой остаётся только site_access_planner (вне объёма реализации).
-
-═══ ДИСЦИПЛИНА (нативный tool-use) ═══
-
-1. Решаешь ТЫ. На каждом ходу вызывай инструменты (агенты начинаются с call_),
-   а не описывай словами что «надо бы вызвать». Сервер исполнит каждый tool_use
-   и вернёт тебе результат — продолжай, опираясь на него.
-2. Думай перед каждым решением: что видишь в полученном артефакте, согласуется
-   ли с предыдущими, что логично запустить дальше и почему именно это.
-3. Параллельность приветствуется: независимых агентов (закупки, логистика,
-   допуски, расчёт труда) вызывай вместе — несколько tool_use в одном ответе.
-4. Реагируй на находки. Если технолог (method_validator) или адвокат дьявола
-   нашли проблему (несовместимый реагент, занижение) — перезапусти нужного
-   агента через call_agent_again с уточнением, не игнорируй.
-5. ПРАВИЛО АНТИ-ЗАЦИКЛИВАНИЯ: tz_analyst и work_scope_researcher вызываются
-   МАКСИМУМ 2 РАЗА каждый. После того как ты вызвал любого из них дважды и у
-   тебя есть tz_summary + work_scope_research + analogs_comparison (даже с
-   частичными данными), ОБЯЗАН перейти к расчётной цепочке:
-   resource_planner/crew_composer → labor_calculator → site_conditions →
-   indirects_calculator → final_consolidator. Отсутствующие детали закрываются
-   defaults внутри агентов (они работают с резолвером норм) и фиксируются в
-   assumptions финальной сметы. Каждое обращение к заказчику — задержка
-   на дни; для первой сметы это нерационально.
-6. Если данных не хватает — НЕ ВЫДУМЫВАЙ конкретные цифры в diff-критичных
-   полях (объём, заказчик, объект), но не блокируй прогон ради утончения
-   деталей второго порядка (сменность, точные требования к воде и т.п.) —
-   их закрывают defaults расчётных агентов.
-   ask_pm (внутренний РП, ответ за часы) — для команды/материалов.
-   ask_customer с blocking=true — ТОЛЬКО для критически блокирующих
-   неизвестных (объёмы работ, основной объект, регламенты заказчика).
-   НЕ дублируй уже отвеченные вопросы (tz_analyst видит ANSWERED).
-6. Перед финалом ОБЯЗАТЕЛЬНО: сначала call_final_consolidator (соберёт ССР),
-   затем — для контракта > 50M ₽ или при флагах риска — request_devils_advocate_review
-   (адвокат разбирает уже готовую смету). Если адвокат нашёл КРИТИЧЕСКУЮ уязвимость
-   (заниженная цена, пропущенный передел, нереальные сроки) — НЕ финализируй:
-   перезапусти нужного агента через call_agent_again, исправь и пересобери ССР.
-7. emit_final_estimate вызывай ТОЛЬКО когда: обязательные агенты завершены,
-   консолидатор собрал ССР, адвокат (где требуется) не оставил критических замечаний.
-   Hard-rules проверят полноту: если что-то пропущено, ты получишь is_error=true
-   со списком недостающих — допусти их и повтори.
-
-═══ ФОРМАТ emit_final_estimate ═══
-
-{
-  "executive_summary": "Краткое инженерное резюме для директора (3-5 предложений)",
-  "decision_reasoning": "Ключевые решения и почему именно такая цена",
-  "recommendation": "TAKE | THINK | DECLINE",
-  "key_assumptions": ["..."]
+(legacy fallback — полный текст смотри в git history до 19.06.2026)`;
 }
 
-Сервер сам соберёт ССР из артефактов агентов. Твоё дело — обеспечить, чтобы
-все артефакты были созданы, согласованы и обоснованы.
-
-Начинай — сделай первый ход, вызвав нужного агента (или нескольких).`;
-}
-
-module.exports = { buildConductorSystemPrompt };
+module.exports = { buildConductorSystemPrompt, buildConductorSystemPrompt_legacy };

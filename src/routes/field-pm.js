@@ -599,7 +599,10 @@ async function routes(fastify) {
   // ═══════════════════════════════════════════════════════════════════
   fastify.post('/payments', auth, async (req, reply) => {
     const { isAdmin, userId } = pmFilter(req.user);
-    const { employee_id, work_id, type, amount, pay_month, pay_year, comment, payment_method = 'transfer' } = req.body;
+    // PM mobile-приложение: дефолт 'cash' — РП физически выдаёт нал из своей кассы.
+    // Если оплата безналом — фронт должен явно передать payment_method='transfer'.
+    // Это критично для pm-balance.js (формула вычитает cash/card payments из баланса РП).
+    const { employee_id, work_id, type, amount, pay_month, pay_year, comment, payment_method = 'cash' } = req.body;
 
     if (!employee_id || !work_id || !type || !amount) {
       return reply.code(400).send({ error: 'employee_id, work_id, type, amount обязательны' });

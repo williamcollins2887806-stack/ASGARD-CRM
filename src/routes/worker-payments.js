@@ -144,7 +144,8 @@ async function routes(fastify, options) {
         employee_id, work_id, type, period_from, period_to,
         pay_month, pay_year, amount, days, rate_per_day,
         total_points, point_value, works_detail,
-        payment_method, comment
+        payment_method, comment,
+        mark_paid // FIX 24.06: фронт может сразу пометить запись как выплаченную
       } = req.body || {};
 
       if (!employee_id || !type || !amount) {
@@ -169,13 +170,23 @@ async function routes(fastify, options) {
         if (work.length === 0) return reply.code(404).send({ error: 'Проект не найден' });
       }
 
+      // FIX 24.06: при mark_paid сразу status=paid + paid_at, иначе pending.
+      // Это нужно для inline-формы +Премия/+Удержание/+Аванс — юзер ожидает
+      // что введённое сразу учтётся в колонке «Удерж.»/«Премии»/«Авансы».
+      // payment_method дефолтится в 'cash' если не передан.
+      const _status = mark_paid ? 'paid' : 'pending';
+      const _paidAt = mark_paid ? 'NOW()' : 'NULL';
+      const _payMethod = payment_method || (mark_paid ? 'cash' : null);
+
       const { rows: inserted } = await db.query(`
         INSERT INTO worker_payments (
           employee_id, work_id, type, period_from, period_to,
           pay_month, pay_year, amount, days, rate_per_day,
           total_points, point_value, works_detail,
-          payment_method, comment, created_by
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+          payment_method, comment, created_by,
+          status, paid_at, paid_by
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
+                  $17, ${_paidAt}, $18)
         RETURNING *
       `, [
         employee_id, work_id || null, type,
@@ -187,7 +198,8 @@ async function routes(fastify, options) {
         total_points ? parseFloat(total_points) : null,
         point_value ? parseFloat(point_value) : null,
         works_detail ? JSON.stringify(works_detail) : null,
-        payment_method || null, comment || null, userId
+        _payMethod, comment || null, userId,
+        _status, mark_paid ? userId : null
       ]);
 
       return { payment: inserted[0] };
@@ -789,6 +801,45 @@ async function routes(fastify, options) {
       return { workers, totals };
     } catch (err) {
       logError(fastify, '[worker-payments] GET /project/:id/summary error', err, req);
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ─── GET /project/:work_id/crew-all — список для PayWorkerModal ──────
+  // Возвращает 2 группы: on_site (ассайнменты + чекины этой работы) и others
+  // (остальные активные сотрудники). Нужно когда бригада пустая, но нужно
+  // выплатить кому-то, кто был на объекте, либо премию вновь прибывшему.
+  fastify.get('/project/:work_id/crew-all', crmAuth, async (req, reply) => {
+    try {
+      const workId = parseInt(req.params.work_id, 10);
+      if (!Number.isFinite(workId)) {
+        return reply.code(400).send({ error: 'bad_work_id' });
+      }
+
+      const { rows: onSite } = await db.query(`
+        SELECT DISTINCT e.id AS employee_id, e.fio AS employee_name, e.position,
+               0 AS per_diem_rate
+        FROM employees e
+        LEFT JOIN employee_assignments ea ON ea.employee_id = e.id AND ea.work_id = $1
+        LEFT JOIN field_checkins fc ON fc.employee_id = e.id AND fc.work_id = $1
+        WHERE (ea.work_id = $1 OR fc.work_id = $1) AND COALESCE(e.is_active, true) = true
+        ORDER BY e.fio
+      `, [workId]);
+
+      const onSiteIds = onSite.map((r) => r.employee_id);
+      const { rows: others } = await db.query(`
+        SELECT e.id AS employee_id, e.fio AS employee_name, e.position,
+               0 AS per_diem_rate
+        FROM employees e
+        WHERE COALESCE(e.is_active, true) = true
+          AND e.id <> ALL($1::int[])
+        ORDER BY e.fio
+        LIMIT 500
+      `, [onSiteIds.length ? onSiteIds : [0]]);
+
+      return { on_site: onSite, others };
+    } catch (err) {
+      logError(fastify, '[worker-payments] GET /project/:id/crew-all error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });

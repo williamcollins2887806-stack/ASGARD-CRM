@@ -48,6 +48,33 @@ const db = require('../../db');
 const { parseStrictJson } = require('./_util');
 
 /**
+ * Безопасный JSON.stringify для записи в jsonb-колонки.
+ * Чинит типовые SQL-падения «invalid input syntax for type json»:
+ *   - undefined → null (JSON.stringify по умолчанию выкидывает undefined из
+ *     массивов как null, но для top-level undefined возвращает undefined →
+ *     null-строка падает в pg)
+ *   - bigint → строка (JSON.stringify бросает TypeError на bigint)
+ *   - function → undefined (выкидывается)
+ *   - Date → ISO-строка (toJSON работает по умолчанию, но явный fallback)
+ *   - circular reference → '[Circular]' (вместо TypeError)
+ */
+function _safeJsonStringify(obj) {
+  const seen = new WeakSet();
+  return JSON.stringify(obj, (k, v) => {
+    if (v === undefined) return null;
+    if (typeof v === 'bigint') return v.toString();
+    if (typeof v === 'function') return undefined;
+    if (v instanceof Date) return v.toISOString();
+    if (typeof v === 'number' && !Number.isFinite(v)) return null;
+    if (typeof v === 'object' && v !== null) {
+      if (seen.has(v)) return '[Circular]';
+      seen.add(v);
+    }
+    return v;
+  });
+}
+
+/**
  * Загружает корпоративный профиль ООО «Асгард-Сервис» из settings.company_profile.
  * Если профиля нет — возвращает {} (агент работает в общем режиме).
  * Здесь только МЕТА (лицензии, реквизиты, политики) — оборудование/расходники/кадры
@@ -496,13 +523,73 @@ ${JSON.stringify(employees.by_qualification || [])}
 
   // Подъём уточнений если есть пробелы критичные
   const clarifications = [];
+  // НОВОЕ (Опус-фикс 19.06.2026): «если ТЗ есть, AI должен его вытащить любыми путями».
+  // Если works пуст, но хотя бы один документ с подходящим mime/расширением есть —
+  // НЕ задаём «пришлите ТЗ». Делаем (а) повторный жёсткий retry AI с другим промптом,
+  // (б) если retry тоже пуст — задаём specific-уточнение, НЕ блокирующее.
   if (!works.length) {
-    clarifications.push({
-      channel: 'CUSTOMER', blocking: true,
-      question_ru: 'В предоставленных документах не удалось извлечь дословный перечень работ. Просим предоставить ТЗ или ведомость объёмов работ.',
-      why_we_ask: 'Без точного перечня работ Conductor не может корректно посчитать смету',
-      consequence: 'Без этого расчёт будет очень приблизительным'
-    });
+    const parsableDocs = docs.filter((d) => d.content && d.content_chars > 100);
+    if (parsableDocs.length > 0) {
+      onThought(`⚠ works[] пуст, но есть ${parsableDocs.length} распарсенных документов — повторная попытка извлечения с жёстким промптом`);
+      try {
+        const docsTextRetry = parsableDocs
+          .map((d) => `═══ ${d.name} (${d.content_chars} симв) ═══\n${String(d.content).slice(0, 16000)}`)
+          .join('\n\n');
+        const HARD_RETRY_PROMPT = `У тебя ТОЧНО ЕСТЬ текст ТЗ в "Документы" блоке ниже.
+Перечитай ВНИМАТЕЛЬНО каждый документ. Извлеки ЛЮБЫЕ работы которые упомянуты —
+даже если описание неполное. НЕ ПИШИ «не нашёл». Если в документе хоть одна
+фраза «промывка», «очистка», «замена», «монтаж», «ремонт», «изоляция», «диагностика»,
+«ревизия», «обследование» — это работа. Если контекст неясен — генерируй ТИПОВЫЕ
+работы для распознанного оборудования и помечай assumed=true.
+
+Верни СТРОГО JSON:
+{
+  "works": [
+    {"title":"...","description":"...","volume":null,"unit":null,"assumed":false}
+  ],
+  "extraction_notes": "что именно нашёл и где"
+}
+
+Минимум 1 работа. Если не нашёл вообще ничего — верни типовые работы по
+распознанному типу оборудования (промывка/ревизия/обследование) с assumed=true.`;
+        const retryResult = await Promise.race([
+          aiProvider.completeWithStream({
+            system: HARD_RETRY_PROMPT,
+            messages: [{ role: 'user', content: `Документы:\n\n${docsTextRetry}` }],
+            model: 'sonnet-4-6',
+            maxTokens: 4000,
+            onThought
+          }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('hard_retry_timeout_3min')), 3 * 60 * 1000))
+        ]);
+        if (!retryResult._stub && !aiProvider.isStubMode()) {
+          const retryData = parseStrictJson(retryResult.text);
+          const retryWorks = Array.isArray(retryData?.works) ? retryData.works : [];
+          if (retryWorks.length > 0) {
+            onThought(`✓ Жёсткий retry вытянул ${retryWorks.length} работ (часть может быть assumed=true)`);
+            works.push(...retryWorks);
+            keyFindings.push(`Жёсткий retry AI вытянул ${retryWorks.length} работ из документов после пустого первого прохода`);
+          } else {
+            onThought(`⚠ Даже жёсткий retry не нашёл работ — возможно, сканы низкого качества или не ТЗ`);
+          }
+        }
+      } catch (e) {
+        onThought(`⚠ Жёсткий retry упал: ${e.message}`);
+      }
+    }
+    if (!works.length) {
+      // Документов нет вообще ИЛИ retry тоже пуст — НЕ блокируем «пришлите ТЗ»,
+      // а задаём конкретные параметры. Conductor сможет посчитать по типовым нормам.
+      clarifications.push({
+        channel: 'CUSTOMER', blocking: false,
+        question_ru: 'Уточните основные параметры работ: объёмы (кол-во оборудования, площади, тонны), методы (промывка/монтаж/демонтаж/изоляция/ремонт), требуемые сроки и режим (24/7 или дневной).',
+        why_we_ask: parsableDocs.length > 0
+          ? 'AI не смог точно распарсить перечень работ — возможно сканы низкого качества'
+          : 'К работе/тендеру не приложено ТЗ или ведомость объёмов',
+        consequence: 'Без этих данных расчёт будет приблизительным',
+        default_assumption: 'Будем исходить из типовых параметров для подобных работ и распознанного оборудования'
+      });
+    }
   }
   if (!equipment.length && works.length > 0) {
     clarifications.push({

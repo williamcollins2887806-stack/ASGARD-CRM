@@ -218,7 +218,10 @@ const ANALYSIS_SYSTEM_PROMPT = `Ты — AI-ассистент компании 
 
 Верни ответ СТРОГО в JSON формате:
 {
-  "classification": "direct_request" | "platform_tender" | "tender_invitation" | "commercial_offer" | "information" | "spam" | "personal" | "other",
+  "classification": "direct_request" | "platform_tender" | "tender_invitation" | "addendum_response" | "commercial_offer" | "information" | "spam" | "personal" | "other",
+  "parent_tender_inn": "ИНН отправителя для поиска тендера (только для addendum_response, иначе null)",
+  "parent_tender_hint": "номер тендера/название/лот из темы для fuzzy match (только для addendum_response, иначе null)",
+  "parent_tender_id": null,
   "color": "green" | "yellow" | "red",
   "summary": "Краткое описание сути письма (1-2 предложения)",
   "recommendation": "Рекомендация действий (1-2 предложения)",
@@ -226,7 +229,22 @@ const ANALYSIS_SYSTEM_PROMPT = `Ты — AI-ассистент компании 
   "estimated_budget": число или null,
   "estimated_days": число или null,
   "keywords": ["ключевое_слово_1", "ключевое_слово_2"],
-  "confidence": 0.0-1.0
+  "confidence": 0.0-1.0,
+  "is_forwarded": true | false,
+  "original_sender_name": "ФИО оригинального клиента (НЕ нашего сотрудника-переслателя) или null",
+  "original_sender_email": "email клиента (НЕ переслателя) или null",
+  "original_sender_company": "название компании клиента (если есть в подписи или ИНН-блоке) или null",
+  "forwarder_name": "ФИО нашего сотрудника, который переслал письмо (если письмо переслано) или null",
+  "forwarder_email": "email переслателя (наш сотрудник) или null",
+  "extracted_customer_name": "Полное название организации-клиента из карточки/реквизитов/печати/шильдика (например: 'ООО Барилла Рус', 'АО Кордиант', 'ИП Иванов И.И.') или null",
+  "extracted_customer_inn": "ИНН клиента 10 или 12 цифр строго (с печати, карточки, реквизитной части) или null",
+  "extracted_customer_kpp": "КПП 9 цифр (если есть в карточке) или null",
+  "extracted_customer_ogrn": "ОГРН 13 или 15 цифр (если есть) или null",
+  "extracted_customer_address": "юридический или фактический адрес клиента (из карточки/реквизитов) или null",
+  "extracted_customer_phone": "телефон клиента (из карточки/подписи) +7..., или null",
+  "extracted_customer_contact_person": "ФИО контактного лица (директор/менеджер/инженер) из карточки или подписи или null",
+  "extracted_customer_contact_email": "email клиента (НЕ нашего домена) из карточки или подписи или null",
+  "extracted_equipment": "Описание оборудования из фото шильдика/паспорта (марка, модель, год выпуска, серийный номер, тех.характеристики) или null"
 }
 
 Правила цветовой маркировки:
@@ -238,6 +256,7 @@ const ANALYSIS_SYSTEM_PROMPT = `Ты — AI-ассистент компании 
 - direct_request: Прямой запрос на выполнение работ от заказчика
 - platform_tender: Тендер с площадки (Закупки44, ЕИС, Сбербанк-АСТ и т.д.)
 - tender_invitation: Письмо-приглашение принять участие в тендере от заказчика напрямую (НЕ с площадки ЭТП). Email обычно от организации с реквизитами, содержит описание объёмов работ или НМЦК, требует подачу КП в указанный срок. Триггеры: «Приглашаем принять участие», «Объявляется закупка», «Прошу направить КП на участие в тендере», «Запрос предложений на тендер», «Приглашение к участию в закупке». ОТЛИЧИЕ от direct_request: явная формулировка о тендере/закупке + срок подачи КП. ОТЛИЧИЕ от platform_tender: пришло почтой напрямую, без ссылки на площадку ЕИС/Сбер-АСТ/Roseltorg.
+- addendum_response: Продолжение переписки по СУЩЕСТВУЮЩЕМУ тендеру/работе — НЕ создание нового. Дозапрос организатора, уточнение, протокол разногласий, изменение в извещении, дополнительные вопросы по КП, продление сроков, изменение НМЦК. Триггеры: «Дозапрос», «Уточнение по тендеру №», «Протокол разногласий», «Изменение в извещении», «Дополнительные вопросы по КП», «Ваше предложение по тендеру», «Уточнение по нашему запросу», «Продление срока подачи КП», «Изменение НМЦК». ОТЛИЧИЕ от tender_invitation: ссылается на УЖЕ ПОДАННОЕ нами КП или существующий тендер (номер закупки/лота, наша компания упоминается как уже-участник). При этой классификации ЗАПОЛНЯЙ parent_tender_inn (ИНН отправителя), parent_tender_hint (номер/название тендера из темы), parent_tender_id оставляй null (бэк найдёт сам).
 - commercial_offer: Входящее коммерческое предложение (нам предлагают)
 - information: Информационное письмо, уведомление
 - spam: Спам, рассылка
@@ -256,6 +275,116 @@ const ANALYSIS_SYSTEM_PROMPT = `Ты — AI-ассистент компании 
 информирование («посмотрите», «на проработку», «вот ТЗ»). Наши сотрудники пересылают
 клиентские запросы в CRM именно для того, чтобы заявка была заведена. Не классифицируй
 такое как "information".
+
+═══════════════════════════════════════════════════════════════════════════════
+КРИТИЧНО: ПАРСИНГ ПЕРЕСЛАННОГО ПИСЬМА (Fwd / Fw / Перенаправлено / Пересылаемое)
+═══════════════════════════════════════════════════════════════════════════════
+Если письмо переслано — поле "is_forwarded" = true и НИКОГДА не путай
+ФОРВАРДЕРА (наш сотрудник) с ОРИГИНАЛЬНЫМ ОТПРАВИТЕЛЕМ (клиент).
+
+ФОРВАРДЕР (forwarder) = тот, кто переслал письмо в CRM.
+  - Email с доменом @asgard-service.com / @asgard-crm.ru / @asgard-service.ru
+  - Это ВНУТРЕННИЙ сотрудник Асгарда (Путков, Андросов, Газретов и т.д.)
+  - В header "From:" письма указан ИМЕННО он
+  - В JSON-поля forwarder_name / forwarder_email пиши ЕГО
+
+ОРИГИНАЛЬНЫЙ ОТПРАВИТЕЛЬ (original_sender) = НАСТОЯЩИЙ КЛИЕНТ.
+  - НИКОГДА не имеет домен @asgard-service.com / @asgard-crm.ru
+  - Находится В ТЕЛЕ письма в цитируемом блоке:
+      «От: Иванов Сергей <s.ivanov@client.ru>»
+      «From: John Doe <john@example.com>»
+      «Пересылаемое сообщение / Forwarded message» + блок «От:/From:»
+      Yandex-формат: «19.06.2026, 14:30, "Иван Иванов" <i.ivanov@клиент.ру>:»
+  - Также может быть в подписи письма клиента (с должностью + телефоном)
+  - В JSON-поля original_sender_name / original_sender_email пиши ИМЕННО его (клиента)
+
+Если в теле НЕСКОЛЬКО блоков «От:/From:» (цепочка пересылок) — бери САМЫЙ ГЛУБОКИЙ
+(самый ранний в цепочке), это первоначальный клиент.
+
+Если original_sender в теле НЕ найден или там тоже @asgard-service.com (внутренний
+пересыл) — оставь original_sender_name = original_sender_email = null
+и НЕ подставляй туда forwarder.
+
+ПРИМЕР (правильно):
+  Header From: "Никита Андросов" <n.androsov@asgard-service.com>
+  Тело письма:
+    «На проработку
+     -----Original Message-----
+     От: Путков Иван <i.putkov@asgard-service.com>
+     От: Кордиант ОАО <a.smirnov@kordiant.ru>
+     Тема: ТЗ на химическую промывку
+     Здравствуйте, прошу подготовить КП по нашему ТЗ...»
+  Правильный разбор:
+    is_forwarded: true
+    forwarder_name: "Никита Андросов" (он переслал в CRM)
+    forwarder_email: "n.androsov@asgard-service.com"
+    original_sender_name: "Кордиант ОАО / a.smirnov@kordiant.ru" → бери САМЫЙ ГЛУБОКИЙ внешний
+    original_sender_email: "a.smirnov@kordiant.ru" (НЕ asgard-домен)
+    original_sender_company: "Кордиант ОАО" (если ясно из подписи / ИНН)
+
+ПРИМЕР ОШИБКИ (НЕ делай так):
+  ❌ original_sender_email: "n.androsov@asgard-service.com" — это форвардер, не клиент
+  ❌ original_sender_name: "Никита Андросов" — это наш сотрудник
+  ❌ original_sender_email: "i.putkov@asgard-service.com" — тоже внутренний, не клиент
+
+Если письмо НЕ переслано (прямое от клиента) — is_forwarded=false,
+forwarder_* = null, а original_sender_* можешь взять из подписи письма или
+из header From (если он внешний).
+═══════════════════════════════════════════════════════════════════════════════
+
+═══════════════════════════════════════════════════════════════════════════════
+ОБЯЗАТЕЛЬНО: ИЗВЛЕКАЙ КАРТОЧКУ КЛИЕНТА ИЗ ИЗОБРАЖЕНИЙ И ВЛОЖЕНИЙ
+═══════════════════════════════════════════════════════════════════════════════
+
+Если в письме есть ИЗОБРАЖЕНИЯ или PDF-документы с РЕКВИЗИТАМИ КОМПАНИИ
+(карточка организации, шапка договора, печать, фирменный бланк, шильдик
+оборудования с владельцем) — ОБЯЗАТЕЛЬНО ВНИМАТЕЛЬНО ИХ ПРОЧИТАЙ и заполни
+поля extracted_customer_*.
+
+Это КРИТИЧНО:
+- На фото может быть КАРТОЧКА КЛИЕНТА (название, ИНН, КПП, ОГРН, адрес, телефон, реквизиты).
+  Внимательно прочитай и извлеки ВСЁ что найдёшь.
+- На ПЕЧАТИ обычно указано полное название организации + ИНН/ОГРН.
+- В ШАПКЕ договора или ТЗ — реквизиты обеих сторон. Бери СТОРОНУ ЗАКАЗЧИКА
+  (не «Исполнитель», не «Подрядчик», не «Асгард»).
+- На ФИРМЕННОМ БЛАНКЕ обычно логотип + название + адрес + телефон.
+- На ШИЛЬДИКЕ оборудования может быть «Владелец: ООО ХХХ, г. ...».
+
+Пример правильного извлечения карточки:
+  Видишь скан или фото с текстом:
+    «Полное наименование: Открытое акционерное общество "Кордиант"
+     Сокращённое: АО «Кордиант»
+     ИНН 5044022794   КПП 504401001   ОГРН 1085003001234
+     Юр. адрес: 141504, Московская обл., г. Солнечногорск, Бутырский тупик, д.1
+     Тел. +7 (495) 123-45-67    Эл. почта: info@kordiant.ru»
+
+  Извлеки:
+    extracted_customer_name = "АО «Кордиант»"
+    extracted_customer_inn = "5044022794"
+    extracted_customer_kpp = "504401001"
+    extracted_customer_ogrn = "1085003001234"
+    extracted_customer_address = "141504, Московская обл., г. Солнечногорск, Бутырский тупик, д.1"
+    extracted_customer_phone = "+7 (495) 123-45-67"
+    extracted_customer_contact_email = "info@kordiant.ru"
+
+Пример извлечения оборудования с шильдика (отдельное поле extracted_equipment):
+  Видишь шильдик с надписями: «DAELIM ROYAL BOILER, model DL-Z-800,
+  S/N 2018-A0123, max steam capacity 2000 kg/h, max pressure 1.0 MPa».
+  Извлеки:
+    extracted_equipment = "Daelim Royal Boiler DL-Z-800, серийный 2018-A0123, паропроизводительность 2000 кг/ч, давление 1.0 МПа"
+
+ВАЖНО:
+- НЕ ПУТАЙ карточку клиента с карточкой оборудования (шильдик).
+  - Карточка КЛИЕНТА → extracted_customer_*
+  - Шильдик ОБОРУДОВАНИЯ → extracted_equipment
+- Если на фото нет реквизитов клиента (только шильдик котла) — оставь
+  extracted_customer_* = null, заполни только extracted_equipment.
+- Если на фото плохо видно (размыто, обрезано) — попробуй извлечь то что
+  читается, остальное null.
+- ИНН ВСЕГДА 10 цифр (юр.лица) или 12 (ИП). Если в распознанном тексте 9
+  или 11 цифр — это ОШИБКА OCR, оставь null.
+- НИКОГДА не выдумывай реквизиты. Только то что реально видно на фото/PDF.
+═══════════════════════════════════════════════════════════════════════════════
 
 НЕ классифицируй как заявку:
 - Внутреннюю переписку между сотрудниками БЕЗ пересланного клиентского запроса/ТЗ
@@ -377,10 +506,11 @@ async function extractAttachmentTexts(emailId, { maxPerFile = MAX_EXTRACT_PER_FI
       }
       console.log(`[AI-Analyzer] Resolved path: ${absPath} (${fs.statSync(absPath).size} bytes)`);
 
-      // Изображения — готовим для Vision
-      if (IMAGE_MIMES.includes(a.mime_type) && imageBlocks.length < 3) {
+      // Изображения — готовим для Vision (лимит поднят 3 → 15, чтобы карточка
+      // клиента не выпала из батча когда там 8+ фото шильдиков оборудования).
+      if (IMAGE_MIMES.includes(a.mime_type) && imageBlocks.length < 15) {
         const stats = fs.statSync(absPath);
-        if (stats.size <= 5 * 1024 * 1024) {
+        if (stats.size <= 10 * 1024 * 1024) {
           const buf = fs.readFileSync(absPath);
           imageBlocks.push({
             type: 'image',
@@ -835,6 +965,41 @@ function parseAIResponse(text) {
 
   try {
     const parsed = JSON.parse(clean);
+
+    // Sanitize Fwd-парсинг: НИКОГДА не возвращать наш внутренний домен как original_sender.
+    // Это защита от случая когда AI всё-таки спутал форвардера с клиентом.
+    const INTERNAL_DOMAINS_LOWER = ['asgard-crm.ru', 'asgard-service.ru', 'asgard-service.com', 'asgard-s.ru'];
+    let origName  = parsed.original_sender_name  || null;
+    let origEmail = parsed.original_sender_email || null;
+    let origCompany = parsed.original_sender_company || null;
+    if (typeof origEmail === 'string') {
+      const el = origEmail.toLowerCase();
+      if (INTERNAL_DOMAINS_LOWER.some(d => el.includes(d))) {
+        console.warn('[AI-Analyzer] AI returned internal domain as original_sender — clearing:', origEmail);
+        origEmail = null;
+        origName  = null;
+      }
+    }
+
+    let fwdName  = parsed.forwarder_name  || null;
+    let fwdEmail = parsed.forwarder_email || null;
+
+    // Извлечённые из карточки клиента / шильдика — валидация:
+    // ИНН только 10 или 12 цифр; контактный email клиента не должен быть нашим.
+    const _digits = (s) => String(s || '').replace(/\D/g, '');
+    const _validInn = (s) => {
+      const d = _digits(s);
+      return (d.length === 10 || d.length === 12) ? d : null;
+    };
+    const _validKpp = (s) => { const d = _digits(s); return d.length === 9 ? d : null; };
+    const _validOgrn = (s) => { const d = _digits(s); return (d.length === 13 || d.length === 15) ? d : null; };
+    let extrEmail = parsed.extracted_customer_contact_email || null;
+    if (typeof extrEmail === 'string') {
+      const el = extrEmail.toLowerCase().trim();
+      if (INTERNAL_DOMAINS_LOWER.some(d => el.includes(d))) extrEmail = null;
+      else extrEmail = el;
+    }
+
     return {
       classification: parsed.classification || 'other',
       color: ['green', 'yellow', 'red'].includes(parsed.color) ? parsed.color : 'yellow',
@@ -844,7 +1009,25 @@ function parseAIResponse(text) {
       estimated_budget: parsed.estimated_budget || null,
       estimated_days: parsed.estimated_days || null,
       keywords: Array.isArray(parsed.keywords) ? parsed.keywords : [],
-      confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.5
+      confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.5,
+      // ── Fwd-парсинг ──────────────────────────────────────────────
+      is_forwarded: parsed.is_forwarded === true,
+      original_sender_name:  origName,
+      original_sender_email: origEmail ? String(origEmail).toLowerCase() : null,
+      original_sender_company: origCompany,
+      forwarder_name:  fwdName,
+      forwarder_email: fwdEmail ? String(fwdEmail).toLowerCase() : null,
+      _fwd_warning: !!(parsed.is_forwarded === true && !origEmail),
+      // ── Карточка клиента из фото/PDF (NEW) ─────────────────────────────
+      extracted_customer_name:    parsed.extracted_customer_name || null,
+      extracted_customer_inn:     _validInn(parsed.extracted_customer_inn),
+      extracted_customer_kpp:     _validKpp(parsed.extracted_customer_kpp),
+      extracted_customer_ogrn:    _validOgrn(parsed.extracted_customer_ogrn),
+      extracted_customer_address: parsed.extracted_customer_address || null,
+      extracted_customer_phone:   parsed.extracted_customer_phone || null,
+      extracted_customer_contact_person: parsed.extracted_customer_contact_person || null,
+      extracted_customer_contact_email:  extrEmail,
+      extracted_equipment:        parsed.extracted_equipment || null
     };
   } catch (e) {
     console.warn('[AI-Analyzer] JSON parse error:', e.message, '| raw:', clean.slice(0, 80));
@@ -862,7 +1045,14 @@ function fallbackResult() {
     estimated_budget: null,
     estimated_days: null,
     keywords: [],
-    confidence: 0
+    confidence: 0,
+    is_forwarded: false,
+    original_sender_name: null,
+    original_sender_email: null,
+    original_sender_company: null,
+    forwarder_name: null,
+    forwarder_email: null,
+    _fwd_warning: false
   };
 }
 
@@ -871,9 +1061,23 @@ function fallbackResult() {
 function fallbackClassification({ subject, bodyText, fromEmail }) {
   const text = ((subject || '') + ' ' + (bodyText || '')).toLowerCase();
 
-  // Приоритет: invitation > platform_tender > direct_request. invitation проверяется ПЕРВЫМ
-  // потому что фразы вроде «приглашаем принять участие в тендере» матчат и tenderKeywords
-  // («тендер»), и invitationKeywords — но invitation точнее (запрос КП напрямую от заказчика).
+  // Приоритет: addendum > invitation > platform_tender > direct_request.
+  // addendum выше invitation потому что «дозапрос по тендеру №» содержит слово «тендер»
+  // и иначе попадёт в invitation, хотя это продолжение существующего, а не новое приглашение.
+  const addendumKeywords = [
+    'дозапрос',
+    'уточнение по тендеру',
+    'уточнение по нашему запросу',
+    'протокол разногласий',
+    'изменение в извещении',
+    'дополнительные вопросы по кп',
+    'ваше предложение по тендеру',
+    'продление срока подачи кп',
+    'изменение нмцк',
+    'продление сроков подачи'
+  ];
+  const isAddendum = addendumKeywords.some(k => text.includes(k));
+
   const invitationKeywords = [
     'приглашаем принять участие', 'приглашаем вас принять участие',
     'объявляется закупка', 'объявляется тендер',
@@ -893,6 +1097,24 @@ function fallbackClassification({ subject, bodyText, fromEmail }) {
 
   if (isSpam) {
     return { classification: 'spam', color: 'red', summary: 'Возможный спам/рассылка', recommendation: 'Архивировать', work_type: null, estimated_budget: null, estimated_days: null, keywords: [], confidence: 0.3 };
+  }
+  if (isAddendum) {
+    // Попытка вытащить parent_tender_hint из темы — простая эвристика: «№ X» / «лот X»
+    let parentHint = null;
+    const numMatch = (subject || '').match(/№\s*[\w\d./-]+/i);
+    if (numMatch) parentHint = numMatch[0];
+    return {
+      classification: 'addendum_response',
+      color: 'yellow',
+      summary: 'Продолжение по существующему тендеру (дозапрос/уточнение/протокол)',
+      recommendation: 'Привязать к существующему тендеру',
+      work_type: null, estimated_budget: null, estimated_days: null,
+      keywords: [],
+      confidence: 0.4,
+      parent_tender_inn: null,
+      parent_tender_hint: parentHint,
+      parent_tender_id: null
+    };
   }
   if (isInvitation) {
     return { classification: 'tender_invitation', color: 'green', summary: 'Возможное приглашение в тендер от заказчика', recommendation: 'Передать в тендерный отдел', work_type: null, estimated_budget: null, estimated_days: null, keywords: [], confidence: 0.4 };
@@ -1038,5 +1260,7 @@ module.exports = {
   getWorkloadData,
   parseAIResponse,
   shouldSkipEmail,
-  ANALYSIS_SYSTEM_PROMPT
+  ANALYSIS_SYSTEM_PROMPT,
+  // S-9: экспорт для unit-тестов addendum-keyword heuristic.
+  fallbackClassification
 };

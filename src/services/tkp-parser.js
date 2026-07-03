@@ -23,7 +23,9 @@ const aiProvider = require('./ai-provider');
 const SUPPORTED_TEXT  = new Set(['.pdf', '.docx', '.xlsx', '.xls', '.txt', '.csv', '.rtf']);
 const SUPPORTED_IMAGE = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 
-const MAX_TEXT_CHARS = 20000; // AI-лимит на входной текст одного ТКП
+// 18.06.2026 поднят 20k → 100k: gpt-5.5 контекст 1.1M, спокойно влезает
+// 50-страничное ТЗ + 10 фото OCR + промпт + RAG-контекст.
+const MAX_TEXT_CHARS = 100000;
 
 const PARSE_SYSTEM = 'Ты — парсер коммерческих предложений. Извлекаешь данные из текста КП и возвращаешь СТРОГО валидный JSON без markdown-блоков и без пояснений.';
 

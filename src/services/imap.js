@@ -460,7 +460,7 @@ async function updateEmailAiClassification(emailId, classification, color, summa
 // ── Forward-email detection (§2.5) ──────────────────────────────────────────
 // Внутренние домены — для определения «отправитель свой сотрудник переслал» (corporate_forward)
 // vs «внешний прямой отправитель» (external_direct).
-const INTERNAL_DOMAINS = ['asgard-crm.ru', 'asgard-service.ru', 'asgard-s.ru', 'асгард.рф'];
+const INTERNAL_DOMAINS = ['asgard-crm.ru', 'asgard-service.ru', 'asgard-service.com', 'asgard-s.ru', 'асгард.рф'];
 
 function isInternalSender(fromEmail) {
   const f = (fromEmail || '').toLowerCase();
@@ -476,8 +476,7 @@ function isInternalSender(fromEmail) {
  * (б) типовые маркеры в body: «Forwarded message», «Пересланное сообщение»,
  *    блок «От:/From:» + «Кому:/To:».
  */
-function detectForwarded(parsed, bodyText, rawHeaders) {
-  const body = bodyText || '';
+function detectForwarded(parsed, bodyText, rawHeaders, bodyHtml) {
   const headers = rawHeaders || '';
 
   // Заголовки
@@ -485,39 +484,270 @@ function detectForwarded(parsed, bodyText, rawHeaders) {
     return true;
   }
 
-  // Маркеры в теле — typical forwarded blocks
-  const reMarker = /^[ \t>]*(?:-{2,}\s*)?(?:Forwarded message|Пересланное сообщение|Begin forwarded message)/im;
+  // Если body_text пустой (HTML-only письмо), снимаем теги из HTML.
+  let body = bodyText || '';
+  if (!body && bodyHtml) {
+    body = String(bodyHtml)
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/?(p|div|tr|li|h[1-6])>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&amp;/gi, '&')
+      .replace(/&quot;/gi, '"');
+  }
+
+  // Маркеры в теле — typical forwarded blocks (включая Yandex Mail «Пересылаемое сообщение»)
+  const reMarker = /^[ \t>]*(?:-{2,}\s*)?(?:Forwarded message|Пересланное сообщение|Пересылаемое сообщение|Begin forwarded message)/im;
   if (reMarker.test(body)) return true;
 
   // Блок «От:/Кому:» (русский) или «From:/To:» (англ.) в теле (forwarded inline)
-  // Должны быть рядом (одна за другой в пределах 8 строк)
   const reRuPair = /^[ \t>]*От:\s.+[\r\n]+[ \t>]*(?:Дата|Sent|Тема|Subject|Кому)/im;
   const reEnPair = /^[ \t>]*From:\s.+[\r\n]+[ \t>]*(?:Sent|Date|Subject|To):/im;
   if (reRuPair.test(body) || reEnPair.test(body)) return true;
+
+  // Yandex inline-format: «Кому: …» + «Тема: …» в теле (после «Пересылаемое сообщение»)
+  if (/Кому:\s.+[\r\n]+\s*Тема:/i.test(body)) return true;
 
   return false;
 }
 
 /**
  * Вынуть оригинального отправителя из тела forwarded-письма.
- * Поддерживает форматы:
+ *
+ * Поддерживает многоуровневые цепочки форвардов и возвращает САМОГО ГЛУБОКОГО
+ * ВНЕШНЕГО отправителя (= оригинальный клиент), а не первого попавшегося
+ * внутреннего форвардера. Текст пересылок Yandex/Outlook/Gmail структурирован
+ * сверху-вниз: outer → middle → inner, поэтому «глубже = ниже по тексту».
+ *
+ * Поддерживаемые форматы:
  *   От: Иван Иванов <ivan@example.com>
  *   From: John Doe <john@example.com>
  *   От: ivan@example.com   (без имени)
+ *   Yandex с угловыми:  19.06.2026, 14:30, "Иван Иванов" <i.ivanov@client.ru>:
+ *   Yandex bare (HTML-стрип):  23.06.2026, 09:21, karina@eurochem.ru (karina@eurochem.ru):
+ *   Yandex bare с именем:      30.06.2026, 11:23, "Иван" ivan@client.ru:
  */
-function extractOriginalSender(bodyText) {
-  const body = bodyText || '';
-  // 1) «От: Имя <email>» / «From: Name <email>»
-  let m = body.match(/^[ \t>]*(?:От|From):\s*(?:"?([^<\n"]+?)"?\s*)?<([^>\s]+@[^>\s]+)>/m);
-  if (m) {
-    return { name: (m[1] || '').trim() || null, email: (m[2] || '').trim().toLowerCase() };
+function extractOriginalSender(bodyText, bodyHtml) {
+  let body = bodyText || '';
+  if (!body && bodyHtml) {
+    body = String(bodyHtml)
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/?(p|div|tr|li|h[1-6])>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&amp;/gi, '&')
+      .replace(/&quot;/gi, '"');
   }
-  // 2) «От: email» (без угловых скобок)
-  m = body.match(/^[ \t>]*(?:От|From):\s*([^\s<>"]+@[^\s<>"]+)/m);
-  if (m) {
-    return { name: null, email: (m[1] || '').trim().toLowerCase() };
+
+  const isInternal = (e) => INTERNAL_DOMAINS.some(d => String(e).toLowerCase().includes(d));
+  const candidates = [];
+  let m;
+
+  // 1) «От: Имя <email>» / «From: Name <email>»  (все вхождения)
+  const reFromAng = /^[ \t>]*(?:От|From):\s*(?:"?([^<\n"]+?)"?\s*)?<([^>\s]+@[^>\s]+)>/gm;
+  while ((m = reFromAng.exec(body)) !== null) {
+    candidates.push({ name: (m[1] || '').trim() || null, email: m[2].toLowerCase(), pos: m.index });
   }
+  // 2) «От: email» (без угловых скобок) — Outlook после HTML-стрипа
+  const reFromBare = /^[ \t>]*(?:От|From):\s*([^\s<>"]+@[^\s<>"]+)/gm;
+  while ((m = reFromBare.exec(body)) !== null) {
+    candidates.push({ name: null, email: m[1].toLowerCase().replace(/[:;,]+$/, ''), pos: m.index });
+  }
+  // 3) Yandex inline с угловыми: «ДД.ММ.ГГГГ, ЧЧ:ММ, "Имя" <email>:»
+  const reYandexAng = /\d{1,2}\.\d{1,2}\.\d{2,4},\s*\d{1,2}:\d{2},\s*"?([^"<\n]+?)"?\s*<([^>\s]+@[^>\s]+)>/g;
+  while ((m = reYandexAng.exec(body)) !== null) {
+    candidates.push({ name: (m[1] || '').trim() || null, email: m[2].toLowerCase(), pos: m.index });
+  }
+  // 4) Yandex inline bare (после HTML-стрипа, mailto-ссылки стёрты):
+  //    «"Имя" email:»  или  «email (email):»
+  const reYandexBare = /\d{1,2}\.\d{1,2}\.\d{2,4},\s*\d{1,2}:\d{2},\s*(?:"([^"\n]+)"\s+)?([^\s\n,()<>:"]+@[^\s\n,()<>:"]+)/g;
+  while ((m = reYandexBare.exec(body)) !== null) {
+    candidates.push({ name: (m[1] || '').trim() || null, email: m[2].toLowerCase(), pos: m.index });
+  }
+
+  if (!candidates.length) return null;
+
+  // Дедуп по email — сохраняем САМУЮ ГЛУБОКУЮ позицию (max pos) и любое
+  // найденное имя. Глубокая позиция важна для сортировки «outer→inner».
+  const byEmail = new Map();
+  for (const c of candidates) {
+    const prev = byEmail.get(c.email);
+    if (!prev) { byEmail.set(c.email, { ...c }); continue; }
+    if (c.pos > prev.pos) prev.pos = c.pos;
+    if (!prev.name && c.name) prev.name = c.name;
+  }
+  const uniq = [...byEmail.values()].sort((a, b) => a.pos - b.pos);
+
+  // Outer (top) → inner (bottom). Берём ПОСЛЕДНЕГО внешнего — он самый
+  // глубокий и максимально близок к оригинальному клиенту.
+  const externals = uniq.filter(c => !isInternal(c.email));
+  if (externals.length) {
+    const pick = externals[externals.length - 1];
+    return { name: pick.name, email: pick.email };
+  }
+  // Все форвардеры внутренние — оригинального клиента в теле нет (или
+  // не сматчился ни одной regex-эвристикой). Возвращаем null, чтобы AI
+  // или ручная проверка могли добить.
   return null;
+}
+
+/**
+ * Извлечь "чистый" текст ответа из тела письма-ответа в треде.
+ * Срезает quoted previous message (Yandex/Outlook/Gmail форматы).
+ */
+function extractReplyText(bodyText, bodyHtml) {
+  let body = bodyText || '';
+  if (!body && bodyHtml) {
+    body = String(bodyHtml)
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/?(p|div|tr|li|h[1-6])>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&amp;/gi, '&')
+      .replace(/&quot;/gi, '"');
+  }
+  // Срезаем quoted блок — типичные маркеры начала цитаты предыдущего сообщения.
+  const cutMarkers = [
+    /^[ \t>]*-{2,}\s*\n[\s\S]*?Forwarded message/im,
+    /^[ \t>]*-{2,}\s*Original Message/im,
+    /^[ \t>]*Begin forwarded message/im,
+    /^[ \t>]*Пересланное сообщение/im,
+    /^[ \t>]*Пересылаемое сообщение/im,
+    /^[ \t>]*Завершение пересылаемого/im,
+    /^\d{1,2}\.\d{1,2}\.\d{2,4},\s*\d{1,2}:\d{2}/m,
+    /^[ \t>]*От:\s.+[\r\n]+[ \t>]*(?:Дата|Sent|Тема|Subject|Кому)/im,
+    /^[ \t>]*From:\s.+[\r\n]+[ \t>]*(?:Sent|Date|Subject|To):/im,
+    /^On\s.+wrote:\s*$/m,
+  ];
+  for (const marker of cutMarkers) {
+    const m = body.match(marker);
+    if (m && m.index > 0) {
+      body = body.slice(0, m.index);
+      break;
+    }
+  }
+  return (body.trim().slice(0, 4000)) || '(пустой ответ)';
+}
+
+/**
+ * Wave-2.5: обработка ответа в треде на наш автоответ.
+ * Если email — это ответ на сообщение с ai_classification LIKE 'autoreply_%',
+ * то не создаём новую заявку, а:
+ *   - находим оригинальное входящее → inbox_application
+ *   - добавляем заметку на карту канбана (если назначен PM) ИЛИ
+ *     дописываем в inbox_applications.decision_notes (если ещё не назначен)
+ *   - createNotification для PM
+ *   - помечаем email как ai_classification='thread_reply'.
+ * Возвращает { handled: true, applicationId } если обработано, иначе null.
+ */
+async function tryHandleThreadReply(email) {
+  const emailId = email.id;
+  if (!email.in_reply_to) return null;
+
+  // 1. Ищем "родителя" — должен быть наш outbound автоответ.
+  const parentRes = await db.query(
+    `SELECT id, message_id, in_reply_to, ai_classification, direction
+     FROM emails WHERE message_id = $1 LIMIT 1`,
+    [email.in_reply_to]
+  );
+  const parent = parentRes.rows[0];
+  if (!parent) return null;
+
+  const cls = (parent.ai_classification || '').toLowerCase();
+  if (!cls.includes('autoreply')) return null;
+  // Это ответ на наш autoreply.
+
+  // 2. Идём дальше по in_reply_to: автоответ ссылается на оригинальное входящее.
+  let originalEmailId = null;
+  if (parent.in_reply_to) {
+    const grand = await db.query(
+      `SELECT id FROM emails WHERE message_id = $1 LIMIT 1`,
+      [parent.in_reply_to]
+    );
+    if (grand.rows[0]) originalEmailId = grand.rows[0].id;
+  }
+
+  // 3. Находим inbox_application по оригинальному email (или fallback через References).
+  let app = null;
+  if (originalEmailId) {
+    const r = await db.query(
+      `SELECT id, assigned_pm_id FROM inbox_applications WHERE email_id = $1 LIMIT 1`,
+      [originalEmailId]
+    );
+    app = r.rows[0] || null;
+  }
+  if (!app && email.references_header) {
+    // Fallback: ищем по любому message_id из References
+    const refs = (email.references_header.match(/<[^>]+>/g) || []).map(s => s.slice(1, -1));
+    for (const mid of refs) {
+      const r = await db.query(
+        `SELECT ia.id, ia.assigned_pm_id FROM inbox_applications ia
+         JOIN emails e ON e.id = ia.email_id WHERE e.message_id = $1 LIMIT 1`,
+        [mid]
+      );
+      if (r.rows[0]) { app = r.rows[0]; break; }
+    }
+  }
+  if (!app) return null;
+
+  const replyText = extractReplyText(email.body_text, email.body_html);
+  const replyAuthor = (email.from_name || email.from_email || 'неизвестно').toString();
+
+  // 4. Если есть PM — добавляем заметку на карту канбана.
+  let cardId = null;
+  if (app.assigned_pm_id) {
+    const cardRes = await db.query(
+      `SELECT id, owner_user_id FROM personal_kanban_cards
+       WHERE entity_kind='inbox_application' AND entity_id = $1 AND is_closed = false
+       ORDER BY id DESC LIMIT 1`,
+      [app.id]
+    );
+    const card = cardRes.rows[0];
+    if (card) {
+      cardId = card.id;
+      const noteBody = `📨 Ответ в треде заявки от: ${replyAuthor}\n\n${replyText}`;
+      await db.query(
+        `INSERT INTO personal_kanban_card_notes (card_id, author_id, body)
+         VALUES ($1, NULL, $2)`,
+        [card.id, noteBody.slice(0, 4000)]
+      );
+      // Push PM-у
+      try {
+        const { createNotification } = require('./notify');
+        await Promise.resolve(createNotification(db, {
+          user_id: card.owner_user_id,
+          title: `Ответ в треде заявки №${app.id}`,
+          message: `${replyAuthor}: ${replyText.slice(0, 120)}`,
+          type: 'personal_kanban_thread_reply',
+          link: `#/personal-kanban?card=${card.id}`,
+        })).catch(() => {});
+      } catch (_) {}
+    }
+  } else {
+    // 5. Нет PM — дописываем в decision_notes заявки.
+    await db.query(
+      `UPDATE inbox_applications
+       SET decision_notes = COALESCE(decision_notes,'') || E'\n\n[Ответ в треде ' || to_char(now(),'YYYY-MM-DD HH24:MI') || E', от ' || $1 || E']\n' || $2,
+           updated_at = now()
+       WHERE id = $3`,
+      [replyAuthor, replyText, app.id]
+    );
+  }
+
+  // 6. Помечаем email как обработанный.
+  await db.query(
+    `UPDATE emails SET ai_processed_at = NOW(), ai_classification = $1 WHERE id = $2`,
+    ['thread_reply', emailId]
+  );
+
+  console.log(`[IMAP-AI] #${emailId}: thread_reply linked to inbox_application #${app.id}` + (cardId ? ` (note added to card #${cardId})` : ' (appended to decision_notes)'));
+  return { handled: true, applicationId: app.id, cardId };
 }
 
 /**
@@ -527,6 +757,15 @@ function extractOriginalSender(bodyText) {
 async function analyzeOneEmail(email) {
   const emailId = email.id;
   try {
+    // Wave-2.5: проверка thread-reply ДО любой логики.
+    // Если это ответ в треде нашего автоответа — не создаём новую заявку.
+    try {
+      const threadResult = await tryHandleThreadReply(email);
+      if (threadResult && threadResult.handled) return;
+    } catch (threadErr) {
+      console.error(`[IMAP-AI] #${emailId} tryHandleThreadReply error:`, threadErr.message);
+    }
+
     // Все входящие обрабатываются AI — он сам решает, заявка это или переписка
 
     const attRes = await db.query(
@@ -544,7 +783,7 @@ async function analyzeOneEmail(email) {
     } catch (_) {}
 
     const internalSender = isInternalSender(email.from_email);
-    const forwarded = detectForwarded(null, email.body_text, rawHeaders);
+    const forwarded = detectForwarded(null, email.body_text, rawHeaders, email.body_html);
 
     let sourceKind = 'unknown';
     let needsReview = false;
@@ -568,7 +807,7 @@ async function analyzeOneEmail(email) {
           forwardedByUserId = u.rows[0]?.id || null;
         } catch (_) {}
       }
-      originalSender = extractOriginalSender(email.body_text);
+      originalSender = extractOriginalSender(email.body_text, email.body_html);
       if (originalSender) {
         analyzeFromEmail = originalSender.email;
         analyzeFromName = originalSender.name || email.from_name;
@@ -583,15 +822,66 @@ async function analyzeOneEmail(email) {
     }
 
     console.log(`[IMAP-AI] #${emailId} step 1: calling analyzeEmail... (source_kind=${sourceKind}, forwarded=${forwarded})`);
+    // 20.06.2026 фикс: некоторые email-клиенты (Яндекс через Fwd) шлют только HTML,
+    // body_text=0. AI получал пустую строку → классифицировал как «other» → терялись заявки.
+    // Если body_text пуст — извлекаем чистый текст из body_html (strip tags + decode entities).
+    const _stripHtml = (h) => String(h || '')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<\/(div|p|br|h[1-6]|li|tr)>/gi, '\n')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n\s*\n/g, '\n')
+      .trim();
+    const effectiveBodyText = email.body_text && email.body_text.trim().length > 30
+      ? email.body_text
+      : _stripHtml(email.body_html || '');
     const analysis = await aiAnalyzer.analyzeEmail({
       emailId,
       subject: email.subject,
-      bodyText: email.body_text,
+      bodyText: effectiveBodyText,
       fromEmail: analyzeFromEmail,
       fromName: analyzeFromName,
       attachmentNames: attNames
     });
     console.log(`[IMAP-AI] #${emailId} step 2: analyzeEmail returned classification=${analysis.classification}, color=${analysis.color}`);
+
+    // Fwd-парсинг: AI зачастую точнее regex-а extractOriginalSender (находит клиента
+    // в подписи, ИНН-блоке, многоуровневой цепочке Fwd). Если regex не дал результата
+    // ИЛИ дал внутренний домен — берём данные AI (parseAIResponse уже отфильтровал
+    // asgard-домены). Если оба нашли — оставляем regex (он надёжнее для типового
+    // блока «От: ... <email>», на нём построены все pre-tender-service маршруты).
+    const aiHasOriginal = analysis.original_sender_email
+      && !INTERNAL_DOMAINS.some(d => String(analysis.original_sender_email).toLowerCase().includes(d));
+    if (!originalSender && aiHasOriginal) {
+      originalSender = {
+        name:  analysis.original_sender_name || null,
+        email: String(analysis.original_sender_email).toLowerCase()
+      };
+      console.log(`[IMAP-AI] #${emailId} AI extracted original_sender (regex was empty): ${originalSender.email}`);
+      // Если сорс_кайнд был unknown — это форвард, поднимаем до corporate_forward/external_direct
+      if (sourceKind === 'unknown' && analysis.is_forwarded) {
+        sourceKind = internalSender ? 'corporate_forward' : 'external_direct';
+        if (internalSender && !forwardedFromEmail) {
+          forwardedFromEmail = (email.from_email || '').toLowerCase();
+        }
+      }
+    } else if (originalSender && aiHasOriginal
+               && originalSender.email !== String(analysis.original_sender_email).toLowerCase()) {
+      // Расхождение regex vs AI — логируем для аналитики, но regex имеет приоритет
+      console.log(`[IMAP-AI] #${emailId} regex vs AI mismatch: regex="${originalSender.email}" AI="${String(analysis.original_sender_email).toLowerCase()}" — keeping regex`);
+    }
+    if (analysis._fwd_warning) {
+      console.warn(`[IMAP-AI] #${emailId} AI flagged forwarded but did NOT extract original_sender — needs manual review`);
+      needsReview = true;
+    }
 
     const workload = await aiAnalyzer.getWorkloadData();
     console.log(`[IMAP-AI] #${emailId} step 3: calling updateEmailAiClassification...`);
@@ -602,6 +892,229 @@ async function analyzeOneEmail(email) {
       analysis.summary, analysis.recommendation
     );
     console.log(`[IMAP-AI] #${emailId} step 4: update done`);
+
+    // ════════════════════════════════════════════════════════════════════
+    // S-9 (Stage 2.6): addendum_response — продолжение по СУЩЕСТВУЮЩЕМУ
+    // тендеру/работе (дозапрос, уточнение, протокол разногласий, ...).
+    // Обрабатывается ДО tender_invitation чтобы фразы вроде «дозапрос по
+    // тендеру №» не уходили в invitation (там слово «тендер» совпадёт).
+    //
+    // Match-стратегии (в порядке приоритета):
+    //   (а) Thread match    — by in_reply_to → emails.linked_tender_id
+    //   (б) Fuzzy match     — customer_inn exact + similarity(title, hint) > 0.4
+    //                          в окне 60 дней, статус IN ('КП отправлено','Готово…','В работе')
+    //   (в) Sender fallback — customer_email = from_email + 'КП отправлено' в окне 30 дней
+    //
+    // При match: создаём incoming correspondence (через correspondenceService),
+    // опционально переводим тендер 'КП отправлено' → 'Дозапрос', audit_log + notify.
+    // При неуспехе — fallthrough на tender_invitation / обычный inbox_application.
+    // ════════════════════════════════════════════════════════════════════
+    if (analysis.classification === 'addendum_response' && !analysis._skipped) {
+      let parentTenderId = null;
+      let matchStrategy = null;
+      let parentTender = null;
+      try {
+        // ── (а) Thread match ────────────────────────────────────────────
+        if (email.in_reply_to) {
+          const tr = await db.query(
+            `SELECT linked_tender_id FROM emails
+              WHERE message_id = $1 AND linked_tender_id IS NOT NULL
+              ORDER BY id DESC LIMIT 1`,
+            [email.in_reply_to]
+          );
+          if (tr.rows[0] && tr.rows[0].linked_tender_id) {
+            parentTenderId = tr.rows[0].linked_tender_id;
+            matchStrategy = 'thread';
+          }
+        }
+
+        // ── (б) Fuzzy: ИНН + title similarity ──────────────────────────
+        const parentInn = analysis.parent_tender_inn || null;
+        const parentHint = analysis.parent_tender_hint || null;
+        if (!parentTenderId && parentInn) {
+          try {
+            const params = [parentInn];
+            let sql;
+            if (parentHint) {
+              params.push(parentHint);
+              sql = `SELECT id, tender_title, tender_status, customer_name
+                       FROM tenders
+                      WHERE customer_inn = $1
+                        AND tender_status IN ('КП отправлено','Готово к отправке КП','В работе')
+                        AND created_at > NOW() - INTERVAL '60 days'
+                        AND similarity(COALESCE(tender_title,''), $2) > 0.4
+                      ORDER BY similarity(COALESCE(tender_title,''), $2) DESC, created_at DESC
+                      LIMIT 1`;
+            } else {
+              sql = `SELECT id, tender_title, tender_status, customer_name
+                       FROM tenders
+                      WHERE customer_inn = $1
+                        AND tender_status IN ('КП отправлено','Готово к отправке КП','В работе')
+                        AND created_at > NOW() - INTERVAL '60 days'
+                      ORDER BY created_at DESC
+                      LIMIT 1`;
+            }
+            const fz = await db.query(sql, params);
+            if (fz.rows[0] && fz.rows[0].id) {
+              parentTenderId = fz.rows[0].id;
+              parentTender = fz.rows[0];
+              matchStrategy = 'fuzzy_inn_title';
+            }
+          } catch (fuzzyErr) {
+            // pg_trgm может быть не установлен на старом проде — graceful skip
+            console.warn(`[IMAP-AI] addendum fuzzy match failed (pg_trgm?): ${fuzzyErr.message}`);
+          }
+        }
+
+        // ── (в) Sender fallback: tenders.tender_email = from_email ──────
+        // На текущей схеме поле называется tender_email (не customer_email,
+        // что было в контракте — Finding для S-10 AUD).
+        if (!parentTenderId && email.from_email) {
+          const sf = await db.query(
+            `SELECT id, tender_title, tender_status, customer_name
+               FROM tenders
+              WHERE LOWER(COALESCE(tender_email,'')) = LOWER($1)
+                AND tender_status = 'КП отправлено'
+                AND created_at > NOW() - INTERVAL '30 days'
+              ORDER BY created_at DESC
+              LIMIT 1`,
+            [email.from_email]
+          );
+          if (sf.rows[0] && sf.rows[0].id) {
+            parentTenderId = sf.rows[0].id;
+            parentTender = sf.rows[0];
+            matchStrategy = 'sender_email';
+          }
+        }
+
+        if (parentTenderId) {
+          // AI-системный пользователь (как в tender_invitation ниже)
+          const aiUserRes = await db.query(`
+            SELECT COALESCE(
+              (SELECT id FROM users WHERE login='mimir_bot' AND is_active=true LIMIT 1),
+              (SELECT id FROM users WHERE role='ADMIN' AND is_active=true ORDER BY id LIMIT 1)
+            ) AS uid
+          `);
+          const aiUserId = aiUserRes.rows[0]?.uid || null;
+
+          // INSERT incoming correspondence через сервис (берёт V252 поля + RBAC checks)
+          const correspondenceService = require('./correspondence');
+          let createdCorrId = null;
+          try {
+            const cr = await correspondenceService.createCorrespondence(
+              db,
+              {
+                direction: 'incoming',
+                date: email.email_date || new Date(),
+                doc_type: 'letter',
+                subject: (email.subject || '(без темы)').slice(0, 500),
+                body: (email.body_text || '').slice(0, 50000),
+                body_html: email.body_html || null,
+                counterparty: (email.from_name || email.from_email || '').slice(0, 500),
+                tender_id: parentTenderId,
+                email_id: emailId,
+                // letter_kind whitelist (V252): 9 значений включая 'response'.
+                // 'addendum_response' — наш intent в AI, но в БД ближайший по
+                // смыслу — 'response' (ответ организатора). Match-стратегию
+                // фиксируем в audit_log (см. ниже) и в analysis._raw.
+                letter_kind: 'response',
+                status: 'received'
+              },
+              { userId: aiUserId }
+            );
+            createdCorrId = cr.item.id;
+            console.log(`[IMAP-AI] addendum_response: создан correspondence #${createdCorrId} → tender #${parentTenderId} (strategy=${matchStrategy})`);
+          } catch (corrErr) {
+            console.warn(`[IMAP-AI] addendum_response: createCorrespondence упал: ${corrErr.message}`);
+          }
+
+          // Тендер 'КП отправлено' → 'Дозапрос' (по контракту §6 — сигнал РП)
+          let statusChanged = false;
+          try {
+            if (!parentTender) {
+              const tRes = await db.query('SELECT tender_status FROM tenders WHERE id=$1', [parentTenderId]);
+              parentTender = tRes.rows[0] || null;
+            }
+            if (parentTender && parentTender.tender_status === 'КП отправлено') {
+              const upd = await db.query(
+                `UPDATE tenders SET tender_status='Дозапрос', updated_at=NOW()
+                  WHERE id=$1 AND tender_status='КП отправлено'`,
+                [parentTenderId]
+              );
+              statusChanged = upd.rowCount > 0;
+            }
+          } catch (updErr) {
+            console.warn(`[IMAP-AI] addendum_response: UPDATE tenders.tender_status failed: ${updErr.message}`);
+          }
+
+          // Audit log
+          try {
+            await db.query(
+              `INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, details, created_at)
+                 VALUES ($1, 'tender', $2, 'ai_addendum_received', $3::jsonb, NOW())`,
+              [
+                aiUserId,
+                parentTenderId,
+                JSON.stringify({
+                  email_id: emailId,
+                  correspondence_id: createdCorrId,
+                  classification: 'addendum_response',
+                  ai_confidence: parseFloat(analysis.confidence) || 0,
+                  ai_model: analysis._raw?.model || null,
+                  match_strategy: matchStrategy,
+                  parent_tender_inn: parentInn,
+                  parent_tender_hint: parentHint,
+                  tender_status_changed: statusChanged
+                })
+              ]
+            );
+          } catch (auditErr) {
+            console.warn(`[IMAP-AI] audit_log addendum_response failed:`, auditErr.message);
+          }
+
+          // Notify HEAD_TO + DIRECTOR_COMM + PM тендера (если есть)
+          try {
+            const { createNotification } = require('./notify');
+            const pmRes = await db.query(
+              `SELECT responsible_pm_id, pm_id FROM tenders WHERE id=$1`,
+              [parentTenderId]
+            );
+            const pmIds = pmRes.rows[0]
+              ? [pmRes.rows[0].responsible_pm_id, pmRes.rows[0].pm_id].filter(Boolean)
+              : [];
+            const recipients = await db.query(
+              `SELECT id FROM users
+                 WHERE (role = ANY($1::text[]) OR id = ANY($2::int[]))
+                   AND is_active = true`,
+              [['HEAD_TO', 'DIRECTOR_COMM'], pmIds]
+            );
+            const titleLine = `Дозапрос по тендеру #${parentTenderId}`;
+            const msgLine = `${(email.from_name || email.from_email || '').slice(0, 100)}: ${(email.subject || '').slice(0, 120)}`;
+            for (const u of recipients.rows) {
+              Promise.resolve(createNotification(db, {
+                user_id: u.id,
+                title: titleLine,
+                message: msgLine,
+                type: 'addendum_response_ai_received',
+                link: `#/tenders?id=${parentTenderId}`
+              })).catch(err => console.warn(`[IMAP-AI] addendum notify rejection (user #${u.id}):`, err.message));
+            }
+          } catch (notifyErr) {
+            console.warn(`[IMAP-AI] addendum notify error:`, notifyErr.message);
+          }
+
+          // Match нашли — НЕ идём дальше в tender_invitation/inbox_applications.
+          return;
+        }
+
+        // No match → fallthrough к tender_invitation/inbox_application,
+        // но пометим что AI пытался (в лог).
+        console.log(`[IMAP-AI] addendum_response classified, но parent не найден (inn=${parentInn} hint="${parentHint}" from=${email.from_email}) — fallthrough`);
+      } catch (addendumErr) {
+        console.error(`[IMAP-AI] addendum_response block error for email #${emailId}:`, addendumErr.message);
+        // На любую ошибку — fallthrough, не падаем.
+      }
+    }
 
     // S-5: tender_invitation (приглашение в тендер от заказчика напрямую, не с площадки)
     // создаёт тендер СРАЗУ, минуя inbox_applications/pre_tender_requests. На канбане ТО
@@ -730,7 +1243,10 @@ async function analyzeOneEmail(email) {
             workload_snapshot, attachment_count, status,
             source_kind, needs_review,
             forwarded_by_user_id, forwarded_from_email,
-            original_sender_email, original_sender_name
+            original_sender_email, original_sender_name,
+            extracted_customer_name, extracted_customer_inn,
+            extracted_customer_contact_email, extracted_customer_contact_person,
+            extracted_customer_phone, extracted_customer_address
           ) VALUES (
             $1, 'email', $2, $3, $4, $5,
             $6, $7, $8, $9,
@@ -739,7 +1255,10 @@ async function analyzeOneEmail(email) {
             $17, $18, 'ai_processed',
             $19, $20,
             $21, $22,
-            $23, $24
+            $23, $24,
+            $25, $26,
+            $27, $28,
+            $29, $30
           )
           ON CONFLICT (email_id) WHERE email_id IS NOT NULL DO NOTHING
           RETURNING id, subject, source_name, source_email
@@ -753,7 +1272,17 @@ async function analyzeOneEmail(email) {
           JSON.stringify(workload), email.attachment_count || 0,
           sourceKind, needsReviewFinal,
           forwardedByUserId, forwardedFromEmail,
-          originalSender?.email || null, originalSender?.name || null
+          originalSender?.email || null, originalSender?.name || null,
+          // 30.06.2026 bug #3: сохраняем реквизиты клиента, вытащенные AI из
+          // тела/фото/подписи — иначе при конвертации в pre_tender заказчиком
+          // подставлялся форвардер (наш сотрудник). Колонки добавлены ручным
+          // ALTER на проде (schema-drift, в миграциях отсутствуют).
+          analysis.extracted_customer_name ? String(analysis.extracted_customer_name).slice(0, 500) : null,
+          analysis.extracted_customer_inn || null,
+          analysis.extracted_customer_contact_email ? String(analysis.extracted_customer_contact_email).slice(0, 255) : null,
+          analysis.extracted_customer_contact_person ? String(analysis.extracted_customer_contact_person).slice(0, 255) : null,
+          analysis.extracted_customer_phone ? String(analysis.extracted_customer_phone).slice(0, 100) : null,
+          analysis.extracted_customer_address ? String(analysis.extracted_customer_address).slice(0, 500) : null
         ]);
 
         // §2.7: рассылка директорам/HEAD_PM при создании новой заявки.
@@ -831,11 +1360,26 @@ async function analyzeOneEmail(email) {
         // Don't fail the whole email — AI analysis was saved successfully
       }
 
-      // Create pre-tender request
-      try {
-        await preTenderService.createPreTenderFromEmail(emailId);
-      } catch (ptErr) {
-        console.error('[IMAP-AI] Pre-tender error:', ptErr.message);
+      // 30.06.2026: Авто-создание pre_tender для прямых заявок и площадочных
+      // тендеров → заявка СРАЗУ попадает в маркетплейс РП (assigned_to=NULL,
+      // status='new'), любой РП может её забрать. Раньше (Wave B) требовался
+      // ручной шаг директора «Завести просчёт», из-за чего заявки с почты
+      // не появлялись в маркетплейсе РП и зависали в inbox_applications.
+      //
+      // createPreTenderFromEmail сам резолвит настоящего клиента из
+      // original_sender для corporate_forward (через JOIN inbox_applications),
+      // поэтому старый bug «customer_name = переслатель» здесь не повторяется.
+      // commercial_offer остаётся ручным — это предложение поставщика, не запрос работ.
+      if (analysis.classification === 'direct_request' || analysis.classification === 'platform_tender') {
+        try {
+          const preTenderService = require('./pre-tender-service');
+          const r = await preTenderService.createPreTenderFromEmail(emailId);
+          if (r && r.id) {
+            console.log(`[IMAP-AI] Auto-created pre_tender #${r.id} from email #${emailId} (${analysis.classification})${r.exists ? ' [already existed]' : ' → marketplace'}`);
+          }
+        } catch (ptErr) {
+          console.error(`[IMAP-AI] auto pre_tender creation error for email #${emailId}:`, ptErr.message);
+        }
       }
 
       // Parse platform tenders
@@ -874,7 +1418,8 @@ async function processUnanalyzedEmails() {
   try {
     // Find ALL inbound emails that need AI analysis (без фильтрации по типу — AI сам решает)
     const res = await db.query(`
-      SELECT id, subject, body_text, from_email, from_name, email_type, attachment_count
+      SELECT id, subject, body_text, body_html, from_email, from_name, email_type, attachment_count,
+             in_reply_to, references_header
       FROM emails
       WHERE ai_processed_at IS NULL
         AND direction = 'inbound'
@@ -1128,13 +1673,23 @@ async function shutdown() {
   stopAllPolling();
   stopAiProcessor();
 
-  // Close active IMAP connections
+  // Close active IMAP connections — с таймаутом на каждый logout. Иначе
+  // полумёртвое TLS-соединение (напр. account #112 "Failed to establish
+  // connection") вешает весь shutdown дольше systemd TimeoutStopSec → SIGKILL,
+  // cgroup не убивается → осиротевший процесс продолжает жить (инцидент 30.06:
+  // зомби на :3001 21ч, двойные крон-отчёты).
+  const withTimeout = (p, ms) => Promise.race([
+    p,
+    new Promise((resolve) => setTimeout(resolve, ms)),
+  ]);
+  const closes = [];
   for (const [accountId, client] of activeClients) {
-    try {
-      await client.logout();
-      console.log(`[IMAP] Closed connection for account #${accountId}`);
-    } catch (_) {}
+    closes.push(
+      withTimeout(Promise.resolve(client.logout()).catch(() => {}), 2000)
+        .then(() => console.log(`[IMAP] Closed connection for account #${accountId}`))
+    );
   }
+  await Promise.allSettled(closes);
   activeClients.clear();
 }
 
@@ -1445,5 +2000,8 @@ module.exports = {
   resetSkippedEmails,
   syncUserAccount,
   startPersonalPolling,
-  stopPersonalPolling
+  stopPersonalPolling,
+  // S-9: экспортирован для smoke-тестов addendum_response. Не для прод-вызова —
+  // принимает email-объект (строку из таблицы emails), вызывает AI + post-AI flow.
+  analyzeOneEmail
 };

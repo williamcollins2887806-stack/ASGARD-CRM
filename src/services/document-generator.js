@@ -1654,7 +1654,65 @@ async function saveDocumentsForEntity(entityKind, entityId, docs, dbi) {
     console.warn(`[document-generator] не удалось прочитать ${cfg.table}.${cfg.jsonbField} для #${id}:`, e.message);
   }
 
-  const merged = existing.concat(saved);
+  // 22.06.2026: автоудаление старых версий mimir-генерируемых документов.
+  // Каждый прогон Quick раньше ДОПИСЫВАЛ smeta_*.xlsx + director_report_*.docx
+  // в manual_documents без чистки → накапливалось 50+ файлов в одной карте.
+  // Теперь: для каждого затронутого mimir-kind оставляем последние KEEP_VERSIONS-1
+  // (последние = по generated_at), плюс свежие из `saved`. Итого KEEP_VERSIONS версий.
+  // Пользовательские uploads (kind не из MIMIR_KINDS) — НЕ трогаем.
+  const MIMIR_KINDS = new Set(['mimir_smeta', 'mimir_director_report']);
+  const KEEP_VERSIONS = 3;
+  const isMimirKind = (k) => {
+    if (!k) return false;
+    const base = String(k).replace(/_pdf$/, '');
+    return MIMIR_KINDS.has(base);
+  };
+
+  const newMimirKindsTouched = new Set(
+    saved.map(d => String(d.kind || '').replace(/_pdf$/, '')).filter(k => MIMIR_KINDS.has(k))
+  );
+
+  const purged = [];
+  let keptExisting;
+  if (newMimirKindsTouched.size === 0) {
+    keptExisting = existing;
+  } else {
+    const byKind = new Map();
+    for (const d of existing) {
+      const k = String(d.kind || '');
+      if (!byKind.has(k)) byKind.set(k, []);
+      byKind.get(k).push(d);
+    }
+    keptExisting = [];
+    for (const [k, arr] of byKind.entries()) {
+      const baseKind = k.replace(/_pdf$/, '');
+      if (isMimirKind(k) && newMimirKindsTouched.has(baseKind)) {
+        arr.sort((a, b) => String(a.generated_at || '').localeCompare(String(b.generated_at || '')));
+        const keepCount = Math.max(0, KEEP_VERSIONS - 1);
+        const keep = arr.slice(-keepCount);
+        const drop = arr.slice(0, arr.length - keep.length);
+        keptExisting.push(...keep);
+        purged.push(...drop);
+      } else {
+        keptExisting.push(...arr);
+      }
+    }
+  }
+
+  // Best-effort физическое удаление файлов purged-записей с диска.
+  for (const p of purged) {
+    try {
+      const rel = p.file_path || p.path;
+      if (!rel) continue;
+      const abs = path.isAbsolute(rel) ? rel : path.join(__dirname, '..', '..', rel);
+      if (fs.existsSync(abs)) fs.unlinkSync(abs);
+    } catch (_) { /* не критично */ }
+  }
+  if (purged.length) {
+    console.log(`[document-generator] saveDocumentsForEntity(${entityKind}#${id}): pruned ${purged.length} старых mimir-версий, оставлено ${keptExisting.length} + ${saved.length} новых`);
+  }
+
+  const merged = keptExisting.concat(saved);
   try {
     await db.query(
       `UPDATE ${cfg.table} SET ${cfg.jsonbField} = $1${cfg.extra}, updated_at = NOW() WHERE id = $2`,

@@ -44,12 +44,12 @@ async function routes(fastify) {
     var chatCount = 0;
     try {
       var chatRes = await db.query(
-        "SELECT COUNT(*) FROM chat_messages WHERE is_read = false AND sender_id != $1 AND chat_id IN (SELECT chat_id FROM chat_members WHERE user_id = $1)",
+        "SELECT COUNT(*) FROM chat_messages WHERE is_read = false AND sender_id != $1 AND chat_id IN (SELECT chat_id FROM chat_group_members WHERE user_id = $1)",
         [userId]
       );
       chatCount = parseInt(chatRes.rows[0].count, 10);
     } catch (e) {
-      // chat_members table may not exist — ignore
+      // membership-таблица может отсутствовать — ignore
     }
 
     var count = notifCount + approvalCount + chatCount;

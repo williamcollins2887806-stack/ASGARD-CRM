@@ -111,7 +111,15 @@ async function routes(fastify, opts) {
 
     // ─── 1. tenders ──────────────────────────────────────────────────────
     if (wantTenders && (tenderSubtabPlatforms || tenderSubtabInWork)) {
-      const w = ['t.deleted_at IS NULL'];
+      // Стаб-tenders «Auto-tender для pt-N» создаются legacy-скриптами как
+      // placeholders для pre_tender'ов. Они НЕ должны попадать на вкладку
+      // «Тендеры» в Хабе — для них есть отдельная вкладка «Заявки», где
+      // pre_tender_requests UNION'ятся напрямую. (Уже фильтруются в:
+      // mimir-tkp-quick.js:948, conductor.js:614, letter-generator.js:349.)
+      const w = [
+        't.deleted_at IS NULL',
+        "(t.tender_title IS NULL OR t.tender_title NOT ILIKE 'Auto-tender%')"
+      ];
       if (periodInterval) {
         params.push(periodInterval);
         w.push(`t.created_at >= NOW() - $${params.length}::interval`);
@@ -135,7 +143,10 @@ async function routes(fastify, opts) {
       }
       if (source) {
         params.push(source);
-        w.push(`(t.source_kind = $${params.length} OR t.source = $${params.length})`);
+        // 23.06.2026 BUG-FIX (P0 #4): колонки `t.source` в schema нет (только `source_kind`).
+        // До фикса работало на проде только из-за ручного ALTER (schema-drift), на чистом клоне
+        // запрос валился `column does not exist`.
+        w.push(`t.source_kind = $${params.length}`);
       }
       if (respUserId) {
         params.push(respUserId);
@@ -145,16 +156,20 @@ async function routes(fastify, opts) {
       if (search) {
         params.push(`%${search}%`);
         const s = params.length;
-        w.push(`(t.customer_name ILIKE $${s} OR t.tender_title ILIKE $${s} OR t.tender_number ILIKE $${s} OR t.customer_inn ILIKE $${s})`);
+        // 23.06.2026 BUG-FIX (P0 #4): колонки `tender_number` в схеме нет (есть только `tender_title`).
+        w.push(`(t.customer_name ILIKE $${s} OR t.tender_title ILIKE $${s} OR t.customer_inn ILIKE $${s})`);
       }
       sqls.push(`
         SELECT
           t.id::int                                       AS id,
           'tender'::text                                  AS kind,
-          COALESCE(t.source_kind, t.source, 'manual')::text AS source_label,
-          COALESCE(t.customer_name, t.customer)::text     AS customer_name,
+          -- 23.06.2026 BUG-FIX (P0 #4 + N1): убраны несуществующие в схеме t.source, t.customer, t.tender_number.
+          -- До фикса хаб тендеров на чистой БД валился ERROR 42703 column does not exist; на проде работало
+          -- только благодаря ручному ALTER (schema-drift).
+          COALESCE(t.source_kind, 'manual')::text         AS source_label,
+          t.customer_name::text                           AS customer_name,
           t.customer_inn::text                            AS customer_inn,
-          COALESCE(t.tender_title, t.tender_number)::text AS title,
+          t.tender_title::text                            AS title,
           t.tender_status::text                           AS status,
           t.tender_type::text                             AS type_label,
           CASE WHEN t.docs_deadline IS NULL THEN NULL
@@ -202,12 +217,34 @@ async function routes(fastify, opts) {
         SELECT
           pt.id::int                                      AS id,
           'pre_tender'::text                              AS kind,
-          COALESCE(pt.source_type, 'email_request')::text AS source_label,
+          -- source_type в БД: 'email'|'manual'|'platform'. Маппим в коды
+          -- которые знает frontend (см. SOURCE_LABELS в tenders.js:417):
+          -- email → email_request (📧 Письмо), manual → pm_manual (👤 От РП),
+          -- platform → platform (📡 Площадки).
+          CASE pt.source_type
+            WHEN 'email'    THEN 'email_request'
+            WHEN 'manual'   THEN 'pm_manual'
+            WHEN 'platform' THEN 'platform'
+            ELSE 'email_request'
+          END::text                                       AS source_label,
           pt.customer_name::text                          AS customer_name,
           pt.customer_inn::text                           AS customer_inn,
           LEFT(COALESCE(pt.work_description, ''), 200)::text AS title,
-          pt.status::text                                 AS status,
-          NULL::text                                      AS type_label,
+          -- pre_tender_request status (англ.) → русский лейбл для UI, который
+          -- ожидает наглядные tender_status-подобные значения.
+          CASE pt.status
+            WHEN 'new'              THEN 'Новая заявка'
+            WHEN 'in_review'        THEN 'На рассмотрении'
+            WHEN 'need_docs'        THEN 'Запрошены документы'
+            WHEN 'pending_approval' THEN 'Ждёт согласования'
+            WHEN 'approved'         THEN 'Согласована'
+            WHEN 'accepted'         THEN 'Принята'
+            WHEN 'rejected'         THEN 'Отклонена'
+            WHEN 'pending_payment'  THEN 'Ждёт оплаты'
+            WHEN 'paid'             THEN 'Оплачена'
+            ELSE pt.status
+          END::text                                       AS status,
+          'Заявка'::text                                  AS type_label,
           CASE WHEN pt.work_deadline IS NULL THEN NULL
                ELSE (pt.work_deadline - CURRENT_DATE)::int END AS deadline_days,
           pt.estimated_sum::numeric                       AS nmck,
@@ -235,7 +272,14 @@ async function routes(fastify, opts) {
 
     // ─── 3. inbox_applications ───────────────────────────────────────────
     if (wantApps && appSubtabMail) {
-      const w = ["ia.status <> 'archived'"];
+      // Показываем ТОЛЬКО необработанные письма. Когда РП принял заявку и
+      // создал pre_tender_request — inbox_app получает статус assigned/accepted
+      // и должен исчезнуть с этой вкладки (он уже видим на subtab 'От РП' как
+      // pre_tender). Иначе одна заявка дублируется в двух подвкладках.
+      const w = [
+        "ia.status <> 'archived'",
+        "ia.status NOT IN ('assigned','accepted','converted','rejected')"
+      ];
       if (periodInterval) {
         params.push(periodInterval);
         w.push(`ia.created_at >= NOW() - $${params.length}::interval`);
@@ -259,8 +303,18 @@ async function routes(fastify, opts) {
           ia.id::int                                      AS id,
           'application'::text                             AS kind,
           ia.source_kind::text                            AS source_label,
-          COALESCE(ia.source_name, ia.source_email)::text AS customer_name,
-          NULL::text                                      AS customer_inn,
+          -- Заказчик: customer_name (заполняется вручную) →
+          -- extracted_customer_name (AI вытащил из текста) →
+          -- original_sender_name (если это прямой клиент без форварда) →
+          -- source_name/email (переслатель — последний fallback).
+          COALESCE(
+            NULLIF(ia.customer_name, ''),
+            NULLIF(ia.extracted_customer_name, ''),
+            NULLIF(ia.original_sender_name, ''),
+            NULLIF(ia.source_name, ''),
+            ia.source_email
+          )::text                                         AS customer_name,
+          COALESCE(NULLIF(ia.customer_inn, ''), NULLIF(ia.extracted_customer_inn, ''))::text AS customer_inn,
           LEFT(COALESCE(ia.subject, ''), 200)::text       AS title,
           ia.status::text                                 AS status,
           ia.ai_work_type::text                           AS type_label,

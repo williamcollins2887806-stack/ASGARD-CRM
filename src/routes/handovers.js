@@ -13,6 +13,7 @@
  * Endpoints:
  *   GET    /                         — список (фильтры year/month/pm_id/worker_id/status)
  *   POST   /                         — создать запись (РП/руководители/админ)
+ *   POST   /manual                   — PM «Получил нал от СЗ» (сразу status='received')
  *   PUT    /:id/confirm              — РП подтверждает получение
  *
  * RBAC:
@@ -259,6 +260,127 @@ async function routes(fastify) {
       return { handover: updated };
     } catch (err) {
       fastify.log.error({ err }, '[handovers] PUT /:id/confirm error');
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────
+  // POST /api/handovers/manual — PM-кнопка «Получил нал от СЗ»
+  //   body: { worker_id, work_id?, amount, year, month, note? }
+  //
+  // Назначение: PM зафиксировал получение нала от СЗ без предварительного
+  // se_transfer (СЗ привёз нал внезапно, задним числом и т.п.).
+  // Создаётся handover сразу в status='received' (нал на руках).
+  //
+  // RBAC: PM (свои), HEAD_PM, BUH, DIR_*, ADMIN (тот же ALLOWED_ROLES).
+  // pm_user_id: для PM/HEAD_PM — он сам; для BUH/DIR/ADMIN — из works.pm_id
+  // (если work_id передан), иначе req.user.id (фоллбэк: запись «за директора»).
+  //
+  // Warning, не блокирующий: если уже есть pending handover по этому worker
+  // в этом месяце у того же PM — успех + warning в ответе.
+  // ────────────────────────────────────────────────────────────────
+  fastify.post('/manual', auth, async (request, reply) => {
+    try {
+      const { worker_id, work_id, amount, year, month, note } = request.body || {};
+
+      const wid = parseInt(worker_id, 10);
+      const yr = parseInt(year, 10);
+      const mo = parseInt(month, 10);
+      const amt = Number(amount);
+
+      if (!Number.isFinite(wid)) {
+        return reply.code(400).send({ error: 'worker_id обязателен' });
+      }
+      if (!Number.isFinite(yr) || !Number.isFinite(mo) || mo < 1 || mo > 12) {
+        return reply.code(400).send({ error: 'year/month обязательны и валидны (month 1..12)' });
+      }
+      if (!Number.isFinite(amt) || amt <= 0) {
+        return reply.code(400).send({ error: 'amount должен быть > 0' });
+      }
+
+      const wkId = work_id != null && work_id !== '' ? parseInt(work_id, 10) : null;
+      if (wkId != null && !Number.isFinite(wkId)) {
+        return reply.code(400).send({ error: 'work_id невалиден' });
+      }
+
+      // Worker должен быть СЗ
+      const { rows: [emp] } = await db.query(
+        'SELECT id, is_self_employed FROM employees WHERE id = $1', [wid]
+      );
+      if (!emp) return reply.code(404).send({ error: 'Сотрудник не найден' });
+      if (!emp.is_self_employed) {
+        return reply.code(400).send({ error: 'Рабочий не самозанятый' });
+      }
+
+      const role = request.user.role;
+      const uid = Number(request.user.id);
+
+      // pm_user_id:
+      //   PM/HEAD_PM — он сам.
+      //   BUH/DIR_*/ADMIN — pm_user_id ОБЯЗАТЕЛЕН берётся из works.pm_id, иначе
+      //   handover становится осиротевшим (pm_user_id=BUH_id не виден в
+      //   /pm-balance, который фильтрует role IN ('PM','HEAD_PM')), и нал
+      //   «исчезает» из учёта. Поэтому требуем work_id с pm_id.
+      let pmUserId = uid;
+      if (role !== 'PM' && role !== 'HEAD_PM') {
+        if (wkId == null) {
+          return reply.code(400).send({
+            error: `work_id обязателен для роли ${role}, чтобы определить РП-получателя`
+          });
+        }
+        const { rows: [w] } = await db.query(
+          'SELECT pm_id FROM works WHERE id = $1', [wkId]
+        );
+        if (!w) {
+          return reply.code(404).send({ error: 'Работа не найдена' });
+        }
+        if (!w.pm_id) {
+          return reply.code(400).send({
+            error: `У работы id=${wkId} не назначен РП — некому передать нал. Назначьте РП в работе или укажите другой work_id.`
+          });
+        }
+        pmUserId = Number(w.pm_id);
+      }
+
+      // Проверка на pending по этому worker от этого PM в этом месяце
+      // — не блокирует, выдаёт warning.
+      const { rows: pending } = await db.query(`
+        SELECT id, expected_amount FROM worker_to_pm_handovers
+        WHERE worker_id = $1 AND pm_user_id = $2
+          AND year = $3 AND month = $4 AND status = 'pending'
+        ORDER BY created_at DESC
+        LIMIT 1
+      `, [wid, pmUserId, yr, mo]);
+
+      const { rows: [created] } = await db.query(`
+        INSERT INTO worker_to_pm_handovers (
+          worker_id, pm_user_id, work_id, year, month,
+          source_se_transfer_id, source_worker_payment_id,
+          expected_amount, received_amount, status,
+          received_at, received_by, note
+        ) VALUES (
+          $1, $2, $3, $4, $5,
+          NULL, NULL,
+          $6, $6, 'received',
+          NOW(), $7, $8
+        )
+        RETURNING *
+      `, [
+        wid, pmUserId, wkId, yr, mo,
+        amt, uid, note || null
+      ]);
+
+      const response = { handover: created };
+      if (pending.length > 0) {
+        const p = pending[0];
+        response.warning =
+          `Уже есть pending handover ID=${p.id} на ${Number(p.expected_amount)} ₽ ` +
+          `за этот месяц. Этот ручной — отдельная запись.`;
+      }
+
+      return response;
+    } catch (err) {
+      fastify.log.error({ err }, '[handovers] POST /manual error');
       return reply.code(500).send({ error: 'Ошибка сервера' });
     }
   });

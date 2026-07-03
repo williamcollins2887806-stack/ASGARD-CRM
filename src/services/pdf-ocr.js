@@ -29,9 +29,14 @@ const aiProvider = require('./ai-provider');
 // (правильно распознал "Воскресенск" + структуру). gemini-2.5-flash дешевле но
 // может галлюцинировать когда страница повёрнута/плохого качества — он "додумал"
 // "Инструкция по эксплуатации прибора" вместо реального ТЗ для дока 284.
-const OCR_MODEL = process.env.OCR_MODEL || 'mistralai/pixtral-large-2411';
-const OCR_FALLBACK_MODEL = process.env.OCR_FALLBACK_MODEL || 'google/gemini-2.5-flash';
-const OCR_MAX_PAGES = parseInt(process.env.OCR_MAX_PAGES || '20', 10); // защита от 100-страничных монстров
+// 20.06.2026: юзер потребовал убрать pixtral/gemini — только gpt-5.5 vision.
+const OCR_MODEL = process.env.OCR_MODEL || 'gpt-5.5';
+const OCR_FALLBACK_MODEL = process.env.OCR_FALLBACK_MODEL || 'gpt-5.5';
+// 18.06.2026 поднят 20 → 150: для больших проектных ТЗ. Каждая страница ≈ 1 AI-вызов
+// с vision (~30 сек). 150 страниц теоретически ≈ 75 мин real-time — но фронт
+// показывает прогресс, а реально PDF >50 стр почти всегда имеют text-layer
+// и идут через pdf-parse (быстро, без OCR).
+const OCR_MAX_PAGES = parseInt(process.env.OCR_MAX_PAGES || '150', 10);
 const PDFTOPPM_BIN = '/usr/bin/pdftoppm';
 
 // КРИТИЧНО: антигаллюцинационный промпт. Без него gemini-2.5-flash на повёрнутых
@@ -144,21 +149,35 @@ async function _ocrOnePage(pngPath, pageNum, originalName) {
     { type: 'image_url', image_url: { url: 'data:image/png;base64,' + pngBase64 } }
   ];
 
+  // 21.06.2026: ОБЯЗАТЕЛЬНЫЙ ограничитель retries. Tokenator 503-ит на vision-моделях
+  // в peaks; раньше каждая попытка ретраилась внутри AI-провайдера N раз → одна страница
+  // занимала минуты. Теперь: 1 попытка основной, 1 попытка fallback (если галлюцинация
+  // или throw), потом skip — возвращаем пустую строку. Лучше иметь документ с пропущенной
+  // страницей чем зависший Conductor pipeline на 30+ минут.
+  let text = '';
   const t0 = Date.now();
-  const result = await aiProvider.complete({
-    system: 'Ты — высокоточный OCR-движок. Извлекаешь текст из изображения дословно и структурированно.',
-    messages: [{ role: 'user', content: imageContent }],
-    model: OCR_MODEL,
-    maxTokens: 4000,
-    temperature: 0.0
-  });
-  let text = result.text || '';
-  const ms = Date.now() - t0;
-  console.log(`[OCR] page ${pageNum}: ${text.length} chars, ${ms}ms (model=${OCR_MODEL})`);
+  try {
+    const result = await aiProvider.complete({
+      system: 'Ты — высокоточный OCR-движок. Извлекаешь текст из изображения дословно и структурированно.',
+      messages: [{ role: 'user', content: imageContent }],
+      model: OCR_MODEL,
+      maxTokens: 4000,
+      temperature: 0.0
+    });
+    text = result.text || '';
+    const ms = Date.now() - t0;
+    console.log(`[OCR] page ${pageNum}: ${text.length} chars, ${ms}ms (model=${OCR_MODEL})`);
+  } catch (e) {
+    console.warn(`[OCR] page ${pageNum} primary failed (${e.message}) — trying fallback`);
+  }
 
-  // Если результат похож на галлюцинацию — пробуем резервную модель
-  if (_looksLikeHallucination(text, originalName)) {
-    console.warn(`[OCR] page ${pageNum}: looks like hallucination, retrying with ${OCR_FALLBACK_MODEL}`);
+  // Если результат похож на галлюцинацию ИЛИ основная пустая — fallback (одна попытка).
+  if (!text || _looksLikeHallucination(text, originalName)) {
+    if (!text) {
+      console.warn(`[OCR] page ${pageNum}: primary empty, fallback=${OCR_FALLBACK_MODEL}`);
+    } else {
+      console.warn(`[OCR] page ${pageNum}: looks like hallucination, retrying with ${OCR_FALLBACK_MODEL}`);
+    }
     try {
       const r2 = await aiProvider.complete({
         system: 'Ты — высокоточный OCR-движок. Извлекаешь текст из изображения дословно и структурированно.',
@@ -171,7 +190,7 @@ async function _ocrOnePage(pngPath, pageNum, originalName) {
       console.log(`[OCR] page ${pageNum} fallback: ${text2.length} chars (model=${OCR_FALLBACK_MODEL})`);
       if (text2.length > text.length) text = text2;
     } catch (fe) {
-      console.warn(`[OCR] page ${pageNum} fallback failed: ${fe.message}`);
+      console.warn(`[OCR] page ${pageNum} fallback failed: ${fe.message} — SKIP page`);
     }
   }
 

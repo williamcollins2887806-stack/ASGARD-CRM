@@ -98,24 +98,38 @@ async function loadEntitySnapshot(entityKind, entityId) {
            FROM tenders WHERE id = $1`, [entityId]);
       return r.rows[0] || null;
     } else if (entityKind === 'pre_tender') {
-      // F2 + Wave B: расширенный snapshot — customer + work details + AI + financials,
-      // чтобы карта канбана могла нарисовать богатую деталь без второго запроса.
+      // F2 + Wave B + v3 fix: вложения тоже отдаём (jsonb_agg), чтобы drawer не делал
+      // второй запрос — иначе v3 канбан видит has_documents=true, но без имён файлов
+      // блок «Документы» просто пуст.
       const r = await db.query(
-        `SELECT id,
-                COALESCE(NULLIF(work_description, ''),
-                         NULLIF(work_location, ''),
-                         NULLIF(customer_name, ''),
-                         'Запрос #' || id::text) AS title,
-                customer_name, customer_email, customer_inn,
-                contact_person, contact_phone,
-                work_description, work_location, work_deadline,
-                estimated_sum,
-                ai_summary, ai_color, ai_recommendation, ai_work_match_score,
-                has_documents, manual_documents,
-                status, created_tender_id, assigned_to, decision_comment, reject_reason,
-                created_at,
-                EXTRACT(EPOCH FROM (NOW() - created_at))/86400 AS days_since_created
-           FROM pre_tender_requests WHERE id = $1`, [entityId]);
+        `SELECT pt.id,
+                COALESCE(NULLIF(pt.work_description, ''),
+                         NULLIF(pt.work_location, ''),
+                         NULLIF(pt.customer_name, ''),
+                         'Запрос #' || pt.id::text) AS title,
+                pt.customer_name, pt.customer_email, pt.customer_inn,
+                pt.contact_person, pt.contact_phone,
+                pt.work_description, pt.work_location, pt.work_deadline,
+                pt.estimated_sum,
+                pt.ai_summary, pt.ai_color, pt.ai_recommendation, pt.ai_work_match_score,
+                pt.has_documents, pt.manual_documents,
+                pt.email_id,
+                pt.status, pt.created_tender_id, pt.assigned_to, pt.decision_comment, pt.reject_reason,
+                pt.created_at,
+                EXTRACT(EPOCH FROM (NOW() - pt.created_at))/86400 AS days_since_created,
+                COALESCE((
+                  SELECT jsonb_agg(jsonb_build_object(
+                    'id', ea.id,
+                    'filename', ea.filename,
+                    'original_filename', ea.original_filename,
+                    'mime_type', ea.mime_type,
+                    'size', ea.size,
+                    'file_path', ea.file_path
+                  ) ORDER BY ea.id)
+                  FROM email_attachments ea WHERE ea.email_id = pt.email_id
+                ), '[]'::jsonb) AS email_attachments,
+                (SELECT COUNT(*)::int FROM email_attachments ea WHERE ea.email_id = pt.email_id) AS email_attachments_count
+           FROM pre_tender_requests pt WHERE pt.id = $1`, [entityId]);
       return r.rows[0] || null;
     } else if (entityKind === 'work') {
       const r = await db.query(
@@ -151,21 +165,36 @@ async function loadEntitySnapshotsBatch(entityKind, ids) {
                     EXTRACT(EPOCH FROM (NOW() - created_at))/86400 AS days_since_created
                FROM tenders WHERE id = ANY($1::int[])`;
     } else if (entityKind === 'pre_tender') {
-      sql = `SELECT id,
-                    COALESCE(NULLIF(work_description, ''),
-                             NULLIF(work_location, ''),
-                             NULLIF(customer_name, ''),
-                             'Запрос #' || id::text) AS title,
-                    customer_name, customer_email, customer_inn,
-                    contact_person, contact_phone,
-                    work_description, work_location, work_deadline,
-                    estimated_sum,
-                    ai_summary, ai_color, ai_recommendation, ai_work_match_score,
-                    has_documents, manual_documents,
-                    status, created_tender_id, assigned_to,
-                    created_at,
-                    EXTRACT(EPOCH FROM (NOW() - created_at))/86400 AS days_since_created
-               FROM pre_tender_requests WHERE id = ANY($1::int[])`;
+      sql = `SELECT pt.id,
+                    COALESCE(NULLIF(pt.work_description, ''),
+                             NULLIF(pt.work_location, ''),
+                             NULLIF(pt.customer_name, ''),
+                             'Запрос #' || pt.id::text) AS title,
+                    pt.customer_name, pt.customer_email, pt.customer_inn,
+                    pt.contact_person, pt.contact_phone,
+                    pt.work_description, pt.work_location, pt.work_deadline,
+                    pt.estimated_sum,
+                    pt.ai_summary, pt.ai_color, pt.ai_recommendation, pt.ai_work_match_score,
+                    pt.has_documents, pt.manual_documents,
+                    pt.email_id,
+                    pt.status, pt.created_tender_id, pt.assigned_to,
+                    pt.created_at,
+                    EXTRACT(EPOCH FROM (NOW() - pt.created_at))/86400 AS days_since_created,
+                    -- JOIN email_attachments чтобы drawer v3 не делал второй fetch:
+                    -- без этого UI видел has_documents=true, но не имел списка файлов.
+                    COALESCE((
+                      SELECT jsonb_agg(jsonb_build_object(
+                        'id', ea.id,
+                        'filename', ea.filename,
+                        'original_filename', ea.original_filename,
+                        'mime_type', ea.mime_type,
+                        'size', ea.size,
+                        'file_path', ea.file_path
+                      ) ORDER BY ea.id)
+                      FROM email_attachments ea WHERE ea.email_id = pt.email_id
+                    ), '[]'::jsonb) AS email_attachments,
+                    (SELECT COUNT(*)::int FROM email_attachments ea WHERE ea.email_id = pt.email_id) AS email_attachments_count
+               FROM pre_tender_requests pt WHERE pt.id = ANY($1::int[])`;
     } else if (entityKind === 'work') {
       sql = `SELECT id, work_title AS title, customer_name,
                     work_status AS status, created_at,
@@ -322,8 +351,11 @@ function v3ColumnToMainStatus(toColumn, flowType, currentMainStatus) {
       case 'calc':     return 'in_review';
       case 'approval': return 'pending_approval';
       case 'kp_prep':  return 'approved';
+      case 'sent':     return 'pending_payment'; // 30.06.2026: заявка идёт дальше как заявка (КП отправлено), синхронно с pk_v3_column V254
+      case 'win':      return 'paid';            // 30.06.2026: клиент согласился → paid + авто-создание работы (см. side-effect ниже)
       case 'lose':     return 'rejected';
-      default:         return null; // sent/win/work — не применимо к pre_tender (тендер уже)
+      // addendum/work — не применимо к pre_tender (дозапрос только у тендеров) → 409 transition_not_allowed
+      default:         return undefined;
     }
   }
   if (flowType === 'tender') {
@@ -822,6 +854,89 @@ module.exports = async function (fastify) {
   });
 
   // ═══════════════════════════════════════════════════════════════════
+  // POST /cards/:cardId/update — inline-редактирование сущности через карту
+  // ───────────────────────────────────────────────────────────────────
+  // Карта v3 канбана даёт inline-форму (Клиент / Работа / Финансы).
+  // Раньше UI шёл сюда POST'ом, но endpoint не существовал → 404 → данные не сохранялись
+  // (это объясняло «карточка контрагента не заполнена» — Путков печатал и нажимал
+  // 💾, но ничего не приходило в БД).
+  // Прокси UPDATE на entity по типу: pre_tender → pre_tender_requests, tender → tenders.
+  // RBAC: владелец карты или директор/HEAD_PM/HEAD_TO.
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.post('/cards/:cardId/update', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const userId = request.user.id;
+    const userRole = request.user.role;
+    const cardId = asInt(request.params.cardId);
+    if (cardId === null) return reply.code(400).send({ error: 'invalid_card_id' });
+
+    const c = await db.query(
+      `SELECT id, owner_user_id, entity_kind, entity_id FROM personal_kanban_cards WHERE id = $1`,
+      [cardId]);
+    if (!c.rows.length) return reply.code(404).send({ error: 'card_not_found' });
+    const card = c.rows[0];
+
+    const isPrivileged = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_PM', 'HEAD_TO'].includes(userRole);
+    if (!isPrivileged && card.owner_user_id !== userId) {
+      return reply.code(403).send({ error: 'forbidden' });
+    }
+
+    const body = request.body || {};
+    let allowed;
+    let table;
+    let statusGuard = '';
+
+    if (card.entity_kind === 'pre_tender') {
+      table = 'pre_tender_requests';
+      allowed = ['customer_name', 'customer_inn', 'customer_email',
+                 'contact_person', 'contact_phone',
+                 'work_description', 'work_location', 'work_deadline',
+                 'estimated_sum'];
+      // Совпадает с PUT /api/pre-tenders/:id — редактировать можно только в активных стадиях.
+      statusGuard = ` AND status IN ('new','in_review','need_docs')`;
+    } else if (card.entity_kind === 'tender') {
+      table = 'tenders';
+      allowed = ['customer_name', 'customer_inn', 'customer_email',
+                 'contact_person', 'contact_phone',
+                 'work_description', 'work_location'];
+    } else {
+      // inbox_application / work — пока не правим через карту.
+      return reply.code(400).send({ error: 'entity_not_editable', entity_kind: card.entity_kind });
+    }
+
+    const fields = [];
+    const vals = [];
+    let idx = 1;
+    for (const key of allowed) {
+      if (Object.prototype.hasOwnProperty.call(body, key)) {
+        let v = body[key];
+        if (v === '' || v === undefined) v = null;
+        fields.push(`${key} = $${idx++}`);
+        vals.push(v);
+      }
+    }
+    if (!fields.length) return reply.code(400).send({ error: 'no_fields' });
+
+    fields.push(`updated_at = NOW()`);
+    vals.push(card.entity_id);
+    const res = await db.query(
+      `UPDATE ${table} SET ${fields.join(', ')} WHERE id = $${idx}${statusGuard} RETURNING id`,
+      vals);
+    if (!res.rows.length) {
+      return reply.code(409).send({ error: 'wrong_status_for_edit' });
+    }
+
+    // SSE — переиспользуем существующий канал.
+    try {
+      if (card.entity_kind === 'pre_tender') {
+        broadcast('pre_tender:updated', { id: card.entity_id, updated_fields: fields });
+      }
+      broadcast('personal_kanban:card_updated', { card_id: cardId });
+    } catch (_) {}
+
+    return { ok: true, card_id: cardId, entity_kind: card.entity_kind, entity_id: card.entity_id };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
   // POST /cards/:id/move — перемещение с FOR UPDATE + version check
   // ═══════════════════════════════════════════════════════════════════
   fastify.post('/cards/:id/move', { preHandler: [fastify.authenticate] }, async (request, reply) => {
@@ -1134,6 +1249,7 @@ module.exports = async function (fastify) {
 
     const notesRes = await db.query(
       `SELECT n.id, n.card_id, n.author_id, n.body, n.created_at,
+              n.pos_x, n.pos_y, n.z_index, n.color_variant,
               u.name AS author_name
          FROM personal_kanban_card_notes n
          LEFT JOIN users u ON u.id = n.author_id
@@ -1168,11 +1284,93 @@ module.exports = async function (fastify) {
     const isManager = ['HEAD_PM', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(userRole);
     if (!isOwner && !isManager) return reply.code(403).send({ error: 'forbidden' });
 
+    // Случайные начальные координаты + следующий z_index
+    const inB = request.body || {};
+    const posX = Number.isFinite(Number(inB.pos_x)) ? Number(inB.pos_x) : Math.floor(Math.random()*120);
+    const posY = Number.isFinite(Number(inB.pos_y)) ? Number(inB.pos_y) : Math.floor(Math.random()*160);
+    const cv   = Number.isFinite(Number(inB.color_variant)) ? Number(inB.color_variant) % 5 : Math.floor(Math.random()*5);
+    const zMax = await db.query(
+      `SELECT COALESCE(MAX(z_index),0) AS z FROM personal_kanban_card_notes WHERE card_id=$1`, [id]);
+    const zNext = Number(zMax.rows[0]?.z || 0) + 1;
     const ins = await db.query(
-      `INSERT INTO personal_kanban_card_notes (card_id, author_id, body)
-       VALUES ($1, $2, $3) RETURNING id, card_id, author_id, body, created_at`,
-      [id, userId, body]);
+      `INSERT INTO personal_kanban_card_notes (card_id, author_id, body, pos_x, pos_y, z_index, color_variant)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, card_id, author_id, body, created_at, pos_x, pos_y, z_index, color_variant,
+         (SELECT name FROM users WHERE id=$2) AS author_name`,
+      [id, userId, body, posX, posY, zNext, cv]);
     return { success: true, item: ins.rows[0] };
+  });
+
+  // 22.06.2026: PATCH /cards/:cardId/notes/:noteId/position — drag-and-drop сохранение
+  fastify.patch('/cards/:cardId/notes/:noteId/position', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const userId = request.user.id;
+    const cardId = asInt(request.params.cardId);
+    const noteId = asInt(request.params.noteId);
+    if (cardId === null || noteId === null) return reply.code(400).send({ error: 'invalid_id' });
+    const body = request.body || {};
+    const posX = Number(body.pos_x);
+    const posY = Number(body.pos_y);
+    if (!Number.isFinite(posX) || !Number.isFinite(posY)) return reply.code(400).send({ error: 'pos_required' });
+    // Поднимаем z-index чтобы перемещённый стикер был сверху
+    const zMax = await db.query(
+      `SELECT COALESCE(MAX(z_index),0) AS z FROM personal_kanban_card_notes WHERE card_id=$1`, [cardId]);
+    const zNext = Number(zMax.rows[0]?.z || 0) + 1;
+    const upd = await db.query(
+      `UPDATE personal_kanban_card_notes
+          SET pos_x=$1, pos_y=$2, z_index=$3
+        WHERE id=$4 AND card_id=$5
+        RETURNING id, pos_x, pos_y, z_index`,
+      [Math.round(posX), Math.round(posY), zNext, noteId, cardId]);
+    if (!upd.rows[0]) return reply.code(404).send({ error: 'not_found' });
+    return { success: true, item: upd.rows[0] };
+  });
+
+  // 22.06.2026: PUT /cards/:cardId/notes/:noteId — редактирование заметки
+  fastify.put('/cards/:cardId/notes/:noteId', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const userId = request.user.id;
+    const userRole = request.user.role;
+    const cardId = asInt(request.params.cardId);
+    const noteId = asInt(request.params.noteId);
+    if (cardId === null || noteId === null) return reply.code(400).send({ error: 'invalid_id' });
+    const body = (request.body && request.body.body) ? String(request.body.body).trim() : '';
+    if (body.length < 1 || body.length > 4000) {
+      return reply.code(400).send({ error: 'invalid_body' });
+    }
+    const cur = await db.query(
+      `SELECT n.author_id, pkc.owner_user_id FROM personal_kanban_card_notes n
+        JOIN personal_kanban_cards pkc ON pkc.id = n.card_id
+        WHERE n.id = $1 AND n.card_id = $2`, [noteId, cardId]);
+    if (!cur.rows[0]) return reply.code(404).send({ error: 'not_found' });
+    const isAuthor  = cur.rows[0].author_id === userId;
+    const isOwner   = cur.rows[0].owner_user_id === userId;
+    const isManager = ['HEAD_PM', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(userRole);
+    if (!isAuthor && !isOwner && !isManager) return reply.code(403).send({ error: 'forbidden' });
+    const upd = await db.query(
+      `UPDATE personal_kanban_card_notes SET body=$1 WHERE id=$2
+       RETURNING id, card_id, author_id, body, created_at, pos_x, pos_y, z_index, color_variant,
+         (SELECT name FROM users WHERE id=author_id) AS author_name`,
+      [body, noteId]);
+    return { success: true, item: upd.rows[0] };
+  });
+
+  // 22.06.2026: DELETE /cards/:cardId/notes/:noteId — удаление заметки
+  fastify.delete('/cards/:cardId/notes/:noteId', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const userId = request.user.id;
+    const userRole = request.user.role;
+    const cardId = asInt(request.params.cardId);
+    const noteId = asInt(request.params.noteId);
+    if (cardId === null || noteId === null) return reply.code(400).send({ error: 'invalid_id' });
+    const cur = await db.query(
+      `SELECT n.author_id, pkc.owner_user_id FROM personal_kanban_card_notes n
+        JOIN personal_kanban_cards pkc ON pkc.id = n.card_id
+        WHERE n.id = $1 AND n.card_id = $2`, [noteId, cardId]);
+    if (!cur.rows[0]) return reply.code(404).send({ error: 'not_found' });
+    const isAuthor  = cur.rows[0].author_id === userId;
+    const isOwner   = cur.rows[0].owner_user_id === userId;
+    const isManager = ['HEAD_PM', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(userRole);
+    if (!isAuthor && !isOwner && !isManager) return reply.code(403).send({ error: 'forbidden' });
+    await db.query(`DELETE FROM personal_kanban_card_notes WHERE id = $1`, [noteId]);
+    return { success: true };
   });
 
   // ═══════════════════════════════════════════════════════════════════
@@ -1310,7 +1508,52 @@ module.exports = async function (fastify) {
       request.log.warn({ err: e }, '[personal-kanban] start-quick: entity snapshot failed');
     }
 
-    // 3. INSERT tkp_quick_sessions.
+    // 3. ДЕДУПЛИКАЦИЯ: ищем активную сессию по pre_tender_id / tender_id.
+    //    Если есть в неконечном статусе (не finalized/abandoned) — возвращаем её,
+    //    чтобы PM продолжил с того места. Если body.fresh=true — сначала помечаем
+    //    старую как 'abandoned' и создаём новую (кнопка «Пересчёт с нуля»).
+    const fresh = !!(request.body && request.body.fresh);
+    if (!fresh && (preTenderId || tenderId)) {
+      try {
+        const dedupeCol = preTenderId ? 'pre_tender_id' : 'tender_id';
+        const dedupeVal = preTenderId || tenderId;
+        const exist = await db.query(
+          `SELECT id, session_uid, status FROM tkp_quick_sessions
+            WHERE author_id = $1 AND ${dedupeCol} = $2
+              AND status NOT IN ('finalized','abandoned')
+            ORDER BY id DESC LIMIT 1`,
+          [card.owner_user_id, dedupeVal]);
+        if (exist.rows[0]) {
+          return {
+            success: true,
+            session_uid: exist.rows[0].session_uid,
+            session_id: Number(exist.rows[0].id),
+            status: 'existing',
+            session_status: exist.rows[0].status
+          };
+        }
+      } catch (e) {
+        request.log.warn({ err: e }, '[personal-kanban] start-quick: dedupe lookup failed');
+      }
+    }
+    if (fresh && (preTenderId || tenderId)) {
+      // Помечаем все активные сессии этого автора по entity как abandoned —
+      // чтобы дедуп-лукап выше не возвращал их в будущем.
+      try {
+        const dedupeCol = preTenderId ? 'pre_tender_id' : 'tender_id';
+        const dedupeVal = preTenderId || tenderId;
+        await db.query(
+          `UPDATE tkp_quick_sessions
+              SET status = 'abandoned', updated_at = NOW()
+            WHERE author_id = $1 AND ${dedupeCol} = $2
+              AND status NOT IN ('finalized','abandoned')`,
+          [card.owner_user_id, dedupeVal]);
+      } catch (e) {
+        request.log.warn({ err: e }, '[personal-kanban] start-quick: abandon previous failed');
+      }
+    }
+
+    // 4. INSERT новой tkp_quick_sessions.
     const sessionUid = require('crypto').randomUUID();
     try {
       const ins = await db.query(
@@ -1324,7 +1567,8 @@ module.exports = async function (fastify) {
       return {
         success: true,
         session_uid: ins.rows[0].session_uid,
-        session_id: ins.rows[0].id
+        session_id: Number(ins.rows[0].id),
+        status: 'created'
       };
     } catch (e) {
       request.log.error({ err: e }, '[personal-kanban] start-quick failed');
@@ -1361,6 +1605,9 @@ module.exports = async function (fastify) {
     if (card.is_closed) return reply.code(409).send({ error: 'card_closed' });
 
     // 2. Разворачиваем entity_kind в (tender_id, work_id) + сохраняем pre_tender_id для flags.
+    //    Для pre_tender — если ещё нет linked tender, создаём draft tender прямо здесь:
+    //    runConductor работает с tender_id (агенты лезут в tenders), pre_tender для него
+    //    непригоден. Без этого conductor возвращал DRAFT и зависал.
     let tenderId = null;
     let workId = null;
     let preTenderId = null;
@@ -1368,16 +1615,92 @@ module.exports = async function (fastify) {
     else if (card.entity_kind === 'work') workId = card.entity_id;
     else if (card.entity_kind === 'pre_tender') {
       preTenderId = card.entity_id;
-      // pre_tender мог уже породить tender → подцепляем для дедупа.
+      let pt = null;
       try {
         const r = await db.query(
-          `SELECT created_tender_id FROM pre_tender_requests WHERE id = $1`, [card.entity_id]);
-        if (r.rows[0] && r.rows[0].created_tender_id) tenderId = r.rows[0].created_tender_id;
+          `SELECT id, created_tender_id, customer_name, customer_inn, work_description,
+                  work_location, work_deadline, estimated_sum, assigned_to, contact_person, contact_phone
+             FROM pre_tender_requests WHERE id = $1`, [card.entity_id]);
+        pt = r.rows[0] || null;
       } catch (_) {}
+
+      if (pt && pt.created_tender_id) {
+        tenderId = pt.created_tender_id;
+      } else if (pt) {
+        // Создаём минимальный draft tender — Mimir-Кондуктору нужен tender_id.
+        // Все обязательные поля заполняем из pre_tender_request с разумными дефолтами.
+        try {
+          // tenders.period — varchar(20). Берём только месяц-год запроса или ставим пусто.
+          // (раньше пихал work_description ~250 chars → 22001 value too long)
+          const periodShort = (new Date()).toLocaleDateString('ru-RU', { month: 'short', year: 'numeric' }).slice(0, 20);
+          const customerInn20 = pt.customer_inn ? String(pt.customer_inn).slice(0, 20) : null;
+          const ins = await db.query(
+            `INSERT INTO tenders
+              (customer_name, customer_inn, tender_type, tender_status,
+               tender_price, docs_deadline, responsible_pm_id,
+               comment_to, period, created_by, created_at)
+             VALUES ($1, $2, $3, 'Новый', $4, $5, $6, $7, $8, $9, NOW())
+             RETURNING id`,
+            [
+              pt.customer_name || 'Не указан',
+              customerInn20,
+              'Прямой запрос',
+              pt.estimated_sum || null,
+              pt.work_deadline || null,
+              pt.assigned_to || userId,
+              `Авто-tender из pre_tender #${pt.id} (Mimir-Conductor)`,
+              periodShort,
+              userId
+            ]);
+          tenderId = Number(ins.rows[0].id);
+          // Связываем обратно.
+          try {
+            await db.query(
+              `UPDATE pre_tender_requests SET created_tender_id = $1, updated_at = NOW() WHERE id = $2`,
+              [tenderId, preTenderId]);
+          } catch (e) {
+            request.log.warn({ err: e }, '[personal-kanban] start-conductor: link pre_tender→tender failed');
+          }
+          // КОПИРУЕМ email_attachments как documents для tender — иначе Mimir-Conductor
+          // (work_scope_researcher) не видит ТЗ из письма и задаёт ложный вопрос
+          // «не удалось извлечь перечень работ — пришлите ТЗ» при том что ТЗ уже есть.
+          try {
+            const eaRes = await db.query(
+              `SELECT ea.id, ea.original_filename, ea.filename, ea.mime_type, ea.size, ea.file_path
+                 FROM email_attachments ea
+                 JOIN pre_tender_requests pt ON pt.email_id = ea.email_id
+                WHERE pt.id = $1`, [preTenderId]);
+            for (const att of eaRes.rows) {
+              await db.query(
+                `INSERT INTO documents
+                   (filename, original_name, mime_type, size, type, tender_id, uploaded_by_user_id, file_url, created_at)
+                 VALUES ($1, $2, $3, $4, 'attachment', $5, $6, $7, NOW())
+                 ON CONFLICT DO NOTHING`,
+                [att.filename || att.original_filename,
+                 att.original_filename || att.filename,
+                 att.mime_type, att.size, tenderId, userId,
+                 ('/' + String(att.file_path || '').replace(/^\/+/, ''))]);
+            }
+            request.log.info(
+              `[personal-kanban] start-conductor: copied ${eaRes.rows.length} email_attachments → documents for tender #${tenderId}`);
+          } catch (e) {
+            request.log.warn({ err: e },
+              '[personal-kanban] start-conductor: copy email_attachments → documents failed');
+          }
+        } catch (e) {
+          request.log.error({ err: e }, '[personal-kanban] start-conductor: tender draft create failed');
+          return reply.code(500).send({
+            error: 'tender_draft_failed',
+            message: 'Не удалось создать tender draft для Conductor: ' + e.message
+          });
+        }
+      }
     }
 
     // 3. Проверяем активный run по (tender_id | work_id).
-    if (tenderId || workId) {
+    //    body.fresh=true — кнопка «Пересчёт с нуля»: отменяем активный run и создаём новый.
+    const cFresh = !!(request.body && request.body.fresh);
+    if (!cFresh && (tenderId || workId)) {
       const dedupeCol = tenderId ? 'tender_id' : 'work_id';
       const dedupeVal = tenderId || workId;
       try {
@@ -1399,8 +1722,25 @@ module.exports = async function (fastify) {
         request.log.warn({ err: e }, '[personal-kanban] start-conductor: dedupe lookup failed');
       }
     }
+    if (cFresh && (tenderId || workId)) {
+      const dedupeCol = tenderId ? 'tender_id' : 'work_id';
+      const dedupeVal = tenderId || workId;
+      try {
+        await db.query(
+          `UPDATE mimir_conductor_runs
+              SET status='CANCELLED', updated_at=NOW()
+            WHERE ${dedupeCol} = $1
+              AND status NOT IN ('READY_FOR_REVIEW','ERROR','APPROVED','REJECTED','CANCELLED')`,
+          [dedupeVal]);
+      } catch (e) {
+        request.log.warn({ err: e }, '[personal-kanban] start-conductor: cancel previous failed');
+      }
+    }
 
-    // 4. INSERT нового run'a.
+    // 4. INSERT нового run'a + ЗАПУСК runConductor (fire-and-forget).
+    //    Без runConductor запись зависала в DRAFT — фронт получал run_id, но AI-цикл
+    //    не стартовал, журнал SSE оставался пустым. Теперь повторяем паттерн из
+    //    /api/mimir/conductor/start: setImmediate + try/catch с записью ERROR.
     const complexityFlags = {
       card_id: cardId,
       entity_kind: card.entity_kind,
@@ -1414,11 +1754,42 @@ module.exports = async function (fastify) {
          VALUES ($1, $2, $3, 'DRAFT', 'STANDARD', $4::jsonb)
          RETURNING id, status`,
         [workId, tenderId, userId, JSON.stringify(complexityFlags)]);
+      const runId = Number(ins.rows[0].id);
+
+      // Запускаем AI-цикл — асинхронно, не блокируем ответ.
+      // Берём require лениво, чтобы не валить инициализацию роута если сервис недоступен.
+      setImmediate(() => {
+        let runConductor;
+        try { ({ runConductor } = require('../services/mimir-conductor/conductor')); }
+        catch (e) {
+          request.log.error({ err: e }, '[personal-kanban] start-conductor: load conductor service failed');
+          return;
+        }
+        const mode = String(request.body?.mode || '').toLowerCase() === 'deterministic'
+          ? 'deterministic' : 'conductor';
+        runConductor(runId, { mode }).catch(async (err) => {
+          const cr = require('../services/mimir-conductor/conductor-run');
+          try {
+            await cr.updateRunStatus(runId, 'ERROR', {
+              errorMessage: String(err && err.message ? err.message : err)
+            });
+            await cr.addEvent(runId, null, 'error', {
+              message: String(err && err.message ? err.message : err),
+              stage: 'runConductor'
+            });
+          } catch (inner) {
+            request.log.error(`[personal-kanban] не удалось записать ERROR для run ${runId}: ${inner.message}`);
+          }
+        });
+      });
+
       return {
         success: true,
-        run_id: Number(ins.rows[0].id),
+        run_id: runId,
         status: 'created',
-        run_status: ins.rows[0].status
+        run_status: ins.rows[0].status,
+        tender_id: tenderId,
+        ...(preTenderId ? { pre_tender_id: preTenderId } : {})
       };
     } catch (e) {
       request.log.error({ err: e }, '[personal-kanban] start-conductor failed');
@@ -1495,8 +1866,11 @@ module.exports = async function (fastify) {
                 c.current_main_status, c.current_substage_id,
                 c.v3_column, c.is_closed, c.version,
                 c.last_moved_at, c.created_at, c.updated_at,
-                c.substage_title, c.substage_color, c.substage_sort_order
+                c.substage_title, c.substage_color, c.substage_sort_order,
+                u.name as owner_name,
+                ('#' || c.id::text) as code
            FROM v_unified_kanban_cards c
+           LEFT JOIN users u ON u.id = c.owner_user_id
           WHERE ${where.join(' AND ')}
           ORDER BY c.v3_column, c.substage_sort_order NULLS FIRST, c.last_moved_at DESC`,
         params);
@@ -1524,12 +1898,19 @@ module.exports = async function (fastify) {
       snapshotsByKind[kind] = await loadEntitySnapshotsBatch(kind, ids);
     }
 
+    // Группировка по 8 колонкам.
+    // Снимок сущности (snap) сплющиваем в верхний уровень карты, чтобы UI vanilla v3
+    // и React BoardV3 могли читать card.customer_name / card.email_attachments / etc.
+    // напрямую (без card.entity.*). До этого фикса drawer открывался с пустыми инпутами
+    // и пустой секцией «Документы», хотя SQL-аггрегат уже отдавал данные правильно —
+    // они просто оседали в card.entity и UI до них не доходил.
+    // row побеждает по конфликтным ключам (id/entity_id/v3_column).
     // Группировка по 9 колонкам (V250 добавил 'addendum').
     const columns = { new: [], calc: [], approval: [], kp_prep: [], sent: [], addendum: [], win: [], lose: [], work: [] };
     for (const row of rows) {
       const map = snapshotsByKind[row.entity_kind];
       const snap = (map && row.entity_id != null) ? (map.get(row.entity_id) || null) : null;
-      const card = { ...row, entity: snap };
+      const card = { ...(snap || {}), ...row, entity: snap };
       const col = V3_COLUMNS.includes(row.v3_column) ? row.v3_column : 'new';
       columns[col].push(card);
     }
@@ -1638,7 +2019,7 @@ module.exports = async function (fastify) {
     const id = asInt(request.params.id);
     if (id === null) return reply.code(400).send({ error: 'invalid_id' });
     const body = request.body || {};
-    const toCol = body.to_v3_column ? String(body.to_v3_column) : null;
+    let toCol = body.to_v3_column ? String(body.to_v3_column) : null;
     const note = body.note ? String(body.note).slice(0, 2000) : null;
     const confirm = body.confirm === true;
     if (!toCol || !V3_COLUMNS.includes(toCol)) {
@@ -1689,13 +2070,58 @@ module.exports = async function (fastify) {
       // mapped === null → keep current main_status (work→work no-op для main_status,
       // BUG-W1-01: НЕ ставим 'Новая' для work-flow, чтобы не затирать 'В работе' и т.п.
       // карта всё равно обновится (last_moved_at, version), history запишется.
-      const newMainStatus = mapped === null ? card.current_main_status : mapped;
+      let newMainStatus = mapped === null ? card.current_main_status : mapped;
+
+      // 22.06.2026: ПОРОГ СОГЛАСОВАНИЯ 50 МЛН + проверка наличия ТКП.
+      // При попытке РП перевести pre_tender в approval — backend сам решает:
+      //   - нет ни одного ТКП → 400 "Сначала создайте ТКП"
+      //   - есть ТКП и max(total_sum) < 50M → автопереход в kp_prep (директор не нужен)
+      //   - есть ТКП и max(total_sum) >= 50M → продолжаем в approval + уведомления
+      let priceUsed = null;
+      let autoPromotedFromApproval = false;
+      const APPROVAL_THRESHOLD_RUB = 50_000_000;
+      if (toCol === 'approval' && card.entity_kind === 'pre_tender' && card.entity_id) {
+        const tkpRes = await client.query(
+          `SELECT COALESCE(MAX(total_sum), 0)::numeric AS max_sum, COUNT(*)::int AS cnt
+             FROM tkp WHERE pre_tender_id = $1`, [card.entity_id]);
+        const tkpCnt = tkpRes.rows[0].cnt;
+        const tkpMax = Number(tkpRes.rows[0].max_sum) || 0;
+        if (tkpCnt === 0) {
+          await client.query('ROLLBACK');
+          return reply.code(400).send({
+            error: 'tkp_required',
+            message: 'Сначала создайте ТКП — без него заявку нельзя отправить на согласование'
+          });
+        }
+        // Также пробуем estimated_sum из заявки (резерв)
+        const ptRes = await client.query(
+          `SELECT COALESCE(estimated_sum, 0)::numeric AS est_sum
+             FROM pre_tender_requests WHERE id = $1`, [card.entity_id]);
+        const ptEst = Number(ptRes.rows[0]?.est_sum) || 0;
+        priceUsed = Math.max(tkpMax, ptEst);
+        if (priceUsed < APPROVAL_THRESHOLD_RUB) {
+          // Сумма меньше 50M — согласование директора не требуется, сразу в КП готов.
+          toCol = 'kp_prep';
+          newMainStatus = v3ColumnToMainStatus('kp_prep', card.flow_type, card.current_main_status);
+          autoPromotedFromApproval = true;
+        }
+      }
 
       // Текущая колонка (для cross-column гарда). Используем функцию pk_v3_column из V238.
-      const curColRes = await client.query(
-        `SELECT pk_v3_column($1, $2) AS col`,
-        [card.flow_type, card.current_main_status]);
-      const currentCol = curColRes.rows[0]?.col || null;
+      // FIX B3: SAVEPOINT — если pk_v3_column не существует, не валим транзакцию.
+      let currentCol = null;
+      try {
+        await client.query(`SAVEPOINT sp_v3col`);
+        const curColRes = await client.query(
+          `SELECT pk_v3_column($1, $2) AS col`,
+          [card.flow_type, card.current_main_status]);
+        currentCol = curColRes.rows[0]?.col || null;
+        await client.query(`RELEASE SAVEPOINT sp_v3col`);
+      } catch (e) {
+        await client.query(`ROLLBACK TO SAVEPOINT sp_v3col`).catch(() => {});
+        console.warn('[transition] pk_v3_column unavailable, force confirm:', e.message);
+        // Без функции v3 — всегда требуем confirm, чтобы не было ложных переходов.
+      }
       if (currentCol !== toCol && !confirm) {
         await client.query('ROLLBACK');
         return reply.code(409).send({
@@ -1768,6 +2194,278 @@ module.exports = async function (fastify) {
         }
       }
 
+      // NEW: Авто-создание работы при переходе tender → win.
+      // Пользовательское требование: "клиент согласился, выиграли → автоматическое
+      // создание работы на данного РП". Получает карта канбана РП на работу.
+      if (toCol === 'win' && card.entity_kind === 'tender' && card.entity_id) {
+        try {
+          await client.query(`SAVEPOINT sp_autowork`);
+          // 1. Не дублировать: если работа уже привязана к тендеру — пропускаем.
+          const existsW = await client.query(
+            `SELECT id FROM works WHERE tender_id = $1 AND deleted_at IS NULL LIMIT 1`,
+            [card.entity_id]);
+          if (existsW.rows.length === 0) {
+            // 2. Подтянуть данные тендера для prefill works.
+            const tRes = await client.query(
+              `SELECT id, tender_title, customer_name, customer_inn,
+                      customer_email, contact_person, contact_phone,
+                      responsible_pm_id, work_assigned_pm_id,
+                      tender_price, kp_price_without_vat, kp_price_with_vat,
+                      cost_planned, work_start_plan, work_end_plan, period,
+                      source_pre_tender_id
+                 FROM tenders WHERE id = $1`,
+              [card.entity_id]);
+            const t = tRes.rows[0];
+            if (t) {
+              const pmId = t.work_assigned_pm_id || t.responsible_pm_id || card.owner_user_id;
+              // 3. INSERT работы — только реально существующие колонки `works` (V001 + V117 + V235).
+              // FIX (post-audit): в works НЕТ колонок kp_price_without_vat/kp_price_with_vat/cost_planned/
+              // end_date_plan — они в pre_tender_requests/tenders (V236), а works ещё не расширяли.
+              // Кладём финансы в contract_value (норма для works).
+              const wIns = await client.query(`
+                INSERT INTO works (
+                  tender_id, pm_id,
+                  work_title, work_status, work_number,
+                  customer_name, customer_inn, customer_email, contact_person, contact_phone,
+                  contract_value,
+                  start_plan, end_plan,
+                  source_pre_tender_id,
+                  created_by, created_at
+                ) VALUES (
+                  $1, $2,
+                  $3, 'Новая', $4,
+                  $5, $6, $7, $8, $9,
+                  $10,
+                  $11, $12,
+                  $13,
+                  $14, now()
+                ) RETURNING id, work_title
+              `, [
+                t.id, pmId,
+                t.tender_title || 'Работа из тендера #' + t.id, 'W-' + Date.now(),
+                t.customer_name, t.customer_inn, t.customer_email, t.contact_person, t.contact_phone,
+                t.kp_price_with_vat || t.kp_price_without_vat || t.tender_price || null,
+                t.work_start_plan, t.work_end_plan,
+                t.source_pre_tender_id || null,
+                userId,
+              ]);
+              const newWorkId = wIns.rows[0].id;
+              sideEffects.auto_created_work_id = newWorkId;
+              sideEffects.auto_created_work_title = wIns.rows[0].work_title;
+
+              // 4. UPDATE tenders.work_assigned_pm_id (для согласованности с tenders.js:1839 паттерном).
+              try {
+                await client.query(`SAVEPOINT sp_twapm`);
+                await client.query(
+                  `UPDATE tenders SET work_assigned_pm_id = $1, work_assigned_at = now(), work_assigned_by_user_id = $2 WHERE id = $3`,
+                  [pmId, userId, t.id]);
+                await client.query(`RELEASE SAVEPOINT sp_twapm`);
+              } catch (_) {
+                await client.query(`ROLLBACK TO SAVEPOINT sp_twapm`).catch(() => {});
+              }
+
+              request.log.info({ tender_id: t.id, work_id: newWorkId, pm_id: pmId },
+                '[personal-kanban v3] auto-created work on tender win');
+
+              // 30.06.2026 FIX: создаём work-карточку в личном канбане PM, иначе работа
+              // существует в БД, но в колонке «В работе» её нет. Паритет с tenders.js
+              // assign-work-pm (CONVERT/CREATE). Берём текущую tender-карту PM и конвертим,
+              // иначе создаём новую work-карту.
+              try {
+                await client.query(`SAVEPOINT sp_workcard`);
+                const firstSub = await loadFirstActiveSubstage(client, pmId, 'work', 'Подготовка');
+                if (pmId === card.owner_user_id) {
+                  // Конвертируем эту же tender-карту в work-карту.
+                  await client.query(
+                    `UPDATE personal_kanban_cards
+                        SET entity_kind='work', entity_id=$1, flow_type='work',
+                            current_main_status='Подготовка', current_substage_id=$2,
+                            last_moved_at=now(), version=version+1, updated_at=now()
+                      WHERE id=$3`,
+                    [newWorkId, firstSub, id]);
+                  await client.query(
+                    `INSERT INTO personal_kanban_card_history
+                      (card_id, from_substage_id, to_substage_id, from_main_status, to_main_status, moved_by, note, action)
+                     VALUES ($1, $2, $3, $4, 'Подготовка', $5, $6, 'convert')`,
+                    [id, card.current_substage_id, firstSub, newMainStatus, userId,
+                     `auto: tender ${t.id} win → work ${newWorkId}`]);
+                  sideEffects.work_card_id = id;
+                  sideEffects.work_card_action = 'convert';
+                } else {
+                  // Работа назначена другому PM — создаём ему отдельную work-карту.
+                  const wc = await client.query(
+                    `INSERT INTO personal_kanban_cards
+                      (owner_user_id, flow_type, entity_kind, entity_id,
+                       current_main_status, current_substage_id, last_moved_at, version)
+                     VALUES ($1, 'work', 'work', $2, 'Подготовка', $3, now(), 1)
+                     ON CONFLICT (owner_user_id, entity_kind, entity_id) DO NOTHING
+                     RETURNING id`,
+                    [pmId, newWorkId, firstSub]);
+                  if (wc.rows[0]) {
+                    await client.query(
+                      `INSERT INTO personal_kanban_card_history
+                        (card_id, from_substage_id, to_substage_id, from_main_status, to_main_status, moved_by, note, action)
+                       VALUES ($1, NULL, $2, NULL, 'Подготовка', $3, $4, 'create')`,
+                      [wc.rows[0].id, firstSub, userId, `auto: tender ${t.id} win → work ${newWorkId}`]);
+                    sideEffects.work_card_id = wc.rows[0].id;
+                    sideEffects.work_card_action = 'create';
+                  }
+                }
+                await client.query(`RELEASE SAVEPOINT sp_workcard`);
+              } catch (wcErr) {
+                await client.query(`ROLLBACK TO SAVEPOINT sp_workcard`).catch(() => {});
+                request.log.warn({ err: wcErr, work_id: newWorkId },
+                  '[personal-kanban v3] work-card create failed (tender win)');
+                sideEffects.work_card_error = wcErr.message;
+              }
+            }
+          } else {
+            sideEffects.auto_work_skipped = 'already_exists';
+          }
+          await client.query(`RELEASE SAVEPOINT sp_autowork`);
+        } catch (e) {
+          await client.query(`ROLLBACK TO SAVEPOINT sp_autowork`).catch(() => {});
+          request.log.warn({ err: e, card_id: id, tender_id: card.entity_id },
+            '[personal-kanban v3] auto-create work failed');
+          sideEffects.auto_work_error = e.message;
+        }
+      }
+
+      // NEW (30.06.2026): Авто-создание работы при переходе pre_tender → win.
+      // Пользовательское требование: заявка остаётся заявкой (НЕ конвертируется в тендер),
+      // проходит весь путь сама, а "клиент согласился → Выиграли" создаёт работу напрямую
+      // из заявки. Связь — works.source_pre_tender_id (tender_id остаётся NULL).
+      if (toCol === 'win' && card.entity_kind === 'pre_tender' && card.entity_id) {
+        try {
+          await client.query(`SAVEPOINT sp_autowork_pt`);
+          // 1. Не дублировать: работа уже привязана к этой заявке?
+          const existsW = await client.query(
+            `SELECT id FROM works WHERE source_pre_tender_id = $1 AND deleted_at IS NULL LIMIT 1`,
+            [card.entity_id]);
+          if (existsW.rows.length === 0) {
+            // 2. Подтянуть данные заявки для prefill works.
+            const ptRes = await client.query(
+              `SELECT id, customer_name, customer_inn, customer_email,
+                      contact_person, contact_phone, work_description,
+                      work_location, work_deadline, estimated_sum, assigned_to
+                 FROM pre_tender_requests WHERE id = $1`,
+              [card.entity_id]);
+            const pt = ptRes.rows[0];
+            if (pt) {
+              const pmId = pt.assigned_to || card.owner_user_id;
+              const wIns = await client.query(`
+                INSERT INTO works (
+                  tender_id, pm_id,
+                  work_title, work_status, work_number,
+                  customer_name, customer_inn, customer_email, contact_person, contact_phone,
+                  contract_value,
+                  end_plan,
+                  source_pre_tender_id,
+                  created_by, created_at
+                ) VALUES (
+                  NULL, $1,
+                  $2, 'Новая', $3,
+                  $4, $5, $6, $7, $8,
+                  $9,
+                  $10,
+                  $11,
+                  $12, now()
+                ) RETURNING id, work_title
+              `, [
+                pmId,
+                pt.work_description || ('Работа из заявки #' + pt.id), 'W-' + Date.now(),
+                pt.customer_name, pt.customer_inn, pt.customer_email, pt.contact_person, pt.contact_phone,
+                pt.estimated_sum || null,
+                pt.work_deadline || null,
+                pt.id,
+                userId,
+              ]);
+              const newWorkId = wIns.rows[0].id;
+              sideEffects.auto_created_work_id = newWorkId;
+              sideEffects.auto_created_work_title = wIns.rows[0].work_title;
+              request.log.info({ pre_tender_id: pt.id, work_id: newWorkId, pm_id: pmId },
+                '[personal-kanban v3] auto-created work on pre_tender win');
+
+              // 30.06.2026 FIX: создаём work-карточку в личном канбане PM, иначе работа
+              // не появится в колонке «В работе». Конвертируем эту же pre_tender-карту,
+              // если работа назначена тому же владельцу, иначе создаём новую.
+              try {
+                await client.query(`SAVEPOINT sp_workcard_pt`);
+                const firstSub = await loadFirstActiveSubstage(client, pmId, 'work', 'Подготовка');
+                if (pmId === card.owner_user_id) {
+                  await client.query(
+                    `UPDATE personal_kanban_cards
+                        SET entity_kind='work', entity_id=$1, flow_type='work',
+                            current_main_status='Подготовка', current_substage_id=$2,
+                            last_moved_at=now(), version=version+1, updated_at=now()
+                      WHERE id=$3`,
+                    [newWorkId, firstSub, id]);
+                  await client.query(
+                    `INSERT INTO personal_kanban_card_history
+                      (card_id, from_substage_id, to_substage_id, from_main_status, to_main_status, moved_by, note, action)
+                     VALUES ($1, $2, $3, $4, 'Подготовка', $5, $6, 'convert')`,
+                    [id, card.current_substage_id, firstSub, newMainStatus, userId,
+                     `auto: заявка ${pt.id} win → work ${newWorkId}`]);
+                  sideEffects.work_card_id = id;
+                  sideEffects.work_card_action = 'convert';
+                } else {
+                  const wc = await client.query(
+                    `INSERT INTO personal_kanban_cards
+                      (owner_user_id, flow_type, entity_kind, entity_id,
+                       current_main_status, current_substage_id, last_moved_at, version)
+                     VALUES ($1, 'work', 'work', $2, 'Подготовка', $3, now(), 1)
+                     ON CONFLICT (owner_user_id, entity_kind, entity_id) DO NOTHING
+                     RETURNING id`,
+                    [pmId, newWorkId, firstSub]);
+                  if (wc.rows[0]) {
+                    await client.query(
+                      `INSERT INTO personal_kanban_card_history
+                        (card_id, from_substage_id, to_substage_id, from_main_status, to_main_status, moved_by, note, action)
+                       VALUES ($1, NULL, $2, NULL, 'Подготовка', $3, $4, 'create')`,
+                      [wc.rows[0].id, firstSub, userId, `auto: заявка ${pt.id} win → work ${newWorkId}`]);
+                    sideEffects.work_card_id = wc.rows[0].id;
+                    sideEffects.work_card_action = 'create';
+                  }
+                }
+                await client.query(`RELEASE SAVEPOINT sp_workcard_pt`);
+              } catch (wcErr) {
+                await client.query(`ROLLBACK TO SAVEPOINT sp_workcard_pt`).catch(() => {});
+                request.log.warn({ err: wcErr, work_id: newWorkId },
+                  '[personal-kanban v3] work-card create failed (pre_tender win)');
+                sideEffects.work_card_error = wcErr.message;
+              }
+            }
+          } else {
+            sideEffects.auto_work_skipped = 'already_exists';
+          }
+          await client.query(`RELEASE SAVEPOINT sp_autowork_pt`);
+        } catch (e) {
+          await client.query(`ROLLBACK TO SAVEPOINT sp_autowork_pt`).catch(() => {});
+          request.log.warn({ err: e, card_id: id, pre_tender_id: card.entity_id },
+            '[personal-kanban v3] auto-create work (pre_tender) failed');
+          sideEffects.auto_work_error = e.message;
+        }
+      }
+
+      // 22.06.2026: при переходе в approval — записать approval_requested_by/at
+      // и уведомить всех директоров + HEAD_PM, чтобы они увидели карту в очереди.
+      if (toCol === 'approval' && card.entity_kind === 'pre_tender' && card.entity_id) {
+        try {
+          await client.query(`SAVEPOINT sp_approval_meta`);
+          await client.query(
+            `UPDATE pre_tender_requests
+                SET approval_requested_by = $1,
+                    approval_requested_at = NOW(),
+                    approval_comment = COALESCE($2, approval_comment)
+              WHERE id = $3`,
+            [userId, note, card.entity_id]);
+          await client.query(`RELEASE SAVEPOINT sp_approval_meta`);
+        } catch (e) {
+          await client.query(`ROLLBACK TO SAVEPOINT sp_approval_meta`).catch(() => {});
+          request.log.warn({ err: e }, '[transition] approval_meta update failed');
+        }
+      }
+
       await client.query('COMMIT');
 
       try {
@@ -1783,7 +2481,49 @@ module.exports = async function (fastify) {
         });
       } catch (_) {}
 
-      return { success: true, item: upd.rows[0], to_v3_column: toCol, side_effects: sideEffects };
+      // Уведомления директорам/HEAD_PM при подаче на согласование
+      if (toCol === 'approval' && card.entity_kind === 'pre_tender' && card.entity_id) {
+        try {
+          const dirRes = await db.query(
+            `SELECT id FROM users
+              WHERE role = ANY($1::text[]) AND is_active = true AND COALESCE(is_blocked,false) = false`,
+            [['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_PM']]);
+          const ptInfo = await db.query(
+            `SELECT customer_name, work_description FROM pre_tender_requests WHERE id=$1`,
+            [card.entity_id]);
+          const meta = ptInfo.rows[0] || {};
+          const priceStr = priceUsed != null
+            ? Math.round(priceUsed).toLocaleString('ru-RU') + ' ₽'
+            : null;
+          const titleStr = `⚖️ Заявка №${card.entity_id} на согласовании`;
+          const msgStr = (meta.customer_name || meta.work_description?.slice(0, 100) || '—')
+            + (priceStr ? ` · ${priceStr}` : '');
+          for (const r of dirRes.rows) {
+            Promise.resolve(createNotification(db, {
+              user_id: r.id,
+              title: titleStr,
+              message: msgStr,
+              type: 'pre_tender_approval_required',
+              link: `#/personal-kanban?card=${id}&col=approval`,
+            })).catch(() => {});
+          }
+          broadcast('pre_tender:approval_requested', {
+            card_id: id, pre_tender_id: card.entity_id,
+            requested_by: userId, price: priceUsed
+          });
+        } catch (e) {
+          request.log.warn({ err: e }, '[transition] approval notify failed');
+        }
+      }
+
+      return {
+        success: true,
+        item: upd.rows[0],
+        to_v3_column: toCol,
+        side_effects: sideEffects,
+        price_used: priceUsed,
+        auto_promoted_from_approval: autoPromotedFromApproval || undefined,
+      };
     } catch (e) {
       try { await client.query('ROLLBACK'); } catch (_) {}
       request.log.error({ err: e }, '[personal-kanban v3] transition failed');
@@ -1905,9 +2645,15 @@ module.exports = async function (fastify) {
       const preTenderId = ptIns.rows[0].id;
 
       // 6. Обратная ссылка emails.pre_tender_id (best-effort, поле может отсутствовать).
+      // FIX B2: SAVEPOINT — без него Postgres переводит транзакцию в aborted state.
       if (app.email_id) {
-        try { await client.query(`UPDATE emails SET pre_tender_id = $1 WHERE id = $2`, [preTenderId, app.email_id]); }
-        catch (_) {}
+        try {
+          await client.query(`SAVEPOINT sp_emails_link`);
+          await client.query(`UPDATE emails SET pre_tender_id = $1 WHERE id = $2`, [preTenderId, app.email_id]);
+          await client.query(`RELEASE SAVEPOINT sp_emails_link`);
+        } catch (_) {
+          await client.query(`ROLLBACK TO SAVEPOINT sp_emails_link`).catch(() => {});
+        }
       }
 
       // 7. UPDATE inbox_application: status='accepted', decision_notes, попытка linked_pre_tender_id.
@@ -1921,12 +2667,16 @@ module.exports = async function (fastify) {
         [userId,
          `Конвертирована в pre_tender_request #${preTenderId} (kanban)` + (note ? '. ' + note : ''),
          app.id]);
+      // FIX B2: SAVEPOINT — без него ROLLBACK всей транзакции.
       try {
-        // best-effort: если колонка существует — заполнить.
+        await client.query(`SAVEPOINT sp_inbox_link`);
         await client.query(
           `UPDATE inbox_applications SET linked_pre_tender_id = $1 WHERE id = $2`,
           [preTenderId, app.id]);
-      } catch (_) { /* колонки нет — игнор */ }
+        await client.query(`RELEASE SAVEPOINT sp_inbox_link`);
+      } catch (_) {
+        await client.query(`ROLLBACK TO SAVEPOINT sp_inbox_link`).catch(() => {});
+      }
 
       // 8. Конвертим саму карту: kind→pre_tender, entity_id→preTenderId, main_status='new',
       //    substage = первый активный/auto-default для (pre_tender,'new').

@@ -229,39 +229,48 @@ const { logError } = require('../lib/log-error');
   // POST /api/expenses/attach/:expense_id — загрузить и привязать файл
   fastify.post('/attach/:expense_id', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request, reply) => {
     const expenseId = parseInt(request.params.expense_id);
-    const { rows: [expense] } = await db.query('SELECT id, work_id FROM work_expenses WHERE id = $1', [expenseId]);
-    if (!expense) return reply.code(404).send({ error: 'Расход не найден' });
+    try {
+      const { rows: [expense] } = await db.query('SELECT id, work_id FROM work_expenses WHERE id = $1', [expenseId]);
+      if (!expense) return reply.code(404).send({ error: 'Расход не найден' });
 
-    const parts = request.parts();
-    let file = null;
-    for await (const part of parts) {
-      if (part.file) {
-        file = { filename: part.filename, mimetype: part.mimetype, buffer: await part.toBuffer() };
+      const parts = request.parts();
+      let file = null;
+      for await (const part of parts) {
+        if (part.file) {
+          file = { filename: part.filename, mimetype: part.mimetype, buffer: await part.toBuffer() };
+        }
       }
+      if (!file) return reply.code(400).send({ error: 'Файл не загружен' });
+
+      const path = require('path');
+      const fs = require('fs').promises;
+      const { v4: uuidv4 } = require('uuid');
+
+      const ext = path.extname(file.filename).toLowerCase();
+      const storedName = uuidv4() + ext;
+      const uploadDir = process.env.UPLOAD_DIR || './uploads';
+      // Каталог может отсутствовать (напр. после rsync/чистого чекаута) —
+      // тогда fs.writeFile кидал ENOENT → тихий 500 без лога. Гарантируем наличие.
+      await fs.mkdir(uploadDir, { recursive: true });
+      await fs.writeFile(path.join(uploadDir, storedName), file.buffer);
+
+      // Сохраняем в documents
+      const { rows: [doc] } = await db.query(`
+        INSERT INTO documents (filename, original_name, mime_type, size, type, work_id, uploaded_by, download_url, created_at)
+        VALUES ($1, $2, $3, $4, 'Счёт', $5, $6, $7, NOW()) RETURNING *
+      `, [storedName, file.filename, file.mimetype, file.buffer.length,
+          expense.work_id, request.user.id, `/api/files/preview/${storedName}`]);
+
+      // Привязываем к расходу
+      await db.query('UPDATE work_expenses SET receipt_url = $1 WHERE id = $2',
+        [`/api/files/preview/${storedName}`, expenseId]);
+
+      return { ok: true, document: doc, preview_url: `/api/files/preview/${storedName}` };
+    } catch (err) {
+      const { logError } = require('../lib/log-error');
+      logError(request, `[expenses.POST /attach/${expenseId}]`, err, request);
+      return reply.code(500).send({ error: err?.message || 'Не удалось прикрепить файл' });
     }
-    if (!file) return reply.code(400).send({ error: 'Файл не загружен' });
-
-    const path = require('path');
-    const fs = require('fs').promises;
-    const { v4: uuidv4 } = require('uuid');
-
-    const ext = path.extname(file.filename).toLowerCase();
-    const storedName = uuidv4() + ext;
-    const uploadDir = process.env.UPLOAD_DIR || './uploads';
-    await fs.writeFile(path.join(uploadDir, storedName), file.buffer);
-
-    // Сохраняем в documents
-    const { rows: [doc] } = await db.query(`
-      INSERT INTO documents (filename, original_name, mime_type, size, type, work_id, uploaded_by, download_url, created_at)
-      VALUES ($1, $2, $3, $4, 'Счёт', $5, $6, $7, NOW()) RETURNING *
-    `, [storedName, file.filename, file.mimetype, file.buffer.length,
-        expense.work_id, request.user.id, `/api/files/preview/${storedName}`]);
-
-    // Привязываем к расходу
-    await db.query('UPDATE work_expenses SET receipt_url = $1 WHERE id = $2',
-      [`/api/files/preview/${storedName}`, expenseId]);
-
-    return { ok: true, document: doc, preview_url: `/api/files/preview/${storedName}` };
   });
 }
 

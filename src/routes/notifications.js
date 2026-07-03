@@ -52,6 +52,34 @@ async function routes(fastify, options) {
     return { unread_count: parseInt(rows[0].count, 10) };
   });
 
+  // POST /api/notifications/push — отправить уведомление пользователю
+  // (использование: «Напомнить РП закрыть табель» и аналогичные ручные push'и).
+  // RBAC: ADMIN, DIRECTOR_GEN, DIRECTOR_COMM, BUH, HR_MANAGER.
+  // Использует общий helper services/notify.createNotification (БД + SSE + Telegram + web-push).
+  fastify.post('/push', {
+    preHandler: [fastify.requireRoles(['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'BUH', 'HR_MANAGER'])]
+  }, async (request, reply) => {
+    const body = request.body || {};
+    const { user_id, title, message, link, type } = body;
+    if (!user_id || !title || !message) {
+      return reply.code(400).send({ error: 'Обязательные поля: user_id, title, message' });
+    }
+    try {
+      const { createNotification } = require('../services/notify');
+      await createNotification(db, {
+        user_id: Number(user_id),
+        title: String(title),
+        message: String(message),
+        type: type || 'reminder',
+        link: link || null
+      });
+      return { success: true };
+    } catch (e) {
+      fastify.log.error('[notifications/push] error: ' + e.message);
+      return reply.code(500).send({ error: 'Не удалось отправить уведомление' });
+    }
+  });
+
   // Создать уведомление (внутренний API)
   // SECURITY: Проверка прав на создание уведомления (HIGH-10)
   fastify.post('/', { preHandler: [fastify.authenticate] }, async (request, reply) => {

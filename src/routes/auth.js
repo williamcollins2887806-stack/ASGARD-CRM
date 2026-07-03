@@ -369,7 +369,7 @@ async function routes(fastify, options) {
 
     // Find user
     const result = await db.query(
-      'SELECT id, name, telegram_chat_id FROM users WHERE LOWER(email) = LOWER($1)',
+      'SELECT id, name, email, telegram_chat_id FROM users WHERE LOWER(email) = LOWER($1)',
       [email]
     );
 
@@ -386,7 +386,7 @@ async function routes(fastify, options) {
 
     // Store temp password with expiry
     await db.query(`
-      UPDATE users 
+      UPDATE users
       SET temp_password_hash = $1, temp_password_expires = NOW() + INTERVAL '24 hours', updated_at = NOW()
       WHERE id = $2
     `, [tempHash, user.id]);
@@ -397,7 +397,45 @@ async function routes(fastify, options) {
       await telegram.sendTempPassword(user.id, tempPassword);
     }
 
-    // TODO: Send via email
+    // Send via email (graceful: log + НЕ упасть, если SMTP не настроен)
+    try {
+      const { sendCrmEmail } = require('../services/crm-mailer');
+      const resetUrl = process.env.PASSWORD_RESET_URL || 'https://92.242.61.184/reset-password';
+      const safeName = (user.name || '').replace(/[<>]/g, '');
+      const safeTemp = String(tempPassword).replace(/[<>]/g, '');
+      const html =
+        `<p>Здравствуйте, ${safeName}!</p>` +
+        `<p>Вы (или кто-то другой) запросили восстановление пароля в Asgard CRM.</p>` +
+        `<p>Ваш временный пароль: <b style="font-family:monospace;font-size:16px">${safeTemp}</b></p>` +
+        `<p>Перейдите по ссылке и задайте новый пароль: ` +
+        `<a href="${resetUrl}?email=${encodeURIComponent(user.email)}">сбросить пароль</a></p>` +
+        `<p>Временный пароль действителен 24 часа. Если вы не запрашивали восстановление — просто проигнорируйте это письмо.</p>` +
+        `<p style="color:#888;font-size:12px">— Asgard CRM</p>`;
+      const text =
+        `Здравствуйте, ${safeName}!\n\n` +
+        `Вы (или кто-то другой) запросили восстановление пароля в Asgard CRM.\n` +
+        `Ваш временный пароль: ${safeTemp}\n\n` +
+        `Перейдите по ссылке и задайте новый пароль:\n` +
+        `${resetUrl}?email=${encodeURIComponent(user.email)}\n\n` +
+        `Временный пароль действителен 24 часа.\n` +
+        `Если вы не запрашивали восстановление — просто проигнорируйте это письмо.\n\n` +
+        `— Asgard CRM`;
+      // userId=null → транспорт берётся из email_accounts / settings.smtp_config / ENV.SMTP_HOST
+      await sendCrmEmail(db.pool || db, null, {
+        to: user.email,
+        subject: 'Восстановление пароля Asgard CRM',
+        text,
+        html
+      });
+    } catch (mailErr) {
+      // Graceful fallback: SMTP не настроен или транспорт упал — НЕ возвращаем ошибку юзеру,
+      // чтобы (а) не палить существование email и (б) не блокировать восстановление через Telegram.
+      try {
+        (request.log && request.log.warn)
+          ? request.log.warn({ err: mailErr.message, userId: user.id }, '[auth.reset-password-request] email отправить не удалось (SMTP не настроен?)')
+          : console.warn('[auth.reset-password-request] email отправить не удалось:', mailErr.message);
+      } catch (_) { /* swallow */ }
+    }
 
     return { message: 'Если email существует, вы получите инструкции по сбросу пароля' };
   });

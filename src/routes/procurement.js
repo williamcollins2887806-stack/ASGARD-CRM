@@ -20,8 +20,16 @@ async function routes(fastify) {
       VALUES ($1,$2,$3,$4,$5,$6,$7)`, [procId, actorId, action, oldSt, newSt, comment||null, changes?JSON.stringify(changes):null]);
   }
 
+  // 23.06.2026 NOTE (🟡 P-23, design choice): total_sum хранится материализованным в
+  // procurement_requests и пересчитывается ТОЛЬКО через эту функцию по UI-путям
+  // (POST/PUT/DELETE items, split/unsplit, apply invoice, bulk import). Ручные UPDATE'ы
+  // procurement_items через SQL (миграции, админ-консоль) могут привести к рассинхрону.
+  // Текущее решение принято намеренно: SELECT с join на каждый /procurement-list
+  // дорогостоящий. Если нужен пересчёт «на лету» — добавить cron-задачу или триггер.
   async function recalcTotal(c, procId) {
-    await c.query(`UPDATE procurement_requests SET total_sum=(SELECT COALESCE(SUM(total_price),0) FROM procurement_items WHERE procurement_id=$1), updated_at=NOW() WHERE id=$1`, [procId]);
+    // 23.06.2026 (V258 / #06-item-cancel): отменённые позиции исключаем из total_sum.
+    // У них остаётся unit_price/total_price для аудита, но в шапку заявки они не идут.
+    await c.query(`UPDATE procurement_requests SET total_sum=(SELECT COALESCE(SUM(total_price),0) FROM procurement_items WHERE procurement_id=$1 AND COALESCE(item_status,'pending')<>'cancelled'), updated_at=NOW() WHERE id=$1`, [procId]);
   }
 
   async function checkNotLocked(c, procId) {
@@ -293,18 +301,45 @@ async function routes(fastify) {
       }
     }
     if(!upd.length) return reply.code(400).send({error:'Нет данных'});
+    // 23.06.2026 BUG-FIX (🟡 P-16): для аудит-трейла фиксируем «до» значения цены/qty/поставщика.
+    const before=(await db.query('SELECT name,quantity,unit_price,supplier,supplier_id FROM procurement_items WHERE id=$1 AND procurement_id=$2',[itemId,procId])).rows[0]||null;
     upd.push('updated_at=NOW()');vals.push(itemId,procId);
     const{rows}=await db.query(`UPDATE procurement_items SET ${upd.join(',')} WHERE id=$${i} AND procurement_id=$${i+1} RETURNING *`,vals);
     if(!rows[0]) return reply.code(404).send({error:'Позиция не найдена'});
-    await recalcTotal(db,procId); return {item:rows[0]};
+    await recalcTotal(db,procId);
+    // 23.06.2026 BUG-FIX (🟡 P-16): пишем item_updated с diff'ом ключевых полей (цена/qty/поставщик)
+    // чтобы споры «кто и когда поднял цену» отслеживались. Раньше PUT/DELETE позиций молча.
+    try {
+      const after=rows[0];
+      const diff={};
+      if(before){
+        if(req.body.unit_price!==undefined && String(before.unit_price)!==String(after.unit_price)) diff.unit_price={from:before.unit_price,to:after.unit_price};
+        if(req.body.quantity!==undefined && String(before.quantity)!==String(after.quantity)) diff.quantity={from:before.quantity,to:after.quantity};
+        if(req.body.supplier!==undefined && before.supplier!==after.supplier) diff.supplier={from:before.supplier,to:after.supplier};
+        if(req.body.supplier_id!==undefined && before.supplier_id!==after.supplier_id) diff.supplier_id={from:before.supplier_id,to:after.supplier_id};
+      }
+      if(Object.keys(diff).length){
+        await logHistory(db,procId,req.user.id,'item_updated',null,null,`Правка позиции «${after.name}»`,{item_id:after.id,diff});
+      }
+    } catch(e){ fastify.log.warn('[procurement] item_updated history failed: '+e.message); }
+    return {item:rows[0]};
   });
 
   fastify.delete('/:id/items/:itemId', {preHandler:[fastify.requireRoles([...PM_ROLES,...PROC_ROLES,...DIR_ROLES])]}, async(req,reply)=>{
     const procId=parseInt(req.params.id);
     const ck=await checkNotLocked(db,procId); if(ck.error) return reply.code(ck.code).send({error:ck.error});
+    // 23.06.2026 BUG-FIX (🟡 P-16): фиксируем имя/qty/цену удалённой позиции для аудита.
+    const before=(await db.query('SELECT name,quantity,unit,unit_price FROM procurement_items WHERE id=$1 AND procurement_id=$2',[req.params.itemId,procId])).rows[0]||null;
     const{rows}=await db.query('DELETE FROM procurement_items WHERE id=$1 AND procurement_id=$2 RETURNING id',[req.params.itemId,procId]);
     if(!rows[0]) return reply.code(404).send({error:'Не найдена'});
-    await recalcTotal(db,procId); return {success:true};
+    await recalcTotal(db,procId);
+    if(before){
+      try { await logHistory(db,procId,req.user.id,'item_deleted',null,null,
+        `Удалена позиция «${before.name}» (${before.quantity} ${before.unit||'шт'}${before.unit_price?` × ${before.unit_price}₽`:''})`,
+        {item_id:rows[0].id,snapshot:before}); }
+      catch(e){ fastify.log.warn('[procurement] item_deleted history failed: '+e.message); }
+    }
+    return {success:true};
   });
 
   fastify.post('/:id/items/bulk', {preHandler:[fastify.requireRoles([...PM_ROLES,...PROC_ROLES])]}, async(req,reply)=>{
@@ -546,9 +581,27 @@ async function routes(fastify) {
     const client=await db.pool.connect();
     try{
       await client.query('BEGIN');
-      const children=(await client.query('SELECT id FROM procurement_items WHERE parent_item_id=$1',[itemId])).rows;
+      const children=(await client.query('SELECT id,quantity,unit_price,total_price FROM procurement_items WHERE parent_item_id=$1',[itemId])).rows;
       if(!children.length){await client.query('ROLLBACK');return reply.code(400).send({error:'Позиция не разбита'});}
+      // 23.06.2026 BUG-FIX (🟡 P-13): после сплита родитель имел unit_price=NULL/total_price=NULL
+      // (см. строку 533). После DELETE детей родитель оставался "пустым" — сумма по позиции = 0,
+      // пока пользователь руками не отредактирует цену. Теперь восстанавливаем родителя по детям:
+      // unit_price = средневзвешенная по qty (если хотя бы одна цена > 0), total_price = SUM(детей).
+      const parentRow=(await client.query('SELECT quantity FROM procurement_items WHERE id=$1',[itemId])).rows[0];
+      const parentQty=parseFloat(parentRow?.quantity)||0;
+      let totalSum=0, weightedQty=0;
+      for(const ch of children){
+        const tp=parseFloat(ch.total_price)||0;
+        const up=parseFloat(ch.unit_price)||0;
+        const q=parseFloat(ch.quantity)||0;
+        if(tp>0) totalSum+=tp;
+        if(up>0 && q>0) weightedQty+=q;
+      }
+      const restoredUnit = (weightedQty>0 && totalSum>0) ? (totalSum/Math.max(weightedQty, parentQty||1)) : null;
+      const restoredTotal = totalSum>0 ? totalSum : null;
       await client.query('DELETE FROM procurement_items WHERE parent_item_id=$1',[itemId]);
+      await client.query('UPDATE procurement_items SET unit_price=$1,total_price=$2,updated_at=NOW() WHERE id=$3',
+        [restoredUnit,restoredTotal,itemId]);
       await recalcTotal(client,id);
       await logHistory(client,id,req.user.id,'item_split_undo',null,null,'Сплит позиции отменён',null);
       await client.query('COMMIT');
@@ -594,8 +647,23 @@ async function routes(fastify) {
   fastify.put('/:id/send-to-proc', {preHandler:[fastify.authenticate]}, async(req,reply)=>{
     return transitionStatus(req,reply,{allowedRoles:[...PM_ROLES,...DIR_ROLES],fromStatuses:['draft','dir_rework'],toStatus:'sent_to_proc',
       afterTransition:async(c,proc,user)=>{
-        if(!proc.proc_id){const pu=await c.query("SELECT id FROM users WHERE role='PROC' AND is_active=true ORDER BY id LIMIT 1");
-          if(pu.rows[0]) await c.query('UPDATE procurement_requests SET proc_id=$1 WHERE id=$2',[req.body?.proc_id||pu.rows[0].id,proc.id]);}
+        if(!proc.proc_id){
+          // 23.06.2026 BUG-FIX (🟡 P-20): выбираем закупщика с НАИМЕНЬШЕЙ загрузкой
+          // (round-robin по количеству активных заявок), а не "минимальный id".
+          // Раньше LIMIT 1 ORDER BY id всегда отдавал одного и того же сотрудника.
+          // req.body.proc_id (если передан) имеет приоритет.
+          let assignProcId = req.body?.proc_id || null;
+          if(!assignProcId){
+            const pu=await c.query(
+              `SELECT u.id, COALESCE((SELECT COUNT(*) FROM procurement_requests pr
+                 WHERE pr.proc_id=u.id AND pr.status NOT IN('closed','dir_rejected','delivered')),0) AS load
+               FROM users u
+               WHERE u.role='PROC' AND u.is_active=true
+               ORDER BY load ASC, u.id ASC LIMIT 1`);
+            assignProcId = pu.rows[0]?.id || null;
+          }
+          if(assignProcId) await c.query('UPDATE procurement_requests SET proc_id=$1 WHERE id=$2',[assignProcId,proc.id]);
+        }
         const pus=await c.query("SELECT id FROM users WHERE role='PROC' AND is_active=true");
         const ic=await c.query('SELECT COUNT(*) as cnt FROM procurement_items WHERE procurement_id=$1',[proc.id]);
         for(const p of pus.rows) createNotification(db,{user_id:p.id,title:`🛒 Заявка #${proc.id}`,
@@ -604,6 +672,16 @@ async function routes(fastify) {
   });
 
   fastify.put('/:id/proc-respond', {preHandler:[fastify.authenticate]}, async(req,reply)=>{
+    // 23.06.2026 BUG-FIX (🟡 P-15): валидация наличия позиций. Без этого закупщик мог
+    // перевести пустую заявку в proc_responded, а PM согласовать «воздух». Теперь требуем
+    // минимум 1 родительскую позицию (parent_item_id IS NULL — настоящие строки, не дочки).
+    const procId=parseInt(req.params.id);
+    if(!isNaN(procId)){
+      const cnt=await db.query('SELECT COUNT(*)::int as n FROM procurement_items WHERE procurement_id=$1 AND parent_item_id IS NULL',[procId]);
+      if(!cnt.rows[0] || cnt.rows[0].n===0){
+        return reply.code(400).send({error:'Нельзя ответить РП по пустой заявке — добавьте хотя бы одну позицию'});
+      }
+    }
     return transitionStatus(req,reply,{allowedRoles:PROC_ROLES,fromStatuses:['sent_to_proc'],toStatus:'proc_responded',
       extraUpdates:()=>({proc_comment:req.body?.comment||null}),
       afterTransition:async(c,proc)=>{
@@ -674,8 +752,12 @@ async function routes(fastify) {
   });
 
   fastify.put('/:id/mark-paid', {preHandler:[fastify.authenticate]}, async(req,reply)=>{
+    // 23.06.2026 BUG-FIX (🟡 P-18): передаём Date-объект вместо .toISOString() строки,
+    // чтобы быть консистентными с delivered_at (procurement.js:766 — SQL NOW()) и dir_approved_at.
+    // node-postgres сериализует Date в TIMESTAMP с учётом TZ сервера БД (UTC),
+    // тогда как ISO-строка может попасть в зону клиентского сервера и сдвинуть время.
     return transitionStatus(req,reply,{allowedRoles:BUH_ROLES,fromStatuses:['dir_approved'],toStatus:'paid',
-      extraUpdates:()=>({paid_at:new Date().toISOString()}),
+      extraUpdates:()=>({paid_at:new Date()}),
       afterTransition:async(c,proc)=>{
         if(proc.deadline_type==='from_payment'&&proc.deadline_days){
           const dl=new Date();dl.setDate(dl.getDate()+proc.deadline_days);
@@ -770,6 +852,116 @@ async function routes(fastify) {
       const upd=await db.query('SELECT * FROM procurement_items WHERE id=$1',[itemId]);
       return{item:upd.rows[0]};
     }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+  });
+
+  // ═══ ОТМЕНА ПОЗИЦИИ (V258 / план #06-item-cancel) ═══
+  // Soft-cancel: строка остаётся, item_status='cancelled', total_price исключается из total_sum
+  // через recalcTotal (см. WHERE item_status<>'cancelled'). История пишется как item_cancelled.
+  // RBAC: PM/HEAD_PM/PROC/DIR_*/ADMIN. Из shipped/delivered отменить нельзя — 409 (физика приехала).
+  fastify.put('/:id/items/:itemId/cancel', {preHandler:[fastify.requireRoles([...PM_ROLES,...PROC_ROLES,...DIR_ROLES])]}, async(req,reply)=>{
+    const procId=parseInt(req.params.id),itemId=parseInt(req.params.itemId);
+    if(isNaN(procId)||isNaN(itemId)) return reply.code(400).send({error:'Неверный ID'});
+    const reason=(req.body&&typeof req.body.reason==='string')?req.body.reason.trim():null;
+    if(reason&&reason.length>1000) return reply.code(400).send({error:'reason: ≤1000 символов'});
+    const ck=await checkNotLocked(db,procId); if(ck.error) return reply.code(ck.code).send({error:ck.error});
+    const client=await db.pool.connect();
+    try{
+      await client.query('BEGIN');
+      const cur=(await client.query('SELECT id,name,quantity,unit,unit_price,item_status FROM procurement_items WHERE id=$1 AND procurement_id=$2 FOR UPDATE',[itemId,procId])).rows[0];
+      if(!cur){await client.query('ROLLBACK');return reply.code(404).send({error:'Позиция не найдена'});}
+      const prev=cur.item_status||'pending';
+      if(prev==='cancelled'){await client.query('ROLLBACK');return reply.code(409).send({error:'Уже отменена'});}
+      if(!['pending','ordered'].includes(prev)){await client.query('ROLLBACK');return reply.code(409).send({error:`Нельзя отменить позицию в статусе ${prev}`});}
+      const{rows}=await client.query(`UPDATE procurement_items SET item_status='cancelled', cancelled_at=NOW(), cancelled_reason=$1, updated_at=NOW() WHERE id=$2 AND procurement_id=$3 RETURNING *`,[reason,itemId,procId]);
+      await recalcTotal(client,procId);
+      await logHistory(client,procId,req.user.id,'item_cancelled',prev,'cancelled',reason||null,{item_id:itemId,reason,prev_status:prev,snapshot:{name:cur.name,quantity:cur.quantity,unit:cur.unit,unit_price:cur.unit_price}});
+      await client.query('COMMIT');
+      return{item:rows[0]};
+    }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+  });
+
+  // ═══ РАСПРЕДЕЛЁННАЯ ПРИЁМКА (V258 / план #03-v173-distributed-receive) ═══
+  // POST /:id/items/:itemId/receive — принять позицию частями на разные работы/ячейки.
+  // body: { distribution:[{ work_id?, quantity, location_id? }], notes? }
+  // Дополняет (НЕ заменяет) старый /deliver — старый остаётся для one-shot all-or-nothing.
+  // RBAC: WAREHOUSE/PM/HEAD_PM/ADMIN.
+  fastify.post('/:id/items/:itemId/receive', {preHandler:[fastify.requireRoles([...WH_ROLES,...PM_ROLES])]}, async(req,reply)=>{
+    const procId=parseInt(req.params.id),itemId=parseInt(req.params.itemId);
+    if(isNaN(procId)||isNaN(itemId)) return reply.code(400).send({error:'Неверный ID'});
+    const ck=await checkNotLocked(db,procId); if(ck.error) return reply.code(ck.code).send({error:ck.error});
+    const dist=Array.isArray(req.body?.distribution)?req.body.distribution:null;
+    if(!dist||!dist.length) return reply.code(400).send({error:'distribution: массив обязателен'});
+    const notes=(req.body&&typeof req.body.notes==='string')?req.body.notes.trim()||null:null;
+    // Валидация: каждая строка — число>0
+    for(const d of dist){
+      const q=parseFloat(d.quantity);
+      if(isNaN(q)||q<=0) return reply.code(400).send({error:'quantity: положительное число в каждой строке'});
+    }
+    const sumQty=dist.reduce((s,d)=>s+parseFloat(d.quantity||0),0);
+    const client=await db.pool.connect();
+    try{
+      await client.query('BEGIN');
+      const it=(await client.query('SELECT * FROM procurement_items WHERE id=$1 AND procurement_id=$2 FOR UPDATE',[itemId,procId])).rows[0];
+      if(!it){await client.query('ROLLBACK');return reply.code(404).send({error:'Позиция не найдена'});}
+      if(it.item_status==='cancelled'){await client.query('ROLLBACK');return reply.code(409).send({error:'Позиция отменена'});}
+      if(it.item_status==='delivered'){await client.query('ROLLBACK');return reply.code(409).send({error:'Уже принято полностью'});}
+      const totalQty=parseFloat(it.quantity)||0;
+      const alreadyReceived=parseFloat(it.received_qty)||0;
+      const remain=totalQty-alreadyReceived;
+      if(sumQty>remain+1e-9){await client.query('ROLLBACK');return reply.code(400).send({error:`Σ распределения (${sumQty}) > остаток (${remain})`});}
+      const user=req.user;
+      const inserted=[];
+      for(const d of dist){
+        const q=parseFloat(d.quantity);
+        const workId=d.work_id?parseInt(d.work_id):null;
+        const locId=d.location_id?parseInt(d.location_id):null;
+        const r=await client.query(`INSERT INTO procurement_receipts(procurement_item_id,recipient_work_id,quantity,location_id,received_by,notes) VALUES($1,$2,$3,$4,$5,$6) RETURNING *`,
+          [itemId, workId&&!isNaN(workId)?workId:null, q, locId&&!isNaN(locId)?locId:null, user.id, notes]);
+        inserted.push(r.rows[0]);
+      }
+      // Пересчёт received_qty из истинного источника (procurement_receipts) — устойчиво к гонкам
+      const sumRes=await client.query(`SELECT COALESCE(SUM(quantity),0)::numeric AS s FROM procurement_receipts WHERE procurement_item_id=$1`,[itemId]);
+      const newReceived=parseFloat(sumRes.rows[0].s)||0;
+      let newItemStatus=it.item_status;
+      if(newReceived>=totalQty-1e-9) newItemStatus='delivered';
+      else if(newReceived>0) newItemStatus='shipped';
+      // 23.06.2026 BUG-FIX (Phase 4 smoke): explicit cast $2::text — без него Postgres падает
+      // с "inconsistent types deduced for parameter $2" (text vs character varying при сравнении CASE WHEN).
+      // 23.06.2026 BUG-FIX (Phase 4 smoke v2): cast $2 на КАЖДОМ упоминании, иначе deduced-тип неоднозначен.
+      await client.query(`UPDATE procurement_items SET received_qty=$1, item_status=$2::varchar, received_at=CASE WHEN $2::text='delivered' THEN NOW() ELSE received_at END, actual_delivery=CASE WHEN $2::text='delivered' THEN CURRENT_DATE ELSE actual_delivery END, updated_at=NOW() WHERE id=$3`,[newReceived,newItemStatus,itemId]);
+      // Пересчёт статуса заявки: если все позиции delivered/cancelled → 'delivered'; если есть хоть один delivered → partially_delivered
+      const all=await client.query('SELECT item_status FROM procurement_items WHERE procurement_id=$1',[procId]);
+      const dCnt=all.rows.filter(i=>i.item_status==='delivered').length;
+      const cCnt=all.rows.filter(i=>i.item_status==='cancelled').length;
+      let reqStatus=null;
+      if(dCnt+cCnt>=all.rows.length&&dCnt>0) reqStatus='delivered';
+      else if(dCnt>0||all.rows.some(i=>i.item_status==='shipped')) reqStatus='partially_delivered';
+      if(reqStatus){
+        await client.query(`UPDATE procurement_requests SET status=$1, delivered_at=CASE WHEN $1='delivered' THEN NOW() ELSE delivered_at END, updated_at=NOW() WHERE id=$2`,[reqStatus,procId]);
+      }
+      await logHistory(client,procId,user.id,'item_received_distributed',null,null,`Распределённая приёмка: ${it.name} (${sumQty}/${totalQty})`,{item_id:itemId,distribution:dist,sum_qty:sumQty,new_received:newReceived,new_item_status:newItemStatus});
+      await client.query('COMMIT');
+      const upd=await db.query('SELECT * FROM procurement_items WHERE id=$1',[itemId]);
+      return{item:upd.rows[0],receipts:inserted,request_status:reqStatus};
+    }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+  });
+
+  // GET /:id/receipts — список приёмок по заявке (все позиции).
+  // RBAC: чтение разрешено тому же кругу, что и сама заявка (через authenticate; фильтрация по правам — на уровне UI).
+  fastify.get('/:id/receipts', {preHandler:[fastify.authenticate]}, async(req,reply)=>{
+    const procId=parseInt(req.params.id);
+    if(isNaN(procId)) return reply.code(400).send({error:'Неверный ID'});
+    // 23.06.2026 BUG-FIX (Phase 4 smoke v2): w.name → w.work_title; wl.name → wl.label
+    // (warehouse_locations имеет колонки label/zone/rack/shelf/cell, а не name).
+    const{rows}=await db.query(`SELECT pr.*, pi.name AS item_name, pi.unit AS item_unit, COALESCE(w.work_title, w.object_name) AS work_name, u.name AS received_by_name, wl.label AS location_name
+      FROM procurement_receipts pr
+      JOIN procurement_items pi ON pi.id=pr.procurement_item_id
+      LEFT JOIN works w ON w.id=pr.recipient_work_id
+      LEFT JOIN users u ON u.id=pr.received_by
+      LEFT JOIN warehouse_locations wl ON wl.id=pr.location_id
+      WHERE pi.procurement_id=$1
+      ORDER BY pr.received_at DESC, pr.id DESC`,[procId]);
+    return{receipts:rows};
   });
 
   fastify.put('/:id/close', {preHandler:[fastify.authenticate]}, async(req,reply)=>{

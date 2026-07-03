@@ -44,12 +44,48 @@ const SUB_SUBCATEGORIES = [
   { value: 'other_contractor', label: 'Прочий подрядчик',           icon: '👷' },
 ];
 
+// Подкатегории под 'materials' — детализация безналичной закупки.
+const MATERIALS_SUBCATEGORIES = [
+  { value: 'ppe',         label: 'СИЗ / спецодежда',           icon: '🦺' },
+  { value: 'tools',       label: 'Инструмент',                 icon: '🔧' },
+  { value: 'consumables', label: 'Расходники',                 icon: '📦' },
+  { value: 'equipment',   label: 'Оборудование',               icon: '⚙️' },
+  { value: 'chemicals',   label: 'Химия / реагенты',           icon: '🧪' },
+  { value: 'other',       label: 'Прочие материалы',           icon: '📋' },
+];
+
+// Подкатегории под 'tickets' — тип билета.
+const TICKETS_SUBCATEGORIES = [
+  { value: 'avia',    label: 'Авиабилет',         icon: '✈️' },
+  { value: 'rail',    label: 'ЖД (РЖД/ФПК)',      icon: '🚆' },
+  { value: 'bus',     label: 'Автобус',           icon: '🚌' },
+  { value: 'freight', label: 'Грузоперевозка',    icon: '🚛' },
+  { value: 'other',   label: 'Прочее',            icon: '📋' },
+];
+
+// Подкатегории под 'accommodation'.
+const ACCOMMODATION_SUBCATEGORIES = [
+  { value: 'hotel',     label: 'Гостиница',          icon: '🏨' },
+  { value: 'apartment', label: 'Аренда квартиры',    icon: '🏢' },
+  { value: 'other',     label: 'Прочее',             icon: '📋' },
+];
+
+// Подкатегории под 'transfer'.
+const TRANSFER_SUBCATEGORIES = [
+  { value: 'taxi',     label: 'Такси',                  icon: '🚕' },
+  { value: 'delivery', label: 'Доставка груза (ДЛ/СДЭК)', icon: '📦' },
+  { value: 'freight',  label: 'Перевозка груза',        icon: '🚛' },
+  { value: 'gsm',      label: 'ГСМ безнал',             icon: '⛽' },
+  { value: 'rental',   label: 'Аренда авто',            icon: '🚗' },
+  { value: 'other',    label: 'Прочее',                 icon: '📋' },
+];
+
 // Способы оплаты. Влияют на 55%-логику в expense-tax.js.
 const PAYMENT_METHODS = [
   { value: 'cash', label: 'Наличные',           icon: '💵', taxable: true,  description: '55% налоговая нагрузка' },
   { value: 'card', label: 'Карта на месте',     icon: '💳', taxable: true,  description: '55% налоговая нагрузка' },
   { value: 'bank', label: 'Безнал по счёту',    icon: '🏦', taxable: false, description: 'Без 55%, может быть НДС-вычет' },
-  { value: 'self', label: 'Самозанятый / НПД',  icon: '👤', taxable: false, description: 'Без 55% и без НДС' },
+  { value: 'self', label: 'Самозанятый / НПД',  icon: '👤', taxable: true,  description: '55% налоговая нагрузка (внутреннее правило: обналичка через НПД)' },
   { value: 'auto', label: 'Автоматический',     icon: '🤖', taxable: false, description: 'Системный (ФОТ/суточные) — 55% применяется к категориям fot/per_diem/payroll' },
 ];
 
@@ -57,6 +93,10 @@ const VALID_CATEGORIES = new Set(CATEGORIES.map(c => c.value));
 const VALID_PAYMENT_METHODS = new Set(PAYMENT_METHODS.map(m => m.value));
 const VALID_CASH_SUBS = new Set(CASH_SUBCATEGORIES.map(s => s.value));
 const VALID_SUB_SUBS = new Set(SUB_SUBCATEGORIES.map(s => s.value));
+const VALID_MATERIALS_SUBS = new Set(MATERIALS_SUBCATEGORIES.map(s => s.value));
+const VALID_TICKETS_SUBS = new Set(TICKETS_SUBCATEGORIES.map(s => s.value));
+const VALID_ACCOMMODATION_SUBS = new Set(ACCOMMODATION_SUBCATEGORIES.map(s => s.value));
+const VALID_TRANSFER_SUBS = new Set(TRANSFER_SUBCATEGORIES.map(s => s.value));
 
 // Категории полевого модуля: старые русские + новые english ключи.
 // Все они маппятся в канонический work_expenses category='cash' + subcategory.
@@ -84,6 +124,10 @@ const FIELD_CATEGORY_ALIASES = {
 function getSubcategoriesFor(category) {
   if (category === 'cash') return CASH_SUBCATEGORIES;
   if (category === 'subcontract') return SUB_SUBCATEGORIES;
+  if (category === 'materials') return MATERIALS_SUBCATEGORIES;
+  if (category === 'tickets') return TICKETS_SUBCATEGORIES;
+  if (category === 'accommodation') return ACCOMMODATION_SUBCATEGORIES;
+  if (category === 'transfer') return TRANSFER_SUBCATEGORIES;
   return null;
 }
 
@@ -97,13 +141,27 @@ function validateCategory(category, subcategory) {
     return `category='${category}' не входит в список: ${Array.from(VALID_CATEGORIES).join(', ')}`;
   }
   if (subcategory) {
-    if (category === 'cash' && !VALID_CASH_SUBS.has(subcategory)) {
+    const sub = String(subcategory).toLowerCase();
+    if (category === 'cash' && !VALID_CASH_SUBS.has(sub)) {
       return `Под cash subcategory='${subcategory}' не допустимо. Разрешены: ${Array.from(VALID_CASH_SUBS).join(', ')}`;
     }
-    if (category === 'subcontract' && !VALID_SUB_SUBS.has(subcategory)) {
+    if (category === 'subcontract' && !VALID_SUB_SUBS.has(sub)) {
       return `Под subcontract subcategory='${subcategory}' не допустимо. Разрешены: ${Array.from(VALID_SUB_SUBS).join(', ')}`;
     }
-    if (category !== 'cash' && category !== 'subcontract') {
+    if (category === 'materials' && !VALID_MATERIALS_SUBS.has(sub)) {
+      return `Под materials subcategory='${subcategory}' не допустимо. Разрешены: ${Array.from(VALID_MATERIALS_SUBS).join(', ')}`;
+    }
+    if (category === 'tickets' && !VALID_TICKETS_SUBS.has(sub)) {
+      return `Под tickets subcategory='${subcategory}' не допустимо. Разрешены: ${Array.from(VALID_TICKETS_SUBS).join(', ')}`;
+    }
+    if (category === 'accommodation' && !VALID_ACCOMMODATION_SUBS.has(sub)) {
+      return `Под accommodation subcategory='${subcategory}' не допустимо. Разрешены: ${Array.from(VALID_ACCOMMODATION_SUBS).join(', ')}`;
+    }
+    if (category === 'transfer' && !VALID_TRANSFER_SUBS.has(sub)) {
+      return `Под transfer subcategory='${subcategory}' не допустимо. Разрешены: ${Array.from(VALID_TRANSFER_SUBS).join(', ')}`;
+    }
+    const SUB_ALLOWED_CATS = new Set(['cash','subcontract','materials','tickets','accommodation','transfer']);
+    if (!SUB_ALLOWED_CATS.has(category)) {
       return `Под '${category}' подкатегории не используются (subcategory должен быть пустым)`;
     }
   }
@@ -140,11 +198,19 @@ module.exports = {
   CATEGORIES,
   CASH_SUBCATEGORIES,
   SUB_SUBCATEGORIES,
+  MATERIALS_SUBCATEGORIES,
+  TICKETS_SUBCATEGORIES,
+  ACCOMMODATION_SUBCATEGORIES,
+  TRANSFER_SUBCATEGORIES,
   PAYMENT_METHODS,
   VALID_CATEGORIES,
   VALID_PAYMENT_METHODS,
   VALID_CASH_SUBS,
   VALID_SUB_SUBS,
+  VALID_MATERIALS_SUBS,
+  VALID_TICKETS_SUBS,
+  VALID_ACCOMMODATION_SUBS,
+  VALID_TRANSFER_SUBS,
   getSubcategoriesFor,
   validateCategory,
   validatePaymentMethod,

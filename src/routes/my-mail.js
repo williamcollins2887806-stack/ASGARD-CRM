@@ -363,6 +363,19 @@ async function routes(fastify, options) {
     const offsetVal = parseInt(offset) || 0;
     params.push(limitVal, offsetVal);
 
+    // 23.06.2026 BUG-FIX (Mail Y6 🟡): канон классификации письма.
+    // В schema emails (V001:410+431) исторически ДВА близких столбца:
+    //   • email_type — старый ENUM-набор vanilla mailbox.js (newsletter/internal/
+    //     bounce_or_auto_reply/...). Заполняется при INSERT outbound (см. ниже),
+    //     для inbound — статичные пресеты IMAP-импортёра.
+    //   • ai_classification — НОВЫЙ канон (services/ai-email-analyzer.js:221):
+    //     9 значений Wave-7 (direct_request/platform_tender/tender_invitation/
+    //     addendum_response/commercial_offer/information/spam/personal/other).
+    // СОГЛАШЕНИЕ: для отображения категории в UI / фильтра / роутинга на
+    // tenders-hub использовать ai_classification (когда оно есть). email_type
+    // оставлен ради обратной совместимости старых писем до AI-анализатора.
+    // Этот SELECT не возвращает ни одного из них — список папки показывает только
+    // мета, а карточка письма читает оба через GET /api/my-mail/emails/:id (line 399).
     const dataRes = await db.query(`
       SELECT e.id, e.direction, e.message_id, e.thread_id,
         e.from_email, e.from_name, e.to_emails, e.cc_emails,

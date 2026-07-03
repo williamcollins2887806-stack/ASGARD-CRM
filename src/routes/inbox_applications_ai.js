@@ -33,8 +33,18 @@ module.exports = async function (fastify) {
   // ═══════════════════════════════════════════════════════════════════
   // 1. GET / — Список заявок
   // ═══════════════════════════════════════════════════════════════════
+  // 23.06.2026 BUG-FIX (PreTenders D-5): добавлен requireRoles. До фикса любой залогиненный
+  // (бригадир, кладовщик, рабочий) дёргал GET /api/inbox-applications/ и видел ВСЕ входящие
+  // обращения — нарушение privacy и компрометация коммерческих данных.
+  const INBOX_VIEW_ROLES = [
+    'ADMIN', 'HR', 'HR_MANAGER',
+    'PM', 'HEAD_PM',
+    'TO', 'HEAD_TO',
+    'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV',
+    'OFFICE_MANAGER', 'BUH'
+  ];
   fastify.get('/', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.authenticate, fastify.requireRoles(INBOX_VIEW_ROLES)]
   }, async (request, reply) => {
     const { status, color, classification, search, limit = 50, offset = 0, sort = 'created_at', order = 'DESC' } = request.query;
 
@@ -62,10 +72,12 @@ module.exports = async function (fastify) {
       SELECT ia.*,
         u_dec.name as decision_by_name,
         u_cr.name as created_by_name,
+        u_pm.name as assigned_pm_name,
         e.body_text as email_body_text
       FROM inbox_applications ia
       LEFT JOIN users u_dec ON u_dec.id = ia.decision_by
       LEFT JOIN users u_cr ON u_cr.id = ia.created_by
+      LEFT JOIN users u_pm  ON u_pm.id  = ia.assigned_pm_id
       LEFT JOIN emails e ON e.id = ia.email_id
       ${where}
       ORDER BY ia.${sortCol} ${sortOrder}
@@ -118,6 +130,7 @@ module.exports = async function (fastify) {
       SELECT ia.*,
         u_dec.name as decision_by_name,
         u_cr.name as created_by_name,
+        u_pm.name as assigned_pm_name,
         e.body_text as email_body_text,
         e.body_html as email_body_html,
         e.from_email as email_from,
@@ -125,6 +138,7 @@ module.exports = async function (fastify) {
       FROM inbox_applications ia
       LEFT JOIN users u_dec ON u_dec.id = ia.decision_by
       LEFT JOIN users u_cr ON u_cr.id = ia.created_by
+      LEFT JOIN users u_pm  ON u_pm.id  = ia.assigned_pm_id
       LEFT JOIN emails e ON e.id = ia.email_id
       WHERE ia.id = $1
     `, [id]);
@@ -150,6 +164,68 @@ module.exports = async function (fastify) {
       attachments,
       analysisHistory: logRes.rows
     };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 3a. (Wave A — BUG-10) GET /:appId/attachments/:attId/download
+  //     Скачать конкретный attachment из inbox_application.
+  //     Auth: Bearer header ИЛИ query ?token=... (для <a target=_blank>).
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.get('/:appId/attachments/:attId/download', {
+    preHandler: [
+      async (request, reply) => {
+        if (!request.headers.authorization && request.query.token) {
+          request.headers.authorization = 'Bearer ' + request.query.token;
+        }
+      },
+      fastify.authenticate
+    ]
+  }, async (request, reply) => {
+    const appId = Number(request.params.appId);
+    const attId = Number(request.params.attId);
+    if (!Number.isFinite(appId) || !Number.isFinite(attId)) {
+      return reply.code(400).send({ error: 'Некорректные параметры' });
+    }
+    // Wave A+ fix MED#4: owner-guard. PM скачивает вложения только своих заявок.
+    // SELECT attachment + assigned_pm_id строго в рамках указанной заявки.
+    const r = await db.query(`
+      SELECT ea.id, ea.filename, ea.original_filename, ea.mime_type, ea.size, ea.file_path,
+             ia.assigned_pm_id
+      FROM email_attachments ea
+      JOIN emails e ON e.id = ea.email_id
+      JOIN inbox_applications ia ON ia.email_id = e.id
+      WHERE ea.id = $1 AND ia.id = $2 LIMIT 1
+    `, [attId, appId]);
+    const att = r.rows[0];
+    if (!att) return reply.code(404).send({ error: 'Вложение не найдено' });
+    // RBAC: директорские роли + назначенный PM. Иначе 403.
+    const DIR_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_TO', 'HEAD_PM'];
+    if (!DIR_ROLES.includes(request.user.role) && att.assigned_pm_id !== request.user.id) {
+      return reply.code(403).send({ error: 'forbidden' });
+    }
+
+    // Резолв пути: file_path обычно относительный (uploads/mail/...).
+    const fs = require('fs');
+    const path = require('path');
+    const candidates = [
+      att.file_path,
+      path.join(process.cwd(), att.file_path),
+      path.join(process.cwd(), 'uploads', att.file_path),
+      path.join(process.cwd(), 'uploads', 'mail', att.file_path),
+    ];
+    let absPath = null;
+    for (const p of candidates) {
+      try { if (fs.existsSync(p) && fs.statSync(p).isFile()) { absPath = p; break; } } catch (_) {}
+    }
+    if (!absPath) return reply.code(404).send({ error: 'Файл на диске не найден' });
+
+    const buf = fs.readFileSync(absPath);
+    const dispName = (att.original_filename || att.filename || 'attachment').replace(/[\r\n"]/g, '_');
+    reply
+      .header('Content-Type', att.mime_type || 'application/octet-stream')
+      .header('Content-Length', buf.length)
+      .header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(dispName)}`)
+      .send(buf);
   });
 
   // ═══════════════════════════════════════════════════════════════════
@@ -239,15 +315,25 @@ module.exports = async function (fastify) {
             ai_keywords = $8, ai_confidence = $9, ai_raw_json = $10,
             ai_analyzed_at = NOW(), ai_model = $11,
             workload_snapshot = $12,
+            extracted_customer_name = $13, extracted_customer_inn = $14,
+            extracted_customer_contact_email = $15, extracted_customer_contact_person = $16,
+            extracted_customer_phone = $17, extracted_customer_address = $18,
             status = 'ai_processed',
             updated_at = NOW()
-          WHERE id = $13
+          WHERE id = $19
         `, [
           (analysis.classification || '').slice(0, 100), (analysis.color || '').slice(0, 50), (analysis.summary || '').slice(0, 2000), (analysis.recommendation || '').slice(0, 2000),
           (analysis.work_type || '').slice(0, 100), analysis.estimated_budget ? String(analysis.estimated_budget).slice(0, 100) : null, analysis.estimated_days ? String(analysis.estimated_days).slice(0, 100) : null,
           analysis.keywords || [], parseFloat(analysis.confidence) || 0, JSON.stringify(analysis),
           (analysis._raw?.model || '').slice(0, 100),
           JSON.stringify(workload),
+          // 30.06.2026 bug #3: реквизиты клиента из AI-разбора тела/фото/подписи.
+          analysis.extracted_customer_name ? String(analysis.extracted_customer_name).slice(0, 500) : null,
+          analysis.extracted_customer_inn || null,
+          analysis.extracted_customer_contact_email ? String(analysis.extracted_customer_contact_email).slice(0, 255) : null,
+          analysis.extracted_customer_contact_person ? String(analysis.extracted_customer_contact_person).slice(0, 255) : null,
+          analysis.extracted_customer_phone ? String(analysis.extracted_customer_phone).slice(0, 100) : null,
+          analysis.extracted_customer_address ? String(analysis.extracted_customer_address).slice(0, 500) : null,
           appId
         ]);
 
@@ -327,6 +413,9 @@ module.exports = async function (fastify) {
           ai_keywords = $8, ai_confidence = $9, ai_raw_json = $10,
           ai_analyzed_at = NOW(), ai_model = $11,
           workload_snapshot = $12,
+          extracted_customer_name = $14, extracted_customer_inn = $15,
+          extracted_customer_contact_email = $16, extracted_customer_contact_person = $17,
+          extracted_customer_phone = $18, extracted_customer_address = $19,
           status = CASE WHEN status = 'new' THEN 'ai_processed' ELSE status END,
           updated_at = NOW()
         WHERE id = $13
@@ -343,7 +432,14 @@ module.exports = async function (fastify) {
         JSON.stringify(analysis),
         (analysis._raw?.model || '').slice(0, 100),
         JSON.stringify(workload),
-        id
+        id,
+        // 30.06.2026 bug #3: реквизиты клиента из AI-разбора (re-analyze).
+        analysis.extracted_customer_name ? String(analysis.extracted_customer_name).slice(0, 500) : null,
+        analysis.extracted_customer_inn || null,
+        analysis.extracted_customer_contact_email ? String(analysis.extracted_customer_contact_email).slice(0, 255) : null,
+        analysis.extracted_customer_contact_person ? String(analysis.extracted_customer_contact_person).slice(0, 255) : null,
+        analysis.extracted_customer_phone ? String(analysis.extracted_customer_phone).slice(0, 100) : null,
+        analysis.extracted_customer_address ? String(analysis.extracted_customer_address).slice(0, 500) : null
       ]);
 
       await db.query(`
@@ -424,6 +520,265 @@ module.exports = async function (fastify) {
     `, [user.id, id]);
 
     return { success: true };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 7a. (Wave B) POST /:id/to-pre-tender
+  //     PM/HEAD_PM/директор «Завести просчёт»: создаём pre_tender_request
+  //     с правильными данными из inbox_application (учитывая forward-detect
+  //     original_sender вместо переслателя), конвертим карту канбана
+  //     entity_kind='inbox_application' → 'pre_tender', flow='pre_tender',
+  //     main_status='new'.
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.post('/:id/to-pre-tender', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const appId = Number(request.params.id);
+    if (!Number.isFinite(appId)) return reply.code(400).send({ error: 'invalid_id' });
+    const user = request.user;
+    const { note } = request.body || {};
+    const personalKanban = require('./personal-kanban'); // Wave D BUG-7
+
+    // Wave A+ fix BLOCKER#NEW: db.connect не существует, надо db.pool.connect.
+    // db.js экспортирует { pool, query, transaction, ... } — connect только у pool.
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // 1. Lock + fetch inbox_application
+      // extracted_customer_* — структурированные реквизиты клиента из карточки/подписи
+      // (название компании, ИНН, контакты). Используем их как приоритет в customer_name,
+      // иначе клиент будет «karina@eurochem.ru» вместо «АО НАК Азот».
+      const appRes = await client.query(
+        `SELECT id, email_id, subject, body_preview, source_kind, source_email, source_name,
+                forwarded_from_email, original_sender_email, original_sender_name,
+                extracted_customer_name, extracted_customer_inn,
+                extracted_customer_contact_email, extracted_customer_contact_person,
+                extracted_customer_phone, extracted_customer_address,
+                ai_summary, ai_color, ai_classification, ai_recommendation,
+                ai_estimated_budget, ai_keywords, ai_raw_json,
+                assigned_pm_id, status, attachment_count
+         FROM inbox_applications WHERE id = $1 FOR UPDATE`,
+        [appId]);
+      const app = appRes.rows[0];
+      if (!app) { await client.query('ROLLBACK'); return reply.code(404).send({ error: 'application_not_found' }); }
+
+      // RBAC: директор / HEAD_PM / TO / HEAD_TO / любой PM.
+      // Любой PM может взять корпоративный форвард (например Путков Дима пересылает —
+      // он PM, но не assigned). До этого исправления здесь проверяли только assigned_pm_id,
+      // и переотправитель ловил 403.
+      const isDirector = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_PM'].includes(user.role);
+      const isTenderOffice = ['TO', 'HEAD_TO'].includes(user.role);
+      const isAnyPM = user.role === 'PM';
+      if (!isDirector && !isTenderOffice && !isAnyPM) {
+        await client.query('ROLLBACK');
+        return reply.code(403).send({ error: 'forbidden' });
+      }
+
+      // 2. Проверка дубля pre_tender по email_id
+      if (app.email_id) {
+        const dup = await client.query(`SELECT id FROM pre_tender_requests WHERE email_id = $1 LIMIT 1`, [app.email_id]);
+        if (dup.rows[0]) {
+          await client.query('ROLLBACK');
+          return reply.code(409).send({ error: 'pre_tender_exists', pre_tender_id: dup.rows[0].id });
+        }
+      }
+
+      // 3. Правильное определение customer:
+      // - corporate_forward → original_sender (реальный клиент из тела)
+      // - иначе → source_email/name (прямой отправитель)
+      // Если AI вытащил полную карточку (extracted_customer_*) — название
+      // компании предпочтительнее ФИО/email контактного лица.
+      // 30.06.2026 FIX: НИКОГДА не подставлять форвардера/внутреннего сотрудника
+      // как заказчика. У пересланных писем source_name/source_email — это наш
+      // получатель (напр. Мохарин), а не клиент (ООО «СВС-Н»).
+      const INTERNAL_DOMAINS = ['asgard-service.com', 'asgard-crm.ru', 'asgard-service.ru'];
+      const isInternalEmail = (e) => {
+        if (!e) return false;
+        const at = String(e).toLowerCase().split('@')[1] || '';
+        return INTERNAL_DOMAINS.some(d => at === d || at.endsWith('.' + d));
+      };
+      const isForward = app.source_kind === 'corporate_forward';
+
+      // original_sender = реальный клиент, но только если он НЕ внутренний домен.
+      const extSenderName  = isInternalEmail(app.original_sender_email) ? null : app.original_sender_name;
+      const extSenderEmail = isInternalEmail(app.original_sender_email) ? null : app.original_sender_email;
+
+      // original_sender_company AI кладёт только в ai_raw_json (отдельной колонки нет).
+      // Для пересланных корпоративных писем это часто единственное название клиента.
+      let origCompany = null;
+      try {
+        const raw = typeof app.ai_raw_json === 'string' ? JSON.parse(app.ai_raw_json) : (app.ai_raw_json || null);
+        origCompany = raw && raw.original_sender_company ? String(raw.original_sender_company).trim() : null;
+      } catch (_) { /* битый json — игнор */ }
+
+      // Имя заказчика: extracted (из карточки/фото) → company из подписи (AI) →
+      // внешний original_sender → (для НЕ-форварда) source_name.
+      // Для форварда source_name НЕ используем — это наш сотрудник.
+      let customerName = app.extracted_customer_name
+        || origCompany
+        || extSenderName
+        || (isForward ? '' : (app.source_name || ''));
+      // Email заказчика: extracted contact → внешний original_sender →
+      // (для НЕ-форварда и НЕ внутреннего) source_email.
+      let customerEmail = app.extracted_customer_contact_email
+        || extSenderEmail
+        || (isForward || isInternalEmail(app.source_email) ? '' : (app.source_email || ''));
+      let customerInn = app.extracted_customer_inn || null;
+      let contactPerson = app.extracted_customer_contact_person || null;
+      const contactPhone = app.extracted_customer_phone || null;
+
+      // 30.06.2026 bug #3: если название заказчика так и не определилось
+      // (нет в документах/подписи/original_sender), но есть ИНН или внешняя
+      // корпоративная почта — добиваем официальное название через Dadata.
+      // Корпоративный ящик почти всегда несёт домен организации (kordiant.ru),
+      // по нему suggest/party находит компанию. Не валит транзакцию: при любой
+      // ошибке/таймауте/отсутствии токена вернётся null и оставим как было.
+      if (!customerName) {
+        try {
+          const dadata = require('../services/dadata');
+          const hit = await dadata.resolveCustomer({
+            inn: customerInn,
+            email: customerEmail,
+            hint: origCompany
+          });
+          if (hit && hit.name) {
+            customerName = hit.name;
+            if (!customerInn && hit.inn) customerInn = hit.inn;
+            request.log.info({ app_id: appId, resolved: hit.name, inn: hit.inn }, '[to-pre-tender] customer resolved via Dadata');
+          }
+        } catch (ddErr) {
+          request.log.warn({ err: ddErr, app_id: appId }, '[to-pre-tender] Dadata resolve failed');
+        }
+      }
+
+      // work_description: AI summary + первые 1500 chars body_preview
+      const workDescription = [
+        app.ai_summary || '',
+        '',
+        (app.body_preview || '').slice(0, 1500)
+      ].filter(Boolean).join('\n');
+
+      // 4. INSERT pre_tender_request
+      const ptIns = await client.query(`
+        INSERT INTO pre_tender_requests
+          (email_id, source_type,
+           customer_name, customer_email, customer_inn,
+           contact_person, contact_phone,
+           work_description,
+           estimated_sum,
+           ai_summary, ai_color, ai_recommendation,
+           has_documents,
+           status, assigned_to, created_by)
+        VALUES ($1, 'email',
+                $2, $3, $4,
+                $5, $6,
+                $7,
+                $8,
+                $9, $10, $11,
+                $12,
+                'new', $13, $14)
+        RETURNING id, status, customer_name, customer_inn`,
+        [
+          app.email_id || null,
+          customerName.slice(0, 255),
+          customerEmail.slice(0, 255),
+          customerInn,
+          contactPerson,
+          contactPhone,
+          workDescription,
+          app.ai_estimated_budget || null,
+          app.ai_summary || null,
+          app.ai_color || 'yellow',
+          app.ai_recommendation || null,
+          (app.attachment_count || 0) > 0,
+          app.assigned_pm_id || null,
+          user.id,
+        ]);
+      const preTenderId = ptIns.rows[0].id;
+
+      // 5. Обратная ссылка email.pre_tender_id (как делает старый сервис)
+      if (app.email_id) {
+        try { await client.query(`UPDATE emails SET pre_tender_id = $1 WHERE id = $2`, [preTenderId, app.email_id]); }
+        catch (_) { /* поле может отсутствовать на старых схемах */ }
+      }
+
+      // 6. UPDATE inbox_application.status='accepted' (промежуточный шаг к workflow)
+      await client.query(
+        `UPDATE inbox_applications SET status='accepted', decision_by=$1, decision_at=now(), decision_notes=$2, updated_at=now()
+         WHERE id=$3`,
+        [user.id, `Конвертирована в pre_tender_request #${preTenderId}` + (note ? '. ' + note : ''), appId]);
+
+      // 7. Конвертим карту канбана (если есть)
+      let kanbanCardId = null;
+      const cardRes = await client.query(
+        `SELECT id, owner_user_id, current_main_status, current_substage_id, version
+         FROM personal_kanban_cards
+         WHERE entity_kind='inbox_application' AND entity_id=$1 AND is_closed=false
+         ORDER BY id DESC LIMIT 1 FOR UPDATE`,
+        [appId]);
+      const card = cardRes.rows[0];
+      if (card) {
+        kanbanCardId = card.id;
+        // Wave D BUG-7: ensureDefaultSubstages создаст набор если у PM 0 подэтапов
+        // для (pre_tender, 'new') — карта попадает в реальный substage, не в «Не размещено».
+        const newSubstageId = await personalKanban.ensureDefaultSubstages(client, card.owner_user_id, 'pre_tender', 'new');
+
+        await client.query(
+          `UPDATE personal_kanban_cards
+           SET entity_kind='pre_tender', entity_id=$1, flow_type='pre_tender',
+               current_main_status='new', current_substage_id=$2,
+               last_moved_at=now(), version=version+1, updated_at=now()
+           WHERE id=$3`,
+          [preTenderId, newSubstageId, card.id]);
+
+        await client.query(
+          `INSERT INTO personal_kanban_card_history
+            (card_id, from_substage_id, to_substage_id, from_main_status, to_main_status, moved_by, action, note)
+           VALUES ($1, $2, $3, $4, 'new', $5, 'convert', $6)`,
+          [card.id, card.current_substage_id, newSubstageId, card.current_main_status, user.id,
+           `inbox_application #${appId} → pre_tender_request #${preTenderId}` + (note ? '. ' + note : '')]);
+      }
+
+      await client.query('COMMIT');
+
+      // 8. SSE + notification ПОСЛЕ commit
+      try {
+        const sse = require('../services/sse');
+        sse.broadcast?.('personal_kanban:card_converted', {
+          card_id: kanbanCardId, owner_user_id: app.assigned_pm_id,
+          flow_type: 'pre_tender', entity_kind: 'pre_tender', entity_id: preTenderId,
+          from_entity_kind: 'inbox_application', from_entity_id: appId,
+        });
+      } catch (_) {}
+
+      if (app.assigned_pm_id && kanbanCardId) {
+        try {
+          const { createNotification } = require('../services/notify');
+          Promise.resolve(createNotification(db, {
+            user_id: app.assigned_pm_id,
+            title: `Заявка №${appId} → Pre-tender #${preTenderId}`,
+            message: `Конвертирована в просчёт: ${customerName || 'клиент не указан'}`,
+            type: 'pre_tender_created',
+            link: `#/personal-kanban?card=${kanbanCardId}`,
+          })).catch(() => {});
+        } catch (_) {}
+      }
+
+      return reply.send({
+        success: true,
+        application_id: appId,
+        pre_tender_id: preTenderId,
+        kanban_card_id: kanbanCardId,
+        customer_name: ptIns.rows[0].customer_name,
+      });
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      request.log.error({ err: e }, '[inbox-app/to-pre-tender] failed');
+      return reply.code(500).send({ error: 'internal', message: e.message });
+    } finally {
+      client.release();
+    }
   });
 
   // ═══════════════════════════════════════════════════════════════════
@@ -597,7 +952,7 @@ module.exports = async function (fastify) {
                 WHERE owner_user_id = $1 AND entity_kind = 'tender' AND entity_id = $2 LIMIT 1`,
               [card.owner_user_id, tenderId]);
             if (!dup.rows[0]) {
-              const newSub = await personalKanban.loadFirstActiveSubstage(
+              const newSub = await personalKanban.ensureDefaultSubstages(
                 pkClient, card.owner_user_id, 'tender', 'Новый');
               await pkClient.query(
                 `UPDATE personal_kanban_cards
@@ -906,7 +1261,7 @@ module.exports = async function (fastify) {
       const application = upd.rows[0];
 
       // Первый активный substage PM для (application, 'assigned')
-      const firstSub = await personalKanban.loadFirstActiveSubstage(
+      const firstSub = await personalKanban.ensureDefaultSubstages(
         client, pmUserId, 'application', 'assigned');
 
       // Создание карты (UNIQUE owner+entity_kind+entity_id → ON CONFLICT DO NOTHING)
@@ -1169,7 +1524,7 @@ module.exports = async function (fastify) {
       }
 
       // Карта канбана для PM
-      const firstSub = await personalKanban.loadFirstActiveSubstage(
+      const firstSub = await personalKanban.ensureDefaultSubstages(
         client, assignPmUserId, 'application', 'assigned');
 
       let cardId = null;

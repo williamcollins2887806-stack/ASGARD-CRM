@@ -11,7 +11,8 @@
  *
  * Операции с самозанятыми:
  *   GET    /se-transfers/:year/:month                — список операций
- *   POST   /se-transfers                             — создать операцию
+ *   POST   /se-transfers                             — создать операцию (single)
+ *   POST   /se-transfers/bulk                        — массовая выдача СЗ-переводов
  *   PUT    /se-transfers/:id/confirm-transfer        — деньги переведены
  *   PUT    /se-transfers/:id/confirm-return          — наличные получены
  *   PUT    /se-transfers/:id/cancel                  — отменить
@@ -26,7 +27,14 @@
 
 const ACCESS_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'BUH'];
 
+const crypto = require('crypto');
 const { getCashBalance } = require('../services/approvalService');
+const { calcAllPmBalances, calcPmBalance } = require('../lib/pm-balance');
+
+// Cash advisory lock key — должен совпадать с CASH_ADVISORY_LOCK_KEY в cash.js,
+// чтобы bulk-вставки в cash_balance_log не конфликтовали с параллельными
+// списаниями/возвратами кассы (race-safe для destination='company').
+const CASH_ADVISORY_LOCK_KEY = 42;
 
 async function getSettingNumber(db, key, fallback) {
   const { rows: [r] } = await db.query('SELECT value_json FROM settings WHERE key = $1', [key]);
@@ -681,12 +689,23 @@ async function routes(fastify, options) {
 
   // ─── POST /se-transfers ───────────────────────────────────────────────────
   fastify.post('/se-transfers', { preHandler: [fastify.requireRoles(ACCESS_ROLES)] }, async (request, reply) => {
-    const { employee_id, year, month, operation_type, transfer_amount, earned_amount, work_id, comment } = request.body || {};
+    const {
+      employee_id, year, month, operation_type, transfer_amount, earned_amount,
+      work_id, comment, remainder_destination
+    } = request.body || {};
     if (!employee_id || !year || !month || !operation_type) {
       return reply.code(400).send({ error: 'employee_id, year, month, operation_type обязательны' });
     }
     if (!['work_transfer', 'agreement_transfer'].includes(operation_type)) {
       return reply.code(400).send({ error: 'Недопустимый operation_type' });
+    }
+
+    // remainder_destination: 'pm' (default) | 'company'
+    // Поведение single НЕ меняется: handover здесь не создаётся (это делает bulk
+    // или ручная регистрация). Поле сохраняется в se_transfers как метаданные.
+    const destination = remainder_destination || 'pm';
+    if (!['pm', 'company'].includes(destination)) {
+      return reply.code(400).send({ error: "remainder_destination должен быть 'pm' или 'company'" });
     }
 
     const { rows: [emp] } = await db.query(
@@ -707,13 +726,18 @@ async function routes(fastify, options) {
       return reply.code(400).send({ error: 'У рабочего не заполнен ИНН самозанятого' });
     }
 
-    // Годовой лимит
+    // Годовой лимит — учитываем И se_transfers, И se_monthly_history
+    // (исторические Excel-импорты), чтобы СЗ не мог обойти лимит.
     const yearlyLimit = await getSettingNumber(db, 'self_employed_yearly_limit', 2400000);
     const { rows: [sum] } = await db.query(`
       SELECT COALESCE(SUM(transfer_amount), 0) AS yr_sum
       FROM se_transfers WHERE employee_id = $1 AND year = $2 AND status != 'cancelled'
     `, [employee_id, year]);
-    const yrSum = Number(sum.yr_sum || 0);
+    const { rows: [hist] } = await db.query(`
+      SELECT COALESCE(SUM(monthly_used), 0) AS hist_sum
+      FROM se_monthly_history WHERE employee_id = $1 AND year = $2
+    `, [employee_id, year]);
+    const yrSum = Number(sum.yr_sum || 0) + Number(hist.hist_sum || 0);
     const remaining = Math.max(0, yearlyLimit - yrSum);
     const transferNum = Number(transfer_amount);
     if (transferNum + yrSum > yearlyLimit) {
@@ -746,14 +770,300 @@ async function routes(fastify, options) {
       INSERT INTO se_transfers
         (employee_id, year, month, operation_type, earned_amount, transfer_amount,
          cash_return_amount, cash_payout_amount, work_id, pm_user_id, inn,
-         status, comment, created_by)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'planned', $12, $13)
+         status, comment, created_by, remainder_destination)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'planned', $12, $13, $14)
       RETURNING *
     `, [employee_id, year, month, operation_type, earnedNum, transferNum,
         cashReturn, cashPayout, work_id || null, pmUserId, se.inn,
-        comment || null, request.user.id]);
+        comment || null, request.user.id, destination]);
 
     return { transfer: created };
+  });
+
+  // ─── POST /se-transfers/bulk ──────────────────────────────────────────────
+  // Массовая выдача СЗ-переводов (RBAC: ACCESS_ROLES = ADMIN/DIRECTOR/BUH).
+  //
+  // Поведение:
+  //   - se_transfers создаётся сразу status='transferred', transferred_at=NOW()
+  //   - destination='pm' + cash_return>0 → INSERT handover (status='pending',
+  //     expected_amount=cash_return, source_se_transfer_id=st.id)
+  //   - destination='company' + cash_return>0 → INSERT cash_balance_log (income,
+  //     race-safe через pg_advisory_xact_lock(CASH_ADVISORY_LOCK_KEY))
+  //
+  // Транзакция: ОДНА на весь bulk. При критической ошибке БД — ROLLBACK всего.
+  // Per-item ошибки (валидация, лимит НПД, ИНН) собираются в errors[],
+  // НЕ валят bulk; такие позиции просто не вставляются.
+  //
+  // pm-balance.js не ломается:
+  //   - Bulk создаёт se_transfers со status='transferred'; se_legacy CTE
+  //     фильтрует IN ('completed','returned') — поэтому bulk-записи туда
+  //     не попадают, двойного учёта нет.
+  //   - Для destination='pm' pending handover не входит в pm-balance
+  //     (handovers CTE фильтрует status IN ('received','partial')) — войдёт
+  //     только когда PM подтвердит.
+  fastify.post('/se-transfers/bulk', { preHandler: [fastify.requireRoles(ACCESS_ROLES)] }, async (request, reply) => {
+    const { year, month, transfers } = request.body || {};
+
+    // ── Pre-flight валидация запроса целиком ──────────────────────────────
+    const yr = parseInt(year, 10);
+    const mo = parseInt(month, 10);
+    if (!Number.isFinite(yr) || !Number.isFinite(mo) || mo < 1 || mo > 12) {
+      return reply.code(400).send({ error: 'year/month обязательны и валидны (month 1..12)' });
+    }
+    if (!Array.isArray(transfers) || transfers.length === 0) {
+      return reply.code(400).send({ error: 'transfers[] обязателен и не пустой' });
+    }
+    if (transfers.length > 100) {
+      return reply.code(400).send({ error: 'Не более 100 переводов за один bulk' });
+    }
+
+    // Idempotency-Key header — если повтор запроса с тем же ключом и батч уже
+    // существует в se_transfers → возвращаем 409, а не дублируем записи.
+    // Клиент может вытащить результат через GET /se-transfers/:year/:month
+    // с фильтром по bulk_batch_id (или просто из локального стейта).
+    const idemHeader = request.headers['idempotency-key'];
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const batchId = (idemHeader && UUID_RE.test(idemHeader)) ? idemHeader : crypto.randomUUID();
+
+    if (idemHeader && UUID_RE.test(idemHeader)) {
+      const { rows: existed } = await db.query(
+        'SELECT id FROM se_transfers WHERE bulk_batch_id = $1 LIMIT 1',
+        [batchId]
+      );
+      if (existed.length > 0) {
+        return reply.code(409).send({
+          error: 'batch_already_exists',
+          batch_id: batchId,
+          message: `Bulk с этим Idempotency-Key уже создан (batch_id=${batchId}). ` +
+                   `Результат доступен через GET /api/payroll-dashboard/se-transfers/${yr}/${mo}.`
+        });
+      }
+    }
+
+    // Аккумулируем приращения yearly_sum в рамках самого запроса
+    // (если в одном bulk два перевода одному сотруднику — суммируем).
+    const yearlySumByEmp = new Map();
+
+    const result = {
+      batch_id: batchId,
+      summary: {
+        se_transfers: 0,
+        handovers: 0,
+        cash_log_income: 0,
+        total_transferred: 0,
+        total_remainder_to_pm: 0,
+        total_remainder_to_company: 0
+      },
+      transfers: [],
+      errors: []
+    };
+
+    // ── ОДНА транзакция на весь bulk через pool.connect()-helper ──────────
+    // ВСЕ запросы внутри идут через `client`, а не через `db` (pool.query),
+    // иначе BEGIN/COMMIT/ROLLBACK уходят на случайные соединения пула,
+    // advisory_xact_lock не работает, и при ошибке частичные сайд-эффекты
+    // не откатываются. Per-item SAVEPOINT защищает от того, чтобы одна
+    // Postgres-ошибка (FK violation и т.п.) не отравила транзакцию для
+    // следующих item'ов.
+    try {
+      await db.transaction(async (client) => {
+        // Настройка с проверкой лимита — внутри tx (на client), чтобы вместе
+        // с advisory lock жить в одном соединении.
+        const yearlyLimit = await getSettingNumber(client, 'self_employed_yearly_limit', 2400000);
+
+        let cashLockAcquired = false;
+
+        for (let i = 0; i < transfers.length; i++) {
+          const t = transfers[i] || {};
+          const itemIdx = i;
+          const spName = `item_${itemIdx}`;
+          const empId = parseInt(t.employee_id, 10);
+          const wId = t.work_id != null ? parseInt(t.work_id, 10) : null;
+          const opType = t.operation_type;
+          const transferNum = Number(t.transfer_amount);
+          const earnedNum = Number(t.earned_amount || 0);
+          const destination = t.remainder_destination || 'pm';
+          const itemComment = (t.comment != null) ? String(t.comment) : null;
+
+          // SAVEPOINT per item — изоляция Postgres-ошибок (FK/check/unique).
+          await client.query(`SAVEPOINT ${spName}`);
+
+          try {
+            // ── Per-item валидация ──────────────────────────────────────
+            if (!Number.isFinite(empId)) throw new Error('employee_id обязателен');
+            if (!['work_transfer', 'agreement_transfer'].includes(opType)) {
+              throw new Error("operation_type должен быть 'work_transfer' или 'agreement_transfer'");
+            }
+            if (!Number.isFinite(transferNum) || transferNum <= 0) {
+              throw new Error('transfer_amount должен быть > 0');
+            }
+            if (!['pm', 'company'].includes(destination)) {
+              throw new Error("remainder_destination должен быть 'pm' или 'company'");
+            }
+            if (opType === 'agreement_transfer' && earnedNum !== 0) {
+              throw new Error('Для agreement_transfer earned_amount должен быть 0');
+            }
+            if (opType === 'work_transfer' && earnedNum <= 0) {
+              throw new Error('Для work_transfer earned_amount должен быть > 0');
+            }
+
+            // employee
+            const { rows: [emp] } = await client.query(
+              'SELECT id, fio, is_self_employed, is_officially_employed FROM employees WHERE id = $1',
+              [empId]
+            );
+            if (!emp) throw new Error('Сотрудник не найден');
+            if (!emp.is_self_employed) throw new Error('Рабочий не самозанятый');
+            if (emp.is_officially_employed) {
+              throw new Error('Рабочий официально устроен — переводы СЗ невозможны');
+            }
+
+            // ИНН
+            const { rows: [se] } = await client.query(
+              'SELECT inn FROM self_employed WHERE employee_id = $1', [empId]
+            );
+            if (!se || !se.inn) throw new Error('У рабочего не заполнен ИНН самозанятого');
+
+            // Годовой лимит: se_transfers (текущие) + se_monthly_history
+            // (исторические Excel-импорты) + приращения из этого же bulk.
+            const { rows: [sum] } = await client.query(`
+              SELECT COALESCE(SUM(transfer_amount), 0) AS yr_sum
+              FROM se_transfers WHERE employee_id = $1 AND year = $2 AND status != 'cancelled'
+            `, [empId, yr]);
+            const { rows: [hist] } = await client.query(`
+              SELECT COALESCE(SUM(monthly_used), 0) AS hist_sum
+              FROM se_monthly_history WHERE employee_id = $1 AND year = $2
+            `, [empId, yr]);
+            const dbYr = Number(sum.yr_sum || 0) + Number(hist.hist_sum || 0);
+            const accum = yearlySumByEmp.get(empId) || 0;
+            if (dbYr + accum + transferNum > yearlyLimit) {
+              throw new Error('Превышен годовой лимит НПД');
+            }
+
+            // pm_user_id из works
+            let pmUserId = null;
+            if (wId != null) {
+              if (!Number.isFinite(wId)) throw new Error('work_id невалиден');
+              const { rows: [w] } = await client.query(
+                'SELECT id, pm_id FROM works WHERE id = $1', [wId]
+              );
+              if (!w) throw new Error('Работа не найдена');
+              pmUserId = w.pm_id || null;
+            }
+
+            // Расчёт остатка/доплаты
+            const cashReturn = opType === 'agreement_transfer'
+              ? transferNum
+              : Math.max(0, transferNum - earnedNum);
+            const cashPayout = opType === 'work_transfer'
+              ? Math.max(0, earnedNum - transferNum)
+              : 0;
+
+            // destination='pm' + есть остаток → нужен pm_user_id
+            if (destination === 'pm' && cashReturn > 0 && !pmUserId) {
+              throw new Error('Для destination=pm нужен work_id с заполненным pm_id (некому отдать остаток)');
+            }
+
+            // ── INSERT se_transfers ────────────────────────────────────
+            const { rows: [created] } = await client.query(`
+              INSERT INTO se_transfers (
+                employee_id, year, month, operation_type, earned_amount, transfer_amount,
+                cash_return_amount, cash_payout_amount, work_id, pm_user_id, inn,
+                status, comment, created_by, remainder_destination, bulk_batch_id,
+                transferred_at
+              ) VALUES (
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+                'transferred', $12, $13, $14, $15,
+                NOW()
+              )
+              RETURNING *
+            `, [
+              empId, yr, mo, opType, earnedNum, transferNum,
+              cashReturn, cashPayout, wId, pmUserId, se.inn,
+              itemComment, request.user.id, destination, batchId
+            ]);
+
+            // ── Сайд-эффект остатка ────────────────────────────────────
+            if (cashReturn > 0) {
+              if (destination === 'pm') {
+                // pm_user_id уже валидирован выше
+                await client.query(`
+                  INSERT INTO worker_to_pm_handovers (
+                    worker_id, pm_user_id, work_id, year, month,
+                    source_se_transfer_id,
+                    expected_amount, received_amount, status, note
+                  ) VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 'pending', $8)
+                `, [
+                  empId, pmUserId, wId, yr, mo,
+                  created.id, cashReturn,
+                  `Bulk #${batchId.slice(0, 8)}: ожидается передача от СЗ`
+                ]);
+                result.summary.handovers++;
+                result.summary.total_remainder_to_pm += cashReturn;
+              } else {
+                // destination='company' → cash_balance_log income
+                // Advisory lock держится до конца транзакции (xact_lock),
+                // race-safe относительно других cash-роутов.
+                if (!cashLockAcquired) {
+                  await client.query('SELECT pg_advisory_xact_lock($1)', [CASH_ADVISORY_LOCK_KEY]);
+                  cashLockAcquired = true;
+                }
+                const { rows: [bal] } = await client.query(
+                  'SELECT amount FROM cash_balance_log ORDER BY created_at DESC, id DESC LIMIT 1'
+                );
+                const currentBalance = bal ? parseFloat(bal.amount) : 0;
+                const newBalance = currentBalance + cashReturn;
+                await client.query(`
+                  INSERT INTO cash_balance_log
+                    (amount, change_amount, change_type, description, user_id)
+                  VALUES ($1, $2, 'se_remainder_income', $3, $4)
+                `, [
+                  newBalance, cashReturn,
+                  `Остаток СЗ-перевода #${created.id} (bulk ${batchId.slice(0, 8)})`,
+                  request.user.id
+                ]);
+                result.summary.cash_log_income++;
+                result.summary.total_remainder_to_company += cashReturn;
+              }
+            }
+
+            // Учёт суммы по сотруднику для последующих позиций bulk
+            yearlySumByEmp.set(empId, accum + transferNum);
+
+            result.summary.se_transfers++;
+            result.summary.total_transferred += transferNum;
+            result.transfers.push(created);
+
+            // Успех item'а — RELEASE savepoint.
+            await client.query(`RELEASE SAVEPOINT ${spName}`);
+          } catch (perItemErr) {
+            // Per-item ошибка — откатываем SAVEPOINT (иначе tx в aborted-state
+            // и все последующие client.query() свалятся "current transaction
+            // is aborted"). Per-item ошибки НЕ роняют bulk.
+            try {
+              await client.query(`ROLLBACK TO SAVEPOINT ${spName}`);
+              await client.query(`RELEASE SAVEPOINT ${spName}`);
+            } catch (_) { /* savepoint мог не существовать если упало до создания */ }
+
+            result.errors.push({
+              index: itemIdx,
+              employee_id: t.employee_id ?? null,
+              error: perItemErr.message || String(perItemErr)
+            });
+          }
+        }
+      });
+    } catch (criticalErr) {
+      // db.transaction уже сделал ROLLBACK и release клиента.
+      fastify.log.error({ err: criticalErr, batchId }, '[payroll] /se-transfers/bulk critical error');
+      return reply.code(500).send({
+        error: 'Bulk прерван из-за критической ошибки БД',
+        detail: criticalErr.message,
+        batch_id: batchId
+      });
+    }
+
+    return result;
   });
 
   // ─── PUT /se-transfers/:id/confirm-transfer ───────────────────────────────
@@ -773,9 +1083,20 @@ async function routes(fastify, options) {
   // ─── PUT /se-transfers/:id/confirm-return ─────────────────────────────────
   fastify.put('/se-transfers/:id/confirm-return', { preHandler: [fastify.requireRoles(ACCESS_ROLES)] }, async (request, reply) => {
     const id = parseInt(request.params.id, 10);
-    const { rows: [t] } = await db.query('SELECT status FROM se_transfers WHERE id = $1', [id]);
+    const { rows: [t] } = await db.query(
+      'SELECT status, remainder_destination FROM se_transfers WHERE id = $1', [id]
+    );
     if (!t) return reply.code(404).send({ error: 'Операция не найдена' });
     if (t.status !== 'transferred') return reply.code(409).send({ error: 'Можно только из transferred' });
+
+    // V262 guard: если destination='company' — остаток уже в кассе Асгарда,
+    // переход в 'completed' дал бы двойной учёт в pm-balance.se_legacy CTE
+    // (status IN ('completed','returned')). PM физически нал не получал.
+    if (t.remainder_destination === 'company') {
+      return reply.code(409).send({
+        error: 'Остаток ушёл в главную кассу — РП наличку не получал, confirm-return не применим'
+      });
+    }
 
     await db.query(`
       UPDATE se_transfers SET
@@ -1207,88 +1528,49 @@ async function routes(fastify, options) {
   });
 
   // ─── GET /pm-balance — баланс всех РП ────────────────────────────────────
-  // Stage W: добавлены handovers_received / handovers_pending (передачи от
-  // рабочих к РП — нал, который рабочий должен отдать РП после СЗ-перевода).
-  // Формула баланса: cash_in + se_cash + handovers_received − cash_exp − cash_ret − sal_cash.
+  // Единый источник правды: src/lib/pm-balance.js (calcAllPmBalances).
+  //
+  // Формула (см. подробности в lib/pm-balance.js):
+  //   balance = handovers_received                            (V243 СЗ-передачи)
+  //           + se_cash_legacy                                (se_transfers без handover — backwards-compat)
+  //           + cash_advances_issued                          (cash_requests money_issued/received/reporting)
+  //           − cash_expenses
+  //           − cash_returns_confirmed
+  //           − cash_payouts_workers                          (worker_payments cash/card, PM выдал)
+  //
+  // Backwards-compat: поля cash_in, se_cash_in, cash_out_* сохранены для старых фронтов.
   fastify.get('/pm-balance', { preHandler: [fastify.requireRoles(ACCESS_ROLES)] }, async (request, reply) => {
     try {
-      const { rows } = await db.query(`
-        WITH pms AS (
-          SELECT id, name FROM users WHERE role IN ('PM','HEAD_PM') AND COALESCE(is_active, true) = true
-        ),
-        cash_in AS (
-          SELECT user_id, COALESCE(SUM(amount), 0) AS amt
-          FROM cash_requests
-          WHERE status IN ('received','reporting')
-          GROUP BY user_id
-        ),
-        se_cash AS (
-          SELECT pm_user_id AS user_id, COALESCE(SUM(cash_return_amount), 0) AS amt
-          FROM se_transfers
-          WHERE status IN ('completed','returned')
-          GROUP BY pm_user_id
-        ),
-        cash_exp AS (
-          SELECT cr.user_id, COALESCE(SUM(ce.amount), 0) AS amt
-          FROM cash_expenses ce
-          JOIN cash_requests cr ON cr.id = ce.request_id
-          GROUP BY cr.user_id
-        ),
-        cash_ret AS (
-          SELECT cr.user_id, COALESCE(SUM(crt.amount), 0) AS amt
-          FROM cash_returns crt
-          JOIN cash_requests cr ON cr.id = crt.request_id
-          WHERE crt.confirmed_at IS NOT NULL
-          GROUP BY cr.user_id
-        ),
-        sal_cash AS (
-          SELECT w.pm_id AS user_id, COALESCE(SUM(wp.amount), 0) AS amt
-          FROM worker_payments wp
-          JOIN works w ON w.id = wp.work_id
-          WHERE wp.payment_method = 'cash' AND wp.status = 'paid'
-          GROUP BY w.pm_id
-        ),
-        handovers_received AS (
-          SELECT pm_user_id, COALESCE(SUM(received_amount), 0) AS amt
-          FROM worker_to_pm_handovers
-          WHERE status IN ('received','partial')
-          GROUP BY pm_user_id
-        ),
-        handovers_pending AS (
-          SELECT pm_user_id,
-                 COUNT(*)::int AS cnt,
-                 COALESCE(SUM(expected_amount), 0) AS sum_expected
-          FROM worker_to_pm_handovers
-          WHERE status = 'pending'
-          GROUP BY pm_user_id
-        )
-        SELECT
-          p.id AS pm_id, p.name AS pm_name,
-          COALESCE(ci.amt, 0)  AS cash_in,
-          COALESCE(sc.amt, 0)  AS se_cash_in,
-          COALESCE(ce.amt, 0)  AS cash_out_expenses,
-          COALESCE(cr.amt, 0)  AS cash_out_returns,
-          COALESCE(sl.amt, 0)  AS cash_out_salaries,
-          COALESCE(hr.amt, 0)  AS handovers_received,
-          COALESCE(hp.cnt, 0)  AS handovers_pending_count,
-          COALESCE(hp.sum_expected, 0) AS handovers_pending_sum,
-          (COALESCE(ci.amt,0) + COALESCE(sc.amt,0) + COALESCE(hr.amt,0)
-           - COALESCE(ce.amt,0) - COALESCE(cr.amt,0) - COALESCE(sl.amt,0)) AS balance
-        FROM pms p
-        LEFT JOIN cash_in            ci ON ci.user_id = p.id
-        LEFT JOIN se_cash            sc ON sc.user_id = p.id
-        LEFT JOIN cash_exp           ce ON ce.user_id = p.id
-        LEFT JOIN cash_ret           cr ON cr.user_id = p.id
-        LEFT JOIN sal_cash           sl ON sl.user_id = p.id
-        LEFT JOIN handovers_received hr ON hr.pm_user_id = p.id
-        LEFT JOIN handovers_pending  hp ON hp.pm_user_id = p.id
-        ORDER BY p.name
-      `);
-      return { pms: rows };
+      const balances = await calcAllPmBalances(db);
+      const pms = balances.map(b => ({
+        pm_id:                   b.pm_id,
+        pm_name:                 b.pm_name,
+        // canonical (новые) поля
+        handovers_received:      b.handovers_received,
+        se_cash_legacy:          b.se_cash_legacy,
+        cash_advances_issued:    b.cash_advances_issued,
+        cash_expenses:           b.cash_expenses,
+        cash_returns_confirmed:  b.cash_returns_confirmed,
+        cash_payouts_workers:    b.cash_payouts_workers,
+        handovers_pending_count: b.handovers_pending_count,
+        handovers_pending_sum:   b.handovers_pending_sum,
+        balance:                 b.balance,
+        work_expenses_direct:    b.work_expenses_direct,
+        // backwards-compat (фронт читает эти имена)
+        cash_in:                 b.cash_advances_issued,
+        se_cash_in:              b.se_cash_legacy + b.handovers_received, // суммарный приход от СЗ
+        cash_out_expenses:       b.cash_expenses,
+        cash_out_returns:        b.cash_returns_confirmed,
+        cash_out_salaries:       b.cash_payouts_workers,
+        // единый отток (расходы подотчёт + выплаты рабочим + прямые расходы РП);
+        // возвраты в кассу — ОТДЕЛЬНО (иначе двойной счёт). Симметрично формуле balance.
+        cash_out:                b.cash_expenses + b.cash_payouts_workers + b.work_expenses_direct,
+        cash_returned:           b.cash_returns_confirmed
+      }));
+      return { pms };
     } catch (e) {
       fastify.log.warn('[pm-balance] fallback: ' + e.message);
-      // Простой фолбэк: только PM-список без cash-таблиц (например, если
-      // worker_to_pm_handovers ещё не существует на свежей БД).
+      // Простой фолбэк если что-то совсем сломалось.
       const { rows: pms } = await db.query(`
         SELECT id AS pm_id, name AS pm_name, 0 AS cash_in, 0 AS se_cash_in,
                0 AS cash_out_expenses, 0 AS cash_out_returns, 0 AS cash_out_salaries,
@@ -1297,26 +1579,465 @@ async function routes(fastify, options) {
         FROM users WHERE role IN ('PM','HEAD_PM') AND COALESCE(is_active, true) = true
         ORDER BY name
       `);
-      return { pms, note: 'cash_* / worker_payments / handovers недоступны: ' + e.message };
+      return { pms, note: 'pm-balance fallback: ' + e.message };
     }
   });
 
   // ─── GET /pm-balance/:pm_id — детализация ─────────────────────────────────
+  // Плоская структура: фронт (pm_balance.js renderDetail) читает поля верхнего
+  // уровня (data.cash_requests, data.se_returns, data.worker_payments,
+  // data.cash_expenses, data.cash_returns) + summary (balance, pm_name, cash_in,
+  // se_cash_in, cash_out, cash_returned, handovers_pending_*).
+  // JOIN'ы зеркалят SSoT src/lib/pm-balance.js (иначе детали не сходятся с балансом).
   fastify.get('/pm-balance/:pm_id', { preHandler: [fastify.requireRoles(ACCESS_ROLES)] }, async (request) => {
     const pmId = parseInt(request.params.pm_id, 10);
-    const out = { pm_id: pmId, items: { cash_requests: [], se_transfers: [], cash_expenses: [], cash_returns: [], worker_payments: [] } };
+    if (!Number.isFinite(pmId)) return { error: 'Bad pm id' };
+
+    // Summary из единой формулы (тот же источник, что список).
+    const b = await calcPmBalance(db, pmId);
+    const out = {
+      pm_id:         pmId,
+      cash_in:       b.cash_advances_issued,
+      se_cash_in:    b.se_cash_legacy + b.handovers_received,
+      cash_out:      b.cash_expenses + b.cash_payouts_workers + b.work_expenses_direct,
+      cash_returned: b.cash_returns_confirmed,
+      balance:       b.balance,
+      // секции (плоско, как читает фронт)
+      cash_requests: [], se_returns: [], handovers: [], worker_payments: [], cash_expenses: [], cash_returns: []
+    };
 
     try {
-      const { rows: cr } = await db.query(`SELECT id, amount, status, created_at FROM cash_requests WHERE user_id = $1 ORDER BY created_at DESC LIMIT 100`, [pmId]);
-      out.items.cash_requests = cr;
+      const { rows } = await db.query(`SELECT id, name FROM users WHERE id = $1`, [pmId]);
+      out.pm_name = rows[0] ? rows[0].name : `РП #${pmId}`;
+    } catch (_) { out.pm_name = `РП #${pmId}`; }
+
+    // handovers_pending (ожидают передачи от рабочих)
+    try {
+      const { rows } = await db.query(
+        `SELECT COUNT(*)::int AS cnt, COALESCE(SUM(expected_amount),0)::numeric AS sum
+         FROM worker_to_pm_handovers WHERE pm_user_id = $1 AND status = 'pending'`, [pmId]);
+      out.handovers_pending_count = rows[0] ? parseInt(rows[0].cnt, 10) : 0;
+      out.handovers_pending_sum   = rows[0] ? Number(rows[0].sum) : 0;
     } catch (_) {}
 
+    // 💵 Получено из кассы — cash_requests (фронт: created_at, amount, purpose, status)
     try {
-      const { rows: sr } = await db.query(`SELECT id, employee_id, transfer_amount, cash_return_amount, status, created_at FROM se_transfers WHERE pm_user_id = $1 ORDER BY created_at DESC LIMIT 100`, [pmId]);
-      out.items.se_transfers = sr;
+      const { rows } = await db.query(
+        `SELECT id, amount, purpose, status, created_at
+         FROM cash_requests
+         WHERE user_id = $1 AND status IN ('money_issued','received','reporting','closed')
+         ORDER BY created_at DESC LIMIT 200`, [pmId]);
+      out.cash_requests = rows;
+    } catch (_) {}
+
+    // 🔄 От самозанятых — se_transfers legacy (без handover), фронт: returned_at, cash_return_amount, employee_name, comment
+    try {
+      const { rows } = await db.query(
+        `SELECT st.id, st.returned_at, st.cash_return_amount, st.comment,
+                COALESCE(e.fio, e.full_name) AS employee_name
+         FROM se_transfers st
+         LEFT JOIN worker_to_pm_handovers h ON h.source_se_transfer_id = st.id
+         LEFT JOIN employees e ON e.id = st.employee_id
+         WHERE st.pm_user_id = $1 AND st.status IN ('completed','returned') AND h.id IS NULL
+         ORDER BY st.returned_at DESC NULLS LAST, st.id DESC LIMIT 200`, [pmId]);
+      out.se_returns = rows;
+    } catch (_) {}
+
+    // 📥 Передачи от рабочих — worker_to_pm_handovers (V243, приход нала РП от рабочих).
+    // Это раскрытие карточки «От самозанятых» (handovers_received часть se_cash_in).
+    // Фильтр зеркалит SSoT: status IN ('received','partial').
+    try {
+      const { rows } = await db.query(
+        `SELECT h.id, h.received_amount AS amount, h.received_at, h.note,
+                COALESCE(e.fio, e.full_name) AS employee_name
+         FROM worker_to_pm_handovers h
+         LEFT JOIN employees e ON e.id = h.worker_id
+         WHERE h.pm_user_id = $1 AND h.status IN ('received','partial')
+         ORDER BY h.received_at DESC NULLS LAST, h.id DESC LIMIT 200`, [pmId]);
+      out.handovers = rows;
+    } catch (_) {}
+
+    // 💳 Выплаты наличкой — worker_payments (фронт: created_at, amount, employee_name, type)
+    try {
+      const { rows } = await db.query(
+        `SELECT wp.id, wp.amount, wp.type, wp.created_at,
+                COALESCE(e.fio, e.full_name) AS employee_name
+         FROM worker_payments wp
+         LEFT JOIN works w ON w.id = wp.work_id
+         LEFT JOIN employees e ON e.id = wp.employee_id
+         WHERE wp.status IN ('paid','confirmed')
+           AND wp.type IN ('salary','bonus','per_diem','advance','penalty')
+           AND (wp.paid_by = $1 OR (wp.paid_by IS NULL AND w.pm_id = $1 AND wp.payment_method IN ('cash','card')))
+         ORDER BY wp.created_at DESC LIMIT 200`, [pmId]);
+      out.worker_payments = rows;
+    } catch (_) {}
+
+    // 🧾 Расходы — cash_expenses (чеки по подотчёту) + work_expenses_direct (прямые наличные)
+    try {
+      const { rows: podotchet } = await db.query(
+        `SELECT ce.id, ce.amount, ce.description, ce.created_at
+         FROM cash_expenses ce JOIN cash_requests cr ON cr.id = ce.request_id
+         WHERE cr.user_id = $1`, [pmId]);
+      const { rows: direct } = await db.query(
+        `SELECT we.id, we.amount, COALESCE(we.description, we.category) AS description, we.created_at
+         FROM work_expenses we LEFT JOIN works w ON w.id = we.work_id
+         WHERE COALESCE(we.source_table,'') NOT IN ('worker_payments')
+           AND ((we.paid_by = $1 AND we.payment_method IN ('cash','card','transfer'))
+             OR (we.paid_by IS NULL AND w.pm_id = $1 AND we.payment_method IN ('cash','card')))`, [pmId]);
+      out.cash_expenses = podotchet.concat(direct)
+        .sort((a, z) => new Date(z.created_at) - new Date(a.created_at)).slice(0, 300);
+    } catch (_) {}
+
+    // ↩️ Возвраты в кассу — cash_returns confirmed (фронт: created_at, amount, comment)
+    try {
+      const { rows } = await db.query(
+        `SELECT crt.id, crt.amount, crt.note AS comment, crt.created_at
+         FROM cash_returns crt JOIN cash_requests cr ON cr.id = crt.request_id
+         WHERE cr.user_id = $1 AND crt.confirmed_at IS NOT NULL
+         ORDER BY crt.created_at DESC LIMIT 200`, [pmId]);
+      out.cash_returns = rows;
     } catch (_) {}
 
     return out;
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // V264: разделение выплат по ИСТОЧНИКАМ ДЕНЕГ
+  // (касса РП / банк компании / СЗ-сервис / Авто-ФОТ)
+  // SSoT: migrations/V264__worker_payment_source_view.sql + src/lib/pm-balance.js
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const SOURCE_KINDS = ['pm_cash', 'pm_cash_legacy', 'company_bank', 'company_se', 'auto_fot', 'other'];
+  const ALL_ACCESS_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH'];
+
+  function isPmRole(role) {
+    return role === 'PM' || role === 'HEAD_PM';
+  }
+  function isFullAccess(role) {
+    return ALL_ACCESS_ROLES.includes(role);
+  }
+
+  // ─── GET /worker/:id/breakdown ─────────────────────────────────────────────
+  // Возвращает разбивку начислений/выплат конкретного работника по источникам.
+  // Доступ: PM/HEAD_PM (только свои строки), ADMIN/DIRECTOR_*/BUH (все).
+  //
+  // Query:
+  //   work_id (optional) — фильтр по работе
+  //   from   (optional)  — YYYY-MM-DD; default = без нижней границы
+  //   to     (optional)  — YYYY-MM-DD; default = без верхней границы
+  //   pm_id  (optional)  — фильтр по PM (для full-access ролей; PM игнорируют)
+  fastify.get('/worker/:id/breakdown', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const role = request.user.role;
+    const userId = parseInt(request.user.id, 10);
+    if (!isPmRole(role) && !isFullAccess(role)) {
+      return reply.code(403).send({ error: 'Нет доступа' });
+    }
+
+    const empId = parseInt(request.params.id, 10);
+    if (!Number.isFinite(empId)) {
+      return reply.code(400).send({ error: 'Bad employee id' });
+    }
+
+    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+    const workId = request.query.work_id ? parseInt(request.query.work_id, 10) : null;
+    const from = (request.query.from && dateRe.test(request.query.from)) ? request.query.from : null;
+    const to   = (request.query.to   && dateRe.test(request.query.to))   ? request.query.to   : null;
+    // pm_id фильтр: PM/HEAD_PM ВСЕГДА фильтруют по себе; full-access — по query
+    let pmFilter = null;
+    if (isPmRole(role)) {
+      pmFilter = userId;
+    } else if (request.query.pm_id) {
+      const q = parseInt(request.query.pm_id, 10);
+      if (Number.isFinite(q)) pmFilter = q;
+    }
+
+    // ── 1) Сведения о работнике
+    let employee = null;
+    try {
+      const { rows } = await db.query(
+        `SELECT id, fio, is_officially_employed, is_self_employed
+         FROM employees WHERE id = $1`,
+        [empId]
+      );
+      if (!rows[0]) {
+        return reply.code(404).send({ error: 'Работник не найден' });
+      }
+      employee = rows[0];
+    } catch (e) {
+      fastify.log.error({ err: e }, '[breakdown] employee lookup');
+      return reply.code(500).send({ error: 'Не удалось получить работника', detail: e.message });
+    }
+
+    // ── 2) Сведения о работе (если задана)
+    let workInfo = { id: workId, title: null, pm_id: null, pm_name: null };
+    if (workId != null && Number.isFinite(workId)) {
+      try {
+        const { rows } = await db.query(
+          `SELECT w.id, w.work_title, w.pm_id, u.name AS pm_name
+           FROM works w LEFT JOIN users u ON u.id = w.pm_id
+           WHERE w.id = $1`,
+          [workId]
+        );
+        if (rows[0]) {
+          workInfo.title = rows[0].work_title;
+          workInfo.pm_id = rows[0].pm_id;
+          workInfo.pm_name = rows[0].pm_name;
+        }
+      } catch (_) {}
+    }
+
+    // RBAC для PM: разрешаем только если работа принадлежит PM или paid_by=PM
+    // существует хотя бы по одной строке. Реализуем через WHERE-фильтр в SQL.
+
+    // ── 3) Строим WHERE
+    const params = [empId];
+    const where = ['v.employee_id = $1'];
+    if (workId != null && Number.isFinite(workId)) {
+      params.push(workId);
+      where.push(`v.work_id = $${params.length}`);
+    }
+    if (from) {
+      params.push(from);
+      where.push(`COALESCE(v.paid_at, v.created_at)::date >= $${params.length}`);
+    }
+    if (to) {
+      params.push(to);
+      where.push(`COALESCE(v.paid_at, v.created_at)::date <= $${params.length}`);
+    }
+    // PM/HEAD_PM видит только: свои выплаты (paid_by=user) ИЛИ свои работы (work.pm_id=user).
+    // Full-access роли могут фильтровать через pm_id (по тому же критерию).
+    if (pmFilter != null) {
+      params.push(pmFilter);
+      where.push(`(v.paid_by = $${params.length} OR w.pm_id = $${params.length})`);
+    }
+
+    // ── 4) Запрос
+    let rows = [];
+    try {
+      const sql = `
+        SELECT
+          v.id, v.amount, v.type, v.status, v.payment_method, v.paid_by,
+          v.work_id, v.comment, v.created_at, v.paid_at,
+          v.source_kind, v.is_from_pm_cash,
+          w.work_title,
+          w.pm_id AS work_pm_id,
+          uw.name AS work_pm_name,
+          ub.name AS paid_by_name
+        FROM worker_payment_source_v v
+        LEFT JOIN works w ON w.id = v.work_id
+        LEFT JOIN users uw ON uw.id = w.pm_id
+        LEFT JOIN users ub ON ub.id = v.paid_by
+        WHERE ${where.join(' AND ')}
+          AND v.status IN ('paid', 'confirmed')
+        ORDER BY COALESCE(v.paid_at, v.created_at) ASC, v.id ASC
+      `;
+      const r = await db.query(sql, params);
+      rows = r.rows;
+    } catch (e) {
+      fastify.log.error({ err: e }, '[breakdown] query');
+      return reply.code(500).send({ error: 'Не удалось получить данные', detail: e.message });
+    }
+
+    // ── 5) Считаем agg
+    const accrued = { salary: 0, bonus: 0, per_diem: 0, advance: 0, penalty: 0, total: 0 };
+    const paid = {};
+    for (const k of SOURCE_KINDS) paid[k] = 0;
+    paid.total = 0;
+    let pmKassaImpact = 0;
+
+    const operations = rows.map(r => {
+      const amt = Number(r.amount) || 0;
+      // accrued по типу (penalty уменьшает total)
+      if (r.type === 'salary')   accrued.salary   += amt;
+      else if (r.type === 'bonus')    accrued.bonus    += amt;
+      else if (r.type === 'per_diem') accrued.per_diem += amt;
+      else if (r.type === 'advance')  accrued.advance  += amt;
+      else if (r.type === 'penalty')  accrued.penalty  += amt;
+
+      // paid по source_kind (penalty тоже идёт как выплата = удержание из ФОТ
+      // фактически забрано из кассы РП; считаем модуль)
+      const sk = r.source_kind || 'other';
+      const bucket = SOURCE_KINDS.includes(sk) ? sk : 'other';
+      paid[bucket] += amt;
+      paid.total   += amt;
+      if (r.is_from_pm_cash) pmKassaImpact += amt;
+
+      // ISO date
+      let dateIso = null;
+      const d = r.paid_at || r.created_at;
+      if (d instanceof Date) {
+        const yy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        dateIso = `${yy}-${mm}-${dd}`;
+      } else if (typeof d === 'string') {
+        dateIso = d.slice(0, 10);
+      }
+
+      return {
+        id: r.id,
+        date: dateIso,
+        type: r.type,
+        amount: amt,
+        payment_method: r.payment_method,
+        paid_by: r.paid_by == null ? null : Number(r.paid_by),
+        paid_by_name: r.paid_by_name || (r.payment_method === 'bank' ? 'Бухгалтерия' :
+                                          r.payment_method === 'self' ? 'СЗ-сервис' :
+                                          r.payment_method === 'auto' ? 'Авто-ФОТ' : null),
+        source_kind: sk,
+        is_from_pm_cash: !!r.is_from_pm_cash,
+        comment: r.comment || null,
+        work_id: r.work_id == null ? null : Number(r.work_id),
+        work_title: r.work_title || null
+      };
+    });
+
+    accrued.total = accrued.salary + accrued.bonus + accrued.per_diem + accrued.advance - accrued.penalty;
+    const balance = accrued.total - paid.total;
+
+    return {
+      employee_id: employee.id,
+      employee_fio: employee.fio,
+      is_officially_employed: !!employee.is_officially_employed,
+      is_self_employed: !!employee.is_self_employed,
+      period: { from, to },
+      work_id: workInfo.id,
+      work_title: workInfo.title,
+      pm_id: pmFilter != null ? pmFilter : workInfo.pm_id,
+      pm_name: workInfo.pm_name,
+      accrued,
+      paid,
+      balance,
+      pm_kassa_impact: -pmKassaImpact, // отрицательное число — сколько ушло из кассы РП
+      operations
+    };
+  });
+
+  // ─── GET /payouts-by-source ────────────────────────────────────────────────
+  // Агрегаты выплат по источникам для дашборда payroll.
+  // Возвращает summary (по источникам) + workers (помесячный/попериодный список).
+  fastify.get('/payouts-by-source', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const role = request.user.role;
+    const userId = parseInt(request.user.id, 10);
+    if (!isPmRole(role) && !isFullAccess(role)) {
+      return reply.code(403).send({ error: 'Нет доступа' });
+    }
+
+    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+    const workId = request.query.work_id ? parseInt(request.query.work_id, 10) : null;
+    const from = (request.query.from && dateRe.test(request.query.from)) ? request.query.from : null;
+    const to   = (request.query.to   && dateRe.test(request.query.to))   ? request.query.to   : null;
+
+    let pmFilter = null;
+    if (isPmRole(role)) {
+      pmFilter = userId;
+    } else if (request.query.pm_id) {
+      const q = parseInt(request.query.pm_id, 10);
+      if (Number.isFinite(q)) pmFilter = q;
+    }
+
+    // ── WHERE
+    const params = [];
+    const where = [`v.status IN ('paid', 'confirmed')`];
+    if (workId != null && Number.isFinite(workId)) {
+      params.push(workId);
+      where.push(`v.work_id = $${params.length}`);
+    }
+    if (from) {
+      params.push(from);
+      where.push(`COALESCE(v.paid_at, v.created_at)::date >= $${params.length}`);
+    }
+    if (to) {
+      params.push(to);
+      where.push(`COALESCE(v.paid_at, v.created_at)::date <= $${params.length}`);
+    }
+    if (pmFilter != null) {
+      params.push(pmFilter);
+      where.push(`(v.paid_by = $${params.length} OR w.pm_id = $${params.length})`);
+    }
+
+    let rows = [];
+    try {
+      const sql = `
+        SELECT
+          v.employee_id,
+          e.fio,
+          e.is_officially_employed,
+          e.is_self_employed,
+          v.type,
+          v.amount,
+          v.source_kind,
+          v.is_from_pm_cash
+        FROM worker_payment_source_v v
+        LEFT JOIN employees e ON e.id = v.employee_id
+        LEFT JOIN works w ON w.id = v.work_id
+        WHERE ${where.join(' AND ')}
+      `;
+      const r = await db.query(sql, params);
+      rows = r.rows;
+    } catch (e) {
+      fastify.log.error({ err: e }, '[payouts-by-source] query');
+      return reply.code(500).send({ error: 'Не удалось получить данные', detail: e.message });
+    }
+
+    // ── summary aggregate
+    const summary = {
+      pm_cash:      { amount: 0, count: 0 },
+      company_bank: { amount: 0, count: 0 },
+      company_se:   { amount: 0, count: 0 },
+      auto_fot:     { amount: 0, count: 0 },
+      pm_cash_legacy: { amount: 0, count: 0 },
+      other:        { amount: 0, count: 0 },
+      total: 0
+    };
+
+    // ── workers aggregate
+    const workerMap = new Map();
+    for (const r of rows) {
+      const amt = Number(r.amount) || 0;
+      const sk = r.source_kind || 'other';
+      if (summary[sk]) {
+        summary[sk].amount += amt;
+        summary[sk].count += 1;
+      } else {
+        summary.other.amount += amt;
+        summary.other.count += 1;
+      }
+      summary.total += amt;
+
+      const eid = r.employee_id;
+      if (eid == null) continue;
+      let w = workerMap.get(eid);
+      if (!w) {
+        w = {
+          employee_id: eid,
+          fio: r.fio || `#${eid}`,
+          is_officially_employed: !!r.is_officially_employed,
+          is_self_employed: !!r.is_self_employed,
+          accrued_total: 0,
+          by_source: { pm_cash: 0, pm_cash_legacy: 0, company_bank: 0, company_se: 0, auto_fot: 0, other: 0 },
+          to_pay_remainder: 0
+        };
+        workerMap.set(eid, w);
+      }
+      // accrued_total: salary+bonus+per_diem+advance минус penalty
+      if (r.type === 'penalty') w.accrued_total -= amt;
+      else w.accrued_total += amt;
+      // by_source: paid (penalty считается со знаком +, как «удержание из кассы»)
+      if (w.by_source[sk] != null) w.by_source[sk] += amt;
+      else w.by_source.other += amt;
+    }
+    for (const w of workerMap.values()) {
+      const totalPaid = Object.values(w.by_source).reduce((s, v) => s + v, 0);
+      w.to_pay_remainder = w.accrued_total - totalPaid;
+    }
+    const workers = [...workerMap.values()].sort((a, b) => b.accrued_total - a.accrued_total);
+
+    return { summary, workers };
   });
 }
 

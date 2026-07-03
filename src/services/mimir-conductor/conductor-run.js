@@ -19,6 +19,39 @@ const crypto = require('crypto');
 const db = require('../db');
 
 /**
+ * Безопасный JSON.stringify для записи в jsonb-колонки PostgreSQL.
+ * Чинит типовые SQL-падения «invalid input syntax for type json»:
+ *   - undefined → null (top-level undefined → 'undefined' строка → отвергает pg)
+ *   - bigint → строка (JSON.stringify бросает TypeError на bigint)
+ *   - function → undefined (выкидывается из объекта)
+ *   - Date → ISO-строка
+ *   - NaN/Infinity → null
+ *   - circular reference → '[Circular]' (вместо TypeError)
+ *
+ * Источник бага work_scope_researcher: AI отдаёт частично-битый JSON, после
+ * парса попадает в payload агента, далее addEvent/addArtifact → JSON.stringify
+ * → pg отвергает (например, undefined в обёртке). Опус-фикс 19.06.2026.
+ */
+function _safeJsonStringify(obj) {
+  const seen = new WeakSet();
+  const out = JSON.stringify(obj, (k, v) => {
+    if (v === undefined) return null;
+    if (typeof v === 'bigint') return v.toString();
+    if (typeof v === 'function') return undefined;
+    if (v instanceof Date) return v.toISOString();
+    if (typeof v === 'number' && !Number.isFinite(v)) return null;
+    if (typeof v === 'object' && v !== null) {
+      if (seen.has(v)) return '[Circular]';
+      seen.add(v);
+    }
+    return v;
+  });
+  // Top-level undefined → JSON.stringify вернёт undefined (НЕ строку!),
+  // что в pg приведёт к ошибке "invalid input syntax". Подменяем на 'null'.
+  return out === undefined ? 'null' : out;
+}
+
+/**
  * Стабильный sha256-хеш JSON-контента.
  * Ключи сортируются рекурсивно, чтобы одинаковый по смыслу объект давал
  * одинаковый хеш независимо от порядка полей (для дедупликации артефактов).
@@ -66,7 +99,7 @@ async function createRun(p = {}) {
        (work_id, tender_id, estimate_id, initiated_by, status, profile, contract_value, complexity_flags)
      VALUES ($1,$2,$3,$4,'DRAFT',$5,$6,$7)
      RETURNING id, status`,
-    [workId, tenderId, estimateId, initiatedBy, profile, contractValue, JSON.stringify(complexityFlags)]
+    [workId, tenderId, estimateId, initiatedBy, profile, contractValue, _safeJsonStringify(complexityFlags)]
   );
   const row = res.rows[0];
   await addEvent(row.id, null, 'status_change', { from: null, to: 'DRAFT' });
@@ -105,7 +138,7 @@ async function updateRunStatus(runId, status, opts = {}) {
     if (opts.blockedSince !== undefined) { sets.push(`blocked_since = $${i++}`); vals.push(opts.blockedSince); }
     if (opts.conductorModel !== undefined) { sets.push(`conductor_model = $${i++}`); vals.push(opts.conductorModel); }
     if (opts.finalArtifactHash !== undefined) { sets.push(`final_artifact_hash = $${i++}`); vals.push(opts.finalArtifactHash); }
-    if (opts.finalEstimateData !== undefined) { sets.push(`final_estimate_data = $${i++}`); vals.push(JSON.stringify(opts.finalEstimateData)); }
+    if (opts.finalEstimateData !== undefined) { sets.push(`final_estimate_data = $${i++}`); vals.push(_safeJsonStringify(opts.finalEstimateData)); }
     if (opts.completedAt) { sets.push('completed_at = NOW()'); }
     if (status && status.startsWith('BLOCKED_') && opts.blockedSince === undefined) { sets.push('blocked_since = NOW()'); }
 
@@ -114,7 +147,7 @@ async function updateRunStatus(runId, status, opts = {}) {
     await client.query(
       `INSERT INTO mimir_agent_events (conductor_run_id, agent_run_id, event_type, payload)
        VALUES ($1, NULL, 'status_change', $2)`,
-      [runId, JSON.stringify({ from, to: status })]
+      [runId, _safeJsonStringify({ from, to: status })]
     );
     return { runId, from, to: status };
   });
@@ -150,7 +183,7 @@ async function startAgentRun(runId, { agentName, model, promptHash, agentVersion
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'RUNNING')
      RETURNING id`,
     [runId, agentName, agentVersion, parentAgentRunId, model, promptHash || '',
-     JSON.stringify(inputArtifactHashes), inputExtra ? JSON.stringify(inputExtra) : null]
+     _safeJsonStringify(inputArtifactHashes), inputExtra ? _safeJsonStringify(inputExtra) : null]
   );
   return res.rows[0].id;
 }
@@ -211,7 +244,7 @@ async function addArtifact(runId, agentRunId, type, content, schemaVersion = 'v1
        (conductor_run_id, created_by_agent_run_id, artifact_type, content, content_hash, schema_version)
      VALUES ($1,$2,$3,$4,$5,$6)
      RETURNING id`,
-    [runId, agentRunId, type, JSON.stringify(content), contentHash, schemaVersion]
+    [runId, agentRunId, type, _safeJsonStringify(content), contentHash, schemaVersion]
   );
   const artifactId = res.rows[0].id;
   await addEvent(runId, agentRunId, 'artifact_emitted', { artifact_id: artifactId, artifact_type: type, content_hash: contentHash });
@@ -245,7 +278,7 @@ async function addEvent(runId, agentRunId, type, payload) {
   const res = await db.query(
     `INSERT INTO mimir_agent_events (conductor_run_id, agent_run_id, event_type, payload)
      VALUES ($1,$2,$3,$4) RETURNING id`,
-    [runId, agentRunId, type, JSON.stringify(payload || {})]
+    [runId, agentRunId, type, _safeJsonStringify(payload || {})]
   );
   return res.rows[0].id;
 }
@@ -339,6 +372,7 @@ async function getAllArtifacts(runId) {
 
 module.exports = {
   hashContent,
+  _safeJsonStringify,
   // runs
   createRun, getRun, updateRunStatus, bumpRunMetrics,
   // agent runs

@@ -13,9 +13,14 @@
  */
 
 // READINESS_ROLES — смена статуса готовности (запись). PM сюда НЕ входит (read-only).
-const READINESS_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM'];
+// 23.06.2026 BUG-FIX (D-09): добавлены HEAD_PM и OFFICE_MANAGER.
+// v2 Personnel/api.js:74 EDIT_ROLES уже включает их и показывает кнопки «✓ Готов» / «Не готов»,
+// а backend отвечал 403 при клике → у HEAD_PM и Офис-менеджера переход неактивен в реальности.
+// Сейчас оба могут менять статус готовности сотрудника, паритет с UI.
+const READINESS_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'HEAD_PM', 'OFFICE_MANAGER'];
 // VIEW_ROLES — просмотр списка дружины. PM/HEAD_PM видят всех (свою бригаду — в полевом модуле).
-const VIEW_ROLES      = ['ADMIN', 'HR', 'HR_MANAGER', 'PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'TO', 'HEAD_TO'];
+// OFFICE_MANAGER ведёт картотеку рабочих (телефоны, документы), нужен read-доступ к «Моей дружине».
+const VIEW_ROLES      = ['ADMIN', 'HR', 'HR_MANAGER', 'PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'TO', 'HEAD_TO', 'OFFICE_MANAGER'];
 
 const READINESS_REASONS = [
   { key: 'illness',    label: 'Болезнь' },
@@ -45,6 +50,7 @@ async function routes(fastify, options) {
         e.readiness_status, e.readiness_date, e.readiness_reason,
         e.readiness_comment, e.readiness_updated_at,
         e.last_pm_id, e.last_work_id,
+        e.city,
         pm.name AS last_pm_name,
         lw.work_title AS last_work_title
       FROM employees e
@@ -157,6 +163,36 @@ async function routes(fastify, options) {
       permitsByEmp[p.employee_id] = { expired: Number(p.expired || 0), expiring: Number(p.expiring || 0) };
     }
 
+    // 25.06.2026: ключевые пропуска (БОСИЕТ/РУКАВ/ФСБ/МЛСП) для колонок Дружины.
+    // На каждого рабочего — последний действующий допуск каждого типа +
+    // его expiry_date. Коды permit_types.code:
+    //   BOSIET   — БОСИЕТ        (id 153, offshore)
+    //   SLEEVE   — РУКАВ         (id 154, offshore)
+    //   FSB      — Пропуск ФСБ   (id 168)
+    //   MLSP_PASS — Пропуск МЛСП (заводится миграцией V255 если нет — пока пусто)
+    const { rows: keyPermits } = await db.query(`
+      SELECT DISTINCT ON (ep.employee_id, pt.code)
+        ep.employee_id, pt.code, ep.permit_number AS number, ep.expiry_date
+      FROM employee_permits ep
+      JOIN permit_types pt ON pt.id = ep.type_id
+      WHERE ep.employee_id = ANY($1::int[])
+        AND COALESCE(ep.is_active, true) = true
+        AND pt.code IN ('BOSIET','SLEEVE','FSB','MLSP_PASS')
+      ORDER BY ep.employee_id, pt.code,
+               (ep.expiry_date IS NULL) ASC,
+               ep.expiry_date DESC NULLS LAST,
+               ep.id DESC
+    `, [empIds]);
+
+    const keyPermitsByEmp = {};
+    for (const kp of keyPermits) {
+      if (!keyPermitsByEmp[kp.employee_id]) keyPermitsByEmp[kp.employee_id] = {};
+      keyPermitsByEmp[kp.employee_id][kp.code] = {
+        number: kp.number || null,
+        expiry_date: kp.expiry_date || null
+      };
+    }
+
     // Годовой лимит СЗ
     const { rows: seSum } = await db.query(`
       SELECT employee_id, COALESCE(SUM(transfer_amount), 0) AS transferred_year
@@ -191,13 +227,23 @@ async function routes(fastify, options) {
           pm_name:    approvedByEmp[e.id].pm_name,
         };
       } else if (e.readiness_status === 'ready') {
-        effective_status = (e.readiness_date && e.readiness_date.toISOString
-          ? e.readiness_date.toISOString().slice(0,10) > today
-          : (typeof e.readiness_date === 'string' && e.readiness_date.slice(0,10) > today))
-          ? 'ready_future' : 'ready';
+        // ВСЕГДА 'ready' — и текущие готовы, и будущие (с readiness_date > today).
+        // Раньше для будущих ставили 'ready_future', чего нет в группах фронта
+        // → Егоров (готов с 22.06) пропадал из списка. Если нужно отличить —
+        // у клиента есть readiness_date (на frontend подписываем «с DD.MM.YYYY»).
+        effective_status = 'ready';
       }
 
-      if (groups[effective_status] !== undefined) groups[effective_status]++;
+      // Силовой fallback: если effective_status не входит в известные группы
+      // ({on_site, approved, ready, not_ready, archive}) — НЕ silent-drop'аем
+      // (раньше так пропадал ready_future, и любой будущий новый статус), а
+      // считаем как not_ready (надёжное место для «непонятного» статуса).
+      if (groups[effective_status] !== undefined) {
+        groups[effective_status]++;
+      } else {
+        groups.not_ready++;
+        effective_status = 'not_ready';
+      }
 
       // last_assignment_info — последняя работа сотрудника (даже завершённая).
       // Используется для пустых строк «Объект/РП» и «Начало работ», когда сотрудник
@@ -217,6 +263,7 @@ async function routes(fastify, options) {
         approved_info,
         last_assignment_info,
         permits: permitsByEmp[e.id] || { expired: 0, expiring: 0 },
+        key_permits: keyPermitsByEmp[e.id] || {},
         se_transferred_year: seByEmp[e.id] || 0,
       };
     });

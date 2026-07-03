@@ -103,7 +103,7 @@ async function routes(fastify, options) {
   const { ensureSiteByPlace } = require('../helpers/site-geocode');
 
   fastify.get('/', { preHandler: [fastify.authenticate] }, async (request) => {
-    const { tender_id, pm_id, status, kind, limit = 100, offset = 0, include_deleted } = request.query;
+    const { tender_id, source_pre_tender_id, pm_id, status, kind, limit = 100, offset = 0, include_deleted } = request.query;
     const user = request.user;
     let sql = 'SELECT w.*, t.customer_name as customer, u.name as pm_name FROM works w LEFT JOIN tenders t ON w.tender_id = t.id LEFT JOIN users u ON w.pm_id = u.id WHERE w.deleted_at IS NULL';
     const params = [];
@@ -117,6 +117,10 @@ async function routes(fastify, options) {
     }
 
     if (tender_id) { sql += ` AND w.tender_id = $${idx}`; params.push(tender_id); idx++; }
+    // 30.06.2026: работа, созданная из заявки (pre_tender→win), имеет tender_id=NULL
+    // и привязана через source_pre_tender_id. Кнопка «Открыть работу» в канбане
+    // для pre_tender-карточки ищет именно по этому полю.
+    if (source_pre_tender_id) { sql += ` AND w.source_pre_tender_id = $${idx}`; params.push(source_pre_tender_id); idx++; }
     if (pm_id) { sql += ` AND w.pm_id = $${idx}`; params.push(pm_id); idx++; }
     if (status) { sql += ` AND w.work_status = $${idx}`; params.push(status); idx++; }
     if (kind && kind !== 'all') { sql += ` AND w.work_kind = $${idx}`; params.push(kind); idx++; }

@@ -2,6 +2,15 @@
  * ASGARD CRM — Предварительные заявки
  * Шаг 10: CRUD + accept/reject + AI-анализ + статистика
  * Prefix: /api/pre-tenders
+ *
+ * KNOWN ISSUE (🟡 D-16, помечено 23.06.2026):
+ *   customer_name на pre_tender_requests, inbox_applications, tenders, works — ПЛОСКОЕ
+ *   поле VARCHAR(500), а не FK на справочник customers (PK = inn). Это легаси-решение
+ *   из V001 (так и было), миграцию на FK не делаем — слишком много исторических данных
+ *   с неуникальными customer_inn (NULL/дубли) и customer_name введёнными до появления
+ *   справочника. При переименовании клиента в customers — pre_tender_requests.customer_name
+ *   НЕ обновляется. UI компенсирует через COALESCE(c.name, t.customer_name) в /:id-эндпоинтах
+ *   (см. tenders.js:374). Перенос на FK — отдельный архитектурный проект.
  */
 
 'use strict';
@@ -19,6 +28,63 @@ const fs = require('fs');
 // и должен иметь доступ к assigned-to-него pre_tender'у. Доступ к чужим закрыт owner-guard'ом.
 const ALLOWED_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_TO', 'HEAD_PM', 'TO', 'PM'];
 const DIRECTOR_LIKE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_TO', 'HEAD_PM'];
+
+// 23.06.2026 Маркетплейс заявок: лимит активных заявок у одного РП.
+// При попытке забрать 6-ю — 409 limit_reached. Лимит покрывает «живые» main_status pre_tender:
+// new, in_review, need_docs, pending_approval, approved.
+// 23.06.2026 BUG-FIX (🟡 D-15): убраны 'sent' и 'kp_prep' — это v3-колонки, а не main_status
+// (CHECK на pre_tender_requests.status таких значений не разрешает, см. CANONICAL_MAIN_STATUSES.pre_tender
+// в personal-kanban.js:51-55). До фикса они никогда не матчились и в счёт лимита не шли.
+const MARKETPLACE_LIMIT = 5;
+const MARKETPLACE_ACTIVE_STATUSES = ['new', 'in_review', 'need_docs', 'pending_approval', 'approved'];
+const MARKETPLACE_CLAIMABLE_STATUSES = ['new', 'in_review', 'need_docs'];
+const PM_ROLES_MARKETPLACE = ['PM', 'HEAD_PM'];
+
+// Подсчёт активных заявок у конкретного РП (для лимита маркетплейса).
+async function countActiveAssigned(userId) {
+  const r = await db.query(
+    `SELECT status, COUNT(*)::int AS cnt
+       FROM pre_tender_requests
+      WHERE assigned_to = $1 AND status = ANY($2::text[])
+      GROUP BY status`,
+    [userId, MARKETPLACE_ACTIVE_STATUSES]);
+  const breakdown = {};
+  let total = 0;
+  for (const row of r.rows) {
+    breakdown[row.status] = row.cnt;
+    total += row.cnt;
+  }
+  return { total, breakdown };
+}
+
+// Helper: создать/переоткрыть карточку личного канбана для нового владельца pre_tender.
+// Используется в /claim и /transfer. Возвращает {card_id, is_new}.
+async function ensurePersonalCardForPreTender(client, ownerUserId, ptId, movedBy, noteText) {
+  const info = await client.query(
+    'SELECT customer_name, work_description FROM pre_tender_requests WHERE id=$1', [ptId]);
+  const meta = info.rows[0] || {};
+  const newSub = await personalKanban.ensureDefaultSubstages(client, ownerUserId, 'pre_tender', 'new');
+  const cIns = await client.query(
+    `INSERT INTO personal_kanban_cards
+        (owner_user_id, flow_type, entity_kind, entity_id, current_main_status, current_substage_id)
+      VALUES ($1, 'pre_tender', 'pre_tender', $2, 'new', $3)
+      ON CONFLICT (owner_user_id, entity_kind, entity_id)
+        DO UPDATE SET is_closed=false, last_moved_at=NOW(), updated_at=NOW()
+      RETURNING id, (xmax = 0) AS is_new`,
+    [ownerUserId, ptId, newSub]);
+  const cardId = cIns.rows[0]?.id;
+  const isNew = cIns.rows[0]?.is_new;
+  if (cardId) {
+    const finalNote = noteText
+      || `${isNew ? 'Создана' : 'Переоткрыта'}: ${meta.customer_name || meta.work_description?.slice(0,80) || `pre_tender #${ptId}`}`;
+    await client.query(
+      `INSERT INTO personal_kanban_card_history
+          (card_id, to_main_status, moved_by, action, note)
+        VALUES ($1, 'new', $2, $3, $4)`,
+      [cardId, movedBy, isNew ? 'create' : 'reopen', finalNote]);
+  }
+  return { card_id: cardId, is_new: isNew, meta };
+}
 
 // Wave A+ fix BLOCKER#1 + MED#4: проверка владельца pre_tender'а.
 // Возвращает {ok:true, row} или {ok:false, code, error}. Не бросает.
@@ -49,14 +115,22 @@ module.exports = async function (fastify) {
   }, async (request, reply) => {
     const { status, ai_color, search, sort = 'created_at', order = 'DESC', limit = 50, offset = 0 } = request.query;
     const user = request.user;
+    // 23.06.2026 Маркетплейс: PM/HEAD_PM фронт хочет «свободные FIFO» → ?unassigned=1.
+    const unassigned = String(request.query.unassigned || '') === '1';
 
     let where = 'WHERE 1=1';
     const params = [];
     let idx = 1;
 
-    // Wave A+ fix BLOCKER#1: PM/TO видят только свои (assigned_to ИЛИ created_by).
-    // Директорские роли — без фильтра.
-    if (!DIRECTOR_LIKE_ROLES.includes(user.role)) {
+    if (unassigned) {
+      // Маркетплейс-режим: только не распределённые в claimable-статусах,
+      // PM-owner-фильтр игнорируется (это и есть смысл маркетплейса).
+      where += ` AND pt.assigned_to IS NULL AND pt.status = ANY($${idx}::text[])`;
+      params.push(MARKETPLACE_CLAIMABLE_STATUSES);
+      idx++;
+    } else if (!DIRECTOR_LIKE_ROLES.includes(user.role)) {
+      // Wave A+ fix BLOCKER#1: PM/TO видят только свои (assigned_to ИЛИ created_by).
+      // Директорские роли — без фильтра.
       where += ` AND (pt.assigned_to = $${idx} OR pt.created_by = $${idx})`;
       params.push(user.id);
       idx++;
@@ -65,8 +139,8 @@ module.exports = async function (fastify) {
     if (status) {
       where += ` AND pt.status = $${idx++}`;
       params.push(status);
-    } else {
-      // По умолчанию не показываем архивные
+    } else if (!unassigned) {
+      // По умолчанию не показываем архивные (в unassigned уже зашит ANY-фильтр).
       where += ` AND pt.status NOT IN ('expired')`;
     }
     if (ai_color) { where += ` AND pt.ai_color = $${idx++}`; params.push(ai_color); }
@@ -78,11 +152,17 @@ module.exports = async function (fastify) {
 
     const allowedSort = ['created_at', 'ai_color', 'status', 'customer_name', 'estimated_sum', 'work_deadline', 'ai_work_match_score'];
     const sortCol = allowedSort.includes(sort) ? sort : 'created_at';
-    const sortOrder = order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+    // Маркетплейс — всегда FIFO (старые сверху), даже если фронт передал DESC.
+    const sortOrder = unassigned ? 'ASC' : (order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC');
 
     const countRes = await db.query(`SELECT COUNT(*) as total FROM pre_tender_requests pt LEFT JOIN emails e ON e.id = pt.email_id ${where}`, params);
     const total = parseInt(countRes.rows[0]?.total || 0);
 
+    // 27.06.2026: добавлен LEFT JOIN inbox_applications — чтобы pre_tender
+    // на маркетплейсе мог быть классифицирован по AI (direct_request vs
+    // tender_invitation/platform_tender) для разделения по табам.
+    // Также добавлен JOIN tenders — чтобы фронт мог скрыть pre_tender,
+    // который уже породил полноценный tender (виден на /tenders).
     const dataRes = await db.query(`
       SELECT pt.*,
         e.subject as email_subject,
@@ -91,11 +171,22 @@ module.exports = async function (fastify) {
         e.email_date,
         e.has_attachments as email_has_attachments,
         u_dec.name as decision_by_name,
-        u_ass.name as assigned_to_name
+        u_ass.name as assigned_to_name,
+        ia.ai_classification as ai_classification,
+        ia.ai_color as ai_color,
+        ia.ai_summary as ai_summary,
+        ia.ai_confidence as ai_confidence,
+        ia.source_name as source_name,
+        ia.source_email as source_email,
+        ia.attachment_count as attachment_count,
+        t.id as derived_tender_id,
+        t.tender_status as derived_tender_status
       FROM pre_tender_requests pt
       LEFT JOIN emails e ON e.id = pt.email_id
+      LEFT JOIN inbox_applications ia ON ia.email_id = pt.email_id
       LEFT JOIN users u_dec ON u_dec.id = pt.decision_by
       LEFT JOIN users u_ass ON u_ass.id = pt.assigned_to
+      LEFT JOIN tenders t ON t.source_pre_tender_id = pt.id
       ${where}
       ORDER BY pt.${sortCol} ${sortOrder}
       LIMIT $${idx++} OFFSET $${idx++}
@@ -147,6 +238,334 @@ module.exports = async function (fastify) {
       by_color: byColor,
       by_month: monthRes.rows,
       avg_decision_time_hours: parseFloat(avgRes.rows[0]?.avg_hours || 0)
+    };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 2.5 GET /my-stats — Маркетплейс: счётчик активных заявок у текущего РП
+  // ═══════════════════════════════════════════════════════════════════
+  // 23.06.2026: фронт показывает «X / 5» бейдж в маркетплейсе.
+  fastify.get('/my-stats', {
+    preHandler: [fastify.requireRoles(PM_ROLES_MARKETPLACE)]
+  }, async (request, reply) => {
+    const { total, breakdown } = await countActiveAssigned(request.user.id);
+    return {
+      success: true,
+      active_count: total,
+      limit: MARKETPLACE_LIMIT,
+      breakdown,
+      can_claim: total < MARKETPLACE_LIMIT
+    };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 2.6 POST /:id/claim — РП забирает свободную заявку из маркетплейса
+  // ═══════════════════════════════════════════════════════════════════
+  // 23.06.2026 Маркетплейс заявок.
+  // RBAC: только PM/HEAD_PM. Транзакция с SELECT … FOR UPDATE против гонок.
+  // Auto-create карточки personal_kanban + SSE + notify руководителям.
+  fastify.post('/:id/claim', {
+    preHandler: [fastify.requireRoles(PM_ROLES_MARKETPLACE)]
+  }, async (request, reply) => {
+    const ptId = parseInt(request.params.id, 10);
+    if (!Number.isFinite(ptId) || ptId <= 0) {
+      return reply.code(400).send({ error: 'bad_id' });
+    }
+    const user = request.user;
+
+    let result;
+    try {
+      result = await db.transaction(async (client) => {
+        // 1. Лочим строку, читаем текущее состояние.
+        const lockRes = await client.query(
+          `SELECT id, assigned_to, status, customer_name, work_description
+             FROM pre_tender_requests
+            WHERE id = $1
+            FOR UPDATE`,
+          [ptId]);
+        if (!lockRes.rows.length) {
+          const e = new Error('not_found'); e._code = 404; e._payload = { error: 'pre_tender_not_found' };
+          throw e;
+        }
+        const row = lockRes.rows[0];
+
+        // 2. Кто-то уже забрал — отдаём имя.
+        if (row.assigned_to !== null && row.assigned_to !== undefined) {
+          const claimer = await client.query(
+            'SELECT name, login FROM users WHERE id=$1', [row.assigned_to]);
+          const claimedBy = claimer.rows[0]?.name || claimer.rows[0]?.login || `user#${row.assigned_to}`;
+          const e = new Error('already_claimed'); e._code = 409;
+          e._payload = { error: 'already_claimed', claimed_by_id: row.assigned_to, claimed_by_name: claimedBy };
+          throw e;
+        }
+
+        // 3. Заявка перешла в нон-claimable статус (rejected/expired/accepted и т.п.).
+        if (!MARKETPLACE_CLAIMABLE_STATUSES.includes(row.status)) {
+          const e = new Error('not_claimable'); e._code = 409;
+          e._payload = { error: 'not_claimable', current_status: row.status };
+          throw e;
+        }
+
+        // 4. Лимит у РП.
+        const limitRes = await client.query(
+          `SELECT COUNT(*)::int AS cnt
+             FROM pre_tender_requests
+            WHERE assigned_to = $1 AND status = ANY($2::text[])`,
+          [user.id, MARKETPLACE_ACTIVE_STATUSES]);
+        const currentCount = limitRes.rows[0]?.cnt || 0;
+        if (currentCount >= MARKETPLACE_LIMIT) {
+          const e = new Error('limit_reached'); e._code = 409;
+          e._payload = { error: 'limit_reached', current_count: currentCount, limit: MARKETPLACE_LIMIT };
+          throw e;
+        }
+
+        // 5. Присваиваем + переводим в in_review (если был new).
+        const newStatus = row.status === 'new' ? 'in_review' : row.status;
+        await client.query(
+          `UPDATE pre_tender_requests
+              SET assigned_to = $1,
+                  status = $2,
+                  updated_at = NOW()
+            WHERE id = $3`,
+          [user.id, newStatus, ptId]);
+
+        // 6. Личный канбан — карточка у нового владельца.
+        const cardInfo = await ensurePersonalCardForPreTender(
+          client, user.id, ptId, user.id,
+          `🎯 Забрана из маркетплейса: ${row.customer_name || row.work_description?.slice(0,80) || `pre_tender #${ptId}`}`);
+
+        // 7. Обновлённая запись для возврата фронту.
+        const updated = await client.query(
+          `SELECT pt.*, u.name AS assigned_to_name
+             FROM pre_tender_requests pt
+             LEFT JOIN users u ON u.id = pt.assigned_to
+            WHERE pt.id = $1`, [ptId]);
+
+        return {
+          item: updated.rows[0],
+          card_id: cardInfo.card_id,
+          customer_name: row.customer_name
+        };
+      });
+    } catch (err) {
+      if (err && err._code) {
+        return reply.code(err._code).send(err._payload || { error: err.message });
+      }
+      request.log.error(err, 'pre-tender claim error');
+      return reply.code(500).send({ error: 'internal', message: err.message });
+    }
+
+    // SSE: пусть остальные PM-ы (открывшие маркетплейс) уберут карточку из списка.
+    try {
+      broadcast('pre_tender:claimed', {
+        id: ptId,
+        claimed_by_id: user.id,
+        claimed_by_name: user.name || user.login || `user#${user.id}`
+      });
+    } catch (_) {}
+
+    // Notify HEAD_PM + директорам: «РП X забрал заявку #N».
+    try {
+      const recipients = await db.query(
+        `SELECT id FROM users
+          WHERE is_active = TRUE
+            AND role IN ('DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','HEAD_PM','ADMIN')
+            AND id <> $1`,
+        [user.id]);
+      const claimerName = user.name || user.login || `РП #${user.id}`;
+      const title = `${claimerName} забрал заявку №${ptId}`;
+      const message = result.customer_name || '';
+      for (const r of recipients.rows) {
+        Promise.resolve(createNotification(db, {
+          user_id: r.id,
+          title,
+          message,
+          type: 'pre_tender_claimed',
+          link: `#/director-inbox`
+        })).catch(() => {});
+      }
+    } catch (e) {
+      request.log.warn('pre-tender claim notify failed: ' + e.message);
+    }
+
+    return {
+      success: true,
+      item: result.item,
+      card_id: result.card_id,
+      redirect_to: `#/personal-kanban?card=${result.card_id}`
+    };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 2.7 POST /:id/transfer — Передать заявку другому РП
+  // ═══════════════════════════════════════════════════════════════════
+  // 23.06.2026 Маркетплейс заявок.
+  // RBAC: текущий assigned_to ИЛИ HEAD_PM/ADMIN/DIRECTOR_*.
+  // PM не может «вернуть в маркетплейс», только передать персонально.
+  fastify.post('/:id/transfer', {
+    preHandler: [fastify.requireRoles(['PM','HEAD_PM','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV'])]
+  }, async (request, reply) => {
+    const ptId = parseInt(request.params.id, 10);
+    if (!Number.isFinite(ptId) || ptId <= 0) {
+      return reply.code(400).send({ error: 'bad_id' });
+    }
+    const toUserId = parseInt(request.body?.to_user_id, 10);
+    if (!Number.isFinite(toUserId) || toUserId <= 0) {
+      return reply.code(400).send({ error: 'bad_to_user_id' });
+    }
+    const reason = (request.body?.reason || '').toString().slice(0, 1000) || null;
+    const user = request.user;
+
+    if (toUserId === user.id) {
+      return reply.code(400).send({ error: 'self_transfer_forbidden' });
+    }
+
+    let result;
+    try {
+      result = await db.transaction(async (client) => {
+        // 1. Проверка получателя: должен быть активным PM/HEAD_PM.
+        const toRes = await client.query(
+          'SELECT id, name, login, role, is_active FROM users WHERE id=$1', [toUserId]);
+        if (!toRes.rows.length) {
+          const e = new Error('to_user_not_found'); e._code = 404; e._payload = { error: 'to_user_not_found' };
+          throw e;
+        }
+        const toUser = toRes.rows[0];
+        if (!toUser.is_active) {
+          const e = new Error('to_user_inactive'); e._code = 400; e._payload = { error: 'to_user_inactive' };
+          throw e;
+        }
+        if (!PM_ROLES_MARKETPLACE.includes(toUser.role)) {
+          const e = new Error('to_user_not_pm'); e._code = 400;
+          e._payload = { error: 'to_user_not_pm', role: toUser.role };
+          throw e;
+        }
+
+        // 2. Лочим pre_tender, проверяем права.
+        const lockRes = await client.query(
+          `SELECT id, assigned_to, status, customer_name, work_description
+             FROM pre_tender_requests
+            WHERE id = $1
+            FOR UPDATE`,
+          [ptId]);
+        if (!lockRes.rows.length) {
+          const e = new Error('not_found'); e._code = 404; e._payload = { error: 'pre_tender_not_found' };
+          throw e;
+        }
+        const row = lockRes.rows[0];
+
+        // PM может передавать только свои; директора/HEAD_PM — любые.
+        const isPrivileged = ['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','HEAD_PM'].includes(user.role);
+        if (!isPrivileged && row.assigned_to !== user.id) {
+          const e = new Error('forbidden'); e._code = 403; e._payload = { error: 'forbidden' };
+          throw e;
+        }
+        if (row.assigned_to === toUserId) {
+          const e = new Error('already_owns'); e._code = 409; e._payload = { error: 'already_owns' };
+          throw e;
+        }
+
+        // 3. Лимит у получателя.
+        const limitRes = await client.query(
+          `SELECT COUNT(*)::int AS cnt
+             FROM pre_tender_requests
+            WHERE assigned_to = $1 AND status = ANY($2::text[])`,
+          [toUserId, MARKETPLACE_ACTIVE_STATUSES]);
+        const recipientCount = limitRes.rows[0]?.cnt || 0;
+        if (recipientCount >= MARKETPLACE_LIMIT) {
+          const e = new Error('recipient_limit_reached'); e._code = 409;
+          e._payload = {
+            error: 'recipient_limit_reached',
+            recipient_id: toUserId,
+            recipient_name: toUser.name || toUser.login,
+            current_count: recipientCount,
+            limit: MARKETPLACE_LIMIT
+          };
+          throw e;
+        }
+
+        const prevAssignedTo = row.assigned_to;
+
+        // 4. Перенос.
+        await client.query(
+          `UPDATE pre_tender_requests
+              SET assigned_to = $1, updated_at = NOW()
+            WHERE id = $2`,
+          [toUserId, ptId]);
+
+        // 5. Закрыть карточку у предыдущего РП (если был).
+        if (prevAssignedTo) {
+          await client.query(
+            `UPDATE personal_kanban_cards
+                SET is_closed = TRUE, updated_at = NOW()
+              WHERE owner_user_id = $1
+                AND entity_kind = 'pre_tender'
+                AND entity_id = $2
+                AND NOT is_closed`,
+            [prevAssignedTo, ptId]);
+        }
+
+        // 6. Создать/переоткрыть карточку у получателя.
+        const transferNote = reason
+          ? `↻ Передано от ${user.name || user.login || `user#${user.id}`}: ${reason}`
+          : `↻ Передано от ${user.name || user.login || `user#${user.id}`}`;
+        const cardInfo = await ensurePersonalCardForPreTender(
+          client, toUserId, ptId, user.id, transferNote);
+
+        const updated = await client.query(
+          `SELECT pt.*, u.name AS assigned_to_name
+             FROM pre_tender_requests pt
+             LEFT JOIN users u ON u.id = pt.assigned_to
+            WHERE pt.id = $1`, [ptId]);
+
+        return {
+          item: updated.rows[0],
+          card_id: cardInfo.card_id,
+          to_user_name: toUser.name || toUser.login,
+          prev_assigned_to: prevAssignedTo,
+          customer_name: row.customer_name
+        };
+      });
+    } catch (err) {
+      if (err && err._code) {
+        return reply.code(err._code).send(err._payload || { error: err.message });
+      }
+      request.log.error(err, 'pre-tender transfer error');
+      return reply.code(500).send({ error: 'internal', message: err.message });
+    }
+
+    // SSE
+    try {
+      broadcast('pre_tender:transferred', {
+        id: ptId,
+        from_user_id: result.prev_assigned_to,
+        to_user_id: toUserId,
+        to_user_name: result.to_user_name
+      });
+      broadcast('personal_kanban:card_created', {
+        card_id: result.card_id,
+        owner_user_id: toUserId,
+        entity_kind: 'pre_tender',
+        entity_id: ptId
+      });
+    } catch (_) {}
+
+    // Notify получателю.
+    try {
+      const fromName = user.name || user.login || `РП #${user.id}`;
+      Promise.resolve(createNotification(db, {
+        user_id: toUserId,
+        title: `Вам передал ${fromName} заявку №${ptId}`,
+        message: result.customer_name || '',
+        type: 'pre_tender_assigned',
+        link: `#/personal-kanban?card=${result.card_id}`
+      })).catch(() => {});
+    } catch (_) {}
+
+    return {
+      success: true,
+      item: result.item,
+      card_id: result.card_id
     };
   });
 
@@ -359,8 +778,18 @@ module.exports = async function (fastify) {
                      'contact_phone', 'work_description', 'work_location', 'work_deadline',
                      'estimated_sum', 'assigned_to', 'ai_color'];
 
-    // Статус можно менять только на допустимые значения (для канбан drag-and-drop)
-    if (request.body.status && ['new', 'in_review', 'need_docs'].includes(request.body.status)) {
+    // Статус можно менять только на допустимые значения (для канбан drag-and-drop).
+    // 23.06.2026 BUG-FIX (🟡 D-17): синхронизация с personal-kanban /transition — там UPDATE pre_tender_requests
+    // SET status=... ходит без whitelist и может выставить любой CANONICAL_MAIN_STATUSES.pre_tender (см.
+    // personal-kanban.js:51-55). До фикса PUT-форма drawer'а позволяла только 3 статуса, а drag-and-drop
+    // выставлял ещё 10 — фронт-форма не могла откатить решение, принятое канбаном. Теперь PUT принимает
+    // тот же набор. Для запретных кросс-flow-переходов всё ещё валидируется в transition-роуте.
+    const ALLOWED_STATUSES = [
+      'new', 'in_review', 'need_docs', 'accepted', 'rejected', 'expired',
+      'pending_approval', 'approved', 'pending_payment', 'paid',
+      'cash_issued', 'cash_received', 'expense_reported'
+    ];
+    if (request.body.status && ALLOWED_STATUSES.includes(request.body.status)) {
       allowed.push('status');
     }
 
@@ -377,6 +806,17 @@ module.exports = async function (fastify) {
 
     if (!fields.length) return reply.code(400).send({ error: 'Нет полей для обновления' });
 
+    // 22.06.2026 BUG-FIX: при смене assigned_to — пересоздать карточку канбана
+    // (закрыть у старого владельца, создать у нового). Раньше карточка создавалась
+    // только в POST / (INSERT) — при reassign висел phantom-баг «нет карточки у нового РП».
+    let prevAssignedTo = null;
+    const reassignRequested = request.body.assigned_to !== undefined;
+    if (reassignRequested) {
+      const prev = await db.query(
+        'SELECT assigned_to FROM pre_tender_requests WHERE id=$1', [id]);
+      prevAssignedTo = prev.rows[0]?.assigned_to || null;
+    }
+
     fields.push(`updated_at = NOW()`);
     vals.push(id);
 
@@ -384,6 +824,63 @@ module.exports = async function (fastify) {
       `UPDATE pre_tender_requests SET ${fields.join(', ')} WHERE id = $${idx} AND status IN ('new','in_review','need_docs')`,
       vals
     );
+
+    if (reassignRequested) {
+      const newAssignedTo = request.body.assigned_to || null;
+      if (prevAssignedTo !== newAssignedTo) {
+        try {
+          if (prevAssignedTo) {
+            await db.query(
+              `UPDATE personal_kanban_cards
+                  SET is_closed=true, updated_at=NOW()
+                WHERE owner_user_id=$1 AND entity_kind='pre_tender'
+                  AND entity_id=$2 AND NOT is_closed`,
+              [prevAssignedTo, id]);
+          }
+          if (newAssignedTo) {
+            const info = await db.query(
+              'SELECT customer_name, work_description FROM pre_tender_requests WHERE id=$1', [id]);
+            const meta = info.rows[0] || {};
+            const newSub = await personalKanban.ensureDefaultSubstages(
+              db, newAssignedTo, 'pre_tender', 'new');
+            const cIns = await db.query(
+              `INSERT INTO personal_kanban_cards
+                  (owner_user_id, flow_type, entity_kind, entity_id, current_main_status, current_substage_id)
+                VALUES ($1, 'pre_tender', 'pre_tender', $2, 'new', $3)
+                ON CONFLICT (owner_user_id, entity_kind, entity_id)
+                  DO UPDATE SET is_closed=false, last_moved_at=NOW(), updated_at=NOW()
+                RETURNING id, (xmax = 0) AS is_new`,
+              [newAssignedTo, id, newSub]);
+            const cardId = cIns.rows[0]?.id;
+            const isNew = cIns.rows[0]?.is_new;
+            if (cardId) {
+              await db.query(
+                `INSERT INTO personal_kanban_card_history
+                    (card_id, to_main_status, moved_by, action, note)
+                  VALUES ($1, 'new', $2, $3, $4)`,
+                [cardId, user.id, isNew ? 'create' : 'reopen',
+                 `Перенаправлено: ${meta.customer_name || meta.work_description?.slice(0,80) || `pre_tender #${id}`}`]);
+              try {
+                const { createNotification } = require('../services/notify');
+                Promise.resolve(createNotification(db, {
+                  user_id: newAssignedTo,
+                  title: `Вам перенаправлен просчёт №${id}`,
+                  message: meta.customer_name || meta.work_description?.slice(0, 100) || '',
+                  type: 'pre_tender_assigned',
+                  link: `#/personal-kanban?card=${cardId}`,
+                })).catch(() => {});
+              } catch (_) {}
+              broadcast('personal_kanban:card_created', {
+                card_id: cardId, owner_user_id: newAssignedTo,
+                entity_kind: 'pre_tender', entity_id: parseInt(id),
+              });
+            }
+          }
+        } catch (e) {
+          fastify.log.warn(`pre_tender reassign card-sync failed (id=${id}, prev=${prevAssignedTo}, new=${newAssignedTo}): ${e.message}`);
+        }
+      }
+    }
 
     // SSE: уведомляем об обновлении заявки
     broadcast('pre_tender:updated', { id: parseInt(id), updated_fields: Object.keys(request.body) });
@@ -1258,8 +1755,8 @@ module.exports = async function (fastify) {
           INSERT INTO tenders (
             customer_name, customer_inn, tender_type, tender_status,
             tender_price, docs_deadline, responsible_pm_id,
-            comment_to, period, created_by, created_at
-          ) VALUES ($1, $2, $3, 'Новый', $4, $5, $6, $7, $8, $9, NOW())
+            comment_to, period, created_by, source_pre_tender_id, created_at
+          ) VALUES ($1, $2, $3, 'Новый', $4, $5, $6, $7, $8, $9, $10, NOW())
           RETURNING id
         `, [
           pt.customer_name || emailData.from_name || 'Не указан',
@@ -1270,7 +1767,8 @@ module.exports = async function (fastify) {
           assigned_pm_id || null,
           commentTo,
           period,
-          user.id
+          user.id,
+          pt.id  // 21.06.2026: связь tender ↔ исходная заявка для works.source_pre_tender_id (см. personal-kanban.js:2128 auto-work hook)
         ]);
         const tId = tenderRes.rows[0].id;
 
@@ -1684,8 +2182,8 @@ module.exports = async function (fastify) {
           INSERT INTO tenders (
             customer_name, customer_inn, tender_type, tender_status,
             tender_price, docs_deadline, responsible_pm_id,
-            comment_to, period, created_by, created_at, handoff_at
-          ) VALUES ($1, $2, $3, 'Отправлено на просчёт', $4, $5, $6, $7, $8, $9, NOW(), NOW())
+            comment_to, period, created_by, source_pre_tender_id, created_at, handoff_at
+          ) VALUES ($1, $2, $3, 'Отправлено на просчёт', $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
           RETURNING id
         `, [
           pt.customer_name || ftEmailData.from_name || 'Не указан',
@@ -1696,7 +2194,8 @@ module.exports = async function (fastify) {
           pm_id,
           fullComment,
           period,
-          user.id
+          user.id,
+          pt.id  // 21.06.2026: связь tender ↔ исходная заявка для works.source_pre_tender_id
         ]);
         const tId = tenderRes.rows[0].id;
 

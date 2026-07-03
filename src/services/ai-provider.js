@@ -95,8 +95,15 @@ let AI_PROVIDER = process.env.AI_PROVIDER || 'openai';
 let ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 let ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6-20250514';
 let OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
-let OPENAI_MODEL = process.env.OPENAI_MODEL || 'anthropic/claude-sonnet-4.6';
-const AI_MAX_TOKENS = parseInt(process.env.AI_MAX_TOKENS || '4096', 10);
+// 19.06.2026: дефолт переключён с claude-sonnet-4.6 на gpt-5.5
+// (Anthropic-баланс на токенаторе = 0₽, claude-* модели возвращали 503 / биллинг
+// был сломан; gpt-5.5 покрыт пакетом токенов, 1.1M контекст, vision встроен).
+// Все agent-loop / Conductor / email-analyzer уходят на gpt-5.5 по умолчанию.
+let OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-5.5';
+// 19.06.2026: бамп с 4096 → 8000 (минимум для длинных смет/КП/писем).
+// Конкретные вызовы могут передавать свой maxTokens явно (выше — например, generateReport
+// шлёт 4096 явно — это локально, но не блокирует output, gpt-5.5 max_output ≈ 16K).
+const AI_MAX_TOKENS = parseInt(process.env.AI_MAX_TOKENS || '8000', 10);
 const AI_TEMPERATURE = parseFloat(process.env.AI_TEMPERATURE || '0.6');
 const AI_TIMEOUT_MS = parseInt(process.env.AI_TIMEOUT_MS || '600000', 10); // 600 sec = 10 мин. Sonnet 4.6 с 1M контекстом и большим thinking может думать долго на сложных просчётах.
 
@@ -346,7 +353,13 @@ async function callOpenAI(opts) {
       if (chain[0] !== resolved) chain = [resolved, ...chain.filter((x) => x !== resolved)];
     } catch (_) { chain = [resolved]; }
   } else {
-    chain = [opts.model || OPENAI_MODEL];
+    // 20.06.2026: если model явно не передан (Quick, generateClarificationLetter),
+    // используем дефолтную цепочку с fallback — иначе один gpt-5.5 → 400 → throw.
+    try {
+      const mc = require('./mimir-conductor/models-config');
+      chain = mc.getFallbackChain('gpt-5.5');
+      if (!chain || !chain.length) chain = [OPENAI_MODEL];
+    } catch (_) { chain = [OPENAI_MODEL]; }
   }
 
   // Внутренний помощник: вызов одной модели с retry на rate_limit (общий лимит ключа).
@@ -411,6 +424,14 @@ function _isRetriableError(err) {
   // tokenator-специфика: 503 «Model temporarily unavailable»
   const msg = String(err.providerMessage || err.message || '').toLowerCase();
   if (msg.includes('temporarily unavailable') || msg.includes('not available') || msg.includes('not found')) return true;
+  // 20.06.2026: Tokenator стал возвращать 400 «Request error» на gpt-5.5 при перегрузе
+  // (когда у Anthropic balance=0 и часть моделей лежит). Это retriable — пробуем gpt-5.4 / gemini-flash.
+  // Реальные ошибки запроса (invalid_request / validation) отличаются — у них в provider_message
+  // обычно есть «invalid», «validation», «required», «missing field» и т.п.
+  if (status === 400) {
+    const isInvalidReq = /invalid|validation|required|missing|schema|format/i.test(msg);
+    if (!isInvalidReq) return true; // generic «Request error» от Tokenator — retriable
+  }
   return false;
 }
 

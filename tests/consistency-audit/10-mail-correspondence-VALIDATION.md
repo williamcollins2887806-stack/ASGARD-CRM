@@ -1,0 +1,28 @@
+# ВАЛИДАЦИЯ аудита 10-mail-correspondence.md
+
+Дата: 2026-06-23 · Режим: READ-ONLY · Метод: открытие указанных file:line + сверка с backend.
+
+| ID | Вердикт | Доказательство (своя цитата) |
+|----|---------|------------------------------|
+| **R1** Composer v2 «Исп.» = useAuth, не created_by | **CONFIRMED** | `public/desktop-v2-src/src/pages/Correspondence/Composer/index.jsx:133-141` — `executorName = useMemo(() => { if (!user) return ''; const parts = [user.last_name, user.first_name, user.patronymic]...` — берётся ТОЛЬКО из `useAuth().user`. `correspondence.created_by` не запрашивается. Нарушает `feedback-letter-executor` («Исп. = автор, не зритель»). При открытии чужого письма OFFICE_MANAGER'ом подставится его ФИО. Комментарий в коде («КРИТИЧНО: Исп. = автор письма (current user из useAuth)») лживо успокаивает — current user ≠ author. |
+| **R2** AI_CLASS_MAP отстаёт от backend | **CONFIRMED** | Backend `src/services/ai-email-analyzer.js:221`: 9 значений (`direct_request|platform_tender|tender_invitation|addendum_response|commercial_offer|information|spam|personal|other`). Vanilla `public/assets/js/mailbox.js:956`: `{ direct_request, platform_tender, commercial_offer, newsletter, spam, internal, bounce_or_auto_reply, other }` — нет `tender_invitation`/`addendum_response`/`information`/`personal`, лишние `newsletter`/`internal`/`bounce_or_auto_reply`. v2 `public/desktop-v2-src/src/pages/Mailbox/api.js:76-85`: тот же набор. Для писем wave-7 в UI отрисуется сырой ключ. |
+| **R3** Mobile MyMail сломан на 5 уровнях | **CONFIRMED** | `public/mobile-app/src/pages/MyMail.jsx:27` — `?folder_id=${folder}` где folder из useState('inbox') — строка; backend `src/routes/my-mail.js:341` — `params.push(parseInt(folder_id))` → NaN → нулевой результат. `MyMail.jsx:36` — `api.post('/my-mail/emails/${email.id}/read')`; grep по `routes/my-mail.js` для `/read` — **0 матчей**, endpoint отсутствует (пометка делается через `PATCH /emails/:id`). `MyMail.jsx:61` — `email.date`; backend на `:372` возвращает `e.email_date` — поля `date` нет. `MyMail.jsx:60` — `email.attachments?.length`; SELECT `:366-380` отдаёт только `has_attachments`/`attachment_count`, массива `attachments` в списке нет. `MyMail.jsx:118` — `api.post('/my-mail/send', { to, subject, body })`; схема Fastify `:99-100` принимает `body_html`/`body_text`, поле `body` отвергнется. Все 5 пунктов подтверждены. |
+| **R4** Mobile Chat `last_message_metadata.status` | **CONFIRMED** | `public/mobile-app/src/pages/Chat.jsx:47-49` — `if (lt === 'estimate_update' || lt === 'estimate_card') { return chat.last_message_metadata?.status || 'sent'; }`. Backend `src/routes/chat_groups.js:273-285` — SELECT отдаёт `last_message_text/last_message_sender/last_message_type/last_message_user_id`, никакого `last_message_metadata`. Статус заявки на смете всегда фолбэк `'sent'` → бейдж зелёный/жёлтый/красный никогда не покажется корректно. |
+| **R5** Mobile Correspondence `d.title` | **CONFIRMED** | `public/mobile-app/src/pages/Correspondence.jsx:46` — `list.filter((d) => (d.title || '').toLowerCase().includes(q) || (d.number || '').toLowerCase().includes(q))`. В схеме `correspondence` (V001+V252) поля `title` нет — есть `subject` и `doc_title`. Поиск по теме всегда пустой; работает только по `number`. Также `:42-43` — direction-фильтр на `'вход'/'исход'`, а backend пишет английское `incoming/outgoing` — русские ветки мёртвые (доп. находка внутри R5). |
+| Y1 OFFICE_MANAGER finalize vanilla≠v2≠backend | **CONFIRMED** | vanilla `correspondence.js:111` (по аудиту) — без OFFICE_MANAGER; v2 `Composer/index.jsx:44` — с OFFICE_MANAGER; backend `letter.js:37` + `correspondence.js:275,304` (по аудиту) — `WRITE_OVERRIDE_ROLES` с OFFICE_MANAGER. Реальное правило диктует backend → v2 прав, vanilla режет UI. |
+| Y2 memory `ai_model_id` vs БД `ai_model` | **CONFIRMED** | V252 (по аудиту :51) и vanilla `correspondence.js:1400` используют `ai_model`. MEMORY.md `project-letters-models` пишет `correspondence.ai_model_id` — расхождение только в памяти, код корректен. |
+| Y3 `chat_messages.attachments` пустая | **CONFIRMED** | Аудит привёл 9 строк INSERT в `chat_groups.js` без `attachments`. Колонка-наследие, JOIN на `chat_attachments` — фактический источник. |
+| Y4 `group_kind` только в React v2 | **CONFIRMED** | V229 + `Chat/modals/GroupEditModal.jsx`. Vanilla `chat_groups.js` не редактирует. Поле работает, но недоступно в v1 и mobile. |
+| Y5 `notifications.type` смешивает категорию и severity | **CONFIRMED** | Аудит цитирует `notifications.js:80,138,251` — значения `'info'/'system'/'broadcast'/'bonus_created'` без CHECK. Фильтр по severity невозможен. |
+| Y6 `email_type` vs `ai_classification` — два столбца | **CONFIRMED** | V001:410+431, две карты в `Mailbox/api.js`. Источники не синхронизируются. |
+| Y7 `chats.chat_type` vs `chats.type` | **CONFIRMED** | `src/index.js:1057` создаёт `chat_type DEFAULT 'general'`, `:1076` добавляет `type DEFAULT 'direct'`. Routes используют только `type`. `chat_type` legacy. |
+| Y8 mobile widgets/components не охвачены | **NEEDS-MORE-INFO** | Сам аудит признаёт пробел. `MyMailWidget.jsx` + `components/chat/*` не открыты. Требуется отдельный микро-проход. |
+| Y9 «9-я колонка Дозапрос», source_kind 7 | **NEEDS-MORE-INFO** | Структуры относятся к `tenders` (Wave-7), не к почте/чату. Корректно отложено в отдельный аудит. |
+
+## Итог
+- 🔴 5/5 CONFIRMED (R1-R5).
+- 🟡 7/9 CONFIRMED (Y1-Y7), 2/9 NEEDS-MORE-INFO (Y8, Y9 — оба явно помечены автором как «не охвачено / другой скоуп»).
+- FALSE / PARTIAL находок нет.
+- Никаких признаков галлюцинаций; все file:line открылись и подтвердились.
+- Никаких заглушек/`return null`/`!important`-костылей не встречено.
+- Прод не трогался, код не правился.

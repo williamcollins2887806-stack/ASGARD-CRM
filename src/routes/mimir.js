@@ -2539,6 +2539,74 @@ ${analogsSummary}
         }
       }, { user_id: request.user?.id || null });
 
+      // ── Генерация документов (смета.xlsx + отчёт.docx) ──
+      // Сохраняются в works.manual_documents / tenders.manual_documents (JSONB).
+      // Ошибки не валят основной пайплайн — auto-estimate уже отработал.
+      try {
+        const docGen = require('../services/document-generator');
+        const project = {
+          subject: ai.estimate?.title || ctx.work?.work_title || '',
+          object: ctx.work?.object_name || '',
+          deadline: ctx.work?.start_plan && ctx.work?.end_plan
+            ? `${new Date(ctx.work.start_plan).toLocaleDateString('ru-RU')} – ${new Date(ctx.work.end_plan).toLocaleDateString('ru-RU')}`
+            : ''
+        };
+        const customer = {
+          name: ctx.work?.customer_name || ctx.tender?.customer_name || '',
+          inn: ctx.tender?.customer_inn || ctx.tender?.inn || '',
+          address: ctx.work?.address || ctx.work?.object_address || ''
+        };
+
+        // PM-автор для блока «Контакты для уточнений» в смете + подпись отчёта.
+        // Берём по приоритету: pm_id работы (тот, кто ведёт проект) → user из запроса.
+        let pmUser = null;
+        try {
+          const pmId = ctx.work?.pm_id || (request.user && request.user.id);
+          if (pmId) {
+            const u = await db.query(
+              `SELECT id, name, phone, email, role FROM users WHERE id = $1`,
+              [pmId]
+            );
+            pmUser = u.rows[0] || null;
+          }
+        } catch (e) {
+          console.warn('[Mimir auto-estimate] не удалось подгрузить pmUser:', e.message);
+        }
+
+        const docOpts = {
+          author: pmUser ? {
+            name: pmUser.name || '—',
+            phone: pmUser.phone || '',
+            email: pmUser.email || ''
+          } : undefined,
+          workCategory: recomputed?.estimate?.site_category
+            || ctx?.workType
+            || 'ground',
+          assumptions: Array.isArray(recomputed?.analysis?.assumptions)
+            ? recomputed.analysis.assumptions
+            : (Array.isArray(ai?.analysis?.assumptions) ? ai.analysis.assumptions : []),
+          warnings: Array.isArray(recomputed?.analysis?.warnings)
+            ? recomputed.analysis.warnings
+            : (Array.isArray(ai?.analysis?.warnings) ? ai.analysis.warnings : [])
+        };
+
+        const [xlsxBuf, docxBuf] = await Promise.all([
+          docGen.generateSmetaXlsx(recomputed, project, customer, docOpts),
+          docGen.generateDirectorReportDocx(recomputed, project, customer, ai.analysis || {}, docOpts)
+        ]);
+        const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const entityKind = workId ? 'work' : 'tender';
+        const entityId = workId || tenderId;
+        await docGen.saveDocumentsForEntity(entityKind, entityId, [
+          { filename: `smeta_${stamp}.xlsx`, buffer: xlsxBuf, mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', kind: 'mimir_smeta' },
+          { filename: `director_report_${stamp}.docx`, buffer: docxBuf, mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', kind: 'mimir_director_report' }
+        ]);
+        sendEvent({ type: 'docs_generated', count: 2, kinds: ['mimir_smeta', 'mimir_director_report'] });
+      } catch (e) {
+        console.warn('[Mimir auto-estimate] doc-generator failed:', e.message);
+        sendEvent({ type: 'docs_error', message: e.message });
+      }
+
       sendEvent({ type: 'done' });
 
     } catch (error) {

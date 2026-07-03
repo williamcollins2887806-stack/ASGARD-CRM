@@ -33,7 +33,7 @@ async function getBadgeCount(db, userId) {
     const [notif, chats] = await Promise.all([
       db.query('SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND is_read = false', [userId]),
       db.query(
-        "SELECT COUNT(*) FROM chat_messages WHERE is_read = false AND sender_id != $1 AND chat_id IN (SELECT chat_id FROM chat_members WHERE user_id = $1)",
+        "SELECT COUNT(*) FROM chat_messages WHERE is_read = false AND sender_id != $1 AND chat_id IN (SELECT chat_id FROM chat_group_members WHERE user_id = $1)",
         [userId]
       ).catch(() => ({ rows: [{ count: '0' }] }))
     ]);

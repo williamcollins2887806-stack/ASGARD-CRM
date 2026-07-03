@@ -288,13 +288,16 @@ async function routes(fastify, options) {
       const empMap = {};
       for (const r of rows) {
         if (!empMap[r.employee_id]) empMap[r.employee_id] = { employee_id: r.employee_id, fio: r.fio, days: {} };
-        // Раскрыть диапазон дат
+        // Раскрыть диапазон дат.
+        // FIX 29.06.2026: использовать setUTCDate, иначе при сдвиге на 1 день
+        // в MSK (UTC+3) и потом toISOString() возникает off-by-one на последнем
+        // дне диапазона (тот же баг что в global-timesheet.js fmtDate).
         const dEnd = r.date_to ? new Date(r.date_to) : new Date(r.date_from);
         const cur = new Date(r.date_from);
         while (cur <= dEnd) {
           const ds = cur.toISOString().slice(0, 10);
           empMap[r.employee_id].days[ds] = { type: r.stage_type, status: r.status, source: r.source };
-          cur.setDate(cur.getDate() + 1);
+          cur.setUTCDate(cur.getUTCDate() + 1);
         }
       }
 

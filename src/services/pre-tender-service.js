@@ -83,33 +83,112 @@ async function createPreTenderFromEmail(emailId) {
   const exists = await db.query('SELECT id FROM pre_tender_requests WHERE email_id = $1', [emailId]);
   if (exists.rows.length) return { exists: true, id: exists.rows[0].id };
 
-  // Получаем данные письма
-  const emailRes = await db.query('SELECT * FROM emails WHERE id = $1', [emailId]);
+  // Получаем данные письма + связанный inbox_application (для определения настоящего клиента
+  // в случае corporate_forward: forwarder не должен быть customer_name, нужен original_sender).
+  // Симметрично логике в /api/inbox-applications/:id/to-pre-tender (Wave B fix).
+  // extracted_customer_* — структурированные реквизиты клиента (название компании, ИНН и т.д.),
+  // вытащенные AI-анализатором из карточки/подписи/печати. Используем их в первую очередь —
+  // «АО НАК Азот» в customer_name полезнее, чем «karina@eurochem.ru».
+  const emailRes = await db.query(`
+    SELECT e.*,
+           ia.source_kind, ia.source_email, ia.source_name,
+           ia.original_sender_email, ia.original_sender_name,
+           ia.extracted_customer_name, ia.extracted_customer_inn,
+           ia.extracted_customer_contact_email, ia.extracted_customer_contact_person,
+           ia.extracted_customer_phone, ia.extracted_customer_address,
+           ia.ai_raw_json
+    FROM emails e
+    LEFT JOIN inbox_applications ia ON ia.email_id = e.id
+    WHERE e.id = $1
+  `, [emailId]);
   if (!emailRes.rows.length) return null;
   const email = emailRes.rows[0];
+
+  // Resolve customer (симметрично /api/inbox-applications/:id/to-pre-tender):
+  // НИКОГДА не подставляем форвардера/внутреннего сотрудника как заказчика.
+  // 30.06.2026 bug #3: у пересланных писем from_name/source_name — это наш
+  // получатель (напр. Мохарин), а не клиент (ООО «СВС-Н»).
+  const INTERNAL_DOMAINS = ['asgard-service.com', 'asgard-crm.ru', 'asgard-service.ru'];
+  const isInternalEmail = (e) => {
+    if (!e) return false;
+    const at = String(e).toLowerCase().split('@')[1] || '';
+    return INTERNAL_DOMAINS.some(d => at === d || at.endsWith('.' + d));
+  };
+  const isForward = email.source_kind === 'corporate_forward';
+
+  // Внешний original_sender (не наш домен).
+  const extSenderName  = isInternalEmail(email.original_sender_email) ? null : email.original_sender_name;
+  const extSenderEmail = isInternalEmail(email.original_sender_email) ? null : email.original_sender_email;
+
+  // original_sender_company AI кладёт только в ai_raw_json.
+  let origCompany = null;
+  try {
+    const raw = typeof email.ai_raw_json === 'string' ? JSON.parse(email.ai_raw_json) : (email.ai_raw_json || null);
+    origCompany = raw && raw.original_sender_company ? String(raw.original_sender_company).trim() : null;
+  } catch (_) { /* битый json — игнор */ }
+
+  // Имя заказчика: extracted → company из подписи → внешний original_sender →
+  // (для НЕ-форварда) source_name/from_name.
+  let customerName = email.extracted_customer_name
+    || origCompany
+    || extSenderName
+    || (isForward ? '' : (email.source_name || email.from_name || ''));
+  // Email: extracted contact → внешний original_sender →
+  // (для НЕ-форварда и НЕ внутреннего) source_email/from_email.
+  let customerEmail = email.extracted_customer_contact_email
+    || extSenderEmail
+    || (isForward || isInternalEmail(email.source_email || email.from_email)
+        ? ''
+        : (email.source_email || email.from_email || ''));
+  let customerInn = email.extracted_customer_inn || null;
+
+  // Добиваем официальное название через Dadata, если так и не определили
+  // (есть только ИНН / корпоративная почта). Non-fatal: ошибка → оставляем как есть.
+  if (!customerName) {
+    try {
+      const dadata = require('./dadata');
+      const hit = await dadata.resolveCustomer({
+        inn: customerInn,
+        email: customerEmail,
+        hint: origCompany
+      });
+      if (hit && hit.name) {
+        customerName = hit.name;
+        if (!customerInn && hit.inn) customerInn = hit.inn;
+        console.log(`[pre-tender-service] email #${emailId}: customer resolved via Dadata → "${hit.name}" (inn=${hit.inn})`);
+      }
+    } catch (ddErr) {
+      console.warn(`[pre-tender-service] Dadata resolve failed for email #${emailId}:`, ddErr.message);
+    }
+  }
 
   // Создаём заявку с данными из письма
   const ins = await db.query(`
     INSERT INTO pre_tender_requests (
       email_id, source_type,
-      customer_name, customer_email,
+      customer_name, customer_email, customer_inn,
+      contact_person, contact_phone,
       work_description,
       ai_summary, ai_color, ai_recommendation,
       has_documents,
       status, created_by
     ) VALUES (
       $1, 'email',
-      $2, $3,
-      $4,
-      $5, $6, $7,
-      $8,
-      'new', $9
+      $2, $3, $4,
+      $5, $6,
+      $7,
+      $8, $9, $10,
+      $11,
+      'new', $12
     )
     RETURNING id
   `, [
     emailId,
-    email.from_name || email.from_email || '',
-    email.from_email || '',
+    customerName,
+    customerEmail,
+    customerInn,
+    email.extracted_customer_contact_person || null,
+    email.extracted_customer_phone || null,
     (email.body_text || '').slice(0, 2000),
     email.ai_summary || null,
     email.ai_color || 'yellow',

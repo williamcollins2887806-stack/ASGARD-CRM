@@ -72,6 +72,59 @@ async function routes(fastify, options) {
     if (!result.rows[0]) return reply.code(404).send({ error: 'Не найден' });
     return { message: 'Удалено' };
   });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // POST /from-sms — создать поступление из распознанной банковской SMS
+  // Используется на странице /v2/telegram (вкладка «Парсер SMS», SmsParser.jsx).
+  // Парсинг идёт на клиенте (BANK_SMS_PATTERNS), бэкенд только сохраняет.
+  // RBAC: финансовые роли.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const SMS_ROLES = ['ADMIN', 'BUH', 'DIRECTOR_GEN', 'DIRECTOR_COMM'];
+
+  fastify.post('/from-sms', { preHandler: [fastify.requireRoles(SMS_ROLES)] }, async (request, reply) => {
+    try {
+      const { sms_text, parsed, work_id } = request.body || {};
+      const p = parsed || {};
+      const amount = Number(p.amount);
+      if (!isFinite(amount) || amount <= 0) {
+        return reply.code(400).send({ error: 'Не указана сумма поступления' });
+      }
+
+      // Дата: из parsed.date (если распознали), иначе сегодня.
+      let date = p.date;
+      if (!date || isNaN(Date.parse(date))) {
+        date = new Date().toISOString().slice(0, 10);
+      } else {
+        date = new Date(date).toISOString().slice(0, 10);
+      }
+
+      // Описание собираем из отправителя + комментария + исходного SMS (для аудита).
+      const parts = [];
+      if (p.sender) parts.push(`От: ${String(p.sender).trim()}`);
+      if (p.comment) parts.push(String(p.comment).trim());
+      if (sms_text) parts.push(`SMS: ${String(sms_text).trim().slice(0, 500)}`);
+      const description = parts.join(' · ') || 'Поступление из SMS';
+
+      const data = {
+        amount,
+        date,
+        description,
+        type: 'sms',
+        created_by: request.user.id,
+        created_at: new Date().toISOString(),
+      };
+      if (work_id) data.work_id = Number(work_id);
+
+      const keys = Object.keys(data);
+      const values = Object.values(data);
+      const sql = `INSERT INTO incomes (${keys.join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`;
+      const result = await db.query(sql, values);
+      return { income: result.rows[0] };
+    } catch (err) {
+      const code = err.code === '23502' || err.code === '22001' || err.code === '42703' ? 400 : 500;
+      return reply.code(code).send({ error: 'Ошибка создания поступления из SMS', detail: err.message });
+    }
+  });
 }
 
 module.exports = routes;

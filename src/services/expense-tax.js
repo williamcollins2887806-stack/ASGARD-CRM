@@ -9,9 +9,12 @@
  *
  * Логика 55% (страховые/НДФЛ/обналичка):
  *   1. Если у записи есть `payment_method` — используем его (canonical post-V081):
- *      - cash | card                                → 55%
+ *      - cash | card | self                          → 55%
+ *           (self = НПД/самозанятый. По внутреннему правилу компании
+ *            ВСЕ наличные обналичивания, включая выплаты самозанятым,
+ *            считаются обналичкой и облагаются 55% налоговой нагрузкой.)
  *      - auto + category IN (fot, per_diem, payroll) → 55%
- *      - bank | self                                → 0% (счёт с НДС, либо самозанятый)
+ *      - bank                                        → 0% (безнал по счёту, может быть НДС-вычет)
  *   2. Если `payment_method` пустой (legacy, до V081) — fallback по category:
  *      - payroll | fot | cash | per_diem | subcontract → 55%
  *      - всё прочее → 0%
@@ -24,7 +27,8 @@
  * Тесты см. tests/expense-tax.test.js.
  */
 
-const TAX_PAYMENT_METHODS = new Set(['cash', 'card']);
+// 'self' (НПД/самозанятый) — по внутреннему правилу компании облагается 55% так же, как cash/card.
+const TAX_PAYMENT_METHODS = new Set(['cash', 'card', 'self']);
 const TAX_AUTO_CATEGORIES = new Set(['fot', 'per_diem', 'payroll']);
 const TAX_LEGACY_CATEGORIES = new Set(['payroll', 'fot', 'cash', 'per_diem', 'subcontract']);
 
@@ -41,7 +45,7 @@ function isTaxableExpense(expense) {
   if (method) {
     if (TAX_PAYMENT_METHODS.has(method)) return true;
     if (method === 'auto' && TAX_AUTO_CATEGORIES.has(cat)) return true;
-    return false; // bank | self | прочее — 55% не начисляем
+    return false; // bank | прочее — 55% не начисляем
   }
 
   // 2. Legacy fallback по category (записи до V081, payment_method == NULL)

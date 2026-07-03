@@ -611,8 +611,8 @@ module.exports = async function(fastify) {
   const adminOrDirector = {
     preHandler: [fastify.authenticate, async (req, reply) => {
       const r = req.user.role;
-      if (r !== 'ADMIN' && r !== 'DIRECTOR_GEN') {
-        return reply.code(403).send({ error: 'Только ADMIN/DIRECTOR_GEN' });
+      if (!['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','BUH'].includes(r)) {
+        return reply.code(403).send({ error: 'Только ADMIN/Директор/Бухгалтер' });
       }
     }]
   };

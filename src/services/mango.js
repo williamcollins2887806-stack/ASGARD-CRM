@@ -158,6 +158,39 @@ class MangoService {
       sms_sender: senderName || process.env.MANGO_SMS_SENDER || 'ASGARD'
     });
   }
+
+  // 26.06.2026: Прямая проверка статуса SMS через Mango Office API.
+  // Полезна когда delivery-webhook не настроен (у нас в .env он не приходит:
+  // 0/406 SMS получили подтверждение от оператора — см. field_sms_log).
+  // Эндпоинт queries/sms возвращает список SMS по фильтру; для одного
+  // command_id ожидаем 1 запись с полем status:
+  //   delivered    — доставлено
+  //   not_delivered/expired — не доставлено
+  //   queued/in_progress — в пути
+  //   rejected     — оператор отклонил
+  async getSmsStatus(commandId) {
+    if (!commandId) throw new Error('command_id обязателен');
+    try {
+      const res = await this.request('queries/sms', { command_id: String(commandId) });
+      const items = Array.isArray(res?.items) ? res.items
+                  : Array.isArray(res?.sms)   ? res.sms
+                  : Array.isArray(res?.data)  ? res.data
+                  : [];
+      const item = items[0] || (res?.command_id ? res : null);
+      if (!item) return { found: false, raw: res };
+      return {
+        found: true,
+        command_id: item.command_id || commandId,
+        status: item.status || item.delivery_status || item.state || 'unknown',
+        sent_at: item.sent_at || item.created_at || null,
+        delivered_at: item.delivered_at || item.delivery_time || null,
+        to_number: item.to_number || item.recipient || null,
+        raw: item
+      };
+    } catch (e) {
+      return { found: false, error: e.message };
+    }
+  }
   async getRecordingLink(recordingId, expires = 3600) {
     return this.request('queries/recording/link', {
       recording_id: recordingId,

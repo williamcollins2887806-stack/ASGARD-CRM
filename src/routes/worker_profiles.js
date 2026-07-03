@@ -22,10 +22,12 @@ async function routes(fastify, options) {
 
   // GET /:id — анкета по user_id или employee_id
   // G-12 F6 SECURITY: ограничение PII работника.
-  //   Полный доступ: ADMIN / HR / HR_MANAGER / CHIEF_ENGINEER / директора / HEAD_PM.
+  //   Полный доступ: ADMIN / HR / HR_MANAGER / CHIEF_ENGINEER / директора / HEAD_PM / OFFICE_MANAGER.
   //   PM — только если сотрудник числится в его работе (через employee_assignments → works.pm_id).
   //   Сам себя (?by=user&id===user.id) — может всегда.
-  //   Остальные роли (WAREHOUSE/PROC/TO/HEAD_TO/BUH/OFFICE_MANAGER) — 403.
+  //   Остальные роли (WAREHOUSE/PROC/TO/HEAD_TO/BUH) — 403.
+  //   FIX (23.06.2026): OFFICE_MANAGER добавлен в PRIVILEGED — нужен доступ к анкете рабочего
+  //   для редактирования карточки сотрудника (контакты, паспорт) в «Моей дружине».
   fastify.get('/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const id = parseInt(request.params.id, 10);
     if (!id) return reply.code(400).send({ error: 'Неверный id' });
@@ -34,7 +36,7 @@ async function routes(fastify, options) {
 
     // RBAC gate
     const role = request.user.role;
-    const PRIVILEGED = ['ADMIN', 'HR', 'HR_MANAGER', 'CHIEF_ENGINEER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_PM'];
+    const PRIVILEGED = ['ADMIN', 'HR', 'HR_MANAGER', 'CHIEF_ENGINEER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_PM', 'OFFICE_MANAGER'];
     const isPrivileged = PRIVILEGED.includes(role);
     const isPM = role === 'PM';
     // Self-access по user_id

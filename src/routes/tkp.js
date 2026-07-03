@@ -122,7 +122,7 @@ async function routes(fastify, options) {
   fastify.get('/', {
     preHandler: [fastify.authenticate]
   }, async (request) => {
-    const { tender_id, status, link_type, client_decision, customer_inn, limit = 100, offset = 0 } = request.query;
+    const { tender_id, pre_tender_id, status, link_type, client_decision, customer_inn, limit = 100, offset = 0 } = request.query;
     const userRole = request.user.role;
     const userId = request.user.id;
 
@@ -147,6 +147,7 @@ async function routes(fastify, options) {
     }
 
     if (tender_id)       { sql += ` AND t.tender_id = $${idx++}`;       params.push(tender_id); }
+    if (pre_tender_id)   { sql += ` AND t.pre_tender_id = $${idx++}`;   params.push(pre_tender_id); }
     if (status)          { sql += ` AND t.status = $${idx++}`;           params.push(status); }
     if (link_type)       { sql += ` AND t.link_type = $${idx++}`;        params.push(link_type); }
     if (client_decision) { sql += ` AND t.client_decision = $${idx++}`;  params.push(client_decision); }
@@ -2195,9 +2196,11 @@ module.exports = async function routesWithExtensions(fastify, options) {
     } else if (card.entity_kind === 'pre_tender' || card.flow_type === 'pre_tender') {
       preTenderId = card.entity_id;
       try {
+        // FIX B1: реальные колонки pre_tender_requests (V001:1076-1106):
+        //   work_description (НЕ request_description), customer_email (НЕТ contact_email).
         const r = await db.query(
-          `SELECT customer_name, customer_inn, request_description,
-                  contact_person, contact_phone, contact_email
+          `SELECT customer_name, customer_inn, work_description, work_location,
+                  contact_person, contact_phone, customer_email, estimated_sum
              FROM pre_tender_requests WHERE id = $1`,
           [preTenderId]
         );
@@ -2206,11 +2209,13 @@ module.exports = async function routesWithExtensions(fastify, options) {
           prefill.customer_inn     = r.rows[0].customer_inn;
           prefill.contact_person   = r.rows[0].contact_person;
           prefill.contact_phone    = r.rows[0].contact_phone;
-          prefill.contact_email    = r.rows[0].contact_email;
-          prefill.subject          = (r.rows[0].request_description || '').slice(0, 200) || null;
-          prefill.work_description = r.rows[0].request_description;
+          prefill.contact_email    = r.rows[0].customer_email;
+          prefill.subject          = (r.rows[0].work_description || '').slice(0, 200) || null;
+          prefill.work_description = r.rows[0].work_description;
+          prefill.work_location    = r.rows[0].work_location;
+          prefill.estimated_sum    = r.rows[0].estimated_sum;
         }
-      } catch (_) {}
+      } catch (e) { console.warn('[tkp from-card] pre_tender prefill error:', e.message); }
     } else if (card.entity_kind === 'work' || card.flow_type === 'work') {
       workId = card.entity_id;
     }
@@ -2250,6 +2255,23 @@ module.exports = async function routesWithExtensions(fastify, options) {
     } catch (err) {
       return reply.code(err.statusCode || 500).send({ error: err.message });
     }
+
+    // 22.06.2026: ANTI-DUPL — если уже есть draft ТКП для этой заявки/тендера
+    // от этого автора, возвращаем существующий (а не клепаем новый каждый клик).
+    // Раньше каждое нажатие "Конструктор ТКП" создавало дубль (поймано на #968 — 9 дублей).
+    try {
+      const existing = await db.query(
+        `SELECT * FROM tkp
+          WHERE author_id = $1
+            AND status = 'draft'
+            AND ( (pre_tender_id IS NOT NULL AND pre_tender_id = $2)
+               OR (tender_id     IS NOT NULL AND tender_id     = $3) )
+          ORDER BY id DESC LIMIT 1`,
+        [request.user.id, preTenderId, tenderId]);
+      if (existing.rows[0]) {
+        return { item: existing.rows[0], template_kind: existing.rows[0].template_kind || template_kind, blocks_created: 0, reused: true };
+      }
+    } catch (_) { /* не критично, идём в insert */ }
 
     // 5) Транзакция: INSERT tkp + дефолтные блоки
     const client = await db.pool.connect();

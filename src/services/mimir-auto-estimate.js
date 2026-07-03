@@ -896,9 +896,105 @@ function documentsToPrompt(docs) {
 }
 
 /**
- * Построить полный system prompt для Claude.
+ * Построить полный system prompt для Claude (НОВАЯ версия — v4 Опус).
+ *
+ * Использует `templates/prompts/PROMPT-quick-v4.md` + общий модуль норм
+ * `MODULE-norms-asgard-v1.md` через `src/services/prompt-loader.js`.
+ * Все динамические блоки (документы, аналоги, склад, бригада, тарифы,
+ * допуска, история заказчика) форматируются хелперами этого модуля и
+ * подставляются как plain text в плейсхолдеры шаблона.
+ *
+ * Если по какой-то причине файл шаблона/модуля нечитаем — fallback на
+ * `buildAutoEstimatePrompt_legacy` (полностью inline-промпт, история ниже).
  */
 function buildAutoEstimatePrompt(ctx) {
+  try {
+    const promptLoader = require('./prompt-loader');
+    const work = ctx.work || {};
+    const tender = ctx.tender || null;
+    const settings = ctx.settings || {};
+
+    const startDate = work.start_plan || work.start_in_work_date || tender?.work_start_plan;
+    const endDate = work.end_plan || work.end_fact || tender?.work_end_plan;
+
+    let dateWindowDays = null;
+    if (startDate && endDate) {
+      const ms = new Date(endDate).getTime() - new Date(startDate).getTime();
+      dateWindowDays = Math.max(1, Math.round(ms / 86400000) + 1);
+    }
+
+    // Edge-флаги, которые подставляются прямо в плейсхолдер {{flag_warnings}}.
+    const flagWarnings = [];
+    if (!tender) flagWarnings.push('- ⚠️ РАБОТА БЕЗ ТЕНДЕРА — описание объекта неполное, предположения делай консервативно');
+    if (!ctx.documents || ctx.documents.length === 0) flagWarnings.push('- ⚠️ НЕТ ПРИЛОЖЕННЫХ ДОКУМЕНТОВ — ТЗ недоступно, расчёт по шаблону');
+    if ((ctx.workers?.field_available?.length || 0) === 0) flagWarnings.push('- ⚠️ НЕТ СВОБОДНЫХ ПОЛЕВЫХ — все заняты, +30 % к ставке полевых');
+    if ((ctx.workers?.itr_available?.length || 0) === 0) flagWarnings.push('- ⚠️ НЕТ СВОБОДНОГО ИТР — потребуется внештатный РП');
+    if (!ctx.analogs || ctx.analogs.length === 0) flagWarnings.push('- ℹ️ Аналогов нет — наценка консервативно ×2.0–2.3');
+
+    // Форматирование денежных значений
+    const formatMoney = (v) => (v ? Math.round(Number(v)).toLocaleString('ru-RU') + ' ₽' : 'не задан');
+
+    const substitutions = {
+      // === Работа ===
+      work_id: work.id || '—',
+      work_title: work.work_title || '—',
+      customer_name: work.customer_name || tender?.customer_name || '—',
+      object_name: work.object_name || '—',
+      city: work.city || tender?.tender_region || '—',
+      address: work.address || work.object_address || '—',
+      start_date: startDate || '—',
+      end_date: endDate || '—',
+      N: dateWindowDays || '?',
+      contract_value: formatMoney(work.contract_value),
+      crew_size: work.crew_size || '—',
+      work_type: ctx.workType || '—',
+      flag_warnings: flagWarnings.length ? flagWarnings.join('\n') : '(нет дополнительных EDGE-флагов)',
+      // === Тендер ===
+      tender_id: tender?.id || '—',
+      tender_title: tender?.tender_title || '—',
+      tender_region: tender?.tender_region || '—',
+      estimated_sum: tender?.estimated_sum ? Math.round(Number(tender.estimated_sum)).toLocaleString('ru-RU') : '—',
+      tender_status: tender?.tender_status || tender?.status || '—',
+      group_tag: tender?.group_tag || '—',
+      deadline: tender?.deadline || tender?.docs_deadline || '—',
+      tender_comment_to: tender?.tender_comment_to || tender?.comment_to || '—',
+      tender_description: tender?.tender_description || '—',
+      // === Блоки данных (форматируем хелперами) ===
+      documents_text: documentsToPrompt(ctx.documents || []),
+      analogs_table: analogsToPrompt(ctx.analogs || []),
+      customer_history: customerHistoryToPrompt(ctx.customer_history || []),
+      warehouse_stock: warehouseToPrompt(ctx.warehouse || []),
+      // === Бригада ===
+      itr_busy_count: ctx.workers?.itr_busy_count || 0,
+      itr_available_list:
+        (ctx.workers?.itr_available || []).slice(0, 30)
+          .map(w => `#${w.id} ${w.name} (${w.role})`).join(', ') || '(нет свободных ИТР)',
+      field_busy_count: ctx.workers?.field_busy_count || 0,
+      workers_buckets: workersBucketsToPrompt(ctx.workers || {}),
+      // === Допуска / тарифы ===
+      permits_summary: permitsToPrompt(ctx.permits || {}),
+      tariff_grid: tariffsToPrompt(ctx.tariffs || []),
+      // === Настройки расчёта ===
+      vat_pct: settings.vat_pct ?? 22,
+      fot_tax_pct: settings.fot_tax_pct ?? 55,
+      overhead_pct: settings.overhead_pct ?? 0,
+      consumables_pct: settings.consumables_pct ?? 0,
+      contingency_pct: settings.contingency_pct ?? 12,
+      itr_rate_per_day: settings.itr_rate_per_day ?? 10000
+    };
+
+    return promptLoader.buildPrompt('PROMPT-quick-v4.md', substitutions);
+  } catch (e) {
+    console.warn(`[mimir-auto-estimate] buildAutoEstimatePrompt failed via prompt-loader: ${e.message}. Fallback на legacy-промпт.`);
+    return buildAutoEstimatePrompt_legacy(ctx);
+  }
+}
+
+/**
+ * LEGACY: старый inline-промпт (до Опус-архитектуры от 19.06.2026).
+ * Сохранён как fallback и для возможного дебага. НЕ удалять.
+ */
+function buildAutoEstimatePrompt_legacy(ctx) {
   const work = ctx.work;
   const tender = ctx.tender;
   const settings = ctx.settings;
@@ -1128,8 +1224,24 @@ ${tariffsToPrompt(ctx.tariffs)}
 - Для МЛСП (морские платформы): минимум 4 человека на участок,
   огневые работы: 2 сварщика + 2 наблюдающих + 1 допускающий.
 
-⚡ РЕЖИМ 24/7 (круглосуточный — если указано в ТЗ или «круглосуточно»):
-Две смены по 12 часов (день + ночь), в КАЖДОЙ смене:
+═══ ПРАВИЛО ПО УМОЛЧАНИЮ: РЕЖИМ 24/7 ═══
+⚡ ВСЕ работы планируем В РЕЖИМЕ 24/7 (2 смены по 12 часов: день + ночь) ПО УМОЛЧАНИЮ.
+Это политика компании «Асгард Сервис» — наш стандартный подход к промышленным
+проектам, который сокращает срок производства работ и повышает выручку с объекта.
+
+Переключайся в ОБЫЧНЫЙ ОДНОСМЕННЫЙ РЕЖИМ ТОЛЬКО если в ТЗ или договоре ЯВНО написано:
+  - «работы только в дневное время»
+  - «доступ к объекту только с 08:00 до 18:00» (или похожие временные рамки)
+  - «работы по согласованному графику в рабочие дни»
+  - запрет ночных смен из-за регламентов клиента / расположения объекта (жилая зона)
+  - объект режимный с пропускной системой 8/17 без возможности ночного допуска
+  - «5-дневная рабочая неделя»
+
+Если ничего из перечисленного НЕТ — режим ВСЕГДА 24/7. Не нужно «уточнять у клиента»
+— это наш дефолт, клиенту его не нужно подтверждать.
+
+Состав бригады в режиме 24/7 (две смены по 12 часов):
+В КАЖДОЙ смене:
   - 1 мастер/прораб (ответственный за проведение работ по наряду-допуску, 2 группа ОВ)
   - X исполнителей (рабочие непосредственно на оборудовании/в ёмкости)
   - X наблюдающих (контроль безопасности, связь, эвакуация)
@@ -1149,7 +1261,8 @@ ${tariffsToPrompt(ctx.tariffs)}
 - Контроль газовой обстановки каждые 30 мин (драгер)
 - Дежурный дублёр снаружи (НЕ наблюдающий, а дополнительный человек)
 
-⚡ ОБЫЧНЫЙ РЕЖИМ (1 смена, дневная, без ОЗП):
+⚡ ОБЫЧНЫЙ ОДНОСМЕННЫЙ РЕЖИМ (1 смена, дневная, без ОЗП):
+Применяй ТОЛЬКО при явных ограничениях клиента на ночные работы (см. правило 24/7 выше).
 1 мастер + N рабочих + 1 ИТР. Наблюдающие не требуются.
 Минимальная бригада: 1 мастер + 4 рабочих + 1 ИТР = 6 чел.
 
@@ -2008,6 +2121,7 @@ module.exports = {
   DEFAULT_SETTINGS,
   // AP2
   buildAutoEstimatePrompt,
+  buildAutoEstimatePrompt_legacy,
   parseAIResponse,
   validateAndRecomputeMath,
   createDraftEstimate,

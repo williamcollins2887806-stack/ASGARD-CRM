@@ -202,6 +202,7 @@ async function routes(fastify, options) {
         let baseRate = 0;
         let basePoints = 0;
         let comboRate = 0;
+        let comboPoints = 0;
 
         if (tariff_id) {
           const { rows: tariff } = await db.query(
@@ -226,10 +227,15 @@ async function routes(fastify, options) {
           );
           if (combo.length > 0) {
             comboRate = parseFloat(combo[0].rate_per_shift);
+            // FIX 24.06 (#107): combination_tariff_id даёт ДОП. БАЛЛЫ (например водитель +1).
+            // Раньше это поле игнорировалось — в табеле и при чекине показывались только
+            // базовые баллы, рабочий недополучал по совмещению.
+            comboPoints = combo[0].points || 0;
           }
         }
 
         const totalRate = baseRate + comboRate;
+        const totalPoints = (basePoints || 0) + (comboPoints || 0);
         const perDiem = emp.per_diem != null ? emp.per_diem : projectPerDiem;
 
         // Upsert assignment
@@ -246,14 +252,14 @@ async function routes(fastify, options) {
               is_active = true, updated_at = NOW()
             WHERE employee_id = $1 AND work_id = $2
           `, [employee_id, workId, field_role || 'worker', tariff_id || null,
-              basePoints || null, combination_tariff_id || null, perDiem, shift_type || 'day']);
+              totalPoints || null, combination_tariff_id || null, perDiem, shift_type || 'day']);
         } else {
           await db.query(`
             INSERT INTO employee_assignments (employee_id, work_id, field_role, tariff_id,
               tariff_points, combination_tariff_id, per_diem, shift_type, is_active)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true)
           `, [employee_id, workId, field_role || 'worker', tariff_id || null,
-              basePoints || null, combination_tariff_id || null, perDiem, shift_type || 'day']);
+              totalPoints || null, combination_tariff_id || null, perDiem, shift_type || 'day']);
         }
 
         // Update employees.day_rate for backward compatibility
@@ -605,6 +611,16 @@ async function routes(fastify, options) {
 
   // ─────────────────────────────────────────────────────────────────────
   // GET /projects/:work_id/timesheet — timesheet
+  // 25.06.2026 FIX:
+  //   • Возвращаем ВСЕХ рабочих из бригады (employee_assignments), а не только
+  //     тех у кого уже есть чекин — иначе при первом чекине одного человека
+  //     остальные «исчезали» с таблицы (баг #4: пустая бригада видна, но как
+  //     только один отметится — другие пропадают).
+  //   • Кроме «своих» чекинов добавляем foreign_days — чекины тех же
+  //     рабочих на ДРУГИХ работах в том же периоде. UI рендерит их как
+  //     заблокированные ячейки с подсказкой «занят у РП X на работе Y».
+  //     Раньше РП видел просто пустую ячейку и мог случайно поставить
+  //     свой чекин поверх (см. инцидент Климакин 23.06 → Пономарёв work=353).
   // ─────────────────────────────────────────────────────────────────────
   fastify.get('/projects/:work_id/timesheet', roleCheck, async (req, reply) => {
     try {
@@ -627,7 +643,7 @@ async function routes(fastify, options) {
         idx++;
       }
 
-      // Get all checkins for project
+      // Get all checkins for project (свои)
       const { rows: checkins } = await db.query(`
         SELECT fc.id, fc.employee_id, e.fio, fc.date, fc.shift,
                fc.checkin_at, fc.checkout_at, fc.hours_worked, fc.hours_paid,
@@ -638,20 +654,62 @@ async function routes(fastify, options) {
         ORDER BY e.fio, fc.date
       `, params);
 
+      // Все рабочие из бригады работы (включая тех у кого нет чекинов)
+      const { rows: crew } = await db.query(`
+        SELECT DISTINCT ea.employee_id, e.fio
+          FROM employee_assignments ea
+          JOIN employees e ON e.id = ea.employee_id
+         WHERE ea.work_id = $1
+         ORDER BY e.fio
+      `, [workId]);
+
+      // Чужие чекины этих рабочих в том же периоде — для подсветки в UI
+      let foreignFilter = '';
+      const foreignParams = [workId];
+      let fidx = 2;
+      if (dateFrom) { foreignFilter += ` AND fc.date >= $${fidx}`; foreignParams.push(dateFrom); fidx++; }
+      if (dateTo)   { foreignFilter += ` AND fc.date <= $${fidx}`; foreignParams.push(dateTo);   fidx++; }
+      const { rows: foreign } = await db.query(`
+        SELECT fc.id, fc.employee_id, fc.work_id, fc.date, fc.shift,
+               fc.day_rate, fc.amount_earned, fc.status, fc.checkin_source,
+               w.work_title, u.name AS pm_fio, w.pm_id
+          FROM field_checkins fc
+          LEFT JOIN works w ON w.id = fc.work_id
+          LEFT JOIN users u ON u.id = w.pm_id
+         WHERE fc.work_id <> $1
+           AND fc.status = 'completed'
+           AND fc.employee_id IN (SELECT employee_id FROM employee_assignments WHERE work_id = $1)
+           ${foreignFilter}
+      `, foreignParams);
+
       // Get project settings for per_diem
       const { rows: settings } = await db.query(
         `SELECT per_diem, shift_hours FROM field_project_settings WHERE work_id = $1`, [workId]
       );
       const perDiem = parseFloat(settings[0]?.per_diem || 0);
 
-      // Group by employee
+      // Group by employee — стартуем со ВСЕХ рабочих бригады
       const byEmployee = {};
+      for (const c of crew) {
+        byEmployee[c.employee_id] = {
+          employee_id: c.employee_id,
+          fio: c.fio,
+          days: [],
+          foreign_days: [],
+          total_hours: 0,
+          total_paid_hours: 0,
+          total_earned: 0,
+          days_count: 0,
+        };
+      }
       for (const row of checkins) {
         if (!byEmployee[row.employee_id]) {
+          // На всякий: рабочий когда-то отметился, но сейчас в бригаде нет
           byEmployee[row.employee_id] = {
             employee_id: row.employee_id,
             fio: row.fio,
             days: [],
+            foreign_days: [],
             total_hours: 0,
             total_paid_hours: 0,
             total_earned: 0,
@@ -674,6 +732,20 @@ async function routes(fastify, options) {
         emp.total_paid_hours += parseFloat(row.hours_paid || 0);
         emp.total_earned += parseFloat(row.amount_earned || 0);
         emp.days_count++;
+      }
+      for (const f of foreign) {
+        const emp = byEmployee[f.employee_id];
+        if (!emp) continue;
+        emp.foreign_days.push({
+          id: f.id,
+          date: f.date,
+          shift: f.shift,
+          work_id: f.work_id,
+          work_title: f.work_title,
+          pm_id: f.pm_id,
+          pm_fio: f.pm_fio,
+          source: f.checkin_source,
+        });
       }
 
       const timesheet = Object.values(byEmployee).map(emp => ({
@@ -700,14 +772,16 @@ async function routes(fastify, options) {
           if (pvRes.rows[0]?.point_value) pointValue = parseFloat(pvRes.rows[0].point_value);
         } catch (_) {}
 
-        // Генерируем ВСЕ даты от dateFrom до dateTo (не только с checkin'ами)
+        // Генерируем ВСЕ даты от dateFrom до dateTo (не только с checkin'ами).
+        // FIX 29.06.2026: парсить как UTC (с 'Z'), иначе сервер в MSK сдвигал
+        // последний день назад на 1 (29.06 показывался вместо 30.06).
         const dates = [];
         if (dateFrom && dateTo) {
-          const cur = new Date(dateFrom + 'T00:00:00');
-          const end = new Date(dateTo + 'T00:00:00');
+          const cur = new Date(dateFrom + 'T00:00:00Z');
+          const end = new Date(dateTo + 'T00:00:00Z');
           while (cur <= end) {
             dates.push(cur.toISOString().slice(0, 10));
-            cur.setDate(cur.getDate() + 1);
+            cur.setUTCDate(cur.getUTCDate() + 1);
           }
         } else {
           const allDates = new Set();
@@ -1041,6 +1115,48 @@ async function routes(fastify, options) {
       }
 
       const assignmentId = assignRows[0].id;
+
+      // 25.06.2026 FIX «коллизия чужой работы»: если у этого employee_id уже
+      // есть НЕ-cancelled чекин на ту же дату, но на ДРУГОЙ работе — отказ.
+      // Раньше другой РП мог поверх перезаписать чекин рабочего, забрав его
+      // себе (см. инцидент Климакин 23.06 → Пономарёв на work=353 вместо
+      // работы Андросова work=11). Контекст в edit_reason.
+      const { rows: otherWorkCheckins } = await db.query(`
+        SELECT fc.id, fc.work_id, fc.checkin_source, fc.entered_by_user_id,
+               w.work_title, w.pm_id,
+               u.name AS pm_fio
+          FROM field_checkins fc
+          LEFT JOIN works w ON w.id = fc.work_id
+          LEFT JOIN users u ON u.id = w.pm_id
+         WHERE fc.employee_id = $1
+           AND fc.date = $2::date
+           AND fc.work_id <> $3
+           AND fc.status <> 'cancelled'
+         LIMIT 1
+      `, [employee_id, date, workId]);
+      if (otherWorkCheckins.length > 0) {
+        const other = otherWorkCheckins[0];
+        // ADMIN/DIRECTOR — могут перебить (для нештатных кейсов)
+        const role = req.user.role;
+        const canForce = role === 'ADMIN' || (role && role.startsWith('DIRECTOR_'));
+        if (!canForce) {
+          return reply.code(409).send({
+            error: 'worker_busy_on_other_work',
+            message: 'Этот рабочий уже отмечен в эту дату на другой работе. ' +
+                     'Если он реально был у вас — попросите РП «' + (other.pm_fio || '—') +
+                     '» снять свою отметку.',
+            other: {
+              checkin_id: other.id,
+              work_id: other.work_id,
+              work_title: other.work_title,
+              pm_id: other.pm_id,
+              pm_fio: other.pm_fio,
+              source: other.checkin_source
+            }
+          });
+        }
+      }
+
       const pts = day_rate != null ? day_rate : 0;
       const amt = amount_earned != null ? amount_earned : pts;
       // checkin_at is NOT NULL — default to start of the date
@@ -1066,7 +1182,17 @@ async function routes(fastify, options) {
             updated_at = NOW()
         RETURNING *
       `, [workId, employee_id, assignmentId, date, shift || 'day', checkinAt,
-          hours_worked || 11, hours_paid || 11, pts, amt,
+          // 27.06.2026 FIX: часы дефолтятся по типу смены, а не жёстко 11.
+          // road/standby/waiting = 0 (не работа), half = 6, day/night = 11.
+          // Раньше manual ввод РП без указания часов всегда давал 11, и в
+          // tooltip директора показывалось «11 ч» для дороги/ожидания.
+          (Number.isFinite(Number(hours_worked))
+            ? Number(hours_worked)
+            : ({ day: 11, night: 11, half: 6, road: 0, standby: 0, waiting: 0 }[shift || 'day'] ?? 11)),
+          (Number.isFinite(Number(hours_paid))
+            ? Number(hours_paid)
+            : ({ day: 11, night: 11, half: 6, road: 0, standby: 0, waiting: 0 }[shift || 'day'] ?? 11)),
+          pts, amt,
           status || 'completed', note || null, req.user.id]);
       return { ok: true, checkin: rows[0] };
     } catch (err) {
