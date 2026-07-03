@@ -360,7 +360,7 @@ export function EmployeeDetailModal({ employeeId }) {
           </DetailsBlock>
 
           <DetailsBlock title="✅ Допуски и разрешения">
-            <EmployeePermits employeeId={emp.id} canEdit={userCanEdit} />
+            <EmployeePermits employeeId={emp.id} employeeName={emp.fio || emp.full_name || ''} canEdit={userCanEdit} />
           </DetailsBlock>
 
           <DetailsBlock title="💬 Лента комментариев">

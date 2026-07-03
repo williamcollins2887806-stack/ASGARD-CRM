@@ -13,18 +13,23 @@ export const ALLOWED_READ_ROLES = ['ADMIN', 'HR', 'TO', 'HEAD_TO', 'HR_MANAGER',
 export const WRITE_ROLES = ['ADMIN', 'HR', 'TO', 'HEAD_TO', 'HR_MANAGER'];
 export const TYPE_MGMT_ROLES = ['ADMIN', 'HR', 'TO', 'HEAD_TO', 'HR_MANAGER'];
 
+// Порядок ключей задаёт порядок разделов в «едином окне» (чеклисте).
 export const CATEGORIES = {
-  safety:    { name: 'Безопасность',         color: 'var(--ok)',     icon: '🛡️' },
-  electric:  { name: 'Электрика',             color: 'var(--amber)',  icon: '⚡' },
-  special:   { name: 'Спецработы',            color: 'var(--info)',   icon: '🔧' },
-  medical:   { name: 'Медицина',              color: 'var(--err)',    icon: '🏥' },
-  attest:    { name: 'Аттестация',            color: 'var(--purple)', icon: '📜' },
-  offshore:  { name: 'Шельф / Морские',       color: 'var(--cyan)',   icon: '🚢' },
-  gas:       { name: 'Газоопасные',           color: 'var(--orange)', icon: '🔥' },
-  transport: { name: 'Транспорт',             color: 'var(--t-2)',    icon: '🚛' },
-  nuclear:   { name: 'Ядерная безопасность',  color: 'var(--err)',    icon: '☢️' },
-  welding:   { name: 'Сварка',                color: 'var(--orange)', icon: '🔩' },
-  docs:      { name: 'Документы',             color: 'var(--cyan)',   icon: '📋' }
+  safety:    { name: 'Охрана труда / Безопасность', color: 'var(--ok)',      icon: '🛡️' },
+  siz:       { name: 'СИЗ',                          color: 'var(--blue-l)',  icon: '🦺' },
+  electric:  { name: 'Электробезопасность',          color: 'var(--amber)',   icon: '⚡' },
+  height:    { name: 'Работы на высоте',             color: 'var(--gold-l)',  icon: '🪜' },
+  rigging:   { name: 'Грузоподъёмные / Монтаж МК',   color: 'var(--purple-l)',icon: '🏗️' },
+  gas:       { name: 'Газоопасные',                  color: 'var(--orange)',  icon: '🔥' },
+  ndt:       { name: 'Неразрушающий контроль',       color: 'var(--cyan-l)',  icon: '🔬' },
+  welding:   { name: 'Сварка',                       color: 'var(--orange)',  icon: '🔩' },
+  special:   { name: 'Спецработы',                   color: 'var(--info)',    icon: '🔧' },
+  offshore:  { name: 'Шельф / Морские',              color: 'var(--cyan)',    icon: '🚢' },
+  medical:   { name: 'Медицина',                     color: 'var(--err)',     icon: '🏥' },
+  attest:    { name: 'Аттестация',                   color: 'var(--purple)',  icon: '📜' },
+  transport: { name: 'Транспорт',                    color: 'var(--t-2)',     icon: '🚛' },
+  nuclear:   { name: 'Ядерная безопасность',         color: 'var(--err)',     icon: '☢️' },
+  docs:      { name: 'Документы',                    color: 'var(--cyan)',    icon: '📋' }
 };
 
 // Должности (синхронно с hr_requests.js POSITION_ROLES)
@@ -112,6 +117,18 @@ export async function createPermit(formData) {
 
 export function updatePermit(id, body) {
   return api(`/api/permits/${id}`, { method: 'PUT', body });
+}
+
+/**
+ * Массовое сохранение допусков сотрудника из «единого окна» (чеклиста).
+ * items: [{ type_id, present, issue_date?, expiry_date?, doc_number?, issuer?, notes? }]
+ * → PUT /api/permits/employee/:employeeId/bulk. Возвращает { permits, stats }.
+ */
+export function bulkSaveEmployeePermits(employeeId, items) {
+  return api(`/api/permits/employee/${encodeURIComponent(employeeId)}/bulk`, {
+    method: 'PUT',
+    body: { items },
+  });
 }
 
 export async function uploadScan(id, file) {

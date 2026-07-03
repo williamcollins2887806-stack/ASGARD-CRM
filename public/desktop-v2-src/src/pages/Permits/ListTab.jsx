@@ -6,17 +6,17 @@ import { useState, useEffect, useMemo } from 'react';
 import { useModal } from '@/modals';
 import { toast } from '@/modals/Notifications';
 import { ConfirmModal } from '@/modals/Confirm';
-import { Btn } from '@/modals/parts';
+import { Btn, MCard, MHead, MBody, MFoot } from '@/modals/parts';
 import { Combobox, SelectInput } from '@/inputs/Inputs';
 import { EmptyState } from '@/blocks/Blocks';
 // v2 BONUS: hotkeys + LS-persist + CSV export (vanilla не имеет)
 import { useLocalStorage, useHotkeys, exportToCsv } from '@/api/useListHelpers';
 import {
-  loadPermits, loadPermit, loadEmployees, deletePermit,
+  loadPermits, loadEmployees, deletePermit,
   STATUS_FILTER_OPTIONS, CATEGORY_FILTER_OPTIONS, CATEGORIES,
   statusInfo, getTypeById, fmtDate, openScan, WRITE_ROLES
 } from './api';
-import PermitEditModal from './PermitEditModal';
+import PermitsChecklistModal from './PermitsChecklistModal';
 import RenewModal from './RenewModal';
 import BulkRenewModal from './BulkRenewModal';
 
@@ -62,17 +62,34 @@ export default function ListTab({ user, types, onChanged }) {
   useEffect(() => { refresh(); }, [statusF, categoryF, employeeF]);
   useEffect(() => { setPage(1); }, [statusF, categoryF, employeeF]);
 
+  const afterSaved = () => { refresh(); onChanged?.(); };
+
+  // «Добавить» → сначала выбор сотрудника, затем единое окно-чеклист.
   const onAdd = () => {
-    open(<PermitEditModal types={types} onSaved={() => { refresh(); onChanged?.(); }} />, { size: 'wide' });
+    open(
+      <EmployeePickerModal
+        options={empOpts}
+        onPick={(id, name) => {
+          open(
+            <PermitsChecklistModal employeeId={Number(id)} employeeName={name} onSaved={afterSaved} />,
+            { size: 'wide' }
+          );
+        }}
+      />,
+      { size: 'md' }
+    );
   };
 
-  const onEdit = async (p) => {
-    try {
-      const full = await loadPermit(p.id);
-      open(<PermitEditModal permit={full || p} types={types} onSaved={() => { refresh(); onChanged?.(); }} />, { size: 'wide' });
-    } catch (e) {
-      toast.error('Не удалось загрузить: ' + (e?.message || e));
-    }
+  // Клик по строке / «Изм.» → чеклист по сотруднику этой строки (предзаполненный).
+  const onEdit = (p) => {
+    open(
+      <PermitsChecklistModal
+        employeeId={Number(p.employee_id)}
+        employeeName={p.employee_name || ''}
+        onSaved={afterSaved}
+      />,
+      { size: 'wide' }
+    );
   };
 
   const onRenew = (p) => {
@@ -262,5 +279,45 @@ export default function ListTab({ user, types, onChanged }) {
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * Выбор сотрудника перед открытием чеклиста допусков (кнопка «Добавить»).
+ */
+function EmployeePickerModal({ options = [], onPick }) {
+  const { close } = useModal();
+  const base = useMemo(() => options.filter((o) => o.value), [options]);
+  const [opts, setOpts] = useState(base);
+  const [value, setValue] = useState('');
+  const [name, setName] = useState('');
+
+  const proceed = () => {
+    if (!value) { toast.warn('Выберите сотрудника'); return; }
+    close();
+    onPick?.(value, name);
+  };
+
+  return (
+    <MCard>
+      <MHead icon="👷" title="Допуски сотрудника" subtitle="Выберите сотрудника" accent="gold" onClose={close} />
+      <MBody>
+        <Combobox
+          value={value}
+          onChange={(v, opt) => { setValue(v); setName(opt?.label || ''); }}
+          options={opts}
+          placeholder="Поиск сотрудника…"
+          onQuery={(q) => {
+            if (!q) { setOpts(base); return; }
+            const lq = q.toLowerCase();
+            setOpts(base.filter((o) => (o.label || '').toLowerCase().includes(lq)));
+          }}
+        />
+      </MBody>
+      <MFoot>
+        <Btn variant="ghost" onClick={close}>Отмена</Btn>
+        <Btn variant="primary" onClick={proceed} disabled={!value}>Далее →</Btn>
+      </MFoot>
+    </MCard>
   );
 }

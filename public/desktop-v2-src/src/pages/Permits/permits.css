@@ -380,6 +380,94 @@
 .pmt-type-row .meta { font-size: 11px; color: var(--t-3); }
 .pmt-type-row .sys  { font-size: 10px; opacity: 0.5; padding: 2px 8px; border-radius: var(--r-pill); background: var(--inner-bg); }
 
+/* ─── Единое окно допусков (чеклист) ─── */
+.pmt-chk-card { width: min(760px, 96vw); }
+
+.pmt-chk-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--m-body-bg, var(--card-bg));
+  padding-bottom: 4px;
+}
+.pmt-chk-toolbar .m-input { flex: 1; }
+.pmt-chk-counter { font-size: 13px; color: var(--t-2); white-space: nowrap; }
+.pmt-chk-counter b { color: var(--gold); }
+
+.pmt-chk-groups { display: flex; flex-direction: column; gap: 18px; }
+.pmt-chk-group { display: flex; flex-direction: column; }
+
+.pmt-chk-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--brd-1);
+}
+.pmt-chk-group-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
+.pmt-chk-group-ic  { font-size: 15px; }
+.pmt-chk-group-nm  {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--t-2);
+}
+
+.pmt-chk-row {
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-sm);
+  padding: 8px 12px;
+  margin-bottom: 6px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.pmt-chk-row.active { border-color: color-mix(in srgb, var(--gold) 40%, transparent); background: var(--gold-bg); }
+
+.pmt-chk-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+.pmt-chk-main input[type="checkbox"] { width: 17px; height: 17px; flex: 0 0 auto; cursor: pointer; }
+.pmt-chk-name { font-size: 13.5px; color: var(--t-1); font-weight: 500; }
+.pmt-chk-validity {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--t-3);
+  white-space: nowrap;
+}
+
+.pmt-chk-fields { margin-top: 10px; padding-left: 27px; }
+.pmt-chk-dates {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.pmt-chk-extra {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.pmt-chk-flabel { display: flex; flex-direction: column; gap: 4px; flex: 1 1 200px; min-width: 0; }
+.pmt-chk-flabel--wide { flex: 1 1 100%; }
+.pmt-chk-flabel > span {
+  font-size: 11px;
+  color: var(--t-3);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.pmt-chk-flabel > span em { font-style: normal; opacity: 0.7; }
+.pmt-chk-more { flex: 0 0 auto; margin-bottom: 1px; }
+
 /* Responsive — hero на узких экранах */
 @media (max-width: 900px) {
   .pmt-hero { grid-template-columns: auto 1fr; }

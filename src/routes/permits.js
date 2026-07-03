@@ -355,7 +355,16 @@ module.exports = async function(fastify) {
     const values = [];
     let idx = 1;
 
-    if (type_id !== undefined) { updates.push(`type_id = $${idx}`); values.push(type_id); idx++; }
+    if (type_id !== undefined) {
+      updates.push(`type_id = $${idx}`); values.push(type_id); idx++;
+      // При смене типа синхронизируем денормализованные поля с новым справочником:
+      // category (используется фильтрами/матрицей) и легаси-текст permit_type (читает Mimir).
+      const { rows: [pt] } = await db.query('SELECT category, name FROM permit_types WHERE id = $1', [type_id]);
+      if (pt) {
+        updates.push(`category = $${idx}`); values.push(pt.category || null); idx++;
+        updates.push(`permit_type = $${idx}`); values.push(pt.name || null); idx++;
+      }
+    }
     if (doc_number !== undefined) { updates.push(`doc_number = $${idx}`); values.push(doc_number); idx++; }
     if (issuer !== undefined) { updates.push(`issuer = $${idx}`); values.push(issuer); idx++; }
     if (issue_date !== undefined) { updates.push(`issue_date = $${idx}`); values.push(issue_date || null); idx++; }
@@ -379,6 +388,119 @@ module.exports = async function(fastify) {
     if (!result.rows[0]) return reply.code(404).send({ error: 'Не найден' });
 
     return { permit: result.rows[0] };
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // PUT /api/permits/employee/:employeeId/bulk — «Единое окно» (чеклист)
+  // Массовое сохранение допусков сотрудника одним запросом.
+  // Тело: { items: [{ type_id, present, issue_date?, expiry_date?, doc_number?, issuer?, notes? }] }
+  //   present && есть активная запись  → UPDATE (даты/поля, сброс notify-флагов при смене expiry)
+  //   present && записи нет            → INSERT (category = pt.category, permit_type = pt.name — для Mimir)
+  //   !present && есть активная запись → soft-delete (is_active = false)
+  // ═══════════════════════════════════════════════════════════════
+  fastify.put('/employee/:employeeId/bulk', {
+    preHandler: [fastify.requirePermission('permits', 'write')]
+  }, async (request, reply) => {
+    const employeeId = parseInt(request.params.employeeId);
+    if (isNaN(employeeId)) return reply.code(400).send({ error: 'Invalid employeeId' });
+
+    const items = Array.isArray(request.body?.items) ? request.body.items : null;
+    if (!items) return reply.code(400).send({ error: 'Укажите items (массив)' });
+
+    const userId = request.user.id;
+    let inserted = 0, updated = 0, removed = 0;
+
+    try {
+      await db.transaction(async (client) => {
+        for (const item of items) {
+          const typeId = parseInt(item.type_id);
+          if (isNaN(typeId)) continue;
+
+          // Справочник: категория + имя (легаси-текст для Mimir)
+          const { rows: [pt] } = await client.query(
+            'SELECT category, name FROM permit_types WHERE id = $1', [typeId]
+          );
+
+          // Последняя активная запись этого типа у сотрудника
+          const { rows: [existing] } = await client.query(`
+            SELECT * FROM employee_permits
+            WHERE employee_id = $1 AND type_id = $2 AND COALESCE(is_active, true) = true
+            ORDER BY expiry_date DESC NULLS FIRST, id DESC
+            LIMIT 1
+          `, [employeeId, typeId]);
+
+          const present = item.present === true || item.present === 'true';
+          const issueDate = item.issue_date || null;
+          const expiryDate = item.expiry_date || null;
+          const docNumber = item.doc_number != null ? String(item.doc_number).trim() || null : null;
+          const issuer = item.issuer != null ? String(item.issuer).trim() || null : null;
+          const notes = item.notes != null ? String(item.notes).trim() || null : null;
+
+          if (present && existing) {
+            // Сброс notify-флагов, если поменялась дата окончания
+            const oldExpiry = existing.expiry_date ? new Date(existing.expiry_date).toISOString().slice(0, 10) : null;
+            const notifyReset = oldExpiry !== (expiryDate || null)
+              ? ', notify_30_sent = false, notify_14_sent = false, notify_expired_sent = false'
+              : '';
+            await client.query(`
+              UPDATE employee_permits
+              SET issue_date = $1, expiry_date = $2, doc_number = $3, issuer = $4, notes = $5,
+                  category = $6, permit_type = $7, updated_at = NOW()${notifyReset}
+              WHERE id = $8
+            `, [issueDate, expiryDate, docNumber, issuer, notes, pt?.category || null, pt?.name || null, existing.id]);
+            updated++;
+          } else if (present && !existing) {
+            await client.query(`
+              INSERT INTO employee_permits
+                (employee_id, type_id, category, permit_type, doc_number, issuer,
+                 issue_date, expiry_date, notes, is_active, created_by, created_at, updated_at)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, $10, NOW(), NOW())
+            `, [employeeId, typeId, pt?.category || null, pt?.name || null,
+                docNumber, issuer, issueDate, expiryDate, notes, userId]);
+            inserted++;
+          } else if (!present && existing) {
+            // Снятие галочки — деактивируем ВСЕ активные записи этого типа (не только последнюю)
+            const del = await client.query(`
+              UPDATE employee_permits
+              SET is_active = false, updated_at = NOW()
+              WHERE employee_id = $1 AND type_id = $2 AND COALESCE(is_active, true) = true
+              RETURNING id
+            `, [employeeId, typeId]);
+            removed += del.rows.length;
+          }
+        }
+      });
+    } catch (err) {
+      fastify.log.error('[permits] bulk save error: ' + err.message);
+      return reply.code(500).send({ error: 'Ошибка сохранения допусков', detail: err.message });
+    }
+
+    // Возвращаем свежий список в GET-совместимом формате (с computed_status)
+    const { rows } = await db.query(`
+      SELECT ep.*,
+        e.fio as employee_name, e.position as employee_position, e.is_active as employee_active,
+        pt.name as type_name, pt.category as type_category, pt.validity_months
+      FROM employee_permits ep
+      LEFT JOIN employees e ON ep.employee_id = e.id
+      LEFT JOIN permit_types pt ON ep.type_id = pt.id
+      WHERE ep.is_active = true AND ep.employee_id = $1
+      ORDER BY ep.expiry_date ASC NULLS LAST
+    `, [employeeId]);
+
+    const today = new Date();
+    rows.forEach(r => {
+      if (!r.expiry_date) { r.computed_status = 'active'; r.days_left = null; }
+      else {
+        const daysLeft = Math.ceil((new Date(r.expiry_date) - today) / 86400000);
+        r.days_left = daysLeft;
+        if (daysLeft < 0) r.computed_status = 'expired';
+        else if (daysLeft <= 14) r.computed_status = 'expiring_14';
+        else if (daysLeft <= 30) r.computed_status = 'expiring_30';
+        else r.computed_status = 'active';
+      }
+    });
+
+    return { permits: rows, stats: { inserted, updated, removed } };
   });
 
   // ═══════════════════════════════════════════════════════════════

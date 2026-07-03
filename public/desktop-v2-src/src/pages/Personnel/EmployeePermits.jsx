@@ -16,14 +16,12 @@
  */
 import { useEffect, useState } from 'react';
 import { useModal, ConfirmModal } from '@/modals';
-import { MCard, MHead, MBody, MFoot, Btn, Field } from '@/modals/parts';
-import { TextInput, SelectInput, TextareaInput, DatePicker } from '@/inputs/Inputs';
+import { Btn } from '@/modals/parts';
 import { toast } from '@/modals/Notifications';
-import {
-  loadEmployeePermits, loadPermitTypes, createPermit, deletePermit, fmtDate,
-} from './api';
+import { loadEmployeePermits, deletePermit, fmtDate } from './api';
+import PermitsChecklistModal from '../Permits/PermitsChecklistModal';
 
-export function EmployeePermits({ employeeId, canEdit }) {
+export function EmployeePermits({ employeeId, employeeName, canEdit }) {
   const modal = useModal();
   const [loading, setLoading] = useState(true);
   const [permits, setPermits] = useState([]);
@@ -37,14 +35,19 @@ export function EmployeePermits({ employeeId, canEdit }) {
 
   useEffect(() => { refresh(); }, [employeeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const openAdd = () => {
+  // Единое окно-чеклист: добавление и редактирование допусков одним окном.
+  const openChecklist = () => {
     if (!canEdit) {
-      toast.warn('Нет прав на добавление допусков');
+      toast.warn('Нет прав на изменение допусков');
       return;
     }
     modal.open(
-      <AddPermitModal employeeId={employeeId} onSaved={refresh} />,
-      { size: 'md' }
+      <PermitsChecklistModal
+        employeeId={employeeId}
+        employeeName={employeeName || permits[0]?.employee_name || ''}
+        onSaved={(fresh) => { if (Array.isArray(fresh)) setPermits(fresh); else refresh(); }}
+      />,
+      { size: 'wide' }
     );
   };
 
@@ -79,13 +82,13 @@ export function EmployeePermits({ employeeId, canEdit }) {
           {permits.length === 0 ? 'Допусков нет' : `${permits.length} ${plural(permits.length, ['допуск', 'допуска', 'допусков'])}`}
         </div>
         {canEdit && (
-          <Btn variant="primary" size="sm" onClick={openAdd}>+ Добавить</Btn>
+          <Btn variant="primary" size="sm" onClick={openChecklist}>Допуски (изменить)</Btn>
         )}
       </div>
 
       {permits.length === 0 ? (
         <div className="emp-modal-empty">
-          У сотрудника нет оформленных допусков. {canEdit && 'Нажмите «+ Добавить», чтобы внести допуск.'}
+          У сотрудника нет оформленных допусков. {canEdit && 'Нажмите «Допуски (изменить)», чтобы отметить допуски.'}
         </div>
       ) : (
         <div className="emp-permits-list">
@@ -141,112 +144,6 @@ function PermitRow({ permit, canEdit, onDelete }) {
         )}
       </div>
     </div>
-  );
-}
-
-/**
- * Модалка добавления допуска. Загружает справочник типов /api/permits/types,
- * сабмит — POST /api/permits.
- */
-function AddPermitModal({ employeeId, onSaved }) {
-  const { close } = useModal();
-  const [types, setTypes] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({
-    type_id: '',
-    doc_number: '',
-    issuer: '',
-    issue_date: '',
-    expiry_date: '',
-    notes: '',
-  });
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-
-  useEffect(() => {
-    loadPermitTypes()
-      .then(setTypes)
-      .catch((e) => toast.error('Не удалось загрузить справочник: ' + (e?.message || e)))
-      .finally(() => setLoading(false));
-  }, []);
-
-  const submit = async () => {
-    if (!form.type_id) {
-      toast.warn('Выберите тип допуска');
-      return;
-    }
-    setBusy(true);
-    try {
-      await createPermit({
-        employee_id: Number(employeeId),
-        type_id: Number(form.type_id),
-        doc_number: form.doc_number.trim() || null,
-        issuer: form.issuer.trim() || null,
-        issue_date: form.issue_date || null,
-        expiry_date: form.expiry_date || null,
-        notes: form.notes.trim() || null,
-      });
-      toast.success('Допуск добавлен');
-      onSaved?.();
-      close();
-    } catch (e) {
-      toast.error('Не удалось сохранить: ' + (e?.serverMsg || e?.message || e));
-      setBusy(false);
-    }
-  };
-
-  const typeOptions = [
-    { value: '', label: '— выбрать тип —' },
-    ...types.map((t) => ({
-      value: String(t.id),
-      label: t.name + (t.category ? ` · ${t.category}` : ''),
-    })),
-  ];
-
-  return (
-    <MCard>
-      <MHead icon="✅" title="Добавить допуск" accent="gold" onClose={close} />
-      <MBody>
-        {loading ? (
-          <div className="emp-modal-empty">⏳ Загружаем справочник…</div>
-        ) : (
-          <div className="col gap-10">
-            <Field label="Тип допуска" required>
-              <SelectInput
-                value={form.type_id}
-                onChange={(v) => set('type_id', v)}
-                options={typeOptions}
-              />
-            </Field>
-            <div className="grid-2 gap-10">
-              <Field label="Номер документа">
-                <TextInput value={form.doc_number} onChange={(v) => set('doc_number', v)} />
-              </Field>
-              <Field label="Кем выдан">
-                <TextInput value={form.issuer} onChange={(v) => set('issuer', v)} />
-              </Field>
-            </div>
-            <div className="grid-2 gap-10">
-              <Field label="Дата выдачи">
-                <DatePicker value={form.issue_date} onChange={(v) => set('issue_date', v || '')} />
-              </Field>
-              <Field label="Действителен до">
-                <DatePicker value={form.expiry_date} onChange={(v) => set('expiry_date', v || '')} />
-              </Field>
-            </div>
-            <Field label="Примечание">
-              <TextareaInput value={form.notes} onChange={(v) => set('notes', v)} minRows={2} maxRows={4} />
-            </Field>
-          </div>
-        )}
-      </MBody>
-      <MFoot>
-        <Btn onClick={close}>Отмена</Btn>
-        <Btn variant="primary" disabled={busy || loading} onClick={submit}>
-          {busy ? 'Сохраняем…' : '✓ Добавить'}
-        </Btn>
-      </MFoot>
-    </MCard>
   );
 }
 

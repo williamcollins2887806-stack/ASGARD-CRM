@@ -67,11 +67,15 @@ export const VIEW_ROLES = [
   'OFFICE_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'TO', 'HEAD_TO',
 ];
 
-// Редактирование анкет — HR/ADMIN/директора (PM read-only)
-export const EDIT_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM'];
+// Редактирование анкет — HR/ADMIN/директора, плюс HEAD_PM и OFFICE_MANAGER
+// (для контактных данных в «Моей дружине»). PM остаётся read-only.
+// FIX (23.06.2026): HEAD_PM/OFFICE_MANAGER добавлены — могут править контакты/паспорт/одежду/прочее.
+// Финансовые поля у них всё равно режутся через FIN_RESTRICTED_FIELDS на бэке (staff.js).
+export const EDIT_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'HEAD_PM', 'OFFICE_MANAGER'];
 
-// PII (паспорт, ИНН, СНИЛС, банк) видят HR/ADMIN/директора
-export const PII_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM'];
+// PII (паспорт, ИНН, СНИЛС, банк) видят HR/ADMIN/директора + HEAD_PM/OFFICE_MANAGER
+// (без них «редактирование контактных» бесполезно — паспорт не показан).
+export const PII_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'HEAD_PM', 'OFFICE_MANAGER'];
 
 // Импорт остатков СЗ — финансовая операция. Зеркалит src/routes/staff.js FIN_ROLES.
 export const FIN_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH'];
@@ -196,6 +200,24 @@ export function createPermit(payload) {
   // { employee_id, type_id, doc_number, issuer, issue_date, expiry_date, notes }
   return api('/api/permits', { method: 'POST', body: payload })
     .then((d) => d.permit || d);
+}
+
+export function updatePermit(id, payload) {
+  // { type_id?, doc_number?, issuer?, issue_date?, expiry_date?, notes? }
+  return api(`/api/permits/${encodeURIComponent(id)}`, { method: 'PUT', body: payload })
+    .then((d) => d.permit || d);
+}
+
+/**
+ * Массовое сохранение допусков сотрудника из «единого окна» (чеклиста).
+ * items: [{ type_id, present, issue_date?, expiry_date?, doc_number?, issuer?, notes? }]
+ * → PUT /api/permits/employee/:employeeId/bulk. Возвращает { permits, stats }.
+ */
+export function bulkSaveEmployeePermits(employeeId, items) {
+  return api(`/api/permits/employee/${encodeURIComponent(employeeId)}/bulk`, {
+    method: 'PUT',
+    body: { items },
+  });
 }
 
 export function deletePermit(id) {
