@@ -3320,6 +3320,7 @@ window.AsgardPersonalKanbanV3 = (function () {
         <span class="pk3-dnav-link" data-anchor="sec-fin">💰 Финансы</span>
         <span class="pk3-dnav-link" data-anchor="sec-tkp">📋 ТКП</span>
         <span class="pk3-dnav-link" data-anchor="sec-hist">🕘 История</span>
+        <span class="pk3-dnav-link" data-anchor="sec-reminders">⏰ Напоминания</span>
       </div>
       ${_secAI(card, aiSummary)}
       ${_secClient(card)}
@@ -3329,6 +3330,7 @@ window.AsgardPersonalKanbanV3 = (function () {
       ${_secFin(card, fin)}
       ${_secTKP(card)}
       ${_secHist(card)}
+      ${_secReminders(card)}
       <div style="height:80px"></div>
       <div class="pk3-actions-bar" id="pk3-actions-bar">
         ${_renderActionsBar(card)}
@@ -4112,11 +4114,200 @@ window.AsgardPersonalKanbanV3 = (function () {
     ` : '<div style="color:var(--t3);font-size:12px">История пока пуста</div>');
   }
 
+  const REMINDER_KINDS = [
+    { id: 'call', label: '📞 Звонок' },
+    { id: 'sms', label: '💬 СМС' },
+    { id: 'meeting', label: '🤝 Встреча' },
+    { id: 'task', label: '✅ Задача' },
+    { id: 'email', label: '✉️ Письмо' },
+    { id: 'other', label: '📌 Другое' }
+  ];
+  const REMINDER_LEAD_OPTS = [
+    { v: 0, label: 'В момент события' },
+    { v: 15, label: 'За 15 минут' },
+    { v: 30, label: 'За 30 минут' },
+    { v: 60, label: 'За 1 час' },
+    { v: 120, label: 'За 2 часа' },
+    { v: 1440, label: 'За 1 день' },
+    { v: 2880, label: 'За 2 дня' },
+    { v: 10080, label: 'За 1 неделю' }
+  ];
+  const REMINDER_CHANNELS = [
+    { id: 'inapp', label: 'В CRM (push / Telegram)' },
+    { id: 'whatsapp', label: 'WhatsApp' },
+    { id: 'max', label: 'MAX' },
+    { id: 'email', label: 'Email' }
+  ];
+
+  function _reminderKindLabel(kind) {
+    const k = REMINDER_KINDS.find(x => x.id === kind);
+    return k ? k.label : (kind || 'Напоминание');
+  }
+  function _reminderLeadLabel(mins) {
+    const o = REMINDER_LEAD_OPTS.find(x => x.v === Number(mins));
+    return o ? o.label : (mins ? `За ${mins} мин` : 'В момент события');
+  }
+  function _reminderChannelLabels(channels) {
+    const arr = Array.isArray(channels) ? channels : ['inapp'];
+    return arr.map(c => {
+      const ch = REMINDER_CHANNELS.find(x => x.id === c);
+      return ch ? ch.label : c;
+    }).join(', ');
+  }
+  function _fmtReminderWhen(iso) {
+    if (!iso) return '—';
+    try {
+      const d = new Date(iso);
+      if (isNaN(d)) return '—';
+      return d.toLocaleString('ru-RU', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      });
+    } catch (_) { return '—'; }
+  }
+  function _defaultEventLocalIso() {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() + 60);
+    return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  }
+
+  function _secReminders(card) {
+    const open = ((card && card._reminders) || []).filter(r => !r.is_done).length;
+    return _section('sec-reminders', '⏰', 'Напоминания', open || null, `
+      <div id="pk3-reminders-list" style="display:flex;flex-direction:column;gap:8px">
+        <div style="color:var(--t3);font-size:12px">Загрузка…</div>
+      </div>
+      <div style="margin-top:10px">
+        <button class="pk3-btn pk3-ghost" data-action="remind" type="button">➕ Добавить напоминание</button>
+      </div>
+    `);
+  }
+
+  function _renderReminderCard(rem) {
+    const done = !!rem.is_done;
+    const fired = !!rem.fired_at;
+    const statusCls = done ? 'pk3-info' : (fired ? 'pk3-warn' : 'pk3-ok');
+    const statusText = done ? 'Выполнено' : (fired ? 'Отправлено' : 'Ожидает');
+    const channels = _reminderChannelLabels(rem.channels);
+    return `
+      <div class="pk3-reminder-card" data-reminder-id="${rem.id}" style="border:1px solid var(--brd-m);border-radius:10px;padding:10px 12px;background:var(--bg2)">
+        <div style="display:flex;align-items:flex-start;gap:8px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:600;color:var(--t1)">${esc(_reminderKindLabel(rem.reminder_kind))}${rem.title ? ': ' + esc(rem.title) : ''}</div>
+            <div style="font-size:11.5px;color:var(--t3);margin-top:4px">
+              📅 Событие: <b style="color:var(--t2)">${esc(_fmtReminderWhen(rem.event_at || rem.remind_at))}</b>
+              · ${_reminderLeadLabel(rem.lead_minutes)}
+            </div>
+            ${rem.message ? `<div style="font-size:12px;color:var(--t2);margin-top:6px">${esc(rem.message)}</div>` : ''}
+            <div style="font-size:11px;color:var(--t3);margin-top:6px">📡 ${esc(channels)}</div>
+            <span class="pk3-tag ${statusCls}" style="margin-top:6px;display:inline-block">${statusText}</span>
+          </div>
+          ${!done ? `
+          <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+            <button class="pk3-btn pk3-ghost" type="button" data-reminder-act="edit" title="Изменить" style="padding:4px 8px;font-size:11px">✏️</button>
+            <button class="pk3-btn pk3-ghost" type="button" data-reminder-act="done" title="Выполнено" style="padding:4px 8px;font-size:11px">✅</button>
+            <button class="pk3-btn pk3-ghost" type="button" data-reminder-act="delete" title="Удалить" style="padding:4px 8px;font-size:11px">🗑</button>
+          </div>` : `
+          <button class="pk3-btn pk3-ghost" type="button" data-reminder-act="delete" title="Удалить" style="padding:4px 8px;font-size:11px;flex-shrink:0">🗑</button>`}
+        </div>
+      </div>`;
+  }
+
+  function _renderRemindersList(items) {
+    const list = document.getElementById('pk3-reminders-list');
+    if (!list) return;
+    const arr = items || [];
+    const open = arr.filter(r => !r.is_done);
+    list.innerHTML = arr.length
+      ? arr.map(_renderReminderCard).join('')
+      : '<div style="color:var(--t3);font-size:12px">Напоминаний пока нет. Нажмите «⏰ Напоминание» внизу или кнопку выше.</div>';
+    const secHead = document.querySelector('#sec-reminders .pk3-section-head');
+    if (secHead) {
+      let secCnt = secHead.querySelector('.pk3-count');
+      if (open.length > 0) {
+        if (!secCnt) {
+          secCnt = document.createElement('span');
+          secCnt.className = 'pk3-count';
+          const chev = secHead.querySelector('.pk3-chev');
+          if (chev) secHead.insertBefore(secCnt, chev);
+          else secHead.appendChild(secCnt);
+        }
+        secCnt.textContent = String(open.length);
+      } else if (secCnt) {
+        secCnt.remove();
+      }
+    }
+    _updateRemindersBadge(arr);
+  }
+
+  async function _loadAndRenderReminders(card) {
+    try {
+      const r = await api(`/api/personal-kanban/cards/${card.id}/reminders`);
+      if (!r.ok || !r.data) {
+        const list = document.getElementById('pk3-reminders-list');
+        if (list) list.innerHTML = '<div style="color:var(--red,#e74c3c);font-size:12px">Не удалось загрузить напоминания</div>';
+        return;
+      }
+      card._reminders = r.data.items || [];
+      _renderRemindersList(card._reminders);
+    } catch (e) {
+      const list = document.getElementById('pk3-reminders-list');
+      if (list) list.innerHTML = '<div style="color:var(--red,#e74c3c);font-size:12px">Ошибка загрузки</div>';
+    }
+  }
+
+  function _updateRemindersBadge(items) {
+    const open = (items || []).filter(r => !r.is_done).length;
+    const btn = document.querySelector('#pk3-actions-bar [data-action="remind"]');
+    if (!btn) return;
+    let badge = btn.querySelector('.pk3-rem-badge');
+    if (open > 0) {
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'pk3-rem-badge';
+        badge.style.cssText = 'margin-left:6px;background:var(--gold,#c9a227);color:#111;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:700';
+        btn.appendChild(badge);
+      }
+      badge.textContent = String(open);
+    } else if (badge) {
+      badge.remove();
+    }
+  }
+
+  async function _onReminderAction(act, remId, card) {
+    if (!remId) return;
+    if (act === 'delete') {
+      if (!window.confirm('Удалить напоминание?')) return;
+      const r = await api(`/api/personal-kanban/cards/${card.id}/reminders/${remId}`, { method: 'DELETE' });
+      if (!r.ok) { toast('Ошибка', 'Не удалось удалить', 'err'); return; }
+      toast('Готово', 'Напоминание удалено', 'ok');
+      await _loadAndRenderReminders(card);
+      return;
+    }
+    if (act === 'done') {
+      const r = await api(`/api/personal-kanban/cards/${card.id}/reminders/${remId}`, {
+        method: 'PATCH', body: { is_done: true }
+      });
+      if (!r.ok) { toast('Ошибка', 'Не удалось отметить', 'err'); return; }
+      toast('Готово', 'Напоминание выполнено', 'ok');
+      await _loadAndRenderReminders(card);
+      return;
+    }
+    if (act === 'edit') {
+      const rem = (card._reminders || []).find(x => String(x.id) === String(remId));
+      if (rem) _addReminder(card, rem);
+    }
+  }
+
   function _renderActionsBar(card) {
+    const openRem = ((card && card._reminders) || []).filter(r => !r.is_done).length;
+    const remBadge = openRem > 0
+      ? `<span class="pk3-rem-badge" style="margin-left:6px;background:var(--gold,#c9a227);color:#111;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:700">${openRem}</span>`
+      : '';
     const ghost = `
       <button class="pk3-btn pk3-ghost" data-action="save">💾 Сохранить</button>
       <button class="pk3-btn pk3-ghost" data-action="note">📝 Заметка</button>
-      <button class="pk3-btn pk3-ghost" data-action="remind">⏰ Напоминание</button>
+      <button class="pk3-btn pk3-ghost" data-action="remind">⏰ Напоминание${remBadge}</button>
       <button class="pk3-btn pk3-ghost" data-action="letter">✉ Письмо</button>
       <div style="flex:1"></div>
     `;
@@ -4254,8 +4445,20 @@ window.AsgardPersonalKanbanV3 = (function () {
     }
     // Грузим заметки асинхронно — drawer уже виден
     _loadAndRenderNotes(card);
+    _loadAndRenderReminders(card);
     // 22.06.2026: подгружаем прикреплённые ТКП в секции 📋 (с кнопками PDF/Excel)
     _loadAndRenderTkpList(card);
+    // Напоминания: делегирование кнопок в секции
+    if (_drawerEl && _drawerEl.drawer) {
+      _drawerEl.drawer.addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-reminder-act]');
+        if (!btn || !_drawerEl.drawer.contains(btn)) return;
+        const cardEl = btn.closest('[data-reminder-id]');
+        const remId = cardEl ? cardEl.dataset.reminderId : null;
+        e.stopPropagation();
+        await _onReminderAction(btn.dataset.reminderAct, remId, card);
+      });
+    }
   }
 
   async function _onDrawerAction(act, card) {
@@ -5507,15 +5710,127 @@ window.AsgardPersonalKanbanV3 = (function () {
       toast('Заметка', String(e.message || e), 'err');
     }
   }
-  async function _addReminder(card) {
-    const text = window.prompt('Текст напоминания:');
-    if (!text || !text.trim()) return;
-    const when = window.prompt('Когда (YYYY-MM-DD HH:MM, опц.):') || null;
-    const body = { text: text.trim() };
-    if (when) body.remind_at = when;
-    const r = await api(`/api/personal-kanban/cards/${card.id}/reminders`, { method: 'POST', body });
-    if (r.ok) toast('Готово', 'Напоминание сохранено', 'ok');
-    else toast('Ошибка', 'Не удалось', 'err');
+  async function _addReminder(card, existing) {
+    const isEdit = !!existing;
+    const kind = existing ? (existing.reminder_kind || 'task') : 'task';
+    const lead = existing ? Number(existing.lead_minutes || 0) : 60;
+    const eventIso = existing && (existing.event_at || existing.remind_at)
+      ? new Date(existing.event_at || existing.remind_at)
+      : new Date(_defaultEventLocalIso());
+    const eventLocal = new Date(eventIso.getTime() - eventIso.getTimezoneOffset() * 60000)
+      .toISOString().slice(0, 16);
+    const channels = existing && Array.isArray(existing.channels) ? existing.channels : ['inapp'];
+    const title = existing && existing.title ? String(existing.title) : '';
+    const message = existing && existing.message ? String(existing.message) : '';
+
+    const kindOpts = REMINDER_KINDS.map(k =>
+      `<option value="${k.id}"${k.id === kind ? ' selected' : ''}>${esc(k.label)}</option>`
+    ).join('');
+    const leadOpts = REMINDER_LEAD_OPTS.map(o =>
+      `<option value="${o.v}"${o.v === lead ? ' selected' : ''}>${esc(o.label)}</option>`
+    ).join('');
+    const chBoxes = REMINDER_CHANNELS.map(ch => `
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--t2);cursor:pointer">
+        <input type="checkbox" class="pk3-rem-ch" value="${ch.id}"${channels.includes(ch.id) ? ' checked' : ''} />
+        ${esc(ch.label)}
+      </label>`).join('');
+
+    const html = `
+      <div class="pk3-modal" style="max-width:520px;height:auto;max-height:92vh;width:92vw">
+        <div class="pk3-modal-head">
+          <span style="font-size:20px">⏰</span>
+          <h3>${isEdit ? 'Изменить напоминание' : 'Новое напоминание'}</h3>
+          <button class="pk3-btn-icon" id="pk3-rem-close" type="button">✕</button>
+        </div>
+        <div class="pk3-modal-body" style="padding:18px 22px">
+          <div class="pk3-row" style="margin-bottom:12px">
+            <label>Тип</label>
+            <select id="pk3-rem-kind" class="pk3-inp" style="width:100%">${kindOpts}</select>
+          </div>
+          <div class="pk3-row" style="margin-bottom:12px">
+            <label>Заголовок <span style="color:var(--t3);font-weight:400">(необяз.)</span></label>
+            <input type="text" id="pk3-rem-title" class="pk3-inp" maxlength="200" placeholder="Кратко: кому звонить, тема встречи…" value="${esc(title)}" />
+          </div>
+          <div class="pk3-row" style="margin-bottom:12px">
+            <label>Дата и время события</label>
+            <input type="datetime-local" id="pk3-rem-event" class="pk3-inp" value="${eventLocal}" />
+          </div>
+          <div class="pk3-row" style="margin-bottom:12px">
+            <label>Напомнить</label>
+            <select id="pk3-rem-lead" class="pk3-inp" style="width:100%">${leadOpts}</select>
+          </div>
+          <div style="margin-bottom:12px">
+            <label style="display:block;font-size:12px;color:var(--t3);margin-bottom:8px">Каналы уведомления</label>
+            <div style="display:flex;flex-direction:column;gap:6px">${chBoxes}</div>
+          </div>
+          <div class="pk3-row">
+            <label>Комментарий</label>
+            <textarea id="pk3-rem-msg" class="pk3-inp" rows="3" placeholder="О чём напомнить, детали…">${esc(message)}</textarea>
+          </div>
+        </div>
+        <div class="pk3-modal-foot">
+          <button class="pk3-btn pk3-ghost" id="pk3-rem-cancel" type="button">Отмена</button>
+          <button class="pk3-btn pk3-gold" id="pk3-rem-save" type="button">${isEdit ? 'Сохранить' : 'Поставить напоминание'}</button>
+        </div>
+      </div>`;
+
+    _openModal(html, {
+      onMount: (overlay) => {
+        const close = () => _closeTopModal();
+        overlay.querySelector('#pk3-rem-close')?.addEventListener('click', close);
+        overlay.querySelector('#pk3-rem-cancel')?.addEventListener('click', close);
+        overlay.querySelector('#pk3-rem-save')?.addEventListener('click', async () => {
+          const eventRaw = overlay.querySelector('#pk3-rem-event')?.value;
+          if (!eventRaw) { toast('Ошибка', 'Укажите дату и время', 'err'); return; }
+          const eventAt = new Date(eventRaw);
+          if (isNaN(eventAt.getTime())) { toast('Ошибка', 'Некорректная дата', 'err'); return; }
+
+          const leadMinutes = parseInt(overlay.querySelector('#pk3-rem-lead')?.value, 10) || 0;
+          const remindAt = new Date(eventAt.getTime() - leadMinutes * 60000);
+          if (remindAt.getTime() < Date.now() - 30000) {
+            toast('Ошибка', 'Время напоминания уже в прошлом. Увеличьте дату события или уменьшите «за сколько».', 'err');
+            return;
+          }
+
+          const selectedChannels = [...overlay.querySelectorAll('.pk3-rem-ch:checked')].map(el => el.value);
+          if (!selectedChannels.length) { toast('Ошибка', 'Выберите хотя бы один канал', 'err'); return; }
+
+          const body = {
+            reminder_kind: overlay.querySelector('#pk3-rem-kind')?.value || 'task',
+            event_at: eventAt.toISOString(),
+            lead_minutes: leadMinutes,
+            channels: selectedChannels,
+            title: (overlay.querySelector('#pk3-rem-title')?.value || '').trim() || null,
+            message: (overlay.querySelector('#pk3-rem-msg')?.value || '').trim() || null
+          };
+
+          const saveBtn = overlay.querySelector('#pk3-rem-save');
+          if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Сохраняю…'; }
+
+          const url = isEdit
+            ? `/api/personal-kanban/cards/${card.id}/reminders/${existing.id}`
+            : `/api/personal-kanban/cards/${card.id}/reminders`;
+          const r = await api(url, { method: isEdit ? 'PATCH' : 'POST', body });
+
+          if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = isEdit ? 'Сохранить' : 'Поставить напоминание'; }
+
+          if (r.ok && r.data && r.data.success) {
+            close();
+            toast('Готово', isEdit ? 'Напоминание обновлено' : 'Напоминание поставлено', 'ok');
+            await _loadAndRenderReminders(card);
+          } else {
+            const err = (r.data && (r.data.error || r.data.message)) || 'Не удалось сохранить';
+            const errMap = {
+              remind_at_in_past: 'Время напоминания в прошлом',
+              invalid_event_at: 'Некорректная дата события',
+              invalid_reminder_kind: 'Некорректный тип напоминания',
+              forbidden: 'Нет прав на эту карту'
+            };
+            toast('Ошибка', errMap[err] || err, 'err');
+          }
+        });
+      }
+    });
   }
   async function _doConvertPretender(card) {
     if (!window.confirm('Конвертировать заявку в пре-тендер? Карта изменится на 🗂.')) return;

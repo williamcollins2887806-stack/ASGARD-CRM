@@ -10,7 +10,7 @@
  */
 
 const cron = require('node-cron');
-const { createNotification } = require('./notify');
+const { dispatch } = require('./personal-kanban-reminder-notify');
 
 let _task = null;
 
@@ -67,6 +67,8 @@ async function fireDueReminders(db, log) {
       await client.query('BEGIN');
       const sel = await client.query(`
         SELECT r.id, r.card_id, r.user_id, r.remind_at, r.message,
+               r.reminder_kind, r.event_at, r.lead_minutes, r.channels,
+               r.title, r.notify_status,
                c.current_main_status, c.entity_kind, c.entity_id
           FROM personal_kanban_card_reminders r
           JOIN personal_kanban_cards c ON c.id = r.card_id
@@ -101,19 +103,13 @@ async function fireDueReminders(db, log) {
     if (log.info) log.info(`[personal-kanban-reminders-cron] firing ${rows.length} reminders (after commit)`);
     else log.log(`[personal-kanban-reminders-cron] firing ${rows.length} reminders (after commit)`);
 
-    // Уведомления — после COMMIT. Сбой одного push — не блокирует остальные.
+    // Уведомления — после COMMIT. Сбой одного канала — не блокирует остальные.
     for (const r of rows) {
       try {
-        await createNotification(db, {
-          user_id: r.user_id,
-          title: 'Напоминание по карте',
-          message: r.message || `Карта #${r.card_id} (${r.entity_kind} #${r.entity_id})`,
-          type: 'personal_kanban_reminder',
-          link: `#/personal-kanban?card=${r.card_id}`
-        });
+        await dispatch(db, r, log);
       } catch (e) {
-        if (log.error) log.error({ err: e, reminder_id: r.id }, '[personal-kanban-reminders-cron] push failed (no retry — fired_at already set)');
-        else log.error('[personal-kanban-reminders-cron] push failed (no retry):', r.id, e.message);
+        if (log.error) log.error({ err: e, reminder_id: r.id }, '[personal-kanban-reminders-cron] dispatch failed (no retry — fired_at already set)');
+        else log.error('[personal-kanban-reminders-cron] dispatch failed (no retry):', r.id, e.message);
       }
     }
   } catch (err) {

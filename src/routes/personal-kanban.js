@@ -13,6 +13,7 @@
  *   POST   /cards/:id/transfer
  *   GET    /cards/:id/history
  *   POST   /cards/:id/notes
+ *   GET    /cards/:id/reminders
  *   POST   /cards/:id/reminders
  *   PATCH  /cards/:id/reminders/:rid
  *   DELETE /cards/:id/reminders/:rid
@@ -77,6 +78,91 @@ function asColor(c) {
   const s = c.trim();
   if (!/^#[0-9A-Fa-f]{3}([0-9A-Fa-f]{3})?$/.test(s)) return null;
   return s;
+}
+
+const REMINDER_KINDS = ['call', 'sms', 'meeting', 'task', 'email', 'other'];
+const REMINDER_CHANNELS = ['inapp', 'whatsapp', 'max', 'email'];
+const REMINDER_SELECT = `id, card_id, user_id, reminder_kind, event_at, lead_minutes, channels,
+  title, remind_at, message, is_done, fired_at, notify_status, created_at`;
+
+function normalizeReminderKind(v) {
+  const k = String(v || 'task').toLowerCase();
+  return REMINDER_KINDS.includes(k) ? k : null;
+}
+
+function normalizeReminderChannels(arr) {
+  if (!Array.isArray(arr) || !arr.length) return ['inapp'];
+  const uniq = [...new Set(
+    arr.map((c) => String(c).toLowerCase()).filter((c) => REMINDER_CHANNELS.includes(c))
+  )];
+  return uniq.length ? uniq : ['inapp'];
+}
+
+function clampLeadMinutes(v) {
+  const n = parseInt(v, 10);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(n, 10080);
+}
+
+function computeRemindAt({ eventAt, leadMinutes, remindAt }) {
+  const lead = clampLeadMinutes(leadMinutes);
+  if (eventAt) {
+    const ev = new Date(eventAt);
+    if (!isNaN(ev.getTime())) return new Date(ev.getTime() - lead * 60000);
+  }
+  if (remindAt) {
+    const ra = new Date(remindAt);
+    if (!isNaN(ra.getTime())) return ra;
+  }
+  return null;
+}
+
+function parseReminderPayload(body) {
+  const b = body || {};
+  const kind = normalizeReminderKind(b.reminder_kind);
+  if (!kind) return { error: 'invalid_reminder_kind' };
+
+  const leadMinutes = clampLeadMinutes(b.lead_minutes);
+  const eventAt = b.event_at ? new Date(b.event_at) : null;
+  if (b.event_at && (!eventAt || isNaN(eventAt.getTime()))) {
+    return { error: 'invalid_event_at' };
+  }
+
+  const remindAt = computeRemindAt({
+    eventAt: eventAt ? eventAt.toISOString() : null,
+    leadMinutes,
+    remindAt: b.remind_at || null
+  });
+  if (!remindAt || isNaN(remindAt.getTime())) {
+    return { error: 'invalid_remind_at' };
+  }
+  if (remindAt.getTime() < Date.now() - 60000) {
+    return { error: 'remind_at_in_past' };
+  }
+
+  const channels = normalizeReminderChannels(b.channels);
+  const message = b.message ? String(b.message).trim().slice(0, 500) : null;
+  const title = b.title ? String(b.title).trim().slice(0, 200) : null;
+
+  return {
+    reminder_kind: kind,
+    event_at: eventAt ? eventAt.toISOString() : remindAt.toISOString(),
+    lead_minutes: leadMinutes,
+    channels,
+    remind_at: remindAt.toISOString(),
+    message: message || null,
+    title: title || null
+  };
+}
+
+async function assertCardReminderAccess(db, cardId, userId, userRole) {
+  const cur = await db.query(
+    `SELECT owner_user_id FROM personal_kanban_cards WHERE id = $1`, [cardId]);
+  if (!cur.rows[0]) return { error: 'not_found', status: 404 };
+  const isOwner = cur.rows[0].owner_user_id === userId;
+  const isManager = ['HEAD_PM', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(userRole);
+  if (!isOwner && !isManager) return { error: 'forbidden', status: 403 };
+  return { ownerUserId: cur.rows[0].owner_user_id, isOwner, isManager };
 }
 
 // Entity-specific lookup for card list (полиморфный JOIN)
@@ -1374,37 +1460,55 @@ module.exports = async function (fastify) {
   });
 
   // ═══════════════════════════════════════════════════════════════════
-  // POST /cards/:id/reminders  {remind_at, message?}
+  // GET /cards/:id/reminders
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.get('/cards/:id/reminders', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const userId = request.user.id;
+    const userRole = request.user.role;
+    const id = asInt(request.params.id);
+    if (id === null) return reply.code(400).send({ error: 'invalid_id' });
+
+    const access = await assertCardReminderAccess(db, id, userId, userRole);
+    if (access.error) return reply.code(access.status).send({ error: access.error });
+
+    const r = await db.query(
+      `SELECT ${REMINDER_SELECT}
+         FROM personal_kanban_card_reminders
+        WHERE card_id = $1
+        ORDER BY is_done ASC, remind_at ASC`,
+      [id]);
+    return { success: true, items: r.rows };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // POST /cards/:id/reminders
   // ═══════════════════════════════════════════════════════════════════
   fastify.post('/cards/:id/reminders', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const userId = request.user.id;
     const id = asInt(request.params.id);
     if (id === null) return reply.code(400).send({ error: 'invalid_id' });
-    const body = request.body || {};
-    const remindAt = body.remind_at ? new Date(body.remind_at) : null;
-    if (!remindAt || isNaN(remindAt.getTime())) {
-      return reply.code(400).send({ error: 'invalid_remind_at' });
-    }
-    if (remindAt.getTime() < Date.now() - 60000) {
-      return reply.code(400).send({ error: 'remind_at_in_past' });
-    }
-    const msg = body.message ? String(body.message).slice(0, 500) : null;
 
-    const cur = await db.query(
-      `SELECT owner_user_id FROM personal_kanban_cards WHERE id = $1`, [id]);
-    if (!cur.rows[0]) return reply.code(404).send({ error: 'not_found' });
-    if (cur.rows[0].owner_user_id !== userId) return reply.code(403).send({ error: 'forbidden' });
+    const access = await assertCardReminderAccess(db, id, userId, request.user.role);
+    if (access.error) return reply.code(access.status).send({ error: access.error });
+    if (!access.isOwner) return reply.code(403).send({ error: 'forbidden' });
+
+    const parsed = parseReminderPayload(request.body);
+    if (parsed.error) return reply.code(400).send({ error: parsed.error });
 
     const ins = await db.query(
-      `INSERT INTO personal_kanban_card_reminders (card_id, user_id, remind_at, message)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, card_id, user_id, remind_at, message, is_done, fired_at, created_at`,
-      [id, userId, remindAt.toISOString(), msg]);
+      `INSERT INTO personal_kanban_card_reminders
+         (card_id, user_id, reminder_kind, event_at, lead_minutes, channels, title, remind_at, message)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING ${REMINDER_SELECT}`,
+      [
+        id, userId, parsed.reminder_kind, parsed.event_at, parsed.lead_minutes,
+        parsed.channels, parsed.title, parsed.remind_at, parsed.message
+      ]);
     return { success: true, item: ins.rows[0] };
   });
 
   // ═══════════════════════════════════════════════════════════════════
-  // PATCH /cards/:id/reminders/:rid  {is_done?}
+  // PATCH /cards/:id/reminders/:rid
   // ═══════════════════════════════════════════════════════════════════
   fastify.patch('/cards/:id/reminders/:rid', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const userId = request.user.id;
@@ -1412,15 +1516,64 @@ module.exports = async function (fastify) {
     const rid = asInt(request.params.rid);
     if (id === null || rid === null) return reply.code(400).send({ error: 'invalid_id' });
     const body = request.body || {};
-    if (body.is_done === undefined) return reply.code(400).send({ error: 'nothing_to_update' });
 
+    const cur = await db.query(
+      `SELECT ${REMINDER_SELECT}
+         FROM personal_kanban_card_reminders
+        WHERE id = $1 AND card_id = $2 AND user_id = $3`,
+      [rid, id, userId]);
+    if (!cur.rows[0]) return reply.code(404).send({ error: 'not_found_or_forbidden' });
+
+    const existing = cur.rows[0];
+    const sets = [];
+    const vals = [];
+    let idx = 1;
+
+    if (body.is_done !== undefined) {
+      sets.push(`is_done = $${idx++}`);
+      vals.push(!!body.is_done);
+    }
+
+    const hasScheduleEdit = ['reminder_kind', 'event_at', 'lead_minutes', 'channels', 'message', 'title', 'remind_at']
+      .some((k) => body[k] !== undefined);
+
+    if (hasScheduleEdit) {
+      const merged = {
+        reminder_kind: body.reminder_kind !== undefined ? body.reminder_kind : existing.reminder_kind,
+        event_at: body.event_at !== undefined ? body.event_at : existing.event_at,
+        lead_minutes: body.lead_minutes !== undefined ? body.lead_minutes : existing.lead_minutes,
+        channels: body.channels !== undefined ? body.channels : existing.channels,
+        message: body.message !== undefined ? body.message : existing.message,
+        title: body.title !== undefined ? body.title : existing.title,
+        remind_at: body.remind_at !== undefined ? body.remind_at : null
+      };
+      const parsed = parseReminderPayload(merged);
+      if (parsed.error) return reply.code(400).send({ error: parsed.error });
+
+      sets.push(`reminder_kind = $${idx++}`); vals.push(parsed.reminder_kind);
+      sets.push(`event_at = $${idx++}`); vals.push(parsed.event_at);
+      sets.push(`lead_minutes = $${idx++}`); vals.push(parsed.lead_minutes);
+      sets.push(`channels = $${idx++}`); vals.push(parsed.channels);
+      sets.push(`title = $${idx++}`); vals.push(parsed.title);
+      sets.push(`remind_at = $${idx++}`); vals.push(parsed.remind_at);
+      sets.push(`message = $${idx++}`); vals.push(parsed.message);
+
+      const remindChanged = new Date(parsed.remind_at).getTime() !== new Date(existing.remind_at).getTime();
+      if (remindChanged && !existing.is_done) {
+        sets.push(`fired_at = NULL`);
+        sets.push(`notify_status = NULL`);
+      }
+    }
+
+    if (!sets.length) return reply.code(400).send({ error: 'nothing_to_update' });
+
+    vals.push(rid, id, userId);
     const r = await db.query(
       `UPDATE personal_kanban_card_reminders
-          SET is_done = $1
-        WHERE id = $2 AND card_id = $3 AND user_id = $4
-        RETURNING id, card_id, user_id, remind_at, message, is_done, fired_at, created_at`,
-      [!!body.is_done, rid, id, userId]);
-    if (r.rowCount === 0) return reply.code(404).send({ error: 'not_found_or_forbidden' });
+          SET ${sets.join(', ')}
+        WHERE id = $${idx++} AND card_id = $${idx++} AND user_id = $${idx}
+        RETURNING ${REMINDER_SELECT}`,
+      vals);
     return { success: true, item: r.rows[0] };
   });
 
