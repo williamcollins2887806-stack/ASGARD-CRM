@@ -338,14 +338,14 @@ async function generateDailyFact(targetDate) {
   const avoidPrompt = recentTitles ? `\n\nИзбегай этих недавних тем:\n${recentTitles}` : '';
 
   const response = await aiProvider.complete({
-    model: MODEL_FAST,
+    model: MODEL_LONG,
     responseFormat: { type: 'json_object' },
     system: FACT_PROMPT + avoidPrompt,
     messages: [
       { role: 'user', content: `Сгенерируй факт на ${today}.` }
     ],
     temperature: 0.7,
-    maxTokens: 400,
+    maxTokens: 500,
   });
 
   let text = (response.text || '').trim();
