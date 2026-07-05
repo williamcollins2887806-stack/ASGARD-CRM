@@ -37,6 +37,69 @@ module.exports = async function(fastify) {
     }
   }
 
+  // Архивирует просроченные активные дубли, если есть действующий допуск того же типа.
+  // q — db или client транзакции. keepId — id записи, которую не трогаем (новый допуск).
+  async function archiveExpiredPermitDupes(q, employeeId, typeId, keepId = null) {
+    const params = [employeeId, typeId];
+    let keepClause = '';
+    if (keepId != null) {
+      keepClause = ' AND a.id <> $3';
+      params.push(keepId);
+    }
+    const { rows } = await q.query(`
+      UPDATE employee_permits a
+      SET is_active = false, updated_at = NOW()
+      WHERE a.employee_id = $1 AND a.type_id = $2
+        AND COALESCE(a.is_active, true) = true
+        AND a.expiry_date IS NOT NULL AND a.expiry_date < CURRENT_DATE
+        ${keepClause}
+        AND EXISTS (
+          SELECT 1 FROM employee_permits b
+          WHERE b.employee_id = a.employee_id
+            AND b.type_id = a.type_id
+            AND COALESCE(b.is_active, true) = true
+            AND b.id <> a.id
+            AND (b.expiry_date IS NULL OR b.expiry_date >= CURRENT_DATE)
+        )
+      RETURNING a.id
+    `, params);
+    return rows.length;
+  }
+
+  // Глобальная чистка просроченных дублей (все сотрудники).
+  async function cleanupAllExpiredPermitDupes(q) {
+    const { rows } = await q.query(`
+      UPDATE employee_permits a
+      SET is_active = false, updated_at = NOW()
+      WHERE COALESCE(a.is_active, true) = true
+        AND a.expiry_date IS NOT NULL AND a.expiry_date < CURRENT_DATE
+        AND EXISTS (
+          SELECT 1 FROM employee_permits b
+          WHERE b.employee_id = a.employee_id
+            AND b.type_id = a.type_id
+            AND COALESCE(b.is_active, true) = true
+            AND b.id <> a.id
+            AND (b.expiry_date IS NULL OR b.expiry_date >= CURRENT_DATE)
+        )
+      RETURNING a.id, a.employee_id, a.type_id
+    `);
+    const groups = new Set(rows.map(r => `${r.employee_id}_${r.type_id}`));
+    const { rows: multiValid } = await q.query(`
+      SELECT employee_id, type_id, COUNT(*) AS valid_cnt
+      FROM employee_permits
+      WHERE is_active = true
+        AND (expiry_date IS NULL OR expiry_date >= CURRENT_DATE)
+      GROUP BY employee_id, type_id
+      HAVING COUNT(*) > 1
+    `);
+    return {
+      archived: rows.length,
+      groups_affected: groups.size,
+      multi_valid_groups: multiValid.length,
+      multi_valid_details: multiValid
+    };
+  }
+
   // ═══════════════════════════════════════════════════════════════
   // GET /api/permits/types — Справочник типов допусков
   // ═══════════════════════════════════════════════════════════════
@@ -315,21 +378,11 @@ module.exports = async function(fastify) {
 
       const newPermit = result.rows[0];
 
-      // Дубли документов: если добавлен новый действующий допуск того же типа —
-      // старые ПРОСРОЧЕННЫЕ допуски того же типа авто-архивируются (is_active=false),
-      // чтобы красная метка не горела при наличии свежей замены.
+      // Дубли: просроченные записи того же типа архивируются при наличии действующего.
       let archivedDupes = 0;
       const newIsValid = !expiry_date || new Date(expiry_date) >= new Date(new Date().toDateString());
       if (newIsValid && type_id) {
-        const arch = await db.query(`
-          UPDATE employee_permits
-          SET is_active = false, updated_at = NOW()
-          WHERE employee_id = $1 AND type_id = $2 AND id <> $3
-            AND COALESCE(is_active, true) = true
-            AND expiry_date IS NOT NULL AND expiry_date < CURRENT_DATE
-          RETURNING id
-        `, [employee_id, type_id, newPermit.id]);
-        archivedDupes = arch.rows.length;
+        archivedDupes = await archiveExpiredPermitDupes(db, employee_id, type_id, newPermit.id);
       }
 
       return { permit: newPermit, archived_dupes: archivedDupes };
@@ -408,13 +461,15 @@ module.exports = async function(fastify) {
     if (!items) return reply.code(400).send({ error: 'Укажите items (массив)' });
 
     const userId = request.user.id;
-    let inserted = 0, updated = 0, removed = 0;
+    let inserted = 0, updated = 0, removed = 0, archivedDupes = 0;
+    const touchedTypeIds = new Set();
 
     try {
       await db.transaction(async (client) => {
         for (const item of items) {
           const typeId = parseInt(item.type_id);
           if (isNaN(typeId)) continue;
+          touchedTypeIds.add(typeId);
 
           // Справочник: категория + имя (легаси-текст для Mimir)
           const { rows: [pt] } = await client.query(
@@ -469,6 +524,9 @@ module.exports = async function(fastify) {
             removed += del.rows.length;
           }
         }
+        for (const typeId of touchedTypeIds) {
+          archivedDupes += await archiveExpiredPermitDupes(client, employeeId, typeId);
+        }
       });
     } catch (err) {
       fastify.log.error('[permits] bulk save error: ' + err.message);
@@ -500,7 +558,7 @@ module.exports = async function(fastify) {
       }
     });
 
-    return { permits: rows, stats: { inserted, updated, removed } };
+    return { permits: rows, stats: { inserted, updated, removed, archived_dupes: archivedDupes } };
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -577,7 +635,11 @@ module.exports = async function(fastify) {
       request.user.id, id
     ]);
 
-    return { permit: result.rows[0], old_id: id };
+    const archivedDupes = await archiveExpiredPermitDupes(
+      db, old.employee_id, old.type_id, result.rows[0].id
+    );
+
+    return { permit: result.rows[0], old_id: id, archived_dupes: archivedDupes };
   });
 
   // ═══════════════════════════════════════════════════════════════
@@ -599,21 +661,36 @@ module.exports = async function(fastify) {
 
       await db.query('UPDATE employee_permits SET is_active = false, updated_at = NOW() WHERE id = $1', [pid]);
 
-      await db.query(`
+      const ins = await db.query(`
         INSERT INTO employee_permits
           (employee_id, type_id, category, doc_number, issuer, issue_date, expiry_date,
            notes, is_active, created_by, renewal_of, created_at, updated_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, $9, $10, NOW(), NOW())
+        RETURNING id
       `, [
         old.employee_id, old.type_id, old.category,
         old.doc_number, old.issuer,
         issue_date || new Date().toISOString().slice(0, 10),
         expiry_date, old.notes, request.user.id, pid
       ]);
+      await archiveExpiredPermitDupes(db, old.employee_id, old.type_id, ins.rows[0].id);
       renewed++;
     }
 
     return { renewed, total: permit_ids.length };
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // POST /api/permits/cleanup-expired-dupes — Архив просроченных дублей
+  // ═══════════════════════════════════════════════════════════════
+  fastify.post('/cleanup-expired-dupes', {
+    preHandler: [fastify.requirePermission('permits_admin', 'write')]
+  }, async () => {
+    const report = await cleanupAllExpiredPermitDupes(db);
+    fastify.log.info(
+      `[permits] cleanup-expired-dupes: archived=${report.archived}, groups=${report.groups_affected}, multi_valid=${report.multi_valid_groups}`
+    );
+    return report;
   });
 
   // ═══════════════════════════════════════════════════════════════

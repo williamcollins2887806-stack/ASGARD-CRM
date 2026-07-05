@@ -520,6 +520,54 @@ describe('Permit Expiry Calculation', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// 5b. SE MONTHLY LIMIT OFFSET (timesheet-v2.js Phase 1A)
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('SE Monthly Limit Offset', () => {
+  // Logic from src/routes/timesheet-v2.js — moInitial применяется только
+  // при наличии импорта se_monthly_history за запрошенный месяц.
+  function computeMoInitial(seMonthlyUsedInitial, year, month, hasImportForMonth) {
+    let moInitial = 0;
+    const mi = seMonthlyUsedInitial;
+    if (mi && typeof mi === 'object' &&
+        hasImportForMonth &&
+        Number(mi.year) === Number(year) &&
+        Number(mi.month) === Number(month)) {
+      const amt = Number(mi.amount || 0);
+      if (Number.isFinite(amt)) moInitial = amt;
+    }
+    return moInitial;
+  }
+
+  function computeMonthlyRemaining(monthlyLimit, transfersMonth, moInitial) {
+    const moUsed = transfersMonth + moInitial;
+    return Math.max(0, monthlyLimit - moUsed);
+  }
+
+  const monthlyLimit = 350000;
+  const offset = { year: 2026, month: 7, amount: 349400 };
+
+  test('moInitial=0 without se_monthly_history import for month', () => {
+    expect(computeMoInitial(offset, 2026, 7, false)).toBe(0);
+    expect(computeMonthlyRemaining(monthlyLimit, 0, 0)).toBe(350000);
+  });
+
+  test('moInitial=amount when import exists for month', () => {
+    expect(computeMoInitial(offset, 2026, 7, true)).toBe(349400);
+    expect(computeMonthlyRemaining(monthlyLimit, 0, 349400)).toBe(600);
+  });
+
+  test('offset for different month is ignored even with import flag', () => {
+    expect(computeMoInitial(offset, 2026, 6, true)).toBe(0);
+  });
+
+  test('offset ignored when year/month match but no import snapshot', () => {
+    // Новый месяц до импорта Excel — полный лимит.
+    expect(computeMonthlyRemaining(monthlyLimit, 0, computeMoInitial(offset, 2026, 7, false))).toBe(350000);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // 6. DATA ACCESS CONTROL (ROLE-BASED ACCESS MATRIX)
 // ═══════════════════════════════════════════════════════════════════════════
 

@@ -888,6 +888,7 @@ async function routes(fastify) {
       // + SUM(se_transfers за год) + initial offset. Без этого «прошлые месяцы»
       // забывались: бух импортировал каждый новый месяц, а старые сжимались до 0.
       const yearlyHistoryByEmp = {}; // employee_id -> SUM(monthly_used за год) из истории
+      const monthlyImportMap = {};   // employee_id -> true если есть импорт за (year, month)
 
       // PHASE 1B+ (премии/штрафы): агрегаты worker_payments за период (pay_year/pay_month).
       // По требованию пользователя earned = смены + bonus − penalty, чтобы в табеле
@@ -1061,6 +1062,17 @@ async function routes(fastify) {
             yearlyHistoryByEmp[r.employee_id] = Number(r.year_history_used) || 0;
           }
         } catch (_) { /* se_monthly_history отсутствует — оставляем 0 */ }
+        // Месячный offset применяем только при подтверждённом импорте за этот месяц.
+        try {
+          const { rows: mImpRows } = await db.query(`
+            SELECT employee_id
+              FROM se_monthly_history
+             WHERE employee_id = ANY($1::int[])
+               AND year = $2
+               AND month = $3
+          `, [limitsIds, year, month]);
+          for (const r of mImpRows) monthlyImportMap[r.employee_id] = true;
+        } catch (_) { /* se_monthly_history отсутствует */ }
       }
 
       // Расчёт по каждому сотруднику.
@@ -1136,7 +1148,9 @@ async function routes(fastify) {
           const yrInitial = Number(limitsHolder._se_yearly_used_initial || 0);
           let moInitial = 0;
           const mi = limitsHolder._se_monthly_used_initial;
+          const hasImportForMonth = !!monthlyImportMap[lid];
           if (mi && typeof mi === 'object' &&
+              hasImportForMonth &&
               Number(mi.year)  === Number(year)  &&
               Number(mi.month) === Number(month)) {
             const amt = Number(mi.amount || 0);

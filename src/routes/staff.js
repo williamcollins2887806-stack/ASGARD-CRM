@@ -882,6 +882,8 @@ async function routes(fastify, options) {
       WHERE COALESCE(is_active, true) = true
     `);
 
+    const empById = new Map(allEmps.map(e => [e.id, e]));
+
     const byPhone = new Map(); // norm_phone → emp
     const byFio = new Map();   // norm_fio → emp[]
     for (const e of allEmps) {
@@ -939,19 +941,23 @@ async function routes(fastify, options) {
 
       if (emp) {
         matchedCount++;
+        // Лимиты могут быть на payee (se_payee_id), не на самом рабочем.
+        const limitsEmp = (emp.se_payee_id && empById.get(emp.se_payee_id))
+          ? empById.get(emp.se_payee_id)
+          : emp;
         // Текущее «использовано» в БД (если запись на тот же месяц).
         let currentUsed = 0;
-        const sm = emp.se_monthly_used_initial;
+        const sm = limitsEmp.se_monthly_used_initial;
         if (sm && typeof sm === 'object' &&
             sm.year === curYear && sm.month === curMonth &&
             typeof sm.amount === 'number') {
           currentUsed = sm.amount;
         }
-        const currentRemaining = emp.can_exceed_limit ? null : Math.max(0, monthlyLimit - currentUsed);
+        const currentRemaining = limitsEmp.can_exceed_limit ? null : Math.max(0, monthlyLimit - currentUsed);
 
         // Новое значение (что будет после apply).
         let newUsed = null;
-        let newCanExceed = !!emp.can_exceed_limit;
+        let newCanExceed = !!limitsEmp.can_exceed_limit;
         if (remaining != null) {
           if (remaining > monthlyLimit) {
             newCanExceed = true;
@@ -1083,15 +1089,16 @@ async function routes(fastify, options) {
               errors.push({ idx: i, error: 'update: remaining обязателен и >= 0' });
               continue;
             }
-            // Проверим, что employee существует.
+            // Проверим, что employee существует; лимиты пишем на payee если есть.
             const { rows: empRows } = await client.query(
-              'SELECT id FROM employees WHERE id = $1',
+              'SELECT id, se_payee_id FROM employees WHERE id = $1',
               [empId]
             );
             if (!empRows[0]) {
               errors.push({ idx: i, error: `update: employee_id=${empId} не найден` });
               continue;
             }
+            const limitsTargetId = empRows[0].se_payee_id || empRows[0].id;
             // Логика: remaining > monthly_limit → can_exceed_limit=true, se_monthly_used_initial=null.
             //        иначе                       → can_exceed_limit=false, se_monthly_used_initial={year,month,amount}.
             let canExceed, seMonthlyUsed;
@@ -1111,9 +1118,9 @@ async function routes(fastify, options) {
                   se_monthly_used_initial = $2::jsonb,
                   updated_at = NOW()
               WHERE id = $3
-            `, [canExceed, seMonthlyUsed, empId]);
+            `, [canExceed, seMonthlyUsed, limitsTargetId]);
             // Q-1: snapshot месяца в se_monthly_history (для накопительного yearly).
-            await upsertMonthlyHistory(empId, remaining);
+            await upsertMonthlyHistory(limitsTargetId, remaining);
             updated++;
             continue;
           }
