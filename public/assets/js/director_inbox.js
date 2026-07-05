@@ -230,6 +230,10 @@ window.AsgardDirectorInboxPage = (function () {
     const deadline = it.work_deadline ? `до ${fmtDate(it.work_deadline)}` : '';
     const assigned = it.assigned_to_name ? `Назначен: ${it.assigned_to_name}` : '';
 
+    const inn = it.customer_inn ? `ИНН ${it.customer_inn}` : '';
+    const workType = it.ai_work_type || '';
+    const attN = it.email_attachments_count || it.attachment_count || 0;
+
     return `<div class="di-card" data-id="${it.id}" data-type="pre_tender">
       <div class="di-card-row">
         <div class="di-card-title" title="${esc(title)}">
@@ -242,15 +246,17 @@ window.AsgardDirectorInboxPage = (function () {
       ${summary ? `<div class="di-summary">${esc(summary.slice(0, 280))}</div>` : ''}
       <div class="di-meta">
         ${contact ? `<span>${esc(contact)}</span>` : ''}
+        ${inn ? `<span>· ${esc(inn)}</span>` : ''}
+        ${workType ? `<span>· ${esc(workType)}</span>` : ''}
         ${sum ? `<span>· ${esc(sum)}</span>` : ''}
         ${deadline ? `<span>· ${esc(deadline)}</span>` : ''}
+        ${attN > 0 ? `<span>· 📎 ${attN}</span>` : ''}
         <span>· ${formatDateTime(it.created_at)}</span>
-        ${assigned ? `<span>· ${esc(assigned)}</span>` : ''}
+        ${assigned ? `<span>· 🎯 ${esc(assigned)}</span>` : '<span>· Свободна</span>'}
       </div>
       <div class="di-card-actions">
         ${_mode === 'marketplace' ? `
-          <button class="btn primary di-claim-btn" data-act="pt-claim" data-id="${it.id}"
-            ${(_myStats && !_myStats.can_claim) ? 'disabled title="Достигнут лимит 5 заявок"' : ''}>
+          <button class="btn primary di-claim-btn" data-act="pt-claim" data-id="${it.id}">
             🎯 Забрать себе
           </button>` : ''}
         <button class="btn ghost" data-act="pt-view" data-id="${it.id}">👁 Просмотр</button>
@@ -307,8 +313,8 @@ window.AsgardDirectorInboxPage = (function () {
 
   // 23.06.2026 Маркетплейс: отдельный рендер для PM.
   function _renderMarketplace(root) {
-    const stats = _myStats || { active_count: 0, limit: 5, can_claim: true };
-    const limitReached = stats.active_count >= stats.limit;
+    const stats = _myStats || { active_count: 0, limit: null, can_claim: true };
+    const limitReached = stats.limit != null && stats.active_count >= stats.limit;
     const badgeColor = limitReached ? 'var(--red, #C8293B)' : 'var(--gold, #D4A843)';
     const badgeBg = limitReached
       ? 'var(--red-glow, rgba(231,76,60,.18))'
@@ -348,7 +354,7 @@ window.AsgardDirectorInboxPage = (function () {
         <div style="display:flex;gap:8px;align-items:center">
           <span class="di-stat-badge" title="${esc(badgeTip)}"
             style="padding:6px 12px;border-radius:8px;background:${badgeBg};color:${badgeColor};font-weight:700;font-size:13px;border:1px solid ${badgeColor}">
-            У вас ${stats.active_count} / ${stats.limit}
+            У вас ${stats.active_count}${stats.limit != null ? ` / ${stats.limit}` : ' активных'}
           </span>
           <button class="btn ghost" id="di-btn-refresh" title="Обновить">⟳</button>
         </div>

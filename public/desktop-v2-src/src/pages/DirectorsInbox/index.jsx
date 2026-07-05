@@ -34,6 +34,7 @@ import AssignPmModal from './AssignPmModal';
 import RejectModal from './RejectModal';
 // 27.06.2026: directors-inbox.css удалён вместе с канбан-видом — плоский список не требует своих стилей.
 import EmailPreviewModal from './EmailPreview';
+import PreTenderDetailModal from './PreTenderDetailModal';
 // 27.06.2026: DirectFromDirectorModal больше не используется — кнопка «+ Прямая заявка от меня» убрана.
 // 27.06.2026: MarketplaceList удалён — единая страница обслуживает всех (см. ниже).
 
@@ -162,7 +163,15 @@ export default function DirectorsInboxPage() {
           return new Date(b.created_at) - new Date(a.created_at);
         });
         setItems(merged);
-        setStats(st);
+        const ptFree = ptItems.filter((x) => !x.assigned_pm_id).length;
+        const inboxNew = (st.byStatus?.new || 0) + (st.byStatus?.ai_processed || 0);
+        setStats({
+          ...st,
+          pre_tender_total: ptItems.length,
+          pre_tender_free: ptFree,
+          combined_total: (st.total || inboxList.length) + ptItems.length,
+          combined_new: inboxNew + ptItems.filter((x) => ['new', 'in_review', 'need_docs'].includes(x.status)).length
+        });
       })
       .catch((e) => toast.error('Не удалось загрузить заявки: ' + (e?.message || e)))
       .finally(() => setLoading(false));
@@ -189,14 +198,22 @@ export default function DirectorsInboxPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Deep-link `?id=NN`
+  // Deep-link `?kind=pre_tender&id=NN` or `?id=NN` (inbox default)
   useEffect(() => {
     const check = () => {
-      const m = (window.location.hash || '').match(/[?&]id=(\d+)/);
-      if (m && m[1]) {
-        modal.open(<EmailPreviewModal id={Number(m[1])} onChanged={refresh} />, { size: 'lg' });
-        window.location.hash = '#/director-inbox';
+      const hash = window.location.hash || '';
+      const kindM = hash.match(/[?&]kind=(\w+)/);
+      const idM = hash.match(/[?&]id=(\d+)/);
+      if (!idM || !idM[1]) return;
+      const kind = kindM?.[1] || 'inbox';
+      const id = Number(idM[1]);
+      if (kind === 'pre_tender') {
+        const pt = items.find((x) => x._type === 'pre_tender' && x.id === id);
+        modal.open(<PreTenderDetailModal item={pt || { id, _type: 'pre_tender' }} onChanged={refresh} />, { size: 'lg' });
+      } else {
+        modal.open(<EmailPreviewModal id={id} onChanged={refresh} />, { size: 'lg' });
       }
+      window.location.hash = '#/director-inbox';
     };
     check();
     window.addEventListener('hashchange', check);
@@ -250,15 +267,11 @@ export default function DirectorsInboxPage() {
   };
 
   const onPreview = (it) => {
-    // Для pre_tender открываем письмо через email_id (если есть), иначе показываем
-    // карточку самого pre_tender'а (work_description + ai_summary в модалке).
-    const previewId = it._type === 'pre_tender' ? (it.email_id || null) : it.id;
-    if (!previewId) {
-      // Для pre_tender без email — просто показываем краткую информацию через toast.
-      toast.info(it.ai_summary || it.work_description || '(нет текста)');
+    if (it._type === 'pre_tender') {
+      modal.open(<PreTenderDetailModal item={it} onChanged={refresh} />, { size: 'lg' });
       return;
     }
-    modal.open(<EmailPreviewModal id={previewId} onChanged={refresh} />, { size: 'lg' });
+    modal.open(<EmailPreviewModal id={it.id} onChanged={refresh} />, { size: 'lg' });
   };
 
   const onArchive = async (it) => {
@@ -338,7 +351,7 @@ export default function DirectorsInboxPage() {
       <TopActionsBar
         kicker="Корзина заявок"
         title="Распределение РП"
-        subtitle={`Всего ${stats.total || items.length} · 🟢 ${byColor.green || 0} · 🟡 ${byColor.yellow || 0} · 🔴 ${byColor.red || 0} · Новых ${(byStatus.new || 0) + (byStatus.ai_processed || 0)}`}
+        subtitle={`Всего ${stats.combined_total || stats.total || items.length} · inbox ${stats.total || 0} · pre-tender ${stats.pre_tender_total || 0} · 🟢 ${byColor.green || 0} · 🟡 ${byColor.yellow || 0} · 🔴 ${byColor.red || 0} · Новых ${stats.combined_new || (byStatus.new || 0) + (byStatus.ai_processed || 0)}`}
         actions={
           <>
             <Btn variant="ghost" onClick={refresh}>↻ Обновить</Btn>
@@ -383,8 +396,10 @@ export default function DirectorsInboxPage() {
           icon="📭"
           title="Заявок пока нет"
           hint={
-            bucket === 'new'
-              ? 'Нет нераспределённых заявок — все разобраны.'
+            bucket === 'requests'
+              ? 'Нет заявок в этом разделе — проверьте вкладку «Приглашения на тендер».'
+              : bucket === 'invitations'
+              ? 'Нет приглашений на тендер в этом разделе.'
               : 'В этой корзине ничего нет.'
           }
           action={
@@ -465,6 +480,10 @@ function ApplicationCard({ item, bucket, userRole, onAssign, onClaim, onReject, 
       </div>
       <div className="row gap-12 u-wrap fs-12 c-t3 mb-8">
         <span>👤 {item.source_name || item.source_email || '—'}</span>
+        {item.customer_inn && <span>· ИНН {item.customer_inn}</span>}
+        {item.ai_work_type && <span>· {item.ai_work_type}</span>}
+        {item.estimated_sum != null && <span>· 💰 {Number(item.estimated_sum).toLocaleString('ru-RU')} ₽</span>}
+        {item.work_deadline && <span>· ⏰ до {fmtDate(item.work_deadline)}</span>}
         {item.ai_classification && <span>· {String(item.ai_classification).replace(/^"|"$/g, '')}</span>}
         {item.ai_confidence != null && <span>· AI {Math.round(item.ai_confidence * 100)}%</span>}
         <span>· {fmtDate(item.created_at)}</span>
@@ -492,7 +511,7 @@ function ApplicationCard({ item, bucket, userRole, onAssign, onClaim, onReject, 
         </div>
       )}
       <div className="row gap-6 u-wrap">
-        <Btn variant="ghost" onClick={onPreview} aria-label="Прочитать письмо">📄 Письмо</Btn>
+        <Btn variant="ghost" onClick={onPreview} aria-label="Просмотр">📄 Просмотр</Btn>
         {canClaim  && <Btn variant="primary" onClick={onClaim}>✋ Забрать себе</Btn>}
         {canAssign && <Btn variant="primary" onClick={onAssign}>🎯 Назначить РП</Btn>}
         {canAccept && <Btn variant="primary" onClick={onAcceptToTender}>📋 Принять в работу</Btn>}

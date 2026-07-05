@@ -109,7 +109,7 @@ export function loadPmUsers() {
 // Vanilla: director_inbox.js:823-832.
 export const DIRECTOR_ROLES = ['ADMIN', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 export const PM_MARKETPLACE_ROLES = ['PM', 'HEAD_PM'];
-export const MARKETPLACE_LIMIT = 5;
+export const MARKETPLACE_LIMIT = null;
 
 export function inferModeFromRole(role) {
   if (DIRECTOR_ROLES.includes(role)) return 'director';
@@ -171,15 +171,15 @@ export function preTenderFromEmail(emailId) {
 export function loadMyStats() {
   return api('/api/pre-tenders/my-stats')
     .then((d) => {
-      if (!d || !d.success) return { active_count: 0, limit: MARKETPLACE_LIMIT, can_claim: true };
+      if (!d || !d.success) return { active_count: 0, limit: null, can_claim: true };
       return {
         active_count: d.active_count || 0,
-        limit: d.limit || MARKETPLACE_LIMIT,
+        limit: d.limit ?? null,
         breakdown: d.breakdown || null,
         can_claim: d.can_claim !== false
       };
     })
-    .catch(() => ({ active_count: 0, limit: MARKETPLACE_LIMIT, can_claim: true }));
+    .catch(() => ({ active_count: 0, limit: null, can_claim: true }));
 }
 
 // POST /api/pre-tenders/:id/claim

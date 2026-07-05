@@ -25,7 +25,7 @@ import { PageShell } from '@/components/layout/PageShell';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { SkeletonList } from '@/components/shared/SkeletonKit';
 
-const MARKETPLACE_LIMIT = 5;
+const MARKETPLACE_LIMIT = null;
 const FETCH_LIMIT = 50;
 
 /* ────────────────────────────────────────────────────────────────────────── */
@@ -200,7 +200,7 @@ export default function MarketplaceMobile() {
   // ─── Claim ────────────────────────────────────────────────────────────────
   const onClaim = async (it) => {
     if (claimingId) return;
-    if (!stats.can_claim || stats.active_count >= stats.limit) {
+    if (!stats.can_claim && stats.limit != null) {
       toast.warning('🚫 Достигнут лимит ' + stats.limit + ' активных заявок');
       return;
     }

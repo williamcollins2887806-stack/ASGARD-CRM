@@ -1372,10 +1372,51 @@ async function analyzeOneEmail(email) {
       // commercial_offer остаётся ручным — это предложение поставщика, не запрос работ.
       if (analysis.classification === 'direct_request' || analysis.classification === 'platform_tender') {
         try {
+          const { resolvePmFromEmailText } = require('./pm-routing-from-email');
+          const pmRoute = await resolvePmFromEmailText(
+            email.subject,
+            email.body_text || email.body_html,
+            analysis.suggested_pm_name
+          );
           const preTenderService = require('./pre-tender-service');
-          const r = await preTenderService.createPreTenderFromEmail(emailId);
+          const r = await preTenderService.createPreTenderFromEmail(emailId, {
+            assignedTo: pmRoute?.pm_user_id || null,
+            assignedBy: forwardedByUserId || null,
+            assignNote: pmRoute
+              ? `🎯 Автоназначение из письма: ${pmRoute.matched_name}`
+              : null
+          });
           if (r && r.id) {
-            console.log(`[IMAP-AI] Auto-created pre_tender #${r.id} from email #${emailId} (${analysis.classification})${r.exists ? ' [already existed]' : ' → marketplace'}`);
+            const dest = pmRoute ? `→ kanban PM ${pmRoute.matched_name}` : '→ marketplace';
+            console.log(`[IMAP-AI] Auto-created pre_tender #${r.id} from email #${emailId} (${analysis.classification})${r.exists ? ' [already existed]' : ' ' + dest}`);
+            if (pmRoute && !r.exists) {
+              try {
+                const { createNotification } = require('./notify');
+                const { broadcast } = require('../routes/sse');
+                await Promise.resolve(createNotification(db, {
+                  user_id: pmRoute.pm_user_id,
+                  title: `Заявка №${r.id} назначена вам автоматически`,
+                  message: (email.subject || '').slice(0, 120),
+                  type: 'pre_tender_auto_assigned',
+                  link: `#/personal-kanban`
+                })).catch(() => {});
+                const dirs = await db.query(
+                  `SELECT id FROM users WHERE role = ANY($1::text[]) AND is_active = TRUE`,
+                  [['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_PM']]);
+                for (const dir of dirs.rows) {
+                  Promise.resolve(createNotification(db, {
+                    user_id: dir.id,
+                    title: `Автоназначение: ${pmRoute.matched_name} ← заявка #${r.id}`,
+                    message: (email.subject || '').slice(0, 120),
+                    type: 'pre_tender_auto_assigned',
+                    link: `#/director-inbox?kind=pre_tender&id=${r.id}`
+                  })).catch(() => {});
+                }
+                broadcast('pre_tender:assigned', { id: r.id, assigned_to: pmRoute.pm_user_id, auto: true });
+              } catch (notifyErr) {
+                console.warn('[IMAP-AI] auto-assign notify failed:', notifyErr.message);
+              }
+            }
           }
         } catch (ptErr) {
           console.error(`[IMAP-AI] auto pre_tender creation error for email #${emailId}:`, ptErr.message);

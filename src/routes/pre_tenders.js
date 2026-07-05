@@ -29,13 +29,10 @@ const fs = require('fs');
 const ALLOWED_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_TO', 'HEAD_PM', 'TO', 'PM'];
 const DIRECTOR_LIKE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_TO', 'HEAD_PM'];
 
-// 23.06.2026 Маркетплейс заявок: лимит активных заявок у одного РП.
-// При попытке забрать 6-ю — 409 limit_reached. Лимит покрывает «живые» main_status pre_tender:
-// new, in_review, need_docs, pending_approval, approved.
-// 23.06.2026 BUG-FIX (🟡 D-15): убраны 'sent' и 'kp_prep' — это v3-колонки, а не main_status
-// (CHECK на pre_tender_requests.status таких значений не разрешает, см. CANONICAL_MAIN_STATUSES.pre_tender
-// в personal-kanban.js:51-55). До фикса они никогда не матчились и в счёт лимита не шли.
-const MARKETPLACE_LIMIT = 5;
+// 05.07.2026 Маркетплейс заявок: лимит снят (раньше было 5).
+// MARKETPLACE_LIMIT = null → can_claim всегда true, 409 limit_reached не выбрасывается.
+// active_count / breakdown остаются в /my-stats для информационного бейджа.
+const MARKETPLACE_LIMIT = null;
 const MARKETPLACE_ACTIVE_STATUSES = ['new', 'in_review', 'need_docs', 'pending_approval', 'approved'];
 const MARKETPLACE_CLAIMABLE_STATUSES = ['new', 'in_review', 'need_docs'];
 const PM_ROLES_MARKETPLACE = ['PM', 'HEAD_PM'];
@@ -254,7 +251,7 @@ module.exports = async function (fastify) {
       active_count: total,
       limit: MARKETPLACE_LIMIT,
       breakdown,
-      can_claim: total < MARKETPLACE_LIMIT
+      can_claim: MARKETPLACE_LIMIT == null || total < MARKETPLACE_LIMIT
     };
   });
 
@@ -306,20 +303,7 @@ module.exports = async function (fastify) {
           throw e;
         }
 
-        // 4. Лимит у РП.
-        const limitRes = await client.query(
-          `SELECT COUNT(*)::int AS cnt
-             FROM pre_tender_requests
-            WHERE assigned_to = $1 AND status = ANY($2::text[])`,
-          [user.id, MARKETPLACE_ACTIVE_STATUSES]);
-        const currentCount = limitRes.rows[0]?.cnt || 0;
-        if (currentCount >= MARKETPLACE_LIMIT) {
-          const e = new Error('limit_reached'); e._code = 409;
-          e._payload = { error: 'limit_reached', current_count: currentCount, limit: MARKETPLACE_LIMIT };
-          throw e;
-        }
-
-        // 5. Присваиваем + переводим в in_review (если был new).
+        // 4. Присваиваем + переводим в in_review (если был new).
         const newStatus = row.status === 'new' ? 'in_review' : row.status;
         await client.query(
           `UPDATE pre_tender_requests
@@ -462,25 +446,6 @@ module.exports = async function (fastify) {
         }
         if (row.assigned_to === toUserId) {
           const e = new Error('already_owns'); e._code = 409; e._payload = { error: 'already_owns' };
-          throw e;
-        }
-
-        // 3. Лимит у получателя.
-        const limitRes = await client.query(
-          `SELECT COUNT(*)::int AS cnt
-             FROM pre_tender_requests
-            WHERE assigned_to = $1 AND status = ANY($2::text[])`,
-          [toUserId, MARKETPLACE_ACTIVE_STATUSES]);
-        const recipientCount = limitRes.rows[0]?.cnt || 0;
-        if (recipientCount >= MARKETPLACE_LIMIT) {
-          const e = new Error('recipient_limit_reached'); e._code = 409;
-          e._payload = {
-            error: 'recipient_limit_reached',
-            recipient_id: toUserId,
-            recipient_name: toUser.name || toUser.login,
-            current_count: recipientCount,
-            limit: MARKETPLACE_LIMIT
-          };
           throw e;
         }
 
@@ -776,7 +741,9 @@ module.exports = async function (fastify) {
     if (!acc.ok) return reply.code(acc.code).send({ error: acc.error });
     const allowed = ['customer_name', 'customer_inn', 'customer_email', 'contact_person',
                      'contact_phone', 'work_description', 'work_location', 'work_deadline',
-                     'estimated_sum', 'assigned_to', 'ai_color'];
+                     'estimated_sum', 'assigned_to', 'ai_color',
+                     'cost_planned', 'kp_price_without_vat', 'kp_price_with_vat',
+                     'vat_rate_pct', 'margin_planned_pct'];
 
     // Статус можно менять только на допустимые значения (для канбан drag-and-drop).
     // 23.06.2026 BUG-FIX (🟡 D-17): синхронизация с personal-kanban /transition — там UPDATE pre_tender_requests
@@ -785,7 +752,7 @@ module.exports = async function (fastify) {
     // выставлял ещё 10 — фронт-форма не могла откатить решение, принятое канбаном. Теперь PUT принимает
     // тот же набор. Для запретных кросс-flow-переходов всё ещё валидируется в transition-роуте.
     const ALLOWED_STATUSES = [
-      'new', 'in_review', 'need_docs', 'accepted', 'rejected', 'expired',
+      'new', 'in_review', 'need_docs', 'addendum', 'accepted', 'rejected', 'expired',
       'pending_approval', 'approved', 'pending_payment', 'paid',
       'cash_issued', 'cash_received', 'expense_reported'
     ];
@@ -820,9 +787,15 @@ module.exports = async function (fastify) {
     fields.push(`updated_at = NOW()`);
     vals.push(id);
 
+    const financeKeys = ['cost_planned', 'kp_price_without_vat', 'kp_price_with_vat', 'vat_rate_pct', 'margin_planned_pct'];
+    const isFinanceOnly = financeKeys.some((k) => request.body[k] !== undefined)
+      && !request.body.status && request.body.assigned_to === undefined;
+
     await db.query(
-      `UPDATE pre_tender_requests SET ${fields.join(', ')} WHERE id = $${idx} AND status IN ('new','in_review','need_docs')`,
-      vals
+      `UPDATE pre_tender_requests SET ${fields.join(', ')} WHERE id = $${idx} AND status = ANY($${idx + 1}::text[])`,
+      [...vals, isFinanceOnly
+        ? ['new', 'in_review', 'need_docs', 'addendum', 'approved', 'accepted', 'pending_approval']
+        : ['new', 'in_review', 'need_docs', 'addendum']]
     );
 
     if (reassignRequested) {
@@ -948,7 +921,10 @@ module.exports = async function (fastify) {
         mime_type: part.mimetype || 'application/octet-stream',
         size: buf.length,
         path: `uploads/pre_tenders/${id}/${safeName}`,
-        uploaded_at: new Date().toISOString()
+        uploaded_at: new Date().toISOString(),
+        folder_id: request.body?.folder_id || 'pm_upload',
+        folder_name: request.body?.folder_name || 'Загружено РП',
+        source: 'upload'
       };
       existingDocs.push(doc);
       uploaded.push(doc);
@@ -962,6 +938,46 @@ module.exports = async function (fastify) {
     );
 
     return { success: true, uploaded, total_docs: existingDocs.length };
+  });
+
+  // POST /:id/folders — создать пользовательскую папку документов
+  fastify.post('/:id/folders', {
+    preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const name = String(request.body?.name || '').trim().slice(0, 120);
+    if (!name) return reply.code(400).send({ error: 'name_required' });
+    const acc = await checkPreTenderAccess(request.user, id);
+    if (!acc.ok) return reply.code(acc.code).send({ error: acc.error });
+    const r = await db.query('SELECT document_folders FROM pre_tender_requests WHERE id=$1', [id]);
+    if (!r.rows.length) return reply.code(404).send({ error: 'not_found' });
+    const folders = Array.isArray(r.rows[0].document_folders) ? r.rows[0].document_folders : [];
+    const folderId = 'custom-' + Date.now();
+    folders.push({ id: folderId, name, system: false });
+    await db.query('UPDATE pre_tender_requests SET document_folders=$1, updated_at=NOW() WHERE id=$2', [JSON.stringify(folders), id]);
+    return { success: true, folder: { id: folderId, name, system: false } };
+  });
+
+  // PATCH /:id/documents/:idx/move — переместить документ в папку
+  fastify.patch('/:id/documents/:idx/move', {
+    preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const idx = parseInt(request.params.idx, 10);
+    const folderId = String(request.body?.folder_id || '').trim();
+    if (!folderId) return reply.code(400).send({ error: 'folder_id_required' });
+    const acc = await checkPreTenderAccess(request.user, id);
+    if (!acc.ok) return reply.code(acc.code).send({ error: acc.error });
+    const r = await db.query('SELECT manual_documents, document_folders FROM pre_tender_requests WHERE id=$1', [id]);
+    if (!r.rows.length) return reply.code(404).send({ error: 'not_found' });
+    const docs = Array.isArray(r.rows[0].manual_documents) ? r.rows[0].manual_documents : [];
+    if (!docs[idx]) return reply.code(404).send({ error: 'doc_not_found' });
+    const folders = Array.isArray(r.rows[0].document_folders) ? r.rows[0].document_folders : [];
+    const folder = folders.find((f) => f.id === folderId);
+    docs[idx].folder_id = folderId;
+    docs[idx].folder_name = folder?.name || folderId;
+    await db.query('UPDATE pre_tender_requests SET manual_documents=$1, updated_at=NOW() WHERE id=$2', [JSON.stringify(docs), id]);
+    return { success: true, doc: docs[idx] };
   });
 
   // ═══════════════════════════════════════════════════════════════════

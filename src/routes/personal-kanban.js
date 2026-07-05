@@ -50,7 +50,7 @@ const CANONICAL_MAIN_STATUSES = {
     'КП отправлено', 'Выиграли', 'Проиграли', 'Не подходит'
   ],
   pre_tender: [
-    'new', 'in_review', 'need_docs', 'accepted', 'rejected', 'expired',
+    'new', 'in_review', 'need_docs', 'addendum', 'accepted', 'rejected', 'expired',
     'pending_approval', 'approved', 'pending_payment', 'paid',
     'cash_issued', 'cash_received', 'expense_reported'
   ],
@@ -198,7 +198,9 @@ async function loadEntitySnapshot(entityKind, entityId) {
                 pt.work_description, pt.work_location, pt.work_deadline,
                 pt.estimated_sum,
                 pt.ai_summary, pt.ai_color, pt.ai_recommendation, pt.ai_work_match_score,
-                pt.has_documents, pt.manual_documents,
+                pt.has_documents, pt.manual_documents, pt.document_folders,
+                pt.cost_planned, pt.kp_price_without_vat, pt.kp_price_with_vat,
+                pt.vat_rate_pct, pt.margin_planned_pct,
                 pt.email_id,
                 pt.status, pt.created_tender_id, pt.assigned_to, pt.decision_comment, pt.reject_reason,
                 pt.created_at,
@@ -261,7 +263,9 @@ async function loadEntitySnapshotsBatch(entityKind, ids) {
                     pt.work_description, pt.work_location, pt.work_deadline,
                     pt.estimated_sum,
                     pt.ai_summary, pt.ai_color, pt.ai_recommendation, pt.ai_work_match_score,
-                    pt.has_documents, pt.manual_documents,
+                    pt.has_documents, pt.manual_documents, pt.document_folders,
+                pt.cost_planned, pt.kp_price_without_vat, pt.kp_price_with_vat,
+                pt.vat_rate_pct, pt.margin_planned_pct,
                     pt.email_id,
                     pt.status, pt.created_tender_id, pt.assigned_to,
                     pt.created_at,
@@ -290,7 +294,22 @@ async function loadEntitySnapshotsBatch(entityKind, ids) {
       return map;
     }
     const r = await db.query(sql, [cleanIds]);
-    for (const row of r.rows) map.set(row.id, row);
+    for (const row of r.rows) {
+      if (entityKind === 'pre_tender') {
+        const manual = Array.isArray(row.manual_documents) ? row.manual_documents : [];
+        row.pm_documents = manual
+          .map((d, idx) => ({ ...d, _idx: idx }))
+          .filter((d) => d && d.generated_by !== 'mimir' && d.source !== 'mimir');
+        row.finance = {
+          cost_planned: row.cost_planned,
+          kp_price_without_vat: row.kp_price_without_vat,
+          kp_price_with_vat: row.kp_price_with_vat,
+          vat_rate_pct: row.vat_rate_pct,
+          margin_planned_pct: row.margin_planned_pct
+        };
+      }
+      map.set(row.id, row);
+    }
   } catch (e) {
     // Логируем но не валим запрос — fallback: пустой Map → entity:null в ответе.
     try { console.warn(`[personal-kanban] loadEntitySnapshotsBatch(${entityKind}) failed: ${e.message}`); }
@@ -414,7 +433,7 @@ async function closeKanbanCardsForEntity(runner, entityKind, entityId, actorUser
 // ─────────────────────────────────────────────────────────────────────────────
 // S-2/V250: добавлена 9-я колонка 'addendum' (статус «Дозапрос» — заказчик
 // прислал дозапрос после «КП отправлено», карта временно туда до ответа).
-const V3_COLUMNS = ['new', 'calc', 'approval', 'kp_prep', 'sent', 'addendum', 'win', 'lose', 'work'];
+const V3_COLUMNS = ['new', 'calc', 'addendum', 'kp_prep', 'approval', 'sent', 'win', 'lose', 'work'];
 
 // Маппинг (toColumn, flow_type) → canonical main_status (целевой при transition).
 // Возвращает строку или null если переход недопустим для данного flow.
@@ -435,12 +454,12 @@ function v3ColumnToMainStatus(toColumn, flowType, currentMainStatus) {
     switch (toColumn) {
       case 'new':      return 'new';
       case 'calc':     return 'in_review';
-      case 'approval': return 'pending_approval';
+      case 'addendum': return 'addendum';
       case 'kp_prep':  return 'approved';
-      case 'sent':     return 'pending_payment'; // 30.06.2026: заявка идёт дальше как заявка (КП отправлено), синхронно с pk_v3_column V254
-      case 'win':      return 'paid';            // 30.06.2026: клиент согласился → paid + авто-создание работы (см. side-effect ниже)
+      case 'approval': return 'pending_approval';
+      case 'sent':     return 'pending_payment';
+      case 'win':      return 'paid';
       case 'lose':     return 'rejected';
-      // addendum/work — не применимо к pre_tender (дозапрос только у тендеров) → 409 transition_not_allowed
       default:         return undefined;
     }
   }
@@ -976,9 +995,15 @@ module.exports = async function (fastify) {
       allowed = ['customer_name', 'customer_inn', 'customer_email',
                  'contact_person', 'contact_phone',
                  'work_description', 'work_location', 'work_deadline',
-                 'estimated_sum'];
-      // Совпадает с PUT /api/pre-tenders/:id — редактировать можно только в активных стадиях.
-      statusGuard = ` AND status IN ('new','in_review','need_docs')`;
+                 'estimated_sum',
+                 'cost_planned', 'kp_price_without_vat', 'kp_price_with_vat',
+                 'vat_rate_pct', 'margin_planned_pct'];
+      const financeOnly = ['cost_planned', 'kp_price_without_vat', 'kp_price_with_vat',
+                           'vat_rate_pct', 'margin_planned_pct']
+        .some((k) => Object.prototype.hasOwnProperty.call(body, k));
+      statusGuard = financeOnly
+        ? ` AND status IN ('new','in_review','need_docs','addendum','approved','accepted','pending_approval')`
+        : ` AND status IN ('new','in_review','need_docs','addendum')`;
     } else if (card.entity_kind === 'tender') {
       table = 'tenders';
       allowed = ['customer_name', 'customer_inn', 'customer_email',
@@ -2240,23 +2265,30 @@ module.exports = async function (fastify) {
         const tkpCnt = tkpRes.rows[0].cnt;
         const tkpMax = Number(tkpRes.rows[0].max_sum) || 0;
         if (tkpCnt === 0) {
-          await client.query('ROLLBACK');
-          return reply.code(400).send({
-            error: 'tkp_required',
-            message: 'Сначала создайте ТКП — без него заявку нельзя отправить на согласование'
-          });
+          const finRes = await client.query(
+            `SELECT cost_planned, kp_price_without_vat, kp_price_with_vat
+               FROM pre_tender_requests WHERE id = $1`, [card.entity_id]);
+          const fin = finRes.rows[0] || {};
+          const manualOk = (fin.cost_planned != null && fin.kp_price_without_vat != null);
+          if (!manualOk) {
+            await client.query('ROLLBACK');
+            return reply.code(400).send({
+              error: 'tkp_required',
+              message: 'Сначала создайте ТКП или заполните финансы вручную (с/с и цена КП)'
+            });
+          }
         }
-        // Также пробуем estimated_sum из заявки (резерв)
-        const ptRes = await client.query(
-          `SELECT COALESCE(estimated_sum, 0)::numeric AS est_sum
-             FROM pre_tender_requests WHERE id = $1`, [card.entity_id]);
-        const ptEst = Number(ptRes.rows[0]?.est_sum) || 0;
-        priceUsed = Math.max(tkpMax, ptEst);
-        if (priceUsed < APPROVAL_THRESHOLD_RUB) {
-          // Сумма меньше 50M — согласование директора не требуется, сразу в КП готов.
-          toCol = 'kp_prep';
-          newMainStatus = v3ColumnToMainStatus('kp_prep', card.flow_type, card.current_main_status);
-          autoPromotedFromApproval = true;
+        if (tkpCnt > 0) {
+          const ptRes = await client.query(
+            `SELECT COALESCE(estimated_sum, 0)::numeric AS est_sum
+               FROM pre_tender_requests WHERE id = $1`, [card.entity_id]);
+          const ptEst = Number(ptRes.rows[0]?.est_sum) || 0;
+          priceUsed = Math.max(tkpMax, ptEst);
+          if (priceUsed < APPROVAL_THRESHOLD_RUB) {
+            toCol = 'kp_prep';
+            newMainStatus = v3ColumnToMainStatus('kp_prep', card.flow_type, card.current_main_status);
+            autoPromotedFromApproval = true;
+          }
         }
       }
 

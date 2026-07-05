@@ -2084,8 +2084,8 @@ window.AsgardPersonalKanbanV3 = (function () {
     { id: 'tender',      label: '📋 Тендеры' },
     { id: 'work',        label: '🏗 Работы' },
   ];
-  const STAGE_LABELS = ['📥 Новая', '🧮 Просчёт', '⚖️ Согл. дир', '📋 КП готов', '📤 КП ушло', '❓ Дозапрос', '🏆 Выигр.', '❌ Проигр.', '🏗 В работе'];
-  const COL_TO_STAGE = { new: 0, calc: 1, approval: 2, kp_prep: 3, sent: 4, addendum: 5, win: 6, lose: 7, work: 8 };
+  const STAGE_LABELS = ['📥 Новая', '🧮 Просчёт', '❓ Дозапрос', '📋 КП готов', '⚖️ Согл. дир', '📤 КП ушло', '🏆 Выигр.', '❌ Проигр.', '🏗 В работе'];
+  const COL_TO_STAGE = { new: 0, calc: 1, addendum: 2, kp_prep: 3, approval: 4, sent: 5, win: 6, lose: 7, work: 8 };
 
   // S-15: scope helpers — определяет режим выборки по роли и (для HEAD_TO) toggle из LS
   function _computeScope() {
@@ -3829,7 +3829,11 @@ window.AsgardPersonalKanbanV3 = (function () {
   }
   function _secDocs(card) {
     const emailDocs = card.email_attachments || [];
-    const pmDocs    = card.pm_documents || [];
+    const pmDocs    = (card.pm_documents && card.pm_documents.length)
+      ? card.pm_documents
+      : (Array.isArray(card.manual_documents)
+        ? card.manual_documents.filter((d) => d && d.generated_by !== 'mimir' && d.source !== 'mimir')
+        : []);
     const calcDocs  = card.calc_documents || [];
     // _src='email' → download через /api/pre-tenders/:ptId/email-attachments/:attId/download
     // _src='manual' → через /api/pre-tenders/:ptId/documents/:idx/download
@@ -3952,7 +3956,7 @@ window.AsgardPersonalKanbanV3 = (function () {
       ${_row('Плановая с/с', `<input id="pk3-f-cost" type="number" value="${fin.cost_planned || ''}" placeholder="например 920 000" />`)}
       ${_row('Цена КП без НДС', `<input id="pk3-f-kp" type="number" value="${fin.kp_price_without_vat || ''}" placeholder="например 1 200 000" />`)}
       ${_row('НДС', `<select id="pk3-f-vat"><option value="20">20% (общая)</option><option value="0">0% (УСН)</option><option value="10">10%</option></select>`)}
-      <div style="margin-top:8px"><button class="pk3-btn" id="pk3-save-fin">💾 Сохранить финансы</button></div>
+      <div style="margin-top:8px"><button class="pk3-btn" id="pk3-save-fin" data-action="save-fin">💾 Сохранить финансы</button></div>
     `);
   }
   function _secTKP(card) {
@@ -4470,7 +4474,7 @@ window.AsgardPersonalKanbanV3 = (function () {
     if (act === 'tkp-upload')      return _openTkpUploadModal(card);
     if (act === 'tkp-pdf')         return _downloadTkpPdf(card);
     if (act === 'save')            return _saveDrawerFields(card);
-    if (act === 'save-fin')        return _saveDrawerFields(card);
+    if (act === 'save-fin')        return _saveFinanceFields(card);
     if (act === 'egrul-lookup')    return _doEgrulLookup();
     if (act === 'customer-pick')   return _openCustomerPicker(card);
     if (act === 'customer-new')    return _openCreateCustomerModal(card);
@@ -4541,9 +4545,6 @@ window.AsgardPersonalKanbanV3 = (function () {
   }
   async function _saveDrawerFields(card) {
     const get = (id) => { const el = $(id); return el ? (el.value || '').trim() : null; };
-    // Шлём только заполненные customer_* / work_* поля. Финансовые поля сохраняем
-    // отдельным эндпоинтом — backend /cards/:cardId/update сейчас принимает только
-    // customer/work allowed-list (см. routes/personal-kanban.js).
     const body = {
       customer_name:    get('#pk3-f-customer') || null,
       customer_inn:     get('#pk3-f-inn')      || null,
@@ -4556,11 +4557,42 @@ window.AsgardPersonalKanbanV3 = (function () {
     const r = await api(`/api/personal-kanban/cards/${card.id}/update`, { method: 'POST', body });
     if (r.ok) {
       toast('Сохранено', 'Карточка клиента обновлена', 'ok');
-      // Подмешиваем свежие значения в текущую карту, чтобы _renderDrawerHtml на reopen
-      // не перетёр пользовательский ввод.
       Object.assign(card, body);
     } else {
       toast('Не сохранилось', (r.data && r.data.error) || 'Ошибка', 'err');
+    }
+  }
+
+  async function _saveFinanceFields(card) {
+    const getNum = (id) => {
+      const el = $(id);
+      if (!el || el.value === '') return null;
+      const n = Number(el.value);
+      return Number.isFinite(n) ? n : null;
+    };
+    const ptId = card.entity_id || card.entity_id_pt;
+    if (!ptId) { toast('Нет привязки', 'pre_tender не найден', 'warn'); return; }
+    const kpNoVat = getNum('#pk3-f-kp');
+    const cost = getNum('#pk3-f-cost');
+    const vatSel = $('#pk3-f-vat');
+    const vatRate = vatSel ? Number(vatSel.value) : 20;
+    const kpWithVat = kpNoVat != null ? Math.round(kpNoVat * (1 + (vatRate || 0) / 100) * 100) / 100 : null;
+    const margin = (cost != null && kpNoVat != null && kpNoVat > 0)
+      ? Math.round((1 - cost / kpNoVat) * 1000) / 10
+      : null;
+    const body = {
+      cost_planned: cost,
+      kp_price_without_vat: kpNoVat,
+      kp_price_with_vat: kpWithVat,
+      vat_rate_pct: vatRate,
+      margin_planned_pct: margin
+    };
+    const r = await api(`/api/pre-tenders/${ptId}`, { method: 'PUT', body });
+    if (r.ok) {
+      toast('Сохранено', 'Финансы обновлены', 'ok');
+      card.finance = { ...card.finance, ...body };
+    } else {
+      toast('Не сохранилось', (r.data && (r.data.error || r.data.message)) || 'Ошибка', 'err');
     }
   }
 
@@ -4597,6 +4629,9 @@ window.AsgardPersonalKanbanV3 = (function () {
       const a = document.createElement('a');
       a.href = url; a.download = ''; a.target = '_blank';
       document.body.appendChild(a); a.click(); a.remove();
+    } else if (window.AsgardDocPreview) {
+      const fname = btn.closest('.pk3-doc-row')?.querySelector('.pk3-doc-name')?.textContent || 'документ';
+      window.AsgardDocPreview.open({ title: fname.trim(), fileUrl: url, downloadUrl: url });
     } else {
       window.open(url, '_blank', 'noopener');
     }

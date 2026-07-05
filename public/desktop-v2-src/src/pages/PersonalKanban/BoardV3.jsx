@@ -30,7 +30,7 @@ import { TenderEditorModal } from '../Tenders/modals/TenderEditor.dispatch';
 import NoteBoard from './NoteBoard';
 import CustomerPicker from './CustomerPicker';
 import CreateCustomerModal from './CreateCustomerModal';
-import './personal-kanban-v3.css';
+import { FilePreviewModal } from '@/modals/FilePreview';
 
 // 22.06.2026 P0-F1: шутки для click-guard на overlay (паритет с
 // personal_kanban.js:3186-3199). Юзер случайно кликал на оверлей и терял работу.
@@ -50,7 +50,7 @@ const FLOW_TABS = [
   { id: 'work',        label: '🏗 Работы' },
 ];
 // S-21: 9 стадий (addendum=5; win/lose/work сдвинулись на +1). Соответствует V3_STAGE_LABELS.
-const COL_TO_STAGE = { new: 0, calc: 1, approval: 2, kp_prep: 3, sent: 4, addendum: 5, win: 6, lose: 7, work: 8 };
+const COL_TO_STAGE = { new: 0, calc: 1, addendum: 2, kp_prep: 3, approval: 4, sent: 5, win: 6, lose: 7, work: 8 };
 
 // S-21: localStorage ключ HEAD_TO toggle Мои/Отдел.
 const STORAGE_SCOPE_TO = 'pk3_v2_scope_to'; // 'owner' | 'to_team', дефолт 'to_team'.
@@ -357,7 +357,13 @@ function DrawerV3({ card, onClose, onChanged, openModal }) {
   });
   const drawerRef = useRef(null);
   const activeStage = COL_TO_STAGE[card.col] ?? 0;
-  const fin = card.finance || {};
+  const fin = card.finance || {
+    cost_planned: card.cost_planned,
+    kp_price_without_vat: card.kp_price_without_vat,
+    kp_price_with_vat: card.kp_price_with_vat,
+    vat_rate_pct: card.vat_rate_pct,
+    margin_planned_pct: card.margin_planned_pct
+  };
   const aiSummary = card.ai_summary || '(AI ещё не разобрал заявку)';
   const tkpAttached = !!card.tkp_attached;
 
@@ -504,26 +510,34 @@ function DrawerV3({ card, onClose, onChanged, openModal }) {
       <Btn key="cp" onClick={() => onAction('convert-pretender')}>📄 В пре-тендер</Btn>,
       <Btn key="tc" variant="gold" onClick={() => onAction('trans-calc')}>🚀 К просчёту</Btn>,
     ];
-    else if (card.col === 'calc') ctx = [<Btn key="ta" variant="gold" onClick={() => onAction('trans-approval')}>⚖️ На согласование директору</Btn>];
+    else if (card.col === 'calc') ctx = [
+      <Btn key="ad" onClick={() => onAction('trans-addendum')}>❓ Дозапрос клиенту</Btn>,
+      <Btn key="tk" variant="gold" onClick={() => onAction('trans-kp_prep')}>📋 Готовим КП</Btn>,
+      <Btn key="ta" variant="primary" onClick={() => onAction('trans-approval')}>⚖️ На согласование</Btn>,
+    ];
+    else if (card.col === 'addendum' && card.flow_type === 'tender') ctx = [
+      <Btn key="ts" variant="gold" onClick={() => onAction('trans-sent')}>✅ Ответили</Btn>,
+      <Btn key="tw" variant="primary" onClick={() => onAction('trans-win')}>🏆 Выиграли</Btn>,
+      <Btn key="tl" variant="danger" onClick={() => onAction('trans-lose')}>❌ Проиграли</Btn>,
+    ];
+    else if (card.col === 'addendum') ctx = [
+      <Btn key="tk" variant="gold" onClick={() => onAction('trans-kp_prep')}>✅ Ответ получен, готовим КП</Btn>,
+      <Btn key="tl" variant="danger" onClick={() => onAction('trans-lose')}>❌ Проиграли</Btn>,
+    ];
     else if (card.col === 'approval') ctx = [
       <Btn key="tl" variant="danger" onClick={() => onAction('trans-lose')}>❌ Отклонить</Btn>,
       <Btn key="tc" onClick={() => onAction('trans-calc')}>↩ На доработку</Btn>,
-      <Btn key="tk" variant="primary" onClick={() => onAction('trans-kp_prep')}>✅ Утвердить</Btn>,
+      <Btn key="ts" variant="primary" onClick={() => onAction('trans-sent')}>📤 КП ушло</Btn>,
     ];
     else if (card.col === 'kp_prep') ctx = [
       <Btn key="ot" onClick={() => onAction('open-tkp')}>🛠 Конструктор ТКП</Btn>,
+      <Btn key="ta" variant="primary" onClick={() => onAction('trans-approval')}>⚖️ На согласование</Btn>,
       ...(tkpAttached ? [<Btn key="os" variant="gold" onClick={() => onAction('open-send')}>📧 Отправить клиенту</Btn>] : []),
     ];
     else if (card.col === 'sent') ctx = [
       <Btn key="ta" onClick={() => onAction('trans-addendum')}>❓ Дозапрос</Btn>,
       <Btn key="tl" variant="danger" onClick={() => onAction('trans-lose')}>❌ Проиграли</Btn>,
       <Btn key="tw" variant="primary" onClick={() => onAction('trans-win')}>🏆 Выиграли</Btn>,
-    ];
-    // S-21: actions для статуса «Дозапрос» — ответили → обратно в sent, либо итог.
-    else if (card.col === 'addendum') ctx = [
-      <Btn key="ts" variant="gold" onClick={() => onAction('trans-sent')}>✅ Ответили</Btn>,
-      <Btn key="tw" variant="primary" onClick={() => onAction('trans-win')}>🏆 Выиграли</Btn>,
-      <Btn key="tl" variant="danger" onClick={() => onAction('trans-lose')}>❌ Проиграли</Btn>,
     ];
     // 21.06.2026: в win-колонке работа уже создана автохуком при tender→win
     // (personal-kanban.js:2076-2159). Раньше кнопка trans-work вызывала transition
@@ -705,9 +719,9 @@ function DrawerV3({ card, onClose, onChanged, openModal }) {
         </Section>
 
         <Section id="sec-docs" ic="📎" title="Документы" count={(card.email_attachments?.length || 0) + (card.pm_documents?.length || 0) + (card.calc_documents?.length || 0)} open={openSections['sec-docs']} onToggle={() => toggle('sec-docs')}>
-          <DocGroup title="📧 Из письма клиента" items={card.email_attachments || []} empty="Нет вложений" />
-          <DocGroup title="📤 Загружено РП" items={card.pm_documents || []} addLabel="+ Перетащите файлы или нажмите чтобы выбрать" />
-          <DocGroup title="🧮 Расчёты и сметы" items={card.calc_documents || []} empty="Сметы появятся после Quick/Кондуктора" />
+          <DocGroup title="📧 Из письма клиента" items={card.email_attachments || []} empty="Нет вложений" card={card} src="email" openModal={openModal} />
+          <DocGroup title="📤 Загружено РП" items={card.pm_documents || []} addLabel="+ Перетащите файлы или нажмите чтобы выбрать" card={card} src="manual" openModal={openModal} />
+          <DocGroup title="🧮 Расчёты и сметы" items={card.calc_documents || []} empty="Сметы появятся после Quick/Кондуктора" card={card} src="calc" openModal={openModal} />
         </Section>
 
         <Section id="sec-fin" ic="💰" title="Финансы" open={openSections['sec-fin']} onToggle={() => toggle('sec-fin')}>
@@ -717,9 +731,11 @@ function DrawerV3({ card, onClose, onChanged, openModal }) {
             <FinCard label="С НДС 20%" v={fmtMoney(fin.kp_price_with_vat)}/>
             <FinCard label="Маржа" v={fin.margin_planned_pct != null ? Number(fin.margin_planned_pct).toFixed(1) + '%' : '— %'} margin />
           </div>
-          <Row label="Плановая с/с"><input type="number" defaultValue={fin.cost_planned || ''} placeholder="например 920 000"/></Row>
-          <Row label="Цена КП без НДС"><input type="number" defaultValue={fin.kp_price_without_vat || ''} placeholder="например 1 200 000"/></Row>
-          <Row label="НДС"><select><option value="20">20% (общая)</option><option value="0">0% (УСН)</option><option value="10">10%</option></select></Row>
+          <div className="fs-11 c-t3 mb-8">Ручной ввод — можно заполнить без Quick/ТКП для перехода на согласование.</div>
+          <Row label="Плановая с/с"><input id="pk3-f-cost" type="number" defaultValue={fin.cost_planned || ''} placeholder="например 920 000"/></Row>
+          <Row label="Цена КП без НДС"><input id="pk3-f-kp" type="number" defaultValue={fin.kp_price_without_vat || ''} placeholder="например 1 200 000"/></Row>
+          <Row label="НДС"><select id="pk3-f-vat" defaultValue={String(fin.vat_rate_pct ?? 20)}><option value="20">20% (общая)</option><option value="0">0% (УСН)</option><option value="10">10%</option></select></Row>
+          <div style={{ marginTop: 8 }}><Btn variant="primary" onClick={() => saveFinance(card, onChanged)}>💾 Сохранить финансы</Btn></div>
         </Section>
 
         <Section id="sec-tkp" ic="📋" title="ТКП клиенту" open={openSections['sec-tkp']} onToggle={() => toggle('sec-tkp')}>
@@ -780,20 +796,66 @@ function fmtMoney(n) {
   if (n == null) return '— ₽';
   return Number(n).toLocaleString('ru-RU') + ' ₽';
 }
-function DocGroup({ title, items, empty, addLabel }) {
+function DocGroup({ title, items, empty, addLabel, card, src, openModal }) {
+  const ptId = card?.entity_id;
+  const token = (() => { try { return localStorage.getItem('asgard_token') || ''; } catch { return ''; } })();
+  const tokenQs = token ? `?token=${encodeURIComponent(token)}` : '';
+
+  const docUrl = (d, i) => {
+    if (!ptId || src === 'calc') return null;
+    if (src === 'email') return `/api/pre-tenders/${ptId}/email-attachments/${d.id}/download${tokenQs}`;
+    return `/api/pre-tenders/${ptId}/documents/${d._idx ?? i}/download${tokenQs}`;
+  };
+
+  const onView = (d, i) => {
+    const url = docUrl(d, i);
+    if (!url) { toast.info('Скоро'); return; }
+    openModal(
+      <FilePreviewModal title={d.original_filename || d.filename || 'файл'} fileUrl={url} mime={d.mime_type || ''} downloadUrl={url} />,
+      { size: 'xl' }
+    );
+  };
+
   return (
     <div className="pk3-doc-group">
       <h4>{title}</h4>
       {items.length ? items.map((d, i) => (
         <div key={d.id || i} className="pk3-doc-row">
           <span className="pk3-doc-ic">{docIcon(d.mime_type || d.original_filename || d.filename)}</span>
-          <span className="pk3-doc-name">{d.original_filename || d.filename || 'файл'}</span>
+          <span className="pk3-doc-name">{d.original_filename || d.filename || d.name || 'файл'}</span>
           <span className="pk3-doc-size">{d.size ? fmtBytes(d.size) : ''}</span>
-          <div className="pk3-doc-actions"><button>👁</button><button>⬇</button></div>
+          <div className="pk3-doc-actions">
+            <button type="button" onClick={() => onView(d, i)}>👁</button>
+            {docUrl(d, i) && <a href={docUrl(d, i)} download target="_blank" rel="noreferrer">⬇</a>}
+          </div>
         </div>
       )) : (addLabel ? <div className="pk3-doc-add">{addLabel}</div> : <div style={{color:'var(--t-3)',fontSize:11.5}}>{empty || '—'}</div>)}
     </div>
   );
+}
+
+async function saveFinance(card, onChanged) {
+  const ptId = card?.entity_id;
+  if (!ptId) { toast.error('Нет pre_tender'); return; }
+  const cost = Number(document.getElementById('pk3-f-cost')?.value);
+  const kpNoVat = Number(document.getElementById('pk3-f-kp')?.value);
+  const vatRate = Number(document.getElementById('pk3-f-vat')?.value ?? 20);
+  const body = {
+    cost_planned: Number.isFinite(cost) ? cost : null,
+    kp_price_without_vat: Number.isFinite(kpNoVat) ? kpNoVat : null,
+    kp_price_with_vat: Number.isFinite(kpNoVat) ? Math.round(kpNoVat * (1 + vatRate / 100) * 100) / 100 : null,
+    vat_rate_pct: vatRate,
+    margin_planned_pct: (Number.isFinite(cost) && Number.isFinite(kpNoVat) && kpNoVat > 0)
+      ? Math.round((1 - cost / kpNoVat) * 1000) / 10
+      : null
+  };
+  try {
+    await patchCard(card.id, body);
+    toast.success('Финансы сохранены');
+    onChanged?.();
+  } catch (e) {
+    toast.error('Не сохранилось: ' + (e?.message || e));
+  }
 }
 function docIcon(s) {
   s = (s || '').toLowerCase();

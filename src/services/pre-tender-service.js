@@ -78,7 +78,7 @@ const SYSTEM_PROMPT = `Ты — старший аналитик тендерно
 
 // ── Создание заявки из письма ────────────────────────────────────────
 
-async function createPreTenderFromEmail(emailId) {
+async function createPreTenderFromEmail(emailId, options = {}) {
   // Проверяем что ещё нет заявки для этого email
   const exists = await db.query('SELECT id FROM pre_tender_requests WHERE email_id = $1', [emailId]);
   if (exists.rows.length) return { exists: true, id: exists.rows[0].id };
@@ -163,6 +163,7 @@ async function createPreTenderFromEmail(emailId) {
   }
 
   // Создаём заявку с данными из письма
+  const assignedTo = options.assignedTo || null;
   const ins = await db.query(`
     INSERT INTO pre_tender_requests (
       email_id, source_type,
@@ -171,7 +172,7 @@ async function createPreTenderFromEmail(emailId) {
       work_description,
       ai_summary, ai_color, ai_recommendation,
       has_documents,
-      status, created_by
+      status, created_by, assigned_to
     ) VALUES (
       $1, 'email',
       $2, $3, $4,
@@ -179,7 +180,7 @@ async function createPreTenderFromEmail(emailId) {
       $7,
       $8, $9, $10,
       $11,
-      'new', $12
+      'new', $12, $13
     )
     RETURNING id
   `, [
@@ -194,10 +195,19 @@ async function createPreTenderFromEmail(emailId) {
     email.ai_color || 'yellow',
     email.ai_recommendation || null,
     email.has_attachments || false,
-    email.sent_by_user_id || null
+    email.sent_by_user_id || null,
+    assignedTo
   ]);
 
   const preTenderId = ins.rows[0].id;
+
+  if (assignedTo && !options.skipKanban) {
+    try {
+      await assignPreTenderToPm(preTenderId, assignedTo, options.assignedBy || null, options.assignNote);
+    } catch (kbErr) {
+      console.warn(`[PreTender] kanban card for #${preTenderId} → PM #${assignedTo} failed:`, kbErr.message);
+    }
+  }
 
   // Обратная ссылка
   await db.query('UPDATE emails SET pre_tender_id = $1 WHERE id = $2', [preTenderId, emailId]);
@@ -572,8 +582,51 @@ async function getWorkloadInfo() {
   }
 }
 
+// Назначить pre_tender РП + создать карточку личного канбана (автоназначение из письма).
+async function assignPreTenderToPm(ptId, pmUserId, movedBy, noteText) {
+  const personalKanban = require('../routes/personal-kanban');
+  await db.query(
+    `UPDATE pre_tender_requests SET assigned_to = $1, updated_at = NOW() WHERE id = $2`,
+    [pmUserId, ptId]
+  );
+  const info = await db.query(
+    'SELECT customer_name, work_description FROM pre_tender_requests WHERE id=$1', [ptId]);
+  const meta = info.rows[0] || {};
+  const newSub = await personalKanban.ensureDefaultSubstages(db, pmUserId, 'pre_tender', 'new');
+  const cIns = await db.query(
+    `INSERT INTO personal_kanban_cards
+        (owner_user_id, flow_type, entity_kind, entity_id, current_main_status, current_substage_id)
+      VALUES ($1, 'pre_tender', 'pre_tender', $2, 'new', $3)
+      ON CONFLICT (owner_user_id, entity_kind, entity_id)
+        DO UPDATE SET is_closed=false, last_moved_at=NOW(), updated_at=NOW()
+      RETURNING id, (xmax = 0) AS is_new`,
+    [pmUserId, ptId, newSub]);
+  const cardId = cIns.rows[0]?.id;
+  const isNew = cIns.rows[0]?.is_new;
+  if (cardId) {
+    const finalNote = noteText
+      || `${isNew ? 'Создана' : 'Переоткрыта'}: ${meta.customer_name || meta.work_description?.slice(0, 80) || `pre_tender #${ptId}`}`;
+    await db.query(
+      `INSERT INTO personal_kanban_card_history
+          (card_id, to_main_status, moved_by, action, note)
+        VALUES ($1, 'new', $2, $3, $4)`,
+      [cardId, movedBy || pmUserId, isNew ? 'create' : 'reopen', finalNote]);
+  }
+  // inbox_application: если есть — тоже назначаем РП
+  try {
+    await db.query(
+      `UPDATE inbox_applications ia
+          SET assigned_pm_id = $1, status = 'assigned', assigned_at = NOW(), updated_at = NOW()
+        FROM pre_tender_requests pt
+       WHERE pt.id = $2 AND ia.email_id = pt.email_id AND ia.assigned_pm_id IS NULL`,
+      [pmUserId, ptId]);
+  } catch (_) {}
+  return { card_id: cardId };
+}
+
 module.exports = {
   createPreTenderFromEmail,
+  assignPreTenderToPm,
   analyzePreTender,
   getWorkloadInfo,
   SYSTEM_PROMPT

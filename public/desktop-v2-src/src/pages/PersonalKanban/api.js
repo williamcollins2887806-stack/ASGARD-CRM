@@ -299,19 +299,19 @@ export function sourceInfo(entityKind) {
  *       (S-9 backend готов: VALID_SCOPES = ['auto','owner','to_personal','to_team','all'])
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-export const V3_COLUMNS = ['new', 'calc', 'approval', 'kp_prep', 'sent', 'addendum', 'win', 'lose', 'work'];
+export const V3_COLUMNS = ['new', 'calc', 'addendum', 'kp_prep', 'approval', 'sent', 'win', 'lose', 'work'];
 export const V3_COL_META = {
   new:      { ic: '📥', title: 'Новые' },
-  calc:     { ic: '🧮', title: 'Просчёт ТКП' },
-  approval: { ic: '⚖️', title: 'На согласовании' },
-  kp_prep:  { ic: '📋', title: 'КП готовится' },
-  sent:     { ic: '📤', title: 'КП отправлено' },
+  calc:     { ic: '🧮', title: 'Просчёт' },
   addendum: { ic: '❓', title: 'Дозапрос', cls: 'pk3-col-addendum' },
+  kp_prep:  { ic: '📋', title: 'КП готовится' },
+  approval: { ic: '⚖️', title: 'Согласование дир' },
+  sent:     { ic: '📤', title: 'КП ушло' },
   win:      { ic: '🏆', title: 'Выиграно', cls: 'pk3-col-win' },
   lose:     { ic: '❌', title: 'Проиграно', cls: 'pk3-col-lose' },
   work:     { ic: '🏗', title: 'В работе' },
 };
-export const V3_STAGE_LABELS = ['📥 Новая', '🧮 Просчёт', '⚖️ Согл. дир', '📋 КП готов', '📤 КП ушло', '❓ Дозапрос', '🏆 Выигр.', '❌ Проигр.', '🏗 В работе'];
+export const V3_STAGE_LABELS = ['📥 Новая', '🧮 Просчёт', '❓ Дозапрос', '📋 КП готов', '⚖️ Согл. дир', '📤 КП ушло', '🏆 Выигр.', '❌ Проигр.', '🏗 В работе'];
 
 // S-21: scope ('auto' | 'owner' | 'to_personal' | 'to_team' | 'all') и owner_id (HEAD_TO для чужого канбана).
 // Backend (S-9, src/routes/personal-kanban.js) сам резолвит auto → owner/to_personal/to_team/all по роли,
