@@ -16,7 +16,7 @@
 const cron = require('node-cron');
 const db = require('./db');
 const pushService = require('./pushService');
-const { MODEL_LONG } = require('./ai-models');
+const { MODEL_LONG, MODEL_FAST } = require('./ai-models');
 
 let aiProvider;
 try { aiProvider = require('./ai-provider'); } catch (e) {}
@@ -338,18 +338,29 @@ async function generateDailyFact(targetDate) {
   const avoidPrompt = recentTitles ? `\n\nИзбегай этих недавних тем:\n${recentTitles}` : '';
 
   const response = await aiProvider.complete({
-    system: FACT_PROMPT + avoidPrompt,
+    model: MODEL_FAST,
+    system: FACT_PROMPT + avoidPrompt + '\n\nВАЖНО: не рассуждай вслух — верни только валидный JSON в поле content.',
     messages: [
-      { role: 'user', content: `Сгенерируй факт на ${today}` }
+      { role: 'user', content: `Сгенерируй факт на ${today}. Ответ — только JSON, без markdown.` }
     ],
-    temperature: 0.9,
-    maxTokens: 600,
+    temperature: 0.7,
+    maxTokens: 400,
   });
 
   let text = (response.text || '').trim();
   text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  if (!text) {
+    throw new Error('AI returned empty fact JSON');
+  }
 
-  const fact = JSON.parse(text);
+  let fact;
+  try {
+    fact = JSON.parse(text);
+  } catch (parseErr) {
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) throw parseErr;
+    fact = JSON.parse(match[0]);
+  }
 
   await db.query(`
     INSERT INTO academy_daily_facts (fact_date, title, body, icon, category, generated_by, status)
