@@ -748,6 +748,8 @@ window.AsgardTendersPage = (function(){
     //                 для 'all' → null
     let currentMainTab = 'tenders';
     let currentSubTab = 'registry';
+    let registryPeriod = 'current';
+    let registryBurnOnly = false;
     let feedCache = null; // последний результат /api/tenders-hub/feed (для applications/all)
     // Агрегаты вкладок (грузятся в фоне при init, не зависят от активной вкладки).
     let feedCountsMeta = null;
@@ -785,6 +787,15 @@ window.AsgardTendersPage = (function(){
           <button class="btn mini ghost" id="hub-alert-jump" style="margin-left:auto">Показать</button>
         </div>
 
+        <div class="hub-kanban-cta" id="hub-kanban-cta" style="display:none;margin:12px 0;padding:12px 16px;border:1px solid var(--brd);border-radius:10px;align-items:center;gap:12px;flex-wrap:wrap">
+          <div style="font-size:22px" aria-hidden="true">⚔</div>
+          <div style="flex:1;min-width:180px">
+            <div style="font-weight:700">Личный канбан ТО — управление по этапам</div>
+            <div class="muted" style="font-size:13px">Drag &amp; drop карточек по колонкам жизненного цикла.</div>
+          </div>
+          <a class="btn" href="#/personal-kanban">⚔ Открыть канбан</a>
+        </div>
+
         <hr class="hr"/>
 
         <!-- ═══ 3 главных таба ═══ -->
@@ -806,21 +817,9 @@ window.AsgardTendersPage = (function(){
           <button class="hub-sub-pill" data-sub="pm" type="button">👤 От РП <span class="hub-sub-cnt" id="sub-cnt-pm">—</span></button>
         </div>
 
-        <div id="registryPanel" style="display:none;padding:16px">
-          <p>Реестр тендеров ТО доступен в <a href="/v2/#/tenders">CRM 2.0 → Сага Тендеров → Реестр</a>.</p>
-          <p>Дежурство РП: <a href="/v2/#/pm-duty">/pm-duty</a></p>
-        </div>
+        <div id="registryPanel" style="display:none;padding:16px"></div>
 
-        <!-- TenderGuru / API candidates stub area -->
-        <div id="platformStub" style="display:none">
-          <div class="hub-platform-stub">
-            <div class="hub-platform-stub-ic">📡</div>
-            <div class="hub-platform-stub-txt">
-              <div class="hub-platform-stub-h">С площадок (TenderGuru API)</div>
-              <div class="hub-platform-stub-p">Кандидаты из API — в <a href="/v2/#/tenders">CRM 2.0 → С площадок</a>. Обогащение дедлайнов — автоматически 1×/сутки.</div>
-            </div>
-          </div>
-        </div>
+        <div id="platformPanel" style="display:none;padding:16px"></div>
 
         <!-- Sub-фильтр «Активные / Архив» — показывается только в «🛡 Тендеры → 🧮 В работе ТО» -->
         <div class="tender-tabs" id="archive-toggle">
@@ -1693,10 +1692,10 @@ window.AsgardTendersPage = (function(){
       const tsToday = todayStart.getTime();
       // Входящих сегодня (created_at >= today)
       let kpiToday = 0;
-      // В работе ТО (status in активных рабочих стадиях)
-      const inWorkStatuses = new Set(['Новый','На анализе','Отправлено на просчёт','Согласование ТКП','ТКП согласовано','Готово к отправке КП','КП отправлено','Дозапрос']);
+      // В работе ТО — по registry_status «подались» (как v2)
       let kpiInWork = 0;
-      // Burning ≤3 дней
+      // Burning ≤3 дней (активные + дедлайн)
+      const ACTIVE_STATUSES = new Set(['Новый','На анализе','Отправлено на просчёт','Согласование ТКП','ТКП согласовано','Готово к отправке КП','КП отправлено','Дозапрос']);
       let kpiBurn = 0;
       // Дозапрос ждёт
       let kpiAddendum = 0;
@@ -1714,10 +1713,10 @@ window.AsgardTendersPage = (function(){
       tenders.forEach(t => {
         const ca = t.created_at ? new Date(t.created_at).getTime() : 0;
         if (ca >= tsToday) kpiToday++;
-        if (inWorkStatuses.has(t.tender_status)) kpiInWork++;
+        if (t.registry_status === 'подались' && t.tender_status !== 'Не подходит') kpiInWork++;
         if (t.docs_deadline) {
           const days = Math.floor((new Date(t.docs_deadline).getTime() - now) / 86400000);
-          if (days <= 3 && days >= 0 && inWorkStatuses.has(t.tender_status)) kpiBurn++;
+          if (days <= 3 && days >= 0 && ACTIVE_STATUSES.has(t.tender_status)) kpiBurn++;
         }
         if (t.tender_status === 'Дозапрос') kpiAddendum++;
         if (t.tender_status === 'Выиграли') {
@@ -1730,7 +1729,7 @@ window.AsgardTendersPage = (function(){
         }
         const sk = t.source_kind || 'manual';
         if (sk === 'platform' || sk === 'email_invite' || sk === 'to_manual') cPlatforms++;
-        if (inWorkStatuses.has(t.tender_status)) cInWork++;
+        if (t.registry_status === 'подались' && t.tender_status !== 'Не подходит') cInWork++;
       });
       const setTxt = (id,v)=>{ const el=document.getElementById(id); if(el) el.textContent = String(v); };
       setTxt('kpi-today', kpiToday);
@@ -1976,13 +1975,13 @@ window.AsgardTendersPage = (function(){
       }
       // Sub-фильтр «Активные/Архив» — показывается только в 🛡 Тендеры → 🧮 В работе ТО
       const archToggle = document.getElementById('archive-toggle');
-      if (archToggle) archToggle.style.display = (currentMainTab === 'tenders' && currentSubTab === 'registry') ? 'flex' : 'none';
-      // Stub площадок — только в 🛡 Тендеры → 📡 С площадок
-      const stub = document.getElementById('platformStub');
+      if (archToggle) archToggle.style.display = (currentMainTab === 'tenders' && currentSubTab === 'in_work') ? 'flex' : 'none';
+      const platPanel = document.getElementById('platformPanel');
       const regPanel = document.getElementById('registryPanel');
-      if (stub) stub.style.display = (currentMainTab === 'tenders' && currentSubTab === 'platforms') ? '' : 'none';
-      if (regPanel) regPanel.style.display = (currentMainTab === 'tenders' && currentSubTab === 'registry') ? '' : 'none';
-      const showTable = !(currentMainTab === 'tenders' && (currentSubTab === 'registry' || currentSubTab === 'platforms'));
+      if (platPanel) platPanel.style.display = (currentMainTab === 'tenders' && currentSubTab === 'platforms') ? '' : 'none';
+      if (regPanel) regPanel.style.display = (currentMainTab === 'tenders' && (currentSubTab === 'registry' || currentSubTab === 'in_work')) ? '' : 'none';
+      mountRegistryPanels();
+      const showTable = !(currentMainTab === 'tenders' && (currentSubTab === 'registry' || currentSubTab === 'platforms' || currentSubTab === 'in_work'));
       if (tb) tb.closest('.table-wrap')?.style && (tb.closest('.table-wrap').style.display = showTable ? '' : 'none');
       const tools = document.querySelector('.m-tender-tools');
       if (tools) tools.style.display = showTable ? '' : 'none';
@@ -1993,7 +1992,67 @@ window.AsgardTendersPage = (function(){
         if (el) el.style.display = showAux ? '' : 'none';
       });
     }
-    // Дефолты sub-tab по main-tab
+    function mountRegistryPanels() {
+      const regEl = document.getElementById('registryPanel');
+      const platEl = document.getElementById('platformPanel');
+      const kanbanCta = document.getElementById('hub-kanban-cta');
+      if (kanbanCta) {
+        const showKanban = user.role === 'TO' || user.role === 'HEAD_TO';
+        kanbanCta.style.display = showKanban ? 'flex' : 'none';
+      }
+      if (currentMainTab === 'tenders' && (currentSubTab === 'registry' || currentSubTab === 'in_work') && regEl && window.AsgardRegistryTab) {
+        const subtab = currentSubTab === 'in_work' ? 'submitted' : (archiveMode ? 'archive' : 'registry');
+        AsgardRegistryTab.mount(regEl, {
+          subtab,
+          period: registryPeriod,
+          burnOnly: registryBurnOnly,
+          onRefresh: () => { updateKpi(); loadRegistryPlatformCount(); },
+          onOpenWin: (tender) => {
+            if (!window.AsgardRegistryApi) return;
+            AsgardRegistryApi.loadUsers('PM,HEAD_PM').then((pms) => {
+              const html = '<p>' + esc(tender.customer_name) + ' — ' + esc(tender.tender_title) + '</p>' +
+                '<label>РП<select class="inp" id="winWorkPm" style="width:100%;margin-top:4px"><option value="">—</option>' +
+                (pms || []).map(p => '<option value="' + p.id + '">' + esc(p.name) + '</option>').join('') +
+                '</select></label><div style="margin-top:12px"><button class="btn" id="winWorkGo">Создать</button></div>';
+              showModal({ title: 'Выиграли — работа', html, onMount: () => {
+                document.getElementById('winWorkGo')?.addEventListener('click', () => {
+                  const pmId = Number(document.getElementById('winWorkPm')?.value);
+                  if (!pmId) return toast('Выберите РП', 'err');
+                  AsgardRegistryApi.createRegistryWork(tender.id, pmId).then(() => {
+                    hideModal(); toast('Работа создана', 'ok'); mountRegistryPanels();
+                  }).catch(e => toast(e.message, 'err'));
+                });
+              }});
+            });
+          }
+        });
+      } else if (window.AsgardRegistryTab) {
+        AsgardRegistryTab.unmount();
+      }
+      if (currentMainTab === 'tenders' && currentSubTab === 'platforms' && platEl && window.AsgardPlatformTenders) {
+        AsgardPlatformTenders.mount(platEl, { onRefresh: () => { updateKpi(); loadRegistryPlatformCount(); } });
+      } else if (window.AsgardPlatformTenders) {
+        AsgardPlatformTenders.unmount();
+      }
+    }
+
+    function jumpToRegistryBurn() {
+      currentMainTab = 'tenders';
+      currentSubTab = 'registry';
+      registryPeriod = 'current';
+      registryBurnOnly = true;
+      refreshHubTabsUI();
+      applyAndRender();
+    }
+
+    async function loadRegistryPlatformCount() {
+      if (!window.AsgardRegistryApi) return;
+      try {
+        const d = await AsgardRegistryApi.loadRegistry({ subtab: 'platform', limit: 1 });
+        const el = document.getElementById('sub-cnt-platforms');
+        if (el && d.total != null) el.textContent = String(d.total);
+      } catch (_) { /* ignore */ }
+    }
     function defaultSubFor(mtab){
       if (mtab === 'tenders') return 'registry';
       if (mtab === 'applications') return 'mail';
@@ -2024,11 +2083,13 @@ window.AsgardTendersPage = (function(){
 
     // Alert-bar «Показать» → проставляем фильтр статусов на активные дедлайны и сбрасываем search
     const alertJumpBtn = document.getElementById('hub-alert-jump');
-    if (alertJumpBtn) alertJumpBtn.addEventListener('click', () => {
-      // На текущем табе просто скроллим к таблице (фильтр уже учитывает срочность через урgencyCls)
-      const tbl = tb && tb.closest('table');
-      if (tbl) tbl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
+    if (alertJumpBtn) alertJumpBtn.addEventListener('click', jumpToRegistryBurn);
+    const kpiBurnEl = document.getElementById('kpi-burn');
+    if (kpiBurnEl && kpiBurnEl.closest('.hub-kpi')) {
+      kpiBurnEl.closest('.hub-kpi').style.cursor = 'pointer';
+      kpiBurnEl.closest('.hub-kpi').addEventListener('click', jumpToRegistryBurn);
+    }
+    loadRegistryPlatformCount();
 
     // Мобильные карточки
     if (window.AsgardUI?.makeResponsiveTable) {

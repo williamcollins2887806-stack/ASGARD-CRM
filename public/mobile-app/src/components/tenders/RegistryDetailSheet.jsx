@@ -157,12 +157,23 @@ export default function RegistryDetailSheet({ tender, open, onClose, onChanged }
             </div>
           )}
 
-          {t.score != null && (
+          {t.score && (
             <div
               className="rounded-xl px-3 py-2 text-[12px]"
               style={{ background: 'var(--bg-elevated)', border: '0.5px solid var(--border-norse)' }}
+              title={(t.score.top_reject_reasons || []).map((r) => `${r.reason || r.label || r}${r.count ? ` (${r.count})` : ''}`).join('\n')}
             >
-              Скоринг заказчика: <strong>{t.score.score ?? t.score.total ?? '—'}</strong>
+              <p className="font-semibold mb-1">
+                Шанс выигрыша: {t.score.win_chance_pct != null ? `${t.score.win_chance_pct}%` : '—'}
+                {t.score.tenders_count != null ? ` · тендеров: ${t.score.tenders_count}` : ''}
+              </p>
+              {(t.score.top_reject_reasons || []).length > 0 && (
+                <ul className="list-disc pl-4 c-tertiary text-[11px] space-y-0.5">
+                  {t.score.top_reject_reasons.slice(0, 3).map((r, i) => (
+                    <li key={i}>{r.reason || r.label || String(r)}{r.count ? ` (${r.count})` : ''}</li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
 

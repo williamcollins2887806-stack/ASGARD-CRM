@@ -47,6 +47,7 @@ import FieldEarningsMonthly from '@/pages/field/FieldEarningsMonthly';
 import FieldSeasonal from '@/pages/field/FieldSeasonal';
 import FieldDiary from '@/pages/field/FieldDiary';
 import FieldReadiness from '@/pages/field/FieldReadiness';
+import PipelineGame from '@/pages/field/PipelineGame';
 import PmDashboard from '@/pages/pm/PmDashboard';
 import PmWorkers from '@/pages/pm/PmWorkers';
 import PmWorkerProfile from '@/pages/pm/PmWorkerProfile';
@@ -87,6 +88,7 @@ import Proxies from '@/pages/Proxies';
 import Funnel from '@/pages/Funnel';
 import AllEstimates from '@/pages/AllEstimates';
 import PmCalcs from '@/pages/PmCalcs';
+import PmDuty from '@/pages/pm/PmDuty';
 import ToCalcs from '@/pages/ToCalcs';
 import HeadToApprovals from '@/pages/HeadToApprovals';
 import Payroll from '@/pages/Payroll';
@@ -273,6 +275,7 @@ function AppLayout() {
           <Route path="/proxies" element={<ProtectedRoute section="works"><PinGuard><Proxies /></PinGuard></ProtectedRoute>} />
           <Route path="/funnel" element={<ProtectedRoute section="tenders"><PinGuard><Funnel /></PinGuard></ProtectedRoute>} />
           <Route path="/all-estimates" element={<ProtectedRoute section="tenders"><PinGuard><AllEstimates /></PinGuard></ProtectedRoute>} />
+          <Route path="/pm-duty" element={<ProtectedRoute section="tenders"><PinGuard><PmDuty /></PinGuard></ProtectedRoute>} />
           <Route path="/pm-calcs" element={<ProtectedRoute section="tenders"><PinGuard><PmCalcs /></PinGuard></ProtectedRoute>} />
           <Route path="/to-calcs" element={<ProtectedRoute section="tenders"><PinGuard><ToCalcs /></PinGuard></ProtectedRoute>} />
           <Route path="/head-to-approvals" element={<ProtectedRoute section="tenders"><PinGuard><HeadToApprovals /></PinGuard></ProtectedRoute>} />
@@ -406,6 +409,7 @@ function AppLayout() {
                 <Route path="achievements" element={<FieldAchievements />} />
                 <Route path="leaderboard" element={<FieldLeaderboard />} />
                 <Route path="wheel" element={<WheelOfNorns />} />
+                <Route path="pipeline" element={<PipelineGame />} />
                 <Route path="shop" element={<FieldShop />} />
                 <Route path="inventory" element={<FieldInventory />} />
                 <Route path="quests" element={<FieldQuests />} />

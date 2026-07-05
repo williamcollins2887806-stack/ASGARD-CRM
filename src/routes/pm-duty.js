@@ -85,6 +85,21 @@ async function routes(fastify) {
     preHandler: [fastify.requireRoles(ASSIGN_ROLES)]
   }, async (request, reply) => {
     const { pm_user_id, period_start, period_end } = request.body || {};
+    const existing = await db.query('SELECT * FROM pm_duty_roster WHERE id = $1', [request.params.id]);
+    if (!existing.rows[0]) return reply.code(404).send({ error: 'Не найдено' });
+    const cur = existing.rows[0];
+    const nextStart = period_start || cur.period_start;
+    const nextEnd = period_end || cur.period_end;
+    if (nextEnd < nextStart) {
+      return reply.code(400).send({ error: 'period_end должен быть >= period_start' });
+    }
+    const overlap = await db.query(`
+      SELECT id FROM pm_duty_roster
+      WHERE id <> $3 AND period_start <= $2::date AND period_end >= $1::date
+    `, [nextStart, nextEnd, request.params.id]);
+    if (overlap.rows.length) {
+      return reply.code(409).send({ error: 'Период пересекается с существующим дежурством' });
+    }
     const r = await db.query(`
       UPDATE pm_duty_roster SET
         pm_user_id = COALESCE($1, pm_user_id),
@@ -92,8 +107,16 @@ async function routes(fastify) {
         period_end = COALESCE($3, period_end)
       WHERE id = $4 RETURNING *
     `, [pm_user_id, period_start, period_end, request.params.id]);
-    if (!r.rows[0]) return reply.code(404).send({ error: 'Не найдено' });
     return { roster: r.rows[0] };
+  });
+
+  // DELETE /roster/:id
+  fastify.delete('/roster/:id', {
+    preHandler: [fastify.requireRoles(ASSIGN_ROLES)]
+  }, async (request, reply) => {
+    const r = await db.query('DELETE FROM pm_duty_roster WHERE id = $1 RETURNING id', [request.params.id]);
+    if (!r.rows[0]) return reply.code(404).send({ error: 'Не найдено' });
+    return { ok: true };
   });
 
   // GET /queue?tab=need_report|my_reviewed

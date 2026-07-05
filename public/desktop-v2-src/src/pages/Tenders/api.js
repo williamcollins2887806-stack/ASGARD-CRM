@@ -621,6 +621,18 @@ export function savePmDutyRoster(body) {
   return api('/api/pm-duty/roster', { method: 'POST', body });
 }
 
+export function updatePmDutyRoster(id, body) {
+  return api(`/api/pm-duty/roster/${id}`, { method: 'PUT', body });
+}
+
+export function deletePmDutyRoster(id) {
+  return api(`/api/pm-duty/roster/${id}`, { method: 'DELETE' });
+}
+
+export function loadPmDutyRoster(limit = 50) {
+  return api(`/api/pm-duty/roster?limit=${limit}`);
+}
+
 export function loadRpReview(tenderId) {
   return api(`/api/tenders/${tenderId}/rp-review`);
 }

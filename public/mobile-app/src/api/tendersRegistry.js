@@ -92,3 +92,36 @@ export async function loadPmUsers() {
     return true;
   });
 }
+
+export function loadPmDutyCurrent() {
+  return api.get('/pm-duty/current');
+}
+
+export function loadPmDutyQueue(tab = 'need_report') {
+  return api.get(`/pm-duty/queue?tab=${tab}`);
+}
+
+export function loadPmDutyRoster(limit = 50) {
+  return api.get(`/pm-duty/roster?limit=${limit}`);
+}
+
+export function savePmDutyRoster(body) {
+  return api.post('/pm-duty/roster', body);
+}
+
+export function suggestCustomers(q) {
+  return api.get(`/customers/suggest?q=${encodeURIComponent(q)}&type=party`)
+    .then((d) => d.suggestions || d.items || [])
+    .catch(() => []);
+}
+
+export function loadRpReview(tenderId) {
+  return api.get(`/tenders/${tenderId}/rp-review`);
+}
+
+export function saveRpReview(tenderId, body) {
+  return api.request(`/tenders/${tenderId}/rp-review`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+}

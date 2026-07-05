@@ -174,6 +174,7 @@ window.AsgardCustomDashboard = (function(){
         '</div>' +
       '</div>' +
       '<div class="dash-rune-divider">&#5765; &#9670; &#9671; &#9670; &#5765;</div>' +
+      '<div id="pmDutyBanner" style="display:none;margin-bottom:12px"></div>' +
       '<div class="dash-grid" id="dashGrid">' +
         userLayout.map(id => {
           const w = WIDGET_TYPES[id];
@@ -193,6 +194,28 @@ window.AsgardCustomDashboard = (function(){
     '</div>'; // Styles are now in components.css (.dash-grid, .dash-widget, etc.)
 
     await pageLayout(html, { title: title || 'Мой дашборд' });
+
+    /* PM duty banner for PM / HEAD_PM / TO */
+    (async function renderPmDutyBanner() {
+      const el = document.getElementById('pmDutyBanner');
+      if (!el || !window.AsgardRegistryApi) return;
+      const PM_ROLES = ['PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'ADMIN'];
+      if (!PM_ROLES.includes(user.role)) return;
+      try {
+        const auth = await AsgardAuth.getAuth();
+        const meId = auth?.user?.id;
+        const d = await AsgardRegistryApi.loadPmDutyCurrent();
+        const duty = d.duty || d;
+        if (!duty || !duty.pm_name) return;
+        el.style.display = '';
+        const isMe = meId && duty.pm_user_id === meId;
+        const _esc = (window.AsgardUI && AsgardUI.esc) ? AsgardUI.esc : (s => String(s == null ? '' : s));
+        el.innerHTML = '<div class="alert' + (isMe ? ' ok' : '') + '" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">' +
+          '<span>' + (isMe ? '🛡 <strong>Вы дежурный РП</strong>' : '🛡 Дежурный РП: <strong>' + _esc(duty.pm_name) + '</strong>') +
+          ' · ' + _esc(String(duty.period_start).slice(0, 10)) + ' — ' + _esc(String(duty.period_end).slice(0, 10)) + '</span>' +
+          '<a href="#/pm-duty" class="btn mini ghost" style="margin-left:auto">Очередь отчётов</a></div>';
+      } catch (_) { /* ignore */ }
+    })();
 
     /* perf: parallel widget render — all widgets load simultaneously */
     await Promise.allSettled(userLayout.map(async function(id) {

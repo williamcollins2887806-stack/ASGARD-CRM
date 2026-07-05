@@ -234,6 +234,7 @@ console.log('[ASGARD] Global period functions loaded');
 
     // ── РАБОТЫ ──
     {r:"/pm-calcs",l:"Просчёты (inbox)",d:"Входящие от ТО",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"pmcalcs",p:"pm_calcs",g:"works"},
+    {r:"/pm-duty",l:"Дежурство РП",d:"Очередь отчётов и график",roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO",...DIRECTOR_ROLES],i:"pmcalcs",p:"pm_duty",g:"tenders"},
     {r:"/to-calcs",l:"Мои просчёты (ТО)",d:"Тендеры, которые я считаю сам",roles:["ADMIN","TO","HEAD_TO"],i:"pmcalcs",p:"to_calcs",g:"tenders"},
     {r:"/head-to-approvals",l:"Согласование (ТО)",d:"Просчёты ТО на согласование",roles:["ADMIN","HEAD_TO"],i:"approvals",p:"head_to_approvals",g:"tenders"},
     {r:"/calculator",l:"Калькулятор ᚱ",d:"Расчёт стоимости работ",roles:["ADMIN","PM","TO","HEAD_PM","HEAD_TO",...DIRECTOR_ROLES],i:"calculator",p:"calculator",g:"works"},
@@ -2195,6 +2196,8 @@ var _setupPinKeypad = null;
     AsgardRouter.add("/pre-tenders", ()=>{ location.hash = "#/director-inbox"; }, {auth:true, roles:["ADMIN","TO","HEAD_TO"]});
     AsgardRouter.add("/funnel", ()=>AsgardFunnelPage.render({layout, title:"Воронка продаж"}), {auth:true, roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/tenders", ()=>AsgardTendersPage.render({layout, title:"Сага Тендеров"}), {auth:true, roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/pm-duty", ()=>AsgardPmDutyPage.render({layout, title:"Дежурство РП"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/tenderguru-settings", ()=>AsgardTenderGuruSettingsPage.render({layout, title:"TenderGuru — настройки"}), {auth:true, roles:["ADMIN","TO","HEAD_TO"]});
     AsgardRouter.add("/customers", ()=>AsgardCustomersPage.renderList({layout, title:"Карта Контрагентов"}), {auth:true, roles:["ADMIN","TO","HEAD_TO","PM","HEAD_PM","OFFICE_MANAGER",...DIRECTOR_ROLES]});
     AsgardRouter.add("/customer", ({query})=>AsgardCustomersPage.renderCard({layout, title:"Карточка контрагента", query}), {auth:true, roles:["ADMIN","TO","HEAD_TO","PM","HEAD_PM","OFFICE_MANAGER",...DIRECTOR_ROLES]});
     AsgardRouter.add("/pm-calcs", ()=>AsgardPmCalcsPage.render({layout, title:"Карта Похода • Просчёты"}), {auth:true, roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES]});
