@@ -17,6 +17,13 @@
 
 'use strict';
 
+const {
+  getBlockingLesson,
+  markOnboardingPassedIfNeeded,
+  resolveEnrollmentMonday,
+  loadEmployee,
+} = require('../lib/academy-blocking');
+
 const RUNES_FOR_PASS       = 50;   // Руны за прохождение теста
 const RUNES_PERFECT        = 100;  // Бонус за 100% результат
 const XP_FOR_PASS          = 30;
@@ -24,7 +31,6 @@ const XP_PERFECT           = 60;
 const RUNES_STREAK_BONUS   = 25;   // Бонус за непрерывный стрик 4+ недель
 const MAX_ATTEMPTS         = 2;
 const MIN_READ_SECONDS     = 60;   // Минимум 60 сек на чтение
-const NEW_HIRE_GRACE_DAYS  = 7;    // Новичкам не блокируем смены первые 7 дней
 const RP_ALERT_THRESHOLD   = 5;    // Уведомить РП после 5 провалов подряд на одной руне
 
 async function routes(fastify) {
@@ -107,13 +113,8 @@ async function routes(fastify) {
 
   // ─────────────────────────────────────────────────────────────────────────
   // GET /current-lesson
-  // Возвращает:
-  //   lesson           — приоритетный урок (что читать ПРЯМО СЕЙЧАС):
-  //                      1) первый несданный обязательный из прошлых недель
-  //                      2) если нет — урок текущей недели
-  //   pending_mandatory — все несданные обязательные с прошедшим release_monday
-  //   current_week     — урок текущей недели (если есть и не входит в pending)
-  //   optional         — необязательные доступные руны
+  // blocking — единственная руна, блокирующая чекин (совпадает с shift-allowed)
+  // archive_pending — пропущенные обязательные для летописи (не блокируют)
   // ─────────────────────────────────────────────────────────────────────────
   fastify.get('/current-lesson', auth, async (req) => {
     const eid = req.fieldEmployee.id;
@@ -121,7 +122,10 @@ async function routes(fastify) {
     const monDate = mon.toISOString().split('T')[0];
     const deadline = sun.toISOString();
 
-    // Все опубликованные доступные уроки + прогресс
+    const emp = await loadEmployee(db, eid);
+    const enrolledMonday = emp ? resolveEnrollmentMonday(emp) : monDate;
+    const blockResult = await getBlockingLesson(db, eid);
+
     const { rows: allRows } = await db.query(`
       SELECT al.*,
              awp.read_started_at, awp.read_completed_at, awp.read_time_seconds,
@@ -136,6 +140,7 @@ async function routes(fastify) {
     `, [eid, monDate]);
 
     function decorate(l) {
+      if (!l) return null;
       const attemptsLeft = MAX_ATTEMPTS - (l.attempts || 0);
       const needReread = !l.passed && (l.attempts || 0) >= MAX_ATTEMPTS;
       const canTakeQuiz = !!l.read_completed_at && !l.passed && !needReread;
@@ -145,38 +150,46 @@ async function routes(fastify) {
         can_take_quiz: canTakeQuiz,
         attempts_left: Math.max(0, attemptsLeft),
         need_reread: needReread,
-        is_blocked: needReread, // legacy alias для совместимости
+        is_blocked: needReread,
       };
     }
 
-    // pending_mandatory: обязательные из прошлых недель (release_monday < this Monday), не сданные
-    const pendingMandatory = allRows
-      .filter(l => l.is_mandatory && l.release_monday && l.release_monday < monDate && !l.passed)
+    const blockingDecorated = blockResult.blocking ? decorate(blockResult.blocking) : null;
+    const blockingId = blockingDecorated?.id || null;
+
+    const archivePending = allRows
+      .filter(l =>
+        l.is_mandatory
+        && !l.is_onboarding
+        && l.release_monday
+        && l.release_monday < monDate
+        && l.release_monday >= enrolledMonday
+        && !l.passed
+        && l.id !== blockingId
+      )
       .map(decorate);
 
-    // current_week: урок этой недели (release_monday == this Monday)
     const currentWeek = allRows.find(l => l.release_monday === monDate);
     const currentWeekDecorated = currentWeek ? decorate(currentWeek) : null;
 
-    // optional: необязательные, доступные, не входят в текущую (для отображения «Для опытных»)
     const optional = allRows
       .filter(l => !l.is_mandatory && (!currentWeek || l.id !== currentWeek.id))
       .map(decorate);
 
-    // Приоритетный урок (что показать на главной как «читай прямо сейчас»):
-    // 1. Первый pending_mandatory (по возрастанию week_number)
-    // 2. Иначе current_week
-    // 3. Иначе самый свежий вообще
-    let primary = pendingMandatory[0]
+    const primary = blockingDecorated
       || currentWeekDecorated
       || (allRows.length ? decorate(allRows[allRows.length - 1]) : null);
 
     return {
-      lesson: primary,          // совместимость со старым клиентом
-      primary,                  // явное имя
-      pending_mandatory: pendingMandatory,
+      lesson: primary,
+      primary,
+      blocking: blockingDecorated,
+      blocking_reason: blockResult.blocking_reason,
+      archive_pending: archivePending,
+      pending_mandatory: archivePending,
       current_week: currentWeekDecorated,
       optional,
+      grace_logistics: blockResult.grace_logistics || false,
     };
   });
 
@@ -390,6 +403,8 @@ async function routes(fastify) {
         WHERE employee_id = $1 AND lesson_id = $2
       `, [eid, lessonId, attemptNum, score, runesEarned, xpEarned]);
 
+      await markOnboardingPassedIfNeeded(db, eid, lessonId);
+
     } else {
       // Провалил
       if (attemptNum >= MAX_ATTEMPTS) {
@@ -580,52 +595,29 @@ async function routes(fastify) {
   // ─────────────────────────────────────────────────────────────────────────
   fastify.get('/shift-allowed', auth, async (req) => {
     const eid = req.fieldEmployee.id;
+    const result = await getBlockingLesson(db, eid);
 
-    // Grace для новичков: первые 7 дней с момента создания записи не блокируем
-    const { rows: [emp] } = await db.query(
-      `SELECT created_at FROM employees WHERE id = $1`, [eid]
-    );
-    const hireAgeDays = emp?.created_at
-      ? (Date.now() - new Date(emp.created_at).getTime()) / 86400000
-      : 999;
-    if (hireAgeDays < NEW_HIRE_GRACE_DAYS) {
-      return { allowed: true, reason: null, grace_new_hire: true };
-    }
-
-    const now = new Date();
-    const dayOfWeek = now.getDay() || 7; // 1=Mon...7=Sun
-    const mon = new Date(now);
-    mon.setDate(now.getDate() - (dayOfWeek - 1));
-    mon.setHours(0, 0, 0, 0);
-    const monDate = mon.toISOString().split('T')[0];
-
-    // Самый свежий ОБЯЗАТЕЛЬНЫЙ урок, чья release_monday уже прошла (< текущего пн)
-    // и который ещё не сдан — блокирует смену.
-    const { rows: [lesson] } = await db.query(`
-      SELECT al.id, al.title, awp.passed
-      FROM academy_lessons al
-      LEFT JOIN academy_worker_progress awp
-        ON awp.lesson_id = al.id AND awp.employee_id = $1
-      WHERE al.status = 'published'
-        AND al.is_mandatory = true
-        AND al.release_monday IS NOT NULL
-        AND al.release_monday < $2
-      ORDER BY al.week_number DESC
-      LIMIT 1
-    `, [eid, monDate]);
-
-    if (!lesson) return { allowed: true, reason: null };
-
-    if (!lesson.passed) {
+    if (result.allowed) {
       return {
-        allowed: false,
-        reason: `Пройди Испытание «${lesson.title}» чтобы выйти на смену`,
-        lesson_id: lesson.id,
-        lesson_title: lesson.title
+        allowed: true,
+        reason: null,
+        grace_logistics: result.grace_logistics || false,
+        grace_new_hire: result.grace_logistics || false,
       };
     }
 
-    return { allowed: true, reason: null };
+    const title = result.blocking_lesson_title || result.blocking?.title || 'Руна';
+    const reasonPrefix = result.blocking_reason === 'onboarding'
+      ? 'Пройди вводную Руну'
+      : 'Пройди Испытание';
+
+    return {
+      allowed: false,
+      reason: `${reasonPrefix} «${title}» чтобы выйти на смену`,
+      lesson_id: result.blocking_lesson_id || result.blocking?.id,
+      lesson_title: title,
+      blocking_reason: result.blocking_reason,
+    };
   });
 
   // ─────────────────────────────────────────────────────────────────────────

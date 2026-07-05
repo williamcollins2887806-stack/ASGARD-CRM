@@ -838,6 +838,12 @@ async function routes(fastify) {
     // is_mandatory: из запроса если передан, иначе сохраняем то что Мимир поставил
     const mandatoryVal = is_mandatory !== undefined ? Boolean(is_mandatory) : lesson.is_mandatory;
 
+    if (mandatoryVal && !relDate) {
+      return reply.code(400).send({
+        error: 'Для обязательной руны укажи release_monday (понедельник недели)',
+      });
+    }
+
     const { rows: [updated] } = await db.query(`
       UPDATE academy_lessons
         SET status='published', published_at=NOW(), release_monday=$2, is_mandatory=$3
@@ -907,7 +913,137 @@ async function routes(fastify) {
   });
 
   // ═══════════════════════════════════════════════════════════════════
-  // GET /workers/:id/assignments — назначения рабочего
+  // GET /academy/blocked-workers — кто заблокирован академией
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.get('/academy/blocked-workers', auth, async (req) => {
+    const { isAdmin, userId } = pmFilter(req.user);
+    const workParam = isAdmin ? [] : [userId];
+    const { getBlockingLesson } = require('../lib/academy-blocking');
+
+    const { rows: workers } = await db.query(
+      isAdmin
+        ? `SELECT DISTINCT e.id, e.fio, e.phone, e.created_at,
+                  e.academy_enrolled_at, e.academy_onboarding_passed_at
+           FROM employees e
+           JOIN employee_assignments ea ON ea.employee_id = e.id AND ea.is_active = true
+           WHERE e.is_active = true AND ea.field_role = 'worker'
+           ORDER BY e.fio`
+        : `SELECT DISTINCT e.id, e.fio, e.phone, e.created_at,
+                  e.academy_enrolled_at, e.academy_onboarding_passed_at
+           FROM employees e
+           JOIN employee_assignments ea ON ea.employee_id = e.id AND ea.is_active = true
+           JOIN works w ON w.id = ea.work_id
+           WHERE e.is_active = true AND ea.field_role = 'worker' AND w.pm_id = $1
+           ORDER BY e.fio`,
+      workParam
+    );
+
+    const blocked = [];
+    let onboardingPending = 0;
+
+    for (const w of workers) {
+      const result = await getBlockingLesson(db, w.id);
+      if (!result.allowed && result.blocking) {
+        blocked.push({
+          employee_id: w.id,
+          fio: w.fio,
+          phone: w.phone,
+          lesson_id: result.blocking_lesson_id || result.blocking.id,
+          lesson_title: result.blocking_lesson_title || result.blocking.title,
+          blocking_reason: result.blocking_reason,
+        });
+        if (result.blocking_reason === 'onboarding') onboardingPending++;
+      }
+    }
+
+    return {
+      blocked_count: blocked.length,
+      onboarding_pending: onboardingPending,
+      workers: blocked,
+    };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // POST /academy/waivers — освобождение от руны
+  // body: { employee_id, lesson_id?, waiver_type, effective_until?, note? }
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.post('/academy/waivers', auth, async (req, reply) => {
+    const { isAdmin, userId } = pmFilter(req.user);
+    const {
+      employee_id,
+      lesson_id,
+      waiver_type,
+      effective_until,
+      note,
+    } = req.body || {};
+
+    if (!employee_id) return reply.code(400).send({ error: 'employee_id обязателен' });
+    if (!['grandfather', 'pm_exempt', 'attestation', 'medical'].includes(waiver_type)) {
+      return reply.code(400).send({ error: 'Неверный waiver_type' });
+    }
+
+    if (!isAdmin) {
+      const { rows: check } = await db.query(`
+        SELECT 1 FROM employee_assignments ea
+        JOIN works w ON w.id = ea.work_id
+        WHERE ea.employee_id = $1 AND ea.is_active = true AND w.pm_id = $2
+        LIMIT 1
+      `, [employee_id, userId]);
+      if (!check.length) return reply.code(403).send({ error: 'Рабочий не на вашем проекте' });
+    }
+
+    const { rows: [waiver] } = await db.query(`
+      INSERT INTO academy_lesson_waivers
+        (employee_id, lesson_id, waiver_type, effective_until, created_by, note)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *
+    `, [
+      employee_id,
+      lesson_id || null,
+      waiver_type,
+      effective_until || null,
+      userId,
+      note || null,
+    ]);
+
+    return { waiver };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // POST /academy/set-enrollment — изменить дату зачисления
+  // body: { employee_id, academy_enrolled_at, mark_onboarding_passed? }
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.post('/academy/set-enrollment', auth, async (req, reply) => {
+    const { isAdmin } = pmFilter(req.user);
+    if (!isAdmin) return reply.code(403).send({ error: 'Только администратор' });
+
+    const { employee_id, academy_enrolled_at, mark_onboarding_passed } = req.body || {};
+    if (!employee_id || !academy_enrolled_at) {
+      return reply.code(400).send({ error: 'employee_id и academy_enrolled_at обязательны' });
+    }
+
+    const relDate = new Date(academy_enrolled_at);
+    if (relDate.getDay() !== 1) {
+      return reply.code(400).send({ error: 'academy_enrolled_at должен быть понедельником' });
+    }
+
+    const onboardingClause = mark_onboarding_passed
+      ? `, academy_onboarding_passed_at = COALESCE(academy_onboarding_passed_at, NOW())`
+      : '';
+
+    const { rows: [emp] } = await db.query(`
+      UPDATE employees
+      SET academy_enrolled_at = $2${onboardingClause}
+      WHERE id = $1
+      RETURNING id, fio, academy_enrolled_at, academy_onboarding_passed_at
+    `, [employee_id, relDate.toISOString().split('T')[0]]);
+
+    if (!emp) return reply.code(404).send({ error: 'Рабочий не найден' });
+    return { employee: emp };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // POST /workers/:id/assignments — назначения рабочего
   // PUT /workers/:id/assignments/:aid — изменить назначение
   // POST /workers/:id/remove — убрать с объекта (departure)
   // ═══════════════════════════════════════════════════════════════════

@@ -213,12 +213,29 @@ export default function FieldHome() {
       fieldApi.get('/academy/current-lesson'),
     ]).then(([allowed, cur]) => {
       if (!allowed.allowed) {
-        setAcademyAlert({ type: 'blocked', title: allowed.lesson_title, lesson_id: allowed.lesson_id });
-      } else if (cur.lesson && !cur.lesson.passed) {
-        const daysLeft = cur.lesson.deadline
-          ? Math.ceil((new Date(cur.lesson.deadline) - Date.now()) / 86400000)
+        setAcademyAlert({
+          type: 'blocked',
+          title: allowed.lesson_title,
+          lesson_id: allowed.lesson_id,
+          blocking_reason: allowed.blocking_reason,
+        });
+      } else if (cur.blocking) {
+        setAcademyAlert({
+          type: 'blocked',
+          title: cur.blocking.title,
+          lesson_id: cur.blocking.id,
+          blocking_reason: cur.blocking_reason,
+        });
+      } else if (cur.current_week && !cur.current_week.passed) {
+        const daysLeft = cur.current_week.deadline
+          ? Math.ceil((new Date(cur.current_week.deadline) - Date.now()) / 86400000)
           : null;
-        setAcademyAlert({ type: 'reminder', title: cur.lesson.title, lesson_id: cur.lesson.id, daysLeft });
+        setAcademyAlert({
+          type: 'reminder',
+          title: cur.current_week.title,
+          lesson_id: cur.current_week.id,
+          daysLeft,
+        });
       } else {
         setAcademyAlert(null);
       }

@@ -104,7 +104,7 @@ function DailyFactCard({ fact, onView }) {
   );
 }
 
-function CurrentLessonCard({ lesson, navigate }) {
+function CurrentLessonCard({ lesson, navigate, isOnboarding = false, isBlocking = false }) {
   if (!lesson) {
     return (
       <div style={{
@@ -144,7 +144,7 @@ function CurrentLessonCard({ lesson, navigate }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <div style={{ fontSize: 11, color: COLORS.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
-            Руна недели · {lesson.saga}
+            {isOnboarding ? 'Первый вход в чертоги' : isBlocking ? 'Для выхода на смену' : `Руна недели · ${lesson.saga}`}
           </div>
           <div style={{ fontSize: 24, marginBottom: 4 }}>{lesson.cover_icon}</div>
           <div style={{ fontSize: 18, fontWeight: 800, color: COLORS.text, marginBottom: 8 }}>{lesson.title}</div>
@@ -354,7 +354,14 @@ function StatsRow({ stats }) {
 
 export default function FieldAcademy() {
   const navigate = useNavigate();
-  const [data, setData] = useState({ primary: null, pending_mandatory: [], current_week: null, optional: [] });
+  const [data, setData] = useState({
+    primary: null,
+    blocking: null,
+    blocking_reason: null,
+    archive_pending: [],
+    current_week: null,
+    optional: [],
+  });
   const [fact, setFact] = useState(null);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -368,8 +375,10 @@ export default function FieldAcademy() {
         fieldApi.get('/academy/stats'),
       ]);
       setData({
-        primary: l.primary || l.lesson || null,
-        pending_mandatory: l.pending_mandatory || [],
+        primary: l.primary || l.blocking || l.lesson || null,
+        blocking: l.blocking || null,
+        blocking_reason: l.blocking_reason || null,
+        archive_pending: l.archive_pending || l.pending_mandatory || [],
         current_week: l.current_week || null,
         optional: l.optional || [],
       });
@@ -396,13 +405,11 @@ export default function FieldAcademy() {
     );
   }
 
-  const { primary, pending_mandatory, current_week, optional } = data;
+  const { primary, blocking, blocking_reason, archive_pending, current_week, optional } = data;
 
-  // Какие пропущенные обязательные показать (исключая primary, чтобы не дублировать)
-  const otherPending = pending_mandatory.filter(l => !primary || l.id !== primary.id);
-  // Текущая неделя в списке «обязательные пропущенные»? Тогда не показываем её отдельно
-  const showCurrentWeekSection = current_week && (!primary || current_week.id !== primary.id) &&
-                                  !pending_mandatory.some(l => l.id === current_week.id);
+  const showCurrentWeekSection = current_week
+    && (!blocking || current_week.id !== blocking.id)
+    && (!primary || current_week.id !== primary.id);
 
   return (
     <div style={{ minHeight: '100vh', background: COLORS.bg, paddingBottom: 100 }}>
@@ -426,36 +433,30 @@ export default function FieldAcademy() {
         {/* Daily Fact */}
         {fact && <DailyFactCard fact={fact} onView={handleFactView} />}
 
-        {/* === ПРИОРИТЕТНАЯ РУНА (большая карточка) === */}
-        {primary && (
+        {/* === БЛОКИРУЮЩАЯ РУНА (для чекина) === */}
+        {blocking && (
           <>
-            {pending_mandatory.length > 0 && (
-              <SectionHeader
-                icon="🔴"
-                title="Догнать обязательное"
-                count={pending_mandatory.length}
-                color={COLORS.red}
-                subtitle="Без этих рун — не выйдешь на смену"
-              />
-            )}
-            <CurrentLessonCard lesson={primary} navigate={navigate} />
+            <SectionHeader
+              icon="🔴"
+              title={blocking_reason === 'onboarding' ? 'Вводная руна' : 'Для выхода на смену'}
+              count={0}
+              color={COLORS.red}
+              subtitle="Нужна одна руна для смены"
+            />
+            <CurrentLessonCard
+              lesson={blocking}
+              navigate={navigate}
+              isOnboarding={blocking_reason === 'onboarding'}
+              isBlocking
+            />
           </>
         )}
 
-        {/* === ДРУГИЕ ПРОПУЩЕННЫЕ ОБЯЗАТЕЛЬНЫЕ (список) === */}
-        {otherPending.length > 0 && (
-          <>
-            {otherPending.map((l, i) => (
-              <LessonRow
-                key={l.id}
-                lesson={l}
-                navigate={navigate}
-              />
-            ))}
-          </>
+        {/* === РУНА ЭТОЙ НЕДЕЛИ (напоминание, если не блокирует) === */}
+        {!blocking && primary && (
+          <CurrentLessonCard lesson={primary} navigate={navigate} />
         )}
 
-        {/* === РУНА ЭТОЙ НЕДЕЛИ (если не входит в пропущенные) === */}
         {showCurrentWeekSection && (
           <>
             <SectionHeader
@@ -463,8 +464,25 @@ export default function FieldAcademy() {
               title="Руна этой недели"
               count={0}
               color={COLORS.gold}
+              subtitle="Успей до конца недели — за руны и XP"
             />
             <CurrentLessonCard lesson={current_week} navigate={navigate} />
+          </>
+        )}
+
+        {/* === ЛЕТОПИСЬ — для саморазвития (не блокируют смену) === */}
+        {archive_pending.length > 0 && (
+          <>
+            <SectionHeader
+              icon="📚"
+              title="Летопись — для рун и XP"
+              count={archive_pending.length}
+              color={COLORS.muted}
+              subtitle="Не блокируют выход на смену"
+            />
+            {archive_pending.map(l => (
+              <LessonRow key={l.id} lesson={l} navigate={navigate} />
+            ))}
           </>
         )}
 
