@@ -624,17 +624,17 @@ module.exports = async function(fastify) {
         -- 2) cash_requests issued (приход — аванс из кассы Асгарда)
         SELECT
           cr.issued_at::date AS d,
-          'income',
-          'cash_request',
-          cr.amount::numeric,
-          'Аванс из кассы',
-          LEFT(COALESCE(cr.purpose, ''), 200),
-          'Касса Асгарда',
-          cr.work_id,
-          w.work_title,
-          cr.id,
-          'pm_cash'::text,
-          true
+          'income'::text AS type,
+          'cash_request'::text AS source,
+          cr.amount::numeric AS amount,
+          'Аванс из кассы'::text AS category,
+          LEFT(COALESCE(cr.purpose, ''), 200) AS description,
+          'Касса Асгарда'::text AS counterparty,
+          cr.work_id AS work_id,
+          w.work_title AS work_title,
+          cr.id AS ref_id,
+          'pm_cash'::text AS source_kind,
+          true AS is_from_pm_cash
         FROM cash_requests cr
         LEFT JOIN works w ON w.id = cr.work_id
         WHERE cr.user_id = $1
