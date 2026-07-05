@@ -295,13 +295,52 @@ export function getStatementXlsxUrl({ pm_id, from, to } = {}) {
  * Используется в StatementTable когда showPmSelector=true.
  */
 export function loadPmsList() {
-  return api('/api/users?role=PM&is_active=true&limit=500')
-    .then((d) => {
+  return Promise.all([
+    api('/api/users?role=PM&is_active=true&limit=500').catch(() => ({})),
+    api('/api/users?role=HEAD_PM&is_active=true&limit=500').catch(() => ({})),
+    api('/api/users?role=HEAD_TO&is_active=true&limit=500').catch(() => ({}))
+  ]).then(([pm, headPm, headTo]) => {
+    const merge = (d) => {
       const arr = Array.isArray(d) ? d : (d?.users || d?.items || []);
       return arr.map((u) => ({
         id: Number(u.id),
-        full_name: u.full_name || u.fio || u.name || `PM #${u.id}`
+        full_name: u.full_name || u.fio || u.name || `#${u.id}`,
+        role: u.role
       })).filter((u) => Number.isFinite(u.id));
+    };
+    const all = [...merge(pm), ...merge(headPm), ...merge(headTo)];
+    const seen = new Set();
+    return all.filter((u) => {
+      if (seen.has(u.id)) return false;
+      seen.add(u.id);
+      return true;
+    }).sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
+  }).catch(() => []);
+}
+
+/** GET /api/cash/per-diem-suggestions — подсказки суточных из табеля дороги. */
+export function loadPerDiemSuggestions({ year, month } = {}) {
+  const q = new URLSearchParams();
+  if (year) q.set('year', String(year));
+  if (month) q.set('month', String(month));
+  const qs = q.toString();
+  return api(`/api/cash/per-diem-suggestions${qs ? `?${qs}` : ''}`);
+}
+
+/** POST /api/cash/quick-expense — упрощённый расход. */
+export function quickExpense(body) {
+  return api('/api/cash/quick-expense', { method: 'POST', body, silent: true });
+}
+
+/** GET /api/employees — для выбора рабочего. */
+export function loadEmployees() {
+  return api('/api/employees?limit=2000')
+    .then((d) => {
+      const arr = Array.isArray(d) ? d : (d?.employees || d?.items || []);
+      return arr.map((e) => ({
+        id: Number(e.id),
+        fio: e.fio || e.full_name || e.name || `#${e.id}`
+      })).filter((e) => Number.isFinite(e.id));
     })
     .catch(() => []);
 }

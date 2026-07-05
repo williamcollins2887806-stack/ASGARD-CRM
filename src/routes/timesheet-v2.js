@@ -32,7 +32,7 @@ const GLOBAL_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 
 const PM_ROLES = ['PM', 'HEAD_PM'];
 const WAREHOUSE_ROLES = ['WAREHOUSE'];
 const MEDICAL_ROLES = ['TO', 'HEAD_TO'];
-const TRAVEL_ROLES = ['OFFICE_MANAGER'];
+const TRAVEL_ROLES = ['OFFICE_MANAGER', 'HEAD_TO'];
 
 // V255 (23.06.2026): добавлен 'ship' — альтернатива «Дорога» за повышенную ставку
 // (12 баллов × 500 ₽ = 6000 ₽). Ставит ТО/HEAD_TO (как МО/Обучение).

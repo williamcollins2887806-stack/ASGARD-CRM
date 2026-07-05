@@ -167,8 +167,8 @@ export default function PmBalancePage() {
     <div className="col gap-12">
       <TopActionsBar
         kicker="Финансы"
-        title="Баланс РП"
-        subtitle="Сколько наличных на руках у каждого РП прямо сейчас"
+        title="Баланс подотчётников"
+        subtitle="Наличные на руках у РП и руководителей с кассой"
         actions={
           <>
             <SelectInput
@@ -226,7 +226,7 @@ export default function PmBalancePage() {
             <table className="t-list tbl-base">
               <thead>
                 <tr className="bg-inner brd-row-2">
-                  <Th>РП</Th>
+                  <Th>Подотчётник</Th>
                   <Th right>Получил из кассы</Th>
                   <Th right>Получил от СЗ</Th>
                   <Th right>Потратил</Th>
@@ -245,7 +245,12 @@ export default function PmBalancePage() {
                       onClick={() => openDetail(pm)}
                       title={`Открыть детали по ${pm.pm_name}`}
                     >
-                      <td className="pad-cell-lg fw-600">{pm.pm_name || '—'}</td>
+                      <td className="pad-cell-lg fw-600">
+                        {pm.pm_name || '—'}
+                        {pm.holder_role === 'HEAD_TO' && (
+                          <span className="c-t3" style={{ fontSize: 11, marginLeft: 6 }}>Рук. ТО</span>
+                        )}
+                      </td>
                       <td className="pad-cell-lg t-right c-t2">{rub(pm.cash_in)}</td>
                       <td className="pad-cell-lg t-right c-t2">{rub(pm.se_cash_in)}</td>
                       <td className="pad-cell-lg t-right c-t2">{rub(pm.cash_out)}</td>

@@ -69,7 +69,7 @@ export const NAV_ITEMS = [
   { r: '/buh-registry', l: 'Реестр расходов',     d: 'Бухгалтерский реестр',  i: '🧾', g: 'finance', roles: ['ADMIN','BUH', ...DIRECTOR_ROLES] },
   { r: '/bank-import',  l: 'Импорт выписок',      d: 'Банк/1С → разноска',    i: '📄', g: 'finance', roles: ['ADMIN','BUH', ...DIRECTOR_ROLES] },
   { r: '/office-expenses', l: 'Офисные расходы',  d: 'Управление и согл.',    i: '🏢', g: 'finance', roles: ['ADMIN','OFFICE_MANAGER', ...DIRECTOR_ROLES] },
-  { r: '/cash',         l: 'Касса',               d: 'Авансовые отчёты',      i: '💵', g: 'finance', roles: ['ADMIN','PM', ...DIRECTOR_ROLES] },
+  { r: '/cash',         l: 'Касса',               d: 'Авансовые отчёты',      i: '💵', g: 'finance', roles: ['ADMIN','PM','HEAD_TO', ...DIRECTOR_ROLES] },
   { r: '/cash-admin',   l: 'Касса (управление)',  d: 'Согласование и контроль',i: '💵', g: 'finance', roles: ['ADMIN','BUH', ...DIRECTOR_ROLES] },
   { r: '/payroll',      l: 'Расчёты с рабочими',  d: 'Ведомости и выплаты',   i: '💰', g: 'finance', roles: ['ADMIN','PM','HEAD_PM','TO','HEAD_TO','PROC','BUH', ...DIRECTOR_ROLES] },
   { r: '/self-employed',l: 'Самозанятые',         d: 'Реестр СЗ',             i: '👤', g: 'finance', roles: ['ADMIN','BUH', ...DIRECTOR_ROLES] },
@@ -108,12 +108,12 @@ export const NAV_ITEMS = [
   { r: '/my-timesheet',        l: 'Табель моей дружины',           d: 'Чекины моих рабочих',          i: '📅', g: 'personnel', roles: ['PM','HEAD_PM'] },
   { r: '/timesheet-warehouse', l: 'Табель учёта работы на складе', d: 'Дни рабочих на складе',        i: '📦', g: 'personnel', roles: ['WAREHOUSE'] },
   { r: '/timesheet-medical',   l: 'Табель учёта МО',               d: 'Медосмотры по дням',           i: '🏥', g: 'personnel', roles: ['TO','HEAD_TO'] },
-  { r: '/timesheet-travel',    l: 'Табель учёта дороги',           d: 'Дни в дороге и ожидании',      i: '✈️', g: 'personnel', roles: ['OFFICE_MANAGER'] },
+  { r: '/timesheet-travel',    l: 'Табель учёта дороги',           d: 'Дни в дороге и ожидании',      i: '✈️', g: 'personnel', roles: ['OFFICE_MANAGER','HEAD_TO'] },
   { r: '/timesheet',           l: 'Общий табель',                  d: 'Все рабочие за месяц',         i: '📊', g: 'personnel', roles: ['ADMIN','BUH','HR','HR_MANAGER', ...DIRECTOR_ROLES] },
   { r: '/payroll-dashboard', l: 'Финансы персонала', d:'Дашборд выплат',      i: '💰', g: 'personnel', roles: ['ADMIN','BUH', ...DIRECTOR_ROLES] },
   { r: '/official-employees', l: 'Официально устроенные', d:'Оклады и статусы',i:'👔',g:'personnel', roles: ['ADMIN','BUH', ...DIRECTOR_ROLES] },
   { r: '/training-board', l: 'Обучение и допуски',d: 'Допуски и обучение',    i: '🎓', g: 'personnel', roles: ['ADMIN','TO','HEAD_TO', ...DIRECTOR_ROLES] },
-  { r: '/pm-balance',   l: 'Баланс РП',           d: 'Наличные на руках',     i: '💵', g: 'personnel', roles: ['ADMIN','BUH', ...DIRECTOR_ROLES] },
+  { r: '/pm-balance',   l: 'Баланс подотчётников', d: 'Наличные на руках',     i: '💵', g: 'personnel', roles: ['ADMIN','BUH', ...DIRECTOR_ROLES] },
 
   // ── КОММУНИКАЦИИ ──
   { r: '/messenger',    l: 'Хугинн',              d: 'Чаты',                  i: '💬', g: 'comm', roles: ALL_ROLES },

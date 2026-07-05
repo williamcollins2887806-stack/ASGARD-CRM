@@ -918,30 +918,48 @@ export function CashBalance() {
 export function MyCashBalance({ user }) {
   const [data, setData] = useState(null);
   const [failed, setFailed] = useState(false);
-  useEffect(() => {
-    api('/api/cash/my-balance')
+  const isHeadTo = user?.role === 'HEAD_TO';
+
+  const reload = () => {
+    api('/api/cash/my-balance', { silent: true })
       .then(setData)
       .catch(() => { setFailed(true); setData({}); });
+  };
+
+  useEffect(() => {
+    reload();
+    const onChanged = () => reload();
+    window.addEventListener('asgard:cash:changed', onChanged);
+    return () => window.removeEventListener('asgard:cash:changed', onChanged);
   }, [user.id]);
+
   if (data === null) return <Loading />;
-  if (failed) return <NotConfigured link="/cash" hint="Подотчётные средства — на странице «Касса»" />;
+  if (failed) return <NotConfigured link="/cash" hint={isHeadTo ? 'Моя касса — на странице «Касса»' : 'Подотчётные средства — на странице «Касса»'} />;
   const totalIssued = Number(data.issued) || 0;
   const activeRequests = Number(data.active_requests) || 0;
-  if (!totalIssued && !Number(data.spent) && !activeRequests) {
-    return <Empty icon="✓" text="Нет активных подотчётных" />;
+  const balance = Number(data.balance) || 0;
+  if (!totalIssued && !Number(data.spent) && !activeRequests && balance <= 0) {
+    return <Empty icon="✓" text={isHeadTo ? 'Касса пуста' : 'Нет активных подотчётных'} />;
   }
   return (
     <div>
       <div className="bw-mini-grid">
         <Mini label="Получено" v={totalIssued} color="info" />
-        <Mini label="Потрачено" v={Number(data.spent) || 0} color="err" />
+        <Mini label={isHeadTo ? 'Выплачено' : 'Потрачено'} v={Number(isHeadTo ? data.cash_payouts_workers : data.spent) || 0} color="err" />
         <Mini label="Возвращено" v={Number(data.returned) || 0} color="t-3" />
-        <Mini label="На руках" v={Number(data.balance) || 0} color="gold" />
+        <Mini label="На руках" v={balance} color="gold" />
       </div>
       {activeRequests > 0 && (
         <div className="bw-mycash-active">У вас {activeRequests} заяв{activeRequests === 1 ? 'ка' : activeRequests < 5 ? 'ки' : 'ок'} на рассмотрении</div>
       )}
-      <Link to="/cash" className="widget-link">Перейти в кассу →</Link>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8 }}>
+        <Link to="/cash" className="widget-link">{isHeadTo ? 'Моя касса →' : 'Перейти в кассу →'}</Link>
+        {isHeadTo && (
+          <Link to="/cash" className="widget-link" onClick={() => { /* navigate then user clicks */ }}>
+            Добавить расход →
+          </Link>
+        )}
+      </div>
     </div>
   );
 }

@@ -73,9 +73,9 @@ function SeAutocomplete({ value, onChange, employees }) {
   );
 }
 
-export default function CreateRequestModal({ onCreated }) {
+export default function CreateRequestModal({ onCreated, defaultType = 'advance', simplified = false }) {
   const { close } = useModal();
-  const [type, setType] = useState('advance');
+  const [type, setType] = useState(defaultType);
   const [workId, setWorkId] = useState('');
   const [amount, setAmount] = useState('');
   const [purpose, setPurpose] = useState('');
@@ -109,7 +109,7 @@ export default function CreateRequestModal({ onCreated }) {
   const amountBigErr = Number(amount) > HUGE_AMOUNT ? 'Сумма выглядит неправдоподобно большой' : null;
   const purposeShort = purpose && purpose.trim().length > 0 && purpose.trim().length < 5
     ? 'Цель: минимум 5 символов' : null;
-  const categoryErr = !category ? 'Выберите категорию' : null;
+  const categoryErr = simplified ? null : (!category ? 'Выберите категорию' : null);
   const otherDescErr = category === 'other' && !categoryOtherDesc.trim()
     ? 'Опишите расход (категория «Другое»)' : null;
 
@@ -123,7 +123,7 @@ export default function CreateRequestModal({ onCreated }) {
       toast.warn('Выберите работу для аванса');
       return;
     }
-    if (categoryErr)  { toast.warn(categoryErr); return; }
+    if (!simplified && categoryErr)  { toast.warn(categoryErr); return; }
     if (otherDescErr) { toast.warn(otherDescErr); return; }
     if (amountErr)    { toast.warn(amountErr); return; }
     if (amountBigErr) { toast.warn(amountBigErr); return; }
@@ -143,7 +143,7 @@ export default function CreateRequestModal({ onCreated }) {
         amount: amt,
         purpose: purpose.trim(),
         cover_letter: coverLetter.trim() || null,
-        category,
+        category: category || 'other',
         category_other_desc: category === 'other' ? categoryOtherDesc.trim() : null,
         use_se_payee: useSePayee,
         se_payee_employee_id: useSePayee ? Number(sePayeeId) : null
@@ -164,23 +164,27 @@ export default function CreateRequestModal({ onCreated }) {
 
   return (
     <MCard>
-      <MHead icon="💵" title="Новая заявка" subtitle="Касса" accent="gold" onClose={close} />
+      <MHead icon="💵" title="Новая заявка" subtitle={simplified ? 'Моя касса' : 'Касса'} accent="gold" onClose={close} />
       <MBody>
+        {!simplified && (
         <Field label="Тип" required>
           <Segmented value={type} onChange={setType} options={TYPE_OPTIONS} />
         </Field>
+        )}
 
-        {type === 'advance' && (
+        {type === 'advance' && !simplified && (
           <Field label="Работа" required>
             <SelectInput value={workId} onChange={setWorkId} options={worksOpts} />
           </Field>
         )}
 
+        {!simplified && (
         <Field label="Категория расхода" required error={categoryErr}>
           <CategoryGrid value={category} onChange={setCategory} />
         </Field>
+        )}
 
-        {category === 'other' && (
+        {!simplified && category === 'other' && (
           <Field label="Опишите расход" required error={otherDescErr}>
             <TextareaInput
               value={categoryOtherDesc}
@@ -199,11 +203,13 @@ export default function CreateRequestModal({ onCreated }) {
           <TextareaInput value={purpose} onChange={setPurpose} placeholder="Укажите цель (мин. 5 симв.)" minRows={2} />
         </Field>
 
+        {!simplified && (
         <Field label="Сопроводительное письмо (опционально)">
           <TextareaInput value={coverLetter} onChange={setCoverLetter} placeholder="Дополнительная информация" minRows={2} />
         </Field>
+        )}
 
-        {/* Stage W — СЗ-опция */}
+        {!simplified && (
         <div className="cash-se-section">
           <Checkbox
             checked={useSePayee}
@@ -218,6 +224,7 @@ export default function CreateRequestModal({ onCreated }) {
             </div>
           )}
         </div>
+        )}
       </MBody>
       <MFoot>
         <Btn variant="ghost" onClick={close} disabled={busy}>Отмена</Btn>

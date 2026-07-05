@@ -120,6 +120,16 @@ export default function MyDashboardPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, _allowed]);
 
+  useEffect(() => {
+    const onCash = () => {
+      api('/api/cash/my-balance', { silent: true })
+        .then(setCashBalance)
+        .catch(() => setCashBalance(null));
+    };
+    window.addEventListener('asgard:cash:changed', onCash);
+    return () => window.removeEventListener('asgard:cash:changed', onCash);
+  }, []);
+
   const stats = useMemo(() => {
     const totalWorks = works.length;
     const activeWorks = works.filter((w) => !isDone(w.work_status)).length;
@@ -303,7 +313,9 @@ export default function MyDashboardPage() {
               Backend src/routes/cash.js: {issued, spent, returned, balance, active_requests}. */}
           {cashBalance && (
             <div className="card mydash-section mydash-mini-section">
-              <h3 className="mydash-section-title">💵 Касса (личный остаток)</h3>
+              <h3 className="mydash-section-title">
+                💵 {user?.role === 'HEAD_TO' ? 'Моя касса' : 'Касса (личный остаток)'}
+              </h3>
               <div className="mydash-kpis mydash-kpis--narrow">
                 <Kpi label="Остаток на руках" value={fmtMoney(cashBalance.balance ?? 0)} tone="gold" isText />
                 <Kpi label="Выдано всего" value={fmtMoney(cashBalance.issued ?? 0)} tone="info" isText />

@@ -261,7 +261,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/acts",l:"Акты",d:"Акты выполненных работ",roles:["ADMIN","PM","BUH",...DIRECTOR_ROLES],i:"buh",p:"acts",g:"finance"},
     {r:"/buh-registry",l:"Реестр расходов",d:"Бухгалтерский реестр",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"buh_registry",g:"finance"},
     {r:"/office-expenses",l:"Офисные расходы",d:"Управление и согласование",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"office",p:"office_expenses",g:"finance"},
-    {r:"/cash",l:"Касса",d:"Авансовые отчёты",roles:["ADMIN","PM",...DIRECTOR_ROLES],i:"finances",p:"cash",g:"finance"},
+    {r:"/cash",l:"Касса",d:"Авансовые отчёты",roles:["ADMIN","PM","HEAD_TO",...DIRECTOR_ROLES],i:"finances",p:"cash",g:"finance"},
     {r:"/cash-admin",l:"Касса (управление)",d:"Согласование и контроль",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"cash_admin",g:"finance"},
     {r:"/approval-payment",l:"Очередь оплаты",d:"Оплата согласованных заявок",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"approval_payment",g:"finance"},
     {r:"/my-timesheet",l:"Табель моей дружины",d:"Смены, баллы, суточные · закрытие месяца",roles:["PM","HEAD_PM"],i:"calendar",p:"my_timesheet",g:"personnel"},
@@ -306,7 +306,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/timesheet",l:"Табель",d:"Общий табель дружины: все рабочие за месяц, ФОТ, Excel",roles:["ADMIN","BUH","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"calendar",p:"timesheet",g:"personnel"},
     {r:"/timesheet-warehouse",l:"Табель учёта работы на складе",d:"Отметки склада · закрытие месяца",roles:["ADMIN","WAREHOUSE",...DIRECTOR_ROLES],i:"calendar",p:"timesheet_warehouse",g:"personnel"},
     {r:"/timesheet-medical",l:"Табель учёта МО",d:"Отметки медосмотра · закрытие месяца",roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES],i:"calendar",p:"timesheet_medical",g:"personnel"},
-    {r:"/timesheet-travel",l:"Табель учёта дороги",d:"Отметки дороги · закрытие месяца",roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"calendar",p:"timesheet_travel",g:"personnel"},
+    {r:"/timesheet-travel",l:"Табель учёта дороги",d:"Отметки дороги · закрытие месяца",roles:["ADMIN","OFFICE_MANAGER","HEAD_TO",...DIRECTOR_ROLES],i:"calendar",p:"timesheet_travel",g:"personnel"},
     {r:"/payroll-dashboard",l:"Финансы персонала",d:"Дашборд выплат",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"money",p:"payroll_dashboard",g:"personnel"},
     {r:"/official-employees",l:"Официально устроенные",d:"Оклады и статусы",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"workers",p:"official_employees",g:"personnel"},
     {r:"/training-board",l:"Обучение и допуски",d:"Допуски и обучение рабочих",roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES],i:"school",p:"training_board",g:"personnel"},
@@ -2257,7 +2257,7 @@ var _setupPinKeypad = null;
     AsgardRouter.add("/my-timesheet", ()=>AsgardTimesheetV2.renderPm({layout, title:"Табель моей дружины"}), {auth:true, roles:["PM","HEAD_PM"]});
     AsgardRouter.add("/timesheet-warehouse", ()=>AsgardTimesheetV2.renderWarehouse({layout, title:"Табель учёта работы на складе"}), {auth:true, roles:["ADMIN","WAREHOUSE",...DIRECTOR_ROLES]});
     AsgardRouter.add("/timesheet-medical", ()=>AsgardTimesheetV2.renderMedical({layout, title:"Табель учёта МО"}), {auth:true, roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES]});
-    AsgardRouter.add("/timesheet-travel", ()=>AsgardTimesheetV2.renderTravel({layout, title:"Табель учёта дороги"}), {auth:true, roles:["ADMIN","OFFICE_MANAGER",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/timesheet-travel", ()=>AsgardTimesheetV2.renderTravel({layout, title:"Табель учёта дороги"}), {auth:true, roles:["ADMIN","OFFICE_MANAGER","HEAD_TO",...DIRECTOR_ROLES]});
     // Старые URL — редиректы
     AsgardRouter.add("/global-timesheet", ()=>{ location.hash = '#/timesheet'; }, {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/payroll-dashboard", ()=>AsgardPayrollDashboard.render({layout, title:"Финансы персонала"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});

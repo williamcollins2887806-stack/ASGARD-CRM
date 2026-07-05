@@ -18,7 +18,7 @@
 const path = require('path');
 const fs = require('fs').promises;
 const { randomUUID } = require('crypto');
-const { calcPmBalance } = require('../lib/pm-balance');
+const { calcPmBalance, isHeadToHolder } = require('../lib/pm-balance');
 const pmStatementXlsx = require('../services/pm-statement-xlsx');
 
 module.exports = async function(fastify) {
@@ -53,8 +53,10 @@ module.exports = async function(fastify) {
     return BUH_AND_DIRECTOR_ROLES.includes(role);
   }
 
-  function canApprove(role) {
-    return APPROVE_ROLES.includes(role);
+  const CASH_HOLDER_ROLES = ['PM', 'HEAD_PM', 'HEAD_TO'];
+
+  function isCashHolderRole(role) {
+    return CASH_HOLDER_ROLES.includes(role);
   }
 
   // Подсчёт баланса заявки
@@ -246,7 +248,7 @@ module.exports = async function(fastify) {
   // дополнительно отдаём handovers_received, se_cash_legacy, cash_payouts_workers.
   // ─────────────────────────────────────────────────────────────────
   fastify.get('/my-balance', {
-    preHandler: [fastify.authenticate]
+    preHandler: [fastify.requirePermission('cash', 'read')]
   }, async (request) => {
     const userId = request.user.id;
     const b = await calcPmBalance(db, userId);
@@ -263,6 +265,237 @@ module.exports = async function(fastify) {
       cash_payouts_workers:  b.cash_payouts_workers,
       cash_returns_confirmed: b.cash_returns_confirmed,
       cash_returns_pending:  b.cash_returns_pending
+    };
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // GET /api/cash/per-diem-suggestions — подсказки суточных из табеля дороги
+  // ─────────────────────────────────────────────────────────────────
+  fastify.get('/per-diem-suggestions', {
+    preHandler: [fastify.requirePermission('cash', 'read')]
+  }, async (request, reply) => {
+    const now = new Date();
+    const year = parseInt(request.query.year, 10) || now.getFullYear();
+    const month = parseInt(request.query.month, 10) || (now.getMonth() + 1);
+    if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+      return reply.code(400).send({ error: 'year/month некорректны' });
+    }
+
+    const periodStart = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const periodEnd = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    let perDiemRate = 1000;
+    try {
+      const { rows: sRows } = await db.query(
+        `SELECT value_json FROM settings WHERE key = 'per_diem_default' LIMIT 1`
+      );
+      if (sRows[0]?.value_json != null) {
+        const v = parseFloat(String(sRows[0].value_json).replace(/[^\d.\-]/g, ''));
+        if (Number.isFinite(v) && v > 0) perDiemRate = v;
+      }
+    } catch (_) { /* default */ }
+
+    const { rows } = await db.query(`
+      WITH travel_days AS (
+        SELECT fts.employee_id, fts.work_id,
+               SUM(GREATEST(COALESCE(fts.days_count, 1), 1))::numeric AS trip_days
+        FROM field_trip_stages fts
+        WHERE COALESCE(fts.status, 'active') NOT IN ('rejected', 'cancelled')
+          AND fts.stage_type IN ('travel', 'ship')
+          AND fts.date_from <= $2::date
+          AND COALESCE(fts.date_to, fts.date_from) >= $1::date
+        GROUP BY fts.employee_id, fts.work_id
+      ),
+      paid AS (
+        SELECT wp.employee_id, wp.work_id, COALESCE(SUM(wp.amount), 0)::numeric AS paid_amount
+        FROM worker_payments wp
+        WHERE wp.type = 'per_diem'
+          AND wp.status IN ('paid', 'confirmed')
+          AND COALESCE(wp.pay_year, EXTRACT(YEAR FROM wp.created_at)::int) = $3
+          AND COALESCE(wp.pay_month, EXTRACT(MONTH FROM wp.created_at)::int) = $4
+        GROUP BY wp.employee_id, wp.work_id
+      )
+      SELECT
+        e.id AS employee_id,
+        COALESCE(e.fio, e.full_name, '') AS employee_fio,
+        td.work_id,
+        w.work_title,
+        td.trip_days::int AS travel_days,
+        COALESCE(p.paid_amount, 0)::numeric AS paid_amount,
+        GREATEST(
+          0,
+          (td.trip_days * $5) - COALESCE(p.paid_amount, 0)
+        )::numeric AS suggested_amount
+      FROM travel_days td
+      JOIN employees e ON e.id = td.employee_id
+      LEFT JOIN works w ON w.id = td.work_id
+      LEFT JOIN paid p ON p.employee_id = td.employee_id
+        AND COALESCE(p.work_id, 0) = COALESCE(td.work_id, 0)
+      WHERE td.trip_days > 0
+      ORDER BY employee_fio, w.work_title NULLS LAST
+    `, [periodStart, periodEnd, year, month, perDiemRate]);
+
+    return {
+      period: { year, month, from: periodStart, to: periodEnd },
+      per_diem_rate: perDiemRate,
+      suggestions: rows.map((r) => ({
+        employee_id: Number(r.employee_id),
+        employee_fio: r.employee_fio,
+        work_id: r.work_id == null ? null : Number(r.work_id),
+        work_title: r.work_title || null,
+        travel_days: Number(r.travel_days) || 0,
+        paid_amount: Number(r.paid_amount) || 0,
+        suggested_amount: Math.round(Number(r.suggested_amount) || 0)
+      }))
+    };
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // POST /api/cash/quick-expense — упрощённый расход (HEAD_TO / касса)
+  // ─────────────────────────────────────────────────────────────────
+  fastify.post('/quick-expense', {
+    preHandler: [fastify.requirePermission('cash', 'write')]
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    const {
+      expense_type,
+      amount,
+      employee_id,
+      work_id,
+      description,
+      note,
+      confirm_duplicate
+    } = request.body || {};
+
+    const validTypes = ['per_diem', 'taxi', 'office', 'other'];
+    if (!validTypes.includes(expense_type)) {
+      return reply.code(400).send({ error: `expense_type: ${validTypes.join(', ')}` });
+    }
+    const amt = parseFloat(amount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      return reply.code(400).send({ error: 'amount > 0' });
+    }
+
+    const bal = await calcPmBalance(db, userId, request.user.role);
+    if (amt > bal.balance) {
+      return reply.code(400).send({
+        error: 'Недостаточно средств на руках',
+        balance: bal.balance,
+        requested: amt
+      });
+    }
+
+    if (expense_type === 'per_diem') {
+      const eId = parseInt(employee_id, 10);
+      const wId = parseInt(work_id, 10);
+      if (!eId || !wId) {
+        return reply.code(400).send({ error: 'employee_id и work_id обязательны для суточных' });
+      }
+
+      const { rows: ctx } = await db.query(`
+        SELECT w.pm_id, w.work_title, e.fio, e.user_id AS employee_user_id
+        FROM works w, employees e
+        WHERE w.id = $1 AND e.id = $2
+      `, [wId, eId]);
+      if (!ctx.length) return reply.code(404).send({ error: 'Работа или сотрудник не найдены' });
+      const c = ctx[0];
+
+      if (!confirm_duplicate) {
+        const now = new Date();
+        const py = now.getFullYear();
+        const pm = now.getMonth() + 1;
+        const { rows: existing } = await db.query(`
+          SELECT id, amount, paid_at, payment_method
+          FROM worker_payments
+          WHERE employee_id = $1 AND type = 'per_diem'
+            AND status IN ('paid', 'confirmed')
+            AND COALESCE(pay_year, EXTRACT(YEAR FROM created_at)::int) = $2
+            AND COALESCE(pay_month, EXTRACT(MONTH FROM created_at)::int) = $3
+          ORDER BY id DESC
+        `, [eId, py, pm]);
+        if (existing.length > 0) {
+          const totalAlreadyPaid = existing.reduce((s, r) => s + Number(r.amount || 0), 0);
+          return reply.code(409).send({
+            error: 'duplicate_payment',
+            message: `Суточные уже выплачены: ${existing.length} операция(й), всего ${Math.round(totalAlreadyPaid)} ₽`,
+            requires_confirmation: true
+          });
+        }
+      }
+
+      const { rows: inserted } = await db.query(`
+        INSERT INTO worker_payments (
+          employee_id, work_id, type, amount, status,
+          payment_method, paid_by, paid_at, comment, created_at, created_by,
+          pay_year, pay_month
+        ) VALUES ($1, $2, 'per_diem', $3, 'paid', 'cash', $4, NOW(), $5, NOW(), $4, $6, $7)
+        RETURNING *
+      `, [eId, wId, amt, userId, note || description || null,
+          new Date().getFullYear(), new Date().getMonth() + 1]);
+
+      if (c.employee_user_id) {
+        try {
+          await createNotification(db, {
+            user_id: c.employee_user_id,
+            title: `💰 Выплачено ${Math.round(amt)}₽`,
+            message: `Суточные: ${amt}₽ наличные`,
+            type: 'payment_received',
+            link: '/field/earnings'
+          });
+        } catch (e) {
+          fastify.log.warn(`[cash] quick-expense notification: ${e.message}`);
+        }
+      }
+
+      return { ok: true, expense_type, payment: inserted[0], balance_after: bal.balance - amt };
+    }
+
+    const desc = (description || '').trim();
+    if (!desc) {
+      return reply.code(400).send({ error: 'Укажите описание расхода' });
+    }
+
+    const categoryMap = { taxi: 'taxi', office: 'other', other: 'other' };
+    const category = categoryMap[expense_type] || 'other';
+
+    const { rows: openReq } = await db.query(`
+      SELECT id, status FROM cash_requests
+      WHERE user_id = $1
+        AND status IN ('received', 'reporting')
+      ORDER BY created_at DESC
+      LIMIT 1
+    `, [userId]);
+
+    if (!openReq.length) {
+      return reply.code(400).send({
+        error: 'no_open_request',
+        message: 'Сначала получите аванс и подтвердите получение денег'
+      });
+    }
+
+    const requestId = openReq[0].id;
+    const expenseDate = new Date().toISOString().slice(0, 10);
+
+    const { rows: expRows } = await db.query(`
+      INSERT INTO cash_expenses (request_id, amount, description, category, expense_date)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *
+    `, [requestId, amt, desc, category, expenseDate]);
+
+    if (openReq[0].status === 'received') {
+      await db.query(
+        `UPDATE cash_requests SET status = 'reporting', updated_at = NOW() WHERE id = $1`,
+        [requestId]
+      );
+    }
+
+    return {
+      ok: true,
+      expense_type,
+      expense: expRows[0],
+      request_id: requestId,
+      balance_after: bal.balance - amt
     };
   });
 
@@ -293,12 +526,12 @@ module.exports = async function(fastify) {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const role = request.user.role;
-    const isPmRole       = role === 'PM' || role === 'HEAD_PM';
-    const isPrivilegedFn = isBuhOrDirector(role); // ADMIN/DIRECTOR_*/BUH
+    const isCashHolder = isCashHolderRole(role);
+    const isPrivilegedFn = isBuhOrDirector(role);
 
     // ── pm_id resolution ─────────────────────────────────────────
     let pmId = null;
-    if (isPmRole) {
+    if (isCashHolder) {
       pmId = parseInt(request.user.id, 10);
     } else if (isPrivilegedFn) {
       const raw = request.query.pm_id;
@@ -335,22 +568,16 @@ module.exports = async function(fastify) {
 
     // ── PM info ──────────────────────────────────────────────────
     const { rows: pmRows } = await db.query(
-      'SELECT id, name FROM users WHERE id = $1',
+      'SELECT id, name, role FROM users WHERE id = $1',
       [pmId]
     );
     if (!pmRows[0]) {
-      return reply.code(404).send({ error: 'РП не найден' });
+      return reply.code(404).send({ error: 'Подотчётник не найден' });
     }
     const pm = { id: pmRows[0].id, name: pmRows[0].name };
+    const holderHeadTo = isHeadToHolder(pmRows[0].role);
 
-    // ── 1) Operations в периоде (UNION ALL) ──────────────────────
-    // Колонки строго в одном порядке для всех веток:
-    //   d, type, source, amount, category, description, counterparty,
-    //   work_id, work_title, ref_id, source_kind, is_from_pm_cash
-    // amount: для income > 0, для outflow < 0, для info > 0 (но не меняет running).
-    // source_kind/is_from_pm_cash (V264) — для UI и XLSX, см. worker_payment_source_v.
-    const opsSql = `
-      WITH ops AS (
+    const handoverUnion = holderHeadTo ? '' : `
         -- 1) handovers_received (приход от СЗ)
         SELECT
           h.received_at::date          AS d,
@@ -373,7 +600,27 @@ module.exports = async function(fastify) {
           AND h.received_at IS NOT NULL
           AND h.received_at::date BETWEEN $2 AND $3
 
-        UNION ALL
+        UNION ALL`;
+
+    const wpFilterSql = holderHeadTo
+      ? 'v.paid_by = $1'
+      : `(
+            v.paid_by = $1
+            OR (v.paid_by IS NULL AND w.pm_id = $1 AND v.payment_method IN ('cash','card'))
+            OR (NOT v.is_from_pm_cash AND w.pm_id = $1)
+          )`;
+
+    const weFilterSql = holderHeadTo
+      ? `(we.paid_by = $1 AND we.payment_method IN ('cash','card','transfer'))`
+      : `(
+            (we.paid_by = $1 AND we.payment_method IN ('cash','card','transfer'))
+            OR (we.paid_by IS NULL AND w.pm_id = $1 AND we.payment_method IN ('cash','card'))
+          )`;
+
+    // ── 1) Operations в периоде (UNION ALL) ──────────────────────
+    const opsSql = `
+      WITH ops AS (
+        ${handoverUnion}
         -- 2) cash_requests issued (приход — аванс из кассы Асгарда)
         SELECT
           cr.issued_at::date,
@@ -440,10 +687,7 @@ module.exports = async function(fastify) {
           AND ce.expense_date::date BETWEEN $2 AND $3
 
         UNION ALL
-        -- 5) worker_payments через view worker_payment_source_v (V264).
-        --    Строки is_from_pm_cash=true → 'outflow' (списываются с кассы РП).
-        --    Строки is_from_pm_cash=false → 'info'   (bank/se/auto — деньги
-        --    компании; в журнале нужны справочно, но баланс РП не трогают).
+        -- 5) worker_payments
         SELECT
           v.paid_at::date,
           CASE WHEN v.is_from_pm_cash THEN 'outflow' ELSE 'info' END AS type,
@@ -464,18 +708,10 @@ module.exports = async function(fastify) {
           AND v.type IN ('salary','bonus','per_diem','advance','penalty')
           AND v.paid_at IS NOT NULL
           AND v.paid_at::date BETWEEN $2 AND $3
-          AND (
-            -- "Моя касса РП": is_from_pm_cash=true ВСЕГДА для paid_by=$1 (через view).
-            -- Дополнительно: paid_by IS NULL + work.pm_id=$1 + cash/card (legacy).
-            v.paid_by = $1
-            OR (v.paid_by IS NULL AND w.pm_id = $1 AND v.payment_method IN ('cash','card'))
-            -- info-строки: показываем только если они относятся к работе PM
-            -- (работнику были выплачены деньги компании на работе этого PM).
-            OR (NOT v.is_from_pm_cash AND w.pm_id = $1)
-          )
+          AND (${wpFilterSql})
 
         UNION ALL
-        -- 6) work_expenses (прямые расходы РП по проектам)
+        -- 6) work_expenses
         SELECT
           we.date::date,
           'outflow',
@@ -494,10 +730,7 @@ module.exports = async function(fastify) {
         WHERE COALESCE(we.source_table, '') NOT IN ('worker_payments')
           AND we.date IS NOT NULL
           AND we.date::date BETWEEN $2 AND $3
-          AND (
-            (we.paid_by = $1 AND we.payment_method IN ('cash','card','transfer'))
-            OR (we.paid_by IS NULL AND w.pm_id = $1 AND we.payment_method IN ('cash','card'))
-          )
+          AND ${weFilterSql}
       )
       SELECT * FROM ops
       ORDER BY d ASC, (CASE WHEN type = 'income' THEN 0 WHEN type = 'outflow' THEN 1 ELSE 2 END), ref_id ASC

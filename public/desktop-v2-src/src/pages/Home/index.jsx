@@ -78,7 +78,7 @@ const DEFAULT_LAYOUTS = {
   ADMIN: ['welcome','academy','kpi_summary','pre_tenders','quick_actions','overdue_works','tenders_funnel','my_mail','notifications'],
   PM: ['welcome','academy','quick_actions','my_readiness','my_works','my_cash_balance','gantt_mini','todo','my_mail','notifications','birthdays'],
   TO: ['welcome','academy','quick_actions','tenders_funnel','tender_dynamics','my_mail','notifications'],
-  HEAD_TO: ['welcome','academy','pre_tenders','platform_alerts','tender_dynamics','tenders_funnel','my_mail','notifications'],
+  HEAD_TO: ['welcome','academy','my_cash_balance','pre_tenders','platform_alerts','tender_dynamics','tenders_funnel','my_mail','notifications'],
   HEAD_PM: ['welcome','academy','director_readiness','team_workload','overdue_works','gantt_mini','my_mail','notifications'],
   CHIEF_ENGINEER: ['welcome','academy','equipment_value','equipment_alerts','my_mail','notifications'],
   HR: ['welcome','academy','permits_expiry','birthdays','my_mail','notifications','calendar'],

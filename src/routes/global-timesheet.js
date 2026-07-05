@@ -93,7 +93,7 @@ function canEditType(role, type) {
   // V255: medical-роли (TO/HEAD_TO) ставят МО и Корабль.
   if ((role === 'TO' || role === 'HEAD_TO') && (type === 'medical' || type === 'ship')) return true;
   if (role === 'WAREHOUSE' && type === 'warehouse') return true;
-  if (role === 'OFFICE_MANAGER' && type === 'travel') return true;
+  if ((role === 'OFFICE_MANAGER' || role === 'HEAD_TO') && type === 'travel') return true;
   return false;
 }
 

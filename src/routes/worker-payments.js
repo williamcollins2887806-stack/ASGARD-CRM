@@ -468,6 +468,9 @@ async function routes(fastify, options) {
       if (!hasAccess && (role === 'PM' || role === 'HEAD_PM')) {
         hasAccess = c.pm_id === userId;
       }
+      if (!hasAccess && role === 'HEAD_TO') {
+        hasAccess = true;
+      }
       if (!hasAccess) return reply.code(403).send({ error: 'Недостаточно прав' });
 
       // ─── Защита от двойной выплаты (Stage S) ──────────────────────

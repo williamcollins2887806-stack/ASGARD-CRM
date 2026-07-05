@@ -39,6 +39,7 @@ import { TopActionsBar, EmptyState } from '@/blocks/Blocks';
 import CreateRequestModal from './CreateRequestModal';
 import DetailModal from './DetailModal';
 import ReceiveFromSeModal from './ReceiveFromSeModal';
+import QuickExpenseModal from './QuickExpenseModal';
 import StatementTable from './StatementTable';
 import {
   loadMyBalance, loadMyRequests, loadMyHandovers,
@@ -53,6 +54,11 @@ const STATEMENT_ADMIN_ROLES = new Set([
 ]);
 function canPickAnyPm(role) {
   return STATEMENT_ADMIN_ROLES.has(role || '');
+}
+
+const HEAD_TO_ROLE = 'HEAD_TO';
+function isHeadToUser(role) {
+  return role === HEAD_TO_ROLE;
 }
 
 import './cash.css';
@@ -78,10 +84,14 @@ export default function CashPage() {
   })();
   const [tab, setTab] = useState(initialTab);
   const isAdmin = canPickAnyPm(user?.role);
+  const isHeadTo = isHeadToUser(user?.role);
 
   const refresh = () => {
     setLoading(true);
-    Promise.all([loadMyBalance(), loadMyRequests(), loadMyHandovers()])
+    const handoversPromise = isHeadTo
+      ? Promise.resolve([])
+      : loadMyHandovers().catch(() => []);
+    Promise.all([loadMyBalance(), loadMyRequests(), handoversPromise])
       .then(([b, l, h]) => {
         setBalance(b);
         setList(Array.isArray(l) ? l : []);
@@ -193,7 +203,14 @@ export default function CashPage() {
   }, [list, handovers, sourceFilter]);
 
   const onCreate = () => {
-    modal.open(<CreateRequestModal onCreated={refresh} />, { size: 'wide' });
+    modal.open(
+      <CreateRequestModal onCreated={refresh} defaultType={isHeadTo ? 'office' : 'advance'} simplified={isHeadTo} />,
+      { size: 'wide' }
+    );
+  };
+
+  const onQuickExpense = () => {
+    modal.open(<QuickExpenseModal onSaved={refresh} />, { size: 'wide' });
   };
 
   const onReceiveFromSe = () => {
@@ -215,15 +232,24 @@ export default function CashPage() {
     <div className="col gap-14">
       <TopActionsBar
         kicker="Финансы"
-        title="Казна Дружины"
-        subtitle="Авансы, расходы и расчёты"
+        title={isHeadTo ? 'Моя касса' : 'Казна Дружины'}
+        subtitle={isHeadTo ? 'Авансы, суточные и расходы' : 'Авансы, расходы и расчёты'}
         actions={
           tab === 'requests' ? (
             <>
               <Btn variant="ghost" onClick={refresh}>↻ Обновить</Btn>
-              <Btn variant="ghost" onClick={onReceiveFromSe}>📥 Получил нал от СЗ</Btn>
-              <Btn variant="primary" onClick={onCreate}>+ Запросить аванс</Btn>
+              {!isHeadTo && (
+                <Btn variant="ghost" onClick={onReceiveFromSe}>📥 Получил нал от СЗ</Btn>
+              )}
+              {isHeadTo && (
+                <Btn variant="primary" onClick={onQuickExpense}>+ Добавить расход</Btn>
+              )}
+              <Btn variant={isHeadTo ? 'ghost' : 'primary'} onClick={onCreate}>
+                + {isHeadTo ? 'Запросить аванс' : 'Запросить аванс'}
+              </Btn>
             </>
+          ) : isHeadTo ? (
+            <Btn variant="primary" onClick={onQuickExpense}>+ Добавить расход</Btn>
           ) : null
         }
       />
@@ -269,7 +295,9 @@ export default function CashPage() {
           history={history}
           onOpen={onOpen}
           onCreate={onCreate}
+          onQuickExpense={onQuickExpense}
           onHistoryClick={onHistoryClick}
+          simplified={isHeadTo}
         />
       )}
     </div>
@@ -282,7 +310,8 @@ export default function CashPage() {
  */
 function RequestsView({
   balance, breakdown, loading, list, handovers, active, done,
-  sourceFilter, setSourceFilter, history, onOpen, onCreate, onHistoryClick
+  sourceFilter, setSourceFilter, history, onOpen, onCreate, onQuickExpense, onHistoryClick,
+  simplified = false
 }) {
   return (
     <>
@@ -294,8 +323,8 @@ function RequestsView({
             <div className="l">Получено</div>
           </div>
           <div className="cash-balance-card warning">
-            <div className="v">{fmtMoney(balance.spent)}</div>
-            <div className="l">Потрачено</div>
+            <div className="v">{fmtMoney(simplified ? (balance.cash_payouts_workers || balance.spent) : balance.spent)}</div>
+            <div className="l">{simplified ? 'Выплачено' : 'Потрачено'}</div>
           </div>
           <div className="cash-balance-card success">
             <div className="v">{fmtMoney(balance.returned)}</div>
@@ -308,7 +337,15 @@ function RequestsView({
         </div>
       )}
 
+      {simplified && balance && (
+        <div className="mt-8" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Btn variant="primary" onClick={onQuickExpense}>+ Добавить расход</Btn>
+          <Btn variant="ghost" onClick={onCreate}>Запросить аванс</Btn>
+        </div>
+      )}
+
       {/* Разбивка под балансом — 4 числа из спеки 5C */}
+      {!simplified && (
       <div className="cash-breakdown-grid">
         <div className="cash-breakdown-cell info">
           <div className="cash-breakdown-label">💼 Авансы из кассы</div>
@@ -327,18 +364,25 @@ function RequestsView({
           <div className="cash-breakdown-value">{fmtMoney(breakdown.spent)}</div>
         </div>
       </div>
+      )}
 
       {/* Список */}
       {loading ? (
         <div className="card card-empty">
           ⏳ Загружаем заявки…
         </div>
-      ) : list.length === 0 && handovers.length === 0 ? (
+      ) : list.length === 0 && (simplified || handovers.length === 0) ? (
         <EmptyState
           icon="💰"
           title="Нет операций"
-          hint="Создайте первую заявку на аванс или зафиксируйте получение нала от СЗ"
-          action={<Btn variant="primary" onClick={onCreate}>+ Запросить аванс</Btn>}
+          hint={simplified
+            ? 'Запросите аванс у бухгалтера, затем фиксируйте расходы одной кнопкой'
+            : 'Создайте первую заявку на аванс или зафиксируйте получение нала от СЗ'}
+          action={
+            simplified
+              ? <><Btn variant="primary" onClick={onQuickExpense}>+ Добавить расход</Btn>{' '}<Btn variant="ghost" onClick={onCreate}>Запросить аванс</Btn></>
+              : <Btn variant="primary" onClick={onCreate}>+ Запросить аванс</Btn>
+          }
         />
       ) : (
         <>
@@ -369,7 +413,7 @@ function RequestsView({
               className={'cash-source-chip' + (sourceFilter === 'all' ? ' active' : '')}
               onClick={() => setSourceFilter('all')}
             >
-              Все · {list.length + handovers.length}
+              Все · {list.length + (simplified ? 0 : handovers.length)}
             </button>
             <button
               type="button"
@@ -380,6 +424,7 @@ function RequestsView({
             >
               🏦 Касса · {list.length}
             </button>
+            {!simplified && (
             <button
               type="button"
               role="tab"
@@ -389,6 +434,7 @@ function RequestsView({
             >
               💵 От СЗ · {handovers.length}
             </button>
+            )}
           </div>
 
           <div className="cash-history-wrap mt-8">
