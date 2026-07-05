@@ -8,10 +8,7 @@
  * Необязательные дают XP и руны, но не блокируют
  * Цикл повторяется каждые 48 недель (≈ раз в год → периодическая переаттестация)
  *
- * Модель: grok-4.20-fast (xAI) — 2M контекст, 256K output, быстрая.
- * Sonnet через Tokenator упирался в 4-минутный upstream timeout (504) на
- * генерации ~40K токенов. Grok успевает за окно (200-500 tok/sec).
- * Доп. страховка: retry с backoff (1/5/30 мин) обёрнут вокруг weekly-lesson.
+ * Модель: x-ai/grok-4.20 (RouterAI) — 2M контекст, быстрая генерация лекций.
  */
 
 'use strict';
@@ -19,6 +16,7 @@
 const cron = require('node-cron');
 const db = require('./db');
 const pushService = require('./pushService');
+const { MODEL_LONG } = require('./ai-models');
 
 let aiProvider;
 try { aiProvider = require('./ai-provider'); } catch (e) {}
@@ -547,14 +545,10 @@ async function generateWeeklyLesson() {
     ? `\n\nУже изученные темы (не повторяй их содержание, только ссылайся при необходимости):\n${recentTopics}`
     : '';
 
-  console.log(`[AcademyCron] Generating lesson for week ${nextWeek}: "${curriculumEntry.saga}"... (model=grok-4.20-fast)`);
+  console.log(`[AcademyCron] Generating lesson for week ${nextWeek}: "${curriculumEntry.saga}"... (model=${MODEL_LONG})`);
 
   const response = await aiProvider.complete({
-    // 21.06.2026: переход с Sonnet на Grok 4.20 Fast — Sonnet генерировал 40K
-    // токенов дольше 4 мин и упирался в Tokenator upstream-timeout (504).
-    // Grok 4.20 Fast — 2M контекст, 256K output, скорость 200-500 tok/sec
-    // (заявленная xAI), успевает в окно Tokenator. См. [[feedback-tokenator-constraints]].
-    model: 'grok-4.20-fast',
+    model: MODEL_LONG,
     system: LESSON_SYSTEM_PROMPT + avoidNote,
     messages: [
       { role: 'user', content: `Создай Руну для недели ${nextWeek}.\n\n${topicInfo}` }
@@ -658,7 +652,7 @@ async function notifyAdmins(lessonTitle, lessonId, isMandatory) {
 // ═══════════════════════════════════════════════════════════════════════════
 // RETRY-WRAPPER для еженедельной генерации
 // ═══════════════════════════════════════════════════════════════════════════
-// Cron срабатывает только раз в неделю → одного 504/400 от Tokenator достаточно
+// Cron срабатывает только раз в неделю → одного 504/400 от провайдера достаточно
 // чтобы рабочие остались без нового урока на 7 дней. Делаем 4 попытки с backoff
 // (1мин/5мин/30мин) — даже если первая упала, шанс что хотя бы одна пройдёт
 // близок к 100% (различные транзиентные сбои крайне редко длятся >30 мин).

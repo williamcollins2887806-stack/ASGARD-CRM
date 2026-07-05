@@ -27,7 +27,7 @@ const mimirAutoEstimate = require('./mimir-auto-estimate');
 const docGen = require('./document-generator');
 
 // ─── Sliding-window для длинного диалога (Quick chat + Conductor) ──────────
-// Юзер хочет вести переписку «очень долго» и не упираться в контекст gpt-5.5
+// Юзер хочет вести переписку «очень долго» и не упираться в контекст 1M
 // (1.1M токенов). Если history раздувается > MAX_HISTORY_TOKENS — обрезаем с
 // начала (FIFO), оставляя последние MAX_HISTORY_TOKENS токенов. Это сохраняет
 // свежий контекст (последние реплики важнее старых).

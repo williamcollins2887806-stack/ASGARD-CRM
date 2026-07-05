@@ -15,25 +15,26 @@
  * Зависимости:
  *   - correspondenceService.getCorrespondenceById — гард на наличие письма.
  *   - letterContextBuilder.buildLetterContext — собирает system + 4 слоя контекста.
- *   - aiProvider.complete — OpenAI-router (Tokenator) → реальные модели.
- *   - mimir_conversations / mimir_messages — история чата.
+ *   - aiProvider.complete — RouterAI → реальные модели.
  *
  * Решения:
- *   - Модели whitelist: gpt-5.5 (default), gpt-5.4, grok-4.20-fast. Gemini ЗАПРЕЩЁН
- *     ([[feedback-no-gemini]]).
- *   - При model='gemini-*' или любой не-whitelist — silent fallback на gpt-5.5.
- *   - При HTTP 400 от Tokenator (часто на gpt-5.4/grok) — однократный retry с
- *     задержкой 30с на gpt-5.5 ([[feedback-tokenator-constraints]]).
- *   - response_format: { type: 'json_object' } для mode='edit' (если провайдер
- *     поддержит — иначе парсим как JSON руками с fallback на код-блок).
+ *   - Модели whitelist: deepseek (default), gemini flash, grok 4.20.
+ *   - При HTTP 400 от провайдера (перегруз) — однократный retry на DEFAULT_MODEL.
+ *   - response_format: { type: 'json_object' } для mode='edit'.
  */
 
 const correspondenceService = require('../services/correspondence');
 const letterContextBuilder  = require('../services/letter/letter-context-builder');
 const aiProvider            = require('../services/ai-provider');
+const {
+  MODEL_DEFAULT,
+  LETTER_AI_MODELS,
+  normalizeModelId,
+  getLetterContextBudget,
+} = require('../services/ai-models');
 
-const ALLOWED_MODELS = ['gpt-5.5', 'gpt-5.4', 'grok-4.20-fast'];
-const DEFAULT_MODEL  = 'gpt-5.5';
+const ALLOWED_MODELS = LETTER_AI_MODELS.map((m) => m.id);
+const DEFAULT_MODEL  = MODEL_DEFAULT;
 const OP_WHITELIST   = [
   'replace_all',
   'insert_at_end',
@@ -47,7 +48,7 @@ const CORRESPONDENCE_ROLES = [
   'OFFICE_MANAGER', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO'
 ];
 const HISTORY_LIMIT = 20;       // последние 20 сообщений из mimir_messages
-const TOKENATOR_RETRY_DELAY_MS = 30000;
+const PROVIDER_RETRY_DELAY_MS = 30000;
 
 function hasCorrespondenceAccess(user) {
   return !!user && CORRESPONDENCE_ROLES.includes(user.role);
@@ -58,10 +59,11 @@ function hasCorrespondenceAccess(user) {
  * Возвращает {model, was_replaced, requested}.
  */
 function resolveModel(requested) {
-  const r = String(requested || '').trim();
-  if (!r) return { model: DEFAULT_MODEL, was_replaced: false, requested: null };
-  if (ALLOWED_MODELS.includes(r)) return { model: r, was_replaced: false, requested: r };
-  return { model: DEFAULT_MODEL, was_replaced: true, requested: r };
+  const r = normalizeModelId(String(requested || '').trim() || MODEL_DEFAULT);
+  if (!requested) return { model: DEFAULT_MODEL, was_replaced: false, requested: null };
+  const norm = normalizeModelId(requested);
+  if (ALLOWED_MODELS.includes(norm)) return { model: norm, was_replaced: norm !== String(requested).trim(), requested };
+  return { model: DEFAULT_MODEL, was_replaced: true, requested };
 }
 
 /**
@@ -171,7 +173,7 @@ function sleep(ms) {
 }
 
 /**
- * Один вызов AI с graceful обработкой Tokenator 400.
+ * Один вызов AI с graceful обработкой retriable 400.
  */
 async function callAiOnce({ system, messages, model, mode }) {
   const responseFormat = mode === 'edit' ? { type: 'json_object' } : null;
@@ -186,10 +188,9 @@ async function callAiOnce({ system, messages, model, mode }) {
 }
 
 /**
- * Распознать «retriable 400» от Tokenator (см. [[feedback-tokenator-constraints]]).
- * Сигнатуры — текст «Request error» / HTTP 400 в ошибке.
+ * Распознать retriable HTTP 400 от RouterAI (перегруз / Request error).
  */
-function isTokenator400(err) {
+function isRetriableProvider400(err) {
   const msg = String(err && err.message || err || '');
   if (/HTTP\s*400/i.test(msg)) return true;
   if (/Request\s*error/i.test(msg)) return true;
@@ -305,21 +306,21 @@ module.exports = async function mimirLetterRoutes(fastify) {
       { role: 'user', content: userContentParts.join('\n\n') }
     ];
 
-    // ─── 5) AI вызов с Tokenator retry ────────────────────────────────
+    // ─── 5) AI вызов с retry на DEFAULT при 400 ────────────────────────
     let aiResult;
     try {
       aiResult = await callAiOnce({ system: ctx.system, messages, model, mode });
     } catch (e) {
-      if (isTokenator400(e) && model !== DEFAULT_MODEL) {
+      if (isRetriableProvider400(e) && model !== DEFAULT_MODEL) {
         request.log.warn(
-          `[mimir-letter] Tokenator 400 на model=${model} — retry через ${TOKENATOR_RETRY_DELAY_MS}ms на ${DEFAULT_MODEL}`
+          `[mimir-letter] Provider 400 на model=${model} — retry через ${PROVIDER_RETRY_DELAY_MS}ms на ${DEFAULT_MODEL}`
         );
-        await sleep(TOKENATOR_RETRY_DELAY_MS);
+        await sleep(PROVIDER_RETRY_DELAY_MS);
         try {
           model = DEFAULT_MODEL;
           aiResult = await callAiOnce({ system: ctx.system, messages, model, mode });
         } catch (e2) {
-          request.log.error({ err: e2 }, '[mimir-letter] retry на gpt-5.5 тоже упал');
+          request.log.error({ err: e2 }, '[mimir-letter] retry на DEFAULT тоже упал');
           return reply.code(502).send({
             error: `AI недоступен: ${e2.message}`,
             context_stats: ctx.stats
@@ -502,4 +503,4 @@ module.exports.CORRESPONDENCE_ROLES = CORRESPONDENCE_ROLES;
 module.exports.parseEditResponse = parseEditResponse;
 module.exports.filterOpsByWhitelist = filterOpsByWhitelist;
 module.exports.resolveModel = resolveModel;
-module.exports.isTokenator400 = isTokenator400;
+module.exports.isRetriableProvider400 = isRetriableProvider400;

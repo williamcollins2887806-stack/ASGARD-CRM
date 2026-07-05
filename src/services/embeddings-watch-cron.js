@@ -1,11 +1,9 @@
 'use strict';
 
 /**
- * Embeddings Watch Cron — мониторинг доступности embedding-моделей у AI-провайдера.
+ * Embeddings Watch Cron — мониторинг доступности embedding-моделей у RouterAI.
  *
- * Задача: у токенатора (api.tokenator.top) сейчас embedding-модели (text-embedding-3-large,
- * voyage-3-large) — offline. Mimir Conductor RAG нормативов (mimir_norms_index + pgvector)
- * остановлен из-за этого. Этот cron раз в 5 часов проверяет, не появились ли embeddings.
+ * Проверяет voyage-3-large и text-embedding-3-large через /v1/embeddings.
  * При первом успешном ответе → уведомление в Telegram + notifications для DIRECTOR_GEN/ADMIN.
  *
  * Состояние хранится в settings.embeddings_watch:
@@ -24,7 +22,7 @@ let _telegram = null;
 let _notify = null;
 
 // Модели для проверки. Пытаемся обе подряд — успех любой = embeddings работают.
-const PROBE_MODELS = ['text-embedding-3-large', 'voyage-3-large'];
+const PROBE_MODELS = ['voyage/voyage-3-large', 'text-embedding-3-large'];
 const PROBE_TIMEOUT_MS = 15000;
 const SETTINGS_KEY = 'embeddings_watch';
 

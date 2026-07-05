@@ -828,7 +828,7 @@ async function runConductor(runId, opts = {}) {
 
   // FIFO-очередь Conductor-loop. Если другой РП уже запустил просчёт — этот
   // ждёт в очереди (max 1 active одновременно — снижает rate-limit давление
-  // на tokenator и стабилизирует прогоны).
+  // на RouterAI и стабилизирует прогоны).
   const { RUN_SEMAPHORE } = require('./semaphore');
   if (RUN_SEMAPHORE.active >= RUN_SEMAPHORE.max) {
     const sStatus = RUN_SEMAPHORE.status();
@@ -903,7 +903,7 @@ async function _runConductorCore(runId, opts = {}) {
   // 6. Native tool-use loop.
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
     // Sliding-window: если messages раздулся > MAX_HISTORY_TOKENS (500K) —
-    // обрезаем FIFO с защитой пар tool_use↔tool_result. gpt-5.5 контекст 1.1M,
+    // обрезаем FIFO с защитой пар tool_use↔tool_result. DeepSeek контекст 1M,
     // но мы держим запас под system_prompt + tools + новые tool_results.
     const slidedMessages = _slideConductorMessages(messages, runId);
     if (slidedMessages.length !== messages.length) {

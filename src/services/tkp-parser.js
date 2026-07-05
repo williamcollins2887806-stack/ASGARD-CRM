@@ -23,7 +23,7 @@ const aiProvider = require('./ai-provider');
 const SUPPORTED_TEXT  = new Set(['.pdf', '.docx', '.xlsx', '.xls', '.txt', '.csv', '.rtf']);
 const SUPPORTED_IMAGE = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 
-// 18.06.2026 поднят 20k → 100k: gpt-5.5 контекст 1.1M, спокойно влезает
+// 18.06.2026 поднят 20k → 100k: DeepSeek контекст 1M, спокойно влезает
 // 50-страничное ТЗ + 10 фото OCR + промпт + RAG-контекст.
 const MAX_TEXT_CHARS = 100000;
 

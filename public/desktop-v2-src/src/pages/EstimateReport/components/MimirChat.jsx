@@ -58,7 +58,7 @@ export default function MimirChat({ estimate, onUpdated }) {
       if (res?.calculation_updated) onUpdated?.();
     } catch (e) {
       const msg = String(e?.message || e);
-      // 4xx/5xx от Tokenator или «Insufficient balance» — подсказываем переключить модель
+      // 4xx/5xx от RouterAI или «Insufficient balance» — подсказываем переключить модель
       const looksLikeModelProblem = /balance|HTTP 4\d\d|HTTP 5\d\d|Insufficient|недоступ/i.test(msg);
       toast('Ошибка', msg, 'err');
       setMessages((m) => [...m, {

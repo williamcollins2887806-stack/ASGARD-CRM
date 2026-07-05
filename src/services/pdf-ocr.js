@@ -29,9 +29,10 @@ const aiProvider = require('./ai-provider');
 // (правильно распознал "Воскресенск" + структуру). gemini-2.5-flash дешевле но
 // может галлюцинировать когда страница повёрнута/плохого качества — он "додумал"
 // "Инструкция по эксплуатации прибора" вместо реального ТЗ для дока 284.
-// 20.06.2026: юзер потребовал убрать pixtral/gemini — только gpt-5.5 vision.
-const OCR_MODEL = process.env.OCR_MODEL || 'gpt-5.5';
-const OCR_FALLBACK_MODEL = process.env.OCR_FALLBACK_MODEL || 'gpt-5.5';
+// OCR через RouterAI vision (Gemini 3.5 Flash).
+const { MODEL_FAST } = require('./ai-models');
+const OCR_MODEL = process.env.OCR_MODEL || MODEL_FAST;
+const OCR_FALLBACK_MODEL = process.env.OCR_FALLBACK_MODEL || MODEL_FAST;
 // 18.06.2026 поднят 20 → 150: для больших проектных ТЗ. Каждая страница ≈ 1 AI-вызов
 // с vision (~30 сек). 150 страниц теоретически ≈ 75 мин real-time — но фронт
 // показывает прогресс, а реально PDF >50 стр почти всегда имеют text-layer
@@ -149,7 +150,7 @@ async function _ocrOnePage(pngPath, pageNum, originalName) {
     { type: 'image_url', image_url: { url: 'data:image/png;base64,' + pngBase64 } }
   ];
 
-  // 21.06.2026: ОБЯЗАТЕЛЬНЫЙ ограничитель retries. Tokenator 503-ит на vision-моделях
+  // ОБЯЗАТЕЛЬНЫЙ ограничитель retries. Провайдер может 503-ить на vision-моделях
   // в peaks; раньше каждая попытка ретраилась внутри AI-провайдера N раз → одна страница
   // занимала минуты. Теперь: 1 попытка основной, 1 попытка fallback (если галлюцинация
   // или throw), потом skip — возвращаем пустую строку. Лучше иметь документ с пропущенной

@@ -6,8 +6,7 @@
  *   - ✏️ Редактировать (mode='edit') — JSON {ops,summary,confidence} → applyOps
  *     к TipTap doc через editorRef. Применяется СРАЗУ; в чат — summary + confidence.
  *
- * Модели (3) — селектор AI_MODELS. Дефолт gpt-5.5 ([[feedback-tokenator-constraints]]).
- * Gemini ЗАПРЕЩЁН — в списке отсутствует ([[feedback-no-gemini]]).
+ * Модели (3) — селектор AI_MODELS. Дефолт deepseek/deepseek-v4-pro (RouterAI).
  *
  * Вызовы — строго ПО ОДНОМУ. Кнопка отправки блокируется на время запроса.
  */
@@ -21,7 +20,7 @@ export function MimirChat({
   correspondenceId,
   conversationId,
   setConversationId,
-  model,                // 'gpt-5.5' | 'gpt-5.4' | 'grok-4.20-fast'
+  model,                // RouterAI model id
   onModelChange,        // (id) => void
   editorRef,            // ref на TipTap Editor (для applyOps)
   getCurrentDoc,        // () => TipTap JSON doc (вызывается в момент send)

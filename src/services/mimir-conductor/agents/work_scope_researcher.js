@@ -453,7 +453,7 @@ ${JSON.stringify(employees.by_qualification || [])}
         const sysPrompt = attempt === 1
           ? SYSTEM_PROMPT_WEB_RESEARCH
           : SYSTEM_PROMPT_WEB_RESEARCH + '\n\nКРИТИЧНО: верни ТОЛЬКО валидный JSON-объект. Никаких markdown-ограждений, никаких комментариев, никаких тегов <citation>. Все ключи и строки в двойных кавычках, никаких trailing comma.';
-        // Жёсткий timeout на каждую попытку (sonnet с web-plugin висит у Tokenator).
+        // Жёсткий timeout на каждую попытку (web-plugin может висеть у провайдера).
         // 3 мин × 3 попытки = 9 мин max, под sweeper agent-timeout 12 мин с буфером.
         const PER_ATTEMPT_TIMEOUT_MS = 3 * 60 * 1000;
         const result = await Promise.race([

@@ -5,7 +5,7 @@
  * Дополняет уже существующий `pages/Correspondence/api.js` — здесь только то,
  * что относится к композеру/Мимиру (без CRUD списка).
  *
- * Все вызовы строго по ОДНОМУ (feedback-tokenator-constraints).
+ * Все вызовы строго по ОДНОМУ (sequential AI requests).
  */
 import { api } from '@/api/client';
 
@@ -32,30 +32,29 @@ export const DEFAULT_KINDS = [
   { key: 'free',         title: '',                             sub: '', subline: '' }
 ];
 
-// ── 3 модели AI ([[project-letters-models]]) ──────────────────────────────
-// Gemini ЗАПРЕЩЁН ([[feedback-no-gemini]]) — в селекторе НЕ упоминается.
+// ── 3 модели AI (RouterAI tiers, sync с src/services/ai-models.js) ─────────
 export const AI_MODELS = [
   {
-    id: 'gpt-5.5',
-    label: 'GPT-5.5',
-    hint: 'Стабильная · контекст 1M · ×1.0',
+    id: 'deepseek/deepseek-v4-pro',
+    label: 'DeepSeek V4 Pro',
+    hint: '1M · дешёвая JSON · ×1.0',
     default: true
   },
   {
-    id: 'gpt-5.4',
-    label: 'GPT-5.4',
-    hint: 'Дешевле · контекст 400K · ×0.8',
+    id: 'google/gemini-3.5-flash',
+    label: 'Gemini 3.5 Flash',
+    hint: '1M · vision/light · быстрая',
     default: false
   },
   {
-    id: 'grok-4.20-fast',
-    label: 'Grok 4.20 Fast',
-    hint: 'xAI · контекст 2M · ×1.6',
+    id: 'x-ai/grok-4.20',
+    label: 'Grok 4.20',
+    hint: '2M · длинные письма',
     default: false
   }
 ];
 
-export const DEFAULT_MODEL_ID = 'gpt-5.5';
+export const DEFAULT_MODEL_ID = 'deepseek/deepseek-v4-pro';
 
 // ── Correspondence CRUD ──────────────────────────────────────────────────
 export function getCorrespondence(id) {

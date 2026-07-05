@@ -54,7 +54,7 @@ const CRM_PASSPORT = {
   stack: {
     backend:  ['Node.js v20', 'Fastify v4', 'node-cron', 'ExcelJS', 'Puppeteer (PDF)'],
     frontend: ['Vanilla JS ES6+ (desktop)', 'React 18 + Vite (mobile /m/)', 'ES5 legacy (field /field/)'],
-    ai:       ['routerai.ru (OpenAI-совместимый прокси)', 'Модель: anthropic/claude-opus-4.6', 'Ключ в DB: settings.ai_config'],
+    ai:       ['routerai.ru (OpenAI-совместимый прокси)', 'Модель: deepseek/deepseek-v4-pro', 'Ключ в DB: settings.ai_config'],
     infra:    ['nginx (реверс-прокси)', 'systemd (сервис)', 'PostgreSQL (БД)'],
   },
   structure: {

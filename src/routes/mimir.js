@@ -392,7 +392,7 @@ async function mimirRoutes(fastify, options) {
 
       // === LIGHT-режим: минимальный промпт, без БД-контекста, без истории, без Text-to-SQL ===
       // Подходит для быстрых вопросов вроде «как создать тендер», «где посмотреть отчёт».
-      // Не нагружает модель — gpt-5.4 на длинном системном prompt'е обрывает ответ
+      // Не нагружает модель — light-tier на длинном системном prompt'е обрывает ответ
       // после одного chunk'а. Эта ветка обходит проблему.
       let systemPrompt;
       let aiMessages;
@@ -460,7 +460,7 @@ async function mimirRoutes(fastify, options) {
           fullResponse += event.content;
           sendEvent({ type: 'text', content: event.content });
         } else if (event.type === 'reasoning') {
-          // reasoning_content от reasoning-моделей (gpt-5.5 и т.п.) — отдельный поток
+          // reasoning_content от reasoning-моделей — отдельный поток
           // мыслей. Шлём клиенту для UX (можно показать «Мимир размышляет: …»),
           // но не добавляем в fullResponse — это не финальный ответ.
           sendEvent({ type: 'reasoning', content: event.content });
@@ -2905,7 +2905,7 @@ ${history && history.length > 0 ? `\nКОНТЕКСТ ДИАЛОГА:\n${history
           success: true,
           response: 'Я сейчас в быстром режиме (' + modelCfg.label + ') — не могу пересчитать смету. ' +
             'Переключи модель в шапке чата на «🧠 С данными CRM», и я учту твоё замечание.',
-          ai_meta: { model: modelCfg.id, provider: 'tokenator', light_mode: true }
+          ai_meta: { model: modelCfg.id, provider: 'routerai', light_mode: true }
         });
       }
 

@@ -11,10 +11,7 @@
  *     2. СТРУКТУРА ПЕРЕПИСКИ (correspondence по той же родительской сущности)
  *     3. ИСТОРИЯ ЧАТА (mimir_messages по conversation_id)
  *     4. ДОГОВОР + СМЕТА (final_estimate_data из mimir_conductor_runs)
- *   - Бюджеты:
- *       gpt-5.5         → 480 000 токенов  (1.1M контекст, оставим 520K для reasoning + output)
- *       gpt-5.4         → 200 000          (400K контекст)
- *       grok-4.20-fast  → 900 000          (2M контекст)
+ *   - Бюджеты — из ai-models.js (LETTER_CONTEXT_BUDGETS по model id).
  *   - tokensPerChar ≈ 0.286 (для русского), maxChars = floor(maxTokens / tokensPerChar)
  *
  * Не делает API-вызовов — только SQL на КЛОНЕ. Никаких сайд-эффектов.
@@ -37,14 +34,7 @@
  */
 
 const db = require('../db');
-
-// ─── Бюджеты по модели ────────────────────────────────────────────────────
-const BUDGETS = {
-  'gpt-5.5':        480_000,
-  'gpt-5.4':        200_000,
-  'grok-4.20-fast': 900_000
-};
-const DEFAULT_BUDGET = 480_000;       // если модель не указана/неизвестна
+const { MODEL_DEFAULT, getLetterContextBudget, normalizeModelId, LETTER_CONTEXT_BUDGETS } = require('../ai-models');
 const TOKENS_PER_CHAR = 0.286;        // ~1 токен на 3.5 символа для русского
 
 // Лимиты вложенных кусков (защита от мега-документов)
@@ -62,7 +52,7 @@ const LAYER4_TOP_ITEMS = 10;                 // топ-N позиций смет
  * @param {{
  *   correspondence_id: number,
  *   conversation_id?: number|null,
- *   model?: 'gpt-5.5'|'gpt-5.4'|'grok-4.20-fast',
+ *   model?: string (RouterAI id),
  *   db?: object,                          // опциональный pg-клиент (тестов ради)
  *   userId?: number                       // на будущее — RBAC-фильтр, сейчас не используется
  * }} opts
@@ -77,7 +67,7 @@ async function buildLetterContext(opts) {
   const {
     correspondence_id,
     conversation_id = null,
-    model = 'gpt-5.5',
+    model = MODEL_DEFAULT,
     db: dbClient
   } = opts || {};
 
@@ -86,7 +76,8 @@ async function buildLetterContext(opts) {
   }
 
   const client = dbClient || db;
-  const maxTokens = BUDGETS[model] || DEFAULT_BUDGET;
+  const normModel = normalizeModelId(model);
+  const maxTokens = getLetterContextBudget(normModel);
   const maxChars = Math.floor(maxTokens / TOKENS_PER_CHAR);
 
   // 0) Сама correspondence — нужна и для слоёв, и для system prompt.
@@ -473,7 +464,7 @@ module.exports = {
   buildLetterContext,
   // экспорт для unit-тестов и AUD
   _internal: {
-    BUDGETS,
+    LETTER_CONTEXT_BUDGETS,
     TOKENS_PER_CHAR,
     loadCorrespondence,
     buildLayer1ParentDocs,

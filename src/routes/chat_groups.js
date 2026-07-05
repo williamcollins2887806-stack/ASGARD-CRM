@@ -1481,7 +1481,7 @@ module.exports = async function(fastify) {
     }
 
     // Резолв модели из реестра. light-режим — короткий промпт без БД-контекста
-    // и без истории (gpt-5.4 обламывается на тяжёлом prompt'е Хугинна).
+    // и без истории (light-модель обламывается на тяжёлом prompt'е Хугинна).
     const chatModelsReg = require('../services/chat-models');
     const modelCfg = chatModelsReg.getModel(requestedModel) || chatModelsReg.getDefault();
     const member = await getChatMembership(chatId, userId);

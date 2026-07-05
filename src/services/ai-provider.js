@@ -9,6 +9,13 @@
 'use strict';
 
 const db = require('./db');
+const {
+  ROUTERAI_CHAT_URL,
+  MODEL_DEFAULT,
+  MODEL_FAST,
+  MODEL_EMBED_PRIMARY,
+  normalizeModelId,
+} = require('./ai-models');
 
 /**
  * Структурированная ошибка AI-провайдера.
@@ -95,21 +102,15 @@ let AI_PROVIDER = process.env.AI_PROVIDER || 'openai';
 let ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 let ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6-20250514';
 let OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
-// 19.06.2026: дефолт переключён с claude-sonnet-4.6 на gpt-5.5
-// (Anthropic-баланс на токенаторе = 0₽, claude-* модели возвращали 503 / биллинг
-// был сломан; gpt-5.5 покрыт пакетом токенов, 1.1M контекст, vision встроен).
-// Все agent-loop / Conductor / email-analyzer уходят на gpt-5.5 по умолчанию.
-let OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-5.5';
-// 19.06.2026: бамп с 4096 → 8000 (минимум для длинных смет/КП/писем).
-// Конкретные вызовы могут передавать свой maxTokens явно (выше — например, generateReport
-// шлёт 4096 явно — это локально, но не блокирует output, gpt-5.5 max_output ≈ 16K).
+// RouterAI: дефолт deepseek/deepseek-v4-pro (1M, дешёвый JSON).
+let OPENAI_MODEL = process.env.OPENAI_MODEL || MODEL_DEFAULT;
 const AI_MAX_TOKENS = parseInt(process.env.AI_MAX_TOKENS || '8000', 10);
 const AI_TEMPERATURE = parseFloat(process.env.AI_TEMPERATURE || '0.6');
 const AI_TIMEOUT_MS = parseInt(process.env.AI_TIMEOUT_MS || '600000', 10); // 600 sec = 10 мин. Sonnet 4.6 с 1M контекстом и большим thinking может думать долго на сложных просчётах.
 
 // API endpoints (default: routerai.ru — OpenAI-compatible proxy to Claude)
 const ANTHROPIC_URL = process.env.ANTHROPIC_URL || 'https://api.anthropic.com/v1/messages';
-let OPENAI_URL = process.env.OPENAI_URL || 'https://routerai.ru/api/v1/chat/completions';
+let OPENAI_URL = process.env.OPENAI_URL || ROUTERAI_CHAT_URL;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STUB-режим для локальной разработки без расхода баланса.
@@ -156,7 +157,7 @@ async function _loadKeysFromDB() {
       }
       if (cfg.provider) AI_PROVIDER = cfg.provider;
       if (cfg.anthropic_model) ANTHROPIC_MODEL = cfg.anthropic_model;
-      if (cfg.openai_model) OPENAI_MODEL = cfg.openai_model;
+      if (cfg.openai_model) OPENAI_MODEL = normalizeModelId(cfg.openai_model);
       if (cfg.openai_url) {
         OPENAI_URL = cfg.openai_url;
         console.log('[AI Provider] Custom OpenAI URL:', OPENAI_URL);
@@ -309,7 +310,7 @@ async function callAnthropic({ system, messages, maxTokens, temperature, stream 
  * 'yandex-pro') в реальный api_id для запроса к провайдеру.
  * Conductor-агенты передают символические ключи (mimir-conductor/models-config.js),
  * а провайдеру нужен конкретный имя модели. Если переданное имя — не ключ
- * из models-config (например уже 'gpt-5.5' или 'gemini-2.5-flash'), возвращаем как есть.
+ * из models-config (например уже 'deepseek/deepseek-v4-pro'), нормализуем legacy IDs.
  *
  * Возвращает:
  *   - api_id если ключ найден и НЕ disabled
@@ -321,9 +322,9 @@ function _resolveModelKey(model) {
   try {
     const mc = require('./mimir-conductor/models-config');
     const m = mc.getModel(model);
-    if (!m) return model;                          // не наш ключ — пас
+    if (!m) return normalizeModelId(model);       // не наш ключ — legacy/normalize
     if (m.disabled || m.api_id == null) return null; // явно отключён (например embeddings)
-    return m.api_id;
+    return normalizeModelId(m.api_id);
   } catch (_) { return model; }
 }
 
@@ -353,18 +354,16 @@ async function callOpenAI(opts) {
       if (chain[0] !== resolved) chain = [resolved, ...chain.filter((x) => x !== resolved)];
     } catch (_) { chain = [resolved]; }
   } else {
-    // 20.06.2026: если model явно не передан (Quick, generateClarificationLetter),
-    // используем дефолтную цепочку с fallback — иначе один gpt-5.5 → 400 → throw.
     try {
       const mc = require('./mimir-conductor/models-config');
-      chain = mc.getFallbackChain('gpt-5.5');
+      chain = mc.getFallbackChain('sonnet-4-6');
       if (!chain || !chain.length) chain = [OPENAI_MODEL];
     } catch (_) { chain = [OPENAI_MODEL]; }
   }
 
   // Внутренний помощник: вызов одной модели с retry на rate_limit (общий лимит ключа).
   // 3 попытки с backoff 5→10→20с. Между попытками НЕ меняем модель — ждём слот.
-  // ВЕСЬ вызов проходит через AI_SEMAPHORE (max 3 concurrent — лимит tokenator).
+  // ВЕСЬ вызов проходит через AI_SEMAPHORE (max 3 concurrent — лимит RouterAI).
   let _AI_SEM = null;
   try { _AI_SEM = require('./mimir-conductor/semaphore').AI_SEMAPHORE; } catch (_) {}
   async function callWithRateLimitRetry(apiId) {
@@ -421,16 +420,12 @@ function _isRetriableError(err) {
   if (status >= 500 && status < 600) return true;
   // 403/404 от провайдера на конкретную модель (model_not_found / not_available) — тоже фолбэк
   if (status === 403 || status === 404) return true;
-  // tokenator-специфика: 503 «Model temporarily unavailable»
   const msg = String(err.providerMessage || err.message || '').toLowerCase();
   if (msg.includes('temporarily unavailable') || msg.includes('not available') || msg.includes('not found')) return true;
-  // 20.06.2026: Tokenator стал возвращать 400 «Request error» на gpt-5.5 при перегрузе
-  // (когда у Anthropic balance=0 и часть моделей лежит). Это retriable — пробуем gpt-5.4 / gemini-flash.
-  // Реальные ошибки запроса (invalid_request / validation) отличаются — у них в provider_message
-  // обычно есть «invalid», «validation», «required», «missing field» и т.п.
+  // Generic 400 «Request error» при перегрузе провайдера — retriable (fallback chain).
   if (status === 400) {
     const isInvalidReq = /invalid|validation|required|missing|schema|format/i.test(msg);
-    if (!isInvalidReq) return true; // generic «Request error» от Tokenator — retriable
+    if (!isInvalidReq) return true;
   }
   return false;
 }
@@ -471,7 +466,7 @@ async function _callOpenAIOnce({ system, messages, maxTokens, temperature, strea
   }));
 
   const body = {
-    model: model || OPENAI_MODEL,
+    model: normalizeModelId(model || OPENAI_MODEL),
     max_tokens: maxTokens || AI_MAX_TOKENS,
     temperature: temperature ?? AI_TEMPERATURE,
     messages: openaiMessages,
@@ -595,7 +590,7 @@ async function _callOpenAIOnce({ system, messages, maxTokens, temperature, strea
   }
 
   // Усреднённая оценка ~4 символа на токен (для русского/смешанного контента),
-  // используется как фолбэк когда провайдер не возвращает usage в ответе (tokenator
+  // используется как фолбэк когда провайдер не возвращает usage в ответе (RouterAI
   // с tools иногда даёт пустой usage). Без фолбэка cost_rub останется 0 и РП будет
   // в недоумении почему AI работал но «не потратил токены».
   function _estTokens(s) { return s ? Math.ceil(String(s).length / 4) : 0; }
@@ -803,7 +798,7 @@ async function* parseOpenAIStream(response) {
           const event = JSON.parse(jsonStr);
           const delta = event.choices?.[0]?.delta;
 
-          // Reasoning-модели (gpt-5.5 и подобные) шлют рассуждения отдельным
+          // Reasoning-модели шлют рассуждения отдельным
           // полем reasoning_content. Финальный ответ потом приходит в .content.
           if (delta?.reasoning_content) {
             yield { type: 'reasoning', content: delta.reasoning_content };
@@ -859,7 +854,7 @@ function parseStream(response, provider) {
 // Подтверждено тестом 25.05.2026: gemini-2.5-flash (1.8с, 601 chars), gpt-4.1-mini,
 // qwen3-235b реально выполняют plugin 'web' и возвращают текст.
 // Выбран gemini-2.5-flash — самая быстрая и дешёвая.
-const WEB_SEARCH_MODEL = process.env.WEB_SEARCH_MODEL || 'gpt-5.5';
+const WEB_SEARCH_MODEL = process.env.WEB_SEARCH_MODEL || MODEL_FAST;
 
 async function executeWebSearch(query, opts = {}) {
   await _loadKeysFromDB();
@@ -1076,7 +1071,7 @@ async function runAgentLoop(options) {
     // upstream-таймаут routerai.ru (5+ мин на 50K input). gpt-4.1-mini
     // справляется со складыванием JSON по схеме в 5-10× быстрее.
     // Sonnet остаётся для итераций (он лучше делает анализ и поиски).
-    const FINALIZATION_MODEL = process.env.MIMIR_FINAL_MODEL || 'openai/gpt-4.1-mini';
+    const FINALIZATION_MODEL = process.env.MIMIR_FINAL_MODEL || MODEL_DEFAULT;
     console.log(`[AgentLoop] Финал через ${FINALIZATION_MODEL} (вместо ${completeOpts.model || 'sonnet'})`);
     finalResult = await complete({
       ...completeOpts,
@@ -1187,7 +1182,7 @@ async function searchWeb({ query, model, maxResults = 5, includeDomains = [] } =
  * @param {string} [p.model='voyage/voyage-3-large']
  * @returns {Promise<number[][]>} — массив векторов (по одному на текст)
  */
-async function embed({ texts, model = 'voyage/voyage-3-large' } = {}) {
+async function embed({ texts, model = MODEL_EMBED_PRIMARY } = {}) {
   await _loadKeysFromDB();
   const list = Array.isArray(texts) ? texts : [texts];
   const DIM = 1024;
@@ -1200,7 +1195,7 @@ async function embed({ texts, model = 'voyage/voyage-3-large' } = {}) {
   }
   if (!OPENAI_API_KEY) throw new AIProviderError({ code: 'auth', providerMessage: 'OPENAI_API_KEY не настроен для embeddings' });
 
-  // routerai/tokenator — OpenAI-совместимый embeddings endpoint.
+  // RouterAI — OpenAI-совместимый embeddings endpoint.
   // OPENAI_URL указывает на /chat/completions — заменяем хвост на /embeddings.
   const embUrl = OPENAI_URL.replace(/\/chat\/completions\/?$/, '/embeddings');
   const controller = new AbortController();
@@ -1213,8 +1208,7 @@ async function embed({ texts, model = 'voyage/voyage-3-large' } = {}) {
       signal: controller.signal
     });
     if (!res.ok) {
-      // GRACEFUL: 503 «Model temporarily unavailable» (актуально для токенатора 06.2026:
-      // text-embedding-3-large и voyage-3-large временно offline). Вместо краша возвращаем
+      // GRACEFUL: 503 «Model temporarily unavailable». Вместо краша возвращаем
       // массив null'ов — searchNorms() в norms-index.js при пустой mimir_norms_index
       // не ходит сюда вовсе, но если кто-то всё же позвал embed() напрямую — он получит
       // null-вектор и должен это переварить (фолбэк на текстовый ILIKE-поиск).

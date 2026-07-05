@@ -845,8 +845,8 @@ async function mimirRespondToQuestion(db, { chatId, estimateId, question, askerN
       : '(пусто)';
 
     // 5. System prompt — зависит от system_mode выбранной модели.
-    // light-модель (gpt-5.4) обламывается на длинном prompt'е → используем короткий
-    // (без БД-контекста). full-модель (gpt-5.5/claude) получает полный prompt с просчётом.
+    // light-модель (gemini flash) обламывается на длинном prompt'е → используем короткий
+    // (без БД-контекста). full-модель (deepseek) получает полный prompt с просчётом.
     let systemPrompt;
     if (modelCfg.system_mode === 'light') {
       systemPrompt = `Ты Мимир — ИИ-ассистент в чате обсуждения просчёта ООО «Асгард Сервис». Тебя упомянул ${askerName}.

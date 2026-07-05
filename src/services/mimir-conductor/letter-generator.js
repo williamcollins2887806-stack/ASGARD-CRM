@@ -32,6 +32,7 @@ const PDFDocument = require('pdfkit');
 
 const db = require('../db');
 const aiProvider = require('../ai-provider');
+const { MODEL_DEFAULT } = require('../ai-models');
 const cr = require('./conductor-run');
 const { parseStrictJson } = require('./agents/_util');
 const docGen = require('../document-generator');
@@ -125,7 +126,7 @@ async function nextLetterNumber() {
  * ведомость показывает 100 но описание ссылается на 200» — это явная просьба
  * пользователя «не пустой запрос а именно почему ИИ делает запрос».
  *
- * Модель — gpt-5.5 (стабильная у Tokenator). Без markdown, строгий JSON-массив.
+ * Модель — deepseek/deepseek-v4-pro (RouterAI). Без markdown, строгий JSON-массив.
  *
  * @param {Array} clars — raw clarifications (channel=CUSTOMER, status=OPEN)
  * @param {Object} ctx — { runId, customerName, projectTitle, receivedDocs, tzGaps, estimateBrief, aiNotes }
@@ -235,7 +236,7 @@ ${clarsBlock}
     const result = await aiProvider.complete({
       system: 'Ты — эксперт-инженер ООО «Асгард-Сервис», старший автор разъяснительных писем гендиру заказчика. Пишешь длинные деловые пояснения 3-7 предложений каждое со ссылкой на конкретный документ/раздел/цифру. Стиль — корпоративный, спокойный, без эмоций. ТОЛЬКО валидный JSON-массив, без markdown-обрамления.',
       messages: [{ role: 'user', content: prompt }],
-      model: 'gpt-5.5',
+      model: MODEL_DEFAULT,
       maxTokens: 8000
     });
     const txt = String(result.text || result.content || '').trim();
@@ -790,7 +791,7 @@ async function generateClarificationLetter({ runId, clarificationIds, pmUserId }
     estimateBrief = lines.join(' ');
   } catch (_) {}
 
-  // 2. Группировка/дедупликация/переформулировка через AI (gpt-5.5, расширенный контекст).
+  // 2. Группировка/дедупликация/переформулировка через AI (DeepSeek V4 Pro).
   const grouped = await groupQuestionsByTopic(clarsRes.rows, {
     runId,
     customerName: customer.name || toOrg,

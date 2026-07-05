@@ -894,7 +894,7 @@ window.AsgardAI = (function(){
             renderMessages();
           }
         } else if (event.type === 'reasoning') {
-          // reasoning_content от reasoning-моделей (gpt-5.5) — оставляем в стороне.
+          // reasoning_content от reasoning-моделей — оставляем в стороне.
           // Юзеру не нужно видеть chain-of-thought, но typing-индикатор показывает
           // что что-то происходит (счётчик секунд уже крутится).
         } else if (event.type === 'done') {
