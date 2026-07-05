@@ -524,20 +524,7 @@ describe('Permit Expiry Calculation', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('SE Monthly Limit Offset', () => {
-  // Logic from src/routes/timesheet-v2.js — moInitial применяется только
-  // при наличии импорта se_monthly_history за запрошенный месяц.
-  function computeMoInitial(seMonthlyUsedInitial, year, month, hasImportForMonth) {
-    let moInitial = 0;
-    const mi = seMonthlyUsedInitial;
-    if (mi && typeof mi === 'object' &&
-        hasImportForMonth &&
-        Number(mi.year) === Number(year) &&
-        Number(mi.month) === Number(month)) {
-      const amt = Number(mi.amount || 0);
-      if (Number.isFinite(amt)) moInitial = amt;
-    }
-    return moInitial;
-  }
+  const { computeMoInitial, computeSeLimits } = require('../../src/lib/se-limits');
 
   function computeMonthlyRemaining(monthlyLimit, transfersMonth, moInitial) {
     const moUsed = transfersMonth + moInitial;
@@ -562,8 +549,27 @@ describe('SE Monthly Limit Offset', () => {
   });
 
   test('offset ignored when year/month match but no import snapshot', () => {
-    // Новый месяц до импорта Excel — полный лимит.
     expect(computeMonthlyRemaining(monthlyLimit, 0, computeMoInitial(offset, 2026, 7, false))).toBe(350000);
+  });
+
+  test('computeSeLimits matches timesheet transfer formula', () => {
+    const lim = computeSeLimits({
+      monthlyLimit: 350000,
+      yearlyLimit: 2400000,
+      trYear: 100000,
+      trMonth: 0,
+      yrInitial: 0,
+      seMonthlyUsedInitial: null,
+      yrHistory: 50000,
+      hasImportForMonth: false,
+      year: 2026,
+      month: 7,
+      canExceedLimit: false,
+      earned: 80000
+    });
+    expect(lim.monthly_remaining).toBe(350000);
+    expect(lim.yearly_remaining).toBe(2250000);
+    expect(lim.transfer).toBe(80000);
   });
 });
 

@@ -30,6 +30,13 @@ const ACCESS_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'BUH'];
 const crypto = require('crypto');
 const { getCashBalance } = require('../services/approvalService');
 const { calcAllPmBalances, calcPmBalance } = require('../lib/pm-balance');
+const {
+  computeSeLimits,
+  loadSeLimitsAggregates,
+  loadLimitHolderProfiles,
+  computeYearlyUsedForEmployee,
+  resolveLimitsHolderId
+} = require('../lib/se-limits');
 
 // Cash advisory lock key — должен совпадать с CASH_ADVISORY_LOCK_KEY в cash.js,
 // чтобы bulk-вставки в cash_balance_log не конфликтовали с параллельными
@@ -186,7 +193,9 @@ async function routes(fastify, options) {
     const { rows: emps } = await db.query(`
       SELECT id, fio, is_self_employed, is_officially_employed, can_exceed_limit,
              official_salary, official_status, official_non_burnable,
-             se_payee_id
+             se_payee_id,
+             COALESCE(se_yearly_used_initial, 0) AS se_yearly_used_initial,
+             se_monthly_used_initial
       FROM employees WHERE id = ANY($1::int[])
     `, [empIds]);
 
@@ -202,57 +211,25 @@ async function routes(fastify, options) {
     }
     const limitsIds = Array.from(new Set([...empIds, ...payeeIdsSet]));
 
-    // Загрузим инфо payee'ев (can_exceed_limit, fio) — для тех, кто не в emps.
-    const payeeInfoById = {};
-    const payeesToLoad = Array.from(payeeIdsSet).filter(pid => !emps.find(e => e.id === pid));
-    if (payeesToLoad.length > 0) {
-      const { rows: pRows } = await db.query(`
-        SELECT id, COALESCE(fio, full_name) AS fio, COALESCE(can_exceed_limit, false) AS can_exceed_limit
-          FROM employees WHERE id = ANY($1::int[])
-      `, [payeesToLoad]);
-      for (const r of pRows) payeeInfoById[r.id] = { id: r.id, fio: r.fio, can_exceed_limit: !!r.can_exceed_limit };
-    }
+    const payeeInfoById = await loadLimitHolderProfiles(db, limitsIds);
     for (const e of emps) {
-      if (payeeIdsSet.has(e.id)) {
-        payeeInfoById[e.id] = { id: e.id, fio: e.fio, can_exceed_limit: !!e.can_exceed_limit };
+      if (!payeeInfoById[e.id]) {
+        payeeInfoById[e.id] = {
+          id: e.id,
+          fio: e.fio,
+          can_exceed_limit: !!e.can_exceed_limit,
+          se_yearly_used_initial: Number(e.se_yearly_used_initial || 0),
+          se_monthly_used_initial: e.se_monthly_used_initial || null
+        };
       }
     }
 
-    const { rows: yearlySum } = await db.query(`
-      SELECT employee_id, COALESCE(SUM(transfer_amount), 0) AS yr_sum
-      FROM se_transfers
-      WHERE employee_id = ANY($1::int[]) AND year = $2 AND status != 'cancelled'
-      GROUP BY employee_id
-    `, [limitsIds, year]);
-    const yearlyByEmp = {};
-    for (const r of yearlySum) yearlyByEmp[r.employee_id] = Number(r.yr_sum || 0);
-
-    // Q-4 (19.06.2026): SUM месячных снимков из se_monthly_history за год.
-    // Накопительный годовой расход НПД-лимита: история Excel-импортов + переводы.
-    // Без этого «прошлые месяцы» забывались между импортами.
-    const yearlyHistoryByEmp = {};
-    try {
-      const { rows: hRows } = await db.query(`
-        SELECT employee_id, COALESCE(SUM(monthly_used), 0) AS year_history_used
-        FROM se_monthly_history
-        WHERE employee_id = ANY($1::int[]) AND year = $2
-        GROUP BY employee_id
-      `, [limitsIds, year]);
-      for (const r of hRows) yearlyHistoryByEmp[r.employee_id] = Number(r.year_history_used) || 0;
-    } catch (_) { /* таблица отсутствует — оставляем 0 */ }
-
-    // B2 (19.06.2026): добавлен SELECT уже-переведённого за этот месяц по СЗ.
-    // Раньше transfer = monthlyLimit (фиксированное), без учёта что часть уже
-    // переведена → дублировали суммы и превышали месячный лимит на UI.
-    // Контракт TIMESHEET_V2_CONTRACT_PHASE1.md: формула как в timesheet-v2.js.
-    const { rows: monthlySum } = await db.query(`
-      SELECT employee_id, COALESCE(SUM(transfer_amount), 0) AS m_sum
-      FROM se_transfers
-      WHERE employee_id = ANY($1::int[]) AND year = $2 AND month = $3 AND status != 'cancelled'
-      GROUP BY employee_id
-    `, [limitsIds, year, month]);
-    const monthByEmp = {};
-    for (const r of monthlySum) monthByEmp[r.employee_id] = Number(r.m_sum || 0);
+    const {
+      transfersYearMap: yearlyByEmp,
+      transfersMonthMap: monthByEmp,
+      yearlyHistoryByEmp,
+      monthlyImportMap
+    } = await loadSeLimitsAggregates(db, limitsIds, year, month);
 
     const { rows: agreementSum } = await db.query(`
       SELECT
@@ -308,28 +285,30 @@ async function routes(fastify, options) {
         mode_self += 1;
         // V240: если есть se_payee_id — лимиты у payee, иначе у emp.
         const payeeId = payeeIdByEmp[emp.id];
-        const limitsHolder = (payeeId && payeeInfoById[payeeId]) ? payeeInfoById[payeeId] : emp;
+        const limitsHolder = (payeeId && payeeInfoById[payeeId]) ? payeeInfoById[payeeId] : payeeInfoById[emp.id];
         const limitsHolderId = limitsHolder.id;
-        // B2: формула как в timesheet-v2.js (контракт PHASE1).
-        // transfer = min(earned, moRem, yrRem), где moRem учитывает уже-переведённое.
-        // can_exceed_limit снимает месячный потолок, но НЕ годовой.
-        const moTransferred = monthByEmp[limitsHolderId] || 0;
-        let moRem = Math.max(0, monthlyLimit - moTransferred);
-        if (limitsHolder.can_exceed_limit) moRem = Math.max(moRem, earned);
-        // Q-4: yrUsed = переводы + история месячных импортов.
-        const yrUsed = (yearlyByEmp[limitsHolderId] || 0) + (yearlyHistoryByEmp[limitsHolderId] || 0);
-        const yrRem = Math.max(0, yearlyLimit - yrUsed);
-        const transfer = Math.max(0, Math.min(earned, moRem, yrRem));
-        const cashReturn = 0;  // Phase 1: cash_return всегда 0
+        const lim = computeSeLimits({
+          monthlyLimit,
+          yearlyLimit,
+          trYear: yearlyByEmp[limitsHolderId] || 0,
+          trMonth: monthByEmp[limitsHolderId] || 0,
+          yrInitial: limitsHolder.se_yearly_used_initial || 0,
+          seMonthlyUsedInitial: limitsHolder.se_monthly_used_initial,
+          yrHistory: yearlyHistoryByEmp[limitsHolderId] || 0,
+          hasImportForMonth: !!monthlyImportMap[limitsHolderId],
+          year,
+          month,
+          canExceedLimit: !!limitsHolder.can_exceed_limit,
+          earned
+        });
+        const transfer = lim.transfer;
+        const cashReturn = 0;
         const cashPayout = Math.max(0, earned - transfer);
         total_transfer    += transfer;
         total_cash_return += cashReturn;
         total_cash_needed += cashPayout;
-        // Q-4: накапливаем общекомпанейские остатки. moRem без can_exceed_buff
-        // (для остатка показываем «честный» лимит, как в timesheet-v2 monthly_remaining).
-        const moRemHonest = Math.max(0, monthlyLimit - moTransferred);
-        month_remaining_company += moRemHonest;
-        year_remaining_company  += yrRem;
+        month_remaining_company += lim.monthly_remaining;
+        year_remaining_company  += lim.yearly_remaining;
       } else if (emp.is_officially_employed) {
         // Stage U (20.06.2026): SSoT с timesheet-v2.js — бух vs директор.
         // deductSalary = nonBurnable > 0 ? nonBurnable : salary; transfer = deduct; cash = max(0,earned-deduct).
@@ -559,21 +538,44 @@ async function routes(fastify, options) {
     const { rows } = await db.query(`
       SELECT
         e.id, e.fio,
+        COALESCE(e.se_yearly_used_initial, 0) AS se_yearly_used_initial,
         COALESCE(SUM(t.transfer_amount) FILTER (WHERE t.status != 'cancelled'), 0) AS transferred_year
       FROM employees e
       LEFT JOIN se_transfers t ON t.employee_id = e.id AND t.year = $1
       WHERE e.is_self_employed = true AND e.is_active = true
-      GROUP BY e.id, e.fio
+      GROUP BY e.id, e.fio, e.se_yearly_used_initial
       ORDER BY transferred_year DESC, e.fio
     `, [year]);
+
+    const empIds = rows.map(r => r.id);
+    const historyByEmp = {};
+    if (empIds.length) {
+      try {
+        const { rows: hRows } = await db.query(`
+          SELECT employee_id, COALESCE(SUM(monthly_used), 0) AS hist_sum
+            FROM se_monthly_history
+           WHERE employee_id = ANY($1::int[]) AND year = $2
+           GROUP BY employee_id
+        `, [empIds, year]);
+        for (const r of hRows) historyByEmp[r.employee_id] = Number(r.hist_sum) || 0;
+      } catch (_) {}
+    }
+
     return {
       year,
       yearly_limit: yearlyLimit,
-      employees: rows.map(r => ({
-        ...r,
-        transferred_year: Number(r.transferred_year || 0),
-        remaining: yearlyLimit - Number(r.transferred_year || 0),
-      })),
+      employees: rows.map(r => {
+        const yrUsed = Number(r.transferred_year || 0)
+          + (historyByEmp[r.id] || 0)
+          + Number(r.se_yearly_used_initial || 0);
+        const remaining = Math.max(0, yearlyLimit - yrUsed);
+        return {
+          ...r,
+          transferred_year: Number(r.transferred_year || 0),
+          yearly_used: yrUsed,
+          remaining
+        };
+      }),
     };
   });
 
@@ -726,21 +728,14 @@ async function routes(fastify, options) {
       return reply.code(400).send({ error: 'У рабочего не заполнен ИНН самозанятого' });
     }
 
-    // Годовой лимит — учитываем И se_transfers, И se_monthly_history
-    // (исторические Excel-импорты), чтобы СЗ не мог обойти лимит.
+    // Годовой лимит — SSoT с timesheet-v2 (transfers + history + yrInitial на payee).
     const yearlyLimit = await getSettingNumber(db, 'self_employed_yearly_limit', 2400000);
-    const { rows: [sum] } = await db.query(`
-      SELECT COALESCE(SUM(transfer_amount), 0) AS yr_sum
-      FROM se_transfers WHERE employee_id = $1 AND year = $2 AND status != 'cancelled'
-    `, [employee_id, year]);
-    const { rows: [hist] } = await db.query(`
-      SELECT COALESCE(SUM(monthly_used), 0) AS hist_sum
-      FROM se_monthly_history WHERE employee_id = $1 AND year = $2
-    `, [employee_id, year]);
-    const yrSum = Number(sum.yr_sum || 0) + Number(hist.hist_sum || 0);
-    const remaining = Math.max(0, yearlyLimit - yrSum);
+    const limitsHolderId = await resolveLimitsHolderId(db, employee_id);
+    if (!limitsHolderId) return reply.code(404).send({ error: 'Сотрудник не найден' });
+    const yrUsed = await computeYearlyUsedForEmployee(db, limitsHolderId, year);
+    const remaining = Math.max(0, yearlyLimit - yrUsed);
     const transferNum = Number(transfer_amount);
-    if (transferNum + yrSum > yearlyLimit) {
+    if (transferNum + yrUsed > yearlyLimit) {
       return reply.code(400).send({ error: 'Превышен годовой лимит НПД', remaining });
     }
 
@@ -924,18 +919,11 @@ async function routes(fastify, options) {
             );
             if (!se || !se.inn) throw new Error('У рабочего не заполнен ИНН самозанятого');
 
-            // Годовой лимит: se_transfers (текущие) + se_monthly_history
-            // (исторические Excel-импорты) + приращения из этого же bulk.
-            const { rows: [sum] } = await client.query(`
-              SELECT COALESCE(SUM(transfer_amount), 0) AS yr_sum
-              FROM se_transfers WHERE employee_id = $1 AND year = $2 AND status != 'cancelled'
-            `, [empId, yr]);
-            const { rows: [hist] } = await client.query(`
-              SELECT COALESCE(SUM(monthly_used), 0) AS hist_sum
-              FROM se_monthly_history WHERE employee_id = $1 AND year = $2
-            `, [empId, yr]);
-            const dbYr = Number(sum.yr_sum || 0) + Number(hist.hist_sum || 0);
-            const accum = yearlySumByEmp.get(empId) || 0;
+            // Годовой лимит: SSoT с timesheet-v2 (payee + history + yrInitial).
+            const limitsHolderId = await resolveLimitsHolderId(client, empId);
+            if (!limitsHolderId) throw new Error('Сотрудник не найден');
+            const dbYr = await computeYearlyUsedForEmployee(client, limitsHolderId, yr);
+            const accum = yearlySumByEmp.get(limitsHolderId) || 0;
             if (dbYr + accum + transferNum > yearlyLimit) {
               throw new Error('Превышен годовой лимит НПД');
             }
@@ -1027,8 +1015,8 @@ async function routes(fastify, options) {
               }
             }
 
-            // Учёт суммы по сотруднику для последующих позиций bulk
-            yearlySumByEmp.set(empId, accum + transferNum);
+            // Учёт суммы по владельцу лимита для последующих позиций bulk
+            yearlySumByEmp.set(limitsHolderId, accum + transferNum);
 
             result.summary.se_transfers++;
             result.summary.total_transferred += transferNum;
@@ -1260,7 +1248,9 @@ async function routes(fastify, options) {
     const { rows: emps } = await db.query(`
       SELECT id, fio, is_self_employed, is_officially_employed, can_exceed_limit,
              official_salary, official_non_burnable, official_status, se_payee_id,
-             city
+             city,
+             COALESCE(se_yearly_used_initial, 0) AS se_yearly_used_initial,
+             se_monthly_used_initial
       FROM employees WHERE id = ANY($1::int[])
     `, [empIds]);
 
@@ -1275,53 +1265,25 @@ async function routes(fastify, options) {
     }
     const limitsIds = Array.from(new Set([...empIds, ...payeeIdsSet]));
 
-    const payeeInfoById = {};
-    const payeesToLoad = Array.from(payeeIdsSet).filter(pid => !emps.find(e => e.id === pid));
-    if (payeesToLoad.length > 0) {
-      const { rows: pRows } = await db.query(`
-        SELECT id, COALESCE(fio, full_name) AS fio, COALESCE(can_exceed_limit, false) AS can_exceed_limit
-          FROM employees WHERE id = ANY($1::int[])
-      `, [payeesToLoad]);
-      for (const r of pRows) payeeInfoById[r.id] = { id: r.id, fio: r.fio, can_exceed_limit: !!r.can_exceed_limit };
-    }
+    const payeeInfoById = await loadLimitHolderProfiles(db, limitsIds);
     for (const e of emps) {
-      if (payeeIdsSet.has(e.id)) {
-        payeeInfoById[e.id] = { id: e.id, fio: e.fio, can_exceed_limit: !!e.can_exceed_limit };
+      if (!payeeInfoById[e.id]) {
+        payeeInfoById[e.id] = {
+          id: e.id,
+          fio: e.fio,
+          can_exceed_limit: !!e.can_exceed_limit,
+          se_yearly_used_initial: Number(e.se_yearly_used_initial || 0),
+          se_monthly_used_initial: e.se_monthly_used_initial || null
+        };
       }
     }
 
-    const { rows: yearlySum } = await db.query(`
-      SELECT employee_id, COALESCE(SUM(transfer_amount), 0) AS yr_sum
-      FROM se_transfers
-      WHERE employee_id = ANY($1::int[]) AND year = $2 AND status != 'cancelled'
-      GROUP BY employee_id
-    `, [limitsIds, year]);
-    const yearlyByEmp = {};
-    for (const r of yearlySum) yearlyByEmp[r.employee_id] = Number(r.yr_sum || 0);
-
-    // Q-4 (19.06.2026): SUM месячных снимков из se_monthly_history за год.
-    // Накопительный годовой расход НПД-лимита: история Excel-импортов + переводы.
-    const yearlyHistoryByEmp = {};
-    try {
-      const { rows: hRows } = await db.query(`
-        SELECT employee_id, COALESCE(SUM(monthly_used), 0) AS year_history_used
-        FROM se_monthly_history
-        WHERE employee_id = ANY($1::int[]) AND year = $2
-        GROUP BY employee_id
-      `, [limitsIds, year]);
-      for (const r of hRows) yearlyHistoryByEmp[r.employee_id] = Number(r.year_history_used) || 0;
-    } catch (_) { /* таблица отсутствует — оставляем 0 */ }
-
-    // B2 (19.06.2026): monthByEmp — уже-переведённое за этот месяц.
-    // Без этого SELECT transfer = monthlyLimit (фиксированное) дублировал суммы.
-    const { rows: monthlySum } = await db.query(`
-      SELECT employee_id, COALESCE(SUM(transfer_amount), 0) AS m_sum
-      FROM se_transfers
-      WHERE employee_id = ANY($1::int[]) AND year = $2 AND month = $3 AND status != 'cancelled'
-      GROUP BY employee_id
-    `, [limitsIds, year, month]);
-    const monthByEmp = {};
-    for (const r of monthlySum) monthByEmp[r.employee_id] = Number(r.m_sum || 0);
+    const {
+      transfersYearMap: yearlyByEmp,
+      transfersMonthMap: monthByEmp,
+      yearlyHistoryByEmp,
+      monthlyImportMap
+    } = await loadSeLimitsAggregates(db, limitsIds, year, month);
 
     const items = [];
     const totals = { earned: 0, bonus: 0, penalty: 0,
@@ -1345,7 +1307,7 @@ async function routes(fastify, options) {
         seCount += 1;
         // V240: если есть se_payee_id — лимиты у payee, pay_type='self_employed_payee'.
         const payeeId = payeeIdByEmp[emp.id];
-        const limitsHolder = (payeeId && payeeInfoById[payeeId]) ? payeeInfoById[payeeId] : emp;
+        const limitsHolder = (payeeId && payeeInfoById[payeeId]) ? payeeInfoById[payeeId] : payeeInfoById[emp.id];
         const limitsHolderId = limitsHolder.id;
         if (payeeId && payeeInfoById[payeeId]) {
           pay_type = 'self_employed_payee';
@@ -1354,21 +1316,25 @@ async function routes(fastify, options) {
         } else {
           pay_type = 'self_employed';
         }
-        // B2: формула как в timesheet-v2.js (контракт PHASE1).
-        // transfer = min(earned, moRem, yrRem), где moRem учитывает уже-переведённое.
-        const moTransferred = monthByEmp[limitsHolderId] || 0;
-        let moRem = Math.max(0, monthlyLimit - moTransferred);
-        if (limitsHolder.can_exceed_limit) moRem = Math.max(moRem, earned);
-        // Q-4: yrUsed = переводы + история месячных импортов.
-        const yrUsed = (yearlyByEmp[limitsHolderId] || 0) + (yearlyHistoryByEmp[limitsHolderId] || 0);
-        const yrRem = Math.max(0, yearlyLimit - yrUsed);
-        transfer = Math.max(0, Math.min(earned, moRem, yrRem));
-        cash_return = 0;  // Phase 1: cash_return всегда 0
+        const lim = computeSeLimits({
+          monthlyLimit,
+          yearlyLimit,
+          trYear: yearlyByEmp[limitsHolderId] || 0,
+          trMonth: monthByEmp[limitsHolderId] || 0,
+          yrInitial: limitsHolder.se_yearly_used_initial || 0,
+          seMonthlyUsedInitial: limitsHolder.se_monthly_used_initial,
+          yrHistory: yearlyHistoryByEmp[limitsHolderId] || 0,
+          hasImportForMonth: !!monthlyImportMap[limitsHolderId],
+          year,
+          month,
+          canExceedLimit: !!limitsHolder.can_exceed_limit,
+          earned
+        });
+        transfer = lim.transfer;
+        cash_return = 0;
         cash_payout = Math.max(0, earned - transfer);
-        // Q-4: «честный» месячный остаток без can_exceed_buff.
-        const moRemHonest = Math.max(0, monthlyLimit - moTransferred);
-        month_remaining_company += moRemHonest;
-        year_remaining_company  += yrRem;
+        month_remaining_company += lim.monthly_remaining;
+        year_remaining_company  += lim.yearly_remaining;
       } else if (emp.is_officially_employed) {
         // Stage U (20.06.2026): SSoT с timesheet-v2.js — бух vs директор.
         // deductSalary = nonBurnable > 0 ? nonBurnable : salary.
@@ -1545,6 +1511,7 @@ async function routes(fastify, options) {
       const pms = balances.map(b => ({
         pm_id:                   b.pm_id,
         pm_name:                 b.pm_name,
+        holder_role:             b.holder_role || null,
         // canonical (новые) поля
         handovers_received:      b.handovers_received,
         se_cash_legacy:          b.se_cash_legacy,
@@ -1576,7 +1543,7 @@ async function routes(fastify, options) {
                0 AS cash_out_expenses, 0 AS cash_out_returns, 0 AS cash_out_salaries,
                0 AS handovers_received, 0 AS handovers_pending_count, 0 AS handovers_pending_sum,
                0 AS balance
-        FROM users WHERE role IN ('PM','HEAD_PM') AND COALESCE(is_active, true) = true
+        FROM users WHERE role IN ('PM','HEAD_PM','HEAD_TO') AND COALESCE(is_active, true) = true
         ORDER BY name
       `);
       return { pms, note: 'pm-balance fallback: ' + e.message };
