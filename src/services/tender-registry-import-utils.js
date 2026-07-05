@@ -13,6 +13,16 @@ const STATUS_MAP = {
   'выиграли': 'выиграли'
 };
 
+/** Приоритет статуса — не понижаем тендер с работой */
+const REGISTRY_STATUS_RANK = {
+  'рассмотрение': 1,
+  'готовим': 2,
+  'подались': 3,
+  'проиграли': 4,
+  'отмена': 4,
+  'выиграли': 6
+};
+
 const MONTH_RU = {
   январ: 1, феврал: 2, март: 3, апрел: 4, май: 5, июн: 6,
   июл: 7, август: 8, сентябр: 9, октябр: 10, ноябр: 11, декабр: 12
@@ -83,6 +93,13 @@ function cellVal(v) {
   return String(v);
 }
 
+function parsePrice(val) {
+  if (val == null || val === '') return null;
+  const n = Number(String(val).replace(/\s/g, '').replace(',', '.'));
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
 function normalizeExcelRow(row, ctx = {}) {
   const customer_name = String(
     row['Заказчик'] || row['Компания'] || row.customer_name || ''
@@ -105,7 +122,7 @@ function normalizeExcelRow(row, ctx = {}) {
     tender_title: tender_title || null,
     customer_inn: String(row['ИНН'] || row.customer_inn || '').replace(/\D/g, '') || null,
     registry_status: parseRegistryStatus(rawStatus),
-    tender_price: row['НМЦ'] || row['НМЦ, с НДС'] || row.tender_price || null,
+    tender_price: parsePrice(row['НМЦ'] || row['НМЦ, с НДС'] || row.tender_price),
     docs_deadline: row['Срок подачи'] || row.docs_deadline || null,
     purchase_url: normUrl(row['Ссылка на площадку'] || row.purchase_url || row.url),
     reject_reason: String(row['Причины отказа'] || row.reject_reason || '').trim() || null,
@@ -165,6 +182,34 @@ async function readWorkbookRows(filePath) {
   return { rows, byPeriod, sheetCount: wb.worksheets.length };
 }
 
+/** Одна строка Excel на URL — самый поздний period + высший статус */
+function dedupeExcelRowsByUrl(rows) {
+  const withoutUrl = [];
+  const byUrl = new Map();
+
+  for (const row of rows) {
+    const url = normUrl(row.purchase_url);
+    if (!url) {
+      withoutUrl.push(row);
+      continue;
+    }
+    const cur = byUrl.get(url);
+    if (!cur) {
+      byUrl.set(url, row);
+      continue;
+    }
+    const curPeriod = cur.period || '';
+    const rowPeriod = row.period || '';
+    const curRank = REGISTRY_STATUS_RANK[cur.registry_status] || 0;
+    const rowRank = REGISTRY_STATUS_RANK[row.registry_status] || 0;
+    if (rowPeriod > curPeriod || (rowPeriod === curPeriod && rowRank > curRank)) {
+      byUrl.set(url, row);
+    }
+  }
+
+  return [...withoutUrl, ...byUrl.values()];
+}
+
 function buildCrmIndex(tenderRows) {
   const byUrl = new Map();
   const byInnTitle = new Map();
@@ -200,8 +245,73 @@ function hasConflict(crm, excel) {
   if (crm.registry_status && excel.registry_status &&
       crm.registry_status !== excel.registry_status) return 'registry_status';
   if (crm.tender_price && excel.tender_price &&
-      Number(crm.tender_price) !== Number(excel.tender_price)) return 'tender_price';
+      Math.abs(Number(crm.tender_price) - Number(excel.tender_price)) > 1) return 'tender_price';
   return null;
+}
+
+/** Excel — источник правды для реестра; не понижаем статус если есть work */
+function buildExcelRegistryPatch(crm, excel, { hasWork = false } = {}) {
+  const patch = fieldsNeedMerge(crm, excel);
+
+  if (excel.period && excel.period !== crm.period) {
+    patch.period = excel.period;
+  }
+
+  const excelSt = excel.registry_status;
+  const crmSt = crm.registry_status;
+  const excelRank = REGISTRY_STATUS_RANK[excelSt] || 0;
+  const crmRank = REGISTRY_STATUS_RANK[crmSt] || 0;
+
+  if (excelSt && excelSt !== crmSt) {
+    if (hasWork && crmRank >= REGISTRY_STATUS_RANK['выиграли']) {
+      /* тендер с работой / выигран — не трогаем статус */
+    } else if (hasWork && crmRank > excelRank) {
+      /* не понижаем */
+    } else {
+      patch.registry_status = excelSt;
+    }
+  }
+
+  if (excel.tender_price && !crm.tender_price) {
+    patch.tender_price = excel.tender_price;
+  }
+
+  return patch;
+}
+
+function resolveImportMatch(m, ctx = {}) {
+  const { hasWork = false, strategy = 'excel_registry' } = ctx;
+
+  if (m.action === 'new') return m;
+
+  if (m.action === 'duplicate_skip') return m;
+
+  if (m.action === 'duplicate_merge') return m;
+
+  if (m.action === 'conflict' && strategy === 'excel_registry') {
+    const patch = buildExcelRegistryPatch(m.crm, m.row, { hasWork });
+    if (Object.keys(patch).length) {
+      return {
+        action: 'duplicate_merge',
+        tender_id: m.tender_id,
+        patch,
+        crm: m.crm,
+        row: m.row,
+        resolved_from: 'conflict',
+        conflict: m.conflict
+      };
+    }
+    return {
+      action: 'duplicate_skip',
+      tender_id: m.tender_id,
+      crm: m.crm,
+      row: m.row,
+      resolved_from: 'conflict_skip',
+      conflict: m.conflict
+    };
+  }
+
+  return m;
 }
 
 function matchRowToCrm(row, index) {
@@ -343,13 +453,19 @@ function buildRegistryPeriodOptions() {
 module.exports = {
   DEFAULT_XLSX,
   STATUS_MAP,
+  REGISTRY_STATUS_RANK,
   parsePeriodFromText,
+  parsePrice,
   normalizeExcelRow,
   readWorkbookRows,
+  dedupeExcelRowsByUrl,
   buildCrmIndex,
   matchRowToCrm,
+  buildExcelRegistryPatch,
+  resolveImportMatch,
   auditRowsAgainstCrm,
   buildPeriodFilterSql,
   buildRegistryPeriodOptions,
-  normTitle
+  normTitle,
+  normUrl
 };
