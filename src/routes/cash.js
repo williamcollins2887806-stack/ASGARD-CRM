@@ -623,7 +623,7 @@ module.exports = async function(fastify) {
         ${handoverUnion}
         -- 2) cash_requests issued (приход — аванс из кассы Асгарда)
         SELECT
-          cr.issued_at::date,
+          cr.issued_at::date AS d,
           'income',
           'cash_request',
           cr.amount::numeric,
