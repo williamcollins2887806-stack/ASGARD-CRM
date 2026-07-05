@@ -447,8 +447,32 @@ export function createCustomerFromTender(payload) {
 
 /* ─── Tenders-Hub feed (S-7 backend /api/tenders-hub/feed) ─────────────────
    UNION ALL по 4 источникам: tenders + pre_tender_requests +
-   inbox_applications + call_history. Контракт см. INV-4 §2.
-   Все params опциональны, backend применяет RBAC по роли. */
+   inbox_applications + call_history. Контракт см. INV-4 §2. */
+
+/** Нормализует feed-item → поля, совместимые с TenderRow/FeedRow. */
+export function normalizeFeedItem(x) {
+  if (!x || typeof x !== 'object') return x;
+  const source_kind = x.source_label || x.source_kind || x.source || 'manual';
+  const status = x.status || x.tender_status || '';
+  const tender_title = x.title || x.tender_title || '';
+  const tender_type = x.type_label || x.tender_type || '';
+  return {
+    ...x,
+    source_kind,
+    source_label: source_kind,
+    tender_status: status,
+    status,
+    tender_title,
+    title: tender_title,
+    tender_type,
+    type_label: tender_type,
+    tender_price: x.nmck != null ? x.nmck : x.tender_price,
+    nmck: x.nmck != null ? x.nmck : x.tender_price,
+    pm_id: x.responsible_user_id ?? x.pm_id,
+    responsible_pm_id: x.responsible_user_id ?? x.responsible_pm_id
+  };
+}
+
 export function loadHubFeed(params = {}) {
   const q = new URLSearchParams();
   if (params.tab)     q.set('tab', String(params.tab));
@@ -463,13 +487,19 @@ export function loadHubFeed(params = {}) {
   q.set('offset', String(params.offset ?? 0));
   return api('/api/tenders-hub/feed?' + q.toString())
     .then((d) => ({
-      items:  d.items  || [],
+      items:  (d.items || []).map(normalizeFeedItem),
       total:  Number(d.total) || 0,
+      applications_total: d.applications_total != null ? Number(d.applications_total) : null,
+      all_total:          d.all_total != null ? Number(d.all_total) : null,
+      subtab_counts:      d.subtab_counts || null,
       limit:  Number(d.limit) || 0,
       offset: Number(d.offset) || 0,
       role:   d.role || ''
     }))
-    .catch(() => ({ items: [], total: 0, limit: 0, offset: 0, role: '' }));
+    .catch(() => ({
+      items: [], total: 0, applications_total: null, all_total: null,
+      subtab_counts: null, limit: 0, offset: 0, role: ''
+    }));
 }
 
 /* PUT /api/tenders/:id/status — state-machine переход (S-13.1 backend 83287577).

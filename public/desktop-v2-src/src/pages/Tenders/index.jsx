@@ -83,7 +83,10 @@ export default function TendersPage() {
   const [feedItems, setFeedItems] = useState([]);
   // 26.06.2026: отдельные счётчики «всех» источников (всегда грузятся в фоне),
   // чтобы цифры на главных табах не зависели от активной вкладки.
-  const [feedCounts, setFeedCounts] = useState({ applications: 0, all: 0 });
+  const [feedCounts, setFeedCounts] = useState({
+    applications: null, all: null,
+    apps_mail: null, apps_phone: null, apps_pm: null
+  });
   const [pms, setPms] = useState([]);
   const [loading, setLoading] = useState(true);
   // S-31.1 F-4: ErrorCard вместо ложного EmptyState при сетевой ошибке.
@@ -130,30 +133,21 @@ export default function TendersPage() {
     const periodMap = { today: '3d', week: '7d', month: '30d', quarter: 'year', year: 'year', all: 'all' };
     const feedPeriod = periodMap[filters.period] || 'all';
     const countTasks = [
-      loadHubFeed({ tab: 'applications', period: feedPeriod, limit: 200 }).catch(() => ({ items: [], total: 0 })),
-      loadHubFeed({ tab: 'all',          period: feedPeriod, limit: 200 }).catch(() => ({ items: [], total: 0 }))
+      loadHubFeed({ tab: 'applications', period: 'all', limit: 1 }).catch(() => ({ total: 0, subtab_counts: null })),
+      loadHubFeed({ tab: 'all',          period: 'all', limit: 1 }).catch(() => ({ total: 0 }))
     ];
     Promise.all([...tasks, ...countTasks])
       .then(([pmList, tList, feed, appsFeed, allFeed]) => {
         setPms(pmList);
         setTenders(tList);
         setFeedItems(feed?.items || []);
-        const appsItems = appsFeed?.items || [];
-        // kind → bucket для sub-табов вкладки «📥 Заявки»
-        const apps = { mail: 0, phone: 0, pm: 0 };
-        for (const it of appsItems) {
-          const k = String(it.kind || it.source_kind || '');
-          if (k === 'inbox_application' || k === 'mail' || k === 'email_invite' || k === 'platform') apps.mail++;
-          else if (k === 'call' || k === 'phone' || k === 'telephony') apps.phone++;
-          else if (k === 'pre_tender' || k === 'manual' || k === 'pm' || k === 'extra_volume') apps.pm++;
-          else apps.mail++; // unknown → почта (минимизируем «теряемся»)
-        }
+        const sc = appsFeed?.subtab_counts;
         setFeedCounts({
-          applications: Number(appsFeed?.total ?? appsItems.length),
-          all:          Number(allFeed?.total  ?? (allFeed?.items?.length ?? 0)),
-          apps_mail:    apps.mail,
-          apps_phone:   apps.phone,
-          apps_pm:      apps.pm
+          applications: appsFeed?.applications_total ?? appsFeed?.total ?? null,
+          all:          allFeed?.all_total ?? allFeed?.total ?? null,
+          apps_mail:    sc?.mail ?? null,
+          apps_phone:   sc?.phone ?? null,
+          apps_pm:      sc?.pm ?? null
         });
       })
       .catch((e) => {
@@ -239,7 +233,9 @@ export default function TendersPage() {
       // не у всех есть tender_type). Применяем мягко.
       let v = feedItems;
       if (filters.q) v = filterByQuery(v, filters.q);
-      if (filters.source) v = v.filter((x) => (x.source_kind || x.source || '') === filters.source);
+      if (filters.source) {
+        v = v.filter((x) => (x.source_label || x.source_kind || x.source || '') === filters.source);
+      }
       return v;
     }
     let v = tenders;
@@ -329,8 +325,8 @@ export default function TendersPage() {
     const tendersCount = tenders.filter((t) => t.tender_status !== 'Не подходит').length;
     return {
       tenders:      tendersCount,
-      applications: feedCounts.applications || undefined,
-      all:          feedCounts.all || undefined
+      applications: feedCounts.applications ?? undefined,
+      all:          feedCounts.all ?? undefined
     };
   }, [tenders, feedCounts]);
 
@@ -341,7 +337,7 @@ export default function TendersPage() {
       // Для pre_tender/inbox/call — редиректы на их страницы (отдельные).
       // Это «v2 BONUS» — vanilla тоже открывает в drawer (S-13 .pk3-drawer).
       const url = t.kind === 'pre_tender' ? `#/pre-tenders?id=${t.id}` :
-                  t.kind === 'inbox_application' ? `#/director-inbox?id=${t.id}` :
+                  (t.kind === 'inbox_application' || t.kind === 'application') ? `#/director-inbox?id=${t.id}` :
                   t.kind === 'call' ? `#/telephony?id=${t.id}` : null;
       if (url) { window.location.hash = url.slice(1); return; }
     }
@@ -438,10 +434,19 @@ export default function TendersPage() {
   // 26.06.2026 FIX: sub-табы получают count через useMemo (раньше были прочерки —
   // const SUB_TABS не содержит .count). tenders sub-counts читаются из snapshot,
   // applications sub-counts — из feedCounts (полный applications-feed, считается в refresh).
+  const ACTIVE_TENDER_STATUSES = useMemo(() => new Set([
+    'Новый', 'На анализе', 'Отправлено на просчёт', 'Согласование ТКП',
+    'ТКП согласовано', 'Готово к отправке КП', 'КП отправлено', 'Дозапрос'
+  ]), []);
+
   const subTabs = useMemo(() => {
     if (main === 'tenders') {
-      const platforms = tenders.filter((t) => t.source_kind === 'platform' || t.source_kind === 'email_invite').length;
-      const inWork    = tenders.filter((t) => t.tender_status !== 'Не подходит').length;
+      const platforms = tenders.filter((t) =>
+        t.source_kind === 'platform' || t.source_kind === 'email_invite' || t.source_kind === 'to_manual'
+      ).length;
+      const inWork = tenders.filter((t) =>
+        t.tender_status !== 'Не подходит' && ACTIVE_TENDER_STATUSES.has(t.tender_status)
+      ).length;
       return [
         { ...SUB_TABS.tenders[0], count: platforms },
         { ...SUB_TABS.tenders[1], count: inWork }
@@ -449,13 +454,13 @@ export default function TendersPage() {
     }
     if (main === 'applications') {
       return [
-        { ...SUB_TABS.applications[0], count: feedCounts.apps_mail || 0 },
-        { ...SUB_TABS.applications[1], count: feedCounts.apps_phone || 0 },
-        { ...SUB_TABS.applications[2], count: feedCounts.apps_pm || 0 }
+        { ...SUB_TABS.applications[0], count: feedCounts.apps_mail ?? 0 },
+        { ...SUB_TABS.applications[1], count: feedCounts.apps_phone ?? 0 },
+        { ...SUB_TABS.applications[2], count: feedCounts.apps_pm ?? 0 }
       ];
     }
     return null;
-  }, [main, tenders, feedCounts]);
+  }, [main, tenders, feedCounts, ACTIVE_TENDER_STATUSES]);
   const showPanels = main === 'tenders' && sub === 'in_work' && tab === 'active';
   const showArchiveToggle = main === 'tenders' && sub === 'in_work';
   const showPlatformStub = main === 'tenders' && sub === 'platforms';
@@ -579,6 +584,7 @@ export default function TendersPage() {
           onAction={onAction}
           sort={sort}
           onSortChange={(key) => setSort((s) => ({ key, dir: s.key === key ? -s.dir : -1 }))}
+          mode={main === 'tenders' ? 'tenders' : 'feed'}
         />
       )}
     </div>

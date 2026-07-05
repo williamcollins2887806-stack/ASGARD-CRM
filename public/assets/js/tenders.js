@@ -749,6 +749,8 @@ window.AsgardTendersPage = (function(){
     let currentMainTab = 'tenders';
     let currentSubTab = 'in_work';
     let feedCache = null; // последний результат /api/tenders-hub/feed (для applications/all)
+    // Агрегаты вкладок (грузятся в фоне при init, не зависят от активной вкладки).
+    let feedCountsMeta = null;
 
     const body = `
       ${tableCSS()}
@@ -1733,10 +1735,22 @@ window.AsgardTendersPage = (function(){
       setTxt('kpi-win-pct', winPct);
       // Главные табы — counters
       setTxt('cnt-tenders', tenders.filter(t => t.tender_status !== 'Не подходит').length);
-      // Заявок и all — придут из feed (apply feedCache если есть)
-      if (feedCache && Array.isArray(feedCache.items)) {
-        setTxt('cnt-apps', feedCache.applications_total != null ? feedCache.applications_total : (feedCache.items.filter(x=>x.kind==='application').length));
-        setTxt('cnt-all', feedCache.all_total != null ? feedCache.all_total : feedCache.items.length);
+      const countsSrc = feedCountsMeta || feedCache;
+      if (countsSrc) {
+        const appsTotal = countsSrc.applications_total != null
+          ? countsSrc.applications_total
+          : (Array.isArray(countsSrc.items) ? countsSrc.items.length : null);
+        const allTotal = countsSrc.all_total != null
+          ? countsSrc.all_total
+          : (Array.isArray(countsSrc.items) ? countsSrc.items.length : null);
+        if (appsTotal != null) setTxt('cnt-apps', appsTotal);
+        if (allTotal != null) setTxt('cnt-all', allTotal);
+        const sc = countsSrc.subtab_counts;
+        if (sc) {
+          ['mail','phone','pm'].forEach(k => {
+            if (sc[k] != null) setTxt('sub-cnt-' + k, sc[k]);
+          });
+        }
       }
       setTxt('sub-cnt-platforms', cPlatforms);
       setTxt('sub-cnt-in_work', cInWork);
@@ -1754,39 +1768,89 @@ window.AsgardTendersPage = (function(){
     }
 
     // ═══ Feed: applications/all через /api/tenders-hub/feed ═══
-    // Эндпоинт ожидается от S-7 (бэкенд). При отсутствии — показываем пустое состояние с подсказкой.
-    async function loadFeed(tab, subtab){
+    function feedPeriodForApi(periodVal) {
+      const v = String(periodVal || '').trim();
+      if (!v) return 'all';
+      if (v.startsWith('year:') || /^\d{4}-\d{2}$/.test(v)) return v;
+      return v;
+    }
+
+    async function loadFeed(tab, subtab, opts){
+      opts = opts || {};
       try {
         const a = await AsgardAuth.getAuth();
         const params = new URLSearchParams({ tab });
         if (subtab) params.set('subtab', subtab);
-        const periodVal = CRSelect.getValue('f_period')||"";
-        if (periodVal) params.set('period', periodVal);
-        const q = ($("#f_q")?.value||"").trim();
-        if (q) params.set('search', q);
+        const periodVal = opts.period != null
+          ? opts.period
+          : feedPeriodForApi(CRSelect.getValue('f_period') || '');
+        if (periodVal && periodVal !== 'all') params.set('period', periodVal);
+        if (!opts.countsOnly) {
+          const q = ($("#f_q")?.value||"").trim();
+          if (q) params.set('search', q);
+        }
+        params.set('limit', String(opts.limit != null ? opts.limit : 200));
         const res = await fetch('/api/tenders-hub/feed?' + params.toString(), { headers: { 'Authorization': 'Bearer ' + a.token } });
         if (!res.ok) { return { items: [], _error: 'HTTP ' + res.status }; }
         const data = await res.json();
-        return { items: Array.isArray(data.items) ? data.items : (Array.isArray(data) ? data : []), applications_total: data.applications_total, all_total: data.all_total };
+        return {
+          items: Array.isArray(data.items) ? data.items : (Array.isArray(data) ? data : []),
+          total: data.total,
+          applications_total: data.applications_total,
+          all_total: data.all_total,
+          subtab_counts: data.subtab_counts || null
+        };
       } catch(e) {
         return { items: [], _error: e.message };
       }
     }
 
+    async function preloadFeedCounts(){
+      try {
+        const apps = await loadFeed('applications', '', { period: 'all', countsOnly: true, limit: 1 });
+        if (apps._error) return;
+        feedCountsMeta = {
+          applications_total: apps.applications_total != null ? apps.applications_total : apps.total,
+          all_total: apps.all_total,
+          subtab_counts: apps.subtab_counts || { mail: 0, phone: 0, pm: 0 }
+        };
+        if (feedCountsMeta.all_total == null) {
+          const allFeed = await loadFeed('all', '', { period: 'all', countsOnly: true, limit: 1 });
+          if (!allFeed._error) feedCountsMeta.all_total = allFeed.all_total != null ? allFeed.all_total : allFeed.total;
+        }
+        updateKpi();
+      } catch (e) {
+        console.warn('[tenders] preloadFeedCounts:', e);
+      }
+    }
+
+    function feedStatusLabel(x) {
+      const raw = x.status || x.tender_status || '';
+      if (raw) return raw;
+      if (x.kind === 'application') return 'Новая';
+      if (x.kind === 'call') return 'Целевой звонок';
+      if (x.kind === 'pre_tender') return 'Новая заявка';
+      return '—';
+    }
+
+    function feedSourceKind(x) {
+      return (x.source && x.source.kind) || x.source_label || x.source_kind
+        || (x.kind === 'application' ? 'email_request' : 'manual');
+    }
+
     // Универсальный рендер для feed-элементов (applications / all)
-    // Использует ту же table.asg структуру (12 колонок), но строки — упрощённые.
     function feedRow(x){
       const fmtDate = AsgardUI.formatDate || (d => d ? new Date(d).toLocaleDateString('ru-RU') : '—');
-      const sk = (x.source && x.source.kind) || x.source_kind || (x.kind === 'application' ? 'email_request' : 'manual');
+      const sk = feedSourceKind(x);
       const title = x.tender_title || x.title || '—';
       const customer = x.customer_name || '—';
       const inn = x.customer_inn || x.inn || '';
-      const status = x.tender_status || (x.kind === 'application' ? 'Новый' : '—');
+      const status = feedStatusLabel(x);
       const ddl = fmtDate(x.docs_deadline || x.deadline);
       const nmck = x.tender_price || x.nmck || null;
       const sub = x.submission_price || x.submission || null;
-      const period = x.period || (x.received_at ? String(x.received_at).slice(0,7) : '');
-      const responsible = x.responsible_pm || x.responsible || '—';
+      const period = x.period || (x.event_at ? String(x.event_at).slice(0, 7) : (x.received_at ? String(x.received_at).slice(0, 7) : ''));
+      const responsible = x.responsible_pm || x.responsible || (x.responsible_user_id && byId.get(x.responsible_user_id) ? byId.get(x.responsible_user_id).name : '—');
       const author = x.created_by_name || x.author || '—';
       const link = x.purchase_url ? `<a class="btn ghost" style="padding:6px 10px" target="_blank" href="${esc(x.purchase_url)}">Ссылка</a>` : '—';
       // Срочность
@@ -1811,13 +1875,13 @@ window.AsgardTendersPage = (function(){
           <div class="help">${esc(title)}</div>
         </td>
         <td>${esc(responsible)}</td>
-        <td>${esc(x.tender_type || (x.kind === 'application' ? 'Заявка' : '—'))}</td>
+        <td>${esc(x.tender_type || x.type_label || (x.kind === 'application' || x.kind === 'pre_tender' ? 'Заявка' : '—'))}</td>
         <td>${srcBadge(sk)}</td>
         <td>${tenderStatusBadge(status)}</td>
         <td>${ddl}</td>
         <td>${esc(author)}</td>
         <td>${priceCell}</td>
-        <td>—</td>
+        <td>${x.docs_count > 0 ? ('📎 ' + x.docs_count) : '—'}</td>
         <td>${link}</td>
         <td>${tenderWorkBadge(x)}</td>
         <td style="white-space:nowrap">${actionsBtns}</td>
@@ -1831,13 +1895,17 @@ window.AsgardTendersPage = (function(){
       tb.innerHTML = `<tr><td colspan="14" style="padding:20px;text-align:center;color:var(--t3)">Загрузка…</td></tr>`;
       const feed = await loadFeed(tab, sub);
       feedCache = feed;
+      feedCountsMeta = {
+        applications_total: feed.applications_total != null ? feed.applications_total : feed.total,
+        all_total: feed.all_total,
+        subtab_counts: feed.subtab_counts || (feedCountsMeta && feedCountsMeta.subtab_counts) || null
+      };
       const items = Array.isArray(feed.items) ? feed.items : [];
-      // Локальный поиск по уже полученному списку (server тоже умеет, но дублируем для UX)
       const q = norm($("#f_q")?.value||"");
       const src = CRSelect.getValue('f_source')||"";
       const filtered = items.filter(x => {
         if (src) {
-          const sk = (x.source && x.source.kind) || x.source_kind || '';
+          const sk = feedSourceKind(x);
           if (sk !== src) return false;
         }
         if (!q) return true;
@@ -1863,16 +1931,11 @@ window.AsgardTendersPage = (function(){
       // S-31.1 F-3: bind retry-кнопки (если она отрендерилась).
       const retryBtn = tb.querySelector('[data-feed-retry]');
       if (retryBtn) retryBtn.addEventListener('click', () => applyAndRenderFromFeed(), { once: true });
-      cnt.textContent = `Показано: ${filtered.length} из ${items.length}.`;
-      // Sub-tab бейджи для applications (если backend вернул разрезы)
-      if (tab === 'applications' && feed.subtab_counts) {
-        ['mail','phone','pm'].forEach(k => {
-          const el = document.getElementById('sub-cnt-'+k);
-          if (el && feed.subtab_counts[k] != null) el.textContent = String(feed.subtab_counts[k]);
-        });
-      }
+      cnt.textContent = `Показано: ${filtered.length} из ${feed.total != null ? feed.total : items.length}.`;
+      updateKpi();
     }
 
+    preloadFeedCounts();
     applyAndRender();
 
     // Табы "Активные" / "Архив"

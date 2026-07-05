@@ -6,13 +6,14 @@ import { Btn } from '@/modals/parts';
 import { ConfirmModal } from '@/modals';
 import { toast } from '@/modals/Notifications';
 import TenderRow from './TenderRow';
+import FeedRow from './FeedRow';
 import BulkAssignModal from './modals/BulkAssignModal';
 import { deleteTender } from './api';
 
 const PAGE = 25;
 const BULK_ASSIGN_ROLES = ['TO', 'HEAD_TO', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 
-export default function TendersList({ tenders, pmsById, onOpen, onAction, sort, onSortChange }) {
+export default function TendersList({ tenders, pmsById, onOpen, onAction, sort, onSortChange, mode = 'tenders' }) {
   const { user } = useAuth();
   const modal = useModal();
   const [page, setPage] = useState(1);
@@ -47,8 +48,16 @@ export default function TendersList({ tenders, pmsById, onOpen, onAction, sort, 
     });
   }, [tenders]);
 
+  const isFeed = mode === 'feed';
+
   if (!tenders.length) {
-    return <EmptyState icon="📋" title="Тендеров пока нет" hint="Создайте новый тендер кнопкой в правом верхнем углу" />;
+    return (
+      <EmptyState
+        icon="📋"
+        title={isFeed ? 'Нет данных по этому фильтру' : 'Тендеров пока нет'}
+        hint={isFeed ? 'Попробуйте сменить подвкладку или сбросить фильтры' : 'Создайте новый тендер кнопкой в правом верхнем углу'}
+      />
+    );
   }
 
   const Th = ({ k, label, wCls, num }) => (
@@ -181,7 +190,7 @@ export default function TendersList({ tenders, pmsById, onOpen, onAction, sort, 
 
   return (
     <>
-      {selected.size > 0 && (
+      {selected.size > 0 && !isFeed && (
         <div className="tnd-bulk-bar">
           <div className="tnd-bulk-info">
             Выбрано: <strong>{selected.size}</strong>
@@ -236,17 +245,32 @@ export default function TendersList({ tenders, pmsById, onOpen, onAction, sort, 
               </tr>
             </thead>
             <tbody>
-              {slice.map((t) => (
-                <TenderRow
-                  key={t.id}
-                  tender={t}
-                  pmName={pmsById[t.pm_id]?.name || pmsById[t.pm_id]?.login}
-                  onOpen={onOpen}
-                  onAction={onAction}
-                  selected={selected.has(t.id)}
-                  onToggleSelect={() => toggleOne(t.id)}
-                />
-              ))}
+              {slice.map((t) => {
+                const pmId = t.responsible_pm_id ?? t.pm_id;
+                const pmName = pmsById[pmId]?.name || pmsById[pmId]?.login;
+                const rowKey = `${t.kind || 'tender'}-${t.id}`;
+                if (isFeed) {
+                  return (
+                    <FeedRow
+                      key={rowKey}
+                      item={t}
+                      pmName={pmName}
+                      onOpen={onOpen}
+                    />
+                  );
+                }
+                return (
+                  <TenderRow
+                    key={rowKey}
+                    tender={t}
+                    pmName={pmName}
+                    onOpen={onOpen}
+                    onAction={onAction}
+                    selected={selected.has(t.id)}
+                    onToggleSelect={() => toggleOne(t.id)}
+                  />
+                );
+              })}
             </tbody>
           </table>
         </div>
