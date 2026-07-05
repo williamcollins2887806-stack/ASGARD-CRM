@@ -47,6 +47,10 @@ import { TmcRequestModal } from './modals/TmcRequestModal';
 import DistributionPanel from './panels/DistributionPanel';
 import WinAssignPanel from './panels/WinAssignPanel';
 import KpReadyPanel from './panels/KpReadyPanel';
+import RegistryTab from './RegistryTab';
+import PlatformTendersTab from './PlatformTendersTab';
+import TenderGuruSettingsPanel from './TenderGuruSettingsPanel';
+import WinWorkModal from './modals/WinWorkModal';
 import {
   loadTenders, loadUsers, loadHubFeed, putTenderStatus,
   filterByPeriod, filterByQuery, filterByMatch
@@ -56,8 +60,9 @@ import './tenders.css';
 /* Sub-табы конфигурация (1:1 с vanilla S-13). */
 const SUB_TABS = {
   tenders: [
-    { id: 'platforms', icon: '📡', label: 'С площадок',  hint: 'Письма-приглашения, которые AI распознал и сразу создал тендером. Парсинг ЭТП — в разработке.' },
-    { id: 'in_work',   icon: '🧮', label: 'В работе ТО', hint: 'Активные тендеры ТО. Кликните по строке — откроется карточка с этапами.' }
+    { id: 'registry',  icon: '📋', label: 'Реестр',      hint: 'Быстрый ввод тендеров ТО — spreadsheet-таблица.' },
+    { id: 'in_work',   icon: '🧮', label: 'В работе ТО', hint: 'Только поданные тендеры (статус «подались»).' },
+    { id: 'platforms', icon: '📡', label: 'С площадок',  hint: 'TenderGuru API — пропущенные тендеры.' }
   ],
   applications: [
     { id: 'mail',  icon: '📧', label: 'Почта',     hint: 'Заявки на оценку (не приглашения!). Приглашения уходят в «Тендеры → С площадок».' },
@@ -75,7 +80,7 @@ export default function TendersPage() {
   // sub: 'platforms'|'in_work' | 'mail'|'phone'|'pm' | null
   // tab: 'active'|'archive' — sub-toggle, только для tenders+in_work (legacy)
   const [main, setMain] = useState('tenders');
-  const [sub, setSub] = useState('in_work');
+  const [sub, setSub] = useState('registry');
   const [tab, setTab] = useState('active');
   const [filters, setFilters] = useState({ q: '', period: 'month', type: '', status: '', source: '', pm: '' });
   const [sort, setSort] = useState({ key: 'id', dir: -1 });
@@ -91,6 +96,8 @@ export default function TendersPage() {
   const [loading, setLoading] = useState(true);
   // S-31.1 F-4: ErrorCard вместо ложного EmptyState при сетевой ошибке.
   const [loadError, setLoadError] = useState(null);
+  const [showTgSettings, setShowTgSettings] = useState(false);
+  const [tgRefreshKey, setTgRefreshKey] = useState(0);
 
   /* Загрузка для tab='tenders' — старый /api/tenders endpoint (snapshot).
      Для applications/all — /api/tenders-hub/feed (UNION 4 источников). */
@@ -211,7 +218,7 @@ export default function TendersPage() {
     const subParam = params.get('subtab');
     if (mainParam && ['tenders', 'applications', 'all'].includes(mainParam)) {
       setMain(mainParam);
-      if (mainParam === 'tenders') setSub(subParam || 'in_work');
+      if (mainParam === 'tenders') setSub(subParam || 'registry');
       else if (mainParam === 'applications') setSub(subParam || 'mail');
       else setSub(null);
     }
@@ -409,14 +416,14 @@ export default function TendersPage() {
   /* Переключение main-таба → дефолтный sub. */
   const onMainChange = (id) => {
     setMain(id);
-    if (id === 'tenders') setSub('in_work');
+    if (id === 'tenders') setSub('registry');
     else if (id === 'applications') setSub('mail');
     else setSub(null);
   };
 
   const jumpToBurn = () => {
     setFilters((f) => ({ ...f, status: '', period: 'week' }));
-    setMain('tenders'); setSub('in_work'); setTab('active');
+    setMain('tenders'); setSub('registry'); setTab('active');
   };
 
   // Inline-RBAC-гейт после всех хуков (Rules of Hooks).
@@ -441,15 +448,13 @@ export default function TendersPage() {
 
   const subTabs = useMemo(() => {
     if (main === 'tenders') {
-      const platforms = tenders.filter((t) =>
-        t.source_kind === 'platform' || t.source_kind === 'email_invite' || t.source_kind === 'to_manual'
-      ).length;
       const inWork = tenders.filter((t) =>
-        t.tender_status !== 'Не подходит' && ACTIVE_TENDER_STATUSES.has(t.tender_status)
+        t.registry_status === 'подались' && t.tender_status !== 'Не подходит'
       ).length;
       return [
-        { ...SUB_TABS.tenders[0], count: platforms },
-        { ...SUB_TABS.tenders[1], count: inWork }
+        { ...SUB_TABS.tenders[0] },
+        { ...SUB_TABS.tenders[1], count: inWork },
+        { ...SUB_TABS.tenders[2] }
       ];
     }
     if (main === 'applications') {
@@ -462,8 +467,16 @@ export default function TendersPage() {
     return null;
   }, [main, tenders, feedCounts, ACTIVE_TENDER_STATUSES]);
   const showPanels = main === 'tenders' && sub === 'in_work' && tab === 'active';
-  const showArchiveToggle = main === 'tenders' && sub === 'in_work';
-  const showPlatformStub = main === 'tenders' && sub === 'platforms';
+  const showArchiveToggle = main === 'tenders' && sub === 'registry';
+  const showRegistry = main === 'tenders' && (sub === 'registry' || sub === 'in_work');
+  const showPlatform = main === 'tenders' && sub === 'platforms';
+  const registrySubtab = sub === 'in_work' ? 'submitted' : (tab === 'archive' ? 'archive' : 'registry');
+
+  const onOpenWin = (tender) => {
+    modal.open(({ close }) => (
+      <WinWorkModal tender={tender} pms={pms} onClose={close} onDone={refresh} />
+    ));
+  };
 
   return (
     <div className="col gap-12">
@@ -472,6 +485,11 @@ export default function TendersPage() {
         subtitle={`${visible.length} ${pluralize(visible.length, ['обращение', 'обращения', 'обращений'])} в выборке`}
         actions={
           <>
+            {showPlatform && ['ADMIN', 'TO', 'HEAD_TO'].includes(user?.role) && (
+              <Btn variant="ghost" onClick={() => setShowTgSettings(v => !v)}>
+                {showTgSettings ? '✕ Закрыть настройки' : '⚙ TenderGuru'}
+              </Btn>
+            )}
             <Btn variant="ghost" onClick={onResetFilters}>↺ Сбросить</Btn>
             <Btn onClick={onCreate} title="Ctrl+N">+ Новый тендер</Btn>
           </>
@@ -512,21 +530,23 @@ export default function TendersPage() {
         />
       )}
 
-      {/* Stub площадок (parsing ETP) */}
-      {showPlatformStub && (
-        <div className="tnd-platform-stub">
-          <div className="tnd-platform-stub-ic" aria-hidden>🛰</div>
-          <div className="tnd-platform-stub-txt">
-            <div className="tnd-platform-stub-h">Парсинг ЭТП — в разработке</div>
-            <div className="tnd-platform-stub-p">
-              Интеграция с zakupki.gov.ru, B2B-Center, РТС-Тендер и другими площадками — позже.
-              Сейчас тендеры с площадок приходят так: AI распознаёт письмо-приглашение и сразу создаёт тендер ниже.
-            </div>
-          </div>
-        </div>
+      {showPlatform && showTgSettings && (
+        <TenderGuruSettingsPanel
+          user={user}
+          onClose={() => setShowTgSettings(false)}
+          onSaved={() => setTgRefreshKey(k => k + 1)}
+        />
       )}
 
-      {/* Sub-toggle «Активные / Архив» — только в Тендеры → В работе ТО */}
+      {showPlatform && (
+        <PlatformTendersTab key={tgRefreshKey} onRefresh={refresh} />
+      )}
+
+      {showRegistry && (
+        <RegistryTab subtab={registrySubtab} onOpenWin={onOpenWin} onRefresh={refresh} />
+      )}
+
+      {/* Sub-toggle «Активные / Архив» — в Реестре */}
       {showArchiveToggle && (
         <div className="tnd-sub-tabs">
           <button
@@ -555,6 +575,8 @@ export default function TendersPage() {
         </>
       )}
 
+      {!showRegistry && !showPlatform && (
+        <>
       <TendersFilter filters={filters} onChange={setFilters} pms={pms} />
 
       {loading ? (
@@ -586,6 +608,8 @@ export default function TendersPage() {
           onSortChange={(key) => setSort((s) => ({ key, dir: s.key === key ? -s.dir : -1 }))}
           mode={main === 'tenders' ? 'tenders' : 'feed'}
         />
+      )}
+        </>
       )}
     </div>
   );

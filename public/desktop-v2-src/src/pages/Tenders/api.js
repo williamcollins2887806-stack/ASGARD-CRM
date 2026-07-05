@@ -62,6 +62,7 @@ export const SOURCE_LABELS = {
   'phone':         '📞 Звонок',
   'pm_manual':     '👤 От РП',
   'to_manual':     '🛡 От ТО',
+  'tenderguru':     '📡 TenderGuru',
   'manual':        '🖐 Вручную'
 };
 
@@ -535,4 +536,88 @@ export function updateCustomerScore(inn, payload) {
     },
     silent: true
   }).catch(() => null);
+}
+
+/* ─── Registry (TO first tier) ─────────────────────────────────────────── */
+export const REGISTRY_STATUSES = [
+  { value: 'рассмотрение', label: 'Рассмотрение' },
+  { value: 'готовим', label: 'Готовим' },
+  { value: 'подались', label: 'Подались' },
+  { value: 'выиграли', label: 'Выиграли' },
+  { value: 'проиграли', label: 'Проиграли' },
+  { value: 'отмена', label: 'Отмена' }
+];
+
+export function loadRegistry(params = {}) {
+  const q = new URLSearchParams();
+  q.set('subtab', params.subtab || 'registry');
+  q.set('limit', String(params.limit ?? 500));
+  return api(`/api/tenders/registry?${q}`).then(d => d);
+}
+
+export function createRegistryRow(body) {
+  return api('/api/tenders/registry', { method: 'POST', body });
+}
+
+export function patchRegistryField(id, field, value) {
+  return api(`/api/tenders/registry/${id}`, { method: 'PATCH', body: { field, value } });
+}
+
+export function patchRegistryStatus(id, registry_status) {
+  return api(`/api/tenders/registry/${id}/status`, { method: 'PATCH', body: { registry_status } });
+}
+
+export function acceptPlatformCandidate(id) {
+  return api(`/api/tenders/registry/platform/${id}/accept`, { method: 'POST' });
+}
+
+export function dismissPlatformCandidate(id, duplicate = false) {
+  return api(`/api/tenders/registry/platform/${id}/dismiss`, { method: 'POST', body: { duplicate } });
+}
+
+export function loadPmDutyQueue(tab = 'need_report') {
+  return api(`/api/pm-duty/queue?tab=${tab}`);
+}
+
+export function loadPmDutyCurrent() {
+  return api('/api/pm-duty/current');
+}
+
+export function savePmDutyRoster(body) {
+  return api('/api/pm-duty/roster', { method: 'POST', body });
+}
+
+export function loadRpReview(tenderId) {
+  return api(`/api/tenders/${tenderId}/rp-review`);
+}
+
+export function saveRpReview(tenderId, body) {
+  return api(`/api/tenders/${tenderId}/rp-review`, { method: 'PUT', body });
+}
+
+export function createRegistryWork(tenderId, pm_id) {
+  return api(`/api/tenders/registry/${tenderId}/create-work`, { method: 'POST', body: { pm_id } });
+}
+
+export function inviteRpCollaborator(tenderId, pm_user_id) {
+  return api(`/api/tenders/${tenderId}/rp-review/invite`, { method: 'POST', body: { pm_user_id } });
+}
+
+export function loadTenderGuruSettings() {
+  return api('/api/tenders/registry/tenderguru/settings');
+}
+
+export function saveTenderGuruSettings(body) {
+  return api('/api/tenders/registry/tenderguru/settings', { method: 'PUT', body });
+}
+
+export function testTenderGuruApi() {
+  return api('/api/tenders/registry/tenderguru/test');
+}
+
+export function syncTenderGuruNow({ force = false } = {}) {
+  return api('/api/tenders/registry/tenderguru/sync', {
+    method: 'POST',
+    body: force ? { force: true } : {}
+  });
 }

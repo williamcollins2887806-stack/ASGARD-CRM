@@ -32,6 +32,7 @@ import MimirFab from '@/widgets/Mimir/MimirFab';
 const Dashboard = lazy(() => import('@/pages/Dashboard'));
 const Modals = lazy(() => import('@/pages/Modals'));
 const Tenders = lazy(() => import('@/pages/Tenders'));
+const PmDuty = lazy(() => import('@/pages/PmDuty'));
 const PmWorks = lazy(() => import('@/pages/PmWorks'));
 const PmCalcs = lazy(() => import('@/pages/PmCalcs'));
 const AllWorks = lazy(() => import('@/pages/AllWorks'));
@@ -222,6 +223,7 @@ export default function App() {
               <Route path="/dashboard" element={<Protected title="Дашборд руководителя"><Dashboard /></Protected>} />
               <Route path="/modals" element={<Protected title="Каталог модалок" roles={['ADMIN']}><Modals /></Protected>} />
               <Route path="/tenders" element={<Protected title="Сага Тендеров"><Tenders /></Protected>} />
+              <Route path="/pm-duty" element={<Protected title="Дежурство РП"><PmDuty /></Protected>} />
               <Route path="/pm-works" element={<Protected title="Походы"><PmWorks /></Protected>} />
               <Route path="/pm-calcs" element={<Protected title="Просчёты (inbox)"><PmCalcs /></Protected>} />
               <Route path="/all-works" element={<Protected title="Свод Контрактов"><AllWorks /></Protected>} />

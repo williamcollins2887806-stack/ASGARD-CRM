@@ -42,6 +42,7 @@ export const NAV_ITEMS = [
   // и путали директора. Теперь — один экран, RBAC прячет/показывает нужное.
   { r: '/funnel',       l: 'Воронка продаж',      d: 'Канбан тендеров',       i: '🪶', g: 'tenders', roles: ['ADMIN','TO','HEAD_TO', ...DIRECTOR_ROLES] },
   { r: '/tenders',      l: 'Сага Тендеров',       d: 'Реестр тендеров',       i: '📋', g: 'tenders', roles: ['ADMIN','TO','HEAD_TO', ...DIRECTOR_ROLES] },
+  { r: '/pm-duty',      l: 'Дежурство РП',        d: 'Проверка тендеров',     i: '🛡', g: 'tenders', roles: ['ADMIN','PM','HEAD_PM','TO','HEAD_TO', ...DIRECTOR_ROLES], ready: true },
   { r: '/customers',    l: 'Карта Контрагентов',  d: 'Справочник организаций',i: '🏢', g: 'tenders', roles: ['ADMIN','TO','HEAD_TO','PM','HEAD_PM','OFFICE_MANAGER', ...DIRECTOR_ROLES] },
   { r: '/director-inbox', l: 'Маркетплейс заявок',   d: 'Новые письма + работа РП в одном экране', i: '📭', g: 'tenders', roles: ['ADMIN', ...DIRECTOR_ROLES, 'HEAD_PM', 'PM', 'TO', 'HEAD_TO'], ready: true },
 

@@ -747,7 +747,7 @@ window.AsgardTendersPage = (function(){
     //                 для 'applications' → 'mail'|'phone'|'pm' (default 'mail');
     //                 для 'all' → null
     let currentMainTab = 'tenders';
-    let currentSubTab = 'in_work';
+    let currentSubTab = 'registry';
     let feedCache = null; // последний результат /api/tenders-hub/feed (для applications/all)
     // Агрегаты вкладок (грузятся в фоне при init, не зависят от активной вкладки).
     let feedCountsMeta = null;
@@ -796,8 +796,9 @@ window.AsgardTendersPage = (function(){
 
         <!-- ═══ Sub-tabs (chips) ═══ -->
         <div class="hub-sub-tabs" data-for="tenders">
+          <button class="hub-sub-pill active" data-sub="registry" type="button">📋 Реестр</button>
+          <button class="hub-sub-pill" data-sub="in_work" type="button">🧮 В работе ТО <span class="hub-sub-cnt" id="sub-cnt-in_work">—</span></button>
           <button class="hub-sub-pill" data-sub="platforms" type="button">📡 С площадок <span class="hub-sub-cnt" id="sub-cnt-platforms">—</span></button>
-          <button class="hub-sub-pill active" data-sub="in_work" type="button">🧮 В работе ТО <span class="hub-sub-cnt" id="sub-cnt-in_work">—</span></button>
         </div>
         <div class="hub-sub-tabs" data-for="applications" style="display:none">
           <button class="hub-sub-pill active" data-sub="mail" type="button">📧 Почта <span class="hub-sub-cnt" id="sub-cnt-mail">—</span></button>
@@ -805,13 +806,18 @@ window.AsgardTendersPage = (function(){
           <button class="hub-sub-pill" data-sub="pm" type="button">👤 От РП <span class="hub-sub-cnt" id="sub-cnt-pm">—</span></button>
         </div>
 
-        <!-- Stub площадок (показывается только на sub-tab 'platforms') -->
+        <div id="registryPanel" style="display:none;padding:16px">
+          <p>Реестр тендеров ТО доступен в <a href="/v2/#/tenders">CRM 2.0 → Сага Тендеров → Реестр</a>.</p>
+          <p>Дежурство РП: <a href="/v2/#/pm-duty">/pm-duty</a></p>
+        </div>
+
+        <!-- TenderGuru / API candidates stub area -->
         <div id="platformStub" style="display:none">
           <div class="hub-platform-stub">
-            <div class="hub-platform-stub-ic">🛰</div>
+            <div class="hub-platform-stub-ic">📡</div>
             <div class="hub-platform-stub-txt">
-              <div class="hub-platform-stub-h">Парсинг ЭТП — в разработке</div>
-              <div class="hub-platform-stub-p">Интеграция с zakupki.gov.ru, B2B-Center, РТС-Тендер и другими площадками будет подключена позже. Сейчас тендеры с площадок приходят так: AI распознаёт письмо-приглашение и сразу создаёт тендер ниже.</div>
+              <div class="hub-platform-stub-h">С площадок (TenderGuru API)</div>
+              <div class="hub-platform-stub-p">Кандидаты из API — в <a href="/v2/#/tenders">CRM 2.0 → С площадок</a>. Обогащение дедлайнов — автоматически 1×/сутки.</div>
             </div>
           </div>
         </div>
@@ -1583,16 +1589,16 @@ window.AsgardTendersPage = (function(){
           const sk = t.source_kind || 'manual';
           if (sk !== 'platform' && sk !== 'email_invite' && sk !== 'to_manual') return false;
         }
-        // Sub-tab «🛡 Тендеры → 🧮 В работе ТО» — фильтр по моим/ТО (active activity)
+        // Sub-tab «🛡 Тендеры → 🧮 В работе ТО» — только подались
         if (currentMainTab === 'tenders' && currentSubTab === 'in_work') {
+          if (t.registry_status && t.registry_status !== 'подались') return false;
           if (user.role === 'TO') {
-            // TO видит только свои: calculator_user_id=me OR created_by_user_id=me
             const me = user.id;
             const mine = (Number(t.calculator_user_id) === Number(me)) || (Number(t.created_by_user_id) === Number(me));
             if (!mine) return false;
           }
-          // HEAD_TO/ADMIN/DIRECTOR_* — видят всё (toggle Мои/Отдел придёт в S-15)
         }
+        if (currentMainTab === 'tenders' && currentSubTab === 'registry') return false;
         // Фильтр по периоду
         if(periodVal) {
           if(periodVal.startsWith("year:")) {
@@ -1970,10 +1976,16 @@ window.AsgardTendersPage = (function(){
       }
       // Sub-фильтр «Активные/Архив» — показывается только в 🛡 Тендеры → 🧮 В работе ТО
       const archToggle = document.getElementById('archive-toggle');
-      if (archToggle) archToggle.style.display = (currentMainTab === 'tenders' && currentSubTab === 'in_work') ? 'flex' : 'none';
+      if (archToggle) archToggle.style.display = (currentMainTab === 'tenders' && currentSubTab === 'registry') ? 'flex' : 'none';
       // Stub площадок — только в 🛡 Тендеры → 📡 С площадок
       const stub = document.getElementById('platformStub');
+      const regPanel = document.getElementById('registryPanel');
       if (stub) stub.style.display = (currentMainTab === 'tenders' && currentSubTab === 'platforms') ? '' : 'none';
+      if (regPanel) regPanel.style.display = (currentMainTab === 'tenders' && currentSubTab === 'registry') ? '' : 'none';
+      const showTable = !(currentMainTab === 'tenders' && (currentSubTab === 'registry' || currentSubTab === 'platforms'));
+      if (tb) tb.closest('.table-wrap')?.style && (tb.closest('.table-wrap').style.display = showTable ? '' : 'none');
+      const tools = document.querySelector('.m-tender-tools');
+      if (tools) tools.style.display = showTable ? '' : 'none';
       // distPanel/winPanel/tkpReadyPanel — только в 🛡 Тендеры → 🧮 В работе ТО (на других табах прячем)
       const showAux = (currentMainTab === 'tenders' && currentSubTab === 'in_work');
       ['dist_panel','win_panel','tkp_ready_panel'].forEach(id => {
@@ -1983,7 +1995,7 @@ window.AsgardTendersPage = (function(){
     }
     // Дефолты sub-tab по main-tab
     function defaultSubFor(mtab){
-      if (mtab === 'tenders') return 'in_work';
+      if (mtab === 'tenders') return 'registry';
       if (mtab === 'applications') return 'mail';
       return null;
     }

@@ -27,13 +27,27 @@ const ACTION_META = {
   cancel:            { icon: '🚫', label: 'Отменён' },
   assign_work_pm:    { icon: '🔨', label: 'Назначен РП работ' },
   sent_to_client:    { icon: '✉', label: 'КП отправлено клиенту' },
-  reassign_pm:       { icon: '🔁', label: 'Переназначен РП' }
+  reassign_pm:       { icon: '🔁', label: 'Переназначен РП' },
+  registry_create:   { icon: '📋', label: 'Создан в реестре' },
+  registry_patch:    { icon: '✏️', label: 'Изменение в реестре' },
+  registry_status:   { icon: '🔄', label: 'Статус реестра' },
+  registry_archive:  { icon: '📁', label: 'Архив реестра' },
+  tenderguru_enrich: { icon: '📡', label: 'TenderGuru API — обогащение' }
 };
 
-function fmtDt(s) {
-  if (!s) return '—';
-  const d = new Date(s);
-  return Number.isFinite(d.getTime()) ? d.toLocaleString('ru-RU') : '—';
+const FIELD_LABELS = {
+  docs_deadline: 'Срок подачи',
+  tender_price: 'НМЦ',
+  customer_name: 'Заказчик',
+  tender_title: 'Название',
+  purchase_url: 'Ссылка на закупку',
+  registry_status: 'Статус реестра'
+};
+
+function fmtVal(v) {
+  if (v == null || v === '') return '—';
+  if (typeof v === 'number') return v.toLocaleString('ru-RU');
+  return String(v);
 }
 
 function fmtPayload(p) {
@@ -43,13 +57,32 @@ function fmtPayload(p) {
     try { obj = JSON.parse(p); } catch { return String(p); }
   }
   if (typeof obj !== 'object') return String(obj);
+
+  if (Array.isArray(obj.changes) && obj.changes.length) {
+    return obj.changes.map((c) => {
+      const label = FIELD_LABELS[c.field] || c.field;
+      return `${label}: ${fmtVal(c.before)} → ${fmtVal(c.after)}`;
+    }).join(' · ');
+  }
+
+  if (obj.field) {
+    const label = FIELD_LABELS[obj.field] || obj.field;
+    return `${label}: ${fmtVal(obj.before)} → ${fmtVal(obj.after)}`;
+  }
+
   const parts = [];
   for (const [k, v] of Object.entries(obj)) {
-    if (v == null) continue;
+    if (v == null || k === 'source') continue;
     const val = typeof v === 'object' ? JSON.stringify(v) : String(v);
     parts.push(`${k}: ${val}`);
   }
-  return parts.join(' · ');
+  return parts.join(' · ') || null;
+}
+
+function fmtDt(s) {
+  if (!s) return '—';
+  const d = new Date(s);
+  return Number.isFinite(d.getTime()) ? d.toLocaleString('ru-RU') : '—';
 }
 
 export default function HistoryTab({ tenderId }) {
@@ -80,7 +113,9 @@ export default function HistoryTab({ tenderId }) {
       id: `a${e.id}`,
       action: e.action,
       at: e.created_at,
-      actor_name: e.actor_name || e.actor_login || e.actor_user_id,
+      actor_name: e.action === 'tenderguru_enrich'
+        ? 'TenderGuru API'
+        : (e.actor_name || e.actor_login || (e.actor_user_id ? `user #${e.actor_user_id}` : null)),
       payload: e.payload_json || e.payload
     }));
     for (const h of authors) {

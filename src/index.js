@@ -562,6 +562,10 @@ fastify.register(require('./routes/auth'), { prefix: '/api/auth' });
 fastify.register(require('./routes/users'), { prefix: '/api/users' });
 fastify.register(require('./routes/pre_tenders'), { prefix: '/api/pre-tenders' });
 fastify.register(require('./routes/tenders'), { prefix: '/api/tenders' });
+fastify.register(require('./routes/tenders-registry'), { prefix: '/api/tenders' });
+const pmDuty = require('./routes/pm-duty');
+fastify.register(pmDuty, { prefix: '/api/pm-duty' });
+fastify.register(pmDuty.reviewRoutes, { prefix: '/api/tenders' });
 fastify.register(require('./routes/tenders-hub'), { prefix: '/api/tenders-hub' }); // S-7: единый агрегатор feed
 fastify.register(require('./routes/estimates'), { prefix: '/api/estimates' });
 fastify.register(require('./routes/works'), { prefix: '/api/works' });
@@ -917,6 +921,17 @@ try {
   });
 } catch (cronErr) {
   fastify.log.warn('[EmbeddingsWatch] Init skipped: ' + cronErr.message);
+}
+
+// ── TenderGuru sync (registry supplement) ──
+try {
+  const { startTenderGuruCron } = require('./services/tenderguru-cron');
+  fastify.addHook('onReady', async () => {
+    startTenderGuruCron(fastify.db, fastify.log);
+    fastify.log.info('[TenderGuruCron] Daily sync scheduled (03:00)');
+  });
+} catch (cronErr) {
+  fastify.log.warn('[TenderGuruCron] Init skipped: ' + cronErr.message);
 }
 
 // ── Call Report Scheduler ──
