@@ -84,6 +84,7 @@ export const SOURCE_OPTIONS = [
   { value: 'phone',         label: '📞 Звонки' },
   { value: 'pm_manual',     label: '👤 От РП' },
   { value: 'to_manual',     label: '🛡 От ТО (вручную)' },
+  { value: 'tenderguru',    label: '📡 TenderGuru' },
   { value: 'manual',        label: '🖐 Вручную' }
 ];
 
@@ -201,6 +202,16 @@ export function postWorksAddendum(payload) {
 
 export function filterByPeriod(tenders, period) {
   if (!period || period === 'all') return tenders;
+  if (/^\d{4}-\d{2}$/.test(period)) {
+    return tenders.filter((t) => String(t.period || '') === period);
+  }
+  if (String(period).startsWith('year:')) {
+    const y = String(period).split(':')[1];
+    return tenders.filter((t) => {
+      const p = String(t.period || t.year || '').slice(0, 4);
+      return p === y;
+    });
+  }
   const now = Date.now();
   const day = 86400000;
   const cutoff = {
@@ -548,10 +559,33 @@ export const REGISTRY_STATUSES = [
   { value: 'отмена', label: 'Отмена' }
 ];
 
+export function buildRegistryPeriodOptions() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const pad = (n) => String(n).padStart(2, '0');
+  const opts = [
+    { value: 'current', label: 'Текущий месяц' },
+    { value: '', label: 'Все тендеры' },
+    { value: `year:${y}`, label: `За ${y} год` },
+    { value: `year:${y - 1}`, label: `За ${y - 1} год` }
+  ];
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(y, now.getMonth() - i, 1);
+    const ym = `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+    opts.push({
+      value: ym,
+      label: d.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })
+    });
+  }
+  return opts;
+}
+
 export function loadRegistry(params = {}) {
   const q = new URLSearchParams();
   q.set('subtab', params.subtab || 'registry');
   q.set('limit', String(params.limit ?? 500));
+  if (params.period !== undefined) q.set('period', params.period);
+  if (params.burn) q.set('burn', '1');
   return api(`/api/tenders/registry?${q}`).then(d => d);
 }
 

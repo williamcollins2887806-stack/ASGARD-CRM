@@ -98,6 +98,8 @@ export default function TendersPage() {
   const [loadError, setLoadError] = useState(null);
   const [showTgSettings, setShowTgSettings] = useState(false);
   const [tgRefreshKey, setTgRefreshKey] = useState(0);
+  const [registryPeriod, setRegistryPeriod] = useState('current');
+  const [registryBurnOnly, setRegistryBurnOnly] = useState(false);
 
   /* Загрузка для tab='tenders' — старый /api/tenders endpoint (snapshot).
      Для applications/all — /api/tenders-hub/feed (UNION 4 источников). */
@@ -253,7 +255,9 @@ export default function TendersPage() {
     }
     // sub-tab «С площадок» — фильтр по source_kind ∈ {platform, email_invite}
     if (sub === 'platforms') {
-      v = v.filter((t) => t.source_kind === 'platform' || t.source_kind === 'email_invite');
+      v = v.filter((t) =>
+        ['platform', 'email_invite', 'to_manual', 'tenderguru'].includes(t.source_kind)
+      );
     }
     if (user?.role === 'PM') {
       const uid = Number(user.id);
@@ -293,7 +297,7 @@ export default function TendersPage() {
       const wonMs = t.won_at ? new Date(t.won_at).getTime() : created;
       const lostMs = t.lost_at ? new Date(t.lost_at).getTime() : created;
       if (Number.isFinite(created) && created >= todayMs) inboxToday++;
-      if (ACTIVE_STATUSES.has(t.tender_status)) inWork++;
+      if (t.registry_status === 'подались' && t.tender_status !== 'Не подходит') inWork++;
       if (t.tender_status === 'Дозапрос') addendum++;
       if (t.tender_status === 'Выиграли' && Number.isFinite(wonMs) && wonMs >= month30) wonMonth++;
       // Burn — активный + deadline ≤ 3 дня
@@ -422,8 +426,11 @@ export default function TendersPage() {
   };
 
   const jumpToBurn = () => {
-    setFilters((f) => ({ ...f, status: '', period: 'week' }));
-    setMain('tenders'); setSub('registry'); setTab('active');
+    setRegistryPeriod('current');
+    setRegistryBurnOnly(true);
+    setMain('tenders');
+    setSub('registry');
+    setTab('active');
   };
 
   // Inline-RBAC-гейт после всех хуков (Rules of Hooks).
@@ -543,7 +550,14 @@ export default function TendersPage() {
       )}
 
       {showRegistry && (
-        <RegistryTab subtab={registrySubtab} onOpenWin={onOpenWin} onRefresh={refresh} />
+        <RegistryTab
+          subtab={registrySubtab}
+          period={registryPeriod}
+          burnOnly={registryBurnOnly}
+          onPeriodChange={(p) => { setRegistryPeriod(p); setRegistryBurnOnly(false); }}
+          onOpenWin={onOpenWin}
+          onRefresh={refresh}
+        />
       )}
 
       {/* Sub-toggle «Активные / Архив» — в Реестре */}

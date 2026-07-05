@@ -13,8 +13,54 @@ const REGISTRY_TO_TENDER_STATUS = {
   'отмена': 'Не подходит'
 };
 
+const TENDER_TO_REGISTRY_STATUS = {
+  'Новый': 'рассмотрение',
+  'Черновик': 'рассмотрение',
+  'На анализе': 'готовим',
+  'Отправлено на просчёт': 'готовим',
+  'Согласование ТКП': 'готовим',
+  'ТКП согласовано': 'готовим',
+  'Готово к отправке КП': 'готовим',
+  'КП отправлено': 'подались',
+  'Дозапрос': 'подались',
+  'Выиграли': 'выиграли',
+  'Проиграли': 'проиграли',
+  'Не подходит': 'отмена'
+};
+
 function syncTenderStatus(registryStatus) {
   return REGISTRY_TO_TENDER_STATUS[registryStatus] || 'Новый';
+}
+
+function syncRegistryStatus(tenderStatus) {
+  return TENDER_TO_REGISTRY_STATUS[tenderStatus] || null;
+}
+
+const KANBAN_REGISTRY_STATUSES = new Set(['готовим', 'подались']);
+
+async function ensureTenderKanbanCard(db, tenderId, ownerUserId) {
+  if (!ownerUserId || !tenderId) return null;
+  try {
+    const pk = require('../routes/personal-kanban');
+    const t = await db.query('SELECT tender_status FROM tenders WHERE id = $1', [tenderId]);
+    const mainStatus = t.rows[0]?.tender_status || 'Новый';
+    const subId = await pk.ensureDefaultSubstages(db, ownerUserId, 'tender', mainStatus);
+    const ins = await db.query(`
+      INSERT INTO personal_kanban_cards
+        (owner_user_id, flow_type, entity_kind, entity_id, current_main_status, current_substage_id)
+      VALUES ($1, 'tender', 'tender', $2, $3, $4)
+      ON CONFLICT (owner_user_id, entity_kind, entity_id)
+        DO UPDATE SET
+          current_main_status = EXCLUDED.current_main_status,
+          current_substage_id = COALESCE(EXCLUDED.current_substage_id, personal_kanban_cards.current_substage_id),
+          is_closed = false,
+          updated_at = NOW()
+      RETURNING id
+    `, [ownerUserId, tenderId, mainStatus, subId]);
+    return ins.rows[0]?.id || null;
+  } catch (_) {
+    return null;
+  }
 }
 
 function isValidRegistryStatus(s) {
@@ -120,12 +166,16 @@ async function computeCustomerScore(db, customerInn, customerName) {
 module.exports = {
   REGISTRY_STATUSES,
   REGISTRY_TO_TENDER_STATUS,
+  TENDER_TO_REGISTRY_STATUS,
+  KANBAN_REGISTRY_STATUSES,
   syncTenderStatus,
+  syncRegistryStatus,
   isValidRegistryStatus,
   writeRegistryAudit,
   writeTenderGuruEnrichAudit,
   writeReviewLog,
   ensureReview,
   getCurrentDuty,
-  computeCustomerScore
+  computeCustomerScore,
+  ensureTenderKanbanCard
 };

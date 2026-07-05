@@ -1,89 +1,147 @@
 /**
- * Import tender registry from Excel (final stage)
- * Uses xlsx if available, otherwise returns instructions
+ * Import tender registry from Excel (with period + CRM dedup/merge)
  */
-const path = require('path');
-const fs = require('fs');
+const {
+  DEFAULT_XLSX,
+  readWorkbookRows,
+  auditRowsAgainstCrm,
+  matchRowToCrm,
+  buildCrmIndex
+} = require('./tender-registry-import-utils');
+const { syncTenderStatus } = require('./tender-registry-helpers');
 
-const DEFAULT_XLSX = path.join(process.env.HOME || process.env.USERPROFILE || '', 'Downloads', 'Тендеры_сводная.xlsx');
+async function loadUsers(db) {
+  const r = await db.query(`SELECT id, name FROM users WHERE is_active IS DISTINCT FROM false`);
+  return new Map(r.rows.map(u => [String(u.name).trim().toLowerCase(), u.id]));
+}
 
-const STATUS_MAP = {
-  'рассмотрение': 'рассмотрение',
-  'готовим': 'готовим',
-  'подались': 'подались',
-  'проиграли': 'проиграли',
-  'отмена': 'отмена',
-  'выиграли': 'выиграли'
-};
+async function loadCrmTenders(db) {
+  const r = await db.query(`
+    SELECT id, customer_name, customer_inn, tender_title, purchase_url,
+           registry_status, tender_price, docs_deadline, period, deleted_at
+    FROM tenders WHERE deleted_at IS NULL
+  `);
+  return r.rows;
+}
+
+function applyMergeSet(row, patch) {
+  const sets = [];
+  const params = [];
+  let i = 1;
+  for (const [k, v] of Object.entries(patch)) {
+    sets.push(`${k} = $${i++}`);
+    params.push(v);
+  }
+  if (patch.registry_status) {
+    sets.push(`tender_status = $${i++}`);
+    params.push(syncTenderStatus(patch.registry_status));
+  }
+  return { sets, params };
+}
 
 async function spawnImport(db, opts = {}) {
   const filePath = opts.file_path || DEFAULT_XLSX;
   const dryRun = opts.dry_run !== false;
 
-  if (!fs.existsSync(filePath)) {
-    return { ok: false, error: `Файл не найден: ${filePath}`, dry_run: dryRun };
+  let workbook;
+  try {
+    workbook = await readWorkbookRows(filePath);
+  } catch (e) {
+    return { ok: false, error: e.message, dry_run: dryRun };
   }
 
-  let XLSX;
-  try { XLSX = require('xlsx'); } catch (_) {
-    return { ok: false, error: 'Установите пакет xlsx: npm install xlsx', dry_run: dryRun };
+  const { rows, byPeriod } = workbook;
+  const crmRows = await loadCrmTenders(db);
+  const audit = auditRowsAgainstCrm(rows, crmRows);
+  const userByName = await loadUsers(db);
+  const index = buildCrmIndex(crmRows);
+
+  if (dryRun) {
+    return {
+      ok: true,
+      dry_run: true,
+      file: filePath,
+      rows: rows.length,
+      by_period: byPeriod,
+      audit_summary: audit.summary,
+      audit_by_period: audit.byPeriod,
+      sample: audit.items.slice(0, 100)
+    };
   }
 
-  const wb = XLSX.readFile(filePath);
-  const sheet = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
-
-  const users = await db.query(`SELECT id, name FROM users WHERE is_active IS DISTINCT FROM false`);
-  const userByName = new Map(users.rows.map(u => [String(u.name).trim().toLowerCase(), u.id]));
-
-  let created = 0, skipped = 0, customersUpserted = 0;
+  let created = 0;
+  let merged = 0;
+  let skipped = 0;
+  let conflicts = 0;
 
   for (const row of rows) {
-    const customer_name = String(row['Заказчик'] || row.customer_name || '').trim();
-    const tender_title = String(row['Наименование'] || row['Тендер'] || row.tender_title || '').trim();
-    if (!customer_name && !tender_title) { skipped++; continue; }
+    const m = matchRowToCrm(row, index);
 
-    const registry_status = STATUS_MAP[String(row['Статус'] || row.status || 'рассмотрение').trim().toLowerCase()] || 'рассмотрение';
-    const customer_inn = String(row['ИНН'] || row.customer_inn || '').replace(/\D/g, '') || null;
-    const createdByName = String(row['Добавил'] || row.created_by || '').trim().toLowerCase();
-    const created_by = userByName.get(createdByName) || null;
-
-    if (customer_inn) {
-      if (!dryRun) {
-        await db.query(`
-          INSERT INTO customers (inn, name, full_name, created_at, updated_at)
-          VALUES ($1, $2, $2, NOW(), NOW())
-          ON CONFLICT (inn) DO UPDATE SET name = EXCLUDED.name, updated_at = NOW()
-        `, [customer_inn, customer_name]).catch(() => {});
-      }
-      customersUpserted++;
+    if (m.action === 'duplicate_skip') {
+      skipped++;
+      continue;
     }
 
-    if (dryRun) { created++; continue; }
+    if (m.action === 'conflict') {
+      conflicts++;
+      continue;
+    }
+
+    if (m.action === 'duplicate_merge') {
+      const { sets, params } = applyMergeSet(row, m.patch);
+      if (sets.length) {
+        params.push(m.tender_id);
+        await db.query(
+          `UPDATE tenders SET ${sets.join(', ')}, updated_at = NOW() WHERE id = $${params.length}`,
+          params
+        );
+        merged++;
+      } else {
+        skipped++;
+      }
+      continue;
+    }
+
+    const created_by = row.created_by_name ? userByName.get(row.created_by_name) : null;
+    const registry_status = row.registry_status || 'рассмотрение';
+    const period = row.period || new Date().toISOString().slice(0, 7);
+    const tender_status = syncTenderStatus(registry_status);
 
     await db.query(`
       INSERT INTO tenders (
         customer_name, customer_inn, tender_title, tender_price, docs_deadline, purchase_url,
-        registry_status, tender_status, reject_reason, comment_to, source_kind, created_by, period, created_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'manual',$11,
-        to_char(NOW(),'YYYY-MM'), NOW())
+        registry_status, tender_status, reject_reason, comment_to, source_kind, created_by,
+        created_by_user_id, period, created_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'to_manual',$11,$11,$12,NOW())
     `, [
-      customer_name || null,
-      customer_inn,
-      tender_title || null,
-      row['НМЦ'] || row.tender_price || null,
-      row['Срок подачи'] || row.docs_deadline || null,
-      row['Ссылка на площадку'] || row.purchase_url || null,
+      row.customer_name,
+      row.customer_inn,
+      row.tender_title,
+      row.tender_price || null,
+      row.docs_deadline || null,
+      row.purchase_url || null,
       registry_status,
-      registry_status === 'выиграли' ? 'Выиграли' : registry_status === 'проиграли' ? 'Проиграли' : registry_status === 'отмена' ? 'Не подходит' : 'Новый',
-      row['Причины отказа'] || row.reject_reason || null,
-      row['Комментарий'] || row.comment_to || null,
-      created_by
+      tender_status,
+      row.reject_reason,
+      row.comment_to,
+      created_by,
+      period
     ]);
     created++;
   }
 
-  return { ok: true, dry_run: dryRun, file: filePath, rows: rows.length, created, skipped, customersUpserted };
+  return {
+    ok: true,
+    dry_run: false,
+    file: filePath,
+    rows: rows.length,
+    created,
+    merged,
+    skipped,
+    conflicts,
+    by_period: byPeriod,
+    audit_summary: audit.summary
+  };
 }
 
 module.exports = { spawnImport };

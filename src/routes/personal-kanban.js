@@ -584,7 +584,9 @@ async function buildScopeWhere(db, user, scope, ownerId, tableAlias = 'c') {
     where.push(`EXISTS (
       SELECT 1 FROM tenders t_scope
         WHERE t_scope.id = ${a}entity_id
-          AND (t_scope.calculator_user_id = $${params.length} OR t_scope.created_by_user_id = $${params.length})
+          AND (t_scope.calculator_user_id = $${params.length}
+            OR t_scope.created_by_user_id = $${params.length}
+            OR t_scope.created_by = $${params.length})
     )`);
     return { where, params };
   }
@@ -2348,9 +2350,15 @@ module.exports = async function (fastify) {
       if (newMainStatus !== card.current_main_status && card.entity_id) {
         try {
           if (card.entity_kind === 'tender') {
-            // Tenders: tender_status + кэш дат (kp_sent_at, won_at, lost_at — V117/V236).
+            // Tenders: tender_status + registry_status + кэш дат (kp_sent_at, won_at, lost_at — V117/V236).
+            const { syncRegistryStatus } = require('../services/tender-registry-helpers');
+            const regSt = syncRegistryStatus(newMainStatus);
             const sets = ['tender_status = $1', 'updated_at = now()'];
             const ps = [newMainStatus];
+            if (regSt) {
+              sets.push(`registry_status = $${ps.length + 1}`);
+              ps.push(regSt);
+            }
             if (newMainStatus === 'КП отправлено') sets.push(`kp_sent_at = COALESCE(kp_sent_at, now())`);
             if (newMainStatus === 'Выиграли')     sets.push(`won_at      = COALESCE(won_at, now())`);
             if (newMainStatus === 'Проиграли')    sets.push(`lost_at     = COALESCE(lost_at, now())`);

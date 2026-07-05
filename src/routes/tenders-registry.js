@@ -6,8 +6,11 @@ const {
   syncTenderStatus,
   isValidRegistryStatus,
   writeRegistryAudit,
-  computeCustomerScore
+  computeCustomerScore,
+  KANBAN_REGISTRY_STATUSES,
+  ensureTenderKanbanCard
 } = require('../services/tender-registry-helpers');
+const { buildPeriodFilterSql } = require('../services/tender-registry-import-utils');
 
 const ALLOWED_ROLES = ['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 
@@ -50,11 +53,10 @@ async function routes(fastify) {
       }
       row.score = cache.get(key);
       const rev = await db.query(`
-        SELECT r.*, u.name AS calculator_name,
-               ru.decision, ru.is_final
-        FROM tender_rp_reviews ru
-        LEFT JOIN users u ON u.id = ru.calculator_user_id
-        WHERE ru.tender_id = $1
+        SELECT r.*, u.name AS calculator_name
+        FROM tender_rp_reviews r
+        LEFT JOIN users u ON u.id = r.calculator_user_id
+        WHERE r.tender_id = $1
       `, [row.id]);
       row.rp_review = rev.rows[0] || null;
     }
@@ -92,6 +94,19 @@ async function routes(fastify) {
       };
     }
     const where = baseWhere(subtab);
+    const periodParam = request.query.period;
+    const burnOnly = request.query.burn === '1' || request.query.burn_only === 'true';
+    const countParams = [];
+    const { clause: periodClause, applied: periodApplied } = buildPeriodFilterSql(
+      periodParam === undefined ? 'current' : periodParam,
+      countParams
+    );
+    let burnClause = '';
+    if (burnOnly) {
+      burnClause = ` AND t.docs_deadline IS NOT NULL AND t.docs_deadline::date <= (CURRENT_DATE + INTERVAL '3 days') AND t.docs_deadline::date >= CURRENT_DATE AND t.registry_status NOT IN ('отмена','проиграли','выиграли')`;
+    }
+
+    const listParams = [...countParams, limit, offset];
     const r = await db.query(`
       SELECT t.*,
              cb.name AS created_by_name,
@@ -99,13 +114,23 @@ async function routes(fastify) {
       FROM tenders t
       LEFT JOIN users cb ON cb.id = t.created_by
       LEFT JOIN users calc ON calc.id = t.calculator_user_id
-      WHERE ${where}
+      WHERE ${where}${periodClause}${burnClause}
       ORDER BY t.created_at DESC
-      LIMIT $1 OFFSET $2
-    `, [limit, offset]);
+      LIMIT $${listParams.length - 1} OFFSET $${listParams.length}
+    `, listParams);
     const items = await enrichRows(r.rows);
-    const cnt = await db.query(`SELECT COUNT(*)::int AS c FROM tenders t WHERE ${where}`);
-    return { items, total: cnt.rows[0].c, subtab, statuses: REGISTRY_STATUSES };
+    const cnt = await db.query(
+      `SELECT COUNT(*)::int AS c FROM tenders t WHERE ${where}${periodClause}${burnClause}`,
+      countParams
+    );
+    return {
+      items,
+      total: cnt.rows[0].c,
+      subtab,
+      period: periodApplied,
+      burn_only: burnOnly,
+      statuses: REGISTRY_STATUSES
+    };
   });
 
   // POST /registry — quick create
@@ -131,8 +156,8 @@ async function routes(fastify) {
     const r = await db.query(`
       INSERT INTO tenders (
         customer_name, customer_inn, tender_title, tender_price, docs_deadline, purchase_url,
-        registry_status, tender_status, source_kind, created_by, period, created_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW())
+        registry_status, tender_status, source_kind, created_by, created_by_user_id, period, created_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$11,NOW())
       RETURNING *
     `, [
       customer_name || null,
@@ -214,6 +239,12 @@ async function routes(fastify) {
       action: 'registry_status', field: 'registry_status',
       before: cur.rows[0].registry_status, after: registry_status
     });
+
+    if (KANBAN_REGISTRY_STATUSES.has(registry_status)) {
+      const ownerId = cur.rows[0].created_by_user_id || cur.rows[0].created_by || request.user.id;
+      await ensureTenderKanbanCard(db, parseInt(id, 10), ownerId);
+    }
+
     broadcast('tender:registry:changed', { id: parseInt(id, 10) });
     return { tender: r.rows[0] };
   });

@@ -1741,14 +1741,18 @@ const { logError } = require('../lib/log-error');
       return reply.code(400).send({ error: 'Для статуса «Проиграли» обязательна причина отказа' });
     }
 
+    const { syncRegistryStatus } = require('../services/tender-registry-helpers');
+    const registryStatus = syncRegistryStatus(newStatus);
+
     const updateRes = await db.query(
       `UPDATE tenders
           SET tender_status = $1,
+              registry_status = COALESCE($4, registry_status),
               reject_reason = CASE WHEN $1 = 'Проиграли' AND $2::text IS NOT NULL THEN $2 ELSE reject_reason END,
               updated_at = NOW()
         WHERE id = $3
        RETURNING *`,
-      [newStatus, reason || null, id]
+      [newStatus, reason || null, id, registryStatus]
     );
     const updated = updateRes.rows[0];
 

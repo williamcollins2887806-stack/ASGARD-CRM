@@ -1,12 +1,12 @@
 /**
  * RegistryTab — spreadsheet-style TO tender entry
  */
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Btn } from '@/modals/parts';
 import { toast } from '@/modals/Notifications';
 import {
   loadRegistry, createRegistryRow, patchRegistryField, patchRegistryStatus,
-  REGISTRY_STATUSES
+  REGISTRY_STATUSES, buildRegistryPeriodOptions
 } from './api';
 import CustomerSuggestCell from './CustomerSuggestCell';
 
@@ -18,18 +18,37 @@ function useDebouncedSave(delay = 400) {
   }, [delay]);
 }
 
-export default function RegistryTab({ subtab = 'registry', onOpenWin, onRefresh }) {
+function periodLabel(value, options) {
+  if (value === 'current') return options.find(o => o.value === 'current')?.label || 'Текущий месяц';
+  if (!value) return 'Все тендеры';
+  const hit = options.find(o => o.value === value);
+  return hit?.label || value;
+}
+
+export default function RegistryTab({
+  subtab = 'registry',
+  period = 'current',
+  burnOnly = false,
+  onPeriodChange,
+  onOpenWin,
+  onRefresh
+}) {
   const [rows, setRows] = useState([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const debounce = useDebouncedSave();
+  const periodOptions = useMemo(() => buildRegistryPeriodOptions(), []);
 
   const refresh = useCallback(() => {
     setLoading(true);
-    loadRegistry({ subtab })
-      .then(d => setRows(d.items || []))
+    loadRegistry({ subtab, period, burn: burnOnly, limit: period === '' ? 2000 : 500 })
+      .then(d => {
+        setRows(d.items || []);
+        setTotal(d.total ?? (d.items || []).length);
+      })
       .catch(e => toast('Ошибка загрузки: ' + e.message, 'err'))
       .finally(() => setLoading(false));
-  }, [subtab]);
+  }, [subtab, period, burnOnly]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -64,7 +83,24 @@ export default function RegistryTab({ subtab = 'registry', onOpenWin, onRefresh 
 
   return (
     <div className="registry-tab">
-      <div style={{ marginBottom: 12, display: 'flex', gap: 8 }}>
+      <div style={{ marginBottom: 12, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span className="muted" style={{ fontSize: 13 }}>Период:</span>
+          <select
+            className="inp"
+            value={period}
+            onChange={e => onPeriodChange?.(e.target.value)}
+          >
+            {periodOptions.map(o => (
+              <option key={o.value || 'all'} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </label>
+        <span className="muted" style={{ fontSize: 13 }}>
+          {total} {total === 1 ? 'тендер' : total < 5 ? 'тендера' : 'тендеров'}
+          {' · '}{periodLabel(period, periodOptions)}
+          {burnOnly && ' · горящие дедлайны'}
+        </span>
         <Btn onClick={addRow}>+ Добавить строку</Btn>
         <Btn variant="ghost" onClick={refresh}>↻ Обновить</Btn>
       </div>
@@ -160,7 +196,11 @@ export default function RegistryTab({ subtab = 'registry', onOpenWin, onRefresh 
           </tbody>
         </table>
       </div>
-      {!loading && rows.length === 0 && <p className="muted">Нет записей</p>}
+      {!loading && rows.length === 0 && (
+        <p className="muted">
+          {burnOnly ? 'Нет горящих дедлайнов в выбранном периоде' : 'Нет записей за выбранный период'}
+        </p>
+      )}
     </div>
   );
 }

@@ -276,7 +276,7 @@ export default function App() {
               <Route path="/readiness-board" element={<Protected title="Сводка готовности по РП"><ReadinessBoard /></Protected>} />
               <Route path="/kanban" element={<Protected title="Канбан-доска задач"><Kanban /></Protected>} />
               {/* ─── Волна 4б: Личный канбан + Корзина заявок директора ─── */}
-              <Route path="/personal-kanban" element={<Protected title="Мой канбан" roles={['PM','HEAD_PM','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV']}><PersonalKanban /></Protected>} />
+              <Route path="/personal-kanban" element={<Protected title="Мой канбан" roles={['PM','HEAD_PM','TO','HEAD_TO','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV']}><PersonalKanban /></Protected>} />
               {/* 27.06.2026: маркетплейс заявок — единая страница для всех ролей.
                   RBAC внутри страницы показывает нужные кнопки/секции. */}
               <Route path="/director-inbox" element={<Protected title="Маркетплейс заявок" roles={['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','HEAD_PM','PM','TO','HEAD_TO']}><DirectorsInbox /></Protected>} />
