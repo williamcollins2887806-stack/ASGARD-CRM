@@ -49,7 +49,10 @@ const GROUPS = [
     label: 'Продажи и тендеры',
     color: 'var(--gold)',
     items: [
-      { path: '/tenders',     icon: Trophy,          label: 'Тендеры',      section: 'tenders' },
+      { path: '/tenders',     icon: Trophy,          label: 'Реестр ТО',    section: 'tenders' },
+      { path: '/tenders/platform', icon: Filter,     label: 'С площадок',   section: 'tenders', roles: ['ADMIN', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'] },
+      { path: '/to-calcs',    icon: Calculator,       label: 'Расчёты ТО',   section: 'tenders', roles: ['TO', 'HEAD_TO', 'ADMIN'] },
+      { path: '/head-to-approvals', icon: FileCheck2, label: 'Согласования ТО', section: 'tenders', roles: ['HEAD_TO', 'ADMIN'] },
       { path: '/contracts',   icon: FilePen,          label: 'Договоры',     section: 'tenders' },
       { path: '/customers',   icon: Building2,        label: 'Контрагенты',  section: 'tenders' },
       { path: '/funnel',      icon: Filter,           label: 'Воронка',      section: 'tenders' },

@@ -1,163 +1,128 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { useHaptic } from '@/hooks/useHaptic';
-import { api } from '@/api/client';
+import {
+  loadRegistry,
+  createRegistryRow,
+  buildRegistryPeriodOptions,
+} from '@/api/tendersRegistry';
+import {
+  computeRegistryKpi,
+  isToRole,
+} from '@/lib/registryStatus';
 import { PageShell } from '@/components/layout/PageShell';
 import { BottomSheet } from '@/components/shared/BottomSheet';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
-import { StatusBadge } from '@/components/shared/StatusBadge';
 import { StatCard, StatRow } from '@/components/shared/StatCard';
+import RegistryDetailSheet, { SourceBadge, RegistryStatusBadge } from '@/components/tenders/RegistryDetailSheet';
 import {
-  Trophy, Search, Plus, ChevronRight, X,
-  DollarSign, User, Calendar, TrendingUp,
-  CheckCircle2, XCircle, Briefcase,
+  Trophy, Search, Plus, ChevronRight, X, Calendar, DollarSign,
+  LayoutGrid, AlertTriangle, ChevronDown,
 } from 'lucide-react';
 import { formatDate, formatMoney } from '@/lib/utils';
 
-function getStatusColor(status) {
-  if (!status) return 'var(--text-tertiary)';
-  const s = status.toLowerCase();
-  if (['выиграли', 'контракт', 'клиент согласился', 'ткп согласовано'].some((k) => s.includes(k))) return 'var(--green)';
-  if (['в просчёте', 'на просчёте', 'в работе', 'выполняется', 'мобилизация', 'на согласовании', 'согласование'].some((k) => s.includes(k))) return 'var(--blue)';
-  if (['кп отправлено', 'ткп отправлено', 'переговоры', 'истекает'].some((k) => s.includes(k))) return 'var(--gold)';
-  if (['дозапрос'].some((k) => s.includes(k))) return 'var(--gold)';
-  if (['проиграли', 'отказ', 'клиент отказался'].some((k) => s.includes(k))) return 'var(--red-soft)';
-  return 'var(--text-tertiary)';
-}
-
-const WON_STATUSES  = ['выиграли', 'контракт', 'клиент согласился'];
-const LOST_STATUSES = ['проиграли', 'отказ', 'клиент отказался', 'отменён'];
-
-function isWon(s)  { return s && WON_STATUSES.some((k)  => s.toLowerCase().includes(k)); }
-function isLost(s) { return s && LOST_STATUSES.some((k) => s.toLowerCase().includes(k)); }
-function isKpSent(s) { return s && s.toLowerCase().includes('кп отправлено'); }
-function isAddendum(s) { return s && s.toLowerCase().includes('дозапрос'); }
-
-// SourceBadge — компактный бейдж источника (по INV-18 D §для IMP-19).
-// Карта source_kind → {ic, label, fg, bg}. Только токены, без хардкод-цветов.
-// S-31.1 F-2: добавлен `to_manual` (V250 7-е значение CHECK) — тендер,
-// созданный ТО вручную. Иначе fallback рендерил «·» вместо иконки и провенанс
-// ТО→тендер был неотличим от РП-ввода.
-const SOURCE_META = {
-  platform:      { ic: '📡',  label: 'С площадки',   fg: 'var(--blue)',  bg: 'rgba(74,144,217,0.13)' },
-  email_invite:  { ic: '📧✨', label: 'AI-письмо',    fg: 'var(--gold)',  bg: 'rgba(200,168,78,0.13)' },
-  email_request: { ic: '📧',  label: 'Письмо',       fg: 'var(--blue)',  bg: 'rgba(74,144,217,0.10)' },
-  phone:         { ic: '📞',  label: 'Звонок',       fg: 'var(--green)', bg: 'rgba(48,209,88,0.11)' },
-  pm_manual:     { ic: '👤',  label: 'От РП',        fg: 'var(--gold)',  bg: 'rgba(200,168,78,0.10)' },
-  to_manual:     { ic: '🛡',  label: 'От ТО',        fg: 'var(--blue)',  bg: 'rgba(74,144,217,0.13)' },
-  manual:        { ic: '✍️',  label: 'Вручную',      fg: 'var(--text-tertiary)', bg: 'rgba(142,142,147,0.10)' },
-};
-
-function SourceBadge({ kind, label }) {
-  const meta = SOURCE_META[kind] || (label ? { ic: '·', label, fg: 'var(--text-tertiary)', bg: 'rgba(142,142,147,0.10)' } : null);
-  if (!meta) return null;
-  return (
-    <span
-      className="inline-flex items-center"
-      style={{
-        gap: 3,
-        padding: '2px 6px',
-        borderRadius: 999,
-        fontSize: 10,
-        fontWeight: 600,
-        color: meta.fg,
-        background: meta.bg,
-        letterSpacing: '0.01em',
-        whiteSpace: 'nowrap',
-        lineHeight: 1.2,
-      }}
-      title={meta.label}
-    >
-      <span style={{ fontSize: 10 }}>{meta.ic}</span>
-      {meta.label}
-    </span>
-  );
-}
-
-const FILTERS = [
-  { id: 'all',  label: 'Все' },
-  { id: 'new',  label: 'Новые' },
-  { id: 'wip',  label: 'В работе' },
-  { id: 'won',  label: 'Выиграно' },
-  { id: 'lost', label: 'Проиграно' },
+const SUB_TABS = [
+  { id: 'registry', label: 'Реестр' },
+  { id: 'submitted', label: 'В работе ТО' },
+  { id: 'archive', label: 'Архив' },
 ];
 
 const CREATE_ROLES = ['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 
+function isBurning(t) {
+  if (!t.docs_deadline) return false;
+  if (['отмена', 'проиграли', 'выиграли'].includes(t.registry_status)) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dl = new Date(t.docs_deadline).getTime();
+  if (!Number.isFinite(dl)) return false;
+  const days = Math.round((dl - today.getTime()) / 86400000);
+  return days >= 0 && days <= 3;
+}
+
 export default function Tenders() {
-  const user   = useAuthStore((s) => s.user);
+  const user = useAuthStore((s) => s.user);
   const haptic = useHaptic();
-  const [tenders, setTenders]       = useState([]);
-  const [loading, setLoading]       = useState(true);
-  const [search, setSearch]         = useState('');
+  const navigate = useNavigate();
+
+  const [items, setItems] = useState([]);
+  const [kpiRows, setKpiRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [total, setTotal] = useState(0);
+  const [search, setSearch] = useState('');
   const [showSearch, setShowSearch] = useState(false);
-  const [filter, setFilter]         = useState('all');
-  const [detail, setDetail]         = useState(null);
+  const [subtab, setSubtab] = useState('registry');
+  const [period, setPeriod] = useState('current');
+  const [burnOnly, setBurnOnly] = useState(false);
+  const [showPeriod, setShowPeriod] = useState(false);
+  const [detail, setDetail] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
 
   const canCreate = user && CREATE_ROLES.includes(user.role);
+  const showKanbanCta = user && isToRole(user.role);
+  const periodOptions = useMemo(() => buildRegistryPeriodOptions(), []);
+  const periodLabel = periodOptions.find((o) => o.value === period)?.label || 'Период';
 
-  const fetchTenders = useCallback(async () => {
+  const fetchList = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get('/tenders?limit=200');
-      setTenders(api.extractRows(res) || []);
+      const res = await loadRegistry({
+        subtab,
+        period,
+        burn: burnOnly,
+        limit: 500,
+      });
+      setItems(res.items || []);
+      setTotal(res.total ?? (res.items || []).length);
     } catch {
-      setTenders([]);
+      setItems([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
+  }, [subtab, period, burnOnly]);
+
+  const fetchKpi = useCallback(async () => {
+    try {
+      const res = await loadRegistry({ subtab: 'registry', period: '', limit: 1000 });
+      setKpiRows(res.items || []);
+    } catch {
+      setKpiRows([]);
+    }
   }, []);
 
-  useEffect(() => { fetchTenders(); }, [fetchTenders]);
+  useEffect(() => { fetchList(); }, [fetchList]);
+  useEffect(() => { fetchKpi(); }, [fetchKpi]);
 
-  const stats = useMemo(() => {
-    const total    = tenders.length;
-    const won      = tenders.filter((t) => isWon(t.tender_status)).length;
-    const lost     = tenders.filter((t) => isLost(t.tender_status)).length;
-    const active   = total - won - lost;
-    const totalSum = tenders.reduce((s, t) => s + (Number(t.tender_price) || 0), 0);
-    return { total, won, lost, active, totalSum };
-  }, [tenders]);
+  const refresh = useCallback(async () => {
+    await Promise.all([fetchList(), fetchKpi()]);
+  }, [fetchList, fetchKpi]);
+
+  const kpi = useMemo(() => computeRegistryKpi(kpiRows), [kpiRows]);
 
   const filtered = useMemo(() => {
-    let list = tenders;
-    if (filter === 'new') {
-      list = list.filter((t) => {
-        const s = (t.tender_status || '').toLowerCase();
-        return ['новый', 'получен', 'черновик'].some((k) => s.includes(k));
-      });
-    } else if (filter === 'wip') {
-      list = list.filter((t) => {
-        const s = (t.tender_status || '').toLowerCase();
-        return ['просчёт', 'кп', 'ткп', 'переговор', 'согласован', 'в работе', 'выполняется', 'мобилизация'].some((k) => s.includes(k));
-      });
-    } else if (filter === 'won') {
-      list = list.filter((t) => isWon(t.tender_status));
-    } else if (filter === 'lost') {
-      list = list.filter((t) => isLost(t.tender_status));
-    }
-    if (search) {
-      const q = search.toLowerCase();
-      list = list.filter((t) =>
-        (t.customer_name || '').toLowerCase().includes(q) ||
-        (t.tender_title  || '').toLowerCase().includes(q) ||
-        (t.pm_name       || '').toLowerCase().includes(q) ||
-        (t.group_tag     || '').toLowerCase().includes(q)
-      );
-    }
-    return list;
-  }, [tenders, filter, search]);
+    if (!search.trim()) return items;
+    const q = search.toLowerCase();
+    return items.filter((t) =>
+      (t.customer_name || '').toLowerCase().includes(q) ||
+      (t.tender_title || '').toLowerCase().includes(q) ||
+      (t.comment_to || '').toLowerCase().includes(q)
+    );
+  }, [items, search]);
 
-  const winRate = stats.total > 0
-    ? Math.round((stats.won / (stats.won + stats.lost || 1)) * 100)
-    : 0;
+  const jumpToBurn = () => {
+    haptic.light();
+    setSubtab('registry');
+    setPeriod('current');
+    setBurnOnly(true);
+  };
 
   return (
     <PageShell
-      title="Тендеры"
+      title="Реестр ТО"
       headerRight={
         <div className="flex items-center gap-1">
           <button
@@ -179,9 +144,101 @@ export default function Tenders() {
         </div>
       }
     >
-      <PullToRefresh onRefresh={fetchTenders}>
+      <PullToRefresh onRefresh={refresh}>
+        {showKanbanCta && (
+          <button
+            type="button"
+            onClick={() => navigate('/personal-kanban')}
+            className="w-full mb-3 rounded-2xl px-4 py-3 flex items-center justify-between spring-tap"
+            style={{
+              background: 'color-mix(in srgb, var(--blue) 10%, var(--bg-surface))',
+              border: '0.5px solid color-mix(in srgb, var(--blue) 25%, var(--border-norse))',
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <LayoutGrid size={18} style={{ color: 'var(--blue)' }} />
+              <span className="text-[14px] font-semibold c-primary">Мой канбан</span>
+            </div>
+            <ChevronRight size={16} className="c-tertiary" />
+          </button>
+        )}
+
+        {!loading && (
+          <StatRow cols={3}>
+            <StatCard icon={Trophy} label="В работе ТО" value={kpi.in_work} color="var(--blue)" delay={0} />
+            <StatCard
+              icon={AlertTriangle}
+              label="Дедлайн ≤3д"
+              value={kpi.burn}
+              color={kpi.burn > 0 ? 'var(--red-soft)' : 'var(--text-tertiary)'}
+              delay={60}
+              onClick={kpi.burn > 0 ? jumpToBurn : undefined}
+            />
+            <StatCard icon={Trophy} label="Выиграно/мес" value={kpi.won_month} color="var(--green)" delay={120} />
+          </StatRow>
+        )}
+
+        {burnOnly && (
+          <div
+            className="mb-3 rounded-xl px-3 py-2 flex items-center justify-between"
+            style={{
+              background: 'color-mix(in srgb, var(--gold) 12%, transparent)',
+              border: '0.5px solid color-mix(in srgb, var(--gold) 30%, transparent)',
+            }}
+          >
+            <span className="text-[13px] font-semibold" style={{ color: 'var(--gold)' }}>
+              🔥 Только горящие дедлайны
+            </span>
+            <button type="button" onClick={() => setBurnOnly(false)} className="text-[12px] c-secondary spring-tap">
+              Сбросить
+            </button>
+          </div>
+        )}
+
+        <div className="flex gap-2 pb-2">
+          <button
+            type="button"
+            onClick={() => setShowPeriod(true)}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-full text-[12px] font-semibold spring-tap shrink-0"
+            style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '0.5px solid var(--border-norse)' }}
+          >
+            {periodLabel}
+            <ChevronDown size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/tenders/platform')}
+            className="px-3 py-1.5 rounded-full text-[12px] font-semibold spring-tap shrink-0"
+            style={{ background: 'var(--bg-elevated)', color: 'var(--blue)', border: '0.5px solid var(--border-norse)' }}
+          >
+            📡 С площадок
+          </button>
+        </div>
+
+        <div className="flex gap-1.5 pb-3 overflow-x-auto no-scrollbar">
+          {SUB_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => { haptic.light(); setSubtab(tab.id); setBurnOnly(false); }}
+              className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold spring-tap"
+              style={{
+                background: subtab === tab.id ? 'var(--bg-elevated)' : 'transparent',
+                color: subtab === tab.id ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                border: subtab === tab.id ? '0.5px solid var(--border-light)' : '0.5px solid transparent',
+              }}
+            >
+              {tab.label}
+              {tab.id === 'submitted' && kpi.in_work > 0 && (
+                <span className="ml-1 px-1 rounded-full text-[10px]" style={{ background: 'var(--blue)', color: '#fff' }}>
+                  {kpi.in_work}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
         {showSearch && (
-          <div className="pb-2" style={{ animation: 'fadeInUp 150ms var(--ease-spring) forwards' }}>
+          <div className="pb-2">
             <div
               className="flex items-center gap-2 px-3 rounded-xl"
               style={{ height: 40, background: 'var(--bg-surface)', border: '0.5px solid var(--border-norse)' }}
@@ -189,15 +246,15 @@ export default function Tenders() {
               <Search size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
               <input
                 type="text"
-                placeholder="Поиск тендеров..."
+                placeholder="Поиск..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 autoFocus
                 className="flex-1 bg-transparent outline-none text-[14px]"
-                style={{ color: 'var(--text-primary)', caretColor: 'var(--gold)' }}
+                style={{ color: 'var(--text-primary)' }}
               />
               {search && (
-                <button onClick={() => setSearch('')} style={{ color: 'var(--text-tertiary)' }}>
+                <button type="button" onClick={() => setSearch('')} style={{ color: 'var(--text-tertiary)' }}>
                   <X size={16} />
                 </button>
               )}
@@ -205,67 +262,9 @@ export default function Tenders() {
           </div>
         )}
 
-        {/* Герой: общая сумма и процент побед */}
-        {!loading && tenders.length > 0 && (
-          <div
-            className="rounded-2xl px-4 py-4 mb-3 flex items-center justify-between"
-            style={{
-              background: 'linear-gradient(135deg, color-mix(in srgb, var(--gold) 12%, var(--bg-surface)), color-mix(in srgb, var(--green) 6%, var(--bg-surface)))',
-              border: '0.5px solid color-mix(in srgb, var(--gold) 20%, var(--border-norse))',
-              animation: 'fadeInUp var(--motion-normal) var(--ease-spring) forwards',
-            }}
-          >
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-tertiary)' }}>
-                Общая сумма
-              </p>
-              <p className="text-[22px] font-bold" style={{ color: 'var(--gold)' }}>
-                {formatMoney(stats.totalSum)}
-              </p>
-            </div>
-            <div className="text-right">
-              <p className="text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-tertiary)' }}>
-                Winrate
-              </p>
-              <p className="text-[22px] font-bold" style={{ color: 'var(--green)' }}>
-                {winRate}%
-              </p>
-            </div>
-          </div>
-        )}
-
-        {!loading && tenders.length > 0 && (
-          <StatRow cols={3}>
-            <StatCard icon={Briefcase}    label="Всего"      value={stats.total}  color="var(--text-primary)" delay={0} />
-            <StatCard icon={CheckCircle2} label="Выиграно"   value={stats.won}    color="var(--green)"        delay={60} />
-            <StatCard icon={XCircle}      label="Проиграно"  value={stats.lost}   color="var(--red-soft)"     delay={120} />
-          </StatRow>
-        )}
-
-        <div className="flex gap-1.5 pb-3 overflow-x-auto no-scrollbar">
-          {FILTERS.map((f) => (
-            <button
-              key={f.id}
-              onClick={() => { haptic.light(); setFilter(f.id); }}
-              className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold spring-tap"
-              style={{
-                background: filter === f.id ? 'var(--bg-elevated)' : 'transparent',
-                color:      filter === f.id ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                border:     filter === f.id ? '0.5px solid var(--border-light)' : '0.5px solid transparent',
-              }}
-            >
-              {f.label}
-              {f.id === 'wip' && stats.active > 0 && (
-                <span
-                  className="ml-1 px-1 rounded-full text-[10px]"
-                  style={{ background: 'var(--blue)', color: '#fff' }}
-                >
-                  {stats.active}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
+        <p className="text-[11px] c-tertiary pb-2 px-0.5">
+          {total} {total === 1 ? 'запись' : total < 5 ? 'записи' : 'записей'} · {periodLabel.toLowerCase()}
+        </p>
 
         {loading ? (
           <SkeletonList count={5} />
@@ -275,42 +274,46 @@ export default function Tenders() {
             iconColor="var(--gold)"
             iconBg="color-mix(in srgb, var(--gold) 10%, transparent)"
             title={search ? 'Ничего не найдено' : 'Нет тендеров'}
-            description={search ? 'Попробуйте изменить запрос' : 'Тендеры появятся здесь'}
+            description={search ? 'Измените запрос' : 'Добавьте тендер через +'}
           />
         ) : (
           <div className="flex flex-col gap-2 pb-4">
             {filtered.map((tender, i) => {
               const price = Number(tender.tender_price) || 0;
+              const burning = isBurning(tender);
               return (
                 <button
                   key={tender.id}
                   onClick={() => { haptic.light(); setDetail(tender); }}
                   className="w-full text-left rounded-2xl px-4 py-3.5 spring-tap"
                   style={{
-                    background:    'color-mix(in srgb, var(--bg-surface) 92%, transparent)',
-                    backdropFilter:'blur(8px)',
-                    border:        '0.5px solid var(--border-norse)',
-                    animation:     `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both`,
+                    background: 'color-mix(in srgb, var(--bg-surface) 92%, transparent)',
+                    border: burning
+                      ? '0.5px solid color-mix(in srgb, var(--gold) 45%, var(--border-norse))'
+                      : '0.5px solid var(--border-norse)',
+                    animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 40}ms both`,
                   }}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      <p className="text-[15px] font-semibold leading-tight truncate" style={{ color: 'var(--text-primary)' }}>
-                        {tender.customer_name || tender.tender_title || `Тендер #${tender.id}`}
+                      <p className="text-[15px] font-semibold leading-tight truncate c-primary">
+                        {tender.customer_name || tender.tender_title || `#${tender.id}`}
                       </p>
                       {tender.tender_title && tender.customer_name && (
-                        <p className="text-[12px] mt-0.5 truncate" style={{ color: 'var(--text-secondary)' }}>
-                          {tender.tender_title}
-                        </p>
+                        <p className="text-[12px] mt-0.5 truncate c-secondary">{tender.tender_title}</p>
                       )}
                     </div>
-                    <ChevronRight size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0, marginTop: 3 }} />
+                    <ChevronRight size={16} className="c-tertiary shrink-0 mt-0.5" />
                   </div>
-
                   <div className="flex items-center gap-2 mt-2 flex-wrap">
-                    {tender.tender_status && <StatusBadge status={tender.tender_status} />}
+                    {tender.registry_status && <RegistryStatusBadge status={tender.registry_status} />}
                     {(tender.source_kind || tender.source_label) && (
                       <SourceBadge kind={tender.source_kind} label={tender.source_label} />
+                    )}
+                    {burning && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--gold) 20%, transparent)', color: 'var(--gold)' }}>
+                        🔥 ≤3д
+                      </span>
                     )}
                     {price > 0 && (
                       <span className="flex items-center gap-0.5 text-[11px]" style={{ color: 'var(--gold)' }}>
@@ -318,33 +321,13 @@ export default function Tenders() {
                         {formatMoney(price, { short: true })}
                       </span>
                     )}
-                    {tender.pm_name && (
-                      <span className="flex items-center gap-0.5 text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
-                        <User size={11} />
-                        {tender.pm_name}
-                      </span>
-                    )}
                     {tender.docs_deadline && (
-                      <span className="flex items-center gap-0.5 text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
+                      <span className="flex items-center gap-0.5 text-[11px] c-tertiary">
                         <Calendar size={11} />
                         {formatDate(tender.docs_deadline)}
                       </span>
                     )}
                   </div>
-
-                  {/* Полоса-маркер «Дозапрос N дн.» — золотой акцент над контент-карточкой */}
-                  {isAddendum(tender.tender_status) && (
-                    <div
-                      className="mt-2 px-2 py-1 rounded text-[11px] font-semibold"
-                      style={{
-                        background: 'color-mix(in srgb, var(--gold) 12%, transparent)',
-                        borderLeft: '3px solid var(--gold)',
-                        color: 'var(--gold)',
-                      }}
-                    >
-                      ❓ Дозапрос{tender.addendum_days_left != null ? ` · ${tender.addendum_days_left}д.` : ''}
-                    </div>
-                  )}
                 </button>
               );
             })}
@@ -352,398 +335,107 @@ export default function Tenders() {
         )}
       </PullToRefresh>
 
-      <TenderDetailSheet tender={detail} onClose={() => setDetail(null)} onChanged={fetchTenders} />
+      <RegistryDetailSheet
+        tender={detail}
+        open={!!detail}
+        onClose={() => setDetail(null)}
+        onChanged={refresh}
+      />
+
+      <BottomSheet open={showPeriod} onClose={() => setShowPeriod(false)} title="Период">
+        <div className="flex flex-col gap-1 pb-4">
+          {periodOptions.map((opt) => (
+            <button
+              key={opt.value || 'all'}
+              type="button"
+              onClick={() => { setPeriod(opt.value); setShowPeriod(false); haptic.light(); }}
+              className="w-full text-left px-4 py-3 rounded-xl spring-tap text-[14px] font-medium"
+              style={{
+                background: period === opt.value ? 'var(--bg-elevated)' : 'transparent',
+                color: period === opt.value ? 'var(--text-primary)' : 'var(--text-secondary)',
+              }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </BottomSheet>
+
       {canCreate && (
-        <CreateTenderSheet open={showCreate} onClose={() => setShowCreate(false)} onCreated={fetchTenders} />
+        <CreateRegistrySheet open={showCreate} onClose={() => setShowCreate(false)} onCreated={refresh} />
       )}
     </PageShell>
   );
 }
 
-function TenderDetailSheet({ tender, onClose, onChanged }) {
+function CreateRegistrySheet({ open, onClose, onCreated }) {
   const haptic = useHaptic();
-  const [full, setFull]           = useState(null);
-  const [loadingFull, setLoading] = useState(false);
-  const [acting, setActing]       = useState(false);
-
-  useEffect(() => {
-    if (!tender) { setFull(null); return; }
-    setLoading(true);
-    api.get(`/tenders/${tender.id}`)
-      .then((res) => setFull(res))
-      .catch(() => setFull(null))
-      .finally(() => setLoading(false));
-  }, [tender?.id]);
-
-  if (!tender) return null;
-
-  const t         = full?.tender || tender;
-  const price     = Number(t.tender_price) || 0;
-  const estimates = full?.estimates || [];
-  const works     = full?.works || [];
-
-  // Контекст-действия по статусу — мобильный аналог desktop ctxActions/runCommand.
-  // PUT /api/tenders/:id с новым tender_status (тот же путь, что markTenderSentToClient
-  // и WonModal/LostModal — INV-18 A.7 api.js:240-245).
-  async function setStatus(nextStatus, opts = {}) {
-    setActing(true);
-    haptic.light();
-    try {
-      const body = { tender_status: nextStatus };
-      if (opts.note) body.comment_dir = opts.note;
-      await api.request(`/tenders/${t.id}`, { method: 'PUT', body: JSON.stringify(body) });
-      haptic.success();
-      if (onChanged) onChanged();
-      onClose();
-    } catch (e) {
-      haptic.error && haptic.error();
-      // eslint-disable-next-line no-alert
-      window.alert('Не получилось обновить статус: ' + (e?.body?.message || e?.message || 'ошибка'));
-    } finally {
-      setActing(false);
-    }
-  }
-  function askNote(prompt) {
-    // eslint-disable-next-line no-alert
-    const n = window.prompt(prompt);
-    return n == null ? null : (n.trim() || null);
-  }
-
-  const fields = [
-    t.customer_name && { label: 'Заказчик',  value: t.customer_name },
-    t.tender_title  && { label: 'Название',   value: t.tender_title },
-    t.tender_type   && { label: 'Тип',        value: t.tender_type },
-    price > 0       && { label: 'Сумма',      value: formatMoney(price) },
-    t.docs_deadline && { label: 'Дедлайн',    value: formatDate(t.docs_deadline) },
-    t.pm_name       && { label: 'РП',         value: t.pm_name },
-    t.group_tag     && { label: 'Группа',     value: t.group_tag },
-    t.period        && { label: 'Период',     value: t.period },
-    t.comment_to    && { label: 'Комментарий ТО', value: t.comment_to, full: true },
-    t.comment_dir   && { label: 'Комментарий директора', value: t.comment_dir, full: true },
-    t.reject_reason && { label: 'Причина отказа', value: t.reject_reason, full: true },
-  ].filter(Boolean);
-
-  return (
-    <BottomSheet open={!!tender} onClose={onClose} title={t.customer_name || `Тендер #${t.id}`}>
-      <div className="flex flex-col gap-3 pb-4">
-        {t.tender_status && (
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-tertiary)' }}>
-              Статус
-            </p>
-            <StatusBadge status={t.tender_status} />
-          </div>
-        )}
-
-        {loadingFull ? (
-          <SkeletonList count={3} />
-        ) : (
-          <>
-            {fields.length > 0 && (
-              <div className="rounded-xl overflow-hidden" style={{ border: '0.5px solid var(--border-norse)' }}>
-                {fields.map((f, i) => (
-                  <div
-                    key={i}
-                    className="px-4 py-3"
-                    style={{
-                      background:   'var(--bg-surface)',
-                      borderBottom: i < fields.length - 1 ? '0.5px solid var(--border-norse)' : 'none',
-                    }}
-                  >
-                    <p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>
-                      {f.label}
-                    </p>
-                    <p className={`text-[14px] ${f.full ? 'whitespace-pre-wrap' : ''}`} style={{ color: 'var(--text-primary)' }}>
-                      {f.value}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {estimates.length > 0 && (
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-tertiary)' }}>
-                  Просчёты ({estimates.length})
-                </p>
-                <div className="rounded-xl overflow-hidden" style={{ border: '0.5px solid var(--border-norse)' }}>
-                  {estimates.map((e, i) => (
-                    <div
-                      key={e.id}
-                      className="flex items-center justify-between px-3 py-2.5"
-                      style={{
-                        background:   'var(--bg-surface)',
-                        borderBottom: i < estimates.length - 1 ? '0.5px solid var(--border-norse)' : 'none',
-                      }}
-                    >
-                      <p className="text-[13px] truncate flex-1" style={{ color: 'var(--text-primary)' }}>
-                        {e.title || `Просчёт #${e.id}`}
-                      </p>
-                      {e.amount && (
-                        <p className="text-[12px] font-semibold ml-2 shrink-0" style={{ color: 'var(--gold)' }}>
-                          {formatMoney(e.amount, { short: true })}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {works.length > 0 && (
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-tertiary)' }}>
-                  Работы ({works.length})
-                </p>
-                <div className="rounded-xl overflow-hidden" style={{ border: '0.5px solid var(--border-norse)' }}>
-                  {works.map((w, i) => (
-                    <div
-                      key={w.id}
-                      className="flex items-center justify-between px-3 py-2.5"
-                      style={{
-                        background:   'var(--bg-surface)',
-                        borderBottom: i < works.length - 1 ? '0.5px solid var(--border-norse)' : 'none',
-                      }}
-                    >
-                      <p className="text-[13px] truncate flex-1" style={{ color: 'var(--text-primary)' }}>
-                        {w.work_title || `Работа #${w.id}`}
-                      </p>
-                      {w.work_status && (
-                        <div className="ml-2 shrink-0">
-                          <StatusBadge status={w.work_status} dot={false} />
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Контекст-действия по статусу. Mobile-вариант desktop ctxActions */}
-            {isKpSent(t.tender_status) && (
-              <div className="flex flex-col gap-2 mt-1">
-                <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
-                  Действия по КП
-                </p>
-                <div className="grid grid-cols-3 gap-2">
-                  <ActionBtn
-                    label="🏆 Выиграли"
-                    bg="color-mix(in srgb, var(--green) 18%, transparent)"
-                    fg="var(--green)"
-                    disabled={acting}
-                    onClick={() => setStatus('Выиграли')}
-                  />
-                  <ActionBtn
-                    label="❌ Проиграли"
-                    bg="color-mix(in srgb, var(--red-soft) 18%, transparent)"
-                    fg="var(--red-soft)"
-                    disabled={acting}
-                    onClick={() => {
-                      const note = askNote('Причина проигрыша (опц.):');
-                      setStatus('Проиграли', { note });
-                    }}
-                  />
-                  <ActionBtn
-                    label="❓ Дозапрос"
-                    bg="color-mix(in srgb, var(--gold) 18%, transparent)"
-                    fg="var(--gold)"
-                    disabled={acting}
-                    onClick={() => {
-                      const note = askNote('Суть дозапроса от клиента:');
-                      setStatus('Дозапрос', { note });
-                    }}
-                  />
-                </div>
-              </div>
-            )}
-
-            {isAddendum(t.tender_status) && (
-              <div className="flex flex-col gap-2 mt-1">
-                <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
-                  Дозапрос — действия
-                </p>
-                <div className="grid grid-cols-3 gap-2">
-                  <ActionBtn
-                    label="📨 Ответил"
-                    bg="color-mix(in srgb, var(--blue) 18%, transparent)"
-                    fg="var(--blue)"
-                    disabled={acting}
-                    onClick={() => setStatus('КП отправлено')}
-                  />
-                  <ActionBtn
-                    label="🏆 Выиграли"
-                    bg="color-mix(in srgb, var(--green) 18%, transparent)"
-                    fg="var(--green)"
-                    disabled={acting}
-                    onClick={() => setStatus('Выиграли')}
-                  />
-                  <ActionBtn
-                    label="❌ Проиграли"
-                    bg="color-mix(in srgb, var(--red-soft) 18%, transparent)"
-                    fg="var(--red-soft)"
-                    disabled={acting}
-                    onClick={() => {
-                      const note = askNote('Причина проигрыша (опц.):');
-                      setStatus('Проиграли', { note });
-                    }}
-                  />
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </BottomSheet>
-  );
-}
-
-function ActionBtn({ label, bg, fg, onClick, disabled }) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className="rounded-xl text-[12px] font-semibold spring-tap"
-      style={{
-        background: bg,
-        color: fg,
-        border: '0.5px solid color-mix(in srgb, currentColor 30%, transparent)',
-        padding: '10px 8px',
-        minHeight: 44,
-        opacity: disabled ? 0.55 : 1,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
-function CreateTenderSheet({ open, onClose, onCreated }) {
-  const { user } = useAuthStore();
-  const haptic = useHaptic();
-  const [customer,    setCustomer]    = useState('');
-  const [title,       setTitle]       = useState('');
-  const [price,       setPrice]       = useState('');
-  const [deadline,    setDeadline]    = useState('');
-  const [tenderType,  setTenderType]  = useState('');
-  const [comment,     setComment]     = useState('');
-  const [calcKind,    setCalcKind]    = useState('pm');
-  const [saving,      setSaving]      = useState(false);
-  const canPickCalcKind = user && ['TO', 'HEAD_TO', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(user.role);
+  const [customer, setCustomer] = useState('');
+  const [title, setTitle] = useState('');
+  const [price, setPrice] = useState('');
+  const [deadline, setDeadline] = useState('');
+  const [comment, setComment] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const reset = () => {
-    setCustomer(''); setTitle(''); setPrice('');
-    setDeadline(''); setTenderType(''); setComment('');
-    setCalcKind('pm');
+    setCustomer(''); setTitle(''); setPrice(''); setDeadline(''); setComment('');
   };
 
   const handleSubmit = async () => {
-    if (!customer.trim()) return;
+    if (!customer.trim() && !title.trim()) return;
     haptic.light();
     setSaving(true);
     try {
-      const body = {
-        customer:     customer.trim(),
-        tender_number: title.trim() || null,
+      const now = new Date();
+      const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      await createRegistryRow({
+        customer_name: customer.trim(),
+        tender_title: title.trim() || null,
         tender_price: price ? Number(price) : null,
-        deadline:     deadline || null,
-        tender_type:  tenderType || null,
-        comment_to:   comment.trim() || null,
-      };
-      if (canPickCalcKind) {
-        body.calculator_kind = calcKind;
-        if (calcKind === 'to') body.calculator_user_id = user.id;
-      }
-      await api.post('/tenders', body);
+        docs_deadline: deadline || null,
+        comment_to: comment.trim() || null,
+        registry_status: 'рассмотрение',
+        period,
+      });
       haptic.success();
       reset();
       onClose();
-      onCreated();
-    } catch {}
-    setSaving(false);
+      onCreated?.();
+    } catch (e) {
+      window.alert(e?.body?.error || e?.message || 'Ошибка создания');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
-    <BottomSheet open={open} onClose={onClose} title="Новый тендер">
+    <BottomSheet open={open} onClose={onClose} title="Новый тендер в реестре">
       <div className="flex flex-col gap-3 pb-4">
         <FormField label="Заказчик *">
-          <input
-            type="text" value={customer} onChange={(e) => setCustomer(e.target.value)}
-            placeholder="Наименование заказчика..."
-            className="input-field"
-          />
+          <input className="input-field" value={customer} onChange={(e) => setCustomer(e.target.value)} placeholder="Наименование..." />
         </FormField>
-
-        <FormField label="Название тендера">
-          <input
-            type="text" value={title} onChange={(e) => setTitle(e.target.value)}
-            placeholder="Описание тендера..."
-            className="input-field"
-          />
+        <FormField label="Название">
+          <input className="input-field" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Описание..." />
         </FormField>
-
         <div className="grid grid-cols-2 gap-2">
-          <FormField label="Сумма (₽)">
-            <input
-              type="number" value={price} onChange={(e) => setPrice(e.target.value)}
-              placeholder="0"
-              className="input-field"
-            />
+          <FormField label="НМЦ (₽)">
+            <input type="number" className="input-field" value={price} onChange={(e) => setPrice(e.target.value)} />
           </FormField>
           <FormField label="Дедлайн">
-            <input
-              type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)}
-              className="input-field"
-            />
+            <input type="date" className="input-field" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
           </FormField>
         </div>
-
-        <FormField label="Тип">
-          <input
-            type="text" value={tenderType} onChange={(e) => setTenderType(e.target.value)}
-            placeholder="Тип тендера..."
-            className="input-field"
-          />
+        <FormField label="Комментарий ТО">
+          <textarea className="input-field resize-none" rows={2} value={comment} onChange={(e) => setComment(e.target.value)} />
         </FormField>
-
-        <FormField label="Комментарий">
-          <textarea
-            value={comment} onChange={(e) => setComment(e.target.value)}
-            placeholder="Примечания..."
-            rows={2}
-            className="input-field resize-none"
-          />
-        </FormField>
-
-        {canPickCalcKind && (
-          <FormField label="Кто будет считать">
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setCalcKind('pm')}
-                className={`px-3 py-2 rounded text-sm font-semibold ${calcKind === 'pm' ? 'bg-red-600 text-white' : 'bg-zinc-800 text-gray-300'}`}
-              >👷 РП</button>
-              <button
-                type="button"
-                onClick={() => setCalcKind('to')}
-                className={`px-3 py-2 rounded text-sm font-semibold ${calcKind === 'to' ? 'bg-red-600 text-white' : 'bg-zinc-800 text-gray-300'}`}
-              >📊 Я сам (ТО)</button>
-            </div>
-            <div className="text-xs text-gray-400 mt-1">
-              {calcKind === 'to'
-                ? 'После «На анализ» Рук. ТО подтвердит — тендер появится в «Мои просчёты».'
-                : 'Рук. ТО сам выберет конкретного РП.'}
-            </div>
-          </FormField>
-        )}
-
         <button
+          type="button"
           onClick={handleSubmit}
-          disabled={!customer.trim() || saving}
-          className="btn-primary spring-tap mt-1"
+          disabled={(!customer.trim() && !title.trim()) || saving}
+          className="btn-primary spring-tap"
           style={{ opacity: saving ? 0.6 : 1 }}
         >
-          {saving ? 'Сохранение...' : 'Создать тендер'}
+          {saving ? 'Сохранение…' : 'Добавить в реестр'}
         </button>
       </div>
     </BottomSheet>

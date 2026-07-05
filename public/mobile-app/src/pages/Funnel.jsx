@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useAuthStore } from '@/stores/authStore';
 import { useHaptic } from '@/hooks/useHaptic';
 import { api } from '@/api/client';
 import { PageShell } from '@/components/layout/PageShell';
@@ -8,6 +9,8 @@ import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { Filter, ChevronRight } from 'lucide-react';
 import { formatMoney, formatDate } from '@/lib/utils';
+import { isToRole } from '@/lib/registryStatus';
+import { loadRegistry } from '@/api/tendersRegistry';
 import { StatCard, StatRow } from '@/components/shared/StatCard';
 
 const STAGES = [
@@ -19,7 +22,20 @@ const STAGES = [
   { id: 'lost', label: 'Проиграно', color: 'var(--red-soft)', match: ['проиграли', 'отказ', 'клиент отказался', 'отменён'] },
 ];
 
-function getStage(tender) {
+const TO_REGISTRY_STAGES = [
+  { id: 'review', key: 'рассмотрение', label: 'Рассмотрение', color: 'var(--text-tertiary)' },
+  { id: 'prep', key: 'готовим', label: 'Готовим', color: 'var(--blue)' },
+  { id: 'submitted', key: 'подались', label: 'Подались', color: 'var(--gold)' },
+  { id: 'won', key: 'выиграли', label: 'Выиграли', color: 'var(--green)' },
+  { id: 'lost', key: 'проиграли', label: 'Проиграли', color: 'var(--red-soft)' },
+  { id: 'cancel', key: 'отмена', label: 'Отмена', color: 'var(--text-tertiary)' },
+];
+
+function getStage(tender, useRegistry) {
+  if (useRegistry && tender.registry_status) {
+    const st = TO_REGISTRY_STAGES.find((s) => s.key === tender.registry_status);
+    if (st) return { ...st, match: [st.key] };
+  }
   const s = (tender.tender_status || tender.status || '').toLowerCase();
   for (const stage of STAGES) {
     if (stage.match.some((m) => s.includes(m))) return stage;
@@ -28,6 +44,8 @@ function getStage(tender) {
 }
 
 export default function Funnel() {
+  const user = useAuthStore((s) => s.user);
+  const useRegistry = isToRole(user?.role);
   const haptic = useHaptic();
   const [tenders, setTenders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -36,21 +54,31 @@ export default function Funnel() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    try { const res = await api.get('/tenders?limit=500'); setTenders(api.extractRows(res) || []); }
-    catch { setTenders([]); } finally { setLoading(false); }
-  }, []);
+    try {
+      if (useRegistry) {
+        const res = await loadRegistry({ subtab: 'registry', period: '', limit: 1000 });
+        setTenders(res.items || []);
+      } else {
+        const res = await api.get('/tenders?limit=500');
+        setTenders(api.extractRows(res) || []);
+      }
+    } catch { setTenders([]); } finally { setLoading(false); }
+  }, [useRegistry]);
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  const activeStages = useRegistry ? TO_REGISTRY_STAGES : STAGES;
 
   const grouped = useMemo(() => {
     const map = {};
-    STAGES.forEach((s) => { map[s.id] = { ...s, items: [], sum: 0 }; });
+    activeStages.forEach((s) => { map[s.id] = { ...s, items: [], sum: 0 }; });
     tenders.forEach((t) => {
-      const stage = getStage(t);
+      const stage = getStage(t, useRegistry);
+      if (!map[stage.id]) map[stage.id] = { ...stage, items: [], sum: 0 };
       map[stage.id].items.push(t);
       map[stage.id].sum += Number(t.tender_price || 0);
     });
     return map;
-  }, [tenders]);
+  }, [tenders, useRegistry, activeStages]);
 
   const stats = useMemo(() => ({
     total: tenders.length,
@@ -59,7 +87,7 @@ export default function Funnel() {
     newCount: grouped.new?.items.length || 0,
   }), [tenders, grouped]);
 
-  const displayStages = activeStage === 'all' ? STAGES : STAGES.filter((s) => s.id === activeStage);
+  const displayStages = activeStage === 'all' ? activeStages : activeStages.filter((s) => s.id === activeStage);
 
   return (
     <PageShell title="Воронка">
@@ -73,7 +101,7 @@ export default function Funnel() {
         )}
         <div className="flex gap-1.5 px-1 pb-3 overflow-x-auto no-scrollbar">
           <button onClick={() => { haptic.light(); setActiveStage('all'); }} className="filter-pill spring-tap" data-active={activeStage === 'all' ? 'true' : undefined}>Все</button>
-          {STAGES.map((s) => <button key={s.id} onClick={() => { haptic.light(); setActiveStage(s.id); }} className="filter-pill spring-tap" data-active={activeStage === s.id ? 'true' : undefined}>{s.label} ({grouped[s.id]?.items.length || 0})</button>)}
+          {activeStages.map((s) => <button key={s.id} onClick={() => { haptic.light(); setActiveStage(s.id); }} className="filter-pill spring-tap" data-active={activeStage === s.id ? 'true' : undefined}>{s.label} ({grouped[s.id]?.items.length || 0})</button>)}
         </div>
         {loading ? <SkeletonList count={5} /> : tenders.length === 0 ? (
           <EmptyState icon={Filter} iconColor="var(--gold)" iconBg="color-mix(in srgb, var(--gold) 10%, transparent)" title="Нет тендеров" description="Тендеры появятся здесь" />

@@ -66,6 +66,8 @@ import Works from '@/pages/Works';
 import Contracts from '@/pages/Contracts';
 import Customers from '@/pages/Customers';
 import Tenders from '@/pages/Tenders';
+import PlatformTenders from '@/pages/tenders/PlatformTenders';
+import TenderGuruSettings from '@/pages/tenders/TenderGuruSettings';
 import Personnel from '@/pages/Personnel';
 import Profile from '@/pages/Profile';
 import Finances from '@/pages/Finances';
@@ -248,6 +250,8 @@ function AppLayout() {
           <Route path="/contracts" element={<ProtectedRoute section="tenders"><PinGuard><Contracts /></PinGuard></ProtectedRoute>} />
           <Route path="/customers" element={<ProtectedRoute section="tenders"><PinGuard><Customers /></PinGuard></ProtectedRoute>} />
           <Route path="/tenders" element={<ProtectedRoute section="tenders"><PinGuard><Tenders /></PinGuard></ProtectedRoute>} />
+          <Route path="/tenders/platform" element={<ProtectedRoute section="tenders"><PinGuard><PlatformTenders /></PinGuard></ProtectedRoute>} />
+          <Route path="/tenders/tenderguru-settings" element={<ProtectedRoute section="tenders"><PinGuard><TenderGuruSettings /></PinGuard></ProtectedRoute>} />
           <Route path="/personnel" element={<ProtectedRoute section="personnel"><PinGuard><Personnel /></PinGuard></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute section="profile"><PinGuard><Profile /></PinGuard></ProtectedRoute>} />
           <Route path="/finances" element={<ProtectedRoute section="finances"><PinGuard><Finances /></PinGuard></ProtectedRoute>} />

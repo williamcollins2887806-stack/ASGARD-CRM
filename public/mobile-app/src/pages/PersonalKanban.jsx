@@ -29,6 +29,7 @@ import { BottomSheet } from '@/components/shared/BottomSheet';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
+import { REGISTRY_STATUS_LABELS, REGISTRY_STATUS_COLORS } from '@/lib/registryStatus';
 
 // ─── Канонические main_status (зеркалит backend §9.1) ──────────────────────
 const CANONICAL_MAIN_STATUSES = {
@@ -842,6 +843,17 @@ function KanbanCardItem({ card, color, delayMs, onClick, onPressStart, onPressMo
                 }}
               >
                 передано
+              </span>
+            )}
+            {card.entity?.registry_status && (
+              <span
+                className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold"
+                style={{
+                  background: `color-mix(in srgb, ${REGISTRY_STATUS_COLORS[card.entity.registry_status] || 'var(--text-tertiary)'} 14%, transparent)`,
+                  color: REGISTRY_STATUS_COLORS[card.entity.registry_status] || 'var(--text-tertiary)',
+                }}
+              >
+                {REGISTRY_STATUS_LABELS[card.entity.registry_status] || card.entity.registry_status}
               </span>
             )}
           </div>

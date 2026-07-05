@@ -1,156 +1,88 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuthStore } from '@/stores/authStore';
 import { api } from '@/api/client';
+import { loadRegistry } from '@/api/tendersRegistry';
+import { REGISTRY_STATUS_LABELS, isToRole } from '@/lib/registryStatus';
 import { WidgetShell } from '@/widgets/WidgetShell';
 
-/**
- * TendersFunnelWidget — воронка тендеров (6 этапов)
- * API: GET /data/tenders
- */
+const PM_STAGES = [
+  { label: 'Новый', statuses: ['Новый', 'Черновик', 'На анализе', 'Получен'], color: 'var(--blue)' },
+  { label: 'Просчёт', statuses: ['Отправлено на просчёт', 'Согласование ТКП'], color: 'var(--gold)' },
+  { label: 'ТКП', statuses: ['ТКП согласовано', 'Готово к отправке КП'], color: '#D4A843' },
+  { label: 'КП отправлено', statuses: ['КП отправлено', 'ТКП отправлено', 'Переговоры'], color: '#9C7BC0' },
+  { label: 'В работе', statuses: ['В работе', 'Выполняется', 'Мобилизация'], color: '#4dabf7' },
+  { label: 'Выиграно', statuses: ['Выиграли'], color: 'var(--green)' },
+  { label: 'Отказ', statuses: ['Проиграли', 'Отменён', 'Отклонено', 'Не подходит'], color: 'var(--red)' },
+];
 
-const STAGES = [
-  {
-    label: 'Новый',
-    statuses: ['Новый', 'Черновик', 'На анализе', 'Получен'],
-    color: 'var(--blue)',
-  },
-  {
-    label: 'Просчёт',
-    statuses: ['Отправлено на просчёт', 'Согласование ТКП'],
-    color: 'var(--gold)',
-  },
-  {
-    label: 'ТКП',
-    statuses: ['ТКП согласовано', 'Готово к отправке КП'],
-    color: '#D4A843',
-  },
-  {
-    label: 'КП отправлено',
-    statuses: ['КП отправлено', 'ТКП отправлено', 'Переговоры'],
-    color: '#9C7BC0',
-  },
-  {
-    label: 'В работе',
-    statuses: ['В работе', 'Выполняется', 'Мобилизация'],
-    color: '#4dabf7',
-  },
-  {
-    label: 'Выиграно',
-    statuses: ['Выиграли'],
-    color: 'var(--green)',
-  },
-  {
-    label: 'Отказ',
-    statuses: [
-      'Проиграли',
-      'Отменён',
-      'Отклонено',
-      'Не подходит',
-    ],
-    color: 'var(--red)',
-  },
+const TO_STAGES = [
+  { key: 'рассмотрение', label: REGISTRY_STATUS_LABELS.рассмотрение, color: 'var(--text-tertiary)' },
+  { key: 'готовим', label: REGISTRY_STATUS_LABELS.готовим, color: 'var(--blue)' },
+  { key: 'подались', label: REGISTRY_STATUS_LABELS.подались, color: 'var(--gold)' },
+  { key: 'выиграли', label: REGISTRY_STATUS_LABELS.выиграли, color: 'var(--green)' },
+  { key: 'проиграли', label: REGISTRY_STATUS_LABELS.проиграли, color: 'var(--red)' },
+  { key: 'отмена', label: REGISTRY_STATUS_LABELS.отмена, color: 'var(--text-tertiary)' },
 ];
 
 export default function TendersFunnelWidget() {
-  const [counts, setCounts] = useState(STAGES.map(() => 0));
+  const user = useAuthStore((s) => s.user);
+  const useRegistry = isToRole(user?.role);
+  const stages = useRegistry ? TO_STAGES : PM_STAGES;
+
+  const [counts, setCounts] = useState(stages.map(() => 0));
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
     (async () => {
       try {
-        const res = await api.get('/tenders?limit=500');
-        const rows = api.extractRows(res);
-
-        const stageCounts = STAGES.map((stage) => {
-          const set = new Set(stage.statuses);
-          return rows.filter((t) => set.has(t.tender_status)).length;
-        });
-
-        setCounts(stageCounts);
+        if (useRegistry) {
+          const res = await loadRegistry({ subtab: 'registry', period: '', limit: 1000 });
+          const rows = res.items || [];
+          setCounts(TO_STAGES.map((s) => rows.filter((t) => t.registry_status === s.key).length));
+        } else {
+          const res = await api.get('/tenders?limit=500');
+          const rows = api.extractRows(res);
+          setCounts(PM_STAGES.map((stage) => {
+            const set = new Set(stage.statuses);
+            return rows.filter((t) => set.has(t.tender_status)).length;
+          }));
+        }
       } catch {
-        setCounts(STAGES.map(() => 0));
+        setCounts(stages.map(() => 0));
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [useRegistry, stages]);
 
   const maxCount = Math.max(...counts, 1);
+  const displayStages = useRegistry ? TO_STAGES : PM_STAGES;
 
   return (
-    <WidgetShell name="Воронка" icon="📊" loading={loading}>
-      <button
-        className="w-full text-left spring-tap"
-        onClick={() => navigate('/tenders')}
-      >
-        <div className="flex flex-col">
-          {STAGES.map((stage, i) => {
-            const count = counts[i];
-            const barPct = (count / maxCount) * 100;
-            const staggerDelay = i * 60;
-
-            return (
-              <div
-                key={stage.label}
-                className="flex items-center gap-2 mb-1.5"
-              >
-                {/* Count badge */}
+    <WidgetShell name="Воронка тендеров" icon="📊" loading={loading}>
+      <button className="w-full text-left spring-tap" onClick={() => navigate('/tenders')}>
+        <div className="flex flex-col gap-2">
+          {displayStages.map((stage, i) => (
+            <div key={stage.key || stage.label} className="flex items-center gap-2">
+              <span className="text-[10px] w-16 shrink-0 truncate c-secondary">{stage.label}</span>
+              <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'var(--bg-elevated)' }}>
                 <div
-                  className="shrink-0 flex items-center justify-center rounded-md"
                   style={{
-                    width: 26,
-                    height: 26,
-                    backgroundColor: `color-mix(in srgb, ${stage.color} 22%, transparent)`,
+                    width: `${(counts[i] / maxCount) * 100}%`,
+                    height: '100%',
+                    background: stage.color,
+                    borderRadius: 999,
+                    transition: 'width 400ms ease',
                   }}
-                >
-                  <span
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 700,
-                      color: stage.color,
-                    }}
-                  >
-                    {count}
-                  </span>
-                </div>
-
-                {/* Bar */}
-                <div
-                  className="flex-1 overflow-hidden"
-                  style={{
-                    height: 24,
-                    backgroundColor: 'var(--bg-elevated)',
-                    borderRadius: '0 8px 8px 0',
-                  }}
-                >
-                  <div
-                    style={{
-                      height: '100%',
-                      width: `${Math.max(barPct, 2)}%`,
-                      background: stage.color,
-                      borderRadius: '0 8px 8px 0',
-                      opacity: 0.75,
-                      transition: `width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) ${staggerDelay}ms`,
-                    }}
-                  />
-                </div>
-
-                {/* Label */}
-                <span
-                  className="shrink-0"
-                  style={{
-                    fontSize: 11,
-                    color: 'var(--text-tertiary)',
-                    minWidth: 48,
-                    textAlign: 'right',
-                  }}
-                >
-                  {stage.label}
-                </span>
+                />
               </div>
-            );
-          })}
+              <span className="text-[11px] font-semibold w-5 text-right tabular-nums" style={{ color: stage.color }}>
+                {counts[i]}
+              </span>
+            </div>
+          ))}
         </div>
       </button>
     </WidgetShell>
