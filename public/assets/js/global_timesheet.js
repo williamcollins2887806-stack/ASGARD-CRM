@@ -23,7 +23,7 @@ window.AsgardGlobalTimesheetPage=(function(){
     DIRECTOR_COMM:Object.keys(CELL_TYPES),
     DIRECTOR_DEV: Object.keys(CELL_TYPES),
     TO:           ['medical'],
-    HEAD_TO:      ['medical'],
+    HEAD_TO:      ['medical', 'travel'],
     WAREHOUSE:    ['warehouse']
     // PROC, BUH, HR, HR_MANAGER — только просмотр и Excel
   };

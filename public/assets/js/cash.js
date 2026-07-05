@@ -183,6 +183,27 @@ window.AsgardCashPage = (function() {
     return STMT_ADMIN_ROLES.includes(_stmtCurrentRole());
   }
 
+  const HEAD_TO_ROLE = 'HEAD_TO';
+  function _isHeadTo() {
+    return _stmtCurrentRole() === HEAD_TO_ROLE;
+  }
+
+  // Слушатель обновления баланса (виджеты Home / MyDashboard шлют это событие)
+  (function bindCashChangedListener() {
+    if (window.__asgardCashChangedBound) return;
+    window.__asgardCashChangedBound = true;
+    window.addEventListener('asgard:cash:changed', () => {
+      if (!document.getElementById('cash-requests-list')) return;
+      loadBalance().catch(() => {});
+      loadRequests().catch(() => {});
+      if (!_isHeadTo()) loadHandovers().catch(() => {});
+    });
+  })();
+
+  let _quickExpenseConfirmDuplicate = false;
+  let _quickExpenseEmployees = [];
+  let _quickExpenseSuggestions = [];
+
   // ─── styles for statement tab (one-time, only CSS-tokens, обе темы) ────
   (function injectStatementStyles() {
     if (document.getElementById('cash-statement-styles')) return;
@@ -412,6 +433,7 @@ window.AsgardCashPage = (function() {
   // ─────────────────────────────────────────────────────────────────
   async function render(container) {
     currentPage = 1; pageSize = window.AsgardPagination ? AsgardPagination.getPageSize() : 20;
+    const isHeadTo = _isHeadTo();
 
     // init statement defaults once per render
     if (!stmtFrom || !stmtTo) {
@@ -426,12 +448,17 @@ window.AsgardCashPage = (function() {
     container.innerHTML = `
       <div class="page-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
         <div>
-          <h1>Казна Дружины</h1>
-          <p style="color:var(--text-muted);font-size:var(--text-sm);margin:0">Авансы, расходы и расчёты</p>
+          <h1>${isHeadTo ? 'Моя касса' : 'Казна Дружины'}</h1>
+          <p style="color:var(--text-muted);font-size:var(--text-sm);margin:0">${isHeadTo ? 'Авансы, суточные и расходы' : 'Авансы, расходы и расчёты'}</p>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn primary" onclick="AsgardCashPage.showCreateModal()">+ Новая заявка</button>
-          <button class="btn ghost" onclick="AsgardCashPage.showManualHandoverModal()">📥 Получил нал от СЗ</button>
+          ${isHeadTo ? `
+            <button class="btn primary" onclick="AsgardCashPage.showQuickExpenseModal()">+ Добавить расход</button>
+            <button class="btn ghost" onclick="AsgardCashPage.showCreateModal()">Запросить аванс</button>
+          ` : `
+            <button class="btn primary" onclick="AsgardCashPage.showCreateModal()">+ Новая заявка</button>
+            <button class="btn ghost" onclick="AsgardCashPage.showManualHandoverModal()">📥 Получил нал от СЗ</button>
+          `}
         </div>
       </div>
 
@@ -464,7 +491,8 @@ window.AsgardCashPage = (function() {
     renderSourceFilter();
     await loadBalance();
     await loadWorks();
-    await Promise.all([loadRequests(), loadHandovers()]);
+    await loadRequests();
+    if (!isHeadTo) await loadHandovers();
     renderMerged();
 
     if (activeTab === 'statement') {
@@ -512,6 +540,38 @@ window.AsgardCashPage = (function() {
       const d = await resp.json();
       const widget = document.getElementById('cash-balance-widget');
       if (!widget) return;
+
+      if (_isHeadTo()) {
+        const issued = Number(d.cash_advances_issued ?? d.issued ?? 0);
+        const payouts = Number(d.cash_payouts_workers ?? d.spent ?? 0);
+        const returned = Number(d.cash_returns_confirmed ?? d.returned ?? 0);
+        const balance = Number(d.balance ?? 0);
+        widget.innerHTML = `
+          <div class="cash-balance-grid">
+            <div class="cash-balance-card info">
+              <div class="balance-value">${fmtMoney(issued)}</div>
+              <div class="balance-label">Получено</div>
+            </div>
+            <div class="cash-balance-card warning">
+              <div class="balance-value">${fmtMoney(payouts)}</div>
+              <div class="balance-label">Выплачено</div>
+            </div>
+            <div class="cash-balance-card success">
+              <div class="balance-value">${fmtMoney(returned)}</div>
+              <div class="balance-label">Возвращено</div>
+            </div>
+            <div class="cash-balance-card ${balance > 0 ? 'danger' : 'secondary'}">
+              <div class="balance-value">${fmtMoney(balance)}</div>
+              <div class="balance-label">На руках</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+            <button class="btn primary mini" onclick="AsgardCashPage.showQuickExpenseModal()">+ Добавить расход</button>
+            <button class="btn ghost mini" onclick="AsgardCashPage.showCreateModal()">Запросить аванс</button>
+          </div>
+        `;
+        return;
+      }
 
       // Толерантный fallback: новые поля могут отсутствовать на старом бэке
       const advances    = Number(d.cash_advances_issued ?? d.issued ?? 0);
@@ -567,9 +627,9 @@ window.AsgardCashPage = (function() {
     if (!box) return;
     const chips = [
       { v: 'all',           label: 'Все' },
-      { v: 'cash_request',  label: '🏦 Касса' },
-      { v: 'handover',      label: '💵 От СЗ' }
+      { v: 'cash_request',  label: '🏦 Касса' }
     ];
+    if (!_isHeadTo()) chips.push({ v: 'handover', label: '💵 От СЗ' });
     box.innerHTML = chips.map(c =>
       `<button class="btn ${sourceFilter === c.v ? 'primary' : 'ghost'} mini" data-src="${c.v}">${esc(c.label)}</button>`
     ).join('');
@@ -614,11 +674,26 @@ window.AsgardCashPage = (function() {
       currentRequests.forEach(r => items.push({ __source: 'cash_request', __sortDate: r.created_at, data: r }));
     }
     if (sourceFilter === 'all' || sourceFilter === 'handover') {
-      currentHandovers.forEach(h => items.push({ __source: 'handover', __sortDate: h.received_at || h.created_at, data: h }));
+      if (!_isHeadTo()) {
+        currentHandovers.forEach(h => items.push({ __source: 'handover', __sortDate: h.received_at || h.created_at, data: h }));
+      }
     }
 
     if (!items.length) {
-      container.innerHTML = AsgardUI.emptyState({ icon: '💰', title: 'Нет записей', desc: 'Создайте заявку или зафиксируйте получение нала от СЗ' });
+      const emptyDesc = _isHeadTo()
+        ? 'Запросите аванс у бухгалтера, затем фиксируйте расходы одной кнопкой'
+        : 'Создайте заявку или зафиксируйте получение нала от СЗ';
+      const emptyAction = _isHeadTo()
+        ? `<div style="display:flex;gap:8px;justify-content:center;margin-top:12px;flex-wrap:wrap">
+             <button class="btn primary mini" onclick="AsgardCashPage.showQuickExpenseModal()">+ Добавить расход</button>
+             <button class="btn ghost mini" onclick="AsgardCashPage.showCreateModal()">Запросить аванс</button>
+           </div>`
+        : '';
+      container.innerHTML = AsgardUI.emptyState({
+        icon: '💰',
+        title: 'Нет записей',
+        desc: emptyDesc
+      }) + emptyAction;
       return;
     }
 
@@ -858,6 +933,40 @@ window.AsgardCashPage = (function() {
     _useSePayee = false;
     _sePayee = null;
 
+    if (_isHeadTo()) {
+      showModal({
+        title: 'Запросить аванс',
+        icon: '💵',
+        subtitle: 'Моя касса',
+        html: `
+          <form id="cashCreateForm">
+            <input type="hidden" name="type" value="office">
+
+            <div class="asg-form-group">
+              <label>Сумма</label>
+              <input type="number" name="amount" step="0.01" min="1" required placeholder="0.00">
+            </div>
+
+            <div class="asg-form-group">
+              <label>Цель / обоснование</label>
+              <textarea name="purpose" rows="2" required placeholder="На что нужны средства"></textarea>
+            </div>
+
+            <div class="asg-form-group">
+              <label>Сопроводительное письмо (опционально)</label>
+              <textarea name="cover_letter" rows="2" placeholder="Дополнительная информация"></textarea>
+            </div>
+
+            <div class="asg-form-actions">
+              <button type="button" class="btn ghost" onclick="AsgardUI.hideModal()">Отмена</button>
+              <button type="button" class="btn primary" onclick="AsgardCashPage.submitCreate()">Отправить</button>
+            </div>
+          </form>
+        `
+      });
+      return;
+    }
+
     showModal({
       title: 'Новая заявка',
       icon: '💵',
@@ -1026,6 +1135,50 @@ window.AsgardCashPage = (function() {
     const form = document.getElementById('cashCreateForm');
     if (!form) return;
     const data = Object.fromEntries(new FormData(form));
+    const isHeadTo = _isHeadTo();
+
+    if (!isHeadTo && data.type === 'advance' && !data.work_id) {
+      toast('Выберите проект', '', 'warn');
+      return;
+    }
+
+    if (isHeadTo) {
+      const amt = parseFloat(data.amount);
+      if (!Number.isFinite(amt) || amt <= 0) {
+        toast('Сумма должна быть больше 0', '', 'warn');
+        return;
+      }
+      if (!(data.purpose || '').trim()) {
+        toast('Укажите цель', '', 'warn');
+        return;
+      }
+      try {
+        const resp = await fetch('/api/cash', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({
+            type: 'office',
+            work_id: null,
+            amount: amt,
+            purpose: data.purpose.trim(),
+            cover_letter: (data.cover_letter || '').trim() || null,
+            category: 'other'
+          })
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error(err.error || 'Ошибка');
+        }
+        hideModal();
+        toast('Заявка создана', '', 'ok');
+        window.dispatchEvent(new CustomEvent('asgard:cash:changed'));
+        await loadBalance();
+        await loadRequests();
+      } catch (e) {
+        toast('Ошибка', e.message, 'err');
+      }
+      return;
+    }
 
     if (data.type === 'advance' && !data.work_id) {
       toast('Выберите проект', '', 'warn');
@@ -1092,6 +1245,7 @@ window.AsgardCashPage = (function() {
 
       hideModal();
       toast('Заявка создана', '', 'ok');
+      window.dispatchEvent(new CustomEvent('asgard:cash:changed'));
       await loadBalance();
       await loadRequests();
     } catch (e) {
@@ -1482,6 +1636,229 @@ window.AsgardCashPage = (function() {
   }
 
   // ─────────────────────────────────────────────────────────────────
+  // HEAD_TO — QUICK EXPENSE (+ Добавить расход)
+  // ─────────────────────────────────────────────────────────────────
+  async function loadQuickExpenseEmployees() {
+    try {
+      const r = await fetch('/api/employees?limit=2000', { headers: getHeaders() });
+      if (!r.ok) return [];
+      const d = await r.json();
+      const arr = Array.isArray(d) ? d : (d.employees || d.items || []);
+      return arr.map(e => ({
+        id: Number(e.id),
+        fio: e.fio || e.full_name || e.name || ('#' + e.id)
+      })).filter(e => Number.isFinite(e.id));
+    } catch (_) { return []; }
+  }
+
+  async function loadPerDiemSuggestions() {
+    const now = new Date();
+    const q = new URLSearchParams({
+      year: String(now.getFullYear()),
+      month: String(now.getMonth() + 1)
+    });
+    try {
+      const r = await fetch('/api/cash/per-diem-suggestions?' + q.toString(), { headers: getHeaders() });
+      if (!r.ok) return [];
+      const d = await r.json();
+      return Array.isArray(d?.suggestions) ? d.suggestions : [];
+    } catch (_) { return []; }
+  }
+
+  async function showQuickExpenseModal() {
+    _quickExpenseConfirmDuplicate = false;
+    _quickExpenseEmployees = await loadQuickExpenseEmployees();
+    _quickExpenseSuggestions = await loadPerDiemSuggestions();
+
+    const empOpts = _quickExpenseEmployees.map(e =>
+      `<option value="${e.id}">${esc(e.fio)}</option>`
+    ).join('');
+    const workOpts = works.map(w =>
+      `<option value="${w.id}">${esc(w.work_title || 'Проект #' + w.id)}</option>`
+    ).join('');
+    const suggHtml = _quickExpenseSuggestions.slice(0, 8).map(s => `
+      <button type="button" class="btn ghost mini cash-perdiem-sugg"
+              data-eid="${s.employee_id}" data-wid="${s.work_id || ''}" data-amt="${s.suggested_amount || 0}"
+              style="width:100%;text-align:left;margin-bottom:4px">
+        ${esc(s.employee_fio || 'Рабочий')}
+        ${s.travel_days ? ' · ' + s.travel_days + ' дн.' : ''}
+        · ${fmtMoney(s.suggested_amount || 0)}
+      </button>
+    `).join('');
+
+    showModal({
+      title: 'Добавить расход',
+      icon: '💸',
+      subtitle: 'Моя касса',
+      html: `
+        <form id="cashQuickExpenseForm">
+          <div class="asg-form-group">
+            <label>Тип расхода</label>
+            <select name="expense_type" id="cashQuickExpenseType">
+              <option value="per_diem">🌙 Суточные рабочему</option>
+              <option value="taxi">🚕 Такси</option>
+              <option value="office">🏢 Офис / хознужды</option>
+              <option value="other">📦 Прочее</option>
+            </select>
+          </div>
+
+          <div id="cashQuickPerDiemBlock">
+            ${suggHtml ? `
+              <div class="asg-form-group">
+                <label>Подсказки из табеля дороги</label>
+                <div>${suggHtml}</div>
+              </div>
+            ` : ''}
+            <div class="asg-form-group">
+              <label>Рабочий</label>
+              <select name="employee_id" id="cashQuickEmployeeId">
+                <option value="">— Выберите рабочего —</option>
+                ${empOpts}
+              </select>
+            </div>
+            <div class="asg-form-group">
+              <label>Работа</label>
+              <select name="work_id" id="cashQuickWorkId">
+                <option value="">— Выберите работу —</option>
+                ${workOpts}
+              </select>
+            </div>
+            <div id="cashQuickPerDiemHint" class="help" style="margin-bottom:10px"></div>
+          </div>
+
+          <div class="asg-form-group">
+            <label>Сумма</label>
+            <input type="number" name="amount" id="cashQuickAmount" step="0.01" min="0.01" required placeholder="0.00">
+          </div>
+
+          <div class="asg-form-group" id="cashQuickDescWrap" style="display:none">
+            <label>За что потрачено</label>
+            <input type="text" name="description" id="cashQuickDescription" placeholder="Описание расхода">
+          </div>
+
+          <div class="asg-form-actions">
+            <button type="button" class="btn ghost" onclick="AsgardUI.hideModal()">Отмена</button>
+            <button type="button" class="btn primary" id="cashQuickSubmitBtn" onclick="AsgardCashPage.submitQuickExpense()">Сохранить</button>
+          </div>
+        </form>
+      `
+    });
+
+    const typeSel = document.getElementById('cashQuickExpenseType');
+    const perDiemBlock = document.getElementById('cashQuickPerDiemBlock');
+    const descWrap = document.getElementById('cashQuickDescWrap');
+    const syncTypeUi = () => {
+      const t = typeSel?.value || 'per_diem';
+      if (perDiemBlock) perDiemBlock.style.display = (t === 'per_diem') ? '' : 'none';
+      if (descWrap) descWrap.style.display = (t === 'per_diem') ? 'none' : '';
+      _quickExpenseConfirmDuplicate = false;
+      const btn = document.getElementById('cashQuickSubmitBtn');
+      if (btn) btn.textContent = 'Сохранить';
+    };
+    if (typeSel) {
+      typeSel.addEventListener('change', syncTypeUi);
+      syncTypeUi();
+    }
+
+    document.querySelectorAll('.cash-perdiem-sugg').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const eid = btn.getAttribute('data-eid');
+        const wid = btn.getAttribute('data-wid');
+        const amt = btn.getAttribute('data-amt');
+        const empSel = document.getElementById('cashQuickEmployeeId');
+        const workSel = document.getElementById('cashQuickWorkId');
+        const amtInp = document.getElementById('cashQuickAmount');
+        if (empSel && eid) empSel.value = eid;
+        if (workSel && wid) workSel.value = wid;
+        if (amtInp && amt) amtInp.value = amt;
+        updateQuickPerDiemHint();
+      });
+    });
+
+    const empSel = document.getElementById('cashQuickEmployeeId');
+    const workSel = document.getElementById('cashQuickWorkId');
+    if (empSel) empSel.addEventListener('change', updateQuickPerDiemHint);
+    if (workSel) workSel.addEventListener('change', updateQuickPerDiemHint);
+    updateQuickPerDiemHint();
+  }
+
+  function updateQuickPerDiemHint() {
+    const hint = document.getElementById('cashQuickPerDiemHint');
+    if (!hint) return;
+    const eid = parseInt(document.getElementById('cashQuickEmployeeId')?.value || '0', 10);
+    const wid = parseInt(document.getElementById('cashQuickWorkId')?.value || '0', 10);
+    if (!eid) { hint.textContent = ''; return; }
+    const s = _quickExpenseSuggestions.find(x =>
+      x.employee_id === eid && (!wid || x.work_id === wid)
+    ) || _quickExpenseSuggestions.find(x => x.employee_id === eid);
+    if (!s) { hint.textContent = ''; return; }
+    hint.textContent = `По табелю: ${s.travel_days || 0} дн. дороги, уже выплачено ${fmtMoney(s.paid_amount || 0)}`;
+    const amtInp = document.getElementById('cashQuickAmount');
+    if (amtInp && !amtInp.value && s.suggested_amount > 0) {
+      amtInp.value = String(s.suggested_amount);
+    }
+  }
+
+  async function submitQuickExpense() {
+    const form = document.getElementById('cashQuickExpenseForm');
+    if (!form) return;
+    const data = Object.fromEntries(new FormData(form));
+    const expenseType = data.expense_type || 'per_diem';
+    const amt = parseFloat(data.amount);
+    if (!Number.isFinite(amt) || amt <= 0) {
+      toast('Сумма должна быть больше 0', '', 'warn');
+      return;
+    }
+
+    const body = {
+      expense_type: expenseType,
+      amount: amt,
+      description: (data.description || '').trim() || undefined,
+      note: (data.description || '').trim() || undefined
+    };
+    if (_quickExpenseConfirmDuplicate) body.confirm_duplicate = true;
+
+    if (expenseType === 'per_diem') {
+      const employeeId = parseInt(data.employee_id || '0', 10);
+      const workId = parseInt(data.work_id || '0', 10);
+      if (!employeeId || !workId) {
+        toast('Выберите рабочего и работу', '', 'warn');
+        return;
+      }
+      body.employee_id = employeeId;
+      body.work_id = workId;
+    } else if (!(data.description || '').trim()) {
+      toast('Укажите описание расхода', '', 'warn');
+      return;
+    }
+
+    try {
+      const resp = await fetch('/api/cash/quick-expense', {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(body)
+      });
+      const errJson = await resp.json().catch(() => ({}));
+      if (resp.status === 409 && (errJson.error === 'duplicate_payment' || errJson.requires_confirmation)) {
+        _quickExpenseConfirmDuplicate = true;
+        const btn = document.getElementById('cashQuickSubmitBtn');
+        if (btn) btn.textContent = 'Подтвердить выплату';
+        toast('Внимание', errJson.message || 'Суточные уже выплачены. Нажмите ещё раз для подтверждения.', 'warn');
+        return;
+      }
+      if (!resp.ok) throw new Error(errJson.error || errJson.message || ('HTTP ' + resp.status));
+
+      hideModal();
+      toast('Расход записан', '', 'ok');
+      window.dispatchEvent(new CustomEvent('asgard:cash:changed'));
+      await loadBalance();
+      await loadRequests();
+    } catch (e) {
+      toast('Ошибка', e.message || e, 'err');
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────
   // 2026-06-27 — MANUAL HANDOVER (📥 Получил нал от СЗ)
   // ─────────────────────────────────────────────────────────────────
   let _manualSeWorker = null;     // {id, name}
@@ -1665,21 +2042,30 @@ window.AsgardCashPage = (function() {
   // ─────────────────────────────────────────────────────────────────
   async function loadStatementPmList() {
     try {
-      const r = await fetch('/api/users?role=PM&is_active=true&limit=500', { headers: getHeaders() });
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      const d = await r.json();
-      const allUsers = (d && (d.users || d.items)) || (Array.isArray(d) ? d : []);
-      const pmRoles = ['PM', 'HEAD_PM'];
-      stmtPmList = allUsers
-        .filter(u => pmRoles.includes(u.role))
-        .map(u => ({ id: u.id, full_name: u.full_name || u.name || u.fio || ('#' + u.id), role: u.role }));
-      // fallback — если фильтр по role на бэке не работает, попробуем без него
+      const roles = ['PM', 'HEAD_PM', 'HEAD_TO'];
+      const lists = await Promise.all(roles.map(async (role) => {
+        const r = await fetch('/api/users?role=' + role + '&is_active=true&limit=500', { headers: getHeaders() });
+        if (!r.ok) return [];
+        const d = await r.json();
+        const allUsers = (d && (d.users || d.items)) || (Array.isArray(d) ? d : []);
+        return allUsers.map(u => ({
+          id: u.id,
+          full_name: u.full_name || u.name || u.fio || ('#' + u.id),
+          role: u.role || role
+        }));
+      }));
+      const seen = new Set();
+      stmtPmList = lists.flat().filter(u => {
+        if (seen.has(u.id)) return false;
+        seen.add(u.id);
+        return true;
+      }).sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '', 'ru'));
       if (!stmtPmList.length) {
         const r2 = await fetch('/api/users?is_active=true&limit=1000', { headers: getHeaders() });
         if (r2.ok) {
           const d2 = await r2.json();
           const u2 = (d2 && (d2.users || d2.items)) || (Array.isArray(d2) ? d2 : []);
-          stmtPmList = u2.filter(u => pmRoles.includes(u.role))
+          stmtPmList = u2.filter(u => roles.includes(u.role))
             .map(u => ({ id: u.id, full_name: u.full_name || u.name || u.fio || ('#' + u.id), role: u.role }));
         }
       }
@@ -2064,6 +2450,7 @@ window.AsgardCashPage = (function() {
     render, showCreateModal, onTypeChange, submitCreate, showDetail,
     confirmReceive, showExpenseModal, submitExpense, deleteExpense, submitReport,
     showReturnModal, submitReturn, showReplyModal, submitReply,
+    showQuickExpenseModal, submitQuickExpense,
     // 2026-06-27 — manual handover (📥 Получил нал от СЗ)
     showManualHandoverModal, submitManualHandover,
     // 2026-06-29 — statement tab (Выписка РП)

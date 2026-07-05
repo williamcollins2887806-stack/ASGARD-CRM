@@ -158,7 +158,9 @@ window.AsgardPmBalancePage = (function () {
         <tr class="pmb-row" data-pm="${pm.pm_id || pm.id}"
             style="border-bottom:1px solid var(--brd);cursor:pointer;transition:background .12s;"
             title="Открыть детали по ${esc(name)}">
-          <td style="padding:10px 14px;color:var(--t1);font-weight:500;">${esc(name)}</td>
+          <td style="padding:10px 14px;color:var(--t1);font-weight:500;">
+            ${esc(name)}${pm.holder_role === 'HEAD_TO' ? ' <span style="font-size:10px;padding:2px 6px;border-radius:4px;background:var(--info-bg);color:var(--info-t)">HEAD_TO</span>' : ''}
+          </td>
           <td style="padding:10px 14px;color:var(--t2);">${rub(pm.cash_in)}</td>
           <td style="padding:10px 14px;color:var(--t2);">${rub(pm.se_cash_in)}</td>
           <td style="padding:10px 14px;color:var(--t2);">${rub(cashOut)}</td>
@@ -217,7 +219,7 @@ window.AsgardPmBalancePage = (function () {
         <div style="display:flex;align-items:center;justify-content:space-between;
                     margin-bottom:12px;flex-wrap:wrap;gap:10px;">
           <div class="help">
-            Сколько наличных на руках у каждого РП прямо сейчас.
+            Сколько наличных на руках у каждого подотчётника (РП, HEAD_TO) прямо сейчас.
             Кликните на строку для детальной расшифровки.
           </div>
           <div style="display:flex;gap:8px;align-items:center;">
@@ -241,7 +243,7 @@ window.AsgardPmBalancePage = (function () {
         </div>
       </div>`;
 
-    await layout(html, { title: title || 'Баланс РП' });
+    await layout(html, { title: title || 'Баланс подотчётников' });
 
     let _allData = [];
 
@@ -426,7 +428,7 @@ window.AsgardPmBalancePage = (function () {
         <div id="pmbd_content" style="display:none;"></div>
       </div>`;
 
-    await layout(html, { title: title || 'Баланс РП' });
+    await layout(html, { title: title || 'Баланс подотчётников' });
 
     $('#pmbd_back').addEventListener('click', () => { location.hash = '#/pm-balance'; });
 

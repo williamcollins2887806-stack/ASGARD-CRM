@@ -118,7 +118,7 @@ window.AsgardCustomDashboard = (function(){
     ADMIN: ['welcome','academy','kpi_summary','pre_tenders','quick_actions','overdue_works','tenders_funnel','my_mail','notifications'],
     PM: ['welcome','academy','quick_actions','my_readiness','my_works','my_cash_balance','gantt_mini','todo','my_mail','notifications','birthdays'],
     TO: ['welcome','academy','quick_actions','tenders_funnel','tender_dynamics','my_mail','notifications'],
-    HEAD_TO: ['welcome','academy','pre_tenders','platform_alerts','tender_dynamics','tenders_funnel','my_mail','notifications'],
+    HEAD_TO: ['welcome','academy','my_cash_balance','pre_tenders','platform_alerts','tender_dynamics','tenders_funnel','my_mail','notifications'],
     HEAD_PM: ['welcome','academy','director_readiness','team_workload','overdue_works','gantt_mini','my_mail','notifications'],
     CHIEF_ENGINEER: ['welcome','academy','equipment_value','equipment_alerts','my_mail','notifications'],
     HR: ['welcome','academy','permits_expiry','birthdays','my_mail','notifications','calendar'],
@@ -1111,6 +1111,9 @@ window.AsgardCustomDashboard = (function(){
       const d = await resp.json();
       const hasBalance = d.balance > 0;
       const hasActive = d.active_requests > 0;
+      const isHeadTo = user?.role === 'HEAD_TO';
+      const spentLabel = isHeadTo ? 'Выплачено' : 'Потрачено';
+      const spentVal = isHeadTo ? (d.cash_payouts_workers ?? d.spent) : d.spent;
       if (!hasBalance && !hasActive) {
         el.innerHTML = '<div style="text-align:center;padding:12px">' +
           '<div style="font-size:32px;margin-bottom:8px">✅</div>' +
@@ -1124,7 +1127,7 @@ window.AsgardCustomDashboard = (function(){
         '<div class="help" style="margin-top:4px">На руках</div>' +
         '<div style="display:flex;gap:12px;justify-content:center;margin-top:12px;font-size:12px">' +
           '<div><span style="color:var(--t3)">Получено:</span> <b>' + formatMoney(d.issued) + '</b></div>' +
-          '<div><span style="color:var(--t3)">Потрачено:</span> <b>' + formatMoney(d.spent) + '</b></div>' +
+          '<div><span style="color:var(--t3)">' + spentLabel + ':</span> <b>' + formatMoney(spentVal) + '</b></div>' +
         '</div>' +
         (d.active_requests > 0 ? '<div style="margin-top:8px;font-size:12px;color:var(--amber)">' + d.active_requests + ' активных заявок</div>' : '') +
         '<a href="#/cash" class="btn mini ghost" style="margin-top:10px;font-size:11px">Касса →</a></div>';
