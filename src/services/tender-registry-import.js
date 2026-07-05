@@ -134,9 +134,12 @@ async function spawnImport(db, opts = {}) {
   let skipped = 0;
   let conflicts = 0;
   let resolved = 0;
+  let errors = 0;
+  const errorSamples = [];
   const handledUrls = new Set();
 
   for (const row of rows) {
+    try {
     const url = normUrl(row.purchase_url);
     if (url && handledUrls.has(url)) {
       skipped++;
@@ -212,10 +215,20 @@ async function spawnImport(db, opts = {}) {
     index = buildCrmIndex(crmRows);
     if (url) handledUrls.add(url);
     created++;
+    } catch (e) {
+      errors++;
+      if (errorSamples.length < 20) {
+        errorSamples.push({
+          title: row.tender_title?.slice(0, 60),
+          period: row.period,
+          error: e.message
+        });
+      }
+    }
   }
 
   return {
-    ok: true,
+    ok: errors === 0,
     dry_run: false,
     file: filePath,
     rows_raw: rawRows.length,
@@ -225,6 +238,8 @@ async function spawnImport(db, opts = {}) {
     skipped,
     conflicts,
     resolved_conflicts: resolved,
+    errors,
+    error_samples: errorSamples,
     by_period: byPeriod,
     audit_summary: audit.summary
   };

@@ -100,6 +100,52 @@ function parsePrice(val) {
   return n;
 }
 
+/** Безопасный парсинг даты для PostgreSQL date */
+function parseDocsDeadline(val) {
+  if (val == null || val === '') return null;
+  if (val instanceof Date && !Number.isNaN(val.getTime())) {
+    return val.toISOString().slice(0, 10);
+  }
+  if (typeof val === 'number' && Number.isFinite(val)) {
+    const d = new Date(Math.round((val - 25569) * 86400 * 1000));
+    if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  }
+  const s = cellVal(val).trim();
+  if (!s) return null;
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+
+  const dmy = s.match(/(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})/);
+  if (dmy) {
+    const [, dd, mm, yy] = dmy;
+    return `${yy}-${pad2(parseInt(mm, 10))}-${pad2(parseInt(dd, 10))}`;
+  }
+
+  const ru = s.toLowerCase();
+  let day = null;
+  let year = null;
+  let month = null;
+  const quoted = ru.match(/[«"'](\d{1,2})[»"']/);
+  if (quoted) {
+    day = parseInt(quoted[1], 10);
+  } else {
+    const dm = ru.match(/\b(\d{1,2})\b/);
+    if (dm) day = parseInt(dm[1], 10);
+  }
+  const ym = ru.match(/(20\d{2})/);
+  if (ym) year = parseInt(ym[1], 10);
+  for (const [prefix, mo] of Object.entries(MONTH_RU)) {
+    if (ru.includes(prefix)) {
+      month = mo;
+      break;
+    }
+  }
+  if (day && month && year) {
+    return `${year}-${pad2(month)}-${pad2(day)}`;
+  }
+
+  return null;
+}
+
 function normalizeExcelRow(row, ctx = {}) {
   const customer_name = String(
     row['Заказчик'] || row['Компания'] || row.customer_name || ''
@@ -123,7 +169,7 @@ function normalizeExcelRow(row, ctx = {}) {
     customer_inn: String(row['ИНН'] || row.customer_inn || '').replace(/\D/g, '') || null,
     registry_status: parseRegistryStatus(rawStatus),
     tender_price: parsePrice(row['НМЦ'] || row['НМЦ, с НДС'] || row.tender_price),
-    docs_deadline: row['Срок подачи'] || row.docs_deadline || null,
+    docs_deadline: parseDocsDeadline(row['Срок подачи'] || row.docs_deadline),
     purchase_url: normUrl(row['Ссылка на площадку'] || row.purchase_url || row.url),
     reject_reason: String(row['Причины отказа'] || row.reject_reason || '').trim() || null,
     comment_to: String(row['Комментарий'] || row.comment_to || '').trim() || null,
@@ -456,6 +502,7 @@ module.exports = {
   REGISTRY_STATUS_RANK,
   parsePeriodFromText,
   parsePrice,
+  parseDocsDeadline,
   normalizeExcelRow,
   readWorkbookRows,
   dedupeExcelRowsByUrl,
