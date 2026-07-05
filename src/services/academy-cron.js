@@ -339,9 +339,10 @@ async function generateDailyFact(targetDate) {
 
   const response = await aiProvider.complete({
     model: MODEL_FAST,
-    system: FACT_PROMPT + avoidPrompt + '\n\nВАЖНО: не рассуждай вслух — верни только валидный JSON в поле content.',
+    responseFormat: { type: 'json_object' },
+    system: FACT_PROMPT + avoidPrompt,
     messages: [
-      { role: 'user', content: `Сгенерируй факт на ${today}. Ответ — только JSON, без markdown.` }
+      { role: 'user', content: `Сгенерируй факт на ${today}.` }
     ],
     temperature: 0.7,
     maxTokens: 400,
