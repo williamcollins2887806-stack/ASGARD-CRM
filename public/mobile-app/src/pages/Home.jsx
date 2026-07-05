@@ -1,11 +1,12 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { WIDGET_REGISTRY, getLayout, roleMatch } from '@/widgets';
-import { Shield, ChevronRight, HardHat } from 'lucide-react';
+import { Shield, ChevronRight, HardHat, CalendarClock } from 'lucide-react';
 import { CrmUpdateBanner } from '@/components/shared/CrmUpdateBanner';
 import { MobileAppBanner } from '@/components/shared/MobileAppBanner';
+import { loadPmDutyCurrent } from '@/api/tendersRegistry';
 
 /**
  * Home — оркестратор дашборда «Зал Ярла»
@@ -18,13 +19,21 @@ function getWidgetAnimation(i) {
 }
 
 const PM_ROLES = ['PM', 'HEAD_PM', 'ADMIN'];
+const DUTY_ROLES = ['PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'ADMIN'];
 
 export default function Home() {
   const user = useAuthStore((s) => s.user);
   const navigate = useNavigate();
   const role = user?.role || '';
   const [refreshKey, setRefreshKey] = useState(0);
+  const [duty, setDuty] = useState(null);
   const isPm = PM_ROLES.includes(role);
+  const showDuty = DUTY_ROLES.includes(role);
+
+  useEffect(() => {
+    if (!showDuty) return;
+    loadPmDutyCurrent().then((d) => setDuty(d.duty || d)).catch(() => setDuty(null));
+  }, [showDuty, refreshKey]);
 
   const layoutIds = getLayout(role);
   const widgets = layoutIds
@@ -106,6 +115,30 @@ export default function Home() {
                 </div>
               </button>
             </div>
+          )}
+          {showDuty && duty?.pm_name && (
+            <button
+              type="button"
+              onClick={() => navigate('/pm-duty')}
+              className="w-full text-left spring-tap mb-2 rounded-xl px-3 py-2.5 flex items-center gap-3"
+              style={{
+                background: duty.pm_user_id === user?.id
+                  ? 'color-mix(in srgb, var(--green) 12%, var(--bg-surface))'
+                  : 'var(--bg-elevated)',
+                border: '0.5px solid var(--border-norse)',
+              }}
+            >
+              <CalendarClock size={18} style={{ color: 'var(--blue)', flexShrink: 0 }} />
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] font-semibold c-primary">
+                  {duty.pm_user_id === user?.id ? 'Вы дежурный РП' : `Дежурный: ${duty.pm_name}`}
+                </div>
+                <div className="text-[11px] c-tertiary">
+                  {String(duty.period_start).slice(0, 10)} — {String(duty.period_end).slice(0, 10)}
+                </div>
+              </div>
+              <ChevronRight size={16} className="c-tertiary" />
+            </button>
           )}
           <div className="flex flex-col gap-2">
             {widgets.map((w, i) => {

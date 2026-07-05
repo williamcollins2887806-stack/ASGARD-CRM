@@ -2001,7 +2001,9 @@ window.AsgardTendersPage = (function(){
         kanbanCta.style.display = showKanban ? 'flex' : 'none';
       }
       if (currentMainTab === 'tenders' && (currentSubTab === 'registry' || currentSubTab === 'in_work') && regEl && window.AsgardRegistryTab) {
-        const subtab = currentSubTab === 'in_work' ? 'submitted' : (archiveMode ? 'archive' : 'registry');
+        let subtab = 'registry';
+        if (currentSubTab === 'in_work') subtab = archiveMode ? 'archive' : 'submitted';
+        else if (archiveMode) subtab = 'archive';
         AsgardRegistryTab.mount(regEl, {
           subtab,
           period: registryPeriod,

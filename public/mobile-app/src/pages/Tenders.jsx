@@ -20,7 +20,7 @@ import { StatCard, StatRow } from '@/components/shared/StatCard';
 import RegistryDetailSheet, { SourceBadge, RegistryStatusBadge } from '@/components/tenders/RegistryDetailSheet';
 import {
   Trophy, Search, Plus, ChevronRight, X, Calendar, DollarSign,
-  LayoutGrid, AlertTriangle, ChevronDown,
+  LayoutGrid, AlertTriangle, ChevronDown, Inbox, Clock,
 } from 'lucide-react';
 import { formatDate, formatMoney } from '@/lib/utils';
 
@@ -164,18 +164,31 @@ export default function Tenders() {
         )}
 
         {!loading && (
-          <StatRow cols={3}>
-            <StatCard icon={Trophy} label="В работе ТО" value={kpi.in_work} color="var(--blue)" delay={0} />
-            <StatCard
-              icon={AlertTriangle}
-              label="Дедлайн ≤3д"
-              value={kpi.burn}
-              color={kpi.burn > 0 ? 'var(--red-soft)' : 'var(--text-tertiary)'}
-              delay={60}
-              onClick={kpi.burn > 0 ? jumpToBurn : undefined}
-            />
-            <StatCard icon={Trophy} label="Выиграно/мес" value={kpi.won_month} color="var(--green)" delay={120} />
-          </StatRow>
+          <>
+            <StatRow cols={3}>
+              <StatCard icon={Inbox} label="Сегодня" value={kpi.inbox_today} color="var(--gold)" delay={0} />
+              <StatCard icon={Trophy} label="В работе ТО" value={kpi.in_work} color="var(--blue)" delay={40} />
+              <StatCard
+                icon={AlertTriangle}
+                label="Дедлайн ≤3д"
+                value={kpi.burn}
+                color={kpi.burn > 0 ? 'var(--red-soft)' : 'var(--text-tertiary)'}
+                delay={80}
+                onClick={kpi.burn > 0 ? jumpToBurn : undefined}
+              />
+            </StatRow>
+            <StatRow cols={3}>
+              <StatCard icon={Clock} label="Дозапрос" value={kpi.addendum} color="var(--gold)" delay={100} />
+              <StatCard icon={Trophy} label="Выиграно/мес" value={kpi.won_month} color="var(--green)" delay={120} />
+              <StatCard
+                icon={Trophy}
+                label="Конверсия"
+                value={kpi.win_pct != null ? `${kpi.win_pct}%` : '—'}
+                color="var(--text-secondary)"
+                delay={140}
+              />
+            </StatRow>
+          </>
         )}
 
         {burnOnly && (

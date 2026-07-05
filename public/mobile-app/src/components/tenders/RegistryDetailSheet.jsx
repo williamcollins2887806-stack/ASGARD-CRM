@@ -5,7 +5,7 @@ import { BottomSheet } from '@/components/shared/BottomSheet';
 import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { api } from '@/api/client';
-import { patchRegistryField, patchRegistryStatus } from '@/api/tendersRegistry';
+import { patchRegistryField, patchRegistryStatus, suggestCustomers } from '@/api/tendersRegistry';
 import {
   REGISTRY_STATUSES,
   REGISTRY_STATUS_LABELS,
@@ -56,6 +56,18 @@ export default function RegistryDetailSheet({ tender, open, onClose, onChanged }
   const [winSheet, setWinSheet] = useState(false);
   const [editField, setEditField] = useState(null);
   const [editValue, setEditValue] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+
+  useEffect(() => {
+    if (editField !== 'customer_name' || editValue.trim().length < 2) {
+      setSuggestions([]);
+      return;
+    }
+    const t = setTimeout(() => {
+      suggestCustomers(editValue.trim()).then(setSuggestions).catch(() => setSuggestions([]));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [editField, editValue]);
 
   useEffect(() => {
     if (!open || !tender?.id) { setFull(null); return; }
@@ -98,11 +110,35 @@ export default function RegistryDetailSheet({ tender, open, onClose, onChanged }
       let val = editValue;
       if (editField === 'tender_price') val = editValue ? Number(editValue) : null;
       await patchRegistryField(t.id, editField, val);
+      if (editField === 'customer_name' && suggestions.length) {
+        const hit = suggestions.find((s) => (s.value || s.name) === editValue);
+        const inn = hit?.data?.inn || hit?.inn;
+        if (inn) await patchRegistryField(t.id, 'customer_inn', inn);
+      }
       haptic.success();
       setEditField(null);
+      setSuggestions([]);
       onChanged?.();
     } catch (e) {
       window.alert(e?.body?.error || e?.message || 'Ошибка сохранения');
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const pickSuggestion = async (item) => {
+    const name = item.value || item.name || item.label || '';
+    const inn = item.data?.inn || item.inn || '';
+    setActing(true);
+    try {
+      await patchRegistryField(t.id, 'customer_name', name);
+      if (inn) await patchRegistryField(t.id, 'customer_inn', inn);
+      haptic.success();
+      setEditField(null);
+      setSuggestions([]);
+      onChanged?.();
+    } catch (e) {
+      window.alert(e?.body?.error || e?.message || 'Ошибка');
     } finally {
       setActing(false);
     }
@@ -192,6 +228,7 @@ export default function RegistryDetailSheet({ tender, open, onClose, onChanged }
           ) : (
             <div className="rounded-xl overflow-hidden" style={{ border: '0.5px solid var(--border-norse)' }}>
               {[
+                { label: 'Заказчик', field: 'customer_name', value: t.customer_name, raw: t.customer_name },
                 { label: 'Название', field: 'tender_title', value: t.tender_title },
                 { label: 'Сумма', field: 'tender_price', value: price > 0 ? formatMoney(price) : '—', raw: t.tender_price },
                 { label: 'Дедлайн', field: 'docs_deadline', value: t.docs_deadline ? formatDate(t.docs_deadline) : '—', raw: t.docs_deadline?.slice?.(0, 10) },
@@ -251,6 +288,25 @@ export default function RegistryDetailSheet({ tender, open, onClose, onChanged }
               value={editValue}
               onChange={(e) => setEditValue(e.target.value)}
             />
+          )}
+          {editField === 'customer_name' && suggestions.length > 0 && (
+            <div className="rounded-xl overflow-hidden" style={{ border: '0.5px solid var(--border-norse)' }}>
+              {suggestions.slice(0, 6).map((s, i) => {
+                const name = s.value || s.name || s.label || '';
+                const inn = s.data?.inn || s.inn || '';
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => pickSuggestion(s)}
+                    className="w-full text-left px-3 py-2 spring-tap text-[13px]"
+                    style={{ background: 'var(--bg-surface)', borderBottom: '0.5px solid var(--border-norse)' }}
+                  >
+                    {name}{inn ? ` · ИНН ${inn}` : ''}
+                  </button>
+                );
+              })}
+            </div>
           )}
           <button type="button" onClick={saveField} disabled={acting} className="btn-primary spring-tap">
             Сохранить
