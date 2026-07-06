@@ -168,13 +168,15 @@
     <script defer src="assets/js/calculator_v2.js?v=20.26.46"></script>
   <script defer src="assets/js/customer-card.js?v=20.26.46"></script>
   <script defer src="assets/js/mimir-method-picker.js?v=20.26.46"></script>
-  <script defer src="assets/js/registry_api.js?v=20.26.48"></script>
-  <script defer src="assets/js/registry_tab.js?v=20.26.48"></script>
-  <script defer src="assets/js/platform_tenders.js?v=20.26.48"></script>
-  <script defer src="assets/js/rp_review_modal.js?v=20.26.48"></script>
-  <script defer src="assets/js/tenderguru_settings.js?v=20.26.48"></script>
-  <script defer src="assets/js/pm_duty.js?v=20.26.48"></script>
-  <script defer src="assets/js/tenders.js?v=20.26.48"></script>
+  <script defer src="assets/js/loss_reason_modal.js?v=20.26.51"></script>
+  <script defer src="assets/js/registry_api.js?v=20.26.51"></script>
+  <script defer src="assets/js/registry_tab.js?v=20.26.51"></script>
+  <script defer src="assets/js/registry_detail.js?v=20.26.51"></script>
+  <script defer src="assets/js/platform_tenders.js?v=20.26.51"></script>
+  <script defer src="assets/js/rp_review_modal.js?v=20.26.51"></script>
+  <script defer src="assets/js/tenderguru_settings.js?v=20.26.51"></script>
+  <script defer src="assets/js/pm_duty.js?v=20.26.51"></script>
+  <script defer src="assets/js/tenders.js?v=20.26.51"></script>
   <script defer src="assets/js/customers.js?v=20.26.46"></script>
   <script defer src="assets/js/pm_calcs.js?v=20.26.46"></script>
   <script defer src="assets/js/to_calcs.js?v=20.26.46"></script>
@@ -249,13 +251,13 @@
   <script defer src="assets/js/mimir.js?v=20.26.46"></script>
   <script defer src="assets/js/mimir-forms.js?v=20.26.46"></script>
   <script defer src="assets/js/receipt_scanner.js?v=20.26.46"></script>
-  <script defer src="assets/js/custom_dashboard.js?v=20.26.48"></script>
+  <script defer src="assets/js/custom_dashboard.js?v=20.26.49"></script>
   <script defer src="assets/js/big_screen.js?v=20.26.46"></script>
   <script defer src="assets/js/qr_codes.js?v=20.26.46"></script>
   <script defer src="assets/js/fx.js?v=20.26.46"></script>
   <script defer src="assets/js/mango.js?v=20.26.46"></script>
   <script defer src="assets/js/pm_consents.js?v=20.26.46"></script>
-  <script defer src="assets/js/cash.js?v=20.26.48"></script>
+  <script defer src="assets/js/cash.js?v=20.26.49"></script>
   <script defer src="assets/js/cash_admin.js?v=20.26.46"></script>
   <script defer src="assets/js/tasks.js?v=20.26.46"></script>
   <script defer src="assets/js/tasks_admin.js?v=20.26.46"></script>
@@ -322,7 +324,7 @@
   <script defer src="assets/js/hints.js?v=20.26.46"></script>
   <script defer src="assets/js/session-guard.js?v=20.26.46"></script>
   <script defer src="assets/js/offline-guard.js?v=20.26.46"></script>
-  <script defer src="assets/js/app.js?v=20.26.48"></script>
+  <script defer src="assets/js/app.js?v=20.26.49"></script>
   
   <!-- PWA Service Worker Registration + Update Banner -->
   <style>
@@ -434,6 +436,12 @@
           if (waitingWorker) {
             try { waitingWorker.postMessage('skipWaiting'); } catch (_) {}
           }
+          try {
+            var nv = (window.ASGARD_SHELL_VERSION || '').replace(/-.*$/, '');
+            fetch('/api/version', { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(j){
+              if (j && j.version) localStorage.setItem('_v_reloaded_for', j.version);
+            }).catch(function(){ if (nv) localStorage.setItem('_v_reloaded_for', nv); });
+          } catch (_) {}
         }).finally(function(){
           // Backstop: безусловный reload с уникальным URL — обходит HTTP-cache.
           setTimeout(function(){
@@ -487,6 +495,13 @@
       }
 
       function showUpdateBanner(newVersion) {
+        try {
+          var lastReloadFor = localStorage.getItem('_v_reloaded_for') || '';
+          if (lastReloadFor === newVersion) {
+            console.warn('[Version] Banner suppressed — already reloaded for', newVersion);
+            return;
+          }
+        } catch (_) {}
         var banner = document.getElementById('swUpdateBanner');
         if (banner) {
           banner.classList.add('visible');

@@ -499,6 +499,43 @@ window.AsgardCashPage = (function() {
       renderStatementTab();
       loadStatement().catch(() => {});
     }
+
+    _maybeOpenQuickExpenseFromHash();
+  }
+
+  function _hashHasQuickExpense() {
+    const h = window.location.hash || '';
+    return /[?&](quickExpense|quick_expense|quick)=1\b/.test(h);
+  }
+
+  function _clearQuickExpenseHash() {
+    const h = window.location.hash || '';
+    if (!/[?&](quickExpense|quick_expense|quick)=1\b/.test(h)) return;
+    const cleaned = h
+      .replace(/([?&])(quickExpense|quick_expense|quick)=1&?/g, '$1')
+      .replace(/[?&]$/, '')
+      .replace(/\?&/, '?');
+    if (cleaned !== h) window.location.hash = cleaned || '#/cash';
+  }
+
+  function _maybeOpenQuickExpenseFromHash() {
+    if (!_isHeadTo() || !_hashHasQuickExpense()) return;
+    _clearQuickExpenseHash();
+    setTimeout(() => { showQuickExpenseModal().catch(() => {}); }, 0);
+  }
+
+  /** С Home / дашборда — модалка без ухода со страницы */
+  async function openQuickExpenseFromWidget() {
+    if (!_isHeadTo()) {
+      location.hash = '#/cash';
+      return;
+    }
+    try {
+      await showQuickExpenseModal();
+    } catch (e) {
+      console.error('openQuickExpenseFromWidget', e);
+      toast('Ошибка', 'Не удалось открыть форму расхода', 'err');
+    }
   }
 
   function switchTab(tab) {
@@ -1667,6 +1704,7 @@ window.AsgardCashPage = (function() {
 
   async function showQuickExpenseModal() {
     _quickExpenseConfirmDuplicate = false;
+    if (!works.length) await loadWorks();
     _quickExpenseEmployees = await loadQuickExpenseEmployees();
     _quickExpenseSuggestions = await loadPerDiemSuggestions();
 
@@ -2450,7 +2488,7 @@ window.AsgardCashPage = (function() {
     render, showCreateModal, onTypeChange, submitCreate, showDetail,
     confirmReceive, showExpenseModal, submitExpense, deleteExpense, submitReport,
     showReturnModal, submitReturn, showReplyModal, submitReply,
-    showQuickExpenseModal, submitQuickExpense,
+    showQuickExpenseModal, submitQuickExpense, openQuickExpenseFromWidget,
     // 2026-06-27 — manual handover (📥 Получил нал от СЗ)
     showManualHandoverModal, submitManualHandover,
     // 2026-06-29 — statement tab (Выписка РП)

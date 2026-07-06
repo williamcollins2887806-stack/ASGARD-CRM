@@ -209,10 +209,10 @@ window.AsgardCustomDashboard = (function(){
         if (!duty || !duty.pm_name) return;
         el.style.display = '';
         const isMe = meId && duty.pm_user_id === meId;
-        const _esc = (window.AsgardUI && AsgardUI.esc) ? AsgardUI.esc : (s => String(s == null ? '' : s));
+        const _fmt = (d) => (window.AsgardRegistryApi ? AsgardRegistryApi.fmtDate(d) : String(d || '').slice(0, 10));
         el.innerHTML = '<div class="alert' + (isMe ? ' ok' : '') + '" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">' +
           '<span>' + (isMe ? '🛡 <strong>Вы дежурный РП</strong>' : '🛡 Дежурный РП: <strong>' + _esc(duty.pm_name) + '</strong>') +
-          ' · ' + _esc(String(duty.period_start).slice(0, 10)) + ' — ' + _esc(String(duty.period_end).slice(0, 10)) + '</span>' +
+          ' · ' + _esc(_fmt(duty.period_start)) + ' — ' + _esc(_fmt(duty.period_end)) + '</span>' +
           '<a href="#/pm-duty" class="btn mini ghost" style="margin-left:auto">Очередь отчётов</a></div>';
       } catch (_) { /* ignore */ }
     })();
@@ -1124,6 +1124,16 @@ window.AsgardCustomDashboard = (function(){
     }
   }
 
+  function _bindQuickExpenseBtn(el) {
+    el?.querySelector('#dashQuickExpenseBtn')?.addEventListener('click', () => {
+      if (window.AsgardCashPage?.openQuickExpenseFromWidget) {
+        AsgardCashPage.openQuickExpenseFromWidget();
+      } else {
+        location.hash = '#/cash?quickExpense=1';
+      }
+    });
+  }
+
   async function renderMyCashBalance(el, user) {
     try {
       const auth = await AsgardAuth.getAuth();
@@ -1138,12 +1148,22 @@ window.AsgardCustomDashboard = (function(){
       const spentLabel = isHeadTo ? 'Выплачено' : 'Потрачено';
       const spentVal = isHeadTo ? (d.cash_payouts_workers ?? d.spent) : d.spent;
       if (!hasBalance && !hasActive) {
+        const emptyActions = isHeadTo
+          ? '<div style="display:flex;gap:8px;justify-content:center;margin-top:10px;flex-wrap:wrap">' +
+              '<button type="button" class="btn mini primary" id="dashQuickExpenseBtn">+ Добавить расход</button>' +
+              '<a href="#/cash" class="btn mini ghost">Касса →</a></div>'
+          : '<a href="#/cash" class="btn mini ghost" style="margin-top:8px;font-size:11px">Касса →</a>';
         el.innerHTML = '<div style="text-align:center;padding:12px">' +
           '<div style="font-size:32px;margin-bottom:8px">✅</div>' +
-          '<div class="help">Нет подотчётных средств</div>' +
-          '<a href="#/cash" class="btn mini ghost" style="margin-top:8px;font-size:11px">Касса →</a></div>';
+          '<div class="help">Нет подотчётных средств</div>' + emptyActions + '</div>';
+        _bindQuickExpenseBtn(el);
         return;
       }
+      const headToActions = isHeadTo
+        ? '<div style="display:flex;gap:8px;justify-content:center;margin-top:10px;flex-wrap:wrap">' +
+            '<button type="button" class="btn mini primary" id="dashQuickExpenseBtn">+ Добавить расход</button>' +
+            '<a href="#/cash" class="btn mini ghost">Касса →</a></div>'
+        : '<a href="#/cash" class="btn mini ghost" style="margin-top:10px;font-size:11px">Касса →</a>';
       el.innerHTML = '<div style="text-align:center">' +
         '<div style="font-size:28px;font-weight:700;color:' + (hasBalance ? 'var(--amber)' : 'var(--green)') + '">' +
           formatMoney(d.balance) + ' ₽</div>' +
@@ -1153,7 +1173,8 @@ window.AsgardCustomDashboard = (function(){
           '<div><span style="color:var(--t3)">' + spentLabel + ':</span> <b>' + formatMoney(spentVal) + '</b></div>' +
         '</div>' +
         (d.active_requests > 0 ? '<div style="margin-top:8px;font-size:12px;color:var(--amber)">' + d.active_requests + ' активных заявок</div>' : '') +
-        '<a href="#/cash" class="btn mini ghost" style="margin-top:10px;font-size:11px">Касса →</a></div>';
+        headToActions + '</div>';
+      _bindQuickExpenseBtn(el);
     } catch(e) {
       el.innerHTML = '<div class="help" style="text-align:center">Ошибка загрузки</div>';
     }

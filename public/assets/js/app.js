@@ -233,17 +233,17 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/customers",l:"Карта Контрагентов",d:"Справочник организаций",roles:["ADMIN","TO","HEAD_TO","PM","HEAD_PM","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"customers",p:"customers",g:"tenders"},
 
     // ── РАБОТЫ ──
-    {r:"/pm-calcs",l:"Просчёты (inbox)",d:"Входящие от ТО",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"pmcalcs",p:"pm_calcs",g:"works"},
-    {r:"/pm-duty",l:"Дежурство РП",d:"Очередь отчётов и график",roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO",...DIRECTOR_ROLES],i:"pmcalcs",p:"pm_duty",g:"tenders"},
-    {r:"/to-calcs",l:"Мои просчёты (ТО)",d:"Тендеры, которые я считаю сам",roles:["ADMIN","TO","HEAD_TO"],i:"pmcalcs",p:"to_calcs",g:"tenders"},
-    {r:"/head-to-approvals",l:"Согласование (ТО)",d:"Просчёты ТО на согласование",roles:["ADMIN","HEAD_TO"],i:"approvals",p:"head_to_approvals",g:"tenders"},
+    {r:"/pm-calcs",l:"Просчёты (inbox)",d:"Входящие от ТО",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"pmcalcs",p:"pm_calcs",g:"works",navHide:true},
+    {r:"/pm-calculations",l:"Просчёты РП",d:"Анализ, просчёты и архив отчётов",roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO",...DIRECTOR_ROLES],i:"pmcalcs",p:"pm_duty",g:"tenders"},
+    {r:"/to-calcs",l:"Мои просчёты (ТО)",d:"Тендеры, которые я считаю сам",roles:["ADMIN","TO","HEAD_TO"],i:"pmcalcs",p:"to_calcs",g:"tenders",navHide:true},
+    {r:"/head-to-approvals",l:"Согласование (ТО)",d:"Просчёты ТО на согласование",roles:["ADMIN","HEAD_TO"],i:"approvals",p:"head_to_approvals",g:"tenders",navHide:true},
     {r:"/calculator",l:"Калькулятор ᚱ",d:"Расчёт стоимости работ",roles:["ADMIN","PM","TO","HEAD_PM","HEAD_TO",...DIRECTOR_ROLES],i:"calculator",p:"calculator",g:"works"},
-    {r:"/approvals",l:"Согласование",d:"Решения Ярла",roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES],i:"approvals",p:"approvals",g:"works"},
+    {r:"/approvals",l:"Согласование",d:"Решения Ярла",roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES],i:"approvals",p:"approvals",g:"works",navHide:true},
     {r:"/bonus-approval",l:"Согласование премий",d:"Премии рабочим",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"approvals",p:"bonus_approval",g:"works"},
     {r:"/pm-works",l:"Мои работы (РП)",d:"Проекты РП",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"pmworks",p:"pm_works",g:"works"},
     {r:"/readiness",l:"Готовность проектов",d:"Готовность к старту по этапам",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"pmworks",p:"pm_works",g:"works"},
     {r:"/all-works",l:"Свод Контрактов",d:"Все работы",roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES],i:"allworks",p:"all_works",g:"works"},
-    {r:"/all-estimates",l:"Свод Расчётов",d:"Все просчёты",roles:["ADMIN","BUH","HEAD_PM",...DIRECTOR_ROLES],i:"allestimates",p:"all_estimates",g:"works"},
+    {r:"/all-estimates",l:"Свод Расчётов",d:"Все просчёты",roles:["ADMIN","BUH","HEAD_PM",...DIRECTOR_ROLES],i:"allestimates",p:"all_estimates",g:"works",navHide:true},
     {r:"/gantt-calcs",l:"Гантт: Просчёты",d:"Пересечения по срокам",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"ganttcalcs",p:"gantt",g:"works"},
     {r:"/gantt-works",l:"Гантт: Работы",d:"План и факты",roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES],i:"ganttworks",p:"gantt",g:"works"},
     {r:"/tasks-admin",l:"Управление задачами",d:"Контроль задач",roles:["ADMIN"],i:"approvals",p:"tasks_admin",g:"works"},
@@ -523,6 +523,7 @@ try{
       if (!roleAllowed(n.roles, role)) return false;
       // 2. Скрытые пользователем вкладки
       if (hiddenRoutes.includes('#' + n.r)) return false;
+      if (n.navHide) return false;
       return true;
     });
 
@@ -1894,8 +1895,9 @@ var _setupPinKeypad = null;
           <div id="cashBalanceData" style="margin-top:10px">
             <div class="text-center"><div class="spinner-border spinner-border-sm"></div> Загрузка...</div>
           </div>
-          <div style="margin-top:10px">
-            <a href="#/cash" class="btn">Открыть кассу</a>
+          <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+            ${user.role === 'HEAD_TO' ? '<button type="button" class="btn primary" id="homeQuickExpenseBtn">+ Добавить расход</button>' : ''}
+            <a href="#/cash" class="btn${user.role === 'HEAD_TO' ? ' ghost' : ''}">Открыть кассу</a>
           </div>
         </div>
       `;
@@ -2032,6 +2034,15 @@ var _setupPinKeypad = null;
           document.getElementById('cashBalanceData').innerHTML = '<div class="text-muted">Ошибка загрузки</div>';
         }
       })();
+      if (user.role === 'HEAD_TO') {
+        document.getElementById('homeQuickExpenseBtn')?.addEventListener('click', () => {
+          if (window.AsgardCashPage?.openQuickExpenseFromWidget) {
+            AsgardCashPage.openQuickExpenseFromWidget();
+          } else {
+            location.hash = '#/cash?quickExpense=1';
+          }
+        });
+      }
     }
 
     // Загружаем виджет задач
@@ -2196,13 +2207,14 @@ var _setupPinKeypad = null;
     AsgardRouter.add("/pre-tenders", ()=>{ location.hash = "#/director-inbox"; }, {auth:true, roles:["ADMIN","TO","HEAD_TO"]});
     AsgardRouter.add("/funnel", ()=>AsgardFunnelPage.render({layout, title:"Воронка продаж"}), {auth:true, roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/tenders", ()=>AsgardTendersPage.render({layout, title:"Сага Тендеров"}), {auth:true, roles:["ADMIN","TO","HEAD_TO",...DIRECTOR_ROLES]});
-    AsgardRouter.add("/pm-duty", ()=>AsgardPmDutyPage.render({layout, title:"Дежурство РП"}), {auth:true, roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/pm-calculations", ({query})=>AsgardPmDutyPage.render({layout, title:"Просчёты РП", query}), {auth:true, roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/pm-duty", ()=>{ location.hash = "#/pm-calculations"; }, {auth:true, roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/tenderguru-settings", ()=>AsgardTenderGuruSettingsPage.render({layout, title:"TenderGuru — настройки"}), {auth:true, roles:["ADMIN","TO","HEAD_TO"]});
     AsgardRouter.add("/customers", ()=>AsgardCustomersPage.renderList({layout, title:"Карта Контрагентов"}), {auth:true, roles:["ADMIN","TO","HEAD_TO","PM","HEAD_PM","OFFICE_MANAGER",...DIRECTOR_ROLES]});
     AsgardRouter.add("/customer", ({query})=>AsgardCustomersPage.renderCard({layout, title:"Карточка контрагента", query}), {auth:true, roles:["ADMIN","TO","HEAD_TO","PM","HEAD_PM","OFFICE_MANAGER",...DIRECTOR_ROLES]});
-    AsgardRouter.add("/pm-calcs", ()=>AsgardPmCalcsPage.render({layout, title:"Карта Похода • Просчёты"}), {auth:true, roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES]});
-    AsgardRouter.add("/to-calcs", ()=>AsgardToCalcsPage.render({layout, title:"Мои просчёты (ТО)"}), {auth:true, roles:["ADMIN","TO","HEAD_TO"]});
-    AsgardRouter.add("/head-to-approvals", ()=>AsgardHeadToApprovalsPage.render({layout, title:"Согласование просчётов ТО"}), {auth:true, roles:["ADMIN","HEAD_TO"]});
+    AsgardRouter.add("/pm-calcs", ()=>{ location.hash = "#/pm-calculations"; }, {auth:true, roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/to-calcs", ()=>{ location.hash = "#/tenders"; }, {auth:true, roles:["ADMIN","TO","HEAD_TO"]});
+    AsgardRouter.add("/head-to-approvals", ()=>{ location.hash = "#/tenders"; }, {auth:true, roles:["ADMIN","HEAD_TO"]});
     AsgardRouter.add("/calculator", async ()=>{
       await layout('<div id="calculator-page"></div>', {title:"Калькулятор ᚱ"});
       AsgardCalcV2.renderPage(document.getElementById('calculator-page'));
@@ -2212,7 +2224,7 @@ var _setupPinKeypad = null;
     AsgardRouter.add("/bonus-approval", ()=>AsgardBonusApproval.render({layout, title:"Согласование премий"}), {auth:true, roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES]});
     AsgardRouter.add("/pm-works", ()=>AsgardPmWorksPage.render({layout, title:"Карта Похода • Работы"}), {auth:true, roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES]});
     AsgardRouter.add("/all-works", ()=>AsgardAllWorksPage.render({layout, title:"Свод Контрактов"}), {auth:true, roles:["ADMIN","HEAD_PM",...DIRECTOR_ROLES]});
-    AsgardRouter.add("/all-estimates", ()=>AsgardAllEstimatesPage.render({layout, title:"Свод Расчётов"}), {auth:true, roles:["ADMIN","BUH","HEAD_PM",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/all-estimates", ()=>{ location.hash = "#/pm-calculations?tab=archive"; }, {auth:true, roles:["ADMIN","BUH","HEAD_PM",...DIRECTOR_ROLES]});
     AsgardRouter.add("/estimate-report", ({query})=>AsgardEstimateReportPage.render({layout, title:"Отчёт просчёта", query}), {auth:true, roles:["ADMIN","PM","HEAD_PM","TO","HEAD_TO","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/work-report", ({query})=>AsgardWorkReport.render({layout, title:"Финансовый отчёт", query}), {auth:true, roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES]});
     AsgardRouter.add("/finances", ()=>AsgardFinancesPage.render({layout, title:"Деньги • Аналитика"}), {auth:true, roles:["ADMIN","BUH",...DIRECTOR_ROLES]});
@@ -2297,7 +2309,7 @@ AsgardRouter.add("/assembly", ()=>AsgardAssemblyPage.render({layout, title:"Сб
     AsgardRouter.add("/cash", async ()=>{
       await layout('<div id="cash-page"></div>', {title:"Касса"});
       AsgardCashPage.render(document.getElementById('cash-page'));
-    }, {auth:true, roles:["ADMIN","PM",...DIRECTOR_ROLES]});
+    }, {auth:true, roles:["ADMIN","PM","HEAD_TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/cash-admin", async ()=>{
       await layout('<div id="cash-admin-page"></div>', {title:"Касса (управление)"});
       AsgardCashAdminPage.render(document.getElementById('cash-admin-page'));
