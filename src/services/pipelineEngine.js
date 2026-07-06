@@ -15,6 +15,43 @@ const DIRS = [
 ];
 const BIT = [1, 2, 4, 8];
 
+function dirBetween(r1, c1, r2, c2) {
+  if (r2 < r1) return 1;
+  if (c2 > c1) return 2;
+  if (r2 > r1) return 4;
+  if (c2 < c1) return 8;
+  return 0;
+}
+
+function onEdge(size, r, c) {
+  return r === 0 || r === size - 1 || c === 0 || c === size - 1;
+}
+
+function wallMaskForCell(size, r, c) {
+  let m = 0;
+  if (r === 0) m |= 1;
+  if (c === size - 1) m |= 2;
+  if (r === size - 1) m |= 4;
+  if (c === 0) m |= 8;
+  return m;
+}
+
+/** Точка на краю смотрит в стену, а не в поле */
+function endpointPointsIntoWall(size, type, r, c, rot) {
+  const wall = wallMaskForCell(size, r, c);
+  if (!wall) return false;
+  const mask = rotMask(CONN[type] || 0, rot || 0);
+  return !!(wall & mask);
+}
+
+function rotationForMask(type, targetMask) {
+  if (!targetMask) return -1;
+  for (let r = 0; r < 4; r++) {
+    if (rotMask(CONN[type], r) === targetMask) return r;
+  }
+  return -1;
+}
+
 const WORLDS = [
   { min: 1, name: 'УТГАРД', icon: '🌱' },
   { min: 26, name: 'МИДГАРД', icon: '🌊' },
@@ -138,13 +175,6 @@ function pipeForDirs(inDir, outDir) {
   return { t: P.STR, r: 0 };
 }
 
-function rotationForMask(type, targetMask) {
-  for (let r = 0; r < 4; r++) {
-    if (rotMask(CONN[type], r) === targetMask) return r;
-  }
-  return 0;
-}
-
 /** Поворот строго НЕ в решение (1–3 клика до правильного) */
 function scrambleRotation(correctR, rand, preferHard = false) {
   const offsets = preferHard ? [2, 3, 3, 2] : [1, 2, 3, 2, 3, 1];
@@ -194,24 +224,84 @@ function generatePath(size, rand, minLen) {
     prevDir = pick.nextIn;
     visited.add(idx(size, r, c));
 
-    const canStop = path.length >= minLen && options.length > 1 && rand() > 0.82;
+    const canStop = path.length >= minLen && onEdge(size, r, c) && options.length > 1 && rand() > 0.82;
     if (canStop) break;
     if (path.length >= size * 2 + 4) break;
   }
 
   const last = path[path.length - 1];
-  let outDir = 0;
-  for (let d = 0; d < 4; d++) {
-    const [dr, dc] = DIRS[d];
-    const nr = last.r + dr;
-    const nc = last.c + dc;
-    if (!inBounds(size, nr, nc)) {
-      outDir = BIT[d];
-      break;
+  if (!onEdge(size, last.r, last.c)) {
+    // Дотягиваем слив до края поля
+    let cr = last.r;
+    let cc = last.c;
+    let cPrevDir = last.inDir;
+    const extraVisited = new Set(visited);
+    for (let guard = 0; guard < size * 2 && !onEdge(size, cr, cc); guard++) {
+      const opts = [];
+      for (let d = 0; d < 4; d++) {
+        const [dr, dc, , opp] = DIRS[d];
+        const nr = cr + dr;
+        const nc = cc + dc;
+        if (!inBounds(size, nr, nc)) continue;
+        const ni = idx(size, nr, nc);
+        if (extraVisited.has(ni)) continue;
+        opts.push({ nr, nc, outDir: BIT[d], nextIn: opp });
+      }
+      if (!opts.length) break;
+      const towardEdge = opts.filter((o) => onEdge(size, o.nr, o.nc));
+      const pick = (towardEdge.length ? towardEdge : opts)[Math.floor(rand() * (towardEdge.length || opts.length))];
+      path[path.length - 1].outDir = pick.outDir;
+      path.push({ r: pick.nr, c: pick.nc, inDir: pick.nextIn });
+      cr = pick.nr;
+      cc = pick.nc;
+      cPrevDir = pick.nextIn;
+      extraVisited.add(idx(size, cr, cc));
     }
   }
-  last.outDir = outDir;
+
+  const end = path[path.length - 1];
+  if (!onEdge(size, end.r, end.c)) return null;
   return path;
+}
+
+function specsForPathIndices(size, pathIdx) {
+  const specs = [];
+  for (let i = 0; i < pathIdx.length; i++) {
+    const pi = pathIdx[i];
+    const r = Math.floor(pi / size);
+    const c = pi % size;
+    if (i === 0) {
+      const n = pathIdx[1];
+      const outDir = dirBetween(r, c, Math.floor(n / size), n % size);
+      const rot = rotationForMask(P.SRC, outDir);
+      specs.push({ t: P.SRC, r: rot >= 0 ? rot : 0 });
+    } else if (i === pathIdx.length - 1) {
+      const p = pathIdx[i - 1];
+      const inDir = dirBetween(r, c, Math.floor(p / size), p % size);
+      const rot = rotationForMask(P.DRN, inDir);
+      specs.push({ t: P.DRN, r: rot >= 0 ? rot : 0 });
+    } else {
+      const p = pathIdx[i - 1];
+      const n = pathIdx[i + 1];
+      const inDir = dirBetween(r, c, Math.floor(p / size), p % size);
+      const outDir = dirBetween(r, c, Math.floor(n / size), n % size);
+      specs.push(pipeForDirs(inDir, outDir));
+    }
+  }
+  return specs;
+}
+
+function endpointsValid(size, path, cells) {
+  if (!path.length) return false;
+  const src = path[0];
+  const drn = path[path.length - 1];
+  if (!onEdge(size, src.r, src.c) || !onEdge(size, drn.r, drn.c)) return false;
+  const srcCell = cells[idx(size, src.r, src.c)];
+  const drnCell = cells[idx(size, drn.r, drn.c)];
+  if (!srcCell || !drnCell) return false;
+  if (endpointPointsIntoWall(size, P.SRC, src.r, src.c, srcCell.r)) return false;
+  if (endpointPointsIntoWall(size, P.DRN, drn.r, drn.c, drnCell.r)) return false;
+  return true;
 }
 
 function placeObstacle(cells, path, size, type, rand, used = new Set()) {
@@ -325,11 +415,7 @@ function fallbackLevel(levelNum) {
       : size === 7
         ? [3, 4, 5, 12, 19, 26, 33, 34, 35, 40, 45]
         : [3, 4, 5, 12, 19, 26, 33, 40, 41, 42, 49, 56];
-  const specs = pathIdx.map((_, i) => {
-    if (i === 0) return { t: P.SRC, r: 2 };
-    if (i === pathIdx.length - 1) return { t: P.DRN, r: 1 };
-    return { t: i % 2 ? P.ELB : P.STR, r: i % 3 };
-  });
+  const specs = specsForPathIndices(size, pathIdx);
   pathIdx.forEach((pi, i) => { cells[pi] = { ...specs[i] }; });
   const decoyTypes = [P.STR, P.ELB, P.TEE];
   for (let i = 0; i < n; i++) {
@@ -366,26 +452,37 @@ function fallbackLevel(levelNum) {
 
 function buildLevel(levelNum, employeeId, attempt) {
   const size = gridSizeForLevel(levelNum);
-  const rand = seededRng(`${levelNum}:${employeeId}:pipeline:v4:${attempt}`);
+  const rand = seededRng(`${levelNum}:${employeeId}:pipeline:v5:${attempt}`);
   const minLen = minPathLength(levelNum, size);
   const path = generatePath(size, rand, minLen);
-  if (path.length < minLen - 1) return null;
+  if (!path || path.length < minLen - 1) return null;
 
   const cells = Array(size * size).fill(null).map(() => ({ t: P.EMPTY, r: 0 }));
   const pathSet = new Set();
 
-  path.forEach((node, i) => {
+  for (let i = 0; i < path.length; i++) {
+    const node = path[i];
     const pi = idx(size, node.r, node.c);
     pathSet.add(pi);
     if (i === 0) {
-      cells[pi] = { t: P.SRC, r: rotationForMask(P.SRC, node.outDir) };
+      const next = path[1];
+      const outDir = node.outDir || dirBetween(node.r, node.c, next.r, next.c);
+      const rot = rotationForMask(P.SRC, outDir);
+      if (rot < 0) return null;
+      cells[pi] = { t: P.SRC, r: rot };
     } else if (i === path.length - 1) {
-      cells[pi] = { t: P.DRN, r: rotationForMask(P.DRN, node.inDir) };
+      const prev = path[i - 1];
+      const inDir = node.inDir || dirBetween(node.r, node.c, prev.r, prev.c);
+      const rot = rotationForMask(P.DRN, inDir);
+      if (rot < 0) return null;
+      cells[pi] = { t: P.DRN, r: rot };
     } else {
       const p = pipeForDirs(node.inDir, node.outDir);
       cells[pi] = { t: p.t, r: p.r };
     }
-  });
+  }
+
+  if (!endpointsValid(size, path, cells)) return null;
 
   // Ложные трубы — плотнее, с тройниками
   const decoyChance = levelNum >= 80 ? 0.85 : levelNum >= 50 ? 0.78 : levelNum >= 20 ? 0.68 : levelNum >= 8 ? 0.58 : 0.48;
