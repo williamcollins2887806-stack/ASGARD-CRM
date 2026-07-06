@@ -13,6 +13,7 @@ import { usePushSubscription } from '@/hooks/usePushSubscription';
 
 const PUSH_DISMISSED_KEY = 'asgard_field_push_dismissed_v1';
 const IOS_HINT_DISMISSED_KEY = 'asgard_ios_hint_dismissed_v1';
+const PIPELINE_BANNER_KEY = 'asgard_pipeline_launch_v1';
 
 // Detect iOS Safari (not standalone)
 function detectIOSSafari() {
@@ -105,6 +106,7 @@ const STAGE_ICONS = { medical: '🏥', travel: '✈️', waiting: '⏳', warehou
 
 const GAMIFICATION_TILES = [
   { emoji: '🎰', label: 'Рулетка', path: '/field/wheel', bg: 'linear-gradient(135deg,#3a0a10,#1a0508)', border: 'rgba(232,64,87,.25)' },
+  { emoji: '🌊', label: 'Рунопровод', path: '/field/pipeline', bg: 'linear-gradient(135deg,#0a1a2a,#051018)', border: 'rgba(56,189,248,.35)', badge: 'NEW' },
   { emoji: '🛍', label: 'Магазин', path: '/field/shop', bg: 'linear-gradient(135deg,#2a2008,#1a1505)', border: 'rgba(240,200,80,.25)' },
   { emoji: '🎁', label: 'Инвентарь', path: '/field/inventory', bg: 'linear-gradient(135deg,#0a1a2a,#081020)', border: 'rgba(74,144,255,.25)' },
   { emoji: '🏛️', label: 'Чертоги Мимира', path: '/field/academy', bg: 'linear-gradient(135deg,#1a0d2e,#0d0a1a)', border: 'rgba(123,97,255,.35)' },
@@ -131,6 +133,7 @@ export default function FieldHome() {
   const [showPushPrompt, setShowPushPrompt] = useState(false);
   const [showIOSHint, setShowIOSHint] = useState(false);
   const [showReadinessPrompt, setShowReadinessPrompt] = useState(false);
+  const [showPipelineBanner, setShowPipelineBanner] = useState(false);
   const [readinessStatus, setReadinessStatus] = useState(null); // ready|not_ready|on_site|unknown|archive
   const push = usePushSubscription();
   const timerRef = useRef(null);
@@ -203,6 +206,13 @@ export default function FieldHome() {
     if (!detectIOSSafari()) return;
     if (localStorage.getItem(IOS_HINT_DISMISSED_KEY)) return;
     const t = setTimeout(() => setShowIOSHint(true), 2000);
+    return () => clearTimeout(t);
+  }, []);
+
+  // Новая игра «Рунопровод» — баннер при входе
+  useEffect(() => {
+    if (localStorage.getItem(PIPELINE_BANNER_KEY)) return;
+    const t = setTimeout(() => setShowPipelineBanner(true), 800);
     return () => clearTimeout(t);
   }, []);
 
@@ -454,6 +464,68 @@ export default function FieldHome() {
         <p className="text-sm capitalize mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{fmtDate()}</p>
         <p className="text-xs italic mt-2" style={{ color: 'var(--text-tertiary)' }}>«{quote}»</p>
       </div>
+
+      {/* Рунопровод — launch banner */}
+      {showPipelineBanner && (
+        <div style={{
+          position: 'relative',
+          display: 'flex', alignItems: 'center', gap: 14,
+          background: 'linear-gradient(135deg, rgba(14,116,144,0.35) 0%, rgba(56,189,248,0.12) 50%, rgba(165,110,255,0.08) 100%)',
+          border: '1.5px solid rgba(56,189,248,0.45)',
+          borderRadius: 18, padding: '14px 16px', marginBottom: 20,
+          boxShadow: '0 8px 32px rgba(56,189,248,0.15), inset 0 1px 0 rgba(255,255,255,0.06)',
+          animation: 'fadeInUp var(--motion-normal) var(--ease-spring) both',
+        }}>
+          <button
+            type="button"
+            onClick={() => {
+              setShowPipelineBanner(false);
+              localStorage.setItem(PIPELINE_BANNER_KEY, '1');
+            }}
+            style={{
+              position: 'absolute', top: 8, right: 10, background: 'none', border: 'none',
+              color: 'rgba(255,255,255,0.45)', fontSize: 20, cursor: 'pointer', lineHeight: 1, padding: 4,
+            }}
+            aria-label="Закрыть"
+          >×</button>
+          <div style={{
+            width: 52, height: 52, borderRadius: 16, flexShrink: 0,
+            background: 'linear-gradient(135deg, rgba(56,189,248,0.35), rgba(14,116,144,0.2))',
+            border: '1px solid rgba(56,189,248,0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 28, filter: 'drop-shadow(0 0 12px rgba(56,189,248,0.5))',
+          }}>🌊</div>
+          <div style={{ flex: 1, minWidth: 0, paddingRight: 20 }}>
+            <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.14em', color: 'rgba(56,189,248,0.9)', marginBottom: 4 }}>
+              НОВИНКА АСГАРДА
+            </p>
+            <p style={{ fontSize: 15, fontWeight: 800, color: '#fff', marginBottom: 4, lineHeight: 1.25 }}>
+              Рунопровод — попробуй, воин!
+            </p>
+            <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', lineHeight: 1.4 }}>
+              Проложи поток на объекте — бесконечные уровни, XP и руны ᚱ
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              haptic.medium();
+              localStorage.setItem(PIPELINE_BANNER_KEY, '1');
+              setShowPipelineBanner(false);
+              navigate('/field/pipeline');
+            }}
+            style={{
+              fontSize: 12, fontWeight: 800, color: '#0b0e1a',
+              background: 'linear-gradient(135deg, #38bdf8, #7dd3fc)',
+              border: 'none', borderRadius: 12,
+              padding: '10px 14px', whiteSpace: 'nowrap', flexShrink: 0, cursor: 'pointer',
+              boxShadow: '0 4px 16px rgba(56,189,248,0.35)',
+            }}
+          >
+            Играть
+          </button>
+        </div>
+      )}
 
       {/* Download app banner — only in browser, not native APK */}
       {!window?.Capacitor?.isNativePlatform?.() && (
@@ -798,10 +870,17 @@ export default function FieldHome() {
           ⚔ Геймификация
         </p>
         <div className="grid grid-cols-2 gap-3">
-          {GAMIFICATION_TILES.map(({ emoji, label, path, bg, border }) => (
+          {GAMIFICATION_TILES.map(({ emoji, label, path, bg, border, badge }) => (
             <button key={path} onClick={() => { haptic.medium(); navigate(path); }}
-              className="flex items-center gap-3 p-4 rounded-2xl active:scale-95 transition-transform"
+              className="flex items-center gap-3 p-4 rounded-2xl active:scale-95 transition-transform relative"
               style={{ background: bg, border: `1.5px solid ${border}`, boxShadow: '0 4px 16px rgba(0,0,0,.2)' }}>
+              {badge && (
+                <span style={{
+                  position: 'absolute', top: 8, right: 8, fontSize: 8, fontWeight: 800,
+                  padding: '2px 6px', borderRadius: 6, background: 'rgba(56,189,248,0.9)', color: '#0b0e1a',
+                  letterSpacing: '.06em',
+                }}>{badge}</span>
+              )}
               <span style={{ fontSize: 28, filter: 'drop-shadow(0 2px 6px rgba(0,0,0,.3))' }}>{emoji}</span>
               <span className="text-sm font-bold" style={{ color: '#fff' }}>{label}</span>
             </button>

@@ -549,6 +549,7 @@ fastify.register(require('./routes/field-assembly'), { prefix: '/api/field/assem
 fastify.register(require('./routes/field-stages'), { prefix: '/api/field/stages' });
 fastify.register(require('./routes/field-achievements'), { prefix: '/api/field/achievements' });
 fastify.register(require('./routes/field-gamification'), { prefix: '/api/field/gamification' });
+fastify.register(require('./routes/field-pipeline'),      { prefix: '/api/field/pipeline' });
 fastify.register(require('./routes/field-academy'),      { prefix: '/api/field/academy' });
 fastify.register(require('./routes/field-seasonal'),     { prefix: '/api/field/seasonal' });
 fastify.register(require('./routes/field-earnings'),     { prefix: '/api/field/earnings' });

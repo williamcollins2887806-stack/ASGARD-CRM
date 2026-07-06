@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { fieldApi } from '@/api/fieldClient';
 import { ArrowLeft, Trophy, Flame, Zap, Sword, Shield, Users, Star } from 'lucide-react';
 
@@ -399,15 +399,56 @@ function Skeleton() {
   );
 }
 
+/* ═══ Pipeline leaderboard row ═══ */
+function PipelineRow({ player, isSelf, idx, visible }) {
+  const rank = parseInt(player.rank);
+  const MEDAL = { 1: '🥇', 2: '🥈', 3: '🥉' };
+  const isTop3 = rank <= 3;
+  const firstName = (player.fio || '').split(' ')[0] || '?';
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+      borderRadius: 14,
+      backgroundColor: isSelf ? 'rgba(56,189,248,0.1)' : isTop3 ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.025)',
+      border: isSelf ? '1.5px solid rgba(56,189,248,0.5)' : '1px solid rgba(255,255,255,0.05)',
+      animation: visible ? `lb-row-in 0.35s ease both` : 'none',
+      animationDelay: `${idx * 0.04}s`,
+    }}>
+      <div style={{ width: 28, textAlign: 'center', flexShrink: 0 }}>
+        {isTop3 ? <span style={{ fontSize: 18 }}>{MEDAL[rank]}</span> : <span style={{ fontSize: 12, fontWeight: 700, color: '#6b7280' }}>#{rank}</span>}
+      </div>
+      <AvatarCircle fio={player.fio} rank={rank} size={40} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: isSelf ? '#38bdf8' : '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {firstName}
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 10, color: '#6b7280' }}>Макс ур. {player.max_level}</span>
+          {player.current_streak > 0 && <span style={{ fontSize: 10, color: '#f97316' }}>🔥 {player.current_streak}</span>}
+        </div>
+      </div>
+      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+        <div style={{ fontSize: 14, fontWeight: 800, color: '#D4A843' }}>⭐ {player.weekly_stars}</div>
+        <div style={{ fontSize: 10, color: '#6b7280' }}>всего ⭐{player.total_stars}</div>
+      </div>
+    </div>
+  );
+}
+
 /* ═══════════════════════════════════════════════
    MAIN COMPONENT
 ═══════════════════════════════════════════════ */
 export default function FieldLeaderboard() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab') === 'pipeline' ? 'pipeline' : searchParams.get('tab') === 'tournament' ? 'tournament' : 'rating';
   const [leaderboard, setLeaderboard] = useState([]);
   const [myRank, setMyRank] = useState(null);
   const [tournament, setTournament] = useState(null);
-  const [tab, setTab] = useState('rating');       // 'rating' | 'tournament'
+  const [pipelineBoard, setPipelineBoard] = useState([]);
+  const [pipelineMyRank, setPipelineMyRank] = useState(null);
+  const [tab, setTab] = useState(initialTab);       // 'rating' | 'tournament' | 'pipeline'
   const [sortBy, setSortBy] = useState('power');  // 'power' | 'runes' | 'xp' | 'shifts'
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -415,11 +456,16 @@ export default function FieldLeaderboard() {
   const [rowsVisible, setRowsVisible] = useState(false);
 
   useEffect(() => {
-    fieldApi.get('/gamification/leaderboard')
-      .then((data) => {
+    Promise.all([
+      fieldApi.get('/gamification/leaderboard'),
+      fieldApi.get('/pipeline/leaderboard').catch(() => ({ leaderboard: [], my_rank: null })),
+    ])
+      .then(([data, pipe]) => {
         setLeaderboard(data?.leaderboard || []);
         setMyRank(data?.my_rank || null);
         setTournament(data?.tournament || null);
+        setPipelineBoard(pipe?.leaderboard || []);
+        setPipelineMyRank(pipe?.my_rank || null);
         setTimeout(() => setCountersActive(true), 200);
         setTimeout(() => setRowsVisible(true), 400);
       })
@@ -472,12 +518,13 @@ export default function FieldLeaderboard() {
         <div style={{ display: 'flex', gap: 6 }}>
           {[
             { key: 'rating', label: '⚔️ Рейтинг' },
+            { key: 'pipeline', label: '🌊 Рунопровод' },
             { key: 'tournament', label: '🏆 Турнир' },
           ].map(t => (
             <button key={t.key} onClick={() => setTab(t.key)} style={{
-              flex: 1, padding: '8px 0', borderRadius: 12, fontSize: 12, fontWeight: 700,
+              flex: 1, padding: '8px 0', borderRadius: 12, fontSize: 11, fontWeight: 700,
               border: 'none', cursor: 'pointer', transition: 'all .2s',
-              backgroundColor: tab === t.key ? '#D4A843' : 'rgba(255,255,255,0.06)',
+              backgroundColor: tab === t.key ? (t.key === 'pipeline' ? '#38bdf8' : '#D4A843') : 'rgba(255,255,255,0.06)',
               color: tab === t.key ? '#000' : '#9ca3af',
             }}>
               {t.label}
@@ -494,7 +541,54 @@ export default function FieldLeaderboard() {
 
         {loading ? <Skeleton /> : (
 
-          tab === 'tournament' ? (
+          tab === 'pipeline' ? (
+            /* ══════════ PIPELINE TAB ══════════ */
+            <>
+              {pipelineMyRank && (
+                <div style={{
+                  padding: '10px 14px', borderRadius: 14, marginBottom: 8,
+                  background: 'linear-gradient(135deg, rgba(56,189,248,0.14), rgba(56,189,248,0.06))',
+                  border: '1.5px solid rgba(56,189,248,0.4)',
+                  display: 'flex', alignItems: 'center', gap: 12,
+                }}>
+                  <div style={{ fontSize: 22 }}>🌊</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, color: '#38bdf8', fontWeight: 700 }}>Ваша позиция в Рунопроводе</div>
+                    <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 1 }}>
+                      #{pipelineMyRank} · сортировка по ⭐ за неделю
+                    </div>
+                  </div>
+                  <button onClick={() => navigate('/field/pipeline')} style={{
+                    padding: '8px 12px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                    background: '#38bdf8', color: '#000', fontSize: 11, fontWeight: 800,
+                  }}>
+                    Играть
+                  </button>
+                </div>
+              )}
+              {pipelineBoard.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 48 }}>
+                  <span style={{ fontSize: 40 }}>🌊</span>
+                  <p style={{ color: '#6b7280', marginTop: 10 }}>Пока никто не прошёл уровни</p>
+                  <button onClick={() => navigate('/field/pipeline')} style={{
+                    marginTop: 12, padding: '10px 20px', borderRadius: 12, border: 'none',
+                    background: '#38bdf8', color: '#000', fontWeight: 800, cursor: 'pointer',
+                  }}>
+                    Быть первым!
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <p style={{ fontSize: 10, color: '#6b7280', textAlign: 'center', marginBottom: 4 }}>
+                    Недельный рейтинг · ⭐ звёзды за прохождения
+                  </p>
+                  {pipelineBoard.map((player, idx) => (
+                    <PipelineRow key={player.employee_id} player={player} isSelf={false} idx={idx} visible={rowsVisible} />
+                  ))}
+                </div>
+              )}
+            </>
+          ) : tab === 'tournament' ? (
             /* ══════════ TOURNAMENT TAB ══════════ */
             <div style={{
               background: 'rgba(255,255,255,0.03)', borderRadius: 16, padding: 14,
