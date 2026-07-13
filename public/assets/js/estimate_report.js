@@ -502,7 +502,12 @@ window.AsgardEstimateReportPage = (function () {
     return (bytes / 1048576).toFixed(1) + ' МБ';
   }
   function fileDownloadUrl(doc) {
-    return '/api/files/download/' + encodeURIComponent(doc.filename);
+    if (window.AsgardFileDownload && AsgardFileDownload.fileDownloadUrl) {
+      return AsgardFileDownload.fileDownloadUrl(doc);
+    }
+    const url = '/api/files/download/' + encodeURIComponent(doc.filename);
+    const t = localStorage.getItem('asgard_token') || '';
+    return t ? url + '?token=' + encodeURIComponent(t) : url;
   }
   function isPreviewable(mime) { return PREVIEWABLE_MIME.includes(mime); }
   function isArchive(mime) { return ARCHIVE_MIME.includes(mime); }

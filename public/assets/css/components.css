@@ -4510,6 +4510,354 @@ html[data-theme="light"] .viking-welcome .vw-saga-wrap {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
+   DASHBOARD v2 — «Тихий Очаг» (лаконичный Viking)
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Компактная шапка ── */
+.custom-dash .dash-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.custom-dash .dash-head-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--gold);
+  font-family: var(--ff-norse, Cinzel, serif);
+}
+.custom-dash .dash-head-rune {
+  font-size: 20px;
+  line-height: 1;
+  color: var(--gold);
+}
+.custom-dash .dash-head-meta {
+  font-size: 12px;
+  color: var(--t3);
+  margin-top: 4px;
+  padding-left: 30px;
+}
+.custom-dash .dash-head-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ── 12-col сетка ── */
+.dash-grid-v2 {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 16px;
+}
+.dash-grid-v2 .dash-widget-v2 {
+  grid-column: span 4;
+  min-height: 120px;
+}
+.dash-grid-v2 .dash-widget-v2.wide {
+  grid-column: span 8;
+}
+.dash-grid-v2 .dash-widget-v2.full {
+  grid-column: span 12;
+  min-height: auto;
+}
+@media (max-width: 1200px) {
+  .dash-grid-v2 .dash-widget-v2 { grid-column: span 6; }
+  .dash-grid-v2 .dash-widget-v2.wide { grid-column: span 12; }
+}
+@media (max-width: 700px) {
+  .dash-grid-v2 { grid-template-columns: 1fr; }
+  .dash-grid-v2 .dash-widget-v2,
+  .dash-grid-v2 .dash-widget-v2.wide,
+  .dash-grid-v2 .dash-widget-v2.full { grid-column: span 1; }
+}
+
+/* ── Карточка виджета v2 ── */
+.dash-widget-v2 {
+  position: relative;
+  background: var(--bg2);
+  border: 1px solid var(--brd);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: border-color var(--fast);
+}
+.dash-widget-v2::before { display: none; }
+.dash-widget-v2:hover {
+  border-color: var(--brd);
+  transform: none;
+  box-shadow: none;
+}
+.dash-widget-v2[data-cat="works"]  { border-left: 2px solid var(--red); }
+.dash-widget-v2[data-cat="money"]  { border-left: 2px solid var(--gold); }
+.dash-widget-v2[data-cat="info"]   { border-left: 2px solid var(--blue); }
+.dash-widget-v2[data-cat="action"] { border-left: 2px solid var(--ok); }
+.dash-widget-v2.bare { border-left: 2px solid var(--gold); }
+
+.dash-widget-v2 .dw-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px 8px;
+  border-bottom: 1px solid var(--brd-m);
+}
+.dash-widget-v2 .dw-cat-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--t3);
+}
+.dash-widget-v2[data-cat="works"]  .dw-cat-dot { background: var(--red); }
+.dash-widget-v2[data-cat="money"]  .dw-cat-dot { background: var(--gold); }
+.dash-widget-v2[data-cat="info"]   .dw-cat-dot { background: var(--blue); }
+.dash-widget-v2[data-cat="action"] .dw-cat-dot { background: var(--ok); }
+
+.dash-widget-v2 .dw-label {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--t2);
+}
+.dash-widget-v2 .dw-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--r-full, 9999px);
+  background: var(--bg3);
+  color: var(--info-t, var(--info));
+}
+.dash-widget-v2 .dw-body {
+  padding: 12px 16px 16px;
+  flex: 1;
+  min-height: 60px;
+  font-size: 13px;
+  color: var(--t1);
+}
+
+/* ── KPI-полоса ── */
+.kpi-strip-widget {
+  position: relative;
+  border-left: none !important;
+}
+.kpi-strip-widget .kpi-strip-inner {
+  padding: 0;
+  min-height: auto;
+}
+.kpi-strip-widget .btn-remove.kpi-remove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  opacity: 0;
+  transition: opacity var(--fast);
+}
+.kpi-strip-widget:hover .btn-remove.kpi-remove { opacity: 1; }
+
+.dw-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+.dw-kpi-card {
+  padding: 14px 16px;
+  background: var(--bg2);
+  border: 1px solid var(--brd);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: border-color var(--fast), background var(--fast);
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+.dw-kpi-card:hover {
+  background: var(--bg3);
+  border-color: var(--brd);
+}
+.dw-kpi-card[data-tone="err"]  { border-left: 2px solid var(--err); }
+.dw-kpi-card[data-tone="warn"] { border-left: 2px solid var(--warn); }
+.dw-kpi-card[data-tone="gold"] { border-left: 2px solid var(--gold); }
+.dw-kpi-card[data-tone="info"] { border-left: 2px solid var(--info); }
+.dw-kpi-card .dw-kpi-num {
+  font-size: 28px;
+  font-weight: 900;
+  line-height: 1.1;
+}
+.dw-kpi-card[data-tone="err"]  .dw-kpi-num { color: var(--err-t, var(--err)); }
+.dw-kpi-card[data-tone="warn"] .dw-kpi-num { color: var(--warn-t, var(--warn)); }
+.dw-kpi-card[data-tone="gold"] .dw-kpi-num { color: var(--gold-l, var(--gold)); }
+.dw-kpi-card[data-tone="info"] .dw-kpi-num { color: var(--info-t, var(--info)); }
+.dw-kpi-card .dw-kpi-lab {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--t2);
+  margin-top: 4px;
+}
+.dw-kpi-card .dw-kpi-sub {
+  font-size: 11px;
+  color: var(--t3);
+  margin-top: 2px;
+}
+@media (max-width: 900px) {
+  .dw-kpi-strip { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 500px) {
+  .dw-kpi-strip { grid-template-columns: 1fr; }
+}
+
+/* ── Единые паттерны контента ── */
+.dw-row {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--brd-m);
+}
+.dw-row:last-child { border-bottom: none; }
+.dw-row .dw-row-t1 {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--t1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dw-row .dw-row-t2 {
+  font-size: 12px;
+  color: var(--t3);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dw-row-flex {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--brd-m);
+}
+.dw-row-flex:last-child { border-bottom: none; }
+.dw-empty {
+  text-align: center;
+  color: var(--t3);
+  padding: 18px 0;
+  font-size: 12.5px;
+}
+.dw-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--t3);
+  letter-spacing: 0.06em;
+  text-decoration: none;
+  margin-top: 8px;
+  padding: 6px 12px;
+  border-radius: var(--r-full, 9999px);
+  border: 1px solid var(--brd-m);
+  background: var(--bg3);
+  transition: color var(--fast), border-color var(--fast);
+}
+.dw-link:hover {
+  color: var(--gold);
+  border-color: var(--gold);
+}
+
+/* ── Welcome компактный ── */
+.dw-welcome {
+  padding: 4px 0;
+}
+.dw-welcome .dw-welcome-greet {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--t1);
+  line-height: 1.35;
+}
+.dw-welcome .dw-welcome-meta {
+  font-size: 11px;
+  color: var(--t3);
+  margin-top: 6px;
+  letter-spacing: 0.04em;
+}
+.dw-welcome .dw-welcome-saga {
+  font-size: 12.5px;
+  font-style: italic;
+  color: var(--t2);
+  margin-top: 10px;
+  line-height: 1.45;
+}
+
+/* ── Quick actions v2 ── */
+.dw-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.dw-quick-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 8px;
+  background: var(--bg3);
+  border: 1px solid var(--brd);
+  border-radius: var(--r-md);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--t2);
+  cursor: pointer;
+  text-decoration: none;
+  transition: color var(--fast), border-color var(--fast), background var(--fast);
+}
+.dw-quick-btn:hover {
+  color: var(--gold);
+  border-color: var(--gold);
+  background: var(--gold-bg);
+}
+
+/* ── Todo dot ── */
+.dw-todo-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 12.5px;
+  color: var(--t1);
+}
+.dw-todo-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warn);
+  flex-shrink: 0;
+}
+.dw-todo-dot.done { background: var(--t3); }
+
+/* ── Drag v2 ── */
+.dash-widget-v2 .drag-handle {
+  cursor: grab;
+  color: var(--t3);
+  font-size: 14px;
+  opacity: 0.35;
+  transition: opacity var(--fast);
+  user-select: none;
+}
+.dash-widget-v2:hover .drag-handle { opacity: 0.8; }
+.dash-widget-v2.drag-over {
+  outline: 2px dashed var(--gold);
+  outline-offset: -4px;
+}
+.dash-widget-v2.dragging { opacity: 0.45; }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
    FORM SECTIONS
    ═══════════════════════════════════════════════════════════════════════════════ */
 

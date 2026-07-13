@@ -78,6 +78,62 @@ window.AsgardDirectorInboxPage = (function () {
     return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
   }
 
+  /** Предпросмотр вложения (zoom/copy/download через AsgardDocPreview). */
+  function _previewDoc(title, fileUrl, mime) {
+    if (window.AsgardDocPreview) {
+      window.AsgardDocPreview.open({
+        title: title || 'документ',
+        fileUrl,
+        mime: mime || '',
+        downloadUrl: fileUrl
+      });
+      return;
+    }
+    window.open(fileUrl, '_blank', 'noopener');
+  }
+
+  function _bindDocPreviewRows(root) {
+    if (!root) return;
+    root.querySelectorAll('.di-doc-row[data-preview-url]').forEach((row) => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('.di-doc-dl')) return;
+        _previewDoc(row.dataset.previewName, row.dataset.previewUrl, row.dataset.previewMime);
+      });
+      row.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          _previewDoc(row.dataset.previewName, row.dataset.previewUrl, row.dataset.previewMime);
+        }
+      });
+    });
+    root.querySelectorAll('.di-doc-dl').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const href = btn.dataset.href;
+        if (!href) return;
+        const a = document.createElement('a');
+        a.href = href;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.download = '';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      });
+    });
+  }
+
+  function _docRowHtml(icon, name, sizeBytes, href, mime) {
+    const size = sizeBytes ? Math.round(sizeBytes / 1024) + ' КБ' : '';
+    return `<div class="di-doc-row" role="button" tabindex="0"
+      data-preview-url="${href}" data-preview-name="${esc(name)}" data-preview-mime="${esc(mime || '')}"
+      style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--bg-elevated);border-radius:6px;cursor:pointer;font-size:12px;color:var(--text-primary)">
+      ${icon} <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}</span>
+      <span style="color:var(--text-secondary);font-size:10px">${size}</span>
+      <button type="button" class="btn ghost di-doc-dl" style="font-size:10px;padding:2px 6px" data-href="${href}">⬇</button>
+    </div>`;
+  }
+
   async function api(path, opts) {
     opts = opts || {};
     const headers = await _authHeaders();
@@ -532,15 +588,14 @@ window.AsgardDirectorInboxPage = (function () {
       </div>` : '';
 
     const attsBlock = atts.length ? `
-      <div style="margin-top:10px">
+      <div style="margin-top:10px" id="di-inbox-atts">
         <div style="font-size:11px;color:var(--text-secondary);font-weight:600;margin-bottom:6px">Вложения · ${atts.length}</div>
         <div style="display:flex;flex-direction:column;gap:4px">
-          ${atts.map(a => `
-            <a href="/api/inbox-applications/${item.id}/attachments/${a.id}/download?token=${tk}" target="_blank"
-               style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--bg-elevated);border-radius:6px;text-decoration:none;color:var(--text-primary);font-size:12px">
-              📎 <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.original_filename || a.filename)}</span>
-              <span style="color:var(--text-secondary);font-size:10px">${a.size ? Math.round(a.size / 1024) + ' КБ' : ''}</span>
-            </a>`).join('')}
+          ${atts.map(a => {
+            const href = `/api/inbox-applications/${item.id}/attachments/${a.id}/download?token=${tk}`;
+            const name = a.original_filename || a.filename || 'файл';
+            return _docRowHtml('📎', name, a.size, href, a.mime_type);
+          }).join('')}
         </div>
       </div>` : '<div style="margin-top:8px;font-size:12px;color:var(--text-secondary)">Вложений нет</div>';
 
@@ -563,6 +618,7 @@ window.AsgardDirectorInboxPage = (function () {
         $('#di-detail-close').addEventListener('click', hideModal);
         const assignBtn = $('#di-detail-assign');
         if (assignBtn) assignBtn.addEventListener('click', () => { hideModal(); openAssignPmModal(item.id); });
+        _bindDocPreviewRows($('#di-inbox-atts'));
       }
     });
   }
@@ -620,22 +676,15 @@ window.AsgardDirectorInboxPage = (function () {
       size: md.size
     })));
     const attsBlock = allDocs.length ? `
-      <div style="margin-top:10px">
+      <div style="margin-top:10px" id="di-pt-atts">
         <div style="font-size:11px;color:var(--text-secondary);font-weight:600;margin-bottom:6px">Документы · ${allDocs.length}</div>
         <div style="display:flex;flex-direction:column;gap:4px">
           ${allDocs.map(a => {
-            // Wave A+ fix BLOCKER#2: email-attachments под pre_tender идут через
-            // /api/pre-tenders/:ptId/email-attachments/:attId/download (новый endpoint),
-            // а не через /inbox-applications/0/... (хардкод appId=0 давал 404).
             const href = a._src === 'email'
               ? `/api/pre-tenders/${item.id}/email-attachments/${a._id}/download?token=${tk}`
               : `/api/pre-tenders/${item.id}/documents/${a._idx}/download?token=${tk}`;
             const tag = a._src === 'email' ? '📧' : '📤';
-            return `<a href="${href}" target="_blank"
-               style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--bg-elevated);border-radius:6px;text-decoration:none;color:var(--text-primary);font-size:12px">
-              ${tag} <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.name)}</span>
-              <span style="color:var(--text-secondary);font-size:10px">${a.size ? Math.round(a.size / 1024) + ' КБ' : ''}</span>
-            </a>`;
+            return _docRowHtml(tag, a.name, a.size, href, a.mime_type);
           }).join('')}
         </div>
       </div>` : '';
@@ -680,6 +729,7 @@ window.AsgardDirectorInboxPage = (function () {
         $('#di-pt-accept')?.addEventListener('click', () => doPtAction(item.id, 'accept'));
         $('#di-pt-reject')?.addEventListener('click', () => doPtAction(item.id, 'reject'));
         $('#di-pt-need-docs')?.addEventListener('click', () => doPtAction(item.id, 'request-docs'));
+        _bindDocPreviewRows($('#di-pt-atts'));
       }
     });
   }

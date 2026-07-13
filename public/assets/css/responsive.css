@@ -3290,6 +3290,40 @@ html, body {
     padding:12px 14px !important;
   }
 
+  /* ─── Dashboard v2 (Тихий Очаг) ─── */
+  .custom-dash .dash-grid-v2 {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+  .custom-dash .dash-head-title {
+    font-size: 18px !important;
+  }
+  .custom-dash .dash-head-meta {
+    padding-left: 0 !important;
+    text-align: center;
+  }
+  .custom-dash .dash-head {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    text-align: center;
+  }
+  .custom-dash .dash-head-actions {
+    justify-content: center !important;
+  }
+  .dw-kpi-strip {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
+  .dw-kpi-card .dw-kpi-num {
+    font-size: 22px !important;
+  }
+  .dash-widget-v2 .dw-head {
+    padding: 10px 14px 8px !important;
+  }
+  .dash-widget-v2 .dw-body {
+    padding: 10px 14px 14px !important;
+  }
+
   /* ─── More Menu Premium ─── */
   .m-more-page {
     padding:0 !important;

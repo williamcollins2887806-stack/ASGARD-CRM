@@ -30,8 +30,22 @@ window.AsgardCustomDashboard = (function(){
     document.head.appendChild(st);
   })();
 
+  const WIDGET_CAT = {
+    welcome: 'action', kpi_strip: 'action', notifications: 'info', my_works: 'works',
+    my_readiness: 'works', director_readiness: 'works', tenders_funnel: 'works',
+    money_summary: 'money', equipment_value: 'money', birthdays: 'info', approvals: 'action',
+    calendar: 'info', quick_actions: 'action', receipt_scanner: 'action',
+    telephony_status: 'info', overdue_works: 'works', permits_expiry: 'works',
+    team_workload: 'works', tender_dynamics: 'works', kpi_summary: 'money',
+    gantt_mini: 'works', cash_balance: 'money', my_cash_balance: 'money',
+    equipment_alerts: 'works', payroll_pending: 'money', todo: 'action',
+    pre_tenders: 'works', bank_summary: 'money', platform_alerts: 'info',
+    my_mail: 'info', academy: 'info'
+  };
+
   const WIDGET_TYPES = {
-    welcome: { name: 'Приветствие', icon: '👋', size: 'normal', roles: ['*'], render: renderWelcome },
+    kpi_strip: { name: 'Сводка', icon: '', size: 'full', cat: 'action', roles: ['*'], render: renderKpiStrip },
+    welcome: { name: 'Приветствие', icon: '', size: 'normal', cat: 'action', bare: true, roles: ['*'], render: renderWelcome },
     notifications: { name: 'Уведомления', icon: '🔔', size: 'normal', roles: ['*'], render: renderNotifications },
     my_works: { name: 'Мои работы', icon: '🔧', size: 'normal', roles: ['PM','HEAD_PM'], render: renderMyWorks },
     my_readiness: { name: 'Мои проекты', icon: '🎯', size: 'wide', roles: ['PM','HEAD_PM'], render: renderMyReadiness },
@@ -115,16 +129,16 @@ window.AsgardCustomDashboard = (function(){
   };
 
   const DEFAULT_LAYOUTS = {
-    ADMIN: ['welcome','academy','kpi_summary','pre_tenders','quick_actions','overdue_works','tenders_funnel','my_mail','notifications'],
-    PM: ['welcome','academy','quick_actions','my_readiness','my_works','my_cash_balance','gantt_mini','todo','my_mail','notifications','birthdays'],
-    TO: ['welcome','academy','quick_actions','tenders_funnel','tender_dynamics','my_mail','notifications'],
-    HEAD_TO: ['welcome','academy','my_cash_balance','pre_tenders','platform_alerts','tender_dynamics','tenders_funnel','my_mail','notifications'],
-    HEAD_PM: ['welcome','academy','director_readiness','team_workload','overdue_works','gantt_mini','my_mail','notifications'],
-    CHIEF_ENGINEER: ['welcome','academy','equipment_value','equipment_alerts','my_mail','notifications'],
-    HR: ['welcome','academy','permits_expiry','birthdays','my_mail','notifications','calendar'],
-    HR_MANAGER: ['welcome','academy','permits_expiry','birthdays','team_workload','my_mail','notifications'],
-    BUH: ['welcome','academy','cash_balance','bank_summary','money_summary','my_mail','notifications'],
-    DEFAULT: ['welcome','academy','my_mail','notifications','todo','calendar','birthdays']
+    ADMIN: ['kpi_strip','welcome','kpi_summary','pre_tenders','quick_actions','overdue_works','tenders_funnel','my_mail','notifications'],
+    PM: ['kpi_strip','welcome','my_readiness','quick_actions','my_mail','todo','notifications'],
+    TO: ['kpi_strip','welcome','quick_actions','tenders_funnel','tender_dynamics','my_mail','notifications'],
+    HEAD_TO: ['kpi_strip','welcome','my_cash_balance','pre_tenders','platform_alerts','tender_dynamics','tenders_funnel','my_mail','notifications'],
+    HEAD_PM: ['kpi_strip','welcome','director_readiness','team_workload','overdue_works','gantt_mini','my_mail','notifications'],
+    CHIEF_ENGINEER: ['kpi_strip','welcome','equipment_value','equipment_alerts','my_mail','notifications'],
+    HR: ['kpi_strip','welcome','permits_expiry','birthdays','my_mail','notifications'],
+    HR_MANAGER: ['kpi_strip','welcome','permits_expiry','birthdays','team_workload','my_mail','notifications'],
+    BUH: ['kpi_strip','welcome','cash_balance','bank_summary','money_summary','my_mail','notifications'],
+    DEFAULT: ['kpi_strip','welcome','my_mail','notifications','todo']
   };
 
   async function getUserLayout(userId, role) {
@@ -162,36 +176,55 @@ window.AsgardCustomDashboard = (function(){
       });
     });
 
+    const dateStr = new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
+
+    function widgetHtml(id) {
+      const w = WIDGET_TYPES[id];
+      if (!w) return '';
+      const cat = w.cat || WIDGET_CAT[id] || 'info';
+      const sizeClass = w.size === 'wide' ? ' wide' : (w.size === 'full' ? ' full' : '');
+      const bareClass = w.bare ? ' bare' : '';
+      if (id === 'kpi_strip') {
+        return '<div class="dash-widget-v2 full kpi-strip-widget" data-id="' + id + '" data-cat="' + cat + '" draggable="true">' +
+          '<button class="btn-remove kpi-remove" data-id="' + id + '">×</button>' +
+          '<div class="dw-body kpi-strip-inner" id="wc_' + id + '">Загрузка...</div></div>';
+      }
+      if (w.bare) {
+        return '<div class="dash-widget-v2' + sizeClass + bareClass + '" data-id="' + id + '" data-cat="' + cat + '" draggable="true">' +
+          '<div class="dw-head" style="border-bottom:none;padding-bottom:0">' +
+            '<span class="drag-handle">≡</span>' +
+            '<span style="flex:1"></span>' +
+            '<button class="btn-remove" data-id="' + id + '">×</button>' +
+          '</div>' +
+          '<div class="dw-body" id="wc_' + id + '">Загрузка...</div></div>';
+      }
+      return '<div class="dash-widget-v2' + sizeClass + '" data-id="' + id + '" data-cat="' + cat + '" draggable="true">' +
+        '<div class="dw-head">' +
+          '<span class="drag-handle">≡</span>' +
+          '<span class="dw-cat-dot"></span>' +
+          '<span class="dw-label">' + esc(w.name) + '</span>' +
+          '<button class="btn-remove" data-id="' + id + '">×</button>' +
+        '</div>' +
+        '<div class="dw-body" id="wc_' + id + '">Загрузка...</div>' +
+      '</div>';
+    }
+
     const html = '<div class="custom-dash">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:12px">' +
+      '<div class="dash-head">' +
         '<div>' +
-          '<h2 style="margin:0;color:var(--gold)">&#5765; Зал Ярла</h2>' +
-          '<div class="dash-subtitle">&#5765; &#9670; &#5765; &#9670; &#5765;</div>' +
+          '<h2 class="dash-head-title"><span class="dash-head-rune">\u16DF</span> Зал Ярла</h2>' +
+          '<div class="dash-head-meta">' + esc(dateStr) + ' \u00B7 ' + esc(user.role) + '</div>' +
         '</div>' +
-        '<div style="display:flex;gap:8px">' +
-          '<button class="btn ghost" id="btnAddW" style="border:1px solid var(--brd)">+ Виджет</button>' +
-          '<button class="btn ghost" id="btnResetW" style="border:1px solid var(--brd)">&#8634; Сброс</button>' +
+        '<div class="dash-head-actions">' +
+          '<button class="btn ghost" id="btnAddW">+ Виджет</button>' +
+          '<button class="btn ghost" id="btnResetW">&#8634; Сброс</button>' +
         '</div>' +
       '</div>' +
-      '<div class="dash-rune-divider">&#5765; &#9670; &#9671; &#9670; &#5765;</div>' +
       '<div id="pmDutyBanner" style="display:none;margin-bottom:12px"></div>' +
-      '<div class="dash-grid" id="dashGrid">' +
-        userLayout.map(id => {
-          const w = WIDGET_TYPES[id];
-          if (!w) return '';
-          const sizeClass = (w.size === 'wide') ? ' wide' : '';
-          return '<div class="dash-widget' + sizeClass + '" data-id="' + id + '" draggable="true">' +
-            '<div class="dash-widget-header">' +
-              '<span class="drag-handle">☰</span>' +
-              '<span>' + w.icon + '</span>' +
-              '<span style="flex:1;font-weight:600">' + w.name + '</span>' +
-              '<button class="btn-remove" data-id="' + id + '">✕</button>' +
-            '</div>' +
-            '<div class="dash-widget-content" id="wc_' + id + '">Загрузка...</div>' +
-          '</div>';
-        }).join('') +
+      '<div class="dash-grid-v2" id="dashGrid">' +
+        userLayout.map(id => widgetHtml(id)).join('') +
       '</div>' +
-    '</div>'; // Styles are now in components.css (.dash-grid, .dash-widget, etc.)
+    '</div>';
 
     await pageLayout(html, { title: title || 'Мой дашборд' });
 
@@ -231,7 +264,7 @@ window.AsgardCustomDashboard = (function(){
 
     // === M16: Drag & Drop ===
     let dragSrc = null;
-    document.querySelectorAll('.dash-widget').forEach(w => {
+    document.querySelectorAll('.dash-widget-v2').forEach(w => {
       w.addEventListener('dragstart', e => {
         dragSrc = w;
         w.classList.add('dragging');
@@ -240,7 +273,7 @@ window.AsgardCustomDashboard = (function(){
       });
       w.addEventListener('dragend', () => {
         w.classList.remove('dragging');
-        document.querySelectorAll('.dash-widget').forEach(x => x.classList.remove('drag-over'));
+        document.querySelectorAll('.dash-widget-v2').forEach(x => x.classList.remove('drag-over'));
       });
       w.addEventListener('dragover', e => {
         e.preventDefault();
@@ -278,13 +311,14 @@ window.AsgardCustomDashboard = (function(){
       const curr = new Set(userLayout);
       const avail = available.filter(([id]) => !curr.has(id));
       const html = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">' +
-        avail.map(([id, w]) =>
-          '<div class="widget-pick" data-id="' + id + '" style="padding:16px;border:1px solid var(--brd);border-radius:var(--r-md);text-align:center;cursor:pointer;background:var(--bg3);transition:all 0.15s ease">' +
-            '<div style="font-size:32px;margin-bottom:6px">' + w.icon + '</div>' +
-            '<div style="font-size:13px;font-weight:600;color:var(--t1)">' + w.name + '</div>' +
+        avail.map(([id, w]) => {
+          const cat = w.cat || WIDGET_CAT[id] || 'info';
+          return '<div class="widget-pick" data-id="' + id + '" style="padding:16px;border:1px solid var(--brd);border-left:2px solid var(--' + (cat === 'works' ? 'red' : cat === 'money' ? 'gold' : cat === 'action' ? 'ok' : 'blue') + ');border-radius:var(--r-md);cursor:pointer;background:var(--bg3);transition:all 0.15s ease">' +
+            '<div style="font-size:13px;font-weight:600;color:var(--t1)">' + esc(w.name) + '</div>' +
             (w.size === 'wide' ? '<div style="font-size:10px;color:var(--t3);margin-top:4px">широкий</div>' : '') +
-          '</div>'
-        ).join('') +
+            (w.size === 'full' ? '<div style="font-size:10px;color:var(--t3);margin-top:4px">на всю ширину</div>' : '') +
+          '</div>';
+        }).join('') +
         (avail.length === 0 ? '<div style="grid-column:1/-1;text-align:center;padding:20px;color:var(--t3)">Все виджеты добавлены</div>' : '') +
       '</div>';
       AsgardUI.showModal('Добавить виджет', html);
@@ -306,47 +340,86 @@ window.AsgardCustomDashboard = (function(){
     });
   }
 
+  function _dwEmpty(msg) { return '<div class="dw-empty">' + esc(msg) + '</div>'; }
+  function _dwLink(href, text) { return '<a href="' + href + '" class="dw-link">' + esc(text) + '</a>'; }
+  function _dwRow(t1, t2) {
+    return '<div class="dw-row"><div class="dw-row-t1">' + esc(t1) + '</div>' +
+      (t2 ? '<div class="dw-row-t2">' + esc(t2) + '</div>' : '') + '</div>';
+  }
+
+  async function renderKpiStrip(el, user) {
+    const now = new Date();
+    const role = user.role || '';
+    const isPm = role === 'PM' || role === 'HEAD_PM';
+    const cards = [];
+
+    try {
+      const works = (await AsgardDB.getAll('works') || []).filter(w => {
+        if (!_isClosedWork(w.work_status)) {
+          if (isPm) return w.pm_id === user.id;
+          return true;
+        }
+        return false;
+      });
+      const overdue = works.filter(w => w.end_plan && new Date(w.end_plan) < now).length;
+      const soon = works.filter(w => {
+        if (!w.end_plan) return false;
+        const d = Math.round((new Date(w.end_plan) - now) / 86400000);
+        return d >= 0 && d < 7;
+      }).length;
+      cards.push({ tone: 'err', num: String(overdue), lab: 'Просрочено', sub: overdue === 1 ? 'работа' : 'работы', href: '#/pm-works' });
+      cards.push({ tone: 'warn', num: String(soon), lab: 'Дедлайн < 7д', sub: '', href: '#/gantt-works' });
+    } catch (e) {
+      cards.push({ tone: 'err', num: '—', lab: 'Просрочено', sub: '', href: '#/pm-works' });
+      cards.push({ tone: 'warn', num: '—', lab: 'Дедлайн < 7д', sub: '', href: '#/gantt-works' });
+    }
+
+    let cashNum = '—';
+    try {
+      const auth = await AsgardAuth.getAuth();
+      const resp = await fetch('/api/cash/my-balance', { headers: { Authorization: 'Bearer ' + auth.token } });
+      if (resp.ok) {
+        const d = await resp.json();
+        cashNum = d.balance > 0 ? formatMoney(d.balance) : '0';
+      }
+    } catch (e) { /* noop */ }
+    cards.push({ tone: 'gold', num: cashNum, lab: 'Подотчётные', sub: '', href: '#/cash' });
+
+    let unreadTotal = 0;
+    try {
+      const notifs = (await AsgardDB.byIndex('notifications', 'user_id', user.id) || []).filter(x => !x.is_read);
+      unreadTotal += notifs.length;
+    } catch (e) { /* noop */ }
+    try {
+      const auth = await AsgardAuth.getAuth();
+      const mailResp = await fetch('/api/my-mail/stats', { headers: { Authorization: 'Bearer ' + auth.token } });
+      if (mailResp.ok) {
+        const ms = await mailResp.json();
+        unreadTotal += ms.unread || 0;
+      }
+    } catch (e) { /* noop */ }
+    cards.push({ tone: 'info', num: String(unreadTotal), lab: 'Непрочитано', sub: 'уведомления + почта', href: '#/notifications' });
+
+    el.innerHTML = '<div class="dw-kpi-strip">' + cards.map(c =>
+      '<a class="dw-kpi-card" data-tone="' + c.tone + '" href="' + c.href + '" onclick="location.hash=\'' + c.href.slice(1) + '\';return false">' +
+        '<div class="dw-kpi-num">' + esc(c.num) + '</div>' +
+        '<div class="dw-kpi-lab">' + esc(c.lab) + '</div>' +
+        (c.sub ? '<div class="dw-kpi-sub">' + esc(c.sub) + '</div>' : '') +
+      '</a>'
+    ).join('') + '</div>';
+  }
+
   async function renderWelcome(el, user) {
     const hour = new Date().getHours();
     const _fullName = user.name || user.login;
     const _firstName = (_fullName || "").split(" ")[0];
-    const _patr = user.patronymic || "";
-    const name = _patr ? (_firstName + " " + _patr) : _fullName;
+    const name = _firstName || _fullName;
 
-    // Viking greetings by time of day
-    const greetings = {
-      morning: [
-        'Вель комен, {n}! Солнце встаёт — и твоя слава.',
-        'Хайль, {n}! Утро несёт новые битвы.',
-        'Слава Одину, {n} здесь! Да будет день богатым.',
-        'Восход приветствует тебя, {n}! К делам!'
-      ],
-      day: [
-        'Хайль, воин {n}! Путь до Вальгаллы идёт через дела.',
-        'Тор благословляет, {n}! Продолжай свой поход.',
-        'Дружина сильна, {n} на посту! За работу.',
-        '{n}, день в разгаре — время крепить славу!'
-      ],
-      evening: [
-        'Вечер, {n}! Время считать добычу дня.',
-        'Хайль, {n}! Сумерки близки, но дела не ждут.',
-        '{n}, закат зовёт — заверши начатое.',
-        'Валькирии поют, {n}. Заканчивай достойно.'
-      ],
-      night: [
-        'Поздний час, {n}! Истинные воины не спят.',
-        'Ночь тиха, {n}. Время для мудрых решений.',
-        '{n} бодрствует! Один тоже не дремлет.',
-        'Звёзды смотрят, {n}. Работай во славу!'
-      ]
-    };
-
-    let pool;
-    if (hour >= 6 && hour < 12) pool = greetings.morning;
-    else if (hour >= 12 && hour < 18) pool = greetings.day;
-    else if (hour >= 18 && hour < 22) pool = greetings.evening;
-    else pool = greetings.night;
-    const greeting = pool[Math.floor(Math.random() * pool.length)].replace('{n}', esc(name));
+    let greetLabel;
+    if (hour >= 6 && hour < 12) greetLabel = 'Доброе утро';
+    else if (hour >= 12 && hour < 18) greetLabel = 'Добрый день';
+    else if (hour >= 18 && hour < 22) greetLabel = 'Добрый вечер';
+    else greetLabel = 'Доброй ночи';
 
     const sagas = [
       'План — щит. Факт — сталь.',
@@ -358,32 +431,28 @@ window.AsgardCustomDashboard = (function(){
       'Честь дороже золота. Но золото тоже считай.'
     ];
     const saga = sagas[Math.floor(Math.random() * sagas.length)];
-
     const dateStr = new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
 
     el.innerHTML =
-      '<div class="viking-welcome">' +
-        '<span class="vw-rune">\u16DF</span>' +
-        '<div class="vw-greeting">' + greeting + '</div>' +
-        '<div class="vw-role">' + esc(user.role) + ' \u00B7 ' + esc(dateStr) + '</div>' +
-        '<div class="vw-saga-wrap">' +
-          '<div class="vw-saga-label">\u16B1 Сага дня</div>' +
-          '<div class="vw-saga-text">' + esc(saga) + '</div>' +
-        '</div>' +
-        '<div class="vw-runes-row">\u16DF \u16B1 \u16A2 \u16C7 \u16D2</div>' +
+      '<div class="dw-welcome">' +
+        '<div class="dw-welcome-greet">' + esc(greetLabel) + ', ' + esc(name) + '</div>' +
+        '<div class="dw-welcome-meta">' + esc(user.role) + ' \u00B7 ' + esc(dateStr) + '</div>' +
+        '<div class="dw-welcome-saga">\u00AB' + esc(saga) + '\u00BB</div>' +
       '</div>';
   }
 
   async function renderNotifications(el, user) {
     const n = (await AsgardDB.byIndex('notifications','user_id',user.id)||[]).filter(x=>!x.is_read).slice(0,5);
-    if (!n.length) { el.innerHTML = '<div class="help" style="text-align:center;padding:16px 0">Нет уведомлений</div>'; return; }
-    el.innerHTML = n.map(x=>'<div style="padding:10px 12px;margin-bottom:6px;background:var(--bg3);border-radius:var(--r-sm);border-left:3px solid var(--gold)"><div style="font-weight:600;font-size:13px;color:var(--t1)">'+esc(x.title)+'</div><div style="font-size:12px;color:var(--t3);margin-top:2px">'+esc((x.message||'').slice(0,60))+'</div></div>').join('');
+    if (!n.length) { el.innerHTML = _dwEmpty('Нет уведомлений'); return; }
+    el.innerHTML = n.map(x => _dwRow(x.title, (x.message || '').slice(0, 60))).join('') +
+      _dwLink('#/notifications', 'Все уведомления \u2192');
   }
 
   async function renderMyWorks(el, user) {
     const w = (await AsgardDB.getAll('works')||[]).filter(x=>x.pm_id===user.id&&!_isClosedWork(x.work_status)).slice(0,5);
-    if (!w.length) { el.innerHTML = '<div class="help" style="text-align:center;padding:16px 0">Нет активных работ</div>'; return; }
-    el.innerHTML = w.map(x=>'<div style="padding:10px 12px;margin-bottom:6px;background:var(--bg3);border-radius:var(--r-sm);border-left:3px solid var(--red)"><div style="font-weight:600;font-size:13px;color:var(--t1)">'+esc(x.work_title)+'</div><div style="font-size:12px;color:var(--t3);margin-top:2px">'+esc(x.customer_name)+' \u00B7 '+esc(x.work_status)+'</div></div>').join('');
+    if (!w.length) { el.innerHTML = _dwEmpty('Нет активных работ'); return; }
+    el.innerHTML = w.map(x => _dwRow(x.work_title, (x.customer_name || '') + ' \u00B7 ' + (x.work_status || ''))).join('') +
+      _dwLink('#/pm-works', 'Все работы \u2192');
   }
 
   // ── Helpers готовности/статуса работ для виджетов РП и директора ──────────
@@ -448,7 +517,7 @@ window.AsgardCustomDashboard = (function(){
   async function renderMyReadiness(el, user){
     const esc = AsgardUI.esc, money = AsgardUI.money;
     const all = (await AsgardDB.getAll('works')||[]).filter(w => w.pm_id===user.id && !_isClosedWork(w.work_status));
-    if(!all.length){ el.innerHTML = '<div class="help" style="text-align:center;padding:16px 0">Нет активных проектов</div>'; return; }
+    if(!all.length){ el.innerHTML = _dwEmpty('Нет активных проектов'); return; }
     const prep = all.filter(_isPrep);
     const active = all.filter(w => !_isPrep(w));
     const summary = await _readinessSummary(prep.map(w=>w.id));
@@ -456,7 +525,7 @@ window.AsgardCustomDashboard = (function(){
     let html = '';
     // Фаза подготовки — карточки готовности
     if(prep.length){
-      html += '<div class="dwr-sec-title">🎯 В подготовке</div>';
+      html += '<div class="dwr-sec-title">В подготовке</div>';
       html += prep.map(w=>{
         const s = summary[w.id] || {};
         const pct = s.overall_percent||0;
@@ -476,10 +545,10 @@ window.AsgardCustomDashboard = (function(){
     }
     // Фаза в работе — статус (маржа/сроки/перерасход) — грузим финсводку
     if(active.length){
-      html += '<div class="dwr-sec-title" style="margin-top:10px">⚙️ В работе</div>';
+      html += '<div class="dwr-sec-title" style="margin-top:10px">В работе</div>';
       html += '<div id="dwr-active-'+user.id+'">'+active.map(w=>'<div class="dwr-arow" data-work="'+w.id+'"><div class="dwr-name">'+esc(w.work_title||('Работа #'+w.id))+'</div><div class="dwr-sub">загрузка статуса…</div></div>').join('')+'</div>';
     }
-    el.innerHTML = '<div class="dwr-wrap">'+html+'</div>';
+    el.innerHTML = '<div class="dwr-wrap">'+html+'</div>' + _dwLink('#/pm-works', 'Все работы \u2192');
     _drawRings(el);
 
     // Догружаем статус активных работ (параллельно, без блокировки)
@@ -702,12 +771,14 @@ window.AsgardCustomDashboard = (function(){
 
   async function renderQuickActions(el, user) {
     const acts = [];
-    if (['ADMIN','TO'].includes(user.role)||user.role?.startsWith('DIRECTOR')) acts.push({i:'📋',l:'Тендер',h:'#/tenders?new=1'});
-    if (user.role==='PM') acts.push({i:'📷',l:'Чек',a:'scan'});
-    acts.push({i:'💬',l:'Чат',h:'#/chat'});
-    el.innerHTML = '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">'+acts.map(a=>
-      '<button class="btn ghost" '+(a.h?'onclick="location.hash=\''+a.h+'\'"':'data-action="'+a.a+'"')+' style="flex:1;min-width:80px;flex-direction:column;display:flex;align-items:center;padding:14px 10px;border:1px solid var(--brd);border-radius:var(--r-md);background:var(--bg3)"><span style="font-size:22px;margin-bottom:4px">'+a.i+'</span><span style="font-size:11px;color:var(--t2)">'+a.l+'</span></button>'
-    ).join('')+'</div>';
+    if (['ADMIN','TO'].includes(user.role)||user.role?.startsWith('DIRECTOR')) acts.push({l:'Тендер',h:'#/tenders?new=1'});
+    if (user.role==='PM' || user.role==='HEAD_PM') acts.push({l:'Чек',a:'scan'});
+    acts.push({l:'Чат',h:'#/chat'});
+    acts.push({l:'Календарь',h:'#/calendar'});
+    el.innerHTML = '<div class="dw-quick-grid">' + acts.map(a => {
+      if (a.h) return '<a class="dw-quick-btn" href="' + a.h + '" onclick="location.hash=\'' + a.h.slice(1) + '\';return false">' + esc(a.l) + '</a>';
+      return '<button type="button" class="dw-quick-btn" data-action="' + a.a + '">' + esc(a.l) + '</button>';
+    }).join('') + '</div>';
     el.querySelector('[data-action="scan"]')?.addEventListener('click',()=>{if(window.AsgardReceiptScanner)AsgardReceiptScanner.openScanner();});
   }
 
@@ -1095,18 +1166,17 @@ window.AsgardCustomDashboard = (function(){
     }).sort((a, b) => new Date(a.end_plan) - new Date(b.end_plan)).slice(0, 6);
 
     if (!soon.length) {
-      el.innerHTML = '<div class="help" style="text-align:center;padding:20px">Нет дедлайнов в ближайшие 30 дней</div>';
+      el.innerHTML = _dwEmpty('Нет дедлайнов в ближайшие 30 дней');
       return;
     }
     el.innerHTML = soon.map(w => {
       const days = Math.round((new Date(w.end_plan) - now) / 86400000);
-      const color = days <= 3 ? 'var(--red)' : days <= 7 ? 'var(--amber)' : 'var(--text-muted)';
-      return '<div style="padding:10px 0;display:flex;justify-content:space-between;gap:8px">' +
-        '<div style="font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(w.work_title || '') + '</div>' +
-        '<div style="font-size:11px;font-weight:700;color:' + color + ';white-space:nowrap">' + days + ' дн.</div>' +
+      const color = days <= 3 ? 'var(--err-t)' : days <= 7 ? 'var(--warn-t)' : 'var(--t3)';
+      return '<div class="dw-row-flex">' +
+        '<div style="flex:1;min-width:0"><div class="dw-row-t1">' + esc(w.work_title || '') + '</div></div>' +
+        '<div style="font-size:12px;font-weight:700;color:' + color + ';white-space:nowrap">' + days + ' дн.</div>' +
       '</div>';
-    }).join('') +
-    '<a href="#/gantt-works" class="btn mini ghost" style="margin-top:8px;font-size:11px">Гантт →</a>';
+    }).join('') + _dwLink('#/gantt-works', 'Гантт \u2192');
   }
 
   async function renderCashBalance(el, user) {
@@ -1228,22 +1298,16 @@ window.AsgardCustomDashboard = (function(){
       const data = await resp.json();
       const items = (data.items || data || []).slice(0, 8);
       if (!items.length) {
-        el.innerHTML = '<div style="text-align:center;padding:16px"><div style="font-size:32px;margin-bottom:8px">✅</div><div class="help">Нет задач</div><a href="#/todo" class="btn mini ghost" style="margin-top:8px">Открыть</a></div>';
+        el.innerHTML = _dwEmpty('Нет задач') + _dwLink('#/todo', 'Открыть');
         return;
       }
       const pending = items.filter(i => !i.done);
-      const done = items.filter(i => i.done);
-      el.innerHTML = '<div style="font-size:12px;font-weight:700;margin-bottom:8px">' + pending.length + ' активных</div>' +
-        pending.slice(0, 5).map(i =>
-          '<div style="padding:7px 0;display:flex;gap:8px;align-items:center">' +
-            '<span style="color:var(--amber);font-size:14px">○</span>' +
-            '<span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(i.text || i.title || '') + '</span>' +
-          '</div>'
-        ).join('') +
-        (done.length ? '<div style="font-size:11px;color:var(--text-muted);margin-top:8px">' + done.length + ' выполнено</div>' : '') +
-        '<a href="#/todo" class="btn mini ghost" style="margin-top:8px;font-size:11px">Все задачи →</a>';
+      el.innerHTML = pending.slice(0, 5).map(i =>
+        '<div class="dw-todo-item"><span class="dw-todo-dot"></span>' +
+        '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(i.text || i.title || '') + '</span></div>'
+      ).join('') + _dwLink('#/todo', 'Все задачи \u2192');
     } catch(e) {
-      el.innerHTML = '<div class="help" style="text-align:center">Ошибка загрузки</div>';
+      el.innerHTML = _dwEmpty('Ошибка загрузки');
     }
   }
 
@@ -1443,49 +1507,31 @@ window.AsgardCustomDashboard = (function(){
       // No mail configured
       if (!stats || (total === 0 && unread === 0 && emails.length === 0)) {
         var isAdm = user && (user.role === 'ADMIN' || (user.role||'').startsWith('DIRECTOR'));
-        el.innerHTML = '<div style="text-align:center;padding:20px 0">' +
-          '<div style="font-size:32px;margin-bottom:12px">\u2709\ufe0f</div>' +
-          '<div style="color:var(--text-muted);font-size:13px">\u041f\u043e\u0447\u0442\u0430 \u043d\u0435 \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0435\u043d\u0430</div>' +
-          (isAdm ? '<a href="#/my-mail" class="btn ghost" style="margin-top:12px;font-size:12px">\u041d\u0430\u0441\u0442\u0440\u043e\u0438\u0442\u044c</a>' : '<div style="color:var(--text-muted);font-size:11px;margin-top:8px">\u041e\u0431\u0440\u0430\u0442\u0438\u0442\u0435\u0441\u044c \u043a \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440\u0443</div>') +
-          '</div>';
+        el.innerHTML = _dwEmpty('Почта не подключена') +
+          (isAdm ? _dwLink('#/my-mail', 'Настроить') : '');
         return;
       }
 
-      // Stats badge
-      var unreadBadge = unread > 0
-        ? '<span style="background:var(--red,#e74c3c);color:#fff;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;margin-left:8px">' + unread + ' \u043d\u043e\u0432\u044b\u0445</span>'
-        : '<span style="color:var(--ok-t);font-size:12px;margin-left:8px">\u0432\u0441\u0451 \u043f\u0440\u043e\u0447\u0438\u0442\u0430\u043d\u043e</span>';
-
-      // Email list
       var listHtml = '';
       if (emails.length > 0) {
-        listHtml = emails.slice(0, 5).map(function(e) {
-          var from = esc(e.from_name || e.from_address || e.email_from_name || e.email_from || '');
-          var subj = esc(e.subject || e.email_subject || '(\u0431\u0435\u0437 \u0442\u0435\u043c\u044b)');
-          var snippet = esc((e.snippet || e.body_text || '').substring(0, 60));
-          var isRead = e.is_read;
+        listHtml = emails.slice(0, 4).map(function(e) {
+          var from = e.from_name || e.from_address || e.email_from_name || e.email_from || '';
+          var subj = e.subject || e.email_subject || '(без темы)';
           var date = e.created_at || e.received_at || e.date;
           var ago = date ? _mailAgo(new Date(date)) : '';
-          var readStyle = isRead ? 'opacity:0.7' : 'font-weight:700';
-          var dot = !isRead ? '<span style="width:8px;height:8px;border-radius:50%;background:var(--blue,#3498db);flex-shrink:0;display:inline-block"></span>' : '';
-          return '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--brd-m);cursor:pointer;' + readStyle + '" onclick="location.hash=\'' + pageUrl + '\'">'+
-            dot +
-            '<div style="flex:1;min-width:0">'+
-              '<div style="display:flex;justify-content:space-between;align-items:center">'+
-                '<span style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%">' + from + '</span>'+
-                '<span style="font-size:10px;color:var(--text-muted);white-space:nowrap">' + ago + '</span>'+
-              '</div>'+
-              '<div style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--t2)">' + subj + '</div>'+
-            '</div></div>';
+          return '<div class="dw-row" style="cursor:pointer" onclick="location.hash=\'' + pageUrl.slice(1) + '\'">' +
+            '<div style="display:flex;justify-content:space-between;gap:8px">' +
+              '<span class="dw-row-t1" style="' + (e.is_read ? '' : 'font-weight:700') + '">' + esc(from) + '</span>' +
+              '<span style="font-size:10px;color:var(--t3);flex-shrink:0">' + esc(ago) + '</span>' +
+            '</div>' +
+            '<div class="dw-row-t2">' + esc(subj) + '</div>' +
+          '</div>';
         }).join('');
       } else {
-        listHtml = '<div style="text-align:center;padding:16px 0;color:var(--text-muted);font-size:12px">\u041d\u0435\u0442 \u043f\u0438\u0441\u0435\u043c</div>';
+        listHtml = _dwEmpty('Нет писем');
       }
 
-      el.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">' +
-        '<div style="display:flex;align-items:center"><span style="font-size:14px;font-weight:700">\u2709\ufe0f \u041f\u043e\u0447\u0442\u0430</span>' + unreadBadge + '</div>' +
-        '<a href="' + pageUrl + '" style="font-size:11px;color:var(--blue,#3498db);text-decoration:none">\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u2192</a></div>' +
-        '<div>' + listHtml + '</div>';
+      el.innerHTML = listHtml + _dwLink(pageUrl, 'Открыть почту \u2192');
     } catch(e) {
       el.innerHTML = '<div class="help">\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0438 \u043f\u043e\u0447\u0442\u044b</div>';
       console.warn('[Dashboard] Mail widget error:', e);
