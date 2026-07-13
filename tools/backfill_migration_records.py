@@ -86,11 +86,11 @@ def main():
             f"INSERT INTO migrations (name) VALUES ('{name}') "
             f"ON CONFLICT (name) DO NOTHING RETURNING name"
         )
-        if result == name:
+        if name in result:
             print(f"[ok]   {name}: inserted")
             inserted += 1
         else:
-            print(f"[skip] {name}: conflict or no row ({result!r})")
+            print(f"[skip] {name}: already exists or conflict")
             skipped += 1
 
     print(f"\n=== Done: inserted={inserted}, skipped={skipped} ===")
