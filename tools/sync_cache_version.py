@@ -78,16 +78,31 @@ def main():
     idx_new = re.sub(
         r"(window\.ASGARD_SHELL_VERSION\s*=\s*')[^']+(')",
         rf"\g<1>{new_version}\g<2>",
-        idx_content,
-        count=1
+        idx_content
     )
-    # Все ?v=X.Y.Z → ?v=NEW (только в href/src= с assets)
-    pattern = r"((?:href|src)=\"[^\"]*\?v=)[0-9a-zA-Z._-]+"
+    # Все ?v=X.Y.Z → ?v=NEW (любые вхождения в index.html)
+    pattern = r"\?v=[0-9a-zA-Z._-]+"
     count = len(re.findall(pattern, idx_new))
-    idx_new = re.sub(pattern, rf"\g<1>{new_version}", idx_new)
+    idx_new = re.sub(pattern, f"?v={new_version}", idx_new)
+    # Проверка: не осталось чужих ?v=
+    stray = set(re.findall(r"\?v=([0-9a-zA-Z._-]+)", idx_new))
+    stray.discard(new_version)
+    if stray:
+        print(f'WARN: в index.html остались другие ?v=: {sorted(stray)}', file=sys.stderr)
     with open(INDEX, 'w', encoding='utf-8', newline='') as f:
         f.write(idx_new)
     print(f'  ✓ public/index.html — заменено {count} ссылок ?v=')
+
+    # 4. offline.html — если есть SHELL_VERSION
+    offline = os.path.join(ROOT, 'public', 'offline.html')
+    if os.path.isfile(offline):
+        with open(offline, 'r', encoding='utf-8') as f:
+            off = f.read()
+        off_new = re.sub(r"((?:href|src)=\"[^\"]*\?v=)[0-9a-zA-Z._-]+", rf"\g<1>{new_version}", off)
+        if off_new != off:
+            with open(offline, 'w', encoding='utf-8', newline='') as f:
+                f.write(off_new)
+            print(f'  ✓ public/offline.html')
 
     print(f'\nDONE. Не забудь:')
     print(f'  git add public/sw.js public/index.html')
