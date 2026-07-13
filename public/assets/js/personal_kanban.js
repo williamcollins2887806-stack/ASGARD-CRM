@@ -166,9 +166,12 @@ window.AsgardPersonalKanbanPage = (function () {
     return { ok: res.ok, status: res.status, data };
   }
 
-  // ── CSS (инжект однократный) ─────────────────────────────────────────
+  // ── CSS (инжект; пересоздаём при смене версии — иначе SW оставляет старый #asg-pk-styles без sticker-v2)
+  const PK_STYLE_VER = 'sticker-v2-20260713';
   function _injectStyles() {
-    if (document.getElementById('asg-pk-styles')) return;
+    const prev = document.getElementById('asg-pk-styles');
+    if (prev && prev.dataset.pkStyleVer === PK_STYLE_VER) return;
+    if (prev) prev.remove();
     // 22.06.2026: подгружаем Caveat/Permanent Marker (Google Fonts) через <link> в head —
     // надёжнее чем @import в CSS (некоторые SW/CSP режут @import).
     if (!document.getElementById('asg-pk-fonts')) {
@@ -646,6 +649,7 @@ window.AsgardPersonalKanbanPage = (function () {
 `;
     const st = document.createElement('style');
     st.id = 'asg-pk-styles';
+    st.dataset.pkStyleVer = PK_STYLE_VER;
     st.textContent = css;
     document.head.appendChild(st);
   }

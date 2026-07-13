@@ -614,7 +614,6 @@ async function routes(fastify, options) {
     // ── 7) Логика INN: если пришёл inn И is_self_employed=true (по текущему состоянию).
     if (hasInnInBody && updatedEmp.is_self_employed) {
       const innStr = innRaw == null ? null : String(innRaw).trim();
-      // Пустая строка трактуется как очистка ИНН (но запись self_employed оставляем).
       const innValue = innStr || null;
 
       const { rows: existingSe } = await db.query(
@@ -622,13 +621,15 @@ async function routes(fastify, options) {
         [id]
       );
       if (!existingSe[0]) {
-        // INSERT с минимальным набором.
-        await db.query(
-          `INSERT INTO self_employed (employee_id, full_name, inn, is_active, updated_at)
-           VALUES ($1, $2, $3, true, NOW())`,
-          [id, updatedEmp.fio || updatedEmp.full_name || '', innValue]
-        );
-      } else {
+        // Создаём запись только при непустом ИНН — иначе gender/прочие поля ломаются на NOT NULL.
+        if (innValue) {
+          await db.query(
+            `INSERT INTO self_employed (employee_id, full_name, inn, is_active, updated_at)
+             VALUES ($1, $2, $3, true, NOW())`,
+            [id, updatedEmp.fio || updatedEmp.full_name || '', innValue]
+          );
+        }
+      } else if (innValue !== null) {
         // UPDATE inn + поднимаем is_active, если был false.
         await db.query(
           `UPDATE self_employed

@@ -6009,7 +6009,8 @@ html[data-theme="light"] .sg-key.biometric svg {
  * ─────────────────────────────────────────────────────────────────────── */
 
 /* Заголовок доски «Заметки» — тёмно-кофейный без светящейся тени */
-html[data-theme="light"] .pk3-noteboard-head {
+html[data-theme="light"] .pk3-noteboard-head,
+html[data-theme="light"] .pk3-sticky-board-head {
   color: #3a2f08 !important;
   text-shadow: none !important;
 }
@@ -6018,7 +6019,8 @@ html[data-theme="light"] .pk3-noteboard-head .pk3-noteboard-emoji {
 }
 
 /* Подсказка под заголовком — мягкий кофейный полупрозрачный */
-html[data-theme="light"] .pk3-noteboard-hint {
+html[data-theme="light"] .pk3-noteboard-hint,
+html[data-theme="light"] .pk3-sticky-board-hint {
   color: rgba(40, 30, 8, 0.7) !important;
   text-shadow: none !important;
 }
