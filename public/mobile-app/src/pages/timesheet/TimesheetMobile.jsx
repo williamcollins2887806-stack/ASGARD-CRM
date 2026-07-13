@@ -50,10 +50,10 @@ const CELL_TYPES = {
   night:     { icon: '🌙', label: 'Ночная смена',    color: 'var(--ts-night-fg, var(--blue))',        bg: 'var(--ts-night-bg)',      short: 'Н' },
   warehouse: { icon: '📦', label: 'Склад',           color: 'var(--ts-warehouse-fg, var(--cyan))',    bg: 'var(--ts-warehouse-bg)',  short: 'С' },
   medical:   { icon: '🏥', label: 'Медосмотр',       color: 'var(--ts-medical-fg, var(--red-soft))',  bg: 'var(--ts-medical-bg)',    short: 'М' },
+  training:  { icon: '🎓', label: 'Обучение',        color: 'var(--ts-training-fg, var(--red-soft))', bg: 'var(--ts-training-bg)',   short: 'Об' },
   travel:    { icon: '✈️', label: 'Дорога',          color: 'var(--ts-travel-fg, var(--orange))',     bg: 'var(--ts-travel-bg)',     short: 'Д' },
-  // V255 (23.06.2026): Корабль — альтернатива «Дороги» для ТО за повышенную ставку
-  // (12 баллов × 500 ₽ = 6000 ₽/день). Свой fg — cyan #0EA5E9 (свободный токен).
   ship:      { icon: '🚢', label: 'Корабль',         color: 'var(--ts-ship-fg, #0EA5E9)',             bg: 'var(--ts-ship-bg)',       short: 'КР' },
+  helicopter:{ icon: '🚁', label: 'Вертолёт',        color: 'var(--ts-helicopter-fg, #C49A2E)',       bg: 'var(--ts-helicopter-bg)', short: 'Вр' },
   waiting:   { icon: '⏰', label: 'Ожидание',        color: 'var(--ts-waiting-fg, var(--orange))',    bg: 'var(--ts-waiting-bg)',    short: '⏰' },
 };
 
@@ -61,7 +61,7 @@ const CELL_TYPES = {
 const MODE_TITLES = {
   pm:        'Табель моей дружины',
   warehouse: 'Табель учёта работы на складе',
-  medical:   'Табель учёта МО',
+  medical:   'Табель учёта МО/обучения/иной транспорт',
   travel:    'Табель учёта дороги',
   global:    'Общий табель — Табель дружины',
 };
@@ -72,9 +72,9 @@ const MODE_TITLES = {
 const MODE_TYPES = {
   pm:        ['day', 'night', 'waiting'],
   warehouse: ['warehouse'],
-  medical:   ['medical', 'ship'],
+  medical:   ['medical', 'training', 'ship', 'helicopter'],
   travel:    ['travel'],
-  global:    ['day', 'night', 'warehouse', 'medical', 'travel', 'ship', 'waiting'],
+  global:    ['day', 'night', 'warehouse', 'medical', 'training', 'travel', 'ship', 'helicopter', 'waiting'],
 };
 
 /* ── Кто может закрыть этот scope ─────────────────────────────── */
@@ -104,8 +104,10 @@ function KpiChips({ data, employees, mode }) {
     let perDiemSum = 0;
     let warehouseDays = 0;
     let medicalDays  = 0;
+    let trainingDays = 0;
     let travelDays   = 0;
-    let shipDays     = 0; // V255
+    let shipDays     = 0;
+    let helicopterDays = 0;
     for (const e of employees) {
       pointsSum += Number(e.total_points || 0);
       amountSum += Number(e.total_amount || 0);
@@ -119,11 +121,13 @@ function KpiChips({ data, employees, mode }) {
         else if (d.type === 'night') nightShifts++;
         else if (d.type === 'warehouse') warehouseDays++;
         else if (d.type === 'medical')   medicalDays++;
+        else if (d.type === 'training')  trainingDays++;
         else if (d.type === 'travel')    travelDays++;
         else if (d.type === 'ship')      shipDays++;
+        else if (d.type === 'helicopter') helicopterDays++;
       }
     }
-    return { totalCheckins, dayShifts, nightShifts, amountSum, pointsSum, perDiemSum, warehouseDays, medicalDays, travelDays, shipDays };
+    return { totalCheckins, dayShifts, nightShifts, amountSum, pointsSum, perDiemSum, warehouseDays, medicalDays, trainingDays, travelDays, shipDays, helicopterDays };
   }, [employees]);
 
   const chips = [];
@@ -142,13 +146,13 @@ function KpiChips({ data, employees, mode }) {
     if (stats.nightShifts > 0) chips.push({ icon: '🌙', text: stats.nightShifts });
     if (stats.warehouseDays > 0) chips.push({ icon: '📦', text: stats.warehouseDays });
     if (stats.medicalDays > 0) chips.push({ icon: '🏥', text: stats.medicalDays });
+    if (stats.trainingDays > 0) chips.push({ icon: '🎓', text: stats.trainingDays });
     if (stats.travelDays > 0) chips.push({ icon: '✈️', text: stats.travelDays });
-    if (stats.shipDays > 0) chips.push({ icon: '🚢', text: stats.shipDays }); // V255
+    if (stats.shipDays > 0) chips.push({ icon: '🚢', text: stats.shipDays });
+    if (stats.helicopterDays > 0) chips.push({ icon: '🚁', text: stats.helicopterDays });
   } else {
-    // warehouse / medical / travel — простые отметки.
-    // V255: в medical считаем medical + ship (оба ставит ТО).
     const own = mode === 'warehouse' ? stats.warehouseDays
-              : mode === 'medical'   ? (stats.medicalDays + stats.shipDays)
+              : mode === 'medical'   ? (stats.medicalDays + stats.trainingDays + stats.shipDays + stats.helicopterDays)
               : stats.travelDays;
     if (own > 0) chips.push({ icon: '✓', text: `${own} отметок` });
   }
@@ -232,8 +236,66 @@ export default function TimesheetMobile({ mode = 'global' }) {
   /* FIX 4 — статус закрытия по всем 4 scope'ам (warehouse/medical/travel/global) +
    * pm_locks (массив РП); ВЕЗДЕ показываем чипы, не только в global. */
   const [closureStatus, setClosureStatus] = useState(null);
+  const [fioSearch, setFioSearch] = useState('');
+  const [projectQuery, setProjectQuery] = useState('');
+  const [projectFilter, setProjectFilter] = useState(null);
+  const [rosterLoading, setRosterLoading] = useState(false);
+  const [focusCell, setFocusCell] = useState(null); // { empId, day }
+  const tableRef = useRef(null);
 
   const days = daysInMonth(year, month);
+
+  const displayEmployees = useMemo(() => {
+    let employees = [...(data?.employees || [])];
+    if (projectFilter?.employees?.length) {
+      const byId = new Map(employees.map((e) => [e.id, { ...e }]));
+      for (const r of projectFilter.employees) {
+        if (!byId.has(r.id)) {
+          byId.set(r.id, {
+            id: r.id, fio: r.fio, phone: r.phone, position: r.position,
+            days: {}, days_count: 0, total_points: null,
+            roster_reasons: r.roster_reasons,
+            planned_info: r.planned_info,
+            current_work_title: r.current_work_title,
+            _rosterOnly: true,
+          });
+        } else {
+          const ex = byId.get(r.id);
+          byId.set(r.id, {
+            ...ex,
+            roster_reasons: r.roster_reasons,
+            planned_info: r.planned_info || ex.planned_info,
+            current_work_title: r.current_work_title || ex.current_work_title,
+          });
+        }
+      }
+      employees = [...byId.values()];
+    }
+    const lq = fioSearch.trim().toLowerCase();
+    if (lq) employees = employees.filter((e) => (e.fio || '').toLowerCase().includes(lq));
+    return employees;
+  }, [data, fioSearch, projectFilter]);
+
+  const applyProjectFilter = useCallback(async () => {
+    const q = projectQuery.trim();
+    if (q.length < 2) { toast.error('Введите минимум 2 символа'); return; }
+    setRosterLoading(true);
+    try {
+      const j = await api.get(`/timesheet/v2/${year}/${month}/roster?project_q=${encodeURIComponent(q)}`);
+      setProjectFilter({ query: q, work_matches: j.work_matches || [], employees: j.employees || [] });
+    } catch (e) {
+      toast.error(e.message || 'Не удалось загрузить фильтр');
+    } finally {
+      setRosterLoading(false);
+    }
+  }, [year, month, projectQuery]);
+
+  useEffect(() => {
+    setProjectFilter(null);
+    setProjectQuery('');
+    setFioSearch('');
+    setFocusCell(null);
+  }, [year, month]);
 
   /* ── Fetch табеля + closure-status (FIX 4) ───────────────── */
   const fetchData = useCallback(async () => {
@@ -392,7 +454,16 @@ export default function TimesheetMobile({ mode = 'global' }) {
     }
   };
 
-  const employees = data?.employees || [];
+  const employees = displayEmployees;
+
+  const rosterSummary = useMemo(() => {
+    if (!projectFilter?.employees?.length) return null;
+    const emps = projectFilter.employees;
+    const planned = emps.filter((e) => (e.roster_reasons || []).includes('planned')).length;
+    const approved = emps.filter((e) => (e.roster_reasons || []).includes('approved')).length;
+    const title = projectFilter.work_matches?.[0]?.work_title || projectFilter.query || 'Проект';
+    return { title, count: emps.length, planned, approved };
+  }, [projectFilter]);
 
   return (
     <PageShell
@@ -466,6 +537,84 @@ export default function TimesheetMobile({ mode = 'global' }) {
           <button onClick={() => changeMonth(1)} className="p-3 spring-tap" style={{ minWidth: 44, minHeight: 44 }}>
             <ChevronRight size={22} style={{ color: 'var(--text-primary)' }} />
           </button>
+        </div>
+
+        {/* Поиск ФИО + фильтр по объекту */}
+        <div className="flex flex-col gap-2 mb-3">
+          <div className="relative">
+            <Search size={16} style={{
+              position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)',
+              color: 'var(--text-tertiary)', pointerEvents: 'none',
+            }} />
+            <input
+              type="search"
+              placeholder="Найти рабочего…"
+              value={fioSearch}
+              onChange={(e) => setFioSearch(e.target.value)}
+              className="w-full rounded-xl pl-9 pr-9 py-2.5 text-sm"
+              style={{
+                backgroundColor: 'var(--bg-elevated)',
+                border: '1px solid var(--border-norse)',
+                color: 'var(--text-primary)',
+                minHeight: 44,
+              }}
+            />
+            {fioSearch && (
+              <button onClick={() => setFioSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 p-2 spring-tap"
+                aria-label="Очистить">
+                <X size={16} style={{ color: 'var(--text-tertiary)' }} />
+              </button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="search"
+              placeholder="Объект: МЛСП, Пуровский…"
+              value={projectQuery}
+              onChange={(e) => setProjectQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') applyProjectFilter(); }}
+              className="flex-1 rounded-xl px-3 py-2.5 text-sm"
+              style={{
+                backgroundColor: 'var(--bg-elevated)',
+                border: '1px solid var(--border-norse)',
+                color: 'var(--text-primary)',
+                minHeight: 44,
+              }}
+            />
+            <button onClick={applyProjectFilter} disabled={rosterLoading || projectQuery.trim().length < 2}
+              className="spring-tap rounded-xl px-3 text-sm font-semibold"
+              style={{
+                backgroundColor: 'var(--bg-elevated)',
+                border: '1px solid var(--border-norse)',
+                color: 'var(--gold)',
+                minHeight: 44,
+                opacity: rosterLoading ? 0.5 : 1,
+              }}
+            >
+              {rosterLoading ? '…' : 'Фильтр'}
+            </button>
+            {projectFilter && (
+              <button onClick={() => { setProjectFilter(null); setProjectQuery(''); }}
+                className="spring-tap rounded-xl px-3 text-sm"
+                style={{ color: 'var(--text-tertiary)', minHeight: 44 }}
+              >
+                ×
+              </button>
+            )}
+          </div>
+          {rosterSummary && (
+            <div className="text-xs px-3 py-2 rounded-xl"
+              style={{
+                backgroundColor: 'color-mix(in srgb, var(--blue) 12%, transparent)',
+                color: 'var(--blue)',
+                border: '1px solid color-mix(in srgb, var(--blue) 30%, transparent)',
+              }}
+            >
+              {rosterSummary.title} · {rosterSummary.count} чел.
+              {rosterSummary.planned > 0 && ` · ${rosterSummary.planned} в плане`}
+              {rosterSummary.approved > 0 && ` · ${rosterSummary.approved} утверждён`}
+            </div>
+          )}
         </div>
 
         {/* Lock badge */}
@@ -547,10 +696,13 @@ export default function TimesheetMobile({ mode = 'global' }) {
             icon={CalendarDays}
             iconColor="var(--blue)"
             iconBg="color-mix(in srgb, var(--blue) 10%, transparent)"
-            title="Нет данных"
-            description={`Нет отметок за ${MONTHS[month - 1]} ${year}`}
+            title={fioSearch || projectFilter ? 'Никого не найдено' : 'Нет данных'}
+            description={fioSearch || projectFilter
+              ? 'Попробуйте другой запрос или сбросьте фильтр'
+              : `Нет отметок за ${MONTHS[month - 1]} ${year}`}
           />
         ) : (
+          <div ref={tableRef} className={focusCell ? 'ts-mobile-has-focus' : ''}>
           <TimesheetTable
             employees={employees}
             days={days}
@@ -560,6 +712,8 @@ export default function TimesheetMobile({ mode = 'global' }) {
             viewer={data?.viewer}
             settings={data?.settings}
             locked={!!myLock}
+            focusCell={focusCell}
+            onFocusCell={setFocusCell}
             onCellTap={(emp, day, dayData) => {
               if (myLock) {
                 /* FIX 11 — heavy при ошибке; FIX 14 — унифицированный текст */
@@ -585,6 +739,7 @@ export default function TimesheetMobile({ mode = 'global' }) {
               setCellDetail({ emp, day, ...dayData });
             }}
           />
+          </div>
         )}
       </PullToRefresh>
 
@@ -695,7 +850,7 @@ export default function TimesheetMobile({ mode = 'global' }) {
 /* ════════════════════════════════════════════════════════════════
    Таблица табеля
    ════════════════════════════════════════════════════════════════ */
-function TimesheetTable({ employees, days, year, month, mode, viewer, locked, onCellTap, onCellLongPress, onCellDetail }) {
+function TimesheetTable({ employees, days, year, month, mode, viewer, locked, focusCell, onFocusCell, onCellTap, onCellLongPress, onCellDetail }) {
   // Высчитываем выходные
   const weekendDays = useMemo(() => {
     const set = new Set();
@@ -715,13 +870,13 @@ function TimesheetTable({ employees, days, year, month, mode, viewer, locked, on
   }, [year, month]);
 
   return (
-    <div className="overflow-x-auto -mx-4 px-4" style={{ WebkitOverflowScrolling: 'touch' }}>
+    <div className="overflow-x-auto -mx-4 px-4" style={{ WebkitOverflowScrolling: 'touch', maxHeight: 'calc(100vh - 320px)', overflowY: 'auto' }}>
       {/* FIX 6 — клетки 40×40 (было 32×40) → минимальная ширина больше */}
       <table style={{ borderCollapse: 'separate', borderSpacing: 0, minWidth: days * 44 + 240 }}>
-        <thead>
+        <thead style={{ position: 'sticky', top: 0, zIndex: 4, background: 'var(--bg-primary)' }}>
           <tr>
             <th style={{
-              position: 'sticky', left: 0, top: 0, zIndex: 3,
+              position: 'sticky', left: 0, top: 0, zIndex: 5,
               background: 'var(--bg-primary)',
               padding: '8px 8px 8px 0',
               textAlign: 'left',
@@ -735,6 +890,7 @@ function TimesheetTable({ employees, days, year, month, mode, viewer, locked, on
               const d = i + 1;
               const isWeekend = weekendDays.has(d);
               const isToday = d === todayDay;
+              const isFocusCol = focusCell?.day === d;
               return (
                 <th key={i} style={{
                   padding: '8px 2px',
@@ -746,7 +902,13 @@ function TimesheetTable({ employees, days, year, month, mode, viewer, locked, on
                     ? '2px solid var(--gold)'
                     : '1px solid var(--border-norse)',
                   minWidth: 44,
-                  position: 'relative',
+                  position: 'sticky',
+                  top: 0,
+                  zIndex: 3,
+                  background: isFocusCol
+                    ? 'color-mix(in srgb, var(--gold) 18%, var(--bg-primary))'
+                    : 'var(--bg-primary)',
+                  opacity: focusCell && !isFocusCol ? 0.35 : 1,
                 }}
                   title={isToday ? 'Сегодня' : undefined}
                 >
@@ -802,6 +964,8 @@ function TimesheetTable({ employees, days, year, month, mode, viewer, locked, on
               mode={mode}
               viewer={viewer}
               locked={locked}
+              focusCell={focusCell}
+              onFocusCell={onFocusCell}
               onCellTap={onCellTap}
               onCellLongPress={onCellLongPress}
               onCellDetail={onCellDetail}
@@ -816,8 +980,7 @@ function TimesheetTable({ employees, days, year, month, mode, viewer, locked, on
 /* ════════════════════════════════════════════════════════════════
    Строка рабочего
    ════════════════════════════════════════════════════════════════ */
-function EmployeeRow({ emp, days, weekendDays, todayDay, mode, viewer, locked, onCellTap, onCellLongPress, onCellDetail }) {
-  /* FIX 10 — количество отмеченных дней (любой тип, кроме пустой клетки). */
+function EmployeeRow({ emp, days, weekendDays, todayDay, mode, viewer, locked, focusCell, onFocusCell, onCellTap, onCellLongPress, onCellDetail }) {
   const daysCount = useMemo(() => {
     if (!emp?.days) return 0;
     let n = 0;
@@ -827,11 +990,34 @@ function EmployeeRow({ emp, days, weekendDays, todayDay, mode, viewer, locked, o
     return n;
   }, [emp]);
 
+  const isFocusRow = focusCell?.empId === emp.id;
+  const rowDim = focusCell && !isFocusRow;
+
+  const rosterBadges = emp.roster_reasons?.length ? (
+    <div className="flex flex-wrap gap-1 mt-1">
+      {emp.roster_reasons.includes('on_site') && (
+        <span className="text-[9px] px-1.5 py-0.5 rounded-full" style={{ background: 'var(--bg-elevated)', color: 'var(--text-tertiary)' }}>🏗 сейчас</span>
+      )}
+      {emp.roster_reasons.includes('approved') && (
+        <span className="text-[9px] px-1.5 py-0.5 rounded-full" style={{ background: 'var(--bg-elevated)', color: 'var(--text-tertiary)' }}>✓ утверждён</span>
+      )}
+      {emp.roster_reasons.includes('planned') && (
+        <span className="text-[9px] px-1.5 py-0.5 rounded-full" style={{ background: 'var(--bg-elevated)', color: 'var(--text-tertiary)' }}>📋 в плане</span>
+      )}
+      {emp.roster_reasons.includes('was_on') && (
+        <span className="text-[9px] px-1.5 py-0.5 rounded-full" style={{ background: 'var(--bg-elevated)', color: 'var(--text-tertiary)' }}>↩ был</span>
+      )}
+    </div>
+  ) : null;
+
   return (
-    <tr>
+    <tr style={{ opacity: emp._rosterOnly ? 0.72 : (rowDim ? 0.35 : 1) }}>
       <td style={{
-        position: 'sticky', left: 0, zIndex: 1,
-        background: 'var(--bg-primary)',
+        position: 'sticky', left: 0, zIndex: isFocusRow ? 2 : 1,
+        background: isFocusRow
+          ? 'color-mix(in srgb, var(--gold) 14%, var(--bg-primary))'
+          : 'var(--bg-primary)',
+        boxShadow: isFocusRow ? 'inset 3px 0 0 var(--gold)' : 'none',
         padding: '6px 8px 6px 0',
         fontSize: 12, fontWeight: 500,
         color: 'var(--text-primary)',
@@ -846,6 +1032,7 @@ function EmployeeRow({ emp, days, weekendDays, todayDay, mode, viewer, locked, o
             {emp.position}
           </div>
         )}
+        {rosterBadges}
       </td>
       {Array.from({ length: days }, (_, di) => {
         const day = di + 1;
@@ -862,6 +1049,9 @@ function EmployeeRow({ emp, days, weekendDays, todayDay, mode, viewer, locked, o
             isToday={isToday}
             mode={mode}
             locked={locked}
+            isFocusCol={focusCell?.day === day}
+            rowDim={rowDim}
+            onFocusCell={onFocusCell}
             onCellTap={onCellTap}
             onCellLongPress={onCellLongPress}
             onCellDetail={onCellDetail}
@@ -917,12 +1107,13 @@ function TotalCell({ emp, mode }) {
 /* ════════════════════════════════════════════════════════════════
    Ячейка
    ════════════════════════════════════════════════════════════════ */
-function CellTd({ emp, day, dayData, isWeekend, isToday, mode, locked, onCellTap, onCellLongPress, onCellDetail }) {
+function CellTd({ emp, day, dayData, isWeekend, isToday, mode, locked, isFocusCol, rowDim, onFocusCell, onCellTap, onCellLongPress, onCellDetail }) {
   const longPress = useLongPress(() => {
     if (dayData) onCellLongPress(emp, day, dayData);
   });
 
   const handleClick = (e) => {
+    onFocusCell?.({ empId: emp.id, day });
     if (longPress.wasLongPress()) {
       e.preventDefault();
       return;
@@ -946,9 +1137,11 @@ function CellTd({ emp, day, dayData, isWeekend, isToday, mode, locked, onCellTap
         textAlign: 'center',
         borderBottom: '1px solid var(--border-norse)',
         cursor: locked ? 'not-allowed' : 'pointer',
-        opacity: locked ? 0.6 : 1,
-        background: isToday
-          ? 'color-mix(in srgb, var(--gold) 8%, transparent)' /* FIX 13 — фон сегодняшней клетки */
+        opacity: rowDim ? 0.35 : (locked ? 0.6 : 1),
+        background: isFocusCol
+          ? 'color-mix(in srgb, var(--gold) 10%, transparent)'
+          : isToday
+          ? 'color-mix(in srgb, var(--gold) 8%, transparent)'
           : isWeekend
             ? 'color-mix(in srgb, var(--red-soft) 3%, transparent)'
             : 'transparent',
@@ -1078,6 +1271,7 @@ function CellDetail({ data, mode }) {
    ════════════════════════════════════════════════════════════════ */
 function EditCellSheet({ emp, day, year, month, current, mode, onSave, onClose }) {
   const types = MODE_TYPES[mode] || ['day'];
+  const canDeleteCurrent = !!(current?.type && types.includes(current.type));
   const [type, setType] = useState(current?.type || types[0]);
   const [workId, setWorkId] = useState(current?.work_id || emp.work_id || '');
   const [works, setWorks]   = useState([]);
@@ -1181,7 +1375,7 @@ function EditCellSheet({ emp, day, year, month, current, mode, onSave, onClose }
       )}
 
       <div className="flex gap-2 mt-2">
-        {current?.type && (
+        {canDeleteCurrent && (
           <button onClick={handleDelete} disabled={submitting}
             className="flex-1 spring-tap rounded-xl py-3 text-sm font-semibold"
             style={{

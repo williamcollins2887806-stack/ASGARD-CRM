@@ -30,6 +30,7 @@ import CallAnalyticsWidget from './CallAnalyticsWidget';
 import ExpenseWalletWidget from './ExpenseWalletWidget';
 import AcademyWidget from './AcademyWidget';
 import DirectorApprovalsWidget from './DirectorApprovalsWidget';
+import DirectorTenderApprovalsWidget from './DirectorTenderApprovalsWidget';
 
 /** Реестр: id → { component, name, icon, size, roles, hero? } */
 export const WIDGET_REGISTRY = {
@@ -65,11 +66,12 @@ export const WIDGET_REGISTRY = {
   expense_wallet:   { component: ExpenseWalletWidget,   name: 'Кошелёк проекта',       icon: '💰', size: 'normal', roles: ['PM','HEAD_PM'] },
   academy:          { component: AcademyWidget,         name: 'Залы Асгарда',           icon: '🏛️', size: 'normal', roles: ['*'] },
   director_approvals:{ component: DirectorApprovalsWidget, name: 'Согласование кассы',   icon: '📋', size: 'normal', roles: ['DIRECTOR_COMM','DIRECTOR_GEN','DIRECTOR_DEV','ADMIN'], hero: true },
+  director_tender_approvals:{ component: DirectorTenderApprovalsWidget, name: 'Согласование тендеров', icon: '✅', size: 'normal', roles: ['DIRECTOR_COMM','DIRECTOR_GEN','DIRECTOR_DEV','ADMIN'], hero: true },
 };
 
 /** Дефолтный набор виджетов по роли */
 export const DEFAULT_LAYOUTS = {
-  ADMIN:          ['welcome','director_approvals','academy','kpi_summary','call_analytics','pre_tenders','quick_actions','overdue_works','tenders_funnel','my_mail','notifications'],
+  ADMIN:          ['welcome','director_approvals','director_tender_approvals','academy','kpi_summary','call_analytics','pre_tenders','quick_actions','overdue_works','tenders_funnel','my_mail','notifications'],
   PM:             ['welcome','academy','quick_actions','my_works','expense_wallet','my_cash_balance','gantt_mini','photos','todo','my_mail','notifications','birthdays'],
   TO:             ['welcome','academy','quick_actions','tenders_funnel','tender_dynamics','my_mail','notifications'],
   HEAD_TO:        ['welcome','academy','pre_tenders','platform_alerts','tender_dynamics','tenders_funnel','my_mail','notifications'],

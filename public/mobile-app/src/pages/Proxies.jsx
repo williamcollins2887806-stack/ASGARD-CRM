@@ -8,6 +8,7 @@ import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { Stamp, Plus, ChevronRight, ExternalLink } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
+import { fileDownloadUrl } from '@/lib/fileDownload';
 import AsgardSelect from '@/components/ui/AsgardSelect';
 
 function getProxyStatus(proxy) {
@@ -97,7 +98,7 @@ function ProxyDetailSheet({ proxy, onClose }) {
     <BottomSheet open={!!proxy} onClose={onClose} title={p.title || p.number || 'Доверенность'}>
       <div className="flex flex-col gap-3 pb-4">
         {fields.map((f, i) => <div key={i}><p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5 c-tertiary">{f.label}</p>{f.color ? <span className="px-2.5 py-1 rounded-full text-[12px] font-semibold inline-block" style={{ background: `color-mix(in srgb, ${f.color} 15%, transparent)`, color: f.color }}>{f.value}</span> : <p className={`text-[14px] c-primary ${f.full ? 'whitespace-pre-wrap' : ''}`}>{f.value}</p>}</div>)}
-        {(p.file_url || p.scan_file) && <a href={p.file_url || `/api/files/download/${p.scan_file}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-[14px] spring-tap mt-1 c-blue bg-elevated"><ExternalLink size={16} /> Скачать</a>}
+        {(p.file_url || p.scan_file) && <a href={fileDownloadUrl(p.file_url || p.scan_file)} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-[14px] spring-tap mt-1 c-blue bg-elevated"><ExternalLink size={16} /> Скачать</a>}
       </div>
     </BottomSheet>
   );

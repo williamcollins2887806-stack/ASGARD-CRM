@@ -127,6 +127,7 @@ import MimirAutoEstimate from '@/pages/MimirAutoEstimate';
 import HuginnEstimateChat from '@/pages/HuginnEstimateChat';
 import ExpenseChat from '@/pages/ExpenseChat';
 import DirectorApprovals from '@/pages/director/Approvals';
+import DirectorTenderApprovals from '@/pages/director/TenderApprovals';
 import MarketplaceMobile from '@/pages/MarketplaceMobile';
 import { Toaster } from '@/components/ui/sonner';
 import { usePushSubscription } from '@/hooks/usePushSubscription';
@@ -318,6 +319,7 @@ function AppLayout() {
           <Route path="/huginn-chat/:chatId" element={<ProtectedRoute section="chat"><PinGuard><HuginnEstimateChat /></PinGuard></ProtectedRoute>} />
           <Route path="/expense-chat/:workId" element={<ProtectedRoute section="finances"><PinGuard><ExpenseChat /></PinGuard></ProtectedRoute>} />
           <Route path="/director-approvals" element={<ProtectedRoute section="finances"><PinGuard><DirectorApprovals /></PinGuard></ProtectedRoute>} />
+          <Route path="/director-tender-approvals" element={<ProtectedRoute section="tenders"><PinGuard><DirectorTenderApprovals /></PinGuard></ProtectedRoute>} />
           <Route path="/marketplace" element={<ProtectedRoute section="marketplace"><PinGuard><MarketplaceMobile /></PinGuard></ProtectedRoute>} />
           <Route path="/more" element={<ProtectedRoute><PinGuard><More /></PinGuard></ProtectedRoute>} />
 

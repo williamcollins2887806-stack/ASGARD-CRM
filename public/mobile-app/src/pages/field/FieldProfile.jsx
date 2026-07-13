@@ -6,7 +6,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Shield, ChevronDown, ChevronUp,
-  LogOut, Sun, Moon, Edit3, Check, X, Briefcase, Award, Sparkles,
+  LogOut, Sun, Moon, Edit3, Check, X, Briefcase, Award, Sparkles, ClipboardList, Calendar,
 } from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
 import { useFieldAuthStore } from '@/stores/fieldAuthStore';
@@ -61,6 +61,16 @@ const ANIM_CSS = `
 /* ═══════════════════════════════════════════════════════════════════
    UTILS
 ═══════════════════════════════════════════════════════════════════ */
+function fmtPlanPeriod(from, to) {
+  const fmt = (d) => (d ? new Date(d).toLocaleDateString('ru-RU') : null);
+  const f = fmt(from);
+  const t = fmt(to);
+  if (f && t) return `с ${f} по ${t}`;
+  if (f) return `с ${f}`;
+  if (t) return `по ${t}`;
+  return 'дата уточняется';
+}
+
 function getInitials(fio) {
   if (!fio) return '??';
   return fio.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
@@ -1077,6 +1087,33 @@ export default function FieldProfile() {
             )}
           </div>
 
+          {/* ═══ ПЛАНИРУЕМОЕ ПРИВЛЕЧЕНИЕ ═══════════════════════════════ */}
+          {profile?.planned_engagement && (
+            <div className="rounded-xl p-4" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid rgba(74,144,217,0.35)' }}>
+              <div className="flex items-center gap-2 mb-3">
+                <ClipboardList size={15} style={{ color: '#4A90D9' }} />
+                <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#4A90D9' }}>
+                  Планируемое привлечение
+                </span>
+              </div>
+              <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+                {profile.planned_engagement.work_title}
+              </p>
+              {profile.planned_engagement.pm_name && (
+                <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+                  РП: {profile.planned_engagement.pm_name}
+                </p>
+              )}
+              <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+                <Calendar size={11} className="inline mr-1" style={{ verticalAlign: '-1px' }} />
+                {fmtPlanPeriod(profile.planned_engagement.planned_from, profile.planned_engagement.planned_to)}
+              </p>
+              <p className="text-xs mt-2 italic" style={{ color: 'var(--text-tertiary)' }}>
+                Это план, не назначение. Смена начнётся после выезда на объект.
+              </p>
+            </div>
+          )}
+
           {/* ═══ ACHIEVEMENTS ═════════════════════════════════════════ */}
           <div className="rounded-xl p-4" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
             <div className="flex items-center justify-between mb-3">
@@ -1296,7 +1333,7 @@ export default function FieldProfile() {
                           <select className="w-full rounded-lg px-3 py-2 text-sm mt-0.5 outline-none"
                             style={{ backgroundColor: 'var(--bg-primary)', border: '1px solid var(--border-norse)', color: 'var(--text-primary)' }}
                             value={editData[f.key] || ''} onChange={e => setEditData({ ...editData, [f.key]: e.target.value })}>
-                            <option value="">—</option><option value="М">Мужской</option><option value="Ж">Женский</option>
+                            <option value="">—</option><option value="male">Мужской</option><option value="female">Женский</option>
                           </select>
                         ) : (
                           <input className="w-full rounded-lg px-3 py-2 text-sm mt-0.5 outline-none"
@@ -1326,6 +1363,11 @@ export default function FieldProfile() {
                           let val = personal[f.key];
                           if (val == null || val === '') return null;
                           if (f.key === 'is_self_employed') val = val === true || val === 'true' ? 'Да' : 'Нет';
+                          if (f.key === 'gender') {
+                            const g = String(val).toLowerCase();
+                            val = g === 'male' || g === 'm' || g === 'м' ? 'Мужской'
+                              : g === 'female' || g === 'f' || g === 'ж' ? 'Женский' : val;
+                          }
                           if (f.type === 'date' && val) {
                             try { val = new Date(val).toLocaleDateString('ru-RU', { day:'2-digit', month:'2-digit', year:'numeric' }); } catch {}
                           }

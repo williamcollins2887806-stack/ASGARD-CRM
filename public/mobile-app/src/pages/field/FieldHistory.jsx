@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Briefcase, ChevronRight, TrendingUp, Calendar, Zap, Lock } from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
+import { api } from '@/api/client';
 import { useHaptic } from '@/hooks/useHaptic';
 
 /* ── Long-press helper: 550мс держим — показываем tooltip с «Внёс: …» ─ */
@@ -106,7 +107,7 @@ function HistoryDetail({ workId, onBack }) {
     const y = last.getFullYear();
     const m = last.getMonth() + 1;
     // Этот endpoint существует если backend (агент B) уже задеплоил v2
-    fieldApi.get(`/timesheet/v2/locks/${y}/${m}`)
+    api.get(`/timesheet/v2/locks/${y}/${m}`)
       .then((r) => {
         const arr = Array.isArray(r) ? r : (r?.locks || []);
         // Берём только активные глобальные локи (затрагивают рабочего)
@@ -259,7 +260,8 @@ function HistoryDetail({ workId, onBack }) {
               </div>
 
               {/* Column headers */}
-              <div className="px-4 pb-2 flex items-center gap-2 text-xs font-semibold" style={{ color: 'var(--text-tertiary)' }}>
+              <div className="px-4 pb-2 flex items-center gap-2 text-xs font-semibold sticky top-0 z-10"
+                style={{ color: 'var(--text-tertiary)', backgroundColor: 'var(--bg-elevated)' }}>
                 <span className="w-11">Дата</span>
                 <span className="w-7 text-center">Тип</span>
                 <span className="flex-1">Смена</span>

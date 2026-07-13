@@ -4,7 +4,7 @@ import {
   Clock, Wallet, History, Users, Truck, UserCircle,
   MapPin, AlertCircle, RefreshCw, Play, Square,
   Phone, Briefcase, Camera, FileText, AlertTriangle, Package, DollarSign, Map,
-  Calendar, Shield, PackageCheck,
+  Calendar, Shield, PackageCheck, ClipboardList,
 } from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
 import { useFieldAuthStore } from '@/stores/fieldAuthStore';
@@ -76,6 +76,16 @@ function fmtTimer(seconds) {
   const m = Math.floor((seconds % 3600) / 60);
   const s = seconds % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function fmtPlanPeriod(from, to) {
+  const fmt = (d) => (d ? new Date(d).toLocaleDateString('ru-RU') : null);
+  const f = fmt(from);
+  const t = fmt(to);
+  if (f && t) return `с ${f} по ${t}`;
+  if (f) return `с ${f}`;
+  if (t) return `по ${t}`;
+  return 'дата уточняется';
 }
 
 function shortFio(fio) {
@@ -344,6 +354,7 @@ export default function FieldHome() {
   const isInitial = rawSecond.length <= 3 || /^[А-ЯA-Z][.\-]/.test(rawSecond);
   const firstName = (!isInitial && rawSecond) ? rawSecond : (fioParts[0] || 'Воин');
   const project = data?.project;
+  const plannedEngagement = data?.planned_engagement;
   const checkin = data?.today_checkin || project?.today_checkin;
   const isActive = checkin && !checkin.checkout_at;
   const hasDeparted = !!project?.departure_date;
@@ -701,6 +712,32 @@ export default function FieldHome() {
           <MapPin size={32} className="mx-auto mb-2" style={{ color: 'var(--text-tertiary)' }} />
           <p className="font-medium" style={{ color: 'var(--text-secondary)' }}>Нет активного проекта</p>
           <p className="text-sm mt-1" style={{ color: 'var(--text-tertiary)' }}>Отдыхай, воин!</p>
+        </div>
+      )}
+
+      {/* Планируемое привлечение */}
+      {plannedEngagement && (
+        <div className="rounded-xl p-4 mb-4"
+          style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid rgba(74,144,217,0.35)' }}>
+          <div className="flex items-center gap-2 mb-2">
+            <ClipboardList size={16} style={{ color: '#4A90D9' }} />
+            <span className="text-xs font-medium uppercase tracking-wide" style={{ color: '#4A90D9' }}>
+              Планируемое привлечение
+            </span>
+          </div>
+          <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>{plannedEngagement.work_title}</p>
+          {plannedEngagement.pm_name && (
+            <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
+              РП: {plannedEngagement.pm_name}
+            </p>
+          )}
+          <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
+            <Calendar size={12} className="inline mr-1" style={{ verticalAlign: '-2px' }} />
+            {fmtPlanPeriod(plannedEngagement.planned_from, plannedEngagement.planned_to)}
+          </p>
+          <p className="text-xs mt-2 italic" style={{ color: 'var(--text-tertiary)' }}>
+            Это план, не назначение. Смена начнётся после выезда на объект.
+          </p>
         </div>
       )}
 

@@ -54,5 +54,6 @@ export const ROUTE_SECTIONS = {
   '/personal-kanban':        'personal_kanban',
   '/personal-kanban-config': 'personal_kanban',
   '/director-inbox':         'inbox',
+  '/director-tender-approvals': 'tenders',
   '/marketplace':            'marketplace',
 };

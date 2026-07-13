@@ -9,6 +9,7 @@ import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { EditEstimateMetadataSheet } from '@/components/estimates/EditEstimateMetadataSheet';
 import { formatMoney, relativeTime, formatDate } from '@/lib/utils';
+import { fileDownloadUrl } from '@/lib/fileDownload';
 import {
   ArrowLeft, ChevronRight, ChevronDown, ChevronUp,
   Check, RotateCcw, HelpCircle, X, Send, MessageCircle,
@@ -611,7 +612,7 @@ export default function EstimateReport() {
                 {documents.map((doc) => (
                   <a
                     key={doc.id}
-                    href={`/api/files/download/${doc.filename}?token=${api.getToken()}`}
+                    href={fileDownloadUrl(doc)}
                     target="_blank"
                     rel="noreferrer"
                     className="card-glass px-3 py-2.5 flex items-center gap-3 spring-tap"

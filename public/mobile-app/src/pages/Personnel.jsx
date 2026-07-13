@@ -18,6 +18,7 @@ const STATUS_CONFIG = {
   approved: { label: 'Утверждён',   color: 'var(--info-t)',       icon: UserCheck,   emoji: '✅', border: 'var(--info-t)' },
   ready:    { label: 'Готов',        color: 'var(--blue)',   icon: Shield,      emoji: '⚔️', border: 'var(--blue)' },
   not_ready:{ label: 'Не готов',     color: 'var(--warn-t)', icon: XCircle,     emoji: '🛏', border: 'var(--warn-t)' },
+  planned:  { label: 'В плане',      color: 'var(--info-t)', icon: UserCheck,   emoji: '📋', border: 'var(--info-t)' },
   archive:  { label: 'Архив',       color: 'var(--text-tertiary)', icon: Archive, emoji: '📦', border: 'var(--text-tertiary)' },
 };
 
@@ -27,6 +28,7 @@ const FILTER_PILLS = [
   { key: 'approved',  label: 'Утверждён' },
   { key: 'ready',     label: 'Готов' },
   { key: 'not_ready', label: 'Не готов' },
+  { key: 'planned',   label: 'В плане' },
 ];
 
 const REASONS = {
@@ -75,17 +77,20 @@ export default function Personnel() {
   useEffect(() => { fetchEmployees(); }, [fetchEmployees]);
 
   const stats = useMemo(() => {
-    const s = { on_site: 0, approved: 0, ready: 0, not_ready: 0, archive: 0 };
+    const s = { on_site: 0, approved: 0, ready: 0, not_ready: 0, archive: 0, planned: 0 };
     employees.forEach(e => {
       const st = e.effective_status || e.readiness_status || 'not_ready';
       if (s[st] !== undefined) s[st]++;
+      if (e.planned_info) s.planned++;
     });
     return s;
   }, [employees]);
 
   const grouped = useMemo(() => {
     let list = employees;
-    if (filter !== 'all') {
+    if (filter === 'planned') {
+      list = list.filter(e => !!e.planned_info);
+    } else if (filter !== 'all') {
       list = list.filter(e => (e.effective_status || e.readiness_status || 'not_ready') === filter);
     }
     if (search) {
@@ -146,9 +151,10 @@ export default function Personnel() {
 
         {/* Stats */}
         {!loading && employees.length > 0 && (
-          <StatRow cols={4}>
+          <StatRow cols={5}>
             <StatCard icon={MapPin}    label="На объекте" value={stats.on_site}  color="var(--green)"  delay={0} />
             <StatCard icon={Shield}    label="Готов"      value={stats.ready}    color="var(--blue)"   delay={60} />
+            <StatCard icon={UserCheck} label="В плане"    value={stats.planned}  color="var(--info-t)" delay={90} />
             <StatCard icon={XCircle}   label="Не готов"   value={stats.not_ready} color="var(--warn-t)" delay={120} />
             <StatCard icon={Archive}   label="Архив"      value={stats.archive}  color="var(--text-tertiary)" delay={180} />
           </StatRow>
@@ -260,6 +266,19 @@ function EmployeeCard({ emp, cfg, index, onTap }) {
           {(emp.last_pm_name || emp.pm_name) && (
             <p className="text-[10px] mt-0.5 c-tertiary">РП: {emp.last_pm_name || emp.pm_name}</p>
           )}
+          {emp.planned_info && (
+            <p className="text-[10px] mt-0.5" style={{ color: 'var(--info-t)' }}>
+              📋 План: {emp.planned_info.work_title}
+              {emp.planned_info.planned_from ? ` с ${fmtDate(emp.planned_info.planned_from)}` : ''}
+            </p>
+          )}
+          {(emp.clothing_size || emp.shoe_size || emp.headwear_size) && (
+            <p className="text-[10px] mt-0.5 c-tertiary">
+              {emp.clothing_size && `👕 ${emp.clothing_size}`}
+              {emp.shoe_size && `${emp.clothing_size ? ' · ' : ''}👟 ${emp.shoe_size}`}
+              {emp.headwear_size && ` · ⛑ ${emp.headwear_size}`}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           {hasExpired && <span title="Просроченные документы" style={{ fontSize: 14 }}>🔴</span>}
@@ -298,6 +317,34 @@ function EmployeeDetailSheet({ employee, onClose, isHR, onStatusChange, saving }
     // объекта-описания поля, и Field-рендер падает. Оборачиваем `||` в скобки.
     (e.last_work_title || e.work_title) && { label: 'Объект', value: e.last_work_title || e.work_title },
     (e.last_pm_name || e.pm_name) && { label: 'РП', value: e.last_pm_name || e.pm_name },
+    e.planned_info && {
+      label: 'Планируемое привлечение',
+      custom: (
+        <div className="text-sm" style={{ color: 'var(--info-t)' }}>
+          📋 {e.planned_info.work_title}
+          {e.planned_info.planned_from && (
+            <span className="c-secondary"> · с {fmtDate(e.planned_info.planned_from)}</span>
+          )}
+          {e.planned_info.planned_to && (
+            <span className="c-secondary"> по {fmtDate(e.planned_info.planned_to)}</span>
+          )}
+          {e.on_site_info && (
+            <p className="text-[11px] mt-1 c-tertiary">Сейчас на объекте: {e.on_site_info.work_title}</p>
+          )}
+        </div>
+      ),
+    },
+    (e.clothing_size || e.shoe_size || e.headwear_size) && {
+      label: 'СИЗ',
+      custom: (
+        <div className="text-sm c-primary flex flex-col gap-0.5">
+          {e.clothing_size && <span>👕 Одежда: {e.clothing_size}</span>}
+          {e.shoe_size && <span>👟 Обувь: {e.shoe_size}</span>}
+          {e.headwear_size && <span>⛑ Головной убор: {e.headwear_size}</span>}
+          {e.height ? <span className="c-secondary text-[12px]">Рост: {e.height} см</span> : null}
+        </div>
+      ),
+    },
     e.readiness_date && st === 'ready' && { label: 'Готов с', value: fmtDate(e.readiness_date) },
     e.readiness_reason && st === 'not_ready' && { label: 'Причина', value: REASONS[e.readiness_reason] || e.readiness_reason },
     e.readiness_comment && { label: 'Комментарий', value: e.readiness_comment },

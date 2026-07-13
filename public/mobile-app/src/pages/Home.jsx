@@ -7,6 +7,7 @@ import { Shield, ChevronRight, HardHat, CalendarClock } from 'lucide-react';
 import { CrmUpdateBanner } from '@/components/shared/CrmUpdateBanner';
 import { MobileAppBanner } from '@/components/shared/MobileAppBanner';
 import { loadPmDutyCurrent } from '@/api/tendersRegistry';
+import { formatDate } from '@/lib/utils';
 
 /**
  * Home — оркестратор дашборда «Зал Ярла»
@@ -134,7 +135,7 @@ export default function Home() {
                   {duty.pm_user_id === user?.id ? 'Вы дежурный РП' : `Дежурный: ${duty.pm_name}`}
                 </div>
                 <div className="text-[11px] c-tertiary">
-                  {String(duty.period_start).slice(0, 10)} — {String(duty.period_end).slice(0, 10)}
+                  {formatDate(duty.period_start)} — {formatDate(duty.period_end)}
                 </div>
               </div>
               <ChevronRight size={16} className="c-tertiary" />

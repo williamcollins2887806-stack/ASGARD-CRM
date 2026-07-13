@@ -6,6 +6,7 @@ import {
   loadPmDutyQueue, loadPmDutyCurrent, loadPmDutyRoster, savePmDutyRoster, loadPmUsers
 } from '@/api/tendersRegistry';
 import { saveRpReview, loadRpReview } from '@/api/tendersRegistry';
+import { formatDate } from '@/lib/utils';
 
 const ALLOWED = ['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 const ASSIGN = ['ADMIN', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
@@ -80,7 +81,7 @@ export default function PmDuty() {
         {duty?.pm_name && (
           <div className="rounded-xl px-3 py-2 text-[13px]" style={{ background: 'var(--bg-elevated)', border: '0.5px solid var(--border-norse)' }}>
             {duty.pm_user_id === user.id ? '🛡 Вы дежурный' : `Дежурный: ${duty.pm_name}`}
-            {' · '}{String(duty.period_start).slice(0, 10)} — {String(duty.period_end).slice(0, 10)}
+            {' · '}{formatDate(duty.period_start)} — {formatDate(duty.period_end)}
           </div>
         )}
         <div className="flex gap-2">
@@ -91,7 +92,7 @@ export default function PmDuty() {
           <div key={row.id} className="rounded-xl p-3" style={{ background: 'var(--bg-surface)', border: '0.5px solid var(--border-norse)' }}>
             <p className="font-semibold text-[14px]">{row.customer_name}</p>
             <p className="text-[12px] c-tertiary truncate">{row.tender_title}</p>
-            <p className="text-[11px] c-tertiary mt-1">#{row.id} · {row.docs_deadline ? String(row.docs_deadline).slice(0, 10) : '—'}</p>
+            <p className="text-[11px] c-tertiary mt-1">#{row.id} · {formatDate(row.docs_deadline)}</p>
             {(isDuty || tab === 'my_reviewed') && !row.is_final && tab === 'need_report' && (
               <button type="button" className="btn-primary w-full mt-2 spring-tap" onClick={() => openReview(row)}>Отчёт</button>
             )}

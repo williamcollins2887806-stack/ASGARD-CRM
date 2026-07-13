@@ -125,3 +125,46 @@ export function saveRpReview(tenderId, body) {
     body: JSON.stringify(body),
   });
 }
+
+export function loadDirectorReviewQueue() {
+  return api.get('/tenders/director-review-queue');
+}
+
+export function loadDirectorReviewQueueCount() {
+  return api.get('/tenders/director-review-queue/count');
+}
+
+export function markDirectorReviewSeen(tenderId) {
+  return api.post(`/tenders/${tenderId}/director-review-seen`);
+}
+
+export function directorDecisionRpReview(tenderId, body) {
+  return api.request(`/tenders/${tenderId}/rp-review/director-decision`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export function loadRpReviewMessages(tenderId) {
+  return api.get(`/tenders/${tenderId}/rp-review/messages`);
+}
+
+export function postRpReviewMessage(tenderId, body, files = []) {
+  const fd = new FormData();
+  fd.append('body', body || '');
+  files.forEach((f) => fd.append('file', f));
+  const token = localStorage.getItem('asgard_token');
+  return fetch(`/api/tenders/${tenderId}/rp-review/messages`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: fd,
+  }).then(async (r) => {
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || d.message || `HTTP ${r.status}`);
+    return d;
+  });
+}
+
+export function loadTenderFiles(tenderId) {
+  return api.get(`/files?tender_id=${tenderId}`).then((d) => d.files || d.items || []);
+}

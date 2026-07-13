@@ -16,7 +16,7 @@ import {
   Inbox, Calendar, HardHat, Warehouse, Package,
   ShoppingCart, Disc3, GanttChartSquare, LayoutGrid, Target,
   // Настройки
-  Bell, GraduationCap, Mail, Cpu, Plug, Stethoscope, ListChecks,
+  Bell, GraduationCap, Mail, Cpu, Plug, Stethoscope, ListChecks, CheckCircle,
   // Прочее
   Sun, Moon, LogOut, ChevronRight,
 } from 'lucide-react';
@@ -114,6 +114,7 @@ const GROUPS = [
     color: 'var(--blue)',
     items: [
       { path: '/director-inbox', icon: Inbox,            label: 'Корзина заявок',  section: 'inbox' },
+      { path: '/director-tender-approvals', icon: CheckCircle, label: 'Согласование тендеров', section: 'tenders', roles: ['DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','ADMIN'] },
       { path: '/marketplace',    icon: Target,           label: '🎯 Маркетплейс заявок', section: 'marketplace', roles: ['PM','HEAD_PM'] },
       { path: '/correspondence', icon: Inbox,            label: 'Корреспонденция', section: 'works' },
       { path: '/meetings',       icon: Calendar,         label: 'Совещания',       section: 'dashboard' },

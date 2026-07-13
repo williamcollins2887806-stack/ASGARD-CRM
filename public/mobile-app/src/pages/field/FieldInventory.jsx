@@ -57,18 +57,28 @@ export default function FieldInventory() {
   const [sellResult, setSellResult] = useState(null); // { item_name, sell_price }
 
   // Wallet + XP exchange
-  const [wallet, setWallet] = useState({ runes: 0, xp: 0 });
+  const [wallet, setWallet] = useState({ runes: 0, xp: 0, runes_daily_remaining: 1000, runes_convert_max: 0 });
   const [showXpForge, setShowXpForge] = useState(false);
   const [xpAmount, setXpAmount] = useState('');
   const [xpLoading, setXpLoading] = useState(false);
   const [xpResult, setXpResult] = useState(null);
+  const [xpError, setXpError] = useState('');
 
   const XP_RATE = 5; // 5 runes = 1 XP
   const XP_DAILY_CAP = 1000;
+  const xpConvertMax = useMemo(
+    () => Math.min(wallet.runes || 0, XP_DAILY_CAP, wallet.runes_daily_remaining ?? XP_DAILY_CAP),
+    [wallet.runes, wallet.runes_daily_remaining]
+  );
 
   const fetchWallet = useCallback(() => {
     fieldApi.get('/gamification/wallet').then(d => {
-      setWallet({ runes: d.runes || 0, xp: d.xp || 0 });
+      setWallet({
+        runes: d.runes || 0,
+        xp: d.xp || 0,
+        runes_daily_remaining: d.runes_daily_remaining ?? XP_DAILY_CAP,
+        runes_convert_max: d.runes_convert_max ?? 0
+      });
     }).catch(() => {});
   }, []);
 
@@ -202,10 +212,30 @@ export default function FieldInventory() {
     }
   }, [sellItem, haptic, loadInventory, fetchWallet]);
 
+  const handleXpAmountChange = useCallback((value) => {
+    const digits = String(value).replace(/\D/g, '');
+    if (!digits) {
+      setXpAmount('');
+      setXpError('');
+      return;
+    }
+    const n = Math.min(parseInt(digits, 10), xpConvertMax);
+    setXpAmount(String(n));
+    setXpError('');
+  }, [xpConvertMax]);
+
   const handleXpExchange = useCallback(async () => {
-    const amount = parseInt(xpAmount);
-    if (!amount || amount < 15) return;
+    const amount = parseInt(xpAmount, 10);
+    if (!amount || amount < 15) {
+      setXpError('Минимум 15 рун');
+      return;
+    }
+    if (amount > xpConvertMax) {
+      setXpError(`Максимум ${xpConvertMax} рун (лимит 1000/день или баланс)`);
+      return;
+    }
     setXpLoading(true);
+    setXpError('');
     haptic.medium();
     try {
       const res = await fieldApi.post('/gamification/wallet/convert-to-xp', { runes_amount: amount });
@@ -216,10 +246,11 @@ export default function FieldInventory() {
       setTimeout(() => setXpResult(null), 4000);
     } catch (err) {
       haptic.error();
+      setXpError(err?.message || err?.error || 'Не удалось переплавить руны');
     } finally {
       setXpLoading(false);
     }
-  }, [xpAmount, haptic, fetchWallet]);
+  }, [xpAmount, xpConvertMax, haptic, fetchWallet]);
 
   /* ── Stagger animation ── */
   useEffect(() => {
@@ -415,7 +446,9 @@ export default function FieldInventory() {
             </button>
             {showXpForge && (
               <div className="finv-xp-forge-body">
-                <div className="finv-xp-forge-rate">Курс: 5 ᚱ = 1 XP · лимит 1000 ᚱ/день</div>
+                <div className="finv-xp-forge-rate">
+                  Курс: 5 ᚱ = 1 XP · лимит 1000 ᚱ/день · сегодня осталось {wallet.runes_daily_remaining} ᚱ
+                </div>
                 <div className="finv-xp-forge-balances">
                   <div className="finv-xp-forge-bal">
                     <div style={{ fontSize: 20 }}>ᚱ</div>
@@ -433,17 +466,20 @@ export default function FieldInventory() {
                   <input
                     type="number"
                     min="15"
-                    max="1000"
+                    max={xpConvertMax || 1000}
                     step="5"
-                    placeholder="Рун (мин. 15)"
+                    placeholder={`Рун (15–${xpConvertMax || 1000})`}
                     value={xpAmount}
-                    onChange={e => setXpAmount(e.target.value)}
+                    onChange={e => handleXpAmountChange(e.target.value)}
                     className="finv-xp-input"
                   />
                   <div style={{ fontSize: 12, color: 'rgba(255,255,255,.4)', whiteSpace: 'nowrap' }}>
                     → {xpAmount && parseInt(xpAmount) >= 15 ? Math.floor(parseInt(xpAmount) / XP_RATE) : 0} XP
                   </div>
                 </div>
+                {xpError && (
+                  <div style={{ fontSize: 12, color: '#f87171', marginTop: 6 }}>{xpError}</div>
+                )}
                 {xpResult && (
                   <div className="finv-xp-result">
                     ✅ Переплавлено {xpResult.runes_spent} ᚱ → +{xpResult.xp_gained} XP! Уровень: {xpResult.new_level}
@@ -451,7 +487,13 @@ export default function FieldInventory() {
                 )}
                 <button
                   className="finv-xp-forge-btn"
-                  disabled={xpLoading || !xpAmount || parseInt(xpAmount) < 15 || parseInt(xpAmount) > wallet.runes}
+                  disabled={
+                    xpLoading
+                    || !xpAmount
+                    || parseInt(xpAmount, 10) < 15
+                    || parseInt(xpAmount, 10) > xpConvertMax
+                    || xpConvertMax < 15
+                  }
                   onClick={handleXpExchange}>
                   {xpLoading ? '⚗️ Переплавка...' : '⚗️ Переплавить руны в XP'}
                 </button>
