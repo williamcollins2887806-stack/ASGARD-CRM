@@ -9,12 +9,12 @@
  *   GET  /api/staff/readiness/reasons          — справочник причин
  *   GET  /api/staff/readiness/log/:employeeId  — история статусов
  *   PUT  /api/staff/readiness/:employeeId/status — HR обновляет статус
- *   GET  /api/staff/employees/:id              — карточка + 10 последних оценок
+ *   GET  /api/staff/employees/:id              — карточка + оценки + история назначений
  *   POST /api/staff/employees                  — добавить (ADMIN/HR/HR_MANAGER/DIRECTOR_GEN)
  *   PUT  /api/staff/employees/:id              — обновить (EMPLOYEE_COLS allowlist на бэке)
  *   POST /api/staff/employees/:id/review       — оценить
  *
- *   GET  /api/data/employee_assignments?where={"employee_id":N}&limit=2000  — история работ
+ *   GET  /api/data/employee_assignments?where={"employee_id":N}&limit=2000  — legacy; v2 → /api/staff/employees/:id
  *   GET  /api/works?limit=2000                 — справочник работ для подстановки названий/РП
  *   GET  /api/permits?employee_id=N            — допуски сотрудника (с computed_status)
  *   GET  /api/permits/types                    — справочник типов допусков (для модалки добавления)
@@ -37,6 +37,7 @@ export const STATUSES = [
   { code: 'approved',  label: 'Утверждён',  tone: 'info',  icon: '✓' },
   { code: 'ready',     label: 'Готов',      tone: 'gold',  icon: '★' },
   { code: 'not_ready', label: 'Не готов',   tone: 'warn',  icon: '⏸' },
+  { code: 'planned',   label: 'В плане',    tone: 'info',  icon: '📋' },
   { code: 'archive',   label: 'Архив',      tone: 'mute',  icon: '📦' },
 ];
 export const STATUS_MAP = Object.fromEntries(STATUSES.map((s) => [s.code, s]));
@@ -71,11 +72,11 @@ export const VIEW_ROLES = [
 // (для контактных данных в «Моей дружине»). PM остаётся read-only.
 // FIX (23.06.2026): HEAD_PM/OFFICE_MANAGER добавлены — могут править контакты/паспорт/одежду/прочее.
 // Финансовые поля у них всё равно режутся через FIN_RESTRICTED_FIELDS на бэке (staff.js).
-export const EDIT_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'HEAD_PM', 'OFFICE_MANAGER'];
+export const EDIT_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'HEAD_PM', 'OFFICE_MANAGER', 'TO', 'HEAD_TO'];
 
 // PII (паспорт, ИНН, СНИЛС, банк) видят HR/ADMIN/директора + HEAD_PM/OFFICE_MANAGER
 // (без них «редактирование контактных» бесполезно — паспорт не показан).
-export const PII_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'HEAD_PM', 'OFFICE_MANAGER'];
+export const PII_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'HEAD_PM', 'OFFICE_MANAGER', 'TO', 'HEAD_TO'];
 
 // Импорт остатков СЗ — финансовая операция. Зеркалит src/routes/staff.js FIN_ROLES.
 export const FIN_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH'];
@@ -97,8 +98,25 @@ export function canImportSeLimits(role) {
 export function loadReadiness() {
   return api('/api/staff/readiness').then((d) => ({
     employees: d.employees || [],
-    groups: d.groups || { on_site: 0, approved: 0, ready: 0, not_ready: 0, archive: 0 },
+    groups: d.groups || { on_site: 0, approved: 0, ready: 0, not_ready: 0, archive: 0, planned: 0 },
   }));
+}
+
+export function loadPlannedByProject() {
+  return api('/api/staff/planned-engagements/by-project').then((d) => d.projects || []);
+}
+
+export function setPlannedEngagement(employeeId, payload) {
+  return api('/api/staff/planned-engagements/employees/' + encodeURIComponent(employeeId), {
+    method: 'PUT',
+    body: payload,
+  });
+}
+
+export function clearPlannedEngagement(employeeId) {
+  return api('/api/staff/planned-engagements/employees/' + encodeURIComponent(employeeId), {
+    method: 'DELETE',
+  });
 }
 
 /**
@@ -170,10 +188,8 @@ export function createReview(employeeId, payload) {
 
 /* ─── История работ + Работы для подстановки названий ────────────────────── */
 export function loadEmployeeAssignments(employeeId) {
-  // /api/data/employee_assignments?where={"employee_id":N}
-  const where = encodeURIComponent(JSON.stringify({ employee_id: Number(employeeId) }));
-  return api(`/api/data/employee_assignments?where=${where}&limit=2000`)
-    .then((d) => d.employee_assignments || d.items || d.rows || [])
+  return api('/api/staff/employees/' + encodeURIComponent(employeeId))
+    .then((d) => d.assignments || [])
     .catch(() => []);
 }
 

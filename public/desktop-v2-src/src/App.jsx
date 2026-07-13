@@ -149,6 +149,7 @@ const FieldTariffs = lazy(() => import('@/pages/FieldTariffs'));
 // Волна 4б: личный канбан РП + корзина заявок директора
 const PersonalKanban = lazy(() => import('@/pages/PersonalKanban'));
 const DirectorsInbox = lazy(() => import('@/pages/DirectorsInbox'));
+const DirectorTenderApprovals = lazy(() => import('@/pages/DirectorTenderApprovals'));
 
 function Protected({ title, children, roles }) {
   const { user, ready } = useAuth();
@@ -223,17 +224,20 @@ export default function App() {
               <Route path="/dashboard" element={<Protected title="Дашборд руководителя"><Dashboard /></Protected>} />
               <Route path="/modals" element={<Protected title="Каталог модалок" roles={['ADMIN']}><Modals /></Protected>} />
               <Route path="/tenders" element={<Protected title="Сага Тендеров"><Tenders /></Protected>} />
-              <Route path="/pm-duty" element={<Protected title="Дежурство РП"><PmDuty /></Protected>} />
+              <Route path="/pm-calculations" element={<Protected title="Просчёты РП"><PmDuty /></Protected>} />
+              <Route path="/pm-duty" element={<Navigate to="/pm-calculations" replace />} />
               <Route path="/pm-works" element={<Protected title="Походы"><PmWorks /></Protected>} />
-              <Route path="/pm-calcs" element={<Protected title="Просчёты (inbox)"><PmCalcs /></Protected>} />
+              <Route path="/pm-calcs" element={<Navigate to="/pm-calculations" replace />} />
+              <Route path="/to-calcs" element={<Navigate to="/tenders" replace />} />
+              <Route path="/head-to-approvals" element={<Navigate to="/tenders" replace />} />
+              <Route path="/all-estimates" element={<Navigate to={{ pathname: '/pm-calculations', search: '?tab=archive' }} replace />} />
               <Route path="/all-works" element={<Protected title="Свод Контрактов"><AllWorks /></Protected>} />
-              <Route path="/all-estimates" element={<Protected title="Свод Расчётов"><AllEstimates /></Protected>} />
               <Route path="/funnel" element={<Protected title="Воронка продаж"><Funnel /></Protected>} />
               <Route path="/customers" element={<Protected title="Заказчики"><Customers /></Protected>} />
               <Route path="/gantt-calcs"   element={<Protected title="Гантт • Просчёты"><Gantt /></Protected>} />
               <Route path="/gantt-works"   element={<Protected title="Гантт • Работы"><Gantt /></Protected>} />
               <Route path="/gantt-objects" element={<Protected title="Гантт • Объекты"><Gantt /></Protected>} />
-              <Route path="/approvals"     element={<Protected title="Согласования"><Approvals /></Protected>} />
+              <Route path="/approvals" element={<Navigate to="/tenders" replace />} />
               <Route path="/approval-payment" element={<Protected title="Очередь оплаты"><ApprovalPayment /></Protected>} />
               <Route path="/tkp" element={<Protected title="ТКП"><Tkp /></Protected>} />
               <Route path="/tkp-followup" element={<Protected title="Контроль ТКП"><TkpFollowup /></Protected>} />
@@ -252,7 +256,7 @@ export default function App() {
               {/* Timesheet v2 — единый компонент для 5 mode'ов (см. TIMESHEET_V2_CONTRACT.md) */}
               <Route path="/my-timesheet"        element={<Protected title="Табель моей дружины"        roles={['PM','HEAD_PM']}><Timesheet mode="pm" /></Protected>} />
               <Route path="/timesheet-warehouse" element={<Protected title="Табель учёта работы на складе" roles={['WAREHOUSE','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV']}><Timesheet mode="warehouse" /></Protected>} />
-              <Route path="/timesheet-medical"   element={<Protected title="Табель учёта МО"             roles={['TO','HEAD_TO','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV']}><Timesheet mode="medical" /></Protected>} />
+              <Route path="/timesheet-medical"   element={<Protected title="Табель учёта МО/обучения/иной транспорт" roles={['TO','HEAD_TO','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV']}><Timesheet mode="medical" /></Protected>} />
               <Route path="/timesheet-travel"    element={<Protected title="Табель учёта дороги"          roles={['OFFICE_MANAGER','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV']}><Timesheet mode="travel" /></Protected>} />
               <Route path="/timesheet"           element={<Protected title="Общий табель — Табель дружины" roles={['DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','ADMIN','BUH','HR','HR_MANAGER']}><Timesheet mode="global" /></Protected>} />
               <Route path="/admin/timesheet-settings" element={<Protected title="Настройки баллов табеля" roles={['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','BUH']}><AdminTimesheetSettings /></Protected>} />
@@ -280,6 +284,7 @@ export default function App() {
               {/* 27.06.2026: маркетплейс заявок — единая страница для всех ролей.
                   RBAC внутри страницы показывает нужные кнопки/секции. */}
               <Route path="/director-inbox" element={<Protected title="Маркетплейс заявок" roles={['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','HEAD_PM','PM','TO','HEAD_TO']}><DirectorsInbox /></Protected>} />
+              <Route path="/director-tender-approvals" element={<Protected title="Согласование тендеров" roles={['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV']}><DirectorTenderApprovals /></Protected>} />
               <Route path="/big-screen" element={<ProtectedBare><BigScreen /></ProtectedBare>} />
               <Route path="/engineer-dashboard" element={<Protected title="Кузница Инженера"><EngineerDashboard /></Protected>} />
               <Route path="/pm-analytics" element={<Protected title="Хроники РП"><PmAnalytics /></Protected>} />
@@ -367,8 +372,8 @@ export default function App() {
               <Route path="/customer"               element={<Navigate to="/customers" replace />} />
               <Route path="/mango"                  element={<Navigate to="/telephony" replace />} />
               <Route path="/quests"                 element={<Navigate to="/gamification-admin" replace />} />
-              <Route path="/to-calcs"               element={<Protected title="Просчёты ТО"><ToCalcs /></Protected>} />
-              <Route path="/head-to-approvals"      element={<Protected title="Согласование ТО"><HeadToApprovals /></Protected>} />
+              <Route path="/to-calcs"               element={<Navigate to="/tenders" replace />} />
+              <Route path="/head-to-approvals"      element={<Navigate to="/tenders" replace />} />
               <Route path="/telegram"               element={<Protected title="Telegram-бот" roles={['ADMIN']}><Telegram /></Protected>} />
               <Route path="/bank-import"            element={<Protected title="Импорт банковских выписок" roles={['ADMIN','BUH','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV']}><BankImport /></Protected>} />
               {/* ─── Отчёты (волна 14.06.2026 — миграция vanilla на v2) ─── */}

@@ -44,8 +44,6 @@ import {
 } from './modals/StatusModals';
 import { PassRequestModal } from './modals/PassRequestModal';
 import { TmcRequestModal } from './modals/TmcRequestModal';
-import DistributionPanel from './panels/DistributionPanel';
-import WinAssignPanel from './panels/WinAssignPanel';
 import KpReadyPanel from './panels/KpReadyPanel';
 import RegistryTab from './RegistryTab';
 import PlatformTendersTab from './PlatformTendersTab';
@@ -473,11 +471,11 @@ export default function TendersPage() {
     }
     return null;
   }, [main, tenders, feedCounts, ACTIVE_TENDER_STATUSES]);
-  const showPanels = main === 'tenders' && sub === 'in_work' && tab === 'active';
+  const showPanels = false;
   const showArchiveToggle = main === 'tenders' && sub === 'registry';
   const showRegistry = main === 'tenders' && (sub === 'registry' || sub === 'in_work');
   const showPlatform = main === 'tenders' && sub === 'platforms';
-  const registrySubtab = sub === 'in_work' ? 'submitted' : (tab === 'archive' ? 'archive' : 'registry');
+  const registrySubtab = sub === 'in_work' ? 'in_work' : (tab === 'archive' ? 'archive' : 'registry');
 
   const onOpenWin = (tender) => {
     modal.open(({ close }) => (
@@ -582,11 +580,7 @@ export default function TendersPage() {
 
       {/* Оперативные панели — только в Тендеры → В работе → Активные */}
       {showPanels && (
-        <>
-          <DistributionPanel user={user} />
-          <WinAssignPanel user={user} />
-          <KpReadyPanel user={user} />
-        </>
+        <KpReadyPanel user={user} />
       )}
 
       {!showRegistry && !showPlatform && (

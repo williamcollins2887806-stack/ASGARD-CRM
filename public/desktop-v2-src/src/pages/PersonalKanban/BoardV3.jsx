@@ -23,6 +23,14 @@ import {
   v3ConvertToPretender, v3SearchReferences,
   tkpFromCard, tkpLoadBlocks, tkpSaveBlocks, tkpRenderPdf, tkpAttachToCard, tkpSendToClient,
   patchCard,
+  collectDocsByFolder,
+  createPreTenderFolder,
+  movePreTenderDoc,
+  uploadPreTenderDocs,
+  renamePreTenderFolder,
+  deletePreTenderFolder,
+  renamePreTenderDoc,
+  deletePreTenderDoc,
 } from './api';
 // S-31.1 F-1: «＋ Создать вручную» теперь открывает реальный wizard (раньше — toast-stub).
 import { TenderEditorModal } from '../Tenders/modals/TenderEditor.dispatch';
@@ -718,10 +726,8 @@ function DrawerV3({ card, onClose, onChanged, openModal }) {
           </div>
         </Section>
 
-        <Section id="sec-docs" ic="📎" title="Документы" count={(card.email_attachments?.length || 0) + (card.pm_documents?.length || 0) + (card.calc_documents?.length || 0)} open={openSections['sec-docs']} onToggle={() => toggle('sec-docs')}>
-          <DocGroup title="📧 Из письма клиента" items={card.email_attachments || []} empty="Нет вложений" card={card} src="email" openModal={openModal} />
-          <DocGroup title="📤 Загружено РП" items={card.pm_documents || []} addLabel="+ Перетащите файлы или нажмите чтобы выбрать" card={card} src="manual" openModal={openModal} />
-          <DocGroup title="🧮 Расчёты и сметы" items={card.calc_documents || []} empty="Сметы появятся после Quick/Кондуктора" card={card} src="calc" openModal={openModal} />
+        <Section id="sec-docs" ic="📎" title="Документы" count={(card.email_attachments?.length || 0) + (card.manual_documents?.length || 0) + (card.calc_documents?.length || 0)} open={openSections['sec-docs']} onToggle={() => toggle('sec-docs')}>
+          <DocExplorer card={card} openModal={openModal} onChanged={onChanged} />
         </Section>
 
         <Section id="sec-fin" ic="💰" title="Финансы" open={openSections['sec-fin']} onToggle={() => toggle('sec-fin')}>
@@ -796,6 +802,207 @@ function fmtMoney(n) {
   if (n == null) return '— ₽';
   return Number(n).toLocaleString('ru-RU') + ' ₽';
 }
+function docFolderCanUpload(folderId, folders) {
+  if (folderId === 'pm_upload' || folderId === 'customer') return true;
+  const f = (folders || []).find((x) => x.id === folderId);
+  return !!(f && !f.system);
+}
+
+function DocExplorer({ card, openModal, onChanged }) {
+  const ptId = card?.entity_id;
+  const { folders, buckets } = useMemo(() => collectDocsByFolder(card), [card]);
+  const [sel, setSel] = useState(() => ((card.email_attachments || []).length ? 'customer' : 'pm_upload'));
+  const [moveIdx, setMoveIdx] = useState(null);
+  const items = buckets[sel] || [];
+  const canUpload = docFolderCanUpload(sel, folders);
+  const token = (() => { try { return localStorage.getItem('asgard_token') || ''; } catch { return ''; } })();
+  const tokenQs = token ? `?token=${encodeURIComponent(token)}` : '';
+
+  const docUrl = (d) => {
+    if (!ptId || d._src === 'calc') return null;
+    if (d._src === 'email') return `/api/pre-tenders/${ptId}/email-attachments/${d._id || d.id}/download${tokenQs}`;
+    return `/api/pre-tenders/${ptId}/documents/${d._idx}/download${tokenQs}`;
+  };
+
+  const onView = (d) => {
+    const url = docUrl(d);
+    if (!url) { toast.info('Скоро'); return; }
+    openModal(
+      <FilePreviewModal title={d.original_filename || d.filename || d.name || 'файл'} fileUrl={url} mime={d.mime_type || ''} downloadUrl={url} />,
+      { size: 'xl' }
+    );
+  };
+
+  const onUpload = () => {
+    if (!ptId || !canUpload) return;
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.onchange = async () => {
+      const files = Array.from(input.files || []);
+      input.remove();
+      if (!files.length) return;
+      try {
+        await uploadPreTenderDocs(ptId, files, sel);
+        toast.success('Файлы загружены');
+        onChanged?.();
+      } catch (e) {
+        toast.error('Не загрузилось: ' + (e?.message || e));
+      }
+    };
+    input.click();
+  };
+
+  const onNewFolder = async () => {
+    if (!ptId) return;
+    const name = window.prompt('Название новой папки:');
+    if (!name?.trim()) return;
+    try {
+      const r = await createPreTenderFolder(ptId, name.trim());
+      if (r?.folder?.id) setSel(r.folder.id);
+      toast.success('Папка создана');
+      onChanged?.();
+    } catch (e) {
+      toast.error('Ошибка: ' + (e?.message || e));
+    }
+  };
+
+  const onRenameFolder = async (folderId) => {
+    if (!ptId || !folderId) return;
+    const f = folders.find((x) => x.id === folderId);
+    if (!f || f.system) return;
+    const name = window.prompt('Новое название папки:', f.name);
+    if (!name?.trim() || name.trim() === f.name) return;
+    try {
+      await renamePreTenderFolder(ptId, folderId, name.trim());
+      toast.success('Папка переименована');
+      onChanged?.();
+    } catch (e) {
+      toast.error('Ошибка: ' + (e?.message || e));
+    }
+  };
+
+  const onDeleteFolder = async (folderId) => {
+    if (!ptId || !folderId) return;
+    const f = folders.find((x) => x.id === folderId);
+    if (!f || f.system) return;
+    if (!window.confirm(`Удалить папку «${f.name}»? Папка должна быть пустой.`)) return;
+    try {
+      await deletePreTenderFolder(ptId, folderId);
+      if (sel === folderId) setSel('pm_upload');
+      toast.success('Папка удалена');
+      onChanged?.();
+    } catch (e) {
+      toast.error(e?.message?.includes('folder_not_empty') ? 'Сначала удалите файлы из папки' : (e?.message || 'Ошибка'));
+    }
+  };
+
+  const onMove = async (idx, folderId) => {
+    if (!ptId || !folderId) return;
+    try {
+      await movePreTenderDoc(ptId, idx, folderId);
+      setSel(folderId);
+      setMoveIdx(null);
+      toast.success('Документ перемещён');
+      onChanged?.();
+    } catch (e) {
+      toast.error('Ошибка: ' + (e?.message || e));
+    }
+  };
+
+  const onRenameDoc = async (idx, curName) => {
+    if (!ptId) return;
+    const name = window.prompt('Новое имя файла:', curName);
+    if (!name?.trim() || name.trim() === curName) return;
+    try {
+      await renamePreTenderDoc(ptId, idx, name.trim());
+      toast.success('Файл переименован');
+      onChanged?.();
+    } catch (e) {
+      toast.error('Ошибка: ' + (e?.message || e));
+    }
+  };
+
+  const onDeleteDoc = async (idx, name) => {
+    if (!ptId) return;
+    if (!window.confirm(`Удалить «${name}»?`)) return;
+    try {
+      await deletePreTenderDoc(ptId, idx);
+      toast.success('Файл удалён');
+      onChanged?.();
+    } catch (e) {
+      toast.error('Ошибка: ' + (e?.message || e));
+    }
+  };
+
+  const selName = (folders.find((f) => f.id === sel) || {}).name || sel;
+
+  return (
+    <div className="pk3-doc-explorer">
+      <div className="pk3-doc-toolbar" style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Btn size="sm" variant="ghost" onClick={onNewFolder}>＋ Папка</Btn>
+        {canUpload ? <Btn size="sm" variant="gold" onClick={onUpload}>⬆ Загрузить</Btn> : null}
+        <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--t3)' }}>{items.length} файл(ов) · «{selName}»</span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 34%) 1fr', gap: 10, minHeight: 180 }}>
+        <div className="pk3-doc-folders">
+          {folders.map((f) => (
+            <div
+              key={f.id}
+              className={'pk3-doc-folder' + (sel === f.id ? ' pk3-active' : '')}
+              onClick={() => setSel(f.id)}
+              role="button"
+              tabIndex={0}
+              style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+            >
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {f.name}{f.system ? ' · системная' : ''}
+              </span>
+              <span className="pk3-doc-folder-count">{(buckets[f.id] || []).length}</span>
+              {!f.system && (
+                <span style={{ display: 'flex', gap: 2 }} onClick={(e) => e.stopPropagation()}>
+                  <button type="button" title="Переименовать" onClick={() => onRenameFolder(f.id)}>✏</button>
+                  <button type="button" title="Удалить" onClick={() => onDeleteFolder(f.id)}>🗑</button>
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="pk3-doc-files">
+          {items.length ? items.map((d, i) => {
+            const fname = d.original_filename || d.filename || d.name || 'файл';
+            return (
+              <div key={d._idx ?? d._id ?? i} className="pk3-doc-row">
+                <span className="pk3-doc-ic">{docIcon(d.mime_type || fname)}</span>
+                <span className="pk3-doc-name">{fname}</span>
+                <span className="pk3-doc-size">{d.size ? fmtBytes(d.size) : ''}</span>
+                <div className="pk3-doc-actions" style={{ position: 'relative' }}>
+                  <button type="button" onClick={() => onView(d)} title="Открыть">👁</button>
+                  {docUrl(d) && <a href={docUrl(d)} download target="_blank" rel="noreferrer" title="Скачать">⬇</a>}
+                  {d._src === 'manual' && d._idx != null && (
+                    <>
+                      <button type="button" onClick={() => onRenameDoc(d._idx, fname)} title="Переименовать">✏</button>
+                      <button type="button" onClick={() => setMoveIdx(moveIdx === d._idx ? null : d._idx)} title="Переместить">📁</button>
+                      <button type="button" onClick={() => onDeleteDoc(d._idx, fname)} title="Удалить">🗑</button>
+                      {moveIdx === d._idx && (
+                        <div className="pk3-doc-move-menu" style={{ position: 'absolute', right: 0, top: '100%', zIndex: 20, background: 'var(--bg2)', border: '1px solid var(--brd-m)', borderRadius: 8, padding: 4 }}>
+                          {folders.map((f) => (
+                            <button key={f.id} type="button" style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 10px', background: 'transparent', border: 'none', cursor: 'pointer' }} onClick={() => onMove(d._idx, f.id)}>{f.name}</button>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          }) : <div className="pk3-doc-empty">В этой папке пока нет файлов</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DocGroup({ title, items, empty, addLabel, card, src, openModal }) {
   const ptId = card?.entity_id;
   const token = (() => { try { return localStorage.getItem('asgard_token') || ''; } catch { return ''; } })();

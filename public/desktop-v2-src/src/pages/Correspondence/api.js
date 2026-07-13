@@ -8,7 +8,7 @@
  *
  * RBAC: 9 ролей (см. _LETTER_CONTRACT.md §5):
  *   - ADMIN, DIRECTOR_GEN, DIRECTOR_COMM, DIRECTOR_DEV    — full + delete (только GEN+ADMIN)
- *   - OFFICE_MANAGER                                      — full доступ кроме edit-text и delete
+ *   - OFFICE_MANAGER                                      — полный операторский доступ
  *   - PM, HEAD_PM, TO, HEAD_TO                            — view + create + edit/finalize/new-revision «своих»
  *
  * Endpoints:
@@ -39,11 +39,11 @@ export const CORR_ROLES = [
 // Полный доступ к ЧУЖИМ письмам в реестре (видят всё, могут открывать).
 export const FULL_ACCESS_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'OFFICE_MANAGER'];
 
-// Soft delete: только ADMIN + DIRECTOR_GEN (см. §5).
-export const DELETE_ROLES = ['ADMIN', 'DIRECTOR_GEN'];
+// Soft delete: ADMIN + DIRECTOR_GEN + OFFICE_MANAGER.
+export const DELETE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'OFFICE_MANAGER'];
 
-// Могут финализировать любое чужое письмо (OFFICE_MANAGER — НЕ может, см. §5).
-export const FINALIZE_ANY_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+// Могут финализировать любое чужое письмо.
+export const FINALIZE_ANY_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'OFFICE_MANAGER'];
 
 // Могут отправлять email + рендерить PDF/Word: те же что FINALIZE_ANY + OFFICE_MANAGER.
 export const SEND_EMAIL_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'OFFICE_MANAGER'];
@@ -95,17 +95,11 @@ export function isOwnItem(user, item) {
   return false;
 }
 
-/** Edit (текст черновика). OFFICE_MANAGER НЕ редактирует (по контракту §5). */
+/** Edit (текст черновика). */
 export function canEditItem(user, item) {
   if (!item) return false;
-  // Финализированное/отправленное — никто не редактирует, только new-revision.
   if (item.signing_status && item.signing_status !== 'draft') return false;
-  // OFFICE_MANAGER — НЕ редактирует (только просмотр + скачивание + send email).
-  if (user && (user.role === 'OFFICE_MANAGER' || (Array.isArray(user.roles) && user.roles.includes('OFFICE_MANAGER')))) {
-    return false;
-  }
-  if (_hasRole(user, ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'])) return true;
-  // PM/HEAD_PM/TO/HEAD_TO — только своё.
+  if (_hasRole(user, ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'OFFICE_MANAGER'])) return true;
   return isOwnItem(user, item);
 }
 
@@ -127,6 +121,22 @@ export function canNewRevision(user, item) {
   if (canFinalizeAny(user)) return true;
   if (_hasRole(user, ['OFFICE_MANAGER'])) return true; // OFFICE_MANAGER может создавать редакции
   if (_hasRole(user, ['PM', 'HEAD_PM', 'TO', 'HEAD_TO'])) return isOwnItem(user, item);
+  return false;
+}
+
+/** Отправить email из CRM (finalized → sent). */
+export function canSendEmail(user, item) {
+  if (!item || item.direction !== 'outgoing') return false;
+  if (item.signing_status !== 'finalized') return false;
+  return _hasRole(user, SEND_EMAIL_ROLES);
+}
+
+/** Отметить отправленным вручную (вне CRM). */
+export function canMarkSent(user, item) {
+  if (!item || item.direction !== 'outgoing') return false;
+  if (item.signing_status === 'sent') return false;
+  if (item.signing_status === 'finalized') return _hasRole(user, SEND_EMAIL_ROLES);
+  if (item.signing_status === 'draft' && item.number) return _hasRole(user, SEND_EMAIL_ROLES);
   return false;
 }
 
@@ -269,6 +279,29 @@ export function getNextOutgoingNumber(date) {
     .catch(() => '');
 }
 
+/** Последний выданный и следующий Исх.№. */
+export function loadOutgoingNumberStatus(date) {
+  const url = date
+    ? `/api/correspondence/outgoing-number-status?date=${encodeURIComponent(date)}`
+    : '/api/correspondence/outgoing-number-status';
+  return api(url).catch(() => ({ last: null, next: null }));
+}
+
+/** Проверка уникальности ручного Исх.№. */
+export function checkOutgoingNumber(number, excludeId) {
+  return api('/api/correspondence/check-outgoing-number', {
+    method: 'POST',
+    body: { number, exclude_id: excludeId || undefined }
+  });
+}
+
+export function loadAttachments(correspondenceId) {
+  const _id = encodeURIComponent(correspondenceId);
+  return api(`/api/correspondence/${_id}/attachments`)
+    .then((d) => d?.items || [])
+    .catch(() => []);
+}
+
 /* ─────────────────────── Write (CRUD + state machine) ─────────────────────── */
 
 export function createCorrespondence(payload) {
@@ -312,6 +345,24 @@ export function deleteCorrespondence(id) {
   return api(`/api/correspondence/${_id}`, { method: 'DELETE' });
 }
 export const deleteOne = deleteCorrespondence;
+
+export function markCorrespondenceSent(id, payload = {}) {
+  const _id = encodeURIComponent(id);
+  return api(`/api/correspondence/${_id}/mark-sent`, { method: 'POST', body: payload });
+}
+
+export function sendLetterEmail(id, payload) {
+  const _id = encodeURIComponent(id);
+  return api(`/api/letter/${_id}/send-email`, { method: 'POST', body: payload });
+}
+
+/** Регистрация исходящего, созданного вне CRM (ручной Исх.№). */
+export function registerExternalCorrespondence(payload) {
+  return api('/api/correspondence', {
+    method: 'POST',
+    body: { ...payload, registration_mode: 'external', direction: 'outgoing' }
+  });
+}
 
 /* ─────────────────────── Render PDF / DOCX ─────────────────────── */
 

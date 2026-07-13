@@ -12,9 +12,15 @@ import { MCard, MHead, MBody, MFoot, Btn } from '@/modals/parts';
 import { ConfirmModal } from '@/modals/Confirm';
 import { toast, StatusBadge } from '@/modals/Notifications';
 import {
-  loadCustomer, loadCustomerDashboard, deleteCustomer
+  loadCustomer, loadCustomerDashboard, deleteCustomer, updateCustomer
 } from './api';
 import { CustomerEditModal } from './CustomerEditModal';
+import { CustomerContactEditModal } from './CustomerContactEditModal';
+import {
+  initialContacts, contactsPayload, emitCustomersChanged
+} from './contactsHelpers';
+
+const CAN_EDIT_ROLES = ['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM'];
 
 const TRAFFIC = {
   green:  { tone: 'approved', label: 'Надёжный' },
@@ -26,10 +32,6 @@ const TRAFFIC = {
 function fmtMoney(n) {
   const v = Number(n) || 0;
   return new Intl.NumberFormat('ru-RU').format(Math.round(v)) + ' ₽';
-}
-
-function emitChanged() {
-  window.dispatchEvent(new CustomEvent('asgard:customers:changed'));
 }
 
 export function CustomerDetailModal({ inn }) {
@@ -50,6 +52,16 @@ export function CustomerDetailModal({ inn }) {
       })
       .catch((e) => toast.error('Не удалось загрузить: ' + (e?.message || e)))
       .finally(() => setLoading(false));
+  };
+
+  /** Обновление без спиннера — для inline-правок контактов. */
+  const refreshSilent = () => {
+    Promise.all([loadCustomer(inn), loadCustomerDashboard(inn).catch(() => null)])
+      .then(([d, dd]) => {
+        setData(d);
+        setDash(dd);
+      })
+      .catch((e) => toast.error('Не удалось загрузить: ' + (e?.message || e)));
   };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -108,7 +120,7 @@ export function CustomerDetailModal({ inn }) {
           try {
             await deleteCustomer(c.inn);
             toast.success('Контрагент удалён');
-            emitChanged();
+            emitCustomersChanged();
             close();
           } catch (e) {
             toast.error('Не удалось удалить: ' + (e?.message || e));
@@ -119,6 +131,7 @@ export function CustomerDetailModal({ inn }) {
   };
 
   const canDelete = user?.role === 'ADMIN';
+  const canEdit = CAN_EDIT_ROLES.includes(user?.role);
 
   return (
     <MCard className="modal-wide">
@@ -163,7 +176,11 @@ export function CustomerDetailModal({ inn }) {
           </div>
 
           {/* ── Контакты (массив) ────────────────────────────────── */}
-          <CustomerContactsView customer={c} />
+          <CustomerContactsView
+            customer={c}
+            canEdit={canEdit}
+            onRefresh={refreshSilent}
+          />
 
 
           {/* ── Последние тендеры ─────────────────────────────────── */}
@@ -201,7 +218,7 @@ export function CustomerDetailModal({ inn }) {
         </div>
         <div className="u-flex gap-8">
           <Btn onClick={close}>Закрыть</Btn>
-          <Btn variant="primary" onClick={onEdit}>✎ Редактировать</Btn>
+          {canEdit && <Btn variant="primary" onClick={onEdit}>✎ Редактировать</Btn>}
         </div>
       </MFoot>
     </MCard>
@@ -237,33 +254,113 @@ function KV({ label, value }) {
   );
 }
 
-/**
- * Отображает список контактов. Если массив contacts[] пустой,
- * но есть legacy contact_person — рисуем один fallback-контакт.
- */
-function CustomerContactsView({ customer }) {
-  const list = Array.isArray(customer?.contacts) ? customer.contacts : [];
-  const fallback = (!list.length && customer?.contact_person)
-    ? [{ name: customer.contact_person, is_primary: true, phone: customer.phone, email: customer.email }]
-    : null;
-  const items = list.length ? list : (fallback || []);
-  if (!items.length) return null;
+function CustomerContactsView({ customer, canEdit, onRefresh }) {
+  const modal = useModal();
+  const items = initialContacts(customer);
+
+  const onAdd = (e) => {
+    e?.stopPropagation?.();
+    modal.open(
+      <CustomerContactEditModal customer={customer} onSaved={onRefresh} />
+    );
+  };
+
+  const onEdit = (idx, e) => {
+    e?.stopPropagation?.();
+    modal.open(
+      <CustomerContactEditModal
+        customer={customer}
+        contactIndex={idx}
+        onSaved={onRefresh}
+      />
+    );
+  };
+
+  const onDelete = (idx, e) => {
+    e?.stopPropagation?.();
+    const c = items[idx];
+    modal.open(
+      <ConfirmModal
+        tone="danger"
+        title="Удалить контакт?"
+        message={`Удалить «${c?.name || 'контакт'}» из контактов контрагента?`}
+        okText="Удалить"
+        cancelText="Отмена"
+        onConfirm={async () => {
+          try {
+            let next = items.filter((_, i) => i !== idx);
+            if (next.length && !next.some((x) => x.is_primary)) {
+              next = next.map((x, i) => (i === 0 ? { ...x, is_primary: true } : x));
+            }
+            await updateCustomer(customer.inn, contactsPayload(next));
+            toast.success('Контакт удалён');
+            emitCustomersChanged();
+            onRefresh?.();
+          } catch (e) {
+            toast.error('Не удалось удалить: ' + (e?.message || e));
+            throw e;
+          }
+        }}
+      />
+    );
+  };
+
+  if (!items.length && !canEdit) return null;
+
   return (
     <div>
-      <SectionLabel>Контакты ({items.length})</SectionLabel>
-      <div className="col gap-6">
-        {items.map((c, i) => (
-          <div key={i} className="cust-tender-row" style={{ gridTemplateColumns: '1fr 1fr 1fr auto' }}>
-            <span>
-              <b>{c.name || '—'}</b>
-              {c.position && <span className="c-t3 fs-11"> · {c.position}</span>}
-            </span>
-            <span className="c-t3 fs-12">{c.phone || '—'}</span>
-            <span className="c-t3 fs-12">{c.email || '—'}</span>
-            {c.is_primary && <span className="cust-cat-pill tone-gold">★ основной</span>}
-          </div>
-        ))}
+      <div className="cust-contacts-detail-head">
+        <SectionLabel>Контакты ({items.length})</SectionLabel>
+        {canEdit && (
+          <Btn size="sm" variant="ghost" type="button" onClick={onAdd}>+ Контакт</Btn>
+        )}
       </div>
+      {items.length === 0 ? (
+        <div className="c-t3 fs-13 p-10">Контактов нет</div>
+      ) : (
+        <div className="col gap-6">
+          {items.map((c, i) => (
+            <div
+              key={i}
+              className={'cust-contact-detail-row' + (c.is_primary ? ' is-primary' : '') + (canEdit ? ' is-clickable' : '')}
+              onClick={canEdit ? (e) => onEdit(i, e) : undefined}
+              role={canEdit ? 'button' : undefined}
+              tabIndex={canEdit ? 0 : undefined}
+              onKeyDown={canEdit ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onEdit(i, e); } } : undefined}
+            >
+              <span className="cust-contact-detail-name">
+                <b>{c.name || '—'}</b>
+                {c.position && <span className="c-t3 fs-11"> · {c.position}</span>}
+              </span>
+              <span className="c-t3 fs-12">{c.phone || '—'}</span>
+              <span className="c-t3 fs-12">{c.email || '—'}</span>
+              <span className="cust-contact-detail-badge">
+                {c.is_primary && <span className="cust-cat-pill tone-gold">★ основной</span>}
+              </span>
+              {canEdit && (
+                <span className="cust-contact-detail-actions" onClick={(e) => e.stopPropagation()}>
+                  <Btn
+                    size="sm"
+                    variant="ghost"
+                    type="button"
+                    onClick={(e) => onEdit(i, e)}
+                    title="Редактировать контакт"
+                    aria-label="Редактировать контакт"
+                  >✎</Btn>
+                  <Btn
+                    size="sm"
+                    variant="ghost"
+                    type="button"
+                    onClick={(e) => onDelete(i, e)}
+                    title="Удалить контакт"
+                    aria-label="Удалить контакт"
+                  >🗑</Btn>
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

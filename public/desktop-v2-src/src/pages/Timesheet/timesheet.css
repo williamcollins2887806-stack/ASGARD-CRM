@@ -268,6 +268,74 @@
 .ts-table thead th.ts-fio-th {
   z-index: 4;
   background: var(--inner-bg);
+  box-shadow: 0 1px 0 var(--brd-2);
+}
+
+/* Crosshair focus — подсветка строки ФИО + столбца даты */
+.ts-wrap.ts-has-focus .ts-table tbody tr:not(.ts-focus-row) {
+  opacity: 0.32;
+  filter: saturate(0.85);
+}
+.ts-wrap.ts-has-focus .ts-table thead th:not(.ts-focus-col):not(.ts-fio-th) {
+  opacity: 0.32;
+}
+.ts-wrap.ts-has-focus .ts-table tbody tr:not(.ts-focus-row) .ts-cell {
+  pointer-events: none;
+}
+.ts-focus-row .ts-fio-td {
+  background: color-mix(in srgb, var(--gold) 14%, var(--card-bg)) !important;
+  box-shadow: inset 3px 0 0 var(--gold);
+}
+.ts-table thead th.ts-focus-col {
+  background: color-mix(in srgb, var(--gold) 18%, var(--inner-bg)) !important;
+  color: var(--gold);
+}
+.ts-table tbody td.ts-focus-col {
+  background: color-mix(in srgb, var(--gold) 8%, transparent);
+}
+tr.ts-roster-only {
+  opacity: 0.72;
+}
+.ts-roster-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.ts-roster-badge {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: var(--r-pill);
+  background: var(--inner-bg);
+  color: var(--t-2);
+  border: 1px solid var(--brd-2);
+}
+.ts-toolbar-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  margin-top: 8px;
+}
+.ts-toolbar-filters input {
+  flex: 1;
+  min-width: 140px;
+  max-width: 280px;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--brd-2);
+  background: var(--inner-bg);
+  color: var(--t-1);
+  font-size: 12px;
+}
+.ts-project-chip {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--blue) 12%, transparent);
+  color: var(--blue);
+  border: 1px solid color-mix(in srgb, var(--blue) 30%, transparent);
 }
 
 .ts-table tbody tr:hover td {

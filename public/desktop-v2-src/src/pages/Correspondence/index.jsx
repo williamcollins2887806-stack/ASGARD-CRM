@@ -8,7 +8,7 @@
  *
  * RBAC: 9 ролей (см. _LETTER_CONTRACT.md §5):
  *   - ADMIN, DIRECTOR_GEN, DIRECTOR_COMM, DIRECTOR_DEV    — full + delete (только GEN+ADMIN)
- *   - OFFICE_MANAGER                                      — full доступ кроме edit-text и delete
+ *   - OFFICE_MANAGER                                      — полный операторский доступ
  *   - PM, HEAD_PM, TO, HEAD_TO                            — view + create + edit/finalize/new-revision «своих»
  *
  * URL params:
@@ -58,12 +58,13 @@ import {
   hasAccess, hasFullAccess, isViewOnlyRole, canEditItem, canFinalizeItem,
   canNewRevision, canDownloadLetter, canDelete,
   DIRECTION_OPTIONS, DOC_TYPE_OPTIONS, MONTH_OPTIONS, SIGNING_STATUS_OPTIONS,
-  loadCorrespondence, loadCorrespondenceByParent, loadOne,
+  loadCorrespondence, loadCorrespondenceByParent, loadOne, loadOutgoingNumberStatus,
   finalizeCorrespondence, createNewRevision, deleteCorrespondence,
-  letterRenderUrl, letterFileBase, getParentEntityLabel
+  letterRenderUrl, letterFileBase, getParentEntityLabel, fmtDate
 } from './api';
 import { CorrFormModal } from './CorrFormModal';
 import { CorrViewModal } from './CorrViewModal';
+import { CorrRegisterExternalModal } from './CorrRegisterExternalModal';
 import CorrespondenceRow from './CorrespondenceRow';
 import './correspondence.css';
 
@@ -95,7 +96,7 @@ export default function CorrespondencePage() {
   const [loading, setLoading] = useState(true);
 
   // Фильтры
-  const [year, setYear] = useState(currentYear);
+  const [year, setYear] = useState('');
   const [month, setMonth] = useState('');
   const [direction, setDirection] = useState('');
   const [docType, setDocType] = useState('');
@@ -103,6 +104,7 @@ export default function CorrespondencePage() {
   const [search, setSearch] = useState('');
   const dSearch = useDebounce(search, 300);
   const [page, setPage] = useState(0);
+  const [numberStatus, setNumberStatus] = useState({ last: null, next: null });
 
   /* — Загрузка — */
   const refresh = useCallback(async () => {
@@ -132,11 +134,26 @@ export default function CorrespondencePage() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  const refreshNumberStatus = useCallback(async () => {
+    if (!access) return;
+    try {
+      const st = await loadOutgoingNumberStatus();
+      setNumberStatus(st || { last: null, next: null });
+    } catch {
+      setNumberStatus({ last: null, next: null });
+    }
+  }, [access]);
+
+  useEffect(() => { refreshNumberStatus(); }, [refreshNumberStatus]);
+
   useEffect(() => {
-    const onChange = () => refresh();
+    const onChange = () => {
+      refresh();
+      refreshNumberStatus();
+    };
     window.addEventListener('asgard:correspondence:changed', onChange);
     return () => window.removeEventListener('asgard:correspondence:changed', onChange);
-  }, [refresh]);
+  }, [refresh, refreshNumberStatus]);
 
   // Deep link ?id=
   useEffect(() => {
@@ -158,32 +175,36 @@ export default function CorrespondencePage() {
 
   /* — Фильтр + пагинация — */
   const filtered = useMemo(() => {
-    return items
-      .filter((it) => {
-        if (it.deleted_at) return false;
-        const d = it.date ? new Date(it.date) : null;
-        if (!d) return false;
-        if (year && d.getFullYear() !== Number(year)) return false;
-        if (month !== '' && d.getMonth() !== Number(month)) return false;
-        if (direction && it.direction !== direction) return false;
-        if (docType && it.doc_type !== docType) return false;
-        if (signingStatus) {
-          const sk = it.signing_status || (it.direction === 'outgoing' && !it.number ? 'draft' : 'finalized');
-          if (sk !== signingStatus) return false;
-        }
-        if (dSearch) {
-          const s = dSearch.toLowerCase();
-          const hay = (
-            (it.subject || '') + ' ' +
-            (it.counterparty || '') + ' ' +
-            (it.number || '') + ' ' +
-            (it.contact_person || '')
-          ).toLowerCase();
-          if (!hay.includes(s)) return false;
-        }
-        return true;
-      })
-      .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    const withDate = [];
+    const withoutDate = [];
+    items.forEach((it) => {
+      if (it.deleted_at) return;
+      const d = it.date ? new Date(it.date) : null;
+      if (year && d && d.getFullYear() !== Number(year)) return;
+      if (year && !d) return;
+      if (month !== '' && d && d.getMonth() !== Number(month)) return;
+      if (month !== '' && !d) return;
+      if (direction && it.direction !== direction) return;
+      if (docType && it.doc_type !== docType) return;
+      if (signingStatus) {
+        const sk = it.signing_status || (it.direction === 'outgoing' && !it.number ? 'draft' : 'finalized');
+        if (sk !== signingStatus) return;
+      }
+      if (dSearch) {
+        const s = dSearch.toLowerCase();
+        const hay = (
+          (it.subject || '') + ' ' +
+          (it.counterparty || '') + ' ' +
+          (it.number || '') + ' ' +
+          (it.contact_person || '')
+        ).toLowerCase();
+        if (!hay.includes(s)) return;
+      }
+      if (d) withDate.push(it);
+      else withoutDate.push(it);
+    });
+    withDate.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    return [...withDate, ...withoutDate];
   }, [items, year, month, direction, docType, signingStatus, dSearch]);
 
   useEffect(() => { setPage(0); }, [year, month, direction, docType, signingStatus, dSearch]);
@@ -302,6 +323,10 @@ export default function CorrespondencePage() {
     );
   };
 
+  const openRegisterExternal = () => {
+    modal.open(<CorrRegisterExternalModal parentFilter={parentFilter} onSaved={refresh} />);
+  };
+
   const goComposer = () => {
     const p = new URLSearchParams();
     if (parentFilter) {
@@ -309,9 +334,6 @@ export default function CorrespondencePage() {
       p.set('parent_entity_id', String(parentFilter.id));
     }
     const qs = p.toString();
-    // Composer уже зарегистрирован в App.jsx как /correspondence/composer (новое письмо)
-    // и /correspondence/composer/:id (редактирование существующего). Параметры по родителю
-    // — через query, чтобы composer пред-заполнил привязку.
     navigate('/correspondence/composer' + (qs ? '?' + qs : ''));
   };
 
@@ -358,7 +380,8 @@ export default function CorrespondencePage() {
         }
         actions={
           <>
-            <Btn variant="ghost" onClick={refresh}>↻ Обновить</Btn>
+            <Btn variant="ghost" onClick={() => { refresh(); refreshNumberStatus(); }}>↻ Обновить</Btn>
+            <Btn variant="ghost" onClick={openRegisterExternal} title="Письмо с готовым Исх.№ и сканом">📋 Вне CRM</Btn>
             <Btn variant="ghost" onClick={() => openAdd('incoming')}>📥 Входящее</Btn>
             <Btn variant="ghost" onClick={() => openAdd('outgoing')}>📤 Исходящее</Btn>
             <Btn variant="primary" onClick={goComposer} title="Открыть редактор официального письма">
@@ -402,6 +425,27 @@ export default function CorrespondencePage() {
           <div className="corr-kpi-icon">✎</div>
         </div>
       </div>
+
+      {/* Баннер Исх.№ */}
+      {(numberStatus.last || numberStatus.next) && (
+        <div className="corr-number-banner">
+          <div className="corr-number-banner__row">
+            <span className="corr-number-banner__label">Последний Исх.№:</span>
+            <span className="corr-number-banner__value">
+              {numberStatus.last?.number || '—'}
+              {numberStatus.last?.date ? ` (${fmtDate(numberStatus.last.date)})` : ''}
+            </span>
+          </div>
+          <div className="corr-number-banner__row">
+            <span className="corr-number-banner__label">Следующий в CRM:</span>
+            <span className="corr-number-banner__value corr-number-banner__next">
+              {numberStatus.next?.number || '—'}
+              <span className="corr-number-banner__hint"> (при финализации)</span>
+            </span>
+          </div>
+          <Btn size="sm" variant="ghost" onClick={refreshNumberStatus}>↻</Btn>
+        </div>
+      )}
 
       {/* Фильтры */}
       <div className="corr-filters">
@@ -512,7 +556,7 @@ export default function CorrespondencePage() {
       )}
       {fullAccess && !canDelete(user) && (
         <div className="fs-12 c-t3 t-center">
-          Удаление документов доступно только ADMIN и DIRECTOR_GEN.
+          Удаление документов доступно ADMIN, DIRECTOR_GEN и OFFICE_MANAGER.
         </div>
       )}
     </div>

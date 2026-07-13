@@ -35,6 +35,65 @@
 .prs-badge--ready .num { color: var(--gold); }
 .prs-badge--not_ready .num { color: var(--amber); }
 .prs-badge--archive .num { color: var(--t-3); }
+.prs-badge--planned .num { color: var(--info); }
+
+.prs-view-toggle { margin-bottom: 4px; }
+
+.prs-plan-chip {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+  background: var(--info-bg);
+  color: var(--info);
+  margin-right: 6px;
+}
+.prs-plan-chip--onsite {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+.prs-plan-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.prs-by-project { display: flex; flex-direction: column; gap: 12px; }
+.prs-by-project-block {
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--inner-bg);
+}
+.prs-by-project-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: none;
+  background: var(--bar-bg);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.prs-by-project-head:hover { background: var(--hover-bg); }
+.prs-by-project-chevron { color: var(--t-3); font-size: 11px; width: 14px; }
+.prs-by-project-title { font-weight: 700; color: var(--t-1); flex: 1; }
+.prs-by-project-meta { font-size: 12px; color: var(--t-3); }
+.prs-by-project-table { margin: 0; }
+
+.prs-planned-block { display: flex; flex-direction: column; gap: 10px; }
+.prs-planned-hint { margin: 4px 0 0; line-height: 1.4; }
+
+.prs-siz { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--t-2); }
+.prs-siz-line { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.prs-siz-icon { width: 14px; text-align: center; flex-shrink: 0; }
+.prs-siz-cell { min-width: 110px; }
 
 .prs-table {
   width: 100%;

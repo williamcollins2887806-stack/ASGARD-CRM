@@ -30,6 +30,16 @@ export function ConfirmModal({
   const { close } = useModal();
   const t = TONE[tone] || TONE.info;
 
+  const handleConfirm = async () => {
+    try {
+      const result = onConfirm?.();
+      if (result && typeof result.then === 'function') await result;
+      close();
+    } catch {
+      // onConfirm сам показывает toast — модалку не закрываем при ошибке
+    }
+  };
+
   return (
     <MCard className="frame-inside">
       <MHead icon={icon ?? t.icon} title={title} accent={t.accent} onClose={() => { onCancel?.(); close(); }} />
@@ -38,7 +48,7 @@ export function ConfirmModal({
       </MBody>
       <MFoot>
         <Btn variant="ghost" onClick={() => { onCancel?.(); close(); }}>{cancelText}</Btn>
-        <Btn variant={t.btn} onClick={() => { onConfirm?.(); close(); }}>{okText}</Btn>
+        <Btn variant={t.btn} onClick={handleConfirm}>{okText}</Btn>
       </MFoot>
     </MCard>
   );

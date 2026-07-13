@@ -12,15 +12,17 @@ export function FilePreviewModal({
   fileUrl,
   mime = 'image',
   downloadUrl,
+  htmlPreview,
   onClose
 }) {
   const { close } = useModal();
   const [zoom, setZoom] = useState(1);
   const textRef = useRef(null);
   const handleClose = () => { onClose?.(); close(); };
-  const isImg = mime.startsWith('image') || /\.(png|jpe?g|webp|gif|svg)$/i.test(fileUrl || '');
-  const isPdf = mime.includes('pdf') || /\.pdf$/i.test(fileUrl || '');
-  const isText = mime.startsWith('text') || /\.(txt|md|csv)$/i.test(fileUrl || '');
+  const isImg = !htmlPreview && (mime.startsWith('image') || /\.(png|jpe?g|webp|gif|svg)$/i.test(fileUrl || ''));
+  const isPdf = !htmlPreview && (mime.includes('pdf') || /\.pdf$/i.test(fileUrl || ''));
+  const isText = !htmlPreview && (mime.startsWith('text') || /\.(txt|md|csv)$/i.test(fileUrl || ''));
+  const isHtml = !!htmlPreview;
 
   const onCopy = async () => {
     try {
@@ -45,8 +47,15 @@ export function FilePreviewModal({
           <Btn variant="ghost" onClick={onCopy}>📋 Копировать</Btn>
         </div>
         <div style={{ display: 'grid', placeItems: 'center', minHeight: 320, padding: 16, overflow: 'auto' }}>
-          <div style={{ transform: `scale(${zoom})`, transformOrigin: 'center center' }}>
-            {isImg ? (
+          <div style={{ transform: `scale(${zoom})`, transformOrigin: 'center center', width: isHtml ? '100%' : undefined }}>
+            {isHtml ? (
+              <iframe
+                srcDoc={htmlPreview}
+                title={'Предпросмотр: ' + (title || 'документ')}
+                style={{ width: 'min(960px, 92vw)', height: '70vh', border: 0, borderRadius: 8, background: 'white' }}
+                sandbox="allow-same-origin"
+              />
+            ) : isImg ? (
               <img src={fileUrl} alt={title || subtitle || 'Предпросмотр файла'} style={{ maxWidth: '100%', maxHeight: '70vh', borderRadius: 8, boxShadow: 'var(--sh-md)' }} />
             ) : isPdf ? (
               <iframe src={fileUrl} title={'Предпросмотр PDF: ' + (title || 'документ')} style={{ width: 'min(960px, 92vw)', height: '70vh', border: 0, borderRadius: 8, background: 'white' }} />

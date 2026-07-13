@@ -35,6 +35,26 @@ const SKIP_LOGIN_PREFIX = 'test_';
 const SKIP_ROLES = new Set(['BOT', 'ADMIN', 'FIELD_WORKER']);
 const SKIP_LOGINS = new Set(['mimir_bot']);
 
+export function isSkippedOfficeUser(u) {
+  if (!u || !u.is_active) return true;
+  if (SKIP_ROLES.has(String(u.role || ''))) return true;
+  const login = String(u.login || '');
+  if (SKIP_LOGINS.has(login) || login.startsWith(SKIP_LOGIN_PREFIX)) return true;
+  const name = String(u.name || '').trim();
+  if (name.startsWith('Test ') || name.startsWith('Тест ')) return true;
+  return false;
+}
+
+export function filterDisplayStaff(staff, users) {
+  const skipIds = new Set((users || []).filter(isSkippedOfficeUser).map((u) => u.id));
+  return (staff || []).filter((s) => {
+    if (s.user_id && skipIds.has(s.user_id)) return false;
+    const nm = String(s.name || '').trim();
+    if (nm.startsWith('Test ') || nm.startsWith('Тест ')) return false;
+    return true;
+  });
+}
+
 export function ymd(d) {
   const x = new Date(d);
   const y = x.getFullYear();
@@ -53,9 +73,15 @@ export function daysInMonth(year, month) {
 }
 
 export async function loadStaff() {
-  const d = await api('/api/data/staff?limit=500');
-  const list = d.staff || d.items || d.rows || [];
-  return list.slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ru'));
+  const [staffD, usersD] = await Promise.all([
+    api('/api/data/staff?limit=500'),
+    api('/api/data/users?limit=500')
+  ]);
+  const staff = staffD.staff || staffD.items || staffD.rows || [];
+  const users = usersD.users || usersD.items || usersD.rows || [];
+  return filterDisplayStaff(staff, users)
+    .slice()
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ru'));
 }
 
 export async function loadUsers() {
@@ -73,10 +99,7 @@ export async function ensureStaffSeed() {
   const [staff, users] = await Promise.all([loadStaff(), loadUsers()]);
   const existing = new Set(staff.map((s) => s.user_id));
   const toAdd = users.filter((u) => {
-    if (!u.is_active) return false;
-    if (SKIP_ROLES.has(String(u.role || ''))) return false;
-    if (SKIP_LOGINS.has(String(u.login || ''))) return false;
-    if (String(u.login || '').startsWith(SKIP_LOGIN_PREFIX)) return false;
+    if (isSkippedOfficeUser(u)) return false;
     return !existing.has(u.id);
   });
   for (const u of toAdd) {

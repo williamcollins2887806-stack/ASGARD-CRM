@@ -31,6 +31,7 @@ export function AddEmployeeModal({ onSaved }) {
     fio: '',
     phone: '',
     birth_date: '',
+    gender: '',
     role_tag: '',
     grade: '',
     city: '',
@@ -92,6 +93,17 @@ export function AddEmployeeModal({ onSaved }) {
               <DatePicker value={form.birth_date} onChange={(v) => set('birth_date', v || '')} />
             </Field>
           </div>
+
+          <Field label="Пол">
+            <SelectInput
+              value={form.gender}
+              onChange={(v) => set('gender', v)}
+              options={[
+                { value: 'male', label: 'Мужской' },
+                { value: 'female', label: 'Женский' },
+              ]}
+            />
+          </Field>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 1fr', gap: 10 }}>
             <Field label="Должность" hint="Слесарь — базовая ставка (склад 10б). Мастер — повышенная (склад 12б). РП — руководитель.">

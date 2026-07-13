@@ -468,3 +468,77 @@ export async function patchCard(cardId, patch) {
     method: 'POST', body: patch
   });
 }
+
+const DEFAULT_DOC_FOLDERS = [
+  { id: 'customer', name: 'От заказчика', system: true },
+  { id: 'pm_upload', name: 'Загружено РП', system: true },
+  { id: 'tkp', name: 'ТКП', system: true },
+  { id: 'mimir', name: 'Мимир', system: true },
+];
+
+export function inferDocFolderId(doc) {
+  if (!doc) return 'pm_upload';
+  if (doc.folder_id) return doc.folder_id;
+  if (doc.generated_by === 'mimir' || doc.source === 'mimir') return 'mimir';
+  if (doc.kind === 'tkp' || doc.source === 'tkp') return 'tkp';
+  if (doc.source === 'email') return 'customer';
+  return 'pm_upload';
+}
+
+export function collectDocsByFolder(card) {
+  const folders = (Array.isArray(card.document_folders) && card.document_folders.length)
+    ? card.document_folders : DEFAULT_DOC_FOLDERS;
+  const buckets = {};
+  folders.forEach((f) => { buckets[f.id] = []; });
+  (card.email_attachments || []).forEach((d) => {
+    if (!buckets.customer) buckets.customer = [];
+    buckets.customer.push({ ...d, _src: 'email', _id: d.id });
+  });
+  (card.manual_documents || []).forEach((md, idx) => {
+    const fid = inferDocFolderId(md);
+    if (!buckets[fid]) buckets[fid] = [];
+    buckets[fid].push({ ...md, _src: 'manual', _idx: idx });
+  });
+  (card.calc_documents || []).forEach((d, i) => {
+    if (!buckets.tkp) buckets.tkp = [];
+    buckets.tkp.push({ ...d, _src: 'calc', _idx: i });
+  });
+  return { folders, buckets };
+}
+
+export async function createPreTenderFolder(ptId, name) {
+  return api(`/api/pre-tenders/${ptId}/folders`, { method: 'POST', body: { name } });
+}
+
+export async function movePreTenderDoc(ptId, idx, folderId) {
+  return api(`/api/pre-tenders/${ptId}/documents/${idx}/move`, {
+    method: 'PATCH', body: { folder_id: folderId }
+  });
+}
+
+export async function uploadPreTenderDocs(ptId, files, folderId = 'pm_upload') {
+  const fd = new FormData();
+  files.forEach((f) => fd.append('files', f, f.name));
+  fd.append('folder_id', folderId);
+  return api(`/api/pre-tenders/${ptId}/upload-docs`, { method: 'POST', body: fd });
+}
+
+export async function renamePreTenderFolder(ptId, folderId, name) {
+  return api(`/api/pre-tenders/${ptId}/folders/${encodeURIComponent(folderId)}`, {
+    method: 'PATCH', body: { name }
+  });
+}
+
+export async function deletePreTenderFolder(ptId, folderId) {
+  return api(`/api/pre-tenders/${ptId}/folders/${encodeURIComponent(folderId)}`, { method: 'DELETE' });
+}
+
+export async function renamePreTenderDoc(ptId, idx, original_name) {
+  return api(`/api/pre-tenders/${ptId}/documents/${idx}`, {
+    method: 'PATCH', body: { original_name }
+  });
+}
+
+export async function deletePreTenderDoc(ptId, idx) {
+  return api(`/api/pre-tenders/${ptId}/documents/${idx}`, { method: 'DELETE' });
+}

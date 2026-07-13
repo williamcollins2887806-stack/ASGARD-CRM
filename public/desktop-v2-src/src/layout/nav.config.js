@@ -32,9 +32,7 @@ export const NAV_ITEMS = [
   { r: '/help',         l: 'Помощь коллеги',  d: 'Любой → любому, с чатом',    i: '🤝', g: 'comm',  roles: ALL_ROLES, ready: true },
 
   // ── CRM 2.0 (новые в v2) ──
-  { r: '/to-calcs',         l: 'Мои просчёты (ТО)',     d: 'Тендеры, которые я считаю',  i: '🧮', g: 'tenders', roles: ['ADMIN','TO','HEAD_TO'],          ready: true },
-  { r: '/head-to-approvals',l: 'Согласование (ТО)',     d: 'Просчёты ТО на согл.',       i: '✓', g: 'tenders', roles: ['ADMIN','HEAD_TO'],              ready: true },
-  { r: '/modals',           l: 'Каталог компонентов',   d: 'Все 85 элементов UI 2.0',    i: '🎨', g: 'v2',      roles: ['ADMIN'],                         ready: true },
+  { r: '/modals', l: 'Каталог компонентов', d: 'Все 85 элементов UI 2.0', i: '🎨', g: 'v2', roles: ['ADMIN'], ready: true },
 
   // ── ТЕНДЕРЫ ──
   // 27.06.2026: пункты «Заявки (ТО)» и «Входящие заявки» сведены в единый
@@ -42,20 +40,18 @@ export const NAV_ITEMS = [
   // и путали директора. Теперь — один экран, RBAC прячет/показывает нужное.
   { r: '/funnel',       l: 'Воронка продаж',      d: 'Канбан тендеров',       i: '🪶', g: 'tenders', roles: ['ADMIN','TO','HEAD_TO', ...DIRECTOR_ROLES] },
   { r: '/tenders',      l: 'Сага Тендеров',       d: 'Реестр тендеров',       i: '📋', g: 'tenders', roles: ['ADMIN','TO','HEAD_TO', ...DIRECTOR_ROLES] },
-  { r: '/pm-duty',      l: 'Дежурство РП',        d: 'Проверка тендеров',     i: '🛡', g: 'tenders', roles: ['ADMIN','PM','HEAD_PM','TO','HEAD_TO', ...DIRECTOR_ROLES], ready: true },
+  { r: '/pm-calculations', l: 'Просчёты РП', d: 'Анализ, просчёты и архив', i: '🛡', g: 'tenders', roles: ['ADMIN','PM','HEAD_PM','TO','HEAD_TO', ...DIRECTOR_ROLES], ready: true },
   { r: '/customers',    l: 'Карта Контрагентов',  d: 'Справочник организаций',i: '🏢', g: 'tenders', roles: ['ADMIN','TO','HEAD_TO','PM','HEAD_PM','OFFICE_MANAGER', ...DIRECTOR_ROLES] },
   { r: '/director-inbox', l: 'Маркетплейс заявок',   d: 'Новые письма + работа РП в одном экране', i: '📭', g: 'tenders', roles: ['ADMIN', ...DIRECTOR_ROLES, 'HEAD_PM', 'PM', 'TO', 'HEAD_TO'], ready: true },
+  { r: '/director-tender-approvals', l: 'Согласование тендеров', d: 'Просчёты РП >5 млн без НДС', i: '✅', g: 'tenders', roles: ['ADMIN', ...DIRECTOR_ROLES], ready: true },
 
   // ── РАБОТЫ ──
-  { r: '/pm-calcs',     l: 'Просчёты (inbox)',    d: 'Входящие от ТО',        i: '🧮', g: 'works', roles: ['ADMIN','PM','HEAD_PM', ...DIRECTOR_ROLES] },
   { r: '/calculator',   l: 'Калькулятор',         d: 'Расчёт стоимости',      i: '🧮', g: 'works', roles: ['ADMIN','PM','TO','HEAD_PM','HEAD_TO', ...DIRECTOR_ROLES] },
-  { r: '/approvals',    l: 'Согласование',        d: 'Решения Ярла',          i: '✓', g: 'works', roles: ['ADMIN','HEAD_PM', ...DIRECTOR_ROLES] },
   { r: '/bonus-approval', l: 'Премии рабочих',    d: 'Согласование премий',   i: '🏆', g: 'works', roles: ['ADMIN','PM','HEAD_PM', ...DIRECTOR_ROLES] },
   { r: '/approval-payment', l: 'Очередь оплаты',  d: 'Бухгалтерия — оплата',  i: '💳', g: 'works', roles: ['ADMIN','BUH', ...DIRECTOR_ROLES] },
   { r: '/pm-works',     l: 'Мои работы (РП)',     d: 'Проекты РП',            i: '🏗️', g: 'works', roles: ['ADMIN','PM','HEAD_PM', ...DIRECTOR_ROLES] },
   { r: '/readiness',    l: 'Готовность проектов', d: 'По этапам',             i: '🎯', g: 'works', roles: ['ADMIN','PM','HEAD_PM', ...DIRECTOR_ROLES] },
   { r: '/all-works',    l: 'Свод Контрактов',     d: 'Все работы',            i: '📜', g: 'works', roles: ['ADMIN','HEAD_PM', ...DIRECTOR_ROLES] },
-  { r: '/all-estimates',l: 'Свод Расчётов',       d: 'Все просчёты',          i: '🗂', g: 'works', roles: ['ADMIN','BUH','HEAD_PM', ...DIRECTOR_ROLES] },
   { r: '/gantt-calcs',  l: 'Гантт: Просчёты',     d: 'Пересечения по срокам', i: '📊', g: 'works', roles: ['ADMIN','PM','HEAD_PM', ...DIRECTOR_ROLES] },
   { r: '/gantt-works',  l: 'Гантт: Работы',       d: 'План и факты',          i: '📊', g: 'works', roles: ['ADMIN','PM','HEAD_PM', ...DIRECTOR_ROLES] },
   { r: '/tasks-admin',  l: 'Управление задачами', d: 'Контроль задач',        i: '✓', g: 'works', roles: ['ADMIN'] },
@@ -93,7 +89,7 @@ export const NAV_ITEMS = [
   { r: '/proxies',      l: 'Доверенности',        d: '7 шаблонов',            i: '📑', g: 'resources', roles: ['ADMIN','OFFICE_MANAGER', ...DIRECTOR_ROLES] },
 
   // ── ПЕРСОНАЛ ──
-  { r: '/personnel',    l: 'Дружина',             d: 'Сотрудники',            i: '👥', g: 'personnel', roles: ['ADMIN','HR','HR_MANAGER','PM','HEAD_PM','TO','OFFICE_MANAGER', ...DIRECTOR_ROLES] },
+  { r: '/personnel',    l: 'Дружина',             d: 'Сотрудники',            i: '👥', g: 'personnel', roles: ['ADMIN','HR','HR_MANAGER','PM','HEAD_PM','TO','HEAD_TO','OFFICE_MANAGER', ...DIRECTOR_ROLES] },
   { r: '/hr-requests',  l: 'Заявки персонала',    d: 'HR-заявки',             i: '📋', g: 'personnel', roles: ['ADMIN','HR','HR_MANAGER', ...DIRECTOR_ROLES] },
   { r: '/collections',  l: 'Подборки дружины',    d: 'Именные списки',        i: '📚', g: 'personnel', roles: ['ADMIN','HR','HR_MANAGER', ...DIRECTOR_ROLES] },
   { r: '/permits',      l: 'Разрешения и допуски',d: 'Сроки и матрица',       i: '🛡', g: 'personnel', roles: ['ADMIN','HR','HR_MANAGER','TO','HEAD_TO','PM','CHIEF_ENGINEER', ...DIRECTOR_ROLES] },
@@ -107,7 +103,7 @@ export const NAV_ITEMS = [
   // Timesheet v2 (5 mode'ов — см. TIMESHEET_V2_CONTRACT.md). /global-timesheet и /payroll-grid редиректят на новые URL.
   { r: '/my-timesheet',        l: 'Табель моей дружины',           d: 'Чекины моих рабочих',          i: '📅', g: 'personnel', roles: ['PM','HEAD_PM'] },
   { r: '/timesheet-warehouse', l: 'Табель учёта работы на складе', d: 'Дни рабочих на складе',        i: '📦', g: 'personnel', roles: ['WAREHOUSE'] },
-  { r: '/timesheet-medical',   l: 'Табель учёта МО',               d: 'Медосмотры по дням',           i: '🏥', g: 'personnel', roles: ['TO','HEAD_TO'] },
+  { r: '/timesheet-medical',   l: 'Табель учёта МО/обучения/иной транспорт', d: 'Медосмотры, обучение, транспорт', i: '🏥', g: 'personnel', roles: ['TO','HEAD_TO'] },
   { r: '/timesheet-travel',    l: 'Табель учёта дороги',           d: 'Дни в дороге и ожидании',      i: '✈️', g: 'personnel', roles: ['OFFICE_MANAGER','HEAD_TO'] },
   { r: '/timesheet',           l: 'Общий табель',                  d: 'Все рабочие за месяц',         i: '📊', g: 'personnel', roles: ['ADMIN','BUH','HR','HR_MANAGER', ...DIRECTOR_ROLES] },
   { r: '/payroll-dashboard', l: 'Финансы персонала', d:'Дашборд выплат',      i: '💰', g: 'personnel', roles: ['ADMIN','BUH', ...DIRECTOR_ROLES] },

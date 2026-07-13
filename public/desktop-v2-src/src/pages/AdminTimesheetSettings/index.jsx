@@ -43,10 +43,18 @@ const SECTIONS = [
   },
   {
     id: 'medical',
-    title: '🏥 Медосмотр / Обучение',
-    hint: 'Баллы за день медосмотра или обучения. Ставят ТО / Рук. ТО.',
+    title: '🏥 Медосмотр',
+    hint: 'Баллы за день медосмотра. Ставят ТО / Рук. ТО.',
     items: [
-      { type: 'medical', position: null, label: 'Медосмотр / Обучение' }
+      { type: 'medical', position: null, label: 'Медосмотр' }
+    ]
+  },
+  {
+    id: 'training',
+    title: '🎓 Обучение',
+    hint: 'Баллы за день обучения. Ставят ТО / Рук. ТО.',
+    items: [
+      { type: 'training', position: null, label: 'Обучение' }
     ]
   },
   {
@@ -63,6 +71,14 @@ const SECTIONS = [
     hint: 'Альтернативный вид дороги — пароход / паром. Повышенная ставка. Ставят ТО / Рук. ТО.',
     items: [
       { type: 'ship', position: null, label: 'Корабль' }
+    ]
+  },
+  {
+    id: 'helicopter',
+    title: '🚁 Вертолёт',
+    hint: 'Иной транспорт — вертолёт. Ставят ТО / Рук. ТО.',
+    items: [
+      { type: 'helicopter', position: null, label: 'Вертолёт' }
     ]
   }
 ];

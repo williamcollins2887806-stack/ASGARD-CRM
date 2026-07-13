@@ -170,7 +170,8 @@ export async function api(path, opts = {}) {
   }
 
   const headers = { Authorization: 'Bearer ' + getToken(), ...(extraHeaders || {}) };
-  if (body) headers['Content-Type'] = 'application/json';
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+  if (body && !isFormData) headers['Content-Type'] = 'application/json';
 
   // Комбинируем внешний signal с timeout-signal.
   const ctrl = new AbortController();
@@ -192,7 +193,7 @@ export async function api(path, opts = {}) {
       const r = await fetch(path, {
         method,
         headers,
-        body: body ? JSON.stringify(body) : undefined,
+        body: body ? (isFormData ? body : JSON.stringify(body)) : undefined,
         signal: ctrl.signal
       });
       if (timerId) clearTimeout(timerId);

@@ -49,6 +49,7 @@ import { EmployeePermits } from './EmployeePermits';
 import { EmployeeNotes } from './EmployeeNotes';
 // Анкета-характеристика (порт vanilla worker_profile_desktop.js → btnProfile)
 import { WorkerProfileModal } from './WorkerProfileModal';
+import { EmployeePlannedEngagement } from './EmployeePlannedEngagement';
 
 function emitChanged() {
   window.dispatchEvent(new CustomEvent('asgard:personnel:changed'));
@@ -266,6 +267,13 @@ export function EmployeeDetailModal({ employeeId }) {
                 <div className="prs-detail-loc-title">🏗 {loc.work_title || '—'}</div>
                 {loc.pm_name && <div className="prs-detail-loc-pm">РП: {loc.pm_name}</div>}
               </div>
+            </Section>
+          )}
+
+          {/* Планируемое привлечение */}
+          {(userCanEdit || emp.planned_info) && (
+            <Section label="Планируемое привлечение">
+              <EmployeePlannedEngagement employee={emp} canEdit={userCanEdit} onSaved={refresh} />
             </Section>
           )}
 

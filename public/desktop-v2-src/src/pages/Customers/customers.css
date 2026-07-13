@@ -413,3 +413,48 @@
   .cust-contact-row { flex-direction: column; }
   .cust-contact-actions { flex-direction: row; padding-top: 0; align-items: center; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * CustomerDetailModal — Contact rows with edit/delete actions
+ * ═══════════════════════════════════════════════════════════════════════ */
+.cust-contacts-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.cust-contact-detail-row {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--brd-2);
+  border-radius: var(--r-sm);
+  background: var(--inner-bg);
+}
+.cust-contact-detail-row.is-primary {
+  border-color: color-mix(in srgb, var(--gold) 50%, transparent);
+}
+.cust-contact-detail-row.is-clickable {
+  cursor: pointer;
+}
+.cust-contact-detail-row.is-clickable:hover {
+  border-color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 6%, var(--inner-bg));
+}
+.cust-contact-detail-name { min-width: 0; }
+.cust-contact-detail-badge { min-width: 72px; }
+.cust-contact-detail-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+@media (max-width: 720px) {
+  .cust-contact-detail-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .cust-contact-detail-actions { justify-content: flex-start; }
+}

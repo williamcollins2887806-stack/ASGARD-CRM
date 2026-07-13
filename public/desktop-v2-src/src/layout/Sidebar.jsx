@@ -37,10 +37,13 @@ export default function Sidebar() {
     api('/api/notifications?unread=true&limit=1')
       .then((d) => setUnread(d.total || d.unread || (d.notifications || []).length || 0))
       .catch(() => {});
-    api('/api/data/bonus_requests?status=pending&limit=1')
-      .then((d) => setPendingApprovals((d.items || []).length || 0))
-      .catch(() => {});
-  }, [user?.id]);
+    const bonusRoles = ['ADMIN', 'PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+    if (bonusRoles.includes(user.role)) {
+      api('/api/data/bonus_requests?status=pending&limit=1')
+        .then((d) => setPendingApprovals((d.items || []).length || 0))
+        .catch(() => {});
+    }
+  }, [user?.id, user?.role]);
 
   const groups = useMemo(() => {
     if (!user?.role) return [];

@@ -341,6 +341,23 @@
 .pk3-doc-add:hover {
   border-color: var(--gold); color: var(--gold-l); background: var(--gold-bg);
 }
+.pk3-doc-explorer { display: grid; grid-template-columns: minmax(120px, 34%) 1fr; gap: 10px; min-height: 180px; }
+.pk3-doc-folders { display: flex; flex-direction: column; gap: 4px; border-right: 1px solid var(--brd-2); padding-right: 8px; }
+.pk3-doc-folder {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  padding: 7px 9px; border-radius: 6px; border: 1px solid transparent;
+  background: var(--bg-1); cursor: pointer; font-size: 12px; color: var(--t-2);
+}
+.pk3-doc-folder:hover { border-color: var(--brd-2); color: var(--t-1); }
+.pk3-doc-folder.pk3-active { border-color: var(--gold); background: var(--gold-bg); color: var(--gold-l); }
+.pk3-doc-folder-count { font-size: 10px; color: var(--t-3); background: var(--bg-3); padding: 1px 6px; border-radius: 999px; }
+.pk3-doc-folder-new {
+  margin-top: 6px; font-size: 11px; color: var(--t-3); cursor: pointer; text-align: center;
+  padding: 6px; border: 1px dashed var(--brd-1); border-radius: 6px;
+}
+.pk3-doc-folder-new:hover { border-color: var(--gold); color: var(--gold-l); }
+.pk3-doc-files { min-height: 120px; }
+.pk3-doc-empty { color: var(--t-3); font-size: 11.5px; padding: 12px 4px; }
 
 /* ── Fin grid ── */
 .pk3-fin-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 13px; }
@@ -631,3 +648,84 @@
 @media (max-width: 1100px) { .pk3-noteboard { width: 320px; left: 16px; } }
 @media (max-width: 880px)  { .pk3-noteboard { width: 280px; left: 10px; top: 14px; bottom: 14px; } }
 @media (max-width: 680px)  { .pk3-noteboard { display: none; } }
+
+/* ── v2 sticky board (паритет с vanilla pk3-sticky-board / pk3-sticker-v2) ── */
+.pk3-sticky-board {
+  position: fixed; top: 24px; bottom: 24px; left: 24px;
+  width: 460px; z-index: 99999;
+  display: none; flex-direction: column;
+  background: transparent; pointer-events: none; overflow: hidden;
+  font-family: var(--font-sans, Inter, system-ui, sans-serif);
+}
+.pk3-sticky-board.pk3-show { display: flex; }
+.pk3-sticky-board > * { pointer-events: auto; }
+.pk3-sticky-board-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 6px 12px;
+  font-size: 15px; font-weight: 600; color: #fff;
+  letter-spacing: .2px; text-shadow: 0 1px 4px rgba(0,0,0,.6);
+}
+.pk3-sticky-board-head .pk3-count-badge {
+  margin-left: auto; font-size: 12px; color: #2a1f08; font-weight: 600;
+  background: rgba(255,248,161,.95); border: 1px solid rgba(0,0,0,.12);
+  padding: 2px 10px; border-radius: 9999px;
+  box-shadow: 0 2px 6px rgba(0,0,0,.25); text-shadow: none;
+}
+.pk3-sticky-board-hint {
+  font-size: 12px; color: rgba(255,255,255,.82);
+  padding: 0 8px 10px; text-shadow: 0 1px 3px rgba(0,0,0,.6);
+}
+.pk3-sticker-v2 {
+  position: absolute; box-sizing: border-box;
+  width: 200px; min-height: 140px;
+  padding: 12px 12px 10px;
+  display: flex; flex-direction: column;
+  color: #2a1f08; background: #fff782;
+  border: 1px solid rgba(60,40,10,.12);
+  border-radius: 10px 10px 10px 4px;
+  box-shadow: 2px 4px 14px rgba(0,0,0,.28), 0 1px 0 rgba(255,255,255,.4) inset;
+  cursor: grab; user-select: none; touch-action: none;
+  transition: transform .2s ease, box-shadow .2s ease, max-height .25s ease;
+  transform: rotate(-1.5deg);
+  animation: pk3-sticker-pop .35s cubic-bezier(.34,1.56,.64,1);
+  overflow: hidden;
+}
+.pk3-sticker-v2::before {
+  content: ''; position: absolute; top: 0; left: 12px; right: 12px; height: 5px;
+  background: linear-gradient(180deg, rgba(255,255,255,.55), transparent);
+  border-radius: 0 0 4px 4px; pointer-events: none;
+}
+.pk3-sticker-v2:hover { transform: rotate(0) translateY(-3px); box-shadow: 3px 8px 20px rgba(0,0,0,.35); z-index: 5; }
+.pk3-sticker-v2[data-expanded="1"] { z-index: 50 !important; max-height: 420px !important; transform: rotate(0) !important; box-shadow: 4px 12px 28px rgba(0,0,0,.45); }
+.pk3-sticker-v2[data-color="0"] { background: #fff782; }
+.pk3-sticker-v2[data-color="1"] { background: #ffd4bc; }
+.pk3-sticker-v2[data-color="2"] { background: #c8ecc8; }
+.pk3-sticker-v2[data-color="3"] { background: #ffd0e0; }
+.pk3-sticker-v2[data-color="4"] { background: #c5e4ff; }
+.pk3-sticker-v2-body {
+  flex: 1; min-height: 0; white-space: pre-wrap; word-break: break-word;
+  font-family: 'Caveat', cursive; font-size: 18px; line-height: 1.25;
+  color: #2a1f08; overflow-y: auto; overflow-x: hidden; padding-bottom: 4px;
+}
+.pk3-sticker-v2-foot {
+  margin-top: auto; display: flex; align-items: center; gap: 6px;
+  padding-top: 8px; border-top: 1px dashed rgba(60,40,10,.18);
+  font-size: 10.5px; color: rgba(60,40,10,.65);
+  font-family: var(--font-sans, Inter, system-ui, sans-serif); flex-shrink: 0;
+}
+.pk3-sticker-v2-foot .pk3-sticker-author { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: rgba(60,40,10,.85); }
+.pk3-sticker-v2-foot .pk3-sticker-when { flex-shrink: 0; white-space: nowrap; color: rgba(60,40,10,.5); }
+.pk3-sticker-v2-tools { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; opacity: 0; transition: opacity .15s; z-index: 2; }
+.pk3-sticker-v2:hover .pk3-sticker-v2-tools { opacity: 1; }
+.pk3-sticker-v2-tools button { background: rgba(255,255,255,.75); border: 1px solid rgba(60,40,10,.15); border-radius: 6px; padding: 3px 8px; font-size: 11px; cursor: pointer; color: #2a1f08; font-family: inherit; transition: all .12s; }
+.pk3-sticker-v2-tools button:hover { border-color: var(--gold); color: var(--gold-h, #b07814); background: #fff; }
+.pk3-sticker-v2-tools button.pk3-del:hover { background: var(--err, #e74c3c); color: #fff; border-color: var(--err); }
+.pk3-sticker-v2-expand { margin-top: 4px; background: transparent; border: none; color: rgba(60,40,10,.55); font-size: 10px; cursor: pointer; padding: 0; font-family: inherit; text-align: left; }
+.pk3-sticker-v2-expand:hover { color: rgba(60,40,10,.85); }
+.pk3-sticker-v2.pk3-editing { cursor: text; user-select: text; transform: rotate(0) !important; z-index: 60; }
+.pk3-sticker-v2.pk3-editing textarea { flex: 1; width: 100%; border: none; outline: none; background: transparent; color: #2a1f08; font-family: 'Caveat', cursive; font-size: 18px; line-height: 1.25; resize: none; padding: 0; min-height: 80px; }
+.pk3-sticker-v2-edit-foot { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(60,40,10,.2); font-family: var(--font-sans); font-size: 11px; }
+@media (max-width: 1280px) { .pk3-sticky-board { width: 380px; } }
+@media (max-width: 1100px) { .pk3-sticky-board { width: 320px; left: 16px; } }
+@media (max-width: 880px)  { .pk3-sticky-board { width: 280px; left: 10px; top: 14px; bottom: 14px; } }
+@media (max-width: 680px)  { .pk3-sticky-board { display: none !important; } }

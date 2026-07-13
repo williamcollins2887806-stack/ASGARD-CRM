@@ -29,7 +29,7 @@ import { toast } from '@/modals/Notifications';
 import { Btn } from '@/modals/parts';
 import { TopActionsBar, EmptyState } from '@/blocks/Blocks';
 
-import { hasAccess as hasCorrAccess } from '../api';
+import { hasAccess as hasCorrAccess, canNewRevision as canNewRevisionCorr } from '../api';
 import {
   getLetterKinds, getCorrespondence, saveDraft, finalizeCorrespondence,
   createNewRevision, loadParentContext, renderLetterUrl, templateHealth,
@@ -39,18 +39,11 @@ import { TipTapEditor } from './TipTapEditor';
 import { HeaderForm } from './HeaderForm';
 import { SignatureBlock } from './SignatureBlock';
 import { LetterPreview } from './LetterPreview';
+import { openProtected } from '@/api/download';
+
 import { MimirChat } from './MimirChat';
 
-// 23.06.2026 BUG-FIX (Mail Y1 🟡): паритет FINALIZE_ROLES к vanilla.
-// До фикса: v2 пускал OFFICE_MANAGER → кнопка «Финализировать» была видна,
-// но при клике она в реальном workflow vanilla отсутствует (vanilla
-// correspondence.js §5 / canFinalize: OFFICE_MANAGER — только просмотр+скачивание).
-// Backend correspondence.js:275 ВСЁ ЕЩЁ пускает OFFICE_MANAGER (WRITE_OVERRIDE),
-// то есть UI-фронт расходится с API. По указанию юзера выровнено НА VANILLA
-// (vanilla = источник истины поведения, см. CLAUDE.md). Backend трогать
-// не стали — там OFFICE_MANAGER оставлен «на всякий случай», но через v2 UI
-// он этой кнопкой больше не пользуется.
-const FINALIZE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+const FINALIZE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'OFFICE_MANAGER'];
 
 // При открытии composer URL может содержать ?return_to=<URL>. По выходу
 // (Закрыть / после finalize) возвращаем юзера туда — обычно в vanilla, откуда
@@ -298,6 +291,29 @@ export default function CorrespondenceComposer() {
     return signingStatus === 'draft' && !!correspondenceId;
   }, [user, signingStatus, correspondenceId]);
 
+  const canRevision = useMemo(() => {
+    if (!user || !correspondenceId) return false;
+    return canNewRevisionCorr(user, {
+      id: correspondenceId,
+      direction: 'outgoing',
+      signing_status: signingStatus,
+      number
+    });
+  }, [user, correspondenceId, signingStatus, number]);
+
+  const downloadRendered = (format) => {
+    if (!correspondenceId) return;
+    const ext = format === 'pdf' ? '.pdf' : '.docx';
+    const url = renderLetterUrl(correspondenceId, format, {
+      with_signature: draft.signature_on,
+      with_stamp: draft.stamp_on
+    });
+    const fname = (number || ('letter-' + correspondenceId)).replace(/[\\\/\:\*\?"<>\|]/g, '_') + ext;
+    openProtected(url, fname).catch((e) => {
+      toast?.error?.(String(e?.message || e)) || toast?.('Ошибка', String(e?.message || e), 'err');
+    });
+  };
+
   const doFinalize = async () => {
     if (!canFinalize) return;
     if (!window.confirm('Финализировать письмо? Будет присвоен Исх. № и текст блокируется.')) return;
@@ -375,12 +391,12 @@ export default function CorrespondenceComposer() {
               <>
                 <Btn
                   variant="ghost"
-                  onClick={() => window.open(renderLetterUrl(correspondenceId, 'docx', { with_signature: draft.signature_on, with_stamp: draft.stamp_on }), '_blank')}
+                  onClick={() => downloadRendered('docx')}
                   title="Скачать DOCX"
                 >⬇ DOCX</Btn>
                 <Btn
                   variant="ghost"
-                  onClick={() => window.open(renderLetterUrl(correspondenceId, 'pdf', { with_signature: draft.signature_on, with_stamp: draft.stamp_on }), '_blank')}
+                  onClick={() => downloadRendered('pdf')}
                   title="Скачать PDF"
                 >⬇ PDF</Btn>
               </>
@@ -390,7 +406,7 @@ export default function CorrespondenceComposer() {
                 {finalizing ? '⏳ Финализируем…' : '✓ Финализировать'}
               </Btn>
             )}
-            {(signingStatus === 'finalized' || signingStatus === 'sent') && (
+            {canRevision && (
               <Btn variant="primary" onClick={doNewRevision}>+ Новая редакция</Btn>
             )}
           </>

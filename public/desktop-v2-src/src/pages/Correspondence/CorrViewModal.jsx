@@ -23,22 +23,27 @@ import { useAuth } from '@/api/useAuth';
 import { useModal, ConfirmModal } from '@/modals';
 import { MCard, MHead, MBody, MFoot, Btn } from '@/modals/parts';
 import { toast } from '@/modals/Notifications';
-import { openProtected } from '@/api/download';
+import { openProtected, fetchBlobUrl } from '@/api/download';
+import { FilePreviewModal } from '@/modals/FilePreview';
 
 import {
   getDirInfo, getDocTypeInfo, getSigningStatus, getLetterKindLabel,
   fmtDate, fmtDateTime,
-  loadUsers, loadOne,
+  loadUsers, loadOne, loadAttachments,
   finalizeCorrespondence, createNewRevision, deleteCorrespondence,
   letterRenderUrl, letterFileBase,
-  canEditItem, canFinalizeItem, canNewRevision, canDownloadLetter, canDelete
+  canEditItem, canFinalizeItem, canNewRevision, canDownloadLetter, canDelete,
+  canSendEmail, canMarkSent
 } from './api';
 import { CorrFormModal } from './CorrFormModal';
+import { SendEmailModal } from './SendEmailModal';
+import { MarkSentModal } from './MarkSentModal';
 
 export function CorrViewModal({ item, onChanged }) {
   const { close, open } = useModal();
   const { user } = useAuth();
   const [users, setUsers] = useState({});
+  const [attachments, setAttachments] = useState([]);
 
   useEffect(() => {
     loadUsers().then((arr) => {
@@ -47,6 +52,11 @@ export function CorrViewModal({ item, onChanged }) {
       setUsers(map);
     });
   }, []);
+
+  useEffect(() => {
+    if (!item?.id) return;
+    loadAttachments(item.id).then(setAttachments).catch(() => setAttachments([]));
+  }, [item?.id]);
 
   if (!item) {
     return (
@@ -76,6 +86,44 @@ export function CorrViewModal({ item, onChanged }) {
   const allowFinalize   = canFinalizeItem(user, item);
   const allowNewRev     = canNewRevision(user, item);
   const allowDelete     = canDelete(user);
+  const allowSendEmail  = canSendEmail(user, item);
+  const allowMarkSent   = canMarkSent(user, item);
+  const showBlankPreview = isOutgoing && ['finalized', 'sent'].includes(sstatusKey);
+
+  const previewAttachment = async (att) => {
+    try {
+      const url = att.url || att.file_path;
+      if (!url) return;
+      const { blobUrl } = await fetchBlobUrl(url);
+      open(
+        <FilePreviewModal
+          title={att.filename || att.name || 'Вложение'}
+          fileUrl={blobUrl}
+          mime={att.mime_type || att.mime || ''}
+          downloadUrl={url}
+        />
+      );
+    } catch (e) {
+      toast.error('Просмотр: ' + (e?.message || e));
+    }
+  };
+
+  const previewBlank = async () => {
+    try {
+      const url = letterRenderUrl(item.id, 'pdf', { with_signature: true, with_stamp: true });
+      const { blobUrl } = await fetchBlobUrl(url);
+      open(
+        <FilePreviewModal
+          title={'Бланк · ' + (item.number || '#' + item.id)}
+          fileUrl={blobUrl}
+          mime="application/pdf"
+          downloadUrl={url}
+        />
+      );
+    } catch (e) {
+      toast.error('Просмотр бланка: ' + (e?.message || e));
+    }
+  };
 
   const onEdit = () => {
     if (!allowEdit) {
@@ -297,26 +345,30 @@ export function CorrViewModal({ item, onChanged }) {
             </>
           )}
 
-          {item.file_path && (
-            <>
-              <span className="lbl">📎 Вложение</span>
-              <span className="val">
-                <button
-                  type="button"
-                  onClick={() =>
-                    openProtected(item.file_path, (item.file_path.split('/').pop() || 'attachment'))
-                      .catch((err) => toast.error('Файл: ' + (err?.message || err)))
-                  }
-                  style={{ background: 'none', border: 0, padding: 0, color: 'var(--gold)', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}
-                >
-                  Скачать
-                </button>
-              </span>
-            </>
-          )}
         </div>
 
-        {/* PDF / Word — кнопки для готовых outgoing-писем */}
+        {(attachments.length > 0 || showBlankPreview) && (
+          <div className="corr-attachments-block">
+            <div className="corr-attachments-title">
+              Вложения {attachments.length ? `(${attachments.length})` : ''}
+            </div>
+            {attachments.map((att) => (
+              <div key={att.id || att.url} className="corr-attachment-row">
+                <span className="corr-attachment-name">📎 {att.filename || att.name || 'Файл'}</span>
+                {att.size ? <span className="corr-attachment-size">{Math.round(att.size / 1024)} КБ</span> : null}
+                <Btn size="sm" variant="ghost" onClick={() => previewAttachment(att)}>Просмотр</Btn>
+              </div>
+            ))}
+            {showBlankPreview && (
+              <div className="corr-attachment-row">
+                <span className="corr-attachment-name">📄 Бланк письма (PDF)</span>
+                <Btn size="sm" variant="ghost" onClick={previewBlank}>Просмотр бланка</Btn>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* PDF / Word — скачивание готовых outgoing-писем */}
         {(allowPdf || allowDocx) && (
           <div className="corr-dl-btns">
             {allowPdf && (
@@ -339,6 +391,16 @@ export function CorrViewModal({ item, onChanged }) {
           <Btn variant="ghost" onClick={onDelete} title="Удалить (soft delete)">🗑 Удалить</Btn>
         )}
         <div className="flex-1" />
+        {allowMarkSent && (
+          <Btn variant="ghost" onClick={() => open(<MarkSentModal item={item} onSaved={onChanged} />)}>
+            ✉ Отметить отправленным
+          </Btn>
+        )}
+        {allowSendEmail && (
+          <Btn variant="ghost" onClick={() => open(<SendEmailModal item={item} onSaved={onChanged} />)}>
+            📧 Отправить email
+          </Btn>
+        )}
         {allowNewRev && (
           <Btn variant="ghost" onClick={onNewRevision} title="Создать новую редакцию">🔁 Новая редакция</Btn>
         )}

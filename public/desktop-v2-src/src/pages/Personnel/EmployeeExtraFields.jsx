@@ -157,13 +157,16 @@ export function EmployeeExtraFields({ employee, canEdit, onSaved }) {
         </Field>
       </SubSection>
 
-      <SubSection title="👕 Одежда">
+      <SubSection title="👕 СИЗ — размеры">
         <div className="grid-2 gap-10">
           <Field label="Размер одежды">
-            <TextInput value={form.clothing_size} onChange={(v) => set('clothing_size', v)} disabled={!canEdit} placeholder="48-50" />
+            <TextInput value={form.clothing_size} onChange={(v) => set('clothing_size', v)} disabled={!canEdit} placeholder="48-50 / M" />
           </Field>
           <Field label="Размер обуви">
             <TextInput value={form.shoe_size} onChange={(v) => set('shoe_size', v)} disabled={!canEdit} placeholder="43" />
+          </Field>
+          <Field label="Головной убор (каска)">
+            <TextInput value={form.headwear_size} onChange={(v) => set('headwear_size', v)} disabled={!canEdit} placeholder="стандарт / 58-60" />
           </Field>
         </div>
       </SubSection>
@@ -199,6 +202,7 @@ function buildInitial(e) {
     children_count:     e.children_count ?? '',
     clothing_size:      e.clothing_size || '',
     shoe_size:          e.shoe_size || '',
+    headwear_size:      e.headwear_size || '',
     height:             e.height ?? '',
     blood_type:         e.blood_type || '',
     medical_notes:      e.medical_notes || '',

@@ -27,7 +27,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { Popover } from '@/inputs/Popover';
 import { Btn } from '@/modals/parts';
 import { SelectInput } from '@/inputs/Inputs';
-import { TYPE_META, fmtDateTime, fmtNum, roleShort, REQUIRE_WORK_ID, loadWorks } from './api';
+import { TYPE_META, fmtDateTime, fmtNum, roleShort, typeRequiresWorkId, loadWorks } from './api';
 
 export default function CellEditor({
   anchorRef,
@@ -40,6 +40,7 @@ export default function CellEditor({
   fio,
   dateIso,
   workTitle,
+  mode = 'pm',
   requireWorkForDayNight = false,
   // resolvedWorkId — work_id который удалось вычислить (primary/last_work_id).
   // Если null — для типов из REQUIRE_WORK_ID показываем picker.
@@ -72,7 +73,7 @@ export default function CellEditor({
   const handleSave = useCallback(async (type) => {
     if (busy || readonly) return;
     // Если тип требует work_id и нет resolvedWorkId — открыть picker вместо save
-    if (REQUIRE_WORK_ID.has(type) && !resolvedWorkId) {
+    if (typeRequiresWorkId(mode, type) && !resolvedWorkId) {
       setPickerType(type);
       return;
     }
@@ -83,7 +84,7 @@ export default function CellEditor({
     } finally {
       setBusy(false);
     }
-  }, [busy, readonly, resolvedWorkId, onSave, onClose]);
+  }, [busy, readonly, resolvedWorkId, mode, onSave, onClose]);
 
   // Подтверждение из picker'а — сохраняем с выбранным work_id
   const handlePickerConfirm = useCallback(async () => {
@@ -252,7 +253,7 @@ export default function CellEditor({
         )}
 
         <div className="ts-pop-foot">
-          {currentEntry && !readonly ? (
+          {currentEntry && !readonly && editableTypes.includes(currentEntry.type) ? (
             <Btn variant="ghost" onClick={handleDelete} disabled={busy}>
               🗑 Удалить
             </Btn>

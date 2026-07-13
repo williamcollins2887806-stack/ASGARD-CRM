@@ -26,7 +26,8 @@ export default function TimesheetGrid({
   isLocked = false,
   requireWorkForDayNight = false,
   onEntryChange,
-  onPopoverChange   // FIX 13: вызывать с true когда popover открыт, false когда закрыт
+  onPopoverChange,
+  fioSearch = '',
 }) {
   const year = data?.year;
   const month = data?.month;
@@ -54,7 +55,9 @@ export default function TimesheetGrid({
 
   /* Состояние popover */
   const [editing, setEditing] = useState(null);
+  const [focus, setFocus] = useState(null);
   const cellRefs = useRef(new Map());
+  const wrapRef = useRef(null);
 
   // FIX 13 — сигналим parent'у
   useEffect(() => {
@@ -91,15 +94,18 @@ export default function TimesheetGrid({
   const handleDelete = useCallback(async () => {
     if (!editing) return;
     const cell = editing.employee.days?.[editing.day];
+    if (!cell?.type || !editableTypes.includes(cell.type)) {
+      return;
+    }
     const payload = {
       employee_id: editing.employee.id,
       work_id: cell?.work_id || inferWorkIdForEmployee(editing.employee),
       date: editing.dateIso,
-      type: cell?.type || 'day',
+      type: cell.type,
       delete: true
     };
     await onEntryChange?.(payload);
-  }, [editing, onEntryChange]);
+  }, [editing, editableTypes, onEntryChange]);
 
   const closeEditing = useCallback(() => setEditing(null), []);
 
@@ -108,6 +114,7 @@ export default function TimesheetGrid({
   const tipTimerRef = useRef(null);
 
   const onCellMouseEnter = useCallback((e, employee, day) => {
+    setFocus({ empId: employee.id, day });
     const cell = employee.days?.[day];
     if (!cell || !cell.type) return;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -129,6 +136,11 @@ export default function TimesheetGrid({
     setTip(null);
   }, []);
 
+  const onWrapMouseLeave = useCallback(() => {
+    setFocus(null);
+    onCellMouseLeave();
+  }, [onCellMouseLeave]);
+
   useEffect(() => () => {
     if (tipTimerRef.current) clearTimeout(tipTimerRef.current);
   }, []);
@@ -140,6 +152,12 @@ export default function TimesheetGrid({
   }, []);
 
   const totalDays = days.length;
+
+  useEffect(() => {
+    if (!fioSearch.trim() || !wrapRef.current) return;
+    const el = wrapRef.current.querySelector('tr[data-emp-row]');
+    if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [fioSearch, data?.employees]);
 
   if (!data || !groups.length || groups.every((g) => g.items.length === 0)) {
     return (
@@ -160,7 +178,11 @@ export default function TimesheetGrid({
 
   return (
     <>
-      <div className="ts-wrap">
+      <div
+        ref={wrapRef}
+        className={'ts-wrap' + (focus ? ' ts-has-focus' : '')}
+        onMouseLeave={onWrapMouseLeave}
+      >
         <table className="ts-table" role="grid" aria-label="Табель">
           <thead>
             <tr>
@@ -170,8 +192,9 @@ export default function TimesheetGrid({
               {days.map((d) => (
                 <th
                   key={d.iso}
-                  className={d.weekend ? 'ts-th-weekend' : ''}
+                  className={(d.weekend ? 'ts-th-weekend' : '') + (focus?.day === d.d ? ' ts-focus-col' : '')}
                   scope="col"
+                  data-day={d.d}
                   aria-label={`${d.d} ${d.wdLabel}`}
                 >
                   <div className="ts-th-day-num">{d.d}</div>
@@ -240,6 +263,7 @@ export default function TimesheetGrid({
                 onEnter={onCellMouseEnter}
                 onLeave={onCellMouseLeave}
                 setCellRef={setCellRef}
+                focus={focus}
               />
             ))}
           </tbody>
@@ -274,13 +298,14 @@ export default function TimesheetGrid({
             null
           }
           readonly={isLocked}
+          mode={mode}
         />
       )}
     </>
   );
 }
 
-function RowGroup({ group, days, mode, cols, showDaysCol, showAmount, showPerDiem, showPoints, showFinanceCols, monthlyLimit, colSpan, canEdit, isLocked, onClick, onEnter, onLeave, setCellRef }) {
+function RowGroup({ group, days, mode, cols, showDaysCol, showAmount, showPerDiem, showPoints, showFinanceCols, monthlyLimit, colSpan, canEdit, isLocked, onClick, onEnter, onLeave, setCellRef, focus }) {
   // FIX 14 — pm также показывает заголовок группы
   const showGroupHeader = (mode === 'global' || mode === 'pm') && group.title;
   return (
@@ -308,13 +333,14 @@ function RowGroup({ group, days, mode, cols, showDaysCol, showAmount, showPerDie
           onEnter={onEnter}
           onLeave={onLeave}
           setCellRef={setCellRef}
+          focus={focus}
         />
       ))}
     </>
   );
 }
 
-function EmployeeRow({ employee, days, cols, showDaysCol, showAmount, showPerDiem, showPoints, showFinanceCols, monthlyLimit, canEdit, isLocked, onClick, onEnter, onLeave, setCellRef }) {
+function EmployeeRow({ employee, days, cols, showDaysCol, showAmount, showPerDiem, showPoints, showFinanceCols, monthlyLimit, canEdit, isLocked, onClick, onEnter, onLeave, setCellRef, focus }) {
   // FIX 6 — счётчик дней
   const daysFilled = useMemo(() => {
     if (employee.days_count != null) return Number(employee.days_count);
@@ -327,11 +353,21 @@ function EmployeeRow({ employee, days, cols, showDaysCol, showAmount, showPerDie
     return n;
   }, [employee]);
 
+  const rowFocus = focus?.empId === employee.id;
+
   return (
-    <tr>
+    <tr data-emp-row className={(rowFocus ? 'ts-focus-row' : '') + (employee._rosterOnly ? ' ts-roster-only' : '')}>
       <td className="ts-fio-td">
         <div className="ts-fio">{employee.fio || '—'}</div>
         {employee.position && <div className="ts-position">{employee.position}</div>}
+        {employee.roster_reasons?.length > 0 && (
+          <div className="ts-roster-badges">
+            {(employee.roster_reasons.includes('on_site')) && <span className="ts-roster-badge">🏗 сейчас</span>}
+            {(employee.roster_reasons.includes('approved')) && <span className="ts-roster-badge">✓ утверждён</span>}
+            {(employee.roster_reasons.includes('planned')) && <span className="ts-roster-badge">📋 в плане</span>}
+            {(employee.roster_reasons.includes('was_on')) && <span className="ts-roster-badge">↩ был</span>}
+          </div>
+        )}
       </td>
       {/* Q3 — Город (только в global) */}
       {showFinanceCols && (
@@ -340,7 +376,7 @@ function EmployeeRow({ employee, days, cols, showDaysCol, showAmount, showPerDie
       {days.map((d) => {
         const cell = employee.days?.[d.d];
         return (
-          <td key={d.iso}>
+          <td key={d.iso} className={focus?.day === d.d ? 'ts-focus-col' : ''}>
             <Cell
               employee={employee}
               day={d.d}
@@ -352,6 +388,7 @@ function EmployeeRow({ employee, days, cols, showDaysCol, showAmount, showPerDie
               onEnter={onEnter}
               onLeave={onLeave}
               setCellRef={setCellRef}
+              isFocused={rowFocus && focus?.day === d.d}
             />
           </td>
         );
@@ -571,14 +608,15 @@ function paymentSourceMeta(emp) {
   return { kind, label, tooltip };
 }
 
-function Cell({ employee, day, cell, cols, canEdit, isLocked, onClick, onEnter, onLeave, setCellRef }) {
+function Cell({ employee, day, cell, cols, canEdit, isLocked, onClick, onEnter, onLeave, setCellRef, isFocused }) {
   const key = `${employee.id}-${day}`;
+  const focusCls = isFocused ? ' ts-cell-focused' : '';
 
   if (!cell || !cell.type) {
     return (
       <div
         ref={(el) => setCellRef(key, el)}
-        className={'ts-cell' + (canEdit && !isLocked ? ' editable' : '') + (isLocked ? ' locked' : '')}
+        className={'ts-cell' + (canEdit && !isLocked ? ' editable' : '') + (isLocked ? ' locked' : '') + focusCls}
         onClick={() => canEdit && !isLocked && onClick(employee, day)}
         role={canEdit ? 'button' : undefined}
         tabIndex={canEdit ? 0 : undefined}
@@ -611,7 +649,8 @@ function Cell({ employee, day, cell, cols, canEdit, isLocked, onClick, onEnter, 
         'ts-cell has-value' +
         (isIconOnly ? ' icon-only' : '') +
         (canEdit && !isLocked ? ' editable' : '') +
-        (isLocked ? ' locked' : '')
+        (isLocked ? ' locked' : '') +
+        focusCls
       }
       style={{
         '--bg': `var(${meta.bgVar})`,

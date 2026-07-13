@@ -28,7 +28,8 @@ export default function CustomerSuggestCell({ value, inn, onChange }) {
         value={value}
         onChange={e => { onChange(e.target.value, inn); search(e.target.value); }}
         onBlur={() => setTimeout(() => setOpen(false), 200)}
-        placeholder="Заказчик"
+        placeholder="Название или ИНН…"
+        title="Начните вводить — подскажем из ДаДата"
         style={{ width: '100%' }}
       />
       {inn && <small className="muted">{inn}</small>}

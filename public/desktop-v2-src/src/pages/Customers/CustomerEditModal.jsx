@@ -29,6 +29,9 @@ import { useDebounce } from '@/api/useListHelpers';
 import {
   createCustomer, updateCustomer, lookupByInn, suggestCustomers, isValidInn, normInn
 } from './api';
+import {
+  initialContacts, cleanContacts, legacyContactPerson, emitCustomersChanged
+} from './contactsHelpers';
 
 const CATEGORIES = [
   { value: '',           label: '— не указано —' },
@@ -39,52 +42,6 @@ const CATEGORIES = [
   { value: 'construction', label: 'Стройка' },
   { value: 'other',      label: 'Другое' }
 ];
-
-function emitChanged() {
-  window.dispatchEvent(new CustomEvent('asgard:customers:changed'));
-}
-
-// ── Backward-compat: legacy contact_person + contacts_json (text) → массив ─
-// D-94: канон БД = `contacts` (JSONB). Старые записи могут иметь только
-// legacy `contacts_json` (TEXT JSON-string из vanilla v1) или `contact_person`
-// (одна строка). Читаем оба источника, пишем всегда в `contacts`.
-function initialContacts(customer) {
-  const arr = Array.isArray(customer?.contacts) ? customer.contacts : [];
-  if (arr.length) {
-    return arr.map((c) => ({
-      name:       String(c?.name || ''),
-      position:   String(c?.position || ''),
-      phone:      String(c?.phone || ''),
-      email:      String(c?.email || ''),
-      is_primary: !!c?.is_primary
-    }));
-  }
-  // legacy: contacts_json (TEXT, parse JSON)
-  if (customer?.contacts_json && String(customer.contacts_json).trim()) {
-    try {
-      const parsed = JSON.parse(String(customer.contacts_json));
-      if (Array.isArray(parsed) && parsed.length) {
-        return parsed.map((c) => ({
-          name:       String(c?.name || ''),
-          position:   String(c?.position || ''),
-          phone:      String(c?.phone || ''),
-          email:      String(c?.email || ''),
-          is_primary: !!c?.is_primary
-        }));
-      }
-    } catch (_e) { /* ignore — fallback ниже */ }
-  }
-  if (customer?.contact_person && String(customer.contact_person).trim()) {
-    return [{
-      name:       String(customer.contact_person).trim(),
-      position:   '',
-      phone:      String(customer.phone || ''),
-      email:      String(customer.email || ''),
-      is_primary: true
-    }];
-  }
-  return [];
-}
 
 export function CustomerEditModal({ customer, onSaved }) {
   const { close } = useModal();
@@ -282,26 +239,10 @@ export function CustomerEditModal({ customer, onSaved }) {
     if (fieldErrors.ogrn)  return toast.warn(fieldErrors.ogrn);
     if (hasContactErr)     return toast.warn('Проверьте контакты — есть невалидный email или телефон');
 
-    // Нормализуем контакты: убираем пустые строки.
-    const cleanContacts = contacts
-      .map((c) => ({
-        name:       (c.name || '').trim(),
-        position:   (c.position || '').trim(),
-        phone:      (c.phone || '').trim(),
-        email:      (c.email || '').trim(),
-        is_primary: !!c.is_primary
-      }))
-      .filter((c) => c.name || c.phone || c.email);
+    const normalizedContacts = cleanContacts(contacts);
 
     setBusy(true);
     try {
-      // Legacy `contact_person`: дублируем primary-контакт для обратной совместимости со старыми
-      // местами CRM, которые читают одно строковое поле (DetailModal вывод, старые отчёты, vanilla).
-      const primary = cleanContacts.find((c) => c.is_primary) || cleanContacts[0];
-      const legacyContactPerson = primary
-        ? [primary.name, primary.position].filter(Boolean).join(' · ')
-        : '';
-
       const payload = {
         inn:            normInn(form.inn),
         name:           form.name.trim(),
@@ -311,8 +252,8 @@ export function CustomerEditModal({ customer, onSaved }) {
         address:        form.address.trim(),
         phone:          form.phone.trim(),
         email:          form.email.trim(),
-        contact_person: legacyContactPerson,
-        contacts:       cleanContacts,
+        contact_person: legacyContactPerson(normalizedContacts),
+        contacts:       normalizedContacts,
         category:       form.category || null,
         notes:          form.notes.trim()
       };
@@ -324,7 +265,7 @@ export function CustomerEditModal({ customer, onSaved }) {
         result = await createCustomer(payload);
         toast.success('Контрагент создан');
       }
-      emitChanged();
+      emitCustomersChanged();
       onSaved?.(result?.customer || payload);
       close();
     } catch (e) {

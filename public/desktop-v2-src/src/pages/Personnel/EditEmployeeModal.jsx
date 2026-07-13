@@ -29,10 +29,17 @@ const OFFICIAL_STATUSES = [
 const FINANCE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH'];
 
 const GENDERS = [
-  { value: '',  label: '— не указано —' },
-  { value: 'M', label: 'Мужской' },
-  { value: 'F', label: 'Женский' },
+  { value: 'male',   label: 'Мужской' },
+  { value: 'female', label: 'Женский' },
 ];
+
+function normalizeGenderInput(g) {
+  if (!g) return '';
+  const s = String(g).trim().toLowerCase();
+  if (['m', 'м', 'male', 'мужской', 'муж'].includes(s)) return 'male';
+  if (['f', 'ж', 'female', 'женский', 'жен'].includes(s)) return 'female';
+  return '';
+}
 const CONTRACT_TYPES = [
   { value: '', label: '— не указано —' },
   { value: 'official', label: 'Трудовой договор' },
@@ -74,7 +81,7 @@ export function EditEmployeeModal({ employee, onSaved }) {
     phone:             e.phone || '',
     email:             e.email || '',
     birth_date:        dateOnly(e.birth_date),
-    gender:            e.gender || '',
+    gender:            normalizeGenderInput(e.gender),
     role_tag:          e.role_tag || '',
     position:          e.position || '',
     grade:             e.grade || '',

@@ -26,18 +26,15 @@ import {
   loadNotes, createNote, updateNoteText, updateNotePosition, deleteNote,
 } from './api';
 
-const STICKER_COLORS = ['#fff782', '#ffc7a8', '#bcebbc', '#ffc4d8', '#b9deff'];
 const STICKER_ROTATES = [-2.3, 1.8, -1.2, 2.4, -1.7];
-const NOTE_MAX = 150;
+const NOTE_MAX = 500;
 
-// Адаптивный шрифт стикера — паритет с personal_kanban.js:3320 _stkFontSize
-function stkFontSize(len) {
-  if (len <= 20)  return 22;
-  if (len <= 60)  return 18;
-  if (len <= 100) return 15;
-  if (len <= 130) return 13;
-  return 11;
+function stkHeight(len) {
+  const base = 140;
+  const extra = Math.ceil(len / 40) * 22;
+  return Math.min(280, base + extra);
 }
+
 
 function fmtNoteWhen(iso) {
   if (!iso) return '';
@@ -68,13 +65,15 @@ function noteVariant(n) {
 function Sticker({ note, cardId, onChanged, onDelete }) {
   const ref = useRef(null);
   const [editing, setEditing] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [text, setText] = useState(note.body || '');
   const [saving, setSaving] = useState(false);
 
   const variant = noteVariant(note);
-  const bg = STICKER_COLORS[variant];
   const rot = STICKER_ROTATES[variant];
-  const fz = stkFontSize((editing ? text : (note.body || '')).length);
+  const bodyText = editing ? text : (note.body || '');
+  const h = stkHeight(bodyText.length);
+  const needsExpand = !editing && (note.body || '').length > 120;
   const posX = note.pos_x != null ? Number(note.pos_x) : Math.floor(Math.random() * 100);
   const posY = note.pos_y != null ? Number(note.pos_y) : Math.floor(Math.random() * 150);
 
@@ -99,8 +98,7 @@ function Sticker({ note, cardId, onChanged, onDelete }) {
     stk.style.top  = elY + 'px';
     stk.style.cursor = 'grabbing';
     stk.style.transition = 'box-shadow .15s ease, transform .15s ease';
-    stk.style.transform = 'rotate(2deg) scale(1.05)';
-    stk.style.boxShadow = '1px 1px 1px rgba(255,255,255,.4) inset,-1px -1px 1px rgba(0,0,0,.05) inset,8px 22px 32px -4px rgba(0,0,0,.55),0 6px 14px rgba(0,0,0,.3)';
+    stk.style.transform = 'rotate(0) scale(1.03)';
     stk.style.zIndex = '99999';
     try { stk.setPointerCapture(e.pointerId); } catch (_) {}
   }, [editing]);
@@ -123,9 +121,9 @@ function Sticker({ note, cardId, onChanged, onDelete }) {
     dragRef.current.dragging = false;
     if (!stk) return;
     stk.style.cursor = 'grab';
-    stk.style.transition = 'transform .35s cubic-bezier(.34,1.56,.64,1), box-shadow .25s ease';
+    stk.style.transition = 'transform .2s ease, box-shadow .2s ease';
     stk.style.transform = 'rotate(' + rot + 'deg)';
-    stk.style.boxShadow = '1px 1px 1px rgba(255,255,255,.3) inset,-1px -1px 1px rgba(0,0,0,.05) inset,3px 8px 16px -2px rgba(0,0,0,.4),0 2px 5px rgba(0,0,0,.18)';
+    stk.style.boxShadow = '';
     try { stk.releasePointerCapture(e.pointerId); } catch (_) {}
     if (note.id && cardId) {
       const newX = parseInt(stk.style.left, 10) || 0;
@@ -171,91 +169,38 @@ function Sticker({ note, cardId, onChanged, onDelete }) {
     }
   };
 
-  const baseStyle = {
-    position: 'absolute',
+  const posStyle = {
     left: posX + 'px',
     top: posY + 'px',
     zIndex: note.z_index || 1,
-    width: '170px',
-    height: '170px',
-    boxSizing: 'border-box',
-    padding: editing ? '18px 14px 12px' : '22px 14px 30px',
-    overflow: 'hidden',
-    display: 'flex',
-    flexDirection: 'column',
-    background: bg,
-    color: '#2a1f08',
+    minHeight: h + 'px',
+    maxHeight: expanded ? '420px' : h + 'px',
     transform: editing ? 'rotate(0)' : ('rotate(' + rot + 'deg)'),
-    fontFamily: 'Kalam,Caveat,"Permanent Marker","Comic Sans MS",cursive',
-    fontSize: fz + 'px',
-    lineHeight: 1.18,
-    fontWeight: 400,
-    boxShadow: '1px 1px 1px rgba(255,255,255,.3) inset, -1px -1px 1px rgba(0,0,0,.05) inset, 3px 8px 16px -2px rgba(0,0,0,.4), 0 2px 5px rgba(0,0,0,.18)',
-    transition: 'transform .25s cubic-bezier(.34,1.56,.64,1), box-shadow .25s ease',
-    cursor: editing ? 'text' : 'grab',
-    userSelect: editing ? 'text' : 'none',
-    touchAction: 'none',
-    animation: 'pk3-sticker-pop .35s cubic-bezier(.34,1.56,.64,1)',
-  };
-
-  const scotch = {
-    position: 'absolute', top: '-8px', left: '50%',
-    width: '72px', height: '18px',
-    background: 'linear-gradient(180deg, rgba(220,220,220,.65), rgba(160,160,160,.5))',
-    transform: 'translateX(-50%) rotate(-3deg)',
-    boxShadow: '0 2px 4px rgba(0,0,0,.25)',
-    opacity: 0.85,
-    borderLeft: '1px solid rgba(255,255,255,.5)',
-    borderRight: '1px solid rgba(0,0,0,.1)',
-    pointerEvents: 'none',
   };
 
   if (editing) {
     return (
-      <div ref={ref} style={baseStyle}>
-        <div style={scotch} />
+      <div ref={ref} className="pk3-sticker-v2 pk3-editing" data-color={variant} style={posStyle}>
         <textarea
           autoFocus
           maxLength={NOTE_MAX}
-          rows={4}
+          rows={5}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
             if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); saveEdit(); }
           }}
-          style={{
-            flex: 1, width: '100%', border: 'none', outline: 'none',
-            background: 'transparent', color: '#2a1f08',
-            font: 'inherit', resize: 'none', padding: 0,
-            fontFamily: 'inherit', boxSizing: 'border-box',
-            fontSize: stkFontSize(text.length) + 'px',
-          }}
         />
-        <div style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          gap: 6, marginTop: 6, paddingTop: 6,
-          borderTop: '1px dashed rgba(60,40,10,.2)',
-        }}>
-          <span style={{
-            fontSize: 11,
-            color: text.length > 135 ? '#b13030' : 'rgba(60,40,10,.5)',
-            fontFamily: 'var(--font-sans)', fontStyle: 'italic',
-          }}>{text.length}/{NOTE_MAX}</span>
+        <div className="pk3-sticker-v2-edit-foot">
+          <span style={{ color: text.length > NOTE_MAX - 50 ? '#b13030' : 'rgba(60,40,10,.5)' }}>
+            {text.length}/{NOTE_MAX}
+          </span>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button
-              type="button"
-              data-note-act="cancel"
-              onClick={cancelEdit}
-              style={editBtnStyle(false)}
-            >Отмена</button>
-            <button
-              type="button"
-              data-note-act="save"
-              onClick={saveEdit}
-              disabled={saving || !text.trim()}
-              style={editBtnStyle(true)}
-            >{saving ? '⏳…' : '💾'}</button>
+            <button type="button" data-note-act="cancel" onClick={cancelEdit} style={editBtnStyle(false)}>Отмена</button>
+            <button type="button" data-note-act="save" onClick={saveEdit} disabled={saving || !text.trim()} style={editBtnStyle(true)}>
+              {saving ? '⏳…' : '💾'}
+            </button>
           </div>
         </div>
       </div>
@@ -265,93 +210,36 @@ function Sticker({ note, cardId, onChanged, onDelete }) {
   return (
     <div
       ref={ref}
+      className="pk3-sticker-v2"
       data-pk3-sticker="1"
       data-note-id={note.id}
-      style={baseStyle}
+      data-color={variant}
+      data-expanded={expanded ? '1' : '0'}
+      style={posStyle}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
+      onDoubleClick={() => setExpanded((v) => !v)}
     >
-      <div style={scotch} />
-      <div style={{
-        position: 'absolute', top: 10, right: 10,
-        display: 'flex', gap: 6, opacity: 0,
-        transition: 'opacity .25s ease',
-        transform: 'translateY(-4px)',
-        zIndex: 2,
-      }}
-        onMouseEnter={(e) => { e.currentTarget.style.opacity = 1; e.currentTarget.style.transform = 'translateY(0)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.opacity = 0; e.currentTarget.style.transform = 'translateY(-4px)'; }}
-        data-tools="1"
-      >
-        <button
-          type="button"
-          data-note-act="edit"
-          title="Редактировать"
-          onClick={startEdit}
-          style={toolBtnStyle}
-        >✏️</button>
-        <button
-          type="button"
-          data-note-act="delete"
-          title="Удалить"
-          onClick={doDelete}
-          style={toolBtnStyle}
-        >🗑</button>
+      <div className="pk3-sticker-v2-tools">
+        <button type="button" data-note-act="edit" title="Редактировать" onClick={startEdit}>✏</button>
+        <button type="button" className="pk3-del" data-note-act="delete" title="Удалить" onClick={doDelete}>🗑</button>
       </div>
-      <div
-        onMouseEnter={(e) => {
-          const tools = e.currentTarget.parentElement.querySelector('[data-tools="1"]');
-          if (tools) { tools.style.opacity = 1; tools.style.transform = 'translateY(0)'; }
-          if (ref.current && !dragRef.current.dragging) {
-            ref.current.style.transform = 'rotate(0) translateY(-4px) scale(1.05)';
-          }
-        }}
-        onMouseLeave={(e) => {
-          const tools = e.currentTarget.parentElement.querySelector('[data-tools="1"]');
-          if (tools) { tools.style.opacity = 0; tools.style.transform = 'translateY(-4px)'; }
-          if (ref.current && !dragRef.current.dragging) {
-            ref.current.style.transform = 'rotate(' + rot + 'deg)';
-          }
-        }}
-        style={{
-          flex: 1, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-          color: '#2a1f08', overflow: 'hidden', fontWeight: 400,
-          fontSize: fz + 'px', lineHeight: 1.18, fontFamily: 'inherit',
-        }}
-      >{note.body || ''}</div>
-      <div style={{
-        position: 'absolute', bottom: 9, left: 16, right: 16,
-        display: 'flex', alignItems: 'baseline', gap: 8,
-        fontSize: 13.5, color: 'rgba(60,40,10,.65)',
-        fontFamily: 'inherit', fontStyle: 'italic',
-      }}>
-        <span style={{ fontWeight: 500, fontStyle: 'normal', color: 'rgba(60,40,10,.85)' }}>
-          {note.author_name || (note.author_id ? '#' + note.author_id : '—')}
-        </span>
-        <span style={{ marginLeft: 'auto', color: 'rgba(60,40,10,.55)' }}>
-          {fmtNoteWhen(note.created_at)}
-        </span>
+      <div className="pk3-sticker-v2-body">{note.body || ''}</div>
+      {needsExpand && !expanded && (
+        <button type="button" className="pk3-sticker-v2-expand" data-note-act="expand" onClick={() => setExpanded(true)}>
+          развернуть ↗
+        </button>
+      )}
+      <div className="pk3-sticker-v2-foot">
+        <span className="pk3-sticker-author">{note.author_name || (note.author_id ? '#' + note.author_id : '—')}</span>
+        <span className="pk3-sticker-when">{fmtNoteWhen(note.created_at)}</span>
       </div>
     </div>
   );
 }
 
-const toolBtnStyle = {
-  background: 'rgba(255,255,255,.55)',
-  backdropFilter: 'blur(6px)',
-  WebkitBackdropFilter: 'blur(6px)',
-  border: '1px solid rgba(60,40,10,.18)',
-  borderRadius: '50%',
-  width: 30, height: 30,
-  fontSize: 13, cursor: 'pointer',
-  display: 'flex', alignItems: 'center', justifyContent: 'center',
-  padding: 0, color: '#2a1f08',
-  boxShadow: '0 2px 6px rgba(0,0,0,.22),0 1px 2px rgba(0,0,0,.12)',
-  transition: 'all .18s cubic-bezier(.34,1.56,.64,1)',
-  fontFamily: 'inherit', lineHeight: 1,
-};
 
 function editBtnStyle(primary) {
   return {
@@ -381,7 +269,6 @@ function DraftSticker({ cardId, onSaved, onCancel }) {
   const cv = useRef(Math.floor(Math.random() * 5)).current;
   const px = useRef(Math.floor(Math.random() * 120)).current;
   const py = useRef(Math.floor(Math.random() * 150)).current;
-  const bg = STICKER_COLORS[cv];
 
   const save = async () => {
     const t = (text || '').trim();
@@ -397,68 +284,39 @@ function DraftSticker({ cardId, onSaved, onCancel }) {
   };
 
   return (
-    <div style={{
-      position: 'absolute',
-      left: px + 'px', top: py + 'px',
-      width: '200px', height: '200px',
-      boxSizing: 'border-box',
-      padding: '18px 14px 12px',
-      display: 'flex', flexDirection: 'column',
-      background: bg, color: '#2a1f08',
-      transform: 'rotate(0deg)', zIndex: 99999,
-      fontFamily: 'Kalam,Caveat,"Permanent Marker","Comic Sans MS",cursive',
-      fontSize: 17, lineHeight: 1.18, fontWeight: 400,
-      boxShadow: '1px 1px 1px rgba(255,255,255,.3) inset, -1px -1px 1px rgba(0,0,0,.05) inset, 8px 18px 30px -4px rgba(0,0,0,.5), 0 4px 10px rgba(0,0,0,.25)',
-      animation: 'pk3-sticker-pop .35s cubic-bezier(.34,1.56,.64,1)',
-    }}>
-      <div style={{
-        position: 'absolute', top: '-8px', left: '50%',
-        width: '72px', height: '18px',
-        background: 'linear-gradient(180deg,rgba(220,220,220,.65),rgba(160,160,160,.5))',
-        transform: 'translateX(-50%) rotate(-3deg)',
-        boxShadow: '0 2px 4px rgba(0,0,0,.25)',
-        opacity: 0.85,
-        borderLeft: '1px solid rgba(255,255,255,.5)',
-        borderRight: '1px solid rgba(0,0,0,.1)',
-        pointerEvents: 'none',
-      }} />
+    <div
+      className="pk3-sticker-v2 pk3-editing"
+      data-color={cv}
+      style={{
+        position: 'absolute',
+        left: px + 'px', top: py + 'px',
+        zIndex: 99999,
+        minHeight: stkHeight(text.length) + 'px',
+        maxHeight: '420px',
+        transform: 'rotate(0deg)',
+      }}
+    >
       <textarea
         autoFocus
         placeholder="Пиши…"
         maxLength={NOTE_MAX}
-        rows={4}
+        rows={5}
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Escape') { e.preventDefault(); onCancel?.(); }
           if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); save(); }
         }}
-        style={{
-          flex: 1, width: '100%', border: 'none', outline: 'none',
-          background: 'transparent', color: '#2a1f08',
-          font: 'inherit', resize: 'none', padding: 0,
-          fontFamily: 'inherit', boxSizing: 'border-box',
-          fontSize: stkFontSize(text.length) + 'px',
-        }}
       />
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        gap: 6, marginTop: 6, paddingTop: 6,
-        borderTop: '1px dashed rgba(60,40,10,.2)',
-      }}>
-        <span style={{
-          fontSize: 11,
-          color: text.length > 135 ? '#b13030' : 'rgba(60,40,10,.5)',
-          fontFamily: 'var(--font-sans)', fontStyle: 'italic',
-        }}>{text.length}/{NOTE_MAX}</span>
+      <div className="pk3-sticker-v2-edit-foot">
+        <span style={{ color: text.length > NOTE_MAX - 50 ? '#b13030' : 'rgba(60,40,10,.5)' }}>
+          {text.length}/{NOTE_MAX}
+        </span>
         <div style={{ display: 'flex', gap: 6 }}>
           <button type="button" onClick={onCancel} style={editBtnStyle(false)}>Отмена</button>
-          <button
-            type="button"
-            onClick={save}
-            disabled={saving || !text.trim()}
-            style={editBtnStyle(true)}
-          >{saving ? '⏳…' : '💾'}</button>
+          <button type="button" onClick={save} disabled={saving || !text.trim()} style={editBtnStyle(true)}>
+            {saving ? '⏳…' : '💾'}
+          </button>
         </div>
       </div>
     </div>
@@ -493,17 +351,16 @@ export default function NoteBoard({ cardId }) {
 
   return (
     <div
-      className="pk3-noteboard pk3-show"
+      className="pk3-sticky-board pk3-show"
       onClick={(e) => e.stopPropagation()}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      <div className="pk3-noteboard-head">
-        <span className="pk3-noteboard-emoji" aria-hidden="true">📌</span>
-        <span>Заметки</span>
+      <div className="pk3-sticky-board-head">
+        <span>📌 Заметки</span>
         <span className="pk3-count-badge">{notes.length}</span>
       </div>
-      <div className="pk3-noteboard-hint">
-        Закрепи мысль на стикере. Перетаскивай. 150 символов.
+      <div className="pk3-sticky-board-hint">
+        Перетащите · двойной клик — развернуть
       </div>
       <div style={{ padding: '0 8px 10px' }}>
         <button

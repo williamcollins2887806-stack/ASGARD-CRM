@@ -30,6 +30,7 @@ import {
   MODES, inferModeFromRole,
   canLockScope, canAnyUnlock,
   getMonth, putEntry, lockMonth, unlockMonth, getLocks, getClosureStatus, exportXlsx,
+  getRoster,
   monthLabel
 } from './api';
 import Toolbar from './Toolbar';
@@ -80,8 +81,50 @@ export default function TimesheetPage({ mode: modeProp }) {
   const pauseRefresh = modalsOpen > 0;
 
   // Stage W — табы в pm-режиме: «Табель» / «💵 Передачи».
-  // В остальных mode таблица одна, табов нет.
   const [pmTab, setPmTab] = useState('timesheet');
+
+  const [fioSearch, setFioSearch] = useState('');
+  const [projectFilter, setProjectFilter] = useState(null);
+  const [rosterLoading, setRosterLoading] = useState(false);
+
+  const displayData = useMemo(() => {
+    if (!data) return data;
+    let employees = [...(data.employees || [])];
+    if (projectFilter?.employees?.length) {
+      const byId = new Map(employees.map((e) => [e.id, { ...e }]));
+      for (const r of projectFilter.employees) {
+        if (!byId.has(r.id)) {
+          byId.set(r.id, {
+            id: r.id,
+            fio: r.fio,
+            phone: r.phone,
+            position: r.position,
+            days: {},
+            days_count: 0,
+            total_points: null,
+            roster_reasons: r.roster_reasons,
+            planned_info: r.planned_info,
+            current_work_title: r.current_work_title,
+            _rosterOnly: true,
+          });
+        } else {
+          const ex = byId.get(r.id);
+          byId.set(r.id, {
+            ...ex,
+            roster_reasons: r.roster_reasons,
+            planned_info: r.planned_info || ex.planned_info,
+            current_work_title: r.current_work_title || ex.current_work_title,
+          });
+        }
+      }
+      employees = [...byId.values()];
+    }
+    const lq = fioSearch.trim().toLowerCase();
+    if (lq) {
+      employees = employees.filter((e) => (e.fio || '').toLowerCase().includes(lq));
+    }
+    return { ...data, employees };
+  }, [data, fioSearch, projectFilter]);
 
   const loadAll = useCallback(async (silent = false) => {
     if (!hasAccess) return;
@@ -189,6 +232,21 @@ export default function TimesheetPage({ mode: modeProp }) {
 
   /* ─── Действия ─── */
   const onRefresh = () => loadAll();
+
+  const onProjectFilterApply = useCallback(async (q) => {
+    setRosterLoading(true);
+    try {
+      const r = await getRoster(year, month, { project_q: q });
+      setProjectFilter({ query: q, work_matches: r.work_matches || [], employees: r.employees || [] });
+      if (!(r.employees || []).length) toast.warn('По этому объекту никого не нашли');
+    } catch (e) {
+      toast.error('Фильтр: ' + (e?.serverMsg || e?.message || e));
+    } finally {
+      setRosterLoading(false);
+    }
+  }, [year, month]);
+
+  const onProjectFilterClear = useCallback(() => setProjectFilter(null), []);
 
   const onExportClick = async () => {
     try {
@@ -325,7 +383,7 @@ export default function TimesheetPage({ mode: modeProp }) {
         year={year}
         month={month}
         mode={mode}
-        data={data}
+        data={displayData}
         onPrev={onPrev}
         onNext={onNext}
         onToday={onToday}
@@ -334,6 +392,13 @@ export default function TimesheetPage({ mode: modeProp }) {
         onAddWorker={onAddWorker}
         canExport={canExport}
         canAddWorker={canAddWorker}
+        fioSearch={fioSearch}
+        onFioSearchChange={setFioSearch}
+        projectQuery={projectFilter?.query || ''}
+        projectFilter={projectFilter}
+        onProjectFilterClear={onProjectFilterClear}
+        onProjectFilterApply={onProjectFilterApply}
+        rosterLoading={rosterLoading}
       />
 
       {/* LockBadges — теперь работает по closure-status для FIX 1 и FIX 2 */}
@@ -392,7 +457,7 @@ export default function TimesheetPage({ mode: modeProp }) {
             />
           )}
           <TimesheetGrid
-            data={data}
+            data={displayData}
             mode={mode}
             editableTypes={meta.editableTypes}
             canEdit={canEdit}
@@ -400,6 +465,7 @@ export default function TimesheetPage({ mode: modeProp }) {
             requireWorkForDayNight={meta.requireWorkFor.includes('day') || meta.requireWorkFor.includes('night')}
             onEntryChange={onEntryChange}
             onPopoverChange={onPopoverChange}
+            fioSearch={fioSearch}
           />
         </>
       )}

@@ -32,16 +32,19 @@ import {
 import { AddEmployeeModal } from './AddEmployeeModal';
 import { EmployeeDetailModal } from './EmployeeDetailModal';
 import { SeLimitsImportModal } from './SeLimitsImportModal';
+import { PlannedByProjectView } from './PlannedByProjectView';
 import './personnel.css';
 
 const PAGE_SIZE = 50;
+const TABLE_STATUSES = STATUSES.filter((s) => s.code !== 'planned');
 
 export default function PersonnelPage() {
   const { user } = useAuth();
   const modal = useModal();
 
   const [employees, setEmployees] = useState([]);
-  const [groups, setGroups] = useState({ on_site: 0, approved: 0, ready: 0, not_ready: 0, archive: 0 });
+  const [groups, setGroups] = useState({ on_site: 0, approved: 0, ready: 0, not_ready: 0, archive: 0, planned: 0 });
+  const [viewMode, setViewMode] = useLocalStorage('prs-view', 'list');
   const [loading, setLoading] = useState(true);
 
   // Импорт остатков СЗ (FIN_ROLES) — сведения о последней синхронизации
@@ -123,7 +126,11 @@ export default function PersonnelPage() {
     let rows = employees;
     rows = filterByQuery(rows, dQuery);
     if (spec) rows = rows.filter((e) => (e.role_tag || '') === spec);
-    if (status) rows = rows.filter((e) => (e.effective_status || e.readiness_status || '') === status);
+    if (status === 'planned') {
+      rows = rows.filter((e) => !!e.planned_info);
+    } else if (status) {
+      rows = rows.filter((e) => (e.effective_status || e.readiness_status || '') === status);
+    }
     if (city) rows = rows.filter((e) => (e.city || '').trim() === city);
     // passFilter: 'BOSIET' | 'SLEEVE' | 'MLSP_PASS' | 'FSB' | 'expired:BOSIET' и т.п.
     if (passFilter) {
@@ -161,7 +168,7 @@ export default function PersonnelPage() {
   // Группировка отображаемого среза по статусу
   const grouped = useMemo(() => {
     const g = {};
-    STATUSES.forEach((s) => { g[s.code] = []; });
+    TABLE_STATUSES.forEach((s) => { g[s.code] = []; });
     slice.forEach((e) => {
       const st = e.effective_status || e.readiness_status || 'archive';
       if (g[st]) g[st].push(e);
@@ -278,6 +285,16 @@ export default function PersonnelPage() {
         }
       />
 
+      {/* Переключатель вида */}
+      <div className="prs-view-toggle row gap-8">
+        <Btn variant={viewMode === 'list' ? 'primary' : 'ghost'} size="sm" onClick={() => setViewMode('list')}>
+          Список
+        </Btn>
+        <Btn variant={viewMode === 'by_project' ? 'primary' : 'ghost'} size="sm" onClick={() => setViewMode('by_project')}>
+          По проектам
+        </Btn>
+      </div>
+
       {/* Статусные бейджи (кликабельные) */}
       <div className="prs-badges">
         {STATUSES.map((s) => (
@@ -288,7 +305,7 @@ export default function PersonnelPage() {
             onClick={() => onBadgeClick(s.code)}
             title={`Фильтр: ${s.label}`}
           >
-            <div className="num">{groups[s.code] || 0}</div>
+            <div className="num">{s.code === 'planned' ? (groups.planned || 0) : (groups[s.code] || 0)}</div>
             <div className="lbl">{s.icon} {s.label}</div>
           </button>
         ))}
@@ -351,6 +368,8 @@ export default function PersonnelPage() {
         <div className="card card-empty" >
           ⏳ Загружаем дружину…
         </div>
+      ) : viewMode === 'by_project' ? (
+        <PlannedByProjectView onOpenEmployee={onOpen} />
       ) : filtered.length === 0 ? (
         <EmptyState
           icon="⚔"
@@ -369,16 +388,18 @@ export default function PersonnelPage() {
                     <th>Специальность</th>
                     <th>Статус</th>
                     <th>Объект / РП</th>
+                    <th>План привлечения</th>
                     <th>Начало работ</th>
                     <th style={{ textAlign: 'center', width: 80 }}>Документы</th>
                     <th style={{ textAlign: 'center', width: 170 }} title="БОСИЕТ · РУКАВ · МЛСП · ФСБ">Ключевые допуски</th>
+                    <th style={{ width: 130 }}>СИЗ</th>
                     <th style={{ width: 120 }}>Город</th>
                     <th className="w-150">Лимит СЗ</th>
                     <th style={{ textAlign: 'right', width: 90 }}>Рейтинг</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {STATUSES.map((st) => {
+                  {TABLE_STATUSES.map((st) => {
                     const list = grouped[st.code];
                     if (!list || !list.length) return null;
                     return (
@@ -410,11 +431,30 @@ export default function PersonnelPage() {
   );
 }
 
+function SizSizes({ emp }) {
+  const items = [
+    emp.clothing_size && { icon: '👕', label: 'Одежда', value: emp.clothing_size },
+    emp.shoe_size && { icon: '👟', label: 'Обувь', value: emp.shoe_size },
+    emp.headwear_size && { icon: '⛑', label: 'Головной', value: emp.headwear_size },
+  ].filter(Boolean);
+  if (!items.length) return <span className="prs-dim">—</span>;
+  return (
+    <div className="prs-siz">
+      {items.map((it) => (
+        <div key={it.label} className="prs-siz-line" title={`${it.label}: ${it.value}`}>
+          <span className="prs-siz-icon">{it.icon}</span>
+          <span>{it.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function PersonnelGroup({ status, rows, onOpen }) {
   return (
     <>
       <tr className="prs-group-row">
-        <td colSpan={10}>{status.icon} {status.label} · {rows.length}</td>
+        <td colSpan={12}>{status.icon} {status.label} · {rows.length}</td>
       </tr>
       {rows.map((e) => (
         <PersonnelRow key={e.id} emp={e} onOpen={onOpen} />
@@ -457,12 +497,30 @@ function PersonnelRow({ emp, onOpen }) {
           <span className="prs-dim">—</span>
         )}
       </td>
+      <td>
+        {emp.planned_info ? (
+          <>
+            <div className="prs-plan-line">
+              <span className="prs-plan-chip">План</span>
+              <span className="prs-work">{emp.planned_info.work_title}</span>
+            </div>
+            {emp.planned_info.planned_from && (
+              <div className="prs-pm">с {fmtDate(emp.planned_info.planned_from)}</div>
+            )}
+          </>
+        ) : (
+          <span className="prs-dim">—</span>
+        )}
+      </td>
       <td className="prs-dim u-nowrap" >{startDate}</td>
       <td className="t-center">
         <DocIndicator permits={emp.permits} />
       </td>
       <td className="t-center">
         <KeyPermitChips kp={emp.key_permits} />
+      </td>
+      <td className="prs-siz-cell">
+        <SizSizes emp={emp} />
       </td>
       <td className="prs-city">
         {emp.city ? <span>{emp.city}</span> : <span className="prs-dim">—</span>}

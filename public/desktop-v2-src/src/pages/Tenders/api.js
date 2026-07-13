@@ -586,6 +586,7 @@ export function loadRegistry(params = {}) {
   q.set('limit', String(params.limit ?? 500));
   if (params.period !== undefined) q.set('period', params.period);
   if (params.burn) q.set('burn', '1');
+  if (params.q) q.set('q', params.q);
   return api(`/api/tenders/registry?${q}`).then(d => d);
 }
 
@@ -597,8 +598,104 @@ export function patchRegistryField(id, field, value) {
   return api(`/api/tenders/registry/${id}`, { method: 'PATCH', body: { field, value } });
 }
 
-export function patchRegistryStatus(id, registry_status) {
-  return api(`/api/tenders/registry/${id}/status`, { method: 'PATCH', body: { registry_status } });
+export function patchRegistryStatus(id, body) {
+  const payload = typeof body === 'string' ? { registry_status: body } : (body || {});
+  return api(`/api/tenders/registry/${id}/status`, { method: 'PATCH', body: payload });
+}
+
+export function assignRegistryCalculator(id, kind, user_id) {
+  const body = { kind };
+  if (user_id) body.user_id = user_id;
+  return api(`/api/tenders/registry/${id}/assign-calculator`, { method: 'POST', body });
+}
+
+export function markRegistryReviewSeen(id) {
+  return api(`/api/tenders/registry/${id}/review-seen`, { method: 'POST' });
+}
+
+export function loadRegistryHistory(id) {
+  return api(`/api/tenders/registry/${id}/history`);
+}
+
+export function uploadRpEstimate(tenderId, file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  const token = localStorage.getItem('asgard_token') || '';
+  return fetch(`/api/tenders/${tenderId}/rp-review/estimate`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: fd
+  }).then(async (r) => {
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || d.message || `HTTP ${r.status}`);
+    return d;
+  });
+}
+
+export function uploadRpReport(tenderId, file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  const token = localStorage.getItem('asgard_token') || '';
+  return fetch(`/api/tenders/${tenderId}/rp-review/report`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: fd
+  }).then(async (r) => {
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || d.message || `HTTP ${r.status}`);
+    return d;
+  });
+}
+
+export function uploadRpTkp(tenderId, file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  const token = localStorage.getItem('asgard_token') || '';
+  return fetch(`/api/tenders/${tenderId}/rp-review/tkp`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: fd
+  }).then(async (r) => {
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || d.message || `HTTP ${r.status}`);
+    return d;
+  });
+}
+
+export function directorDecisionRpReview(tenderId, body) {
+  return api(`/api/tenders/${tenderId}/rp-review/director-decision`, { method: 'POST', body: body || {} });
+}
+
+export function loadDirectorReviewQueue() {
+  return api('/api/tenders/director-review-queue');
+}
+
+export function loadDirectorReviewQueueCount() {
+  return api('/api/tenders/director-review-queue/count');
+}
+
+export function markDirectorReviewSeen(tenderId) {
+  return api(`/api/tenders/${tenderId}/director-review-seen`, { method: 'POST' });
+}
+
+export function loadRpReviewMessages(tenderId) {
+  return api(`/api/tenders/${tenderId}/rp-review/messages`);
+}
+
+export function postRpReviewMessage(tenderId, body, files = []) {
+  const fd = new FormData();
+  fd.append('body', body || '');
+  for (const f of files) fd.append('file', f);
+  const token = localStorage.getItem('asgard_token') || '';
+  return fetch(`/api/tenders/${tenderId}/rp-review/messages`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: fd
+  }).then(async (r) => {
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || d.message || `HTTP ${r.status}`);
+    return d;
+  });
 }
 
 export function acceptPlatformCandidate(id) {
@@ -609,7 +706,7 @@ export function dismissPlatformCandidate(id, duplicate = false) {
   return api(`/api/tenders/registry/platform/${id}/dismiss`, { method: 'POST', body: { duplicate } });
 }
 
-export function loadPmDutyQueue(tab = 'need_report') {
+export function loadPmDutyQueue(tab = 'analysis') {
   return api(`/api/pm-duty/queue?tab=${tab}`);
 }
 
@@ -647,6 +744,17 @@ export function createRegistryWork(tenderId, pm_id) {
 
 export function inviteRpCollaborator(tenderId, pm_user_id) {
   return api(`/api/tenders/${tenderId}/rp-review/invite`, { method: 'POST', body: { pm_user_id } });
+}
+
+export function toDecisionRpReview(tenderId, body) {
+  return api(`/api/tenders/${tenderId}/rp-review/to-decision`, { method: 'POST', body });
+}
+
+export function fmtRegistryDate(v) {
+  if (!v) return '—';
+  const s = String(v).slice(0, 10);
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : s;
 }
 
 export function loadTenderGuruSettings() {

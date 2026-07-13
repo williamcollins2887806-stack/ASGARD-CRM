@@ -893,6 +893,42 @@
   color: var(--gold-h);
 }
 
+/* ─── Registry tab (mockup v3) ─── */
+.reg-table .reg-row-priority > td {
+  background: rgba(200, 168, 78, 0.07);
+}
+.reg-table .reg-row-priority > td:first-child {
+  box-shadow: inset 4px 0 0 var(--gold, #c8a84e);
+}
+.reg-section-row td { font-size: 12px; font-weight: 600; padding: 8px 10px; background: var(--bg-2); }
+.reg-section-label.muted { font-weight: 500; color: var(--t-3); }
+.reg-table tr.reg-st-review > td { background: rgba(128, 128, 128, 0.09) !important; }
+.reg-table tr.reg-st-prep > td { background: rgba(245, 158, 11, 0.12) !important; }
+.reg-table tr.reg-st-submitted > td { background: rgba(59, 130, 246, 0.11) !important; }
+.reg-table tr.reg-st-won > td { background: rgba(34, 197, 94, 0.12) !important; }
+.reg-table tr.reg-st-lost > td { background: rgba(239, 68, 68, 0.10) !important; }
+.reg-table tr.reg-st-cancel > td { opacity: .65; }
+.reg-table tr.reg-row:hover > td { filter: brightness(1.06); }
+
+/* Плоские ячейки реестра — без рамок в каждой колонке */
+.reg-table .inp,
+.reg-table input.inp,
+.reg-table select.inp {
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 2px 4px;
+  min-height: unset;
+}
+.reg-table .inp:focus,
+.reg-table input.inp:focus,
+.reg-table select.inp:focus {
+  border: 1px solid var(--gold) !important;
+  background: var(--bg-elevated, rgba(255,255,255,.06)) !important;
+  outline: none;
+}
+.reg-table td { vertical-align: middle; }
+
 /* ─── Адаптив ≤768px ─── */
 @media (max-width: 768px) {
   .tnd-hub-tabs { gap: 0; overflow-x: auto; flex-wrap: nowrap; }

@@ -28,8 +28,19 @@ const BASE = '/api/timesheet/v2';
 /* ═══════════════════ HTTP wrappers ═══════════════════ */
 
 export function getMonth(year, month, opts = {}) {
-  const qs = opts.work_id ? `?work_id=${encodeURIComponent(opts.work_id)}` : '';
+  const qsParts = [];
+  if (opts.work_id) qsParts.push(`work_id=${encodeURIComponent(opts.work_id)}`);
+  if (opts.mode) qsParts.push(`mode=${encodeURIComponent(opts.mode)}`);
+  const qs = qsParts.length ? `?${qsParts.join('&')}` : '';
   return api(`${BASE}/${year}/${month}${qs}`);
+}
+
+export function getRoster(year, month, { project_q, work_id } = {}) {
+  const qsParts = [];
+  if (project_q) qsParts.push(`project_q=${encodeURIComponent(project_q)}`);
+  if (work_id) qsParts.push(`work_id=${encodeURIComponent(work_id)}`);
+  const qs = qsParts.length ? `?${qsParts.join('&')}` : '';
+  return api(`${BASE}/${year}/${month}/roster${qs}`);
 }
 
 export function putEntry(data) {
@@ -69,7 +80,13 @@ export async function loadWorks() {
  * Типы отметок которые требуют work_id (синхрон с backend src/routes/timesheet-v2.js).
  * medical/travel — БЕЗ work_id (межработные этапы).
  */
-export const REQUIRE_WORK_ID = new Set(['day', 'night', 'waiting', 'ship', 'warehouse']);
+export const REQUIRE_WORK_ID = new Set(['day', 'night', 'waiting', 'warehouse']);
+
+export function typeRequiresWorkId(mode, type) {
+  if (mode === 'medical' || mode === 'travel' || mode === 'warehouse') return false;
+  if (mode === 'pm') return type === 'day' || type === 'night' || type === 'waiting';
+  return REQUIRE_WORK_ID.has(type);
+}
 
 export function lockMonth(data) {
   return api(`${BASE}/lock`, { method: 'POST', body: data });
@@ -137,14 +154,12 @@ export const MODES = {
     roles: ['WAREHOUSE']
   },
   medical: {
-    title: 'Табель учёта МО',
-    subtitle: 'Медосмотры, обучение и корабль',
+    title: 'Табель учёта МО/обучения/иной транспорт',
+    subtitle: 'Медосмотры, обучение, корабль и вертолёт',
     kicker: 'ТО',
     icon: '🏥',
     lockScope: 'medical',
-    // V255 (23.06.2026): TO/HEAD_TO теперь могут ставить и «Корабль» (альтернатива
-    // дороги за повышенную ставку 12 баллов × 500 ₽).
-    editableTypes: ['medical', 'ship'],
+    editableTypes: ['medical', 'training', 'ship', 'helicopter'],
     requireWorkFor: [],
     // V255: свои отметки — с баллами, чужие — только иконка.
     columns: { points: 'mine', amount: 'none', perDiem: 'none' },
@@ -165,12 +180,11 @@ export const MODES = {
   },
   global: {
     title: 'Общий табель — Табель дружины',
-    subtitle: 'Все отметки от всех ролей: чекины, склад, МО, дорога, корабль',
+    subtitle: 'Все отметки от всех ролей: чекины, склад, МО, обучение, дорога, корабль, вертолёт',
     kicker: 'Дружина',
     icon: '📊',
     lockScope: 'global',
-    // V255: добавлен 'ship' (Корабль).
-    editableTypes: ['day', 'night', 'warehouse', 'medical', 'travel', 'ship', 'waiting'],
+    editableTypes: ['day', 'night', 'warehouse', 'medical', 'training', 'travel', 'ship', 'helicopter', 'waiting'],
     requireWorkFor: ['day', 'night'],
     columns: { points: 'always', amount: 'show', perDiem: 'none' },
     roles: ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'ADMIN', 'BUH', 'HR', 'HR_MANAGER']
@@ -220,11 +234,10 @@ export const TYPE_META = {
   night:     { icon: '🌙', label: 'Ночь',     short: 'Н',  bgVar: '--ts-night-bg',     fgVar: '--ts-night-fg',     title: 'Ночная смена' },
   warehouse: { icon: '📦', label: 'Склад',    short: 'Скл',bgVar: '--ts-warehouse-bg', fgVar: '--ts-warehouse-fg', title: 'Работа на складе' },
   medical:   { icon: '🏥', label: 'Медосмотр',short: 'МО', bgVar: '--ts-medical-bg',   fgVar: '--ts-medical-fg',   title: 'Медосмотр' },
+  training:  { icon: '🎓', label: 'Обучение', short: 'Об', bgVar: '--ts-training-bg',  fgVar: '--ts-training-fg',  title: 'Обучение' },
   travel:    { icon: '✈️', label: 'Дорога',   short: 'ДР', bgVar: '--ts-travel-bg',    fgVar: '--ts-travel-fg',    title: 'Дорога' },
-  // V255 (23.06.2026): «Корабль» — альтернатива «Дороги» за повышенную ставку
-  // (12 баллов × 500 ₽). Цветовые токены делим с travel (color-gate безопасно),
-  // отличаемся эмодзи 🚢.
   ship:      { icon: '🚢', label: 'Корабль',  short: 'КР', bgVar: '--ts-ship-bg',      fgVar: '--ts-ship-fg',      title: 'Дорога кораблём' },
+  helicopter:{ icon: '🚁', label: 'Вертолёт', short: 'Вр', bgVar: '--ts-helicopter-bg',fgVar: '--ts-helicopter-fg',title: 'Вертолёт' },
   waiting:   { icon: '⏰', label: 'Ожидание', short: 'ОЖ', bgVar: '--ts-waiting-bg',   fgVar: '--ts-waiting-fg',   title: 'Ожидание' }
 };
 
