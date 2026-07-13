@@ -13,8 +13,8 @@ const NOISE_RE  = /RecordingFetcher|TournamentCron|MimirCron|AcademyCron|PerDiem
 async function checkAndNotify(db, log) {
   try {
     const { stdout } = await execAsync(
-      'journalctl -u asgard-crm --since "3 hours ago" --no-pager -o short 2>/dev/null',
-      { timeout: 15000 }
+      'journalctl -u asgard-crm --since "3 hours ago" --no-pager -o short -p warning 2>/dev/null | tail -n 2000',
+      { timeout: 20000, maxBuffer: 50 * 1024 * 1024 }
     );
 
     const lines   = stdout.split('\n').filter(Boolean);

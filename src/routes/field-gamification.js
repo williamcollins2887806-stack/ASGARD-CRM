@@ -17,7 +17,22 @@ const crypto = require('crypto');
 const notificationDispatcher = require('../services/notificationDispatcher'); // D-1: activate dead code
 
 async function routes(fastify) {
-  const db = fastify.db;
+const db = fastify.db;
+
+  async function getRunesDailyRemaining(employeeId) {
+    const DAILY_CAP = 1000;
+    const nowMsk = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
+    const todayMsk = new Date(nowMsk);
+    todayMsk.setHours(0, 0, 0, 0);
+    const { rows: [{ used_today }] } = await db.query(
+      `SELECT COALESCE(SUM(ABS(amount)), 0)::int AS used_today
+       FROM gamification_currency_ledger
+       WHERE employee_id = $1 AND currency = 'runes' AND operation = 'xp_convert'
+         AND created_at >= $2`,
+      [employeeId, todayMsk.toISOString()]
+    );
+    return Math.max(0, DAILY_CAP - parseInt(used_today, 10));
+  }
 
   // ── GET /wallet — balances + level ──
   fastify.get('/wallet', { preHandler: [fastify.fieldAuthenticate] }, async (req) => {
@@ -39,8 +54,16 @@ async function routes(fastify) {
     const xpPerLevel = 100;
     const level = Math.floor(balances.xp / xpPerLevel) + 1;
     const xpInLevel = balances.xp % xpPerLevel;
+    const runes_daily_remaining = await getRunesDailyRemaining(eid);
 
-    return { ...balances, level, xp_in_level: xpInLevel, xp_per_level: xpPerLevel };
+    return {
+      ...balances,
+      level,
+      xp_in_level: xpInLevel,
+      xp_per_level: xpPerLevel,
+      runes_daily_remaining,
+      runes_convert_max: Math.min(1000, runes_daily_remaining, balances.runes)
+    };
   });
 
   // ── POST /wallet/convert — silver → runes ──
@@ -121,22 +144,11 @@ async function routes(fastify) {
     }
     const runesSpent = xpGained * RATE; // round down to exact multiple
 
-    // Check daily cap
-    const nowMsk = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
-    const todayMsk = new Date(nowMsk); todayMsk.setHours(0, 0, 0, 0);
-
-    const { rows: [{ used_today }] } = await db.query(
-      `SELECT COALESCE(SUM(ABS(amount)), 0)::int AS used_today
-       FROM gamification_currency_ledger
-       WHERE employee_id = $1 AND currency = 'runes' AND operation = 'xp_convert'
-         AND created_at >= $2`,
-      [eid, todayMsk.toISOString()]
-    );
-    if (parseInt(used_today) + runesSpent > DAILY_CAP) {
-      const remaining = Math.max(0, DAILY_CAP - parseInt(used_today));
+    const dailyRemaining = await getRunesDailyRemaining(eid);
+    if (runesSpent > dailyRemaining) {
       return reply.code(400).send({
-        error: `Дневной лимит: ${DAILY_CAP} рун. Сегодня осталось: ${remaining} рун`,
-        daily_remaining: remaining
+        error: `Дневной лимит: ${DAILY_CAP} рун. Сегодня осталось: ${dailyRemaining} рун`,
+        daily_remaining: dailyRemaining
       });
     }
 
@@ -199,7 +211,7 @@ async function routes(fastify) {
         xp_gained: xpGained,
         xp_balance: parseInt(xpWallet.balance),
         new_level: newLevel,
-        daily_remaining: DAILY_CAP - parseInt(used_today) - runesSpent,
+        daily_remaining: Math.max(0, dailyRemaining - runesSpent),
       };
     } catch (err) {
       await client.query('ROLLBACK');

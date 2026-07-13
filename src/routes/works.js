@@ -594,6 +594,53 @@ async function routes(fastify, options) {
     }
   });
 
+  // Оценки заказчика по работе (вместо /api/data/customer_reviews/by-index)
+  fastify.get('/:id/customer-reviews', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const workId = parseInt(request.params.id, 10);
+    if (!Number.isFinite(workId)) return reply.code(400).send({ error: 'Invalid id' });
+    const { rows } = await db.query(
+      'SELECT * FROM customer_reviews WHERE work_id = $1 ORDER BY updated_at DESC NULLS LAST, id DESC',
+      [workId]
+    );
+    return { reviews: rows };
+  });
+
+  fastify.post('/:id/customer-review', {
+    preHandler: [fastify.requireRoles(['PM', 'HEAD_PM', 'ADMIN', 'DIRECTOR_GEN'])]
+  }, async (request, reply) => {
+    const workId = parseInt(request.params.id, 10);
+    if (!Number.isFinite(workId)) return reply.code(400).send({ error: 'Invalid id' });
+    const { score, comment } = request.body || {};
+    const sc = Number(score);
+    if (!Number.isFinite(sc) || sc < 1 || sc > 10) {
+      return reply.code(400).send({ error: 'Оценка заказчика: score 1-10' });
+    }
+    const pmId = request.user.id;
+    const existing = await db.query(
+      'SELECT id FROM customer_reviews WHERE work_id = $1 AND pm_id = $2 ORDER BY id DESC LIMIT 1',
+      [workId, pmId]
+    );
+    let row;
+    if (existing.rows[0]) {
+      const upd = await db.query(
+        `UPDATE customer_reviews SET score = $1, rating = $1, comment = $2, updated_at = NOW()
+         WHERE id = $3 RETURNING *`,
+        [sc, String(comment || '').trim(), existing.rows[0].id]
+      );
+      row = upd.rows[0];
+    } else {
+      const ins = await db.query(
+        `INSERT INTO customer_reviews (work_id, pm_id, rating, score, comment, created_at, updated_at)
+         VALUES ($1, $2, $3, $3, $4, NOW(), NOW()) RETURNING *`,
+        [workId, pmId, sc, String(comment || '').trim()]
+      );
+      row = ins.rows[0];
+    }
+    return { review: row };
+  });
+
   // ═══════════════════════════════════════════════════════════════
   // B8: Серверный closeout — закрытие работы с оценками и уведомлениями
   // ═══════════════════════════════════════════════════════════════

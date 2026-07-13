@@ -35,7 +35,7 @@ const EMPLOYEE_COLS = new Set([
   'relative_name', 'relative_relation', 'relative_phone',
   'education', 'specialty',
   'marital_status', 'children_count',
-  'shoe_size', 'height', 'blood_type', 'medical_notes',
+  'clothing_size', 'shoe_size', 'headwear_size', 'height', 'blood_type', 'medical_notes',
   // M2-A Phase 2 (19.06.2026): редактирование СЗ/Оф полей с карточки рабочего.
   // V143: финансовые поля СЗ/Оф. V239: НПД-«стартовая корректировка».
   // RBAC и логика INN — в handler PUT /employees/:id (см. ниже).
@@ -105,7 +105,7 @@ function classifySeHeader(h) {
   return null;
 }
 const REVIEW_COLS = new Set([
-  'employee_id', 'rating', 'comment', 'pm_id', 'created_at', 'score'
+  'employee_id', 'work_id', 'rating', 'comment', 'pm_id', 'created_at', 'score', 'updated_at'
 ]);
 const SCHEDULE_COLS = new Set([
   'employee_id', 'date', 'work_id', 'note', 'created_at',
@@ -118,6 +118,15 @@ function filterData(data, allowedSet) {
     if (allowedSet.has(k) && v !== undefined) filtered[k] = v;
   }
   return filtered;
+}
+
+/** Канонические значения: male | female | null. Принимает M/F, М/Ж, male/female. */
+function normalizeGender(v) {
+  if (v == null || v === '') return null;
+  const s = String(v).trim().toLowerCase();
+  if (['m', 'м', 'male', 'мужской', 'муж'].includes(s)) return 'male';
+  if (['f', 'ж', 'female', 'женский', 'жен'].includes(s)) return 'female';
+  return null;
 }
 
 async function routes(fastify, options) {
@@ -146,13 +155,34 @@ async function routes(fastify, options) {
   // Employees
   fastify.get('/employees', { preHandler: [fastify.authenticate] }, async (request) => {
     const { role_tag, search, limit = 100, offset = 0 } = request.query;
-    let sql = 'SELECT * FROM employees WHERE 1=1';
+    let sql = 'SELECT * FROM employees WHERE COALESCE(is_active, true) = true';
     const params = [];
     let idx = 1;
     if (role_tag) { sql += ` AND role_tag = $${idx}`; params.push(role_tag); idx++; }
-    if (search) { sql += ` AND LOWER(fio) LIKE $${idx}`; params.push(`%${search.toLowerCase()}%`); idx++; }
+    if (search) {
+      const raw = String(search).trim().toLowerCase();
+      const digits = raw.replace(/\D/g, '');
+      const words = raw.split(/\s+/).filter(Boolean);
+      if (words.length > 1) {
+        for (const w of words) {
+          sql += ` AND LOWER(COALESCE(fio, full_name, '')) LIKE $${idx}`;
+          params.push('%' + w + '%');
+          idx++;
+        }
+      } else {
+        sql += ` AND (LOWER(COALESCE(fio, full_name, '')) LIKE $${idx}`;
+        params.push('%' + raw + '%');
+        idx++;
+        if (digits.length >= 4) {
+          sql += ` OR regexp_replace(COALESCE(phone, ''), '\\D', '', 'g') LIKE $${idx}`;
+          params.push('%' + digits + '%');
+          idx++;
+        }
+        sql += ')';
+      }
+    }
     sql += ` ORDER BY fio ASC LIMIT $${idx} OFFSET $${idx + 1}`;
-    params.push(limit, offset);
+    params.push(Math.min(parseInt(limit, 10) || 100, 50), parseInt(offset, 10) || 0);
     const result = await db.query(sql, params);
     return { employees: result.rows.map(formatDates) };
   });
@@ -246,10 +276,43 @@ async function routes(fastify, options) {
   });
 
   fastify.get('/employees/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
-    const result = await db.query('SELECT * FROM employees WHERE id = $1', [request.params.id]);
+    const empId = parseInt(request.params.id, 10);
+    if (isNaN(empId)) return reply.code(400).send({ error: 'Invalid id' });
+    const result = await db.query('SELECT * FROM employees WHERE id = $1', [empId]);
     if (!result.rows[0]) return reply.code(404).send({ error: 'Сотрудник не найден' });
-    const reviews = await db.query('SELECT * FROM employee_reviews WHERE employee_id = $1 ORDER BY created_at DESC LIMIT 10', [request.params.id]);
-    return { employee: formatDates(result.rows[0]), reviews: reviews.rows };
+    const [reviews, assignments, plannedRes, onSiteRes] = await Promise.all([
+      db.query('SELECT * FROM employee_reviews WHERE employee_id = $1 ORDER BY created_at DESC', [empId]),
+      db.query(
+        `SELECT * FROM employee_assignments WHERE employee_id = $1
+         ORDER BY date_from DESC NULLS LAST, id DESC`,
+        [empId]
+      ),
+      db.query(`
+        SELECT pe.work_id, pe.planned_from, pe.planned_to, pe.note,
+               w.work_title, pm.name AS pm_name
+        FROM employee_planned_engagements pe
+        JOIN works w ON w.id = pe.work_id
+        LEFT JOIN users pm ON pm.id = w.pm_id
+        WHERE pe.employee_id = $1 AND pe.status = 'active'
+        LIMIT 1
+      `, [empId]).catch(() => ({ rows: [] })),
+      db.query(`
+        SELECT ea.work_id, w.work_title, pm.name AS pm_name
+        FROM employee_assignments ea
+        JOIN works w ON w.id = ea.work_id
+        LEFT JOIN users pm ON pm.id = w.pm_id
+        WHERE ea.employee_id = $1 AND COALESCE(ea.is_active, true) = true AND ea.departure_date IS NULL
+        ORDER BY ea.id DESC LIMIT 1
+      `, [empId]),
+    ]);
+    const employee = formatDates(result.rows[0]);
+    if (plannedRes.rows[0]) employee.planned_info = formatDates(plannedRes.rows[0]);
+    if (onSiteRes.rows[0]) employee.on_site_info = onSiteRes.rows[0];
+    return {
+      employee,
+      reviews: reviews.rows.map(formatDates),
+      assignments: assignments.rows.map(formatDates),
+    };
   });
 
   // GET /employees/:id/worklog — фактические периоды работы по объектам для ганта
@@ -386,7 +449,7 @@ async function routes(fastify, options) {
   // SECURITY: SQL injection fix + B3 role check
   // FIX (23.06.2026): HEAD_PM (руководитель РП) и OFFICE_MANAGER (офис-менеджер) — могут добавлять сотрудников.
   // Финансовые поля у них всё равно режутся через FIN_RESTRICTED_FIELDS ниже.
-  fastify.post('/employees', { preHandler: [fastify.requireRoles(['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'HEAD_PM', 'OFFICE_MANAGER'])] }, async (request, reply) => {
+  fastify.post('/employees', { preHandler: [fastify.requireRoles(['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'HEAD_PM', 'OFFICE_MANAGER', 'TO', 'HEAD_TO'])] }, async (request, reply) => {
     const body = { ...(request.body || {}) };
     const userRole = request.user && request.user.role;
     if (!body.fio || !String(body.fio).trim()) {
@@ -399,6 +462,7 @@ async function routes(fastify, options) {
         if (field in body) delete body[field];
       }
     }
+    if ('gender' in body) body.gender = normalizeGender(body.gender);
     const data = filterData({ ...body, created_at: new Date().toISOString() }, EMPLOYEE_COLS);
     const keys = Object.keys(data);
     const values = Object.values(data);
@@ -419,7 +483,7 @@ async function routes(fastify, options) {
   //     (но НЕ финансовые суммы — для них отдельный FIN_RESTRICTED_FIELDS-гейт ниже).
   //   - FIX (23.06.2026): OFFICE_MANAGER добавлен — редактирует контактные поля «Моей дружины».
   //     Финансовые суммы и статус увольнения у него режутся через FIN_RESTRICTED_FIELDS.
-  fastify.put('/employees/:id', { preHandler: [fastify.requireRoles(['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'BUH', 'PM', 'HEAD_PM', 'OFFICE_MANAGER'])] }, async (request, reply) => {
+  fastify.put('/employees/:id', { preHandler: [fastify.requireRoles(['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'BUH', 'PM', 'HEAD_PM', 'OFFICE_MANAGER', 'TO', 'HEAD_TO'])] }, async (request, reply) => {
     const { id } = request.params;
     const body = { ...(request.body || {}) };
     const userRole = request.user && request.user.role;
@@ -507,6 +571,7 @@ async function routes(fastify, options) {
     }
 
     // ── 6) Whitelist + UPDATE employees.
+    if ('gender' in body) body.gender = normalizeGender(body.gender);
     const data = filterData(body, EMPLOYEE_COLS);
     const updates = [];
     const values = [];
@@ -693,10 +758,46 @@ async function routes(fastify, options) {
   fastify.post('/employees/:id/review', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     try {
       const { id } = request.params;
+      const body = request.body || {};
+      const workId = body.work_id != null ? parseInt(body.work_id, 10) : null;
+      const pmId = request.user.id;
+      const score = body.score != null ? Number(body.score) : (body.rating != null ? Number(body.rating) : null);
+      const comment = body.comment != null ? String(body.comment) : '';
+
+      if (workId) {
+        const existing = await db.query(
+          `SELECT * FROM employee_reviews
+           WHERE employee_id = $1 AND work_id = $2 AND pm_id = $3
+           ORDER BY id DESC LIMIT 1`,
+          [id, workId, pmId]
+        );
+        if (existing.rows[0]) {
+          const cur = existing.rows[0];
+          const result = await db.query(
+            `UPDATE employee_reviews SET score = $1, rating = $1, comment = $2, updated_at = NOW()
+             WHERE id = $3 RETURNING *`,
+            [score, comment, cur.id]
+          );
+          try {
+            const avgResult = await db.query(
+              'SELECT AVG(COALESCE(score, rating)) as avg FROM employee_reviews WHERE employee_id = $1',
+              [id]
+            );
+            await db.query(
+              'UPDATE employees SET rating_avg = $1, updated_at = NOW() WHERE id = $2',
+              [avgResult.rows[0].avg, id]
+            );
+          } catch (avgErr) {
+            fastify.log.warn('Rating avg update failed:', avgErr.message);
+          }
+          return { review: result.rows[0], updated: true };
+        }
+      }
+
       const data = filterData({
         employee_id: id,
-        ...request.body,
-        pm_id: request.user.id,
+        ...body,
+        pm_id: pmId,
         created_at: new Date().toISOString()
       }, REVIEW_COLS);
       const keys = Object.keys(data);

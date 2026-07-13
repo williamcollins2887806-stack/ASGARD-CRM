@@ -15,6 +15,39 @@ module.exports = async function(fastify) {
   const db = fastify.db;
   const uploadDir = process.env.UPLOAD_DIR || './uploads';
 
+  /** YYYY-MM-DD or null; never throws on bad legacy DB values */
+  function toDateOnly(val) {
+    if (val == null || val === '') return null;
+    if (typeof val === 'string') {
+      const trimmed = val.trim();
+      if (!trimmed) return null;
+      const m = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (m) {
+        const y = +m[1];
+        const mo = +m[2];
+        const day = +m[3];
+        if (mo < 1 || mo > 12 || day < 1 || day > 31) return null;
+        const probe = new Date(Date.UTC(y, mo - 1, day));
+        if (
+          Number.isNaN(probe.getTime()) ||
+          probe.getUTCFullYear() !== y ||
+          probe.getUTCMonth() !== mo - 1 ||
+          probe.getUTCDate() !== day
+        ) {
+          return null;
+        }
+        return `${m[1]}-${m[2]}-${m[3]}`;
+      }
+    }
+    const d = val instanceof Date ? val : new Date(val);
+    if (Number.isNaN(d.getTime())) return null;
+    try {
+      return d.toISOString().slice(0, 10);
+    } catch (_) {
+      return null;
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════════
   // HELPER: Уведомление
   // ═══════════════════════════════════════════════════════════════
@@ -485,16 +518,29 @@ module.exports = async function(fastify) {
           `, [employeeId, typeId]);
 
           const present = item.present === true || item.present === 'true';
-          const issueDate = item.issue_date || null;
-          const expiryDate = item.expiry_date || null;
+          const issueDate = toDateOnly(item.issue_date);
+          const expiryDate = toDateOnly(item.expiry_date);
           const docNumber = item.doc_number != null ? String(item.doc_number).trim() || null : null;
           const issuer = item.issuer != null ? String(item.issuer).trim() || null : null;
           const notes = item.notes != null ? String(item.notes).trim() || null : null;
 
+          if (present) {
+            if (item.issue_date != null && item.issue_date !== '' && !issueDate) {
+              const err = new Error(`Некорректная дата выдачи (тип ${typeId})`);
+              err.statusCode = 400;
+              throw err;
+            }
+            if (item.expiry_date != null && item.expiry_date !== '' && !expiryDate) {
+              const err = new Error(`Некорректная дата окончания (тип ${typeId})`);
+              err.statusCode = 400;
+              throw err;
+            }
+          }
+
           if (present && existing) {
             // Сброс notify-флагов, если поменялась дата окончания
-            const oldExpiry = existing.expiry_date ? new Date(existing.expiry_date).toISOString().slice(0, 10) : null;
-            const notifyReset = oldExpiry !== (expiryDate || null)
+            const oldExpiry = toDateOnly(existing.expiry_date);
+            const notifyReset = oldExpiry !== expiryDate
               ? ', notify_30_sent = false, notify_14_sent = false, notify_expired_sent = false'
               : '';
             await client.query(`
@@ -530,7 +576,11 @@ module.exports = async function(fastify) {
       });
     } catch (err) {
       fastify.log.error('[permits] bulk save error: ' + err.message);
-      return reply.code(500).send({ error: 'Ошибка сохранения допусков', detail: err.message });
+      const code = err.statusCode === 400 ? 400 : 500;
+      return reply.code(code).send({
+        error: code === 400 ? err.message : 'Ошибка сохранения допусков',
+        detail: err.message
+      });
     }
 
     // Возвращаем свежий список в GET-совместимом формате (с computed_status)

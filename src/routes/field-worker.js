@@ -25,6 +25,28 @@ const FIELD_ACHIEVEMENTS = [
   { id: 'mentor',         icon: '🎓', name: 'Наставник',       desc: 'Стал мастером смены', check: s => s.was_master >= 1 },
 ];
 
+async function loadActivePlannedEngagement(db, employeeId) {
+  const { rows } = await db.query(`
+    SELECT pe.work_id, pe.planned_from, pe.planned_to, pe.note,
+           w.work_title, pm.name AS pm_name
+    FROM employee_planned_engagements pe
+    JOIN works w ON w.id = pe.work_id AND w.deleted_at IS NULL
+    LEFT JOIN users pm ON pm.id = w.pm_id
+    WHERE pe.employee_id = $1 AND pe.status = 'active'
+    LIMIT 1
+  `, [employeeId]);
+  const p = rows[0];
+  if (!p) return null;
+  return {
+    work_id: p.work_id,
+    work_title: p.work_title,
+    pm_name: p.pm_name,
+    planned_from: p.planned_from,
+    planned_to: p.planned_to,
+    note: p.note,
+  };
+}
+
 async function routes(fastify, options) {
   const db = fastify.db;
   const auth = { preHandler: [fastify.fieldAuthenticate] };
@@ -126,6 +148,8 @@ async function routes(fastify, options) {
         title = await getWorkerTitle(db, emp.id);
       } catch { /* non-critical */ }
 
+      const planned_engagement = await loadActivePlannedEngagement(db, emp.id);
+
       return {
         id: emp.id,
         fio: emp.fio,
@@ -145,6 +169,7 @@ async function routes(fastify, options) {
         day_rate: emp.day_rate,
         achievements,
         title,
+        planned_engagement,
         // Gamification
         runes,
         xp,
@@ -190,8 +215,10 @@ async function routes(fastify, options) {
         LIMIT 1
       `, [empId]);
 
+      const planned_engagement = await loadActivePlannedEngagement(db, empId);
+
       if (assignments.length === 0) {
-        return { project: null };
+        return { project: null, planned_engagement };
       }
 
       const a = assignments[0];
@@ -282,6 +309,7 @@ async function routes(fastify, options) {
       }
 
       return {
+        planned_engagement,
         project: {
           work_id: a.work_id,
           work_title: a.work_title,
@@ -854,6 +882,13 @@ async function routes(fastify, options) {
 
       if (Object.keys(filtered).length === 0) {
         return reply.code(400).send({ error: 'Нет полей для обновления' });
+      }
+
+      if ('gender' in filtered) {
+        const g = String(filtered.gender || '').trim().toLowerCase();
+        if (['m', 'м', 'male', 'мужской', 'муж'].includes(g)) filtered.gender = 'male';
+        else if (['f', 'ж', 'female', 'женский', 'жен'].includes(g)) filtered.gender = 'female';
+        else filtered.gender = null;
       }
 
       // Строим UPDATE

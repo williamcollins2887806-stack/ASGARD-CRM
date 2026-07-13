@@ -17,7 +17,7 @@
 // v2 Personnel/api.js:74 EDIT_ROLES уже включает их и показывает кнопки «✓ Готов» / «Не готов»,
 // а backend отвечал 403 при клике → у HEAD_PM и Офис-менеджера переход неактивен в реальности.
 // Сейчас оба могут менять статус готовности сотрудника, паритет с UI.
-const READINESS_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'HEAD_PM', 'OFFICE_MANAGER'];
+const READINESS_ROLES = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'HEAD_PM', 'OFFICE_MANAGER', 'TO', 'HEAD_TO'];
 // VIEW_ROLES — просмотр списка дружины. PM/HEAD_PM видят всех (свою бригаду — в полевом модуле).
 // OFFICE_MANAGER ведёт картотеку рабочих (телефоны, документы), нужен read-доступ к «Моей дружине».
 const VIEW_ROLES      = ['ADMIN', 'HR', 'HR_MANAGER', 'PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'TO', 'HEAD_TO', 'OFFICE_MANAGER'];
@@ -51,6 +51,7 @@ async function routes(fastify, options) {
         e.readiness_comment, e.readiness_updated_at,
         e.last_pm_id, e.last_work_id,
         e.city,
+        e.clothing_size, e.shoe_size, e.headwear_size, e.height,
         pm.name AS last_pm_name,
         lw.work_title AS last_work_title
       FROM employees e
@@ -61,7 +62,7 @@ async function routes(fastify, options) {
     `);
 
     if (!employees.length) {
-      return { employees: [], groups: { on_site: 0, approved: 0, ready: 0, not_ready: 0, archive: 0 } };
+      return { employees: [], groups: { on_site: 0, approved: 0, ready: 0, not_ready: 0, archive: 0, planned: 0 } };
     }
 
     const empIds = employees.map(e => e.id);
@@ -125,7 +126,33 @@ async function routes(fastify, options) {
       if (!approvedByEmp[a.employee_id]) approvedByEmp[a.employee_id] = a;
     }
 
-    // Последняя завершённая работа — для тех, кто СЕЙЧАС не на объекте и не согласован.
+    // Планируемое привлечение на проект (параллельный слой)
+    const { rows: plannedRows } = await db.query(`
+      SELECT
+        pe.employee_id, pe.work_id, pe.planned_from, pe.planned_to, pe.note,
+        w.work_title,
+        wpm.name AS pm_name
+      FROM employee_planned_engagements pe
+      JOIN works w ON w.id = pe.work_id AND w.deleted_at IS NULL
+      LEFT JOIN users wpm ON wpm.id = w.pm_id
+      WHERE pe.employee_id = ANY($1::int[]) AND pe.status = 'active'
+    `, [empIds]);
+
+    const plannedByEmp = {};
+    for (const p of (plannedRows || [])) {
+      if (!plannedByEmp[p.employee_id]) {
+        plannedByEmp[p.employee_id] = {
+          work_id: p.work_id,
+          work_title: p.work_title,
+          pm_name: p.pm_name,
+          planned_from: p.planned_from,
+          planned_to: p.planned_to,
+          note: p.note,
+        };
+      }
+    }
+
+    // Последняя завершённая работа
     // Показываем в колонке «Объект/РП» как «история», и в «Начало работ» — дату начала
     // последнего assignment'а (это и есть «срок последней работы» по сути).
     // Канонический столбец «когда сотрудника назначили на работу» в БД — `date_from`
@@ -224,7 +251,7 @@ async function routes(fastify, options) {
     for (const r of seSum) seByEmp[r.employee_id] = Number(r.transferred_year || 0);
 
     // Группировка
-    const groups = { on_site: 0, approved: 0, ready: 0, not_ready: 0, archive: 0 };
+    const groups = { on_site: 0, approved: 0, ready: 0, not_ready: 0, archive: 0, planned: 0 };
     const enriched = employees.map(e => {
       let effective_status = e.readiness_status || 'unknown';
       let on_site_info = null;
@@ -277,12 +304,16 @@ async function routes(fastify, options) {
         end_date:   lastByEmp[e.id].end_date,
       } : null;
 
+      const planned_info = plannedByEmp[e.id] || null;
+      if (planned_info) groups.planned++;
+
       return {
         ...e,
         effective_status,
         on_site_info,
         approved_info,
         last_assignment_info,
+        planned_info,
         permits: permitsByEmp[e.id] || { expired: 0, expiring: 0 },
         key_permits: keyPermitsByEmp[e.id] || {},
         se_transferred_year: seByEmp[e.id] || 0,
@@ -304,7 +335,11 @@ async function routes(fastify, options) {
         )) AS on_site,
         COUNT(*) FILTER (WHERE e.readiness_status = 'ready' AND (e.readiness_date IS NULL OR e.readiness_date <= CURRENT_DATE)) AS ready,
         COUNT(*) FILTER (WHERE e.readiness_status = 'not_ready') AS not_ready,
-        COUNT(*) FILTER (WHERE e.readiness_status = 'archive')   AS archive
+        COUNT(*) FILTER (WHERE e.readiness_status = 'archive')   AS archive,
+        COUNT(*) FILTER (WHERE EXISTS (
+          SELECT 1 FROM employee_planned_engagements pe
+          WHERE pe.employee_id = e.id AND pe.status = 'active'
+        )) AS planned
       FROM employees e
       WHERE e.is_active = true
     `);
@@ -314,6 +349,7 @@ async function routes(fastify, options) {
       ready:     Number(r.ready || 0),
       not_ready: Number(r.not_ready || 0),
       archive:   Number(r.archive || 0),
+      planned:   Number(r.planned || 0),
     };
   });
 

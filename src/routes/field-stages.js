@@ -32,13 +32,13 @@ const { assertNotLocked } = require('../lib/timesheet-locks');
 const { logError } = require('../lib/log-error');
 
 // V255 (23.06.2026): добавлен 'ship' — альтернатива «Дорога» за повышенную ставку.
-const STAGE_TYPES = ['medical', 'travel', 'ship', 'waiting', 'warehouse', 'day_off', 'object'];
+const STAGE_TYPES = ['medical', 'travel', 'ship', 'training', 'helicopter', 'waiting', 'warehouse', 'day_off', 'object'];
 
 // FIX 1: stage_type → scope_hint для лок-чекера.
 // warehouse/medical/travel — отдельные scope; остальные — global (только глобал-лок).
 // 'ship' — это медицинский scope (ставит ТО/HEAD_TO, как МО).
 function deriveScope(stage_type) {
-  return ({ warehouse: 'warehouse', medical: 'medical', ship: 'medical', travel: 'travel' })[stage_type] || 'global';
+  return ({ warehouse: 'warehouse', medical: 'medical', training: 'medical', ship: 'medical', helicopter: 'medical', travel: 'travel' })[stage_type] || 'global';
 }
 
 // FIX 1: month/year из строки даты или Date.
@@ -59,8 +59,10 @@ const ADMIN_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 
 const STAGE_LABELS = {
   medical: 'Медосмотр',
+  training: 'Обучение',
   travel: 'Дорога',
   ship: 'Корабль',      // V255: альтернатива «Дорога» за повышенную ставку (12 баллов)
+  helicopter: 'Вертолёт',
   waiting: 'Ожидание',
   warehouse: 'Склад',
   day_off: 'Выходной',
@@ -93,6 +95,10 @@ async function routes(fastify, options) {
       // V255: новый «Корабль» — пока в справочнике field_tariff_grid его может не быть,
       // сразу падаем в defaults (12 баллов × 500 ₽).
       q = await db.query(`SELECT id, points, rate_per_shift FROM field_tariff_grid WHERE category='special' AND position_name ILIKE '%Корабл%' LIMIT 1`);
+    } else if (stageType === 'training') {
+      q = await db.query(`SELECT id, points, rate_per_shift FROM field_tariff_grid WHERE category='special' AND position_name ILIKE '%Обучен%' LIMIT 1`);
+    } else if (stageType === 'helicopter') {
+      q = await db.query(`SELECT id, points, rate_per_shift FROM field_tariff_grid WHERE category='special' AND position_name ILIKE '%Вертол%' LIMIT 1`);
     } else if (stageType === 'waiting' || stageType === 'day_off') {
       q = await db.query(`SELECT id, points, rate_per_shift FROM field_tariff_grid WHERE category='special' AND position_name ILIKE '%Выходной%' LIMIT 1`);
     } else if (stageType === 'warehouse') {
@@ -111,8 +117,10 @@ async function routes(fastify, options) {
     // Fallback по умолчанию. V255 (23.06.2026): medical 6→7, ship=12 (новый).
     const defaults = {
       medical:   { p: 7,  r: 3500 },
+      training:  { p: 7,  r: 3500 },
       travel:    { p: 6,  r: 3000 },
       ship:      { p: 12, r: 6000 },
+      helicopter:{ p: 6,  r: 3000 },
       waiting:   { p: 6,  r: 3000 },
       day_off:   { p: 6,  r: 3000 },
       warehouse: { p: 10, r: 5000 },

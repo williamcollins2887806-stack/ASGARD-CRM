@@ -112,6 +112,12 @@ async function routes(fastify, options) {
 
     await fs.writeFile(filepath, file.buffer);
 
+    if (tenderId) {
+      try {
+        await db.query(`UPDATE tenders SET has_documents = true, updated_at = NOW() WHERE id = $1`, [Number(tenderId)]);
+      } catch (_) { /* optional column */ }
+    }
+
     const result = await db.query(`
       INSERT INTO documents (filename, original_name, mime_type, size, type, tender_id, work_id, estimate_id, correspondence_id, trip_id, uploaded_by, download_url, created_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())

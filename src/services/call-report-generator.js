@@ -6,6 +6,17 @@
  */
 
 const { getCallReportPrompt } = require('../prompts/call-report-prompt');
+const { parseStrictJson } = require('./mimir-conductor/agents/_util');
+
+const AI_STRICT_SUFFIX =
+  '\n\nКРИТИЧНО: верни ТОЛЬКО валидный JSON-объект. Без markdown (```), без комментариев, без trailing comma. ' +
+  'Все ключи и строки в двойных кавычках. Массивы и объекты должны быть полностью закрыты.';
+
+const AI_REPAIR_PROMPT =
+  'Тебе дали ТЕКСТ от другой модели, который ДОЛЖЕН был быть валидным JSON-объектом, ' +
+  'но содержит ошибки парсинга (битые кавычки, незакрытые скобки, trailing comma, преамбулы, markdown). ' +
+  'Твоя задача — вернуть ТОЛЬКО валидный JSON-объект, исправив ошибки. ' +
+  'Ничего не комментируй. Не оборачивай в ```. Сохрани все смысловые данные.';
 
 class CallReportGenerator {
   constructor(db, aiProvider) {
@@ -117,34 +128,20 @@ class CallReportGenerator {
 
     if (this.aiProvider) {
       try {
-        const completeFn = this.aiProvider.completeAnalytics || this.aiProvider.complete || this.aiProvider;
-        const aiResult = await completeFn({
-          system: systemPrompt,
-          messages: [{ role: 'user', content: 'Сгенерируй отчёт на основе предоставленных данных.' }],
-          maxTokens: 2500,
-          temperature: 0.3
-        });
-
-        const text = aiResult.text || '';
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          parsed = JSON.parse(jsonMatch[0]);
-          title = parsed.title || title;
-          summaryText = parsed.summary || text;
-          recommendations = parsed.recommendations || [];
-          insights = parsed.insights || [];
-          attentionItems = parsed.attention_items || [];
-          if (parsed.highlights) {
-            statsJson = { ...reportData, highlights: parsed.highlights };
-          }
-          if (parsed.employee_highlights) {
-            statsJson = { ...statsJson, employee_highlights: parsed.employee_highlights };
-          }
-        } else {
-          summaryText = text;
+        parsed = await this._generateAiParsed(systemPrompt);
+        title = parsed.title || title;
+        summaryText = parsed.summary || summaryText;
+        recommendations = parsed.recommendations || [];
+        insights = parsed.insights || [];
+        attentionItems = parsed.attention_items || [];
+        if (parsed.highlights) {
+          statsJson = { ...reportData, highlights: parsed.highlights };
+        }
+        if (parsed.employee_highlights) {
+          statsJson = { ...statsJson, employee_highlights: parsed.employee_highlights };
         }
       } catch (aiErr) {
-        console.error('[CallReportGenerator] AI error:', aiErr.message);
+        console.error('[CallReportGenerator] AI error (all retries failed):', aiErr.message);
         summaryText = `Автоматический отчёт: ${reportData.totalCalls} звонков, ${reportData.targetCalls} целевых, ${reportData.lostCalls} потеряно без ответа.`;
       }
     } else {
@@ -172,6 +169,66 @@ class CallReportGenerator {
     ]);
 
     return insertRes.rows[0];
+  }
+
+  /**
+   * AI-генерация отчёта: json_object + 3 retry + haiku-repair.
+   * @param {string} systemPrompt
+   * @returns {Promise<Object>}
+   */
+  async _generateAiParsed(systemPrompt) {
+    const completeFn = this.aiProvider.completeAnalytics || this.aiProvider.complete;
+    if (typeof completeFn !== 'function') {
+      throw new Error('AI provider has no complete() method');
+    }
+
+    const userMsg = 'Сгенерируй отчёт на основе предоставленных данных.';
+    let lastRaw = '';
+    let lastErr = null;
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const aiResult = await completeFn({
+          system: attempt === 1 ? systemPrompt : systemPrompt + AI_STRICT_SUFFIX,
+          messages: [{ role: 'user', content: userMsg }],
+          maxTokens: 3500,
+          temperature: attempt === 1 ? 0.25 : 0,
+          responseFormat: { type: 'json_object' }
+        });
+        lastRaw = aiResult.text || '';
+        const parsed = parseStrictJson(lastRaw);
+        if (attempt > 1) {
+          console.log(`[CallReportGenerator] AI JSON parsed on attempt ${attempt}`);
+        }
+        return parsed;
+      } catch (err) {
+        lastErr = err;
+        console.warn(`[CallReportGenerator] AI attempt ${attempt}/3 failed: ${err.message}`);
+      }
+    }
+
+    if (lastRaw) {
+      try {
+        console.log('[CallReportGenerator] Trying haiku JSON repair...');
+        const repairFn = this.aiProvider.complete || this.aiProvider.completeAnalytics;
+        const repaired = await repairFn({
+          system: AI_REPAIR_PROMPT,
+          messages: [{ role: 'user', content: `БИТЫЙ ТЕКСТ:\n${lastRaw.slice(0, 60000)}\n\nВЕРНИ ВАЛИДНЫЙ JSON:` }],
+          model: 'haiku-4-5',
+          maxTokens: 8000,
+          temperature: 0,
+          responseFormat: { type: 'json_object' }
+        });
+        if (repaired._stub) throw new Error('stub mode');
+        const parsed = parseStrictJson(repaired.text || '');
+        console.log('[CallReportGenerator] AI JSON repaired via haiku');
+        return parsed;
+      } catch (repairErr) {
+        console.warn(`[CallReportGenerator] Haiku repair failed: ${repairErr.message}`);
+      }
+    }
+
+    throw lastErr || new Error('AI report generation failed');
   }
 
   _buildReportHtml(data, aiResult) {

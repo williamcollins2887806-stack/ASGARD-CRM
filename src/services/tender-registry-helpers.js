@@ -38,6 +38,39 @@ function syncRegistryStatus(tenderStatus) {
 
 const KANBAN_REGISTRY_STATUSES = new Set(['готовим', 'подались']);
 
+/** Строки, которые не показываем в реестре ТО и дежурной очереди РП */
+function notGarbageInEitherColumn(alias, pattern) {
+  return `(LOWER(COALESCE(${alias}.tender_title, '')) NOT LIKE ${pattern} AND LOWER(COALESCE(${alias}.customer_name, '')) NOT LIKE ${pattern})`;
+}
+
+function buildRegistryExclusionClause(alias = 't', createdByAlias = null) {
+  const p = alias;
+  const parts = [
+    `${p}.source_pre_tender_id IS NULL`,
+    notGarbageInEitherColumn(p, `'st-%'`),
+    notGarbageInEitherColumn(p, `'%auto-tender%'`),
+    `LOWER(COALESCE(${p}.comment_to, '')) NOT LIKE '%авто-tender из pre_tender%'`,
+    `LOWER(COALESCE(${p}.comment_to, '')) NOT LIKE '%создано из заявки #%'`,
+    `LOWER(COALESCE(${p}.comment_to, '')) NOT LIKE '%быстрый путь из заявки%'`,
+    notGarbageInEitherColumn(p, `'%<script%'`),
+    notGarbageInEitherColumn(p, `'%javascript:%'`),
+    notGarbageInEitherColumn(p, `'%<iframe%'`),
+    notGarbageInEitherColumn(p, `'%<embed%'`),
+    notGarbageInEitherColumn(p, `'%admin-matrix%'`),
+    notGarbageInEitherColumn(p, `'%conc-8 race%'`),
+    notGarbageInEitherColumn(p, `'%audit-3 update%'`),
+    notGarbageInEitherColumn(p, `'%&#60;script%'`),
+    notGarbageInEitherColumn(p, `'%&lt;script%'`),
+    `NOT (LOWER(COALESCE(${p}.customer_name, '')) = 'новый заказчик' AND LOWER(COALESCE(${p}.tender_title, '')) IN ('', 'новый тендер'))`,
+    `NOT (TRIM(COALESCE(${p}.customer_name, '')) = '' AND LOWER(COALESCE(${p}.tender_title, '')) = 'новый тендер')`,
+    `NOT (LOWER(COALESCE(${p}.customer_name, '')) IN ('ооо "валидация"', 'ооо "кавычки & <теги>"'))`
+  ];
+  if (createdByAlias) {
+    parts.push(`LOWER(COALESCE(${createdByAlias}.name, '')) NOT LIKE 'test %'`);
+  }
+  return ' AND ' + parts.map((x) => `(${x})`).join(' AND ');
+}
+
 async function ensureTenderKanbanCard(db, tenderId, ownerUserId) {
   if (!ownerUserId || !tenderId) return null;
   try {
@@ -177,5 +210,6 @@ module.exports = {
   ensureReview,
   getCurrentDuty,
   computeCustomerScore,
-  ensureTenderKanbanCard
+  ensureTenderKanbanCard,
+  buildRegistryExclusionClause
 };

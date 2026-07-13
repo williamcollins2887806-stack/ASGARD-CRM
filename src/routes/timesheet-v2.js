@@ -36,7 +36,7 @@ const TRAVEL_ROLES = ['OFFICE_MANAGER', 'HEAD_TO'];
 
 // V255 (23.06.2026): добавлен 'ship' — альтернатива «Дорога» за повышенную ставку
 // (12 баллов × 500 ₽ = 6000 ₽). Ставит ТО/HEAD_TO (как МО/Обучение).
-const STAGE_TYPES = new Set(['warehouse', 'medical', 'travel', 'ship', 'waiting']);
+const STAGE_TYPES = new Set(['warehouse', 'medical', 'travel', 'ship', 'training', 'helicopter', 'waiting']);
 const SHIFT_TYPES = new Set(['day', 'night']);
 
 // 23.06.2026 BUG-FIX (🟡 T-V230-note): миграция V230__fot_auto_payment_method.sql
@@ -167,12 +167,20 @@ function typeAllowedForMode(mode, type) {
   if (mode === 'global') return SHIFT_TYPES.has(type) || STAGE_TYPES.has(type);
   if (mode === 'pm') return type === 'day' || type === 'night' || type === 'waiting';
   if (mode === 'warehouse') return type === 'warehouse';
-  // V255: medical-роли (TO/HEAD_TO) ставят МО, Обучение и Корабль.
-  // Хотя 'training' хранится не отдельным типом, а как stage_type='medical' с пометкой
-  // в notes — добавляем 'ship' как новый тип-этап.
-  if (mode === 'medical') return type === 'medical' || type === 'ship';
+  // V255/V284: medical-роли (TO/HEAD_TO) ставят МО, Обучение, Корабль и Вертолёт.
+  if (mode === 'medical') {
+    return type === 'medical' || type === 'training' || type === 'ship' || type === 'helicopter';
+  }
   if (mode === 'travel') return type === 'travel';
   return false;
+}
+
+/** work_id обязателен только для смен/склада на конкретной работе (PM/global). */
+function typeRequiresWorkId(mode, type) {
+  if (mode === 'medical' || mode === 'travel' || mode === 'warehouse') return false;
+  if (mode === 'pm') return type === 'day' || type === 'night' || type === 'waiting';
+  // global: этапы (ship/helicopter/training/medical/travel) — work_id опционален
+  return type === 'day' || type === 'night' || type === 'waiting' || type === 'warehouse';
 }
 
 // field_checkins.shift хранит 4 реальных значения: 'day' / 'night' / 'road' / 'standby'.
@@ -184,6 +192,7 @@ function cellTypeFromShift(shift) {
   if (shift === 'night')                       return 'night';
   if (shift === 'road'    || shift === 'travel')  return 'travel';
   if (shift === 'ship')                        return 'ship';
+  if (shift === 'helicopter')                  return 'helicopter';
   if (shift === 'standby' || shift === 'waiting') return 'waiting';
   return 'day';
 }
@@ -210,6 +219,8 @@ async function loadSettings(db) {
   if (!('medical' in out.position_points)) out.position_points['medical'] = 7;
   if (!('travel'  in out.position_points)) out.position_points['travel']  = 6;
   if (!('ship'    in out.position_points)) out.position_points['ship']    = 12;
+  if (!('training' in out.position_points)) out.position_points['training'] = 7;
+  if (!('helicopter' in out.position_points)) out.position_points['helicopter'] = 6;
   if (!('waiting' in out.position_points)) out.position_points['waiting'] = 6;
 
   // per_diem_default — берём из settings.value_json (key='per_diem_default') либо MAX(per_diem) по полю
@@ -234,6 +245,8 @@ function pointsFor(settings, type, position) {
   if (type === 'medical') return Number(settings.position_points['medical'] ?? 7);
   if (type === 'travel')  return Number(settings.position_points['travel']  ?? 6);
   if (type === 'ship')    return Number(settings.position_points['ship']    ?? 12);
+  if (type === 'training') return Number(settings.position_points['training'] ?? 7);
+  if (type === 'helicopter') return Number(settings.position_points['helicopter'] ?? 6);
   // 24.06.2026 fix: ранее возвращал 0 — в общем табеле «⏰ Ожидание» получалось 13
   // (из tariff_points), и юзер жаловался «все ячейки 13 баллов». Правильно: 6.
   if (type === 'waiting') return Number(settings.position_points['waiting'] ?? 6);
@@ -245,6 +258,151 @@ async function routes(fastify) {
   const viewAuth = { preHandler: [fastify.requireRoles(ALL_VIEW_ROLES)] };
   const settingsWriteAuth = { preHandler: [fastify.requireRoles(['ADMIN', 'DIRECTOR_GEN'])] };
   const exportAuth = { preHandler: [fastify.requireRoles(GLOBAL_ROLES)] };
+
+  // ────────────────────────────────────────────────────────────────
+  // GET /api/timesheet/v2/:year/:month/roster?project_q=&work_id=
+  // Список рабочих по проекту: был / на объекте / утверждён / в плане / отметки
+  // ────────────────────────────────────────────────────────────────
+  fastify.get('/:year/:month/roster', viewAuth, async (request, reply) => {
+    try {
+      const year = parseInt(request.params.year, 10);
+      const month = parseInt(request.params.month, 10);
+      const projectQ = String(request.query.project_q || '').trim();
+      const workIdParam = request.query.work_id ? parseInt(request.query.work_id, 10) : null;
+      if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+        return reply.code(400).send({ error: 'Bad year/month' });
+      }
+      if (!projectQ && !workIdParam) {
+        return reply.code(400).send({ error: 'project_q or work_id required' });
+      }
+      const dim = daysInMonth(year, month);
+      const periodStart = `${year}-${String(month).padStart(2, '0')}-01`;
+      const periodEnd = `${year}-${String(month).padStart(2, '0')}-${String(dim).padStart(2, '0')}`;
+
+      let workMatches = [];
+      if (workIdParam) {
+        const { rows } = await db.query(
+          `SELECT id, work_title, pm_id FROM works WHERE id = $1 AND deleted_at IS NULL`,
+          [workIdParam]
+        );
+        workMatches = rows;
+      } else {
+        const q = '%' + projectQ.toLowerCase() + '%';
+        const { rows } = await db.query(`
+          SELECT w.id, w.work_title, w.pm_id, u.name AS pm_name
+          FROM works w
+          LEFT JOIN users u ON u.id = w.pm_id
+          WHERE w.deleted_at IS NULL
+            AND (LOWER(w.work_title) LIKE $1
+              OR LOWER(COALESCE(w.customer_name, '')) LIKE $1
+              OR LOWER(COALESCE(w.city, '')) LIKE $1)
+          ORDER BY w.work_title
+          LIMIT 20
+        `, [q]);
+        workMatches = rows;
+      }
+      if (!workMatches.length) return { work_matches: [], employees: [] };
+
+      const workIds = workMatches.map((w) => w.id);
+      const hasPlanned = await tableExists(db, 'employee_planned_engagements');
+
+      const plannedJoin = hasPlanned ? `
+        LEFT JOIN LATERAL (
+          SELECT pe.work_id, pe.planned_from, pe.planned_to, pe.note,
+                 w2.work_title AS plan_work_title, u2.name AS plan_pm_name
+          FROM employee_planned_engagements pe
+          JOIN works w2 ON w2.id = pe.work_id
+          LEFT JOIN users u2 ON u2.id = w2.pm_id
+          WHERE pe.employee_id = e.id AND pe.status = 'active' AND pe.work_id = ANY($3::int[])
+          LIMIT 1
+        ) pe ON true` : '';
+      const plannedSelect = hasPlanned ? `
+        pe.work_id AS plan_work_id, pe.plan_work_title, pe.plan_pm_name,
+        pe.planned_from, pe.planned_to, pe.note AS plan_note,` : '';
+
+      const params = [periodStart, periodEnd, workIds];
+      const { rows: rosterRows } = await db.query(`
+        WITH reasons AS (
+          SELECT DISTINCT e.id AS employee_id, 'on_site'::text AS reason
+          FROM employees e
+          JOIN employee_assignments ea ON ea.employee_id = e.id
+          WHERE ea.work_id = ANY($3::int[])
+            AND COALESCE(ea.is_active, true) = true
+            AND ea.departure_date IS NULL
+          UNION
+          SELECT DISTINCT ea2.employee_id, 'was_on'
+          FROM employee_assignments ea2
+          WHERE ea2.work_id = ANY($3::int[])
+            AND (ea2.departure_date BETWEEN $1::date AND $2::date
+              OR ea2.created_at::date BETWEEN $1::date AND $2::date)
+          UNION
+          SELECT DISTINCT sra.employee_id, 'approved'
+          FROM staff_request_assignments sra
+          JOIN staff_requests sr ON sr.id = sra.request_id
+          WHERE sr.work_id = ANY($3::int[])
+            AND sra.status = 'approved'
+            AND sr.status_v2 IN ('approved')
+          UNION
+          SELECT DISTINCT fc.employee_id, 'marks'
+          FROM field_checkins fc
+          WHERE fc.work_id = ANY($3::int[]) AND fc.status = 'completed'
+            AND fc.date BETWEEN $1::date AND $2::date
+          UNION
+          SELECT DISTINCT fts.employee_id, 'marks'
+          FROM field_trip_stages fts
+          WHERE fts.work_id = ANY($3::int[])
+            AND COALESCE(fts.status,'active') NOT IN ('rejected','cancelled')
+            AND fts.date_from <= $2::date
+            AND COALESCE(fts.date_to, fts.date_from) >= $1::date
+          ${hasPlanned ? `
+          UNION
+          SELECT DISTINCT pe.employee_id, 'planned'
+          FROM employee_planned_engagements pe
+          WHERE pe.work_id = ANY($3::int[]) AND pe.status = 'active'` : ''}
+        )
+        SELECT e.id, COALESCE(e.fio, e.full_name) AS fio, e.phone, e.role_tag AS position,
+               array_agg(DISTINCT r.reason) AS roster_reasons,
+               ${plannedSelect}
+               cw.work_title AS current_work_title
+        FROM reasons r
+        JOIN employees e ON e.id = r.employee_id
+        LEFT JOIN LATERAL (
+          SELECT w.work_title FROM employee_assignments ea
+          JOIN works w ON w.id = ea.work_id
+          WHERE ea.employee_id = e.id AND COALESCE(ea.is_active,true) = true AND ea.departure_date IS NULL
+          ORDER BY ea.id DESC LIMIT 1
+        ) cw ON true
+        ${plannedJoin}
+        WHERE COALESCE(e.is_active, true) = true
+        GROUP BY e.id, e.fio, e.full_name, e.phone, e.role_tag,
+                 ${hasPlanned ? 'pe.work_id, pe.plan_work_title, pe.plan_pm_name, pe.planned_from, pe.planned_to, pe.note,' : ''}
+                 cw.work_title
+        ORDER BY fio
+      `, params);
+
+      const employees = rosterRows.map((row) => ({
+        id: row.id,
+        fio: row.fio,
+        phone: row.phone,
+        position: row.position,
+        roster_reasons: row.roster_reasons || [],
+        current_work_title: row.current_work_title || null,
+        planned_info: row.plan_work_id ? {
+          work_id: row.plan_work_id,
+          work_title: row.plan_work_title,
+          pm_name: row.plan_pm_name,
+          planned_from: row.planned_from,
+          planned_to: row.planned_to,
+          note: row.plan_note,
+        } : null,
+      }));
+
+      return { work_matches: workMatches, employees };
+    } catch (err) {
+      fastify.log.error('[timesheet-v2] roster error: ' + (err && err.message));
+      return reply.code(500).send({ error: 'Ошибка сервера' });
+    }
+  });
 
   // ────────────────────────────────────────────────────────────────
   // GET /api/timesheet/v2/:year/:month
@@ -497,7 +655,7 @@ async function routes(fastify) {
                fts.date_from, fts.date_to, fts.days_count,
                fts.amount_earned, fts.rate_per_day, fts.tariff_points,
                fts.entered_by_user_id, fts.created_by, fts.source,
-               fts.created_at,
+               fts.created_at, fts.updated_at,
                u.name AS entered_by_fio_user, u.role AS entered_by_role_user, u.phone AS entered_by_phone_user,
                w.work_title, w.pm_id AS work_pm_id
         FROM field_trip_stages fts
@@ -631,7 +789,17 @@ async function routes(fastify) {
         } else {
           numKey = String(dayKey);
         }
-        if (emp.days[numKey]) return; // первая запись побеждает (как в global-timesheet)
+        if (emp.days[numKey]) {
+          const existing = emp.days[numKey];
+          const newIsShift = SHIFT_TYPES.has(type);
+          const oldIsShift = SHIFT_TYPES.has(existing.type);
+          if (oldIsShift && !newIsShift) return;
+          if (!oldIsShift && !newIsShift) {
+            const newTs = String(raw.updated_at || raw.entered_at || '');
+            const oldTs = String(existing.updated_at || existing.entered_at || '');
+            if (oldTs && newTs && newTs <= oldTs) return;
+          }
+        }
         // raw: { points, amount, entered_by_fio, entered_by_role, entered_by_phone, entered_at, is_mine, work_id, work_title }
         // projection per mode (V255 23.06.2026 — изменена видимость баллов):
         //   • global  — видит ВСЕ баллы + суммы (директор, бух, HR).
@@ -669,6 +837,7 @@ async function routes(fastify) {
           entered_by_role: raw.entered_by_role || null,
           entered_by_phone: raw.entered_by_phone || null, // FIX #5: «понять кто написал — phone»
           entered_at: raw.entered_at || null,
+          updated_at: raw.updated_at || raw.entered_at || null,
           is_mine: !!raw.is_mine,
           work_id: raw.work_id || null,
           work_title: raw.work_title || null
@@ -748,6 +917,7 @@ async function routes(fastify) {
           entered_by_role: role,
           entered_by_phone: phone,
           entered_at: c.created_at,
+          updated_at: c.updated_at || c.created_at,
           is_mine: !!isMine,
           work_id: c.work_id,
           work_title: c.work_title
@@ -770,7 +940,7 @@ async function routes(fastify) {
         const emp = empById[s.employee_id];
         if (!emp) continue;
         const stageType = s.stage_type;
-        if (!['warehouse','medical','travel','ship','waiting'].includes(stageType)) continue;
+        if (!['warehouse','medical','travel','ship','training','helicopter','waiting'].includes(stageType)) continue;
 
         const fromD = new Date(s.date_from);
         const toD = s.date_to ? new Date(s.date_to) : fromD;
@@ -809,6 +979,7 @@ async function routes(fastify) {
             entered_by_role: role,
             entered_by_phone: phone,
             entered_at: s.created_at,
+            updated_at: s.updated_at || s.created_at,
             is_mine: !!isMine,
             work_id: s.work_id,
             work_title: s.work_title
@@ -1488,12 +1659,9 @@ async function routes(fastify) {
         throw lockErr;
       }
 
-      // 24.06.2026 FIX: work_id обязателен для day/night/waiting/ship/warehouse
-      // (привязка к конкретной работе). НЕ обязателен для medical/travel —
-      // это межработные этапы (медосмотр и дорога между вахтами).
-      // Если у РП/директора несколько работ — UI должен показать picker выбора работы.
-      const REQUIRE_WORK_ID = new Set(['day', 'night', 'waiting', 'ship', 'warehouse']);
-      if (REQUIRE_WORK_ID.has(type) && !work_id) {
+      // 24.06.2026 FIX: work_id обязателен для day/night/waiting/warehouse на PM/global.
+      // medical/travel: ship/helicopter/training — этапы без привязки к работе.
+      if (typeRequiresWorkId(mode, type) && !work_id) {
         return reply.code(400).send({
           error: 'work_id_required',
           message: `Для отметки "${type}" нужно выбрать работу`
@@ -1682,18 +1850,23 @@ async function routes(fastify) {
       if (dupCi.length) {
         return reply.code(409).send({ error: 'На эту дату уже есть смена (day/night)' });
       }
-      // существующий stage на эту дату того же типа — UPDATE; другого типа — 409
+      // существующий stage на эту дату — замена типа (cancel + insert), не 409
       if (dupSt.length) {
         if (dupSt[0].stage_type !== type) {
-          return reply.code(409).send({ error: 'На эту дату уже есть этап (' + dupSt[0].stage_type + ')' });
+          await db.query(`
+            UPDATE field_trip_stages SET status = 'cancelled', updated_at = NOW()
+            WHERE id = $1
+          `, [dupSt[0].id]);
+          dupSt.length = 0;
+        } else {
+          await db.query(`
+            UPDATE field_trip_stages SET
+              entered_by_user_id = $2,
+              updated_at = NOW()
+            WHERE id = $1
+          `, [dupSt[0].id, viewer.id]);
+          return { ok: true, updated: true, kind: 'stage', stage_id: dupSt[0].id, replaced: false };
         }
-        await db.query(`
-          UPDATE field_trip_stages SET
-            entered_by_user_id = $2,
-            updated_at = NOW()
-          WHERE id = $1
-        `, [dupSt[0].id, viewer.id]);
-        return { ok: true, updated: true, kind: 'stage', stage_id: dupSt[0].id };
       }
 
       const pts = pointsFor(settings, type, position);
@@ -2000,7 +2173,7 @@ async function routes(fastify) {
       const position = body.position || null;
       const points = parseInt(body.points, 10);
       // V255: добавлен 'ship' — альтернативная дорога с повышенной ставкой (12 баллов).
-      if (!['warehouse','medical','travel','ship'].includes(type)) {
+      if (!['warehouse','medical','travel','ship','training','helicopter'].includes(type)) {
         return reply.code(400).send({ error: 'bad type' });
       }
       if (!Number.isFinite(points) || points < 0) {
