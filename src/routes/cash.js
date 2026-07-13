@@ -53,6 +53,10 @@ module.exports = async function(fastify) {
     return BUH_AND_DIRECTOR_ROLES.includes(role);
   }
 
+  function canApprove(role) {
+    return APPROVE_ROLES.includes(role);
+  }
+
   const CASH_HOLDER_ROLES = ['PM', 'HEAD_PM', 'HEAD_TO'];
 
   function isCashHolderRole(role) {

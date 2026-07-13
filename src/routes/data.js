@@ -4,6 +4,10 @@
  * SECURITY: Добавлена ролевая матрица доступа (CRIT-3)
  */
 
+const {
+  shouldHideTestUsersFromLists,
+} = require('../lib/user-filters');
+
 async function dataRoutes(fastify, options) {
   const db = fastify.db;
 
@@ -251,7 +255,8 @@ async function dataRoutes(fastify, options) {
     'training': 'training_applications',
     'travel': 'travel_expenses',
     'warehouse': 'warehouses',
-    'proc_requests': 'purchase_requests',
+    'proc_requests': 'procurement_requests',
+    'purchase_requests': 'procurement_requests',
     'buh_registry': 'office_expenses',
     'permits': 'employee_permits'
   };
@@ -390,6 +395,17 @@ async function dataRoutes(fastify, options) {
       }
 
       // Применяем WHERE (включая soft-delete deleted_at IS NULL + пользовательские условия)
+      const hideTest = shouldHideTestUsersFromLists(request);
+      if (hideTest && table === 'users') {
+        whereParts.push("(login IS NULL OR (login !~ '^test_' AND login <> 'mimir_bot'))");
+      }
+      if (hideTest && table === 'staff') {
+        whereParts.push(`(user_id IS NULL OR NOT EXISTS (
+          SELECT 1 FROM users u WHERE u.id = ${dbTable}.user_id
+            AND (u.login ~ '^test_' OR u.login = 'mimir_bot')
+        ))`);
+      }
+
       if (whereParts.length > 0) {
         query += ' WHERE ' + whereParts.join(' AND ');
       }

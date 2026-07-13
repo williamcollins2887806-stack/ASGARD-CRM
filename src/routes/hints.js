@@ -1239,8 +1239,8 @@ async function hintsRoutes(fastify) {
         case 'proc-requests': {
           try {
             const pendingReq = await db.query(`
-              SELECT COUNT(*) as cnt FROM purchase_requests
-              WHERE status IN ('pending','new')
+              SELECT COUNT(*) as cnt FROM procurement_requests
+              WHERE status IN ('draft', 'submitted')
             `);
             const prCnt = parseInt(pendingReq.rows[0]?.cnt) || 0;
             if (prCnt > 0) {

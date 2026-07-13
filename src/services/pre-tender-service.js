@@ -201,6 +201,12 @@ async function createPreTenderFromEmail(emailId, options = {}) {
 
   const preTenderId = ins.rows[0].id;
 
+  const { ensureDocumentFolders } = require('./pre-tender-doc-folders');
+  await db.query(
+    'UPDATE pre_tender_requests SET document_folders = $1 WHERE id = $2',
+    [JSON.stringify(ensureDocumentFolders(null)), preTenderId]
+  );
+
   if (assignedTo && !options.skipKanban) {
     try {
       await assignPreTenderToPm(preTenderId, assignedTo, options.assignedBy || null, options.assignNote);

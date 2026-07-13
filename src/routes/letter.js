@@ -282,17 +282,24 @@ module.exports = async function letterRoutes(fastify) {
       if (body.attach_linked_documents !== false) {
         try {
           const linkedRes = await db.query(
-            'SELECT id, file_path, original_filename, mime_type FROM documents WHERE correspondence_id = $1',
+            `SELECT id,
+                    download_url,
+                    file_url,
+                    filename,
+                    original_name,
+                    mime_type
+             FROM documents WHERE correspondence_id = $1`,
             [id]
           );
           for (const d of linkedRes.rows) {
-            if (!d.file_path) continue;
-            const fpath = path.isAbsolute(d.file_path)
-              ? d.file_path
-              : path.join(process.cwd(), d.file_path);
+            const filePath = d.download_url || d.file_url || d.filename;
+            if (!filePath) continue;
+            const fpath = path.isAbsolute(filePath)
+              ? filePath
+              : path.join(process.cwd(), filePath);
             if (fs.existsSync(fpath)) {
               attachments.push({
-                filename: d.original_filename || path.basename(fpath),
+                filename: d.original_name || d.filename || path.basename(fpath),
                 path: fpath,
                 contentType: d.mime_type || 'application/octet-stream'
               });

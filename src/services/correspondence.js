@@ -130,6 +130,83 @@ async function ensureCounterRow(client, periodKey, startNumber) {
   );
 }
 
+function parseOutgoingNumberParts(numberStr, prefix) {
+  const n = String(numberStr || '').trim();
+  const p = prefix || '';
+  if (!n) return null;
+  const rest = p && n.startsWith(p) ? n.slice(p.length) : n;
+  const m = rest.match(/^(\d{4})-(\d{2})-(\d+)$/);
+  if (!m) return null;
+  return { period: m[1], month: m[2], sequence: Number(m[3]) };
+}
+
+async function assertOutgoingNumberUnique(client, number, excludeId = null) {
+  const n = normalizeString(number, 100);
+  if (!n) {
+    throw createHttpError(400, 'Исходящий номер обязателен');
+  }
+  const params = [n];
+  let sql = `SELECT id FROM correspondence
+             WHERE direction = 'outgoing' AND number = $1 AND deleted_at IS NULL`;
+  if (excludeId) {
+    params.push(excludeId);
+    sql += ` AND id <> $${params.length}`;
+  }
+  const r = await client.query(sql, params);
+  if (r.rows.length > 0) {
+    throw createHttpError(409, `Исходящий номер «${n}» уже используется (документ #${r.rows[0].id})`);
+  }
+  return n;
+}
+
+async function bumpOutgoingCounterIfHigher(client, numberStr) {
+  const prefix = await getOutgoingNumberPrefix(client);
+  const parts = parseOutgoingNumberParts(numberStr, prefix);
+  if (!parts || !Number.isFinite(parts.sequence)) return;
+  const startNumber = await getConfiguredStartNumber(client);
+  await ensureCounterRow(client, parts.period, startNumber);
+  await client.query(
+    `UPDATE correspondence_outgoing_counters
+     SET last_number = GREATEST(last_number, $2), updated_at = NOW()
+     WHERE period_key = $1`,
+    [parts.period, parts.sequence]
+  );
+}
+
+async function checkOutgoingNumberAvailable(database, number, excludeId = null) {
+  const n = normalizeString(number, 100);
+  if (!n) {
+    throw createHttpError(400, 'Укажите номер для проверки');
+  }
+  const params = [n];
+  let sql = `SELECT id FROM correspondence
+             WHERE direction = 'outgoing' AND number = $1 AND deleted_at IS NULL`;
+  if (excludeId) {
+    params.push(excludeId);
+    sql += ` AND id <> $${params.length}`;
+  }
+  const r = await database.query(sql, params);
+  return { available: r.rows.length === 0, number: n, conflict_id: r.rows[0]?.id || null };
+}
+
+async function getOutgoingNumberStatus(queryable, options = {}) {
+  const next = await getNextOutgoingNumberPreview(queryable, options);
+  const lastRes = await queryable.query(
+    `SELECT id, number, date, signing_status, finalized_at, sent_at
+     FROM correspondence
+     WHERE direction = 'outgoing'
+       AND number IS NOT NULL
+       AND TRIM(number) <> ''
+       AND deleted_at IS NULL
+     ORDER BY COALESCE(sent_at, finalized_at, created_at) DESC NULLS LAST, id DESC
+     LIMIT 1`
+  );
+  return {
+    last: lastRes.rows[0] || null,
+    next
+  };
+}
+
 async function getNextOutgoingNumberPreview(queryable, options = {}) {
   const normalizedDate = normalizeDateParts(options.date);
   const [startNumber, prefix] = await Promise.all([
@@ -242,9 +319,19 @@ async function createCorrespondence(database, payload = {}, options = {}) {
   // S-7/V252: для outgoing+draft номер НЕ аллоцируется.
   // Аллокация — только при finalize. Для incoming — номер берётся из payload (это
   // внешний входящий номер от контрагента, не наш).
-  const signingStatus = direction === 'outgoing'
+  const isExternalRegistration = payload.registration_mode === 'external'
+    || payload.external_registration === true;
+
+  let signingStatus = direction === 'outgoing'
     ? normalizeSigningStatus(payload.signing_status)
     : 'finalized'; // incoming считается «принятым» сразу
+
+  if (isExternalRegistration && direction !== 'outgoing') {
+    throw createHttpError(400, 'Регистрация вне CRM доступна только для исходящих писем');
+  }
+  if (isExternalRegistration && signingStatus === 'draft') {
+    signingStatus = 'finalized';
+  }
 
   return database.transaction(async (client) => {
     const normalizedDate = normalizeDateParts(payload.date);
@@ -256,15 +343,27 @@ async function createCorrespondence(database, payload = {}, options = {}) {
     let allocation = null;
     if (direction === 'incoming') {
       number = normalizeString(payload.number, 100);
+    } else if (isExternalRegistration) {
+      number = await assertOutgoingNumberUnique(client, payload.number);
+      await bumpOutgoingCounterIfHigher(client, number);
+      if (!normalizeString(payload.file_path)) {
+        throw createHttpError(400, 'Для регистрации вне CRM приложите скан подписанного бланка');
+      }
     } else if (signingStatus !== 'draft') {
-      // Каноничный путь outgoing → finalize. Но если фронт зачем-то создаёт уже
-      // finalized — поддерживаем (backward-compat с текущим UI, который мог
-      // делать POST + сразу send).
       allocation = await allocateOutgoingNumber(client, { date: normalizedDate.date });
       number = allocation.number;
     }
 
-    const finalizedAt = (direction === 'outgoing' && signingStatus !== 'draft') ? 'NOW()' : 'NULL';
+    const isOutgoingLocked = direction === 'outgoing' && signingStatus !== 'draft';
+    const finalizedAt = isOutgoingLocked ? 'NOW()' : 'NULL';
+    const sentAt = (direction === 'outgoing' && signingStatus === 'sent') ? 'NOW()' : 'NULL';
+    const registrationNote = isExternalRegistration
+      ? `[Зарегистрировано вне CRM${payload.sent_channel ? ' · ' + payload.sent_channel : ''}]`
+      : null;
+    const noteValue = normalizeString(payload.note);
+    const combinedNote = registrationNote
+      ? (noteValue ? `${registrationNote}\n${noteValue}` : registrationNote)
+      : noteValue;
 
     const result = await client.query(
       `INSERT INTO correspondence (
@@ -278,7 +377,7 @@ async function createCorrespondence(database, payload = {}, options = {}) {
         signer_snapshot, signature_on, stamp_on,
         ai_model, ai_thread_id,
         signing_status, version_no, parent_correspondence_id, is_current,
-        finalized_at
+        finalized_at, sent_at
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9,
         $10, $11, $12, $13, $14,
@@ -290,7 +389,7 @@ async function createCorrespondence(database, payload = {}, options = {}) {
         $31, $32, $33,
         $34, $35,
         $36, 1, NULL, true,
-        ${finalizedAt}
+        ${finalizedAt}, ${sentAt}
       )
       RETURNING *`,
       [
@@ -305,7 +404,7 @@ async function createCorrespondence(database, payload = {}, options = {}) {
         bodyJson === undefined ? null : (bodyJson === null ? null : JSON.stringify(bodyJson)),
         normalizeString(payload.counterparty, 500),
         normalizeString(payload.contact_person, 255),
-        normalizeString(payload.note),
+        combinedNote,
         normalizeString(payload.file_path),
         normalizeString(payload.status, 50) || (direction === 'outgoing' ? (signingStatus === 'draft' ? 'draft' : 'sent') : null),
         normalizeInteger(payload.created_by ?? options.userId),
@@ -645,6 +744,133 @@ async function createNewRevision(database, id, payload = {}, options = {}) {
 }
 
 /**
+ * Отметить исходящее письмо как отправленное вручную (вне CRM email).
+ */
+async function markCorrespondenceSent(database, id, payload = {}) {
+  const correspondenceId = normalizeInteger(id);
+  if (!correspondenceId) throw createHttpError(400, 'id обязателен');
+
+  return database.transaction(async (client) => {
+    const existingResult = await client.query(
+      'SELECT * FROM correspondence WHERE id = $1 FOR UPDATE',
+      [correspondenceId]
+    );
+    if (existingResult.rows.length === 0) {
+      throw createHttpError(404, 'Корреспонденция не найдена');
+    }
+    const row = existingResult.rows[0];
+    if (row.deleted_at) throw createHttpError(400, 'Корреспонденция удалена');
+    if (row.direction !== 'outgoing') {
+      throw createHttpError(400, 'Отметка «отправлено» только для исходящих писем');
+    }
+    if (row.signing_status === 'sent') {
+      throw createHttpError(400, 'Письмо уже отмечено как отправленное');
+    }
+    if (row.signing_status === 'draft' && !row.number) {
+      throw createHttpError(400, 'Сначала финализируйте письмо или зарегистрируйте с исходящим номером');
+    }
+
+    const channel = normalizeString(payload.channel, 50) || 'manual';
+    const sentDate = payload.sent_at
+      ? normalizeDateParts(payload.sent_at).date
+      : normalizeDateParts(new Date()).date;
+    const noteExtra = normalizeString(payload.note);
+    const stamp = `[Отправлено: ${channel}, ${sentDate}]`;
+    const note = row.note ? `${row.note}\n${stamp}${noteExtra ? ' ' + noteExtra : ''}` : `${stamp}${noteExtra ? ' ' + noteExtra : ''}`;
+
+    const updated = await client.query(
+      `UPDATE correspondence
+         SET signing_status = 'sent',
+             sent_at = COALESCE($1::date, CURRENT_DATE)::timestamptz,
+             status = 'sent',
+             note = $2,
+             finalized_at = COALESCE(finalized_at, NOW()),
+             updated_at = NOW()
+       WHERE id = $3
+       RETURNING id, number, signing_status, sent_at, status`,
+      [sentDate, note, correspondenceId]
+    );
+    return updated.rows[0];
+  });
+}
+
+function guessMimeFromName(name) {
+  const n = String(name || '').toLowerCase();
+  if (n.endsWith('.pdf')) return 'application/pdf';
+  if (n.endsWith('.png')) return 'image/png';
+  if (n.endsWith('.jpg') || n.endsWith('.jpeg')) return 'image/jpeg';
+  if (n.endsWith('.webp')) return 'image/webp';
+  if (n.endsWith('.docx')) {
+    return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  }
+  if (n.endsWith('.doc')) return 'application/msword';
+  return 'application/octet-stream';
+}
+
+/**
+ * Список вложений письма: file_path + documents.correspondence_id.
+ */
+async function getCorrespondenceAttachments(database, id) {
+  const correspondenceId = normalizeInteger(id);
+  if (!correspondenceId) throw createHttpError(400, 'id обязателен');
+
+  const corr = await getCorrespondenceById(database, correspondenceId);
+  if (!corr) throw createHttpError(404, 'Корреспонденция не найдена');
+
+  const items = [];
+  const seen = new Set();
+
+  function pushItem(row) {
+    const key = row.url || String(row.id);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    items.push(row);
+  }
+
+  if (corr.file_path) {
+    const name = String(corr.file_path).split('/').pop() || 'attachment';
+    pushItem({
+      id: `fp-${corr.id}`,
+      source: 'file_path',
+      filename: name,
+      mime_type: guessMimeFromName(name),
+      url: corr.file_path
+    });
+  }
+
+  const docsRes = await database.query(
+    `SELECT id,
+            download_url,
+            file_url,
+            filename,
+            original_name,
+            mime_type,
+            size
+     FROM documents
+     WHERE correspondence_id = $1
+     ORDER BY id ASC`,
+    [correspondenceId]
+  );
+  for (const d of docsRes.rows) {
+    const filePath = d.download_url || d.file_url || d.filename;
+    if (!filePath) continue;
+    const name = d.original_name || d.filename || String(filePath).split('/').pop() || `doc-${d.id}`;
+    let url = filePath;
+    if (!url.startsWith('/')) url = `/api/files/download/${encodeURIComponent(url)}`;
+    pushItem({
+      id: d.id,
+      source: 'documents',
+      filename: name,
+      mime_type: d.mime_type || guessMimeFromName(name),
+      file_size: d.size,
+      url
+    });
+  }
+
+  return { items, total: items.length };
+}
+
+/**
  * Soft-delete: ставит deleted_at=NOW(), deleted_by=userId.
  * Не трогает запись если уже deleted.
  *
@@ -866,12 +1092,16 @@ module.exports = {
   PARENT_TYPE_COLUMN,
   getOutgoingNumberPrefix,
   getNextOutgoingNumberPreview,
+  getOutgoingNumberStatus,
+  checkOutgoingNumberAvailable,
+  assertOutgoingNumberUnique,
   allocateOutgoingNumber,
   createCorrespondence,
   updateCorrespondence,
-  // S-7 additions:
   finalizeCorrespondence,
   createNewRevision,
+  markCorrespondenceSent,
+  getCorrespondenceAttachments,
   softDeleteCorrespondence,
   listCorrespondenceByParent,
   getCorrespondenceById,
