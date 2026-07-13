@@ -29,23 +29,121 @@ function fmtMoscow(iso) {
   }
 }
 
-function buildReminderText(reminder, cardMeta) {
+function resolveReminderContact(reminder, entityContact) {
+  const ec = entityContact || {};
+  return {
+    name: (reminder.contact_name || ec.contact_person || '').trim(),
+    phone: (reminder.contact_phone || ec.contact_phone || '').trim(),
+    company: (reminder.contact_company || ec.customer_name || ec.source_name || '').trim()
+  };
+}
+
+function entityKindShort(kind) {
+  if (kind === 'pre_tender') return 'ПКП';
+  if (kind === 'tender') return 'Тендер';
+  if (kind === 'inbox_application') return 'Заявка';
+  if (kind === 'work') return 'Работа';
+  return kind || 'карта';
+}
+
+function buildReminderText(reminder, cardMeta, entityContact) {
   const kind = KIND_LABELS[reminder.reminder_kind] || reminder.reminder_kind || 'Напоминание';
   const title = reminder.title ? String(reminder.title).trim() : '';
   const msg = reminder.message ? String(reminder.message).trim() : '';
   const eventAt = fmtMoscow(reminder.event_at || reminder.remind_at);
-  const cardLabel = cardMeta
-    ? `Карта #${cardMeta.card_id} (${cardMeta.entity_kind || 'card'} #${cardMeta.entity_id || '—'})`
-    : `Карта #${reminder.card_id}`;
+  const contact = resolveReminderContact(reminder, entityContact);
+  const isCallLike = reminder.reminder_kind === 'call' || reminder.reminder_kind === 'sms';
 
-  const lines = [
-    `⏰ ${kind}${title ? ': ' + title : ''}`,
-    cardLabel,
-    `Событие: ${eventAt}`
-  ];
-  if (msg) lines.push('', msg);
+  const cardLabel = cardMeta
+    ? `🗂 Карта #${cardMeta.card_id} · ${entityKindShort(cardMeta.entity_kind)} #${cardMeta.entity_id || '—'}${contact.company ? ' · ' + contact.company : ''}`
+    : `🗂 Карта #${reminder.card_id}`;
+
+  const lines = [`⏰ ${kind}${title && !isCallLike ? ': ' + title : ''}`];
+
+  if (isCallLike) {
+    if (contact.name || contact.phone) {
+      lines.push(`👤 ${contact.name || '—'}${contact.phone ? ' · ' + contact.phone : ''}`);
+    }
+    if (contact.company) lines.push(`🏢 ${contact.company}`);
+    if (msg) lines.push(`📋 ${msg}`);
+    else if (title) lines.push(`📋 ${title}`);
+  } else {
+    if (title) lines.push(title);
+    if (msg) lines.push('', msg);
+  }
+
+  lines.push(cardLabel, `🕐 Событие: ${eventAt} (МСК)`);
+  if (contact.phone && isCallLike) {
+    const digits = contact.phone.replace(/\D/g, '');
+    if (digits) lines.push('', `📞 tel:${digits}`);
+  }
   lines.push('', 'АСГАРД CRM · Личный канбан');
   return lines.join('\n');
+}
+
+function buildInAppTitle(reminder, contact) {
+  const kind = KIND_LABELS[reminder.reminder_kind] || 'Напоминание';
+  if (reminder.reminder_kind === 'call' || reminder.reminder_kind === 'sms') {
+    const who = contact.name || reminder.title || kind;
+    return `${kind}: ${who}`;
+  }
+  return reminder.title || `${kind} по карте`;
+}
+
+function buildInAppMessage(reminder, contact) {
+  const parts = [];
+  if (contact.phone) parts.push(contact.phone);
+  if (reminder.message) parts.push(reminder.message);
+  else if (reminder.title && !contact.name) parts.push(reminder.title);
+  if (contact.company) parts.push(contact.company);
+  return parts.join(' · ') || 'Откройте карту для деталей';
+}
+
+function buildEmailSubject(reminder, contact) {
+  const kind = KIND_LABELS[reminder.reminder_kind] || 'Напоминание';
+  if (reminder.reminder_kind === 'call') {
+    const who = contact.name || reminder.title || 'контакт';
+    const co = contact.company ? ` — ${contact.company}` : '';
+    return `📞 ${kind}: ${who}${co}`;
+  }
+  return `⏰ ${kind}: ${reminder.title || 'напоминание по карте #' + reminder.card_id}`;
+}
+
+async function loadEntityContact(db, entityKind, entityId) {
+  if (!entityKind || !entityId) return null;
+  try {
+    if (entityKind === 'pre_tender') {
+      const r = await db.query(
+        `SELECT customer_name, contact_person, contact_phone FROM pre_tender_requests WHERE id=$1`,
+        [entityId]
+      );
+      return r.rows[0] || null;
+    }
+    if (entityKind === 'tender') {
+      const r = await db.query(
+        `SELECT customer_name, contact_person, contact_phone FROM tenders WHERE id=$1`,
+        [entityId]
+      );
+      return r.rows[0] || null;
+    }
+    if (entityKind === 'work') {
+      const r = await db.query(
+        `SELECT customer_name, contact_person, contact_phone FROM works WHERE id=$1`,
+        [entityId]
+      );
+      return r.rows[0] || null;
+    }
+    if (entityKind === 'inbox_application') {
+      const r = await db.query(
+        `SELECT source_name, contact_person, contact_phone FROM inbox_applications WHERE id=$1`,
+        [entityId]
+      );
+      const row = r.rows[0];
+      if (!row) return null;
+      return { customer_name: row.source_name, contact_person: row.contact_person, contact_phone: row.contact_phone };
+    }
+  } catch (_) { /* ignore */ }
+  return null;
 }
 
 async function resolveMaxTarget(db, user) {
@@ -78,13 +176,13 @@ async function loadUser(db, userId) {
   return r.rows[0] || null;
 }
 
-async function sendInApp(db, userId, reminder, text, cardMeta) {
-  const kind = KIND_LABELS[reminder.reminder_kind] || 'Напоминание';
-  const title = reminder.title || `${kind} по карте`;
+async function sendInApp(db, userId, reminder, text, cardMeta, contact) {
+  const title = buildInAppTitle(reminder, contact);
+  const message = buildInAppMessage(reminder, contact);
   await createNotification(db, {
     user_id: userId,
     title,
-    message: reminder.message || text.split('\n').slice(0, 4).join('\n'),
+    message: message || text.split('\n').slice(0, 4).join('\n'),
     type: 'personal_kanban_reminder',
     link: `#/personal-kanban-v3?card=${reminder.card_id}`
   });
@@ -120,12 +218,11 @@ async function sendMax(db, user, text, log) {
   }
 }
 
-async function sendEmail(db, userId, user, reminder, text, log) {
+async function sendEmail(db, userId, user, reminder, text, contact, log) {
   if (!user.email) return { ok: false, error: 'no_email' };
   try {
     const { sendCrmEmail } = require('./crm-mailer');
-    const kind = KIND_LABELS[reminder.reminder_kind] || 'Напоминание';
-    const subject = `⏰ ${kind}: ${reminder.title || 'напоминание по карте #' + reminder.card_id}`;
+    const subject = buildEmailSubject(reminder, contact);
     const html = text.replace(/\n/g, '<br>');
     await sendCrmEmail(db, userId, {
       to: user.email,
@@ -157,7 +254,9 @@ async function dispatch(db, reminder, log) {
     entity_id: reminder.entity_id,
     current_main_status: reminder.current_main_status
   };
-  const text = buildReminderText(reminder, cardMeta);
+  const entityContact = await loadEntityContact(db, reminder.entity_kind, reminder.entity_id);
+  const contact = resolveReminderContact(reminder, entityContact);
+  const text = buildReminderText(reminder, cardMeta, entityContact);
   const channels = Array.isArray(reminder.channels) && reminder.channels.length
     ? reminder.channels
     : ['inapp'];
@@ -168,20 +267,19 @@ async function dispatch(db, reminder, log) {
   for (const ch of channels) {
     try {
       if (ch === 'inapp') {
-        notifyStatus.inapp = await sendInApp(db, reminder.user_id, reminder, text, cardMeta);
+        notifyStatus.inapp = await sendInApp(db, reminder.user_id, reminder, text, cardMeta, contact);
       } else if (ch === 'whatsapp') {
         notifyStatus.whatsapp = await sendWhatsapp(user, text, log);
       } else if (ch === 'max') {
         const maxRes = await sendMax(db, user, text, log);
         notifyStatus.max = maxRes;
-        // Фолбэк на WhatsApp если MAX не доставлен и WhatsApp не был отдельным каналом
         if (!maxRes.ok && !channels.includes('whatsapp')) {
           const fb = await sendWhatsapp(user, text, log);
           notifyStatus.max_whatsapp_fallback = fb;
           if (fb.ok) anyOk = true;
         }
       } else if (ch === 'email') {
-        notifyStatus.email = await sendEmail(db, reminder.user_id, user, reminder, text, log);
+        notifyStatus.email = await sendEmail(db, reminder.user_id, user, reminder, text, contact, log);
       } else {
         notifyStatus[ch] = { ok: false, error: 'unknown_channel' };
       }
@@ -207,6 +305,8 @@ async function dispatch(db, reminder, log) {
 module.exports = {
   dispatch,
   buildReminderText,
+  resolveReminderContact,
+  loadEntityContact,
   resolveMaxTarget,
   KIND_LABELS
 };

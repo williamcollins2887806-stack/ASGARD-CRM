@@ -69,6 +69,7 @@ async function fireDueReminders(db, log) {
         SELECT r.id, r.card_id, r.user_id, r.remind_at, r.message,
                r.reminder_kind, r.event_at, r.lead_minutes, r.channels,
                r.title, r.notify_status,
+               r.contact_name, r.contact_phone, r.contact_company,
                c.current_main_status, c.entity_kind, c.entity_id
           FROM personal_kanban_card_reminders r
           JOIN personal_kanban_cards c ON c.id = r.card_id

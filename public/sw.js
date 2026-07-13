@@ -2,7 +2,7 @@
 // Shell caching + Push Notifications + Offline Support + Background Sync
 // Session 15: PWA + Push Actions + Badge + Offline
 
-const SHELL_VERSION = '20.26.47';
+const SHELL_VERSION = '20.26.89';
 const CACHE_NAME = `asgard-crm-shell-${SHELL_VERSION}`;
 const API_CACHE_NAME = 'asgard-crm-api-v2';
 
@@ -188,11 +188,7 @@ async function networkFirstWithOffline(request) {
       // когда браузер отключён или сеть медленная. Вместо этого,
       // server отправляет Cache-Control: no-store, must-revalidate
       // и браузер уважает это.
-      // ИСКЛЮЧЕНИЕ: кэшируем ТОЛЬКО если это NOT /m/ (desktop/field/root)
-      if (!request.url.includes('/m/') && !request.url.includes('/m/index.html')) {
-        var cache = await caches.open(CACHE_NAME);
-        cache.put(request, response.clone()).catch(function() {});
-      }
+      // HTML shell не кэшируем — после деплоя иначе отдаётся старая версия с другим ?v=
     }
     return response;
   } catch (err) {

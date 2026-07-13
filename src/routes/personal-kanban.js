@@ -83,7 +83,8 @@ function asColor(c) {
 const REMINDER_KINDS = ['call', 'sms', 'meeting', 'task', 'email', 'other'];
 const REMINDER_CHANNELS = ['inapp', 'whatsapp', 'max', 'email'];
 const REMINDER_SELECT = `id, card_id, user_id, reminder_kind, event_at, lead_minutes, channels,
-  title, remind_at, message, is_done, fired_at, notify_status, created_at`;
+  title, remind_at, message, contact_name, contact_phone, contact_company,
+  is_done, fired_at, notify_status, created_at`;
 
 function normalizeReminderKind(v) {
   const k = String(v || 'task').toLowerCase();
@@ -143,6 +144,9 @@ function parseReminderPayload(body) {
   const channels = normalizeReminderChannels(b.channels);
   const message = b.message ? String(b.message).trim().slice(0, 500) : null;
   const title = b.title ? String(b.title).trim().slice(0, 200) : null;
+  const contact_name = b.contact_name ? String(b.contact_name).trim().slice(0, 120) : null;
+  const contact_phone = b.contact_phone ? String(b.contact_phone).trim().slice(0, 30) : null;
+  const contact_company = b.contact_company ? String(b.contact_company).trim().slice(0, 200) : null;
 
   return {
     reminder_kind: kind,
@@ -151,7 +155,10 @@ function parseReminderPayload(body) {
     channels,
     remind_at: remindAt.toISOString(),
     message: message || null,
-    title: title || null
+    title: title || null,
+    contact_name: contact_name || null,
+    contact_phone: contact_phone || null,
+    contact_company: contact_company || null
   };
 }
 
@@ -1524,12 +1531,14 @@ module.exports = async function (fastify) {
 
     const ins = await db.query(
       `INSERT INTO personal_kanban_card_reminders
-         (card_id, user_id, reminder_kind, event_at, lead_minutes, channels, title, remind_at, message)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         (card_id, user_id, reminder_kind, event_at, lead_minutes, channels, title, remind_at, message,
+          contact_name, contact_phone, contact_company)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        RETURNING ${REMINDER_SELECT}`,
       [
         id, userId, parsed.reminder_kind, parsed.event_at, parsed.lead_minutes,
-        parsed.channels, parsed.title, parsed.remind_at, parsed.message
+        parsed.channels, parsed.title, parsed.remind_at, parsed.message,
+        parsed.contact_name, parsed.contact_phone, parsed.contact_company
       ]);
     return { success: true, item: ins.rows[0] };
   });
@@ -1561,7 +1570,8 @@ module.exports = async function (fastify) {
       vals.push(!!body.is_done);
     }
 
-    const hasScheduleEdit = ['reminder_kind', 'event_at', 'lead_minutes', 'channels', 'message', 'title', 'remind_at']
+    const hasScheduleEdit = ['reminder_kind', 'event_at', 'lead_minutes', 'channels', 'message', 'title', 'remind_at',
+      'contact_name', 'contact_phone', 'contact_company']
       .some((k) => body[k] !== undefined);
 
     if (hasScheduleEdit) {
@@ -1572,6 +1582,9 @@ module.exports = async function (fastify) {
         channels: body.channels !== undefined ? body.channels : existing.channels,
         message: body.message !== undefined ? body.message : existing.message,
         title: body.title !== undefined ? body.title : existing.title,
+        contact_name: body.contact_name !== undefined ? body.contact_name : existing.contact_name,
+        contact_phone: body.contact_phone !== undefined ? body.contact_phone : existing.contact_phone,
+        contact_company: body.contact_company !== undefined ? body.contact_company : existing.contact_company,
         remind_at: body.remind_at !== undefined ? body.remind_at : null
       };
       const parsed = parseReminderPayload(merged);
@@ -1584,6 +1597,9 @@ module.exports = async function (fastify) {
       sets.push(`title = $${idx++}`); vals.push(parsed.title);
       sets.push(`remind_at = $${idx++}`); vals.push(parsed.remind_at);
       sets.push(`message = $${idx++}`); vals.push(parsed.message);
+      sets.push(`contact_name = $${idx++}`); vals.push(parsed.contact_name);
+      sets.push(`contact_phone = $${idx++}`); vals.push(parsed.contact_phone);
+      sets.push(`contact_company = $${idx++}`); vals.push(parsed.contact_company);
 
       const remindChanged = new Date(parsed.remind_at).getTime() !== new Date(existing.remind_at).getTime();
       if (remindChanged && !existing.is_done) {
@@ -1818,8 +1834,8 @@ module.exports = async function (fastify) {
             `INSERT INTO tenders
               (customer_name, customer_inn, tender_type, tender_status,
                tender_price, docs_deadline, responsible_pm_id,
-               comment_to, period, created_by, created_at)
-             VALUES ($1, $2, $3, 'Новый', $4, $5, $6, $7, $8, $9, NOW())
+               comment_to, period, created_by, source_pre_tender_id, created_at)
+             VALUES ($1, $2, $3, 'Новый', $4, $5, $6, $7, $8, $9, $10, NOW())
              RETURNING id`,
             [
               pt.customer_name || 'Не указан',
@@ -1830,7 +1846,8 @@ module.exports = async function (fastify) {
               pt.assigned_to || userId,
               `Авто-tender из pre_tender #${pt.id} (Mimir-Conductor)`,
               periodShort,
-              userId
+              userId,
+              pt.id
             ]);
           tenderId = Number(ins.rows[0].id);
           // Связываем обратно.

@@ -17,6 +17,7 @@
 
 const db = require('../services/db');
 const preTenderService = require('../services/pre-tender-service');
+const { tagDocumentFolder, ensureDocumentFolders, inferFolderId } = require('../services/pre-tender-doc-folders');
 const { sendToUser, sendToRoles, broadcast } = require('./sse');
 const { createNotification } = require('../services/notify');
 // Wave D: для ensureDefaultSubstages (BUG-7)
@@ -100,6 +101,35 @@ async function checkPreTenderAccess(user, ptId) {
   const row = r.rows[0];
   if (row.assigned_to === user.id || row.created_by === user.id) return { ok: true, row };
   return { ok: false, code: 403, error: 'forbidden' };
+}
+
+function resolvePreTenderDocPath(doc, ptId) {
+  if (!doc || !doc.path) return null;
+  const raw = String(doc.path).replace(/^\/+/, '');
+  const candidates = [
+    path.join(__dirname, '..', '..', raw),
+    path.join(process.cwd(), raw),
+    path.join(__dirname, '..', '..', 'uploads', 'pre_tenders', String(ptId), doc.filename || path.basename(raw))
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  return candidates[0];
+}
+
+function unlinkPreTenderDocFile(doc, ptId) {
+  const fp = resolvePreTenderDocPath(doc, ptId);
+  if (fp && fs.existsSync(fp)) {
+    try { fs.unlinkSync(fp); } catch (_) { /* ignore */ }
+  }
+}
+
+function countManualDocsInFolder(docs, folderId) {
+  return (Array.isArray(docs) ? docs : []).filter((d) => inferFolderId(d) === folderId).length;
+}
+
+function isMimirGeneratedDoc(doc) {
+  return !!(doc && (doc.generated_by === 'mimir' || doc.source === 'mimir'));
 }
 
 module.exports = async function (fastify) {
@@ -896,7 +926,7 @@ module.exports = async function (fastify) {
     if (!acc.ok) return reply.code(acc.code).send({ error: acc.error });
 
     // Проверяем заявку
-    const ptRes = await db.query('SELECT id, manual_documents FROM pre_tender_requests WHERE id = $1', [id]);
+    const ptRes = await db.query('SELECT id, manual_documents, document_folders FROM pre_tender_requests WHERE id = $1', [id]);
     if (!ptRes.rows.length) return reply.code(404).send({ error: 'Заявка не найдена' });
 
     const parts = request.parts();
@@ -904,9 +934,16 @@ module.exports = async function (fastify) {
     fs.mkdirSync(uploadDir, { recursive: true });
 
     const existingDocs = ptRes.rows[0].manual_documents || [];
+    const folders = ensureDocumentFolders(ptRes.rows[0].document_folders);
     const uploaded = [];
+    let folderId = 'pm_upload';
 
     for await (const part of parts) {
+      if (part.type === 'field') {
+        const val = (await part.value).toString();
+        if (part.fieldname === 'folder_id') folderId = val;
+        continue;
+      }
       if (part.type !== 'file') continue;
       const safeName = (part.filename || 'file').replace(/[^\w.\-а-яА-ЯёЁ ]/gi, '_').slice(0, 200);
       const filePath = path.join(uploadDir, safeName);
@@ -915,17 +952,20 @@ module.exports = async function (fastify) {
       const buf = Buffer.concat(chunks);
       fs.writeFileSync(filePath, buf);
 
-      const doc = {
+      const doc = tagDocumentFolder({
         filename: safeName,
         original_name: part.filename || safeName,
         mime_type: part.mimetype || 'application/octet-stream',
         size: buf.length,
         path: `uploads/pre_tenders/${id}/${safeName}`,
         uploaded_at: new Date().toISOString(),
-        folder_id: request.body?.folder_id || 'pm_upload',
-        folder_name: request.body?.folder_name || 'Загружено РП',
         source: 'upload'
-      };
+      }, folders);
+      if (folderId && folderId !== 'pm_upload') {
+        const f = folders.find((x) => x.id === folderId);
+        doc.folder_id = folderId;
+        doc.folder_name = f?.name || folderId;
+      }
       existingDocs.push(doc);
       uploaded.push(doc);
     }
@@ -951,11 +991,146 @@ module.exports = async function (fastify) {
     if (!acc.ok) return reply.code(acc.code).send({ error: acc.error });
     const r = await db.query('SELECT document_folders FROM pre_tender_requests WHERE id=$1', [id]);
     if (!r.rows.length) return reply.code(404).send({ error: 'not_found' });
-    const folders = Array.isArray(r.rows[0].document_folders) ? r.rows[0].document_folders : [];
+    const folders = ensureDocumentFolders(r.rows[0].document_folders);
     const folderId = 'custom-' + Date.now();
     folders.push({ id: folderId, name, system: false });
     await db.query('UPDATE pre_tender_requests SET document_folders=$1, updated_at=NOW() WHERE id=$2', [JSON.stringify(folders), id]);
     return { success: true, folder: { id: folderId, name, system: false } };
+  });
+
+  // PATCH /:id/folders/:folderId — переименовать пользовательскую папку
+  fastify.patch('/:id/folders/:folderId', {
+    preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const folderId = String(request.params.folderId || '').trim();
+    const name = String(request.body?.name || '').trim().slice(0, 120);
+    if (!folderId) return reply.code(400).send({ error: 'folder_id_required' });
+    if (!name) return reply.code(400).send({ error: 'name_required' });
+    const acc = await checkPreTenderAccess(request.user, id);
+    if (!acc.ok) return reply.code(acc.code).send({ error: acc.error });
+
+    const r = await db.query('SELECT document_folders, manual_documents FROM pre_tender_requests WHERE id=$1', [id]);
+    if (!r.rows.length) return reply.code(404).send({ error: 'not_found' });
+    const folders = ensureDocumentFolders(r.rows[0].document_folders);
+    const idx = folders.findIndex((f) => f.id === folderId);
+    if (idx < 0) return reply.code(404).send({ error: 'folder_not_found' });
+    if (folders[idx].system) return reply.code(403).send({ error: 'system_folder_readonly' });
+
+    folders[idx] = { ...folders[idx], name };
+    const docs = Array.isArray(r.rows[0].manual_documents) ? r.rows[0].manual_documents : [];
+    docs.forEach((doc) => {
+      if (inferFolderId(doc) === folderId) {
+        doc.folder_id = folderId;
+        doc.folder_name = name;
+      }
+    });
+
+    await db.query(
+      'UPDATE pre_tender_requests SET document_folders=$1, manual_documents=$2, updated_at=NOW() WHERE id=$3',
+      [JSON.stringify(folders), JSON.stringify(docs), id]
+    );
+    return { success: true, folder: folders[idx] };
+  });
+
+  // DELETE /:id/folders/:folderId — удалить пустую пользовательскую папку
+  fastify.delete('/:id/folders/:folderId', {
+    preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const folderId = String(request.params.folderId || '').trim();
+    if (!folderId) return reply.code(400).send({ error: 'folder_id_required' });
+    const acc = await checkPreTenderAccess(request.user, id);
+    if (!acc.ok) return reply.code(acc.code).send({ error: acc.error });
+
+    const r = await db.query('SELECT document_folders, manual_documents FROM pre_tender_requests WHERE id=$1', [id]);
+    if (!r.rows.length) return reply.code(404).send({ error: 'not_found' });
+    const folders = ensureDocumentFolders(r.rows[0].document_folders);
+    const folder = folders.find((f) => f.id === folderId);
+    if (!folder) return reply.code(404).send({ error: 'folder_not_found' });
+    if (folder.system) return reply.code(403).send({ error: 'system_folder_readonly' });
+
+    const docs = Array.isArray(r.rows[0].manual_documents) ? r.rows[0].manual_documents : [];
+    if (countManualDocsInFolder(docs, folderId) > 0) {
+      return reply.code(409).send({ error: 'folder_not_empty' });
+    }
+
+    const nextFolders = folders.filter((f) => f.id !== folderId);
+    await db.query(
+      'UPDATE pre_tender_requests SET document_folders=$1, updated_at=NOW() WHERE id=$2',
+      [JSON.stringify(nextFolders), id]
+    );
+    return { success: true };
+  });
+
+  // PATCH /:id/documents/:idx — переименовать и/или переместить документ
+  fastify.patch('/:id/documents/:idx', {
+    preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const idx = parseInt(request.params.idx, 10);
+    if (!Number.isFinite(idx) || idx < 0) return reply.code(400).send({ error: 'invalid_idx' });
+    const acc = await checkPreTenderAccess(request.user, id);
+    if (!acc.ok) return reply.code(acc.code).send({ error: acc.error });
+
+    const r = await db.query('SELECT manual_documents, document_folders FROM pre_tender_requests WHERE id=$1', [id]);
+    if (!r.rows.length) return reply.code(404).send({ error: 'not_found' });
+    const docs = Array.isArray(r.rows[0].manual_documents) ? r.rows[0].manual_documents : [];
+    if (!docs[idx]) return reply.code(404).send({ error: 'doc_not_found' });
+
+    const body = request.body || {};
+    const folders = ensureDocumentFolders(r.rows[0].document_folders);
+    const doc = docs[idx];
+
+    if (body.original_name !== undefined) {
+      const newName = String(body.original_name || '').trim().slice(0, 200);
+      if (!newName) return reply.code(400).send({ error: 'name_required' });
+      doc.original_name = newName;
+    }
+    if (body.folder_id !== undefined) {
+      const folderId = String(body.folder_id || '').trim();
+      if (!folderId) return reply.code(400).send({ error: 'folder_id_required' });
+      const folder = folders.find((f) => f.id === folderId);
+      if (!folder) return reply.code(404).send({ error: 'folder_not_found' });
+      doc.folder_id = folderId;
+      doc.folder_name = folder.name;
+    }
+
+    docs[idx] = doc;
+    await db.query(
+      'UPDATE pre_tender_requests SET manual_documents=$1, updated_at=NOW() WHERE id=$2',
+      [JSON.stringify(docs), id]
+    );
+    return { success: true, doc };
+  });
+
+  // DELETE /:id/documents/:idx — удалить manual document
+  fastify.delete('/:id/documents/:idx', {
+    preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
+  }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const idx = parseInt(request.params.idx, 10);
+    if (!Number.isFinite(idx) || idx < 0) return reply.code(400).send({ error: 'invalid_idx' });
+    const acc = await checkPreTenderAccess(request.user, id);
+    if (!acc.ok) return reply.code(acc.code).send({ error: acc.error });
+
+    const r = await db.query('SELECT manual_documents FROM pre_tender_requests WHERE id=$1', [id]);
+    if (!r.rows.length) return reply.code(404).send({ error: 'not_found' });
+    const docs = Array.isArray(r.rows[0].manual_documents) ? r.rows[0].manual_documents : [];
+    if (!docs[idx]) return reply.code(404).send({ error: 'doc_not_found' });
+
+    const doc = docs[idx];
+    if (isMimirGeneratedDoc(doc) && !DIRECTOR_LIKE_ROLES.includes(request.user.role)) {
+      return reply.code(403).send({ error: 'mimir_doc_protected' });
+    }
+
+    unlinkPreTenderDocFile(doc, id);
+    docs.splice(idx, 1);
+    await db.query(
+      'UPDATE pre_tender_requests SET manual_documents=$1, has_documents=$2, updated_at=NOW() WHERE id=$3',
+      [JSON.stringify(docs), docs.length > 0, id]
+    );
+    return { success: true, remaining: docs.length };
   });
 
   // PATCH /:id/documents/:idx/move — переместить документ в папку
@@ -972,7 +1147,7 @@ module.exports = async function (fastify) {
     if (!r.rows.length) return reply.code(404).send({ error: 'not_found' });
     const docs = Array.isArray(r.rows[0].manual_documents) ? r.rows[0].manual_documents : [];
     if (!docs[idx]) return reply.code(404).send({ error: 'doc_not_found' });
-    const folders = Array.isArray(r.rows[0].document_folders) ? r.rows[0].document_folders : [];
+    const folders = ensureDocumentFolders(r.rows[0].document_folders);
     const folder = folders.find((f) => f.id === folderId);
     docs[idx].folder_id = folderId;
     docs[idx].folder_name = folder?.name || folderId;

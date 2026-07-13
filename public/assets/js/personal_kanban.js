@@ -433,6 +433,85 @@ window.AsgardPersonalKanbanPage = (function () {
 .pk3-doc-actions button:hover{color:var(--gold-l);border-color:var(--gold)}
 .pk3-doc-add{border:1.5px dashed var(--brd);padding:11px;text-align:center;border-radius:8px;color:var(--t3);cursor:pointer;font-size:12px;transition:all .15s ease;background:transparent}
 .pk3-doc-add:hover{border-color:var(--gold);color:var(--gold-l);background:var(--gold-bg)}
+.pk3-doc-explorer{display:grid;grid-template-columns:minmax(120px,34%) 1fr;gap:10px;min-height:180px}
+.pk3-doc-folders{display:flex;flex-direction:column;gap:4px;border-right:1px solid var(--brd-m);padding-right:8px}
+.pk3-doc-folder{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:7px 9px;border-radius:6px;border:1px solid transparent;background:var(--bg3);cursor:pointer;font-size:12px;color:var(--t2)}
+.pk3-doc-folder:hover{border-color:var(--brd-m);color:var(--t1)}
+.pk3-doc-folder.pk3-active{border-color:var(--gold);background:var(--gold-bg);color:var(--gold-l)}
+.pk3-doc-folder-count{font-size:10px;color:var(--t3);background:var(--bg4);padding:1px 6px;border-radius:999px}
+.pk3-doc-folder-new{margin-top:6px;font-size:11px;color:var(--t3);cursor:pointer;text-align:center;padding:6px;border:1px dashed var(--brd);border-radius:6px}
+.pk3-doc-folder-new:hover{border-color:var(--gold);color:var(--gold-l)}
+.pk3-doc-files{min-height:120px}
+.pk3-doc-empty{color:var(--t3);font-size:11.5px;padding:12px 4px}
+.pk3-doc-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.pk3-doc-toolbar .pk3-doc-toolbar-info{margin-left:auto;font-size:11px;color:var(--t3)}
+.pk3-doc-folder .pk3-doc-folder-sys{font-size:9px;color:var(--t3);opacity:.75;margin-left:4px}
+.pk3-doc-folder-actions{display:flex;gap:2px;opacity:0;transition:opacity .15s}
+.pk3-doc-folder:hover .pk3-doc-folder-actions{opacity:1}
+.pk3-doc-folder-act{background:transparent;border:none;color:var(--t3);cursor:pointer;font-size:11px;padding:2px 4px;border-radius:4px}
+.pk3-doc-folder-act:hover{color:var(--gold-l);background:var(--bg4)}
+.pk3-doc-files.pk3-doc-dropzone{transition:border-color .15s,background .15s}
+.pk3-doc-files.pk3-doc-drop-over{border:1.5px dashed var(--gold);background:var(--gold-bg);border-radius:8px}
+.pk3-doc-ctx{position:fixed;z-index:100010;background:var(--bg2);border:1px solid var(--brd-m);border-radius:8px;padding:4px;min-width:160px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
+.pk3-doc-ctx button{display:block;width:100%;text-align:left;padding:8px 12px;border:none;background:transparent;color:var(--t1);font-size:12px;cursor:pointer;border-radius:6px;font-family:inherit}
+.pk3-doc-ctx button:hover{background:var(--gold-bg);color:var(--gold-l)}
+.pk3-doc-ctx button.pk3-danger:hover{background:var(--err-bg);color:var(--err-t)}
+.pk3-doc-move-menu{position:absolute;right:0;top:100%;z-index:20;background:var(--bg2);border:1px solid var(--brd-m);border-radius:8px;padding:4px;min-width:180px;max-height:200px;overflow:auto;box-shadow:0 6px 18px rgba(0,0,0,.4)}
+.pk3-doc-move-menu button{display:block;width:100%;text-align:left;padding:7px 10px;border:none;background:transparent;color:var(--t2);font-size:11.5px;cursor:pointer;border-radius:5px;font-family:inherit}
+.pk3-doc-move-menu button:hover{background:var(--bg3);color:var(--t1)}
+
+/* Sticky notes board (drawer left panel) */
+.pk3-sticky-board{position:fixed;top:24px;bottom:24px;left:24px;width:460px;z-index:99999;display:none;flex-direction:column;background:transparent;pointer-events:none;overflow:hidden;font-family:var(--font-sans,Inter,system-ui,sans-serif)}
+.pk3-sticky-board.pk3-show{display:flex}
+.pk3-sticky-board>*{pointer-events:auto}
+.pk3-sticky-board-head{display:flex;align-items:center;gap:10px;padding:0 6px 12px;font-size:15px;font-weight:600;color:#fff;letter-spacing:.2px;text-shadow:0 1px 4px rgba(0,0,0,.6)}
+.pk3-sticky-board-head .pk3-count-badge{margin-left:auto;font-size:12px;color:#2a1f08;font-weight:600;background:rgba(255,248,161,.95);border:1px solid rgba(0,0,0,.12);padding:2px 10px;border-radius:9999px;box-shadow:0 2px 6px rgba(0,0,0,.25);text-shadow:none}
+.pk3-sticky-board-hint{font-size:12px;color:rgba(255,255,255,.82);padding:0 8px 10px;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+.pk3-sticker-v2{position:absolute;box-sizing:border-box;width:var(--stk-w,200px);height:var(--stk-h,140px);padding:calc(12px * var(--stk-s,1)) calc(12px * var(--stk-s,1)) calc(10px * var(--stk-s,1));display:flex;flex-direction:column;color:#2a1f08;background:#fff782;border:1px solid rgba(60,40,10,.12);border-radius:calc(10px * var(--stk-s,1)) calc(10px * var(--stk-s,1)) calc(10px * var(--stk-s,1)) calc(4px * var(--stk-s,1));box-shadow:2px 4px 14px rgba(0,0,0,.28),0 1px 0 rgba(255,255,255,.4) inset;cursor:grab;user-select:none;touch-action:none;transition:transform .2s ease,box-shadow .2s ease,width .25s ease,height .25s ease;transform:rotate(-1.5deg);animation:pk3-sticker-pop .35s cubic-bezier(.34,1.56,.64,1);overflow:hidden}
+.pk3-sticker-v2::before{content:'';position:absolute;top:0;left:calc(12px * var(--stk-s,1));right:calc(12px * var(--stk-s,1));height:calc(5px * var(--stk-s,1));background:linear-gradient(180deg,rgba(255,255,255,.55),transparent);border-radius:0 0 4px 4px;pointer-events:none}
+.pk3-sticker-v2:hover{transform:rotate(0) translateY(-3px);box-shadow:3px 8px 20px rgba(0,0,0,.35);z-index:5}
+.pk3-sticker-v2[data-expanded="1"]{z-index:50!important;transform:rotate(0)!important;box-shadow:4px 12px 28px rgba(0,0,0,.45)}
+.pk3-sticker-v2[data-color="0"]{background:#fff782}
+.pk3-sticker-v2[data-color="1"]{background:#ffd4bc}
+.pk3-sticker-v2[data-color="2"]{background:#c8ecc8}
+.pk3-sticker-v2[data-color="3"]{background:#ffd0e0}
+.pk3-sticker-v2[data-color="4"]{background:#c5e4ff}
+.pk3-sticker-v2-body{flex:1;min-height:0;white-space:pre-wrap;word-break:break-word;font-family:'Caveat',cursive;font-size:var(--stk-font,18px);line-height:1.25;color:#2a1f08;overflow-y:auto;overflow-x:hidden;padding:2px calc(44px * var(--stk-s,1)) 4px 0;scrollbar-width:thin;scrollbar-color:rgba(60,40,10,.25) transparent}
+.pk3-sticker-v2-body::-webkit-scrollbar{width:4px}
+.pk3-sticker-v2-body::-webkit-scrollbar-thumb{background:rgba(60,40,10,.22);border-radius:4px}
+.pk3-sticker-v2-foot{margin-top:auto;display:flex;align-items:center;gap:calc(6px * var(--stk-s,1));padding-top:calc(8px * var(--stk-s,1));border-top:1px dashed rgba(60,40,10,.18);font-size:calc(10.5px * var(--stk-s,1));color:rgba(60,40,10,.65);font-family:var(--font-sans,Inter,system-ui,sans-serif);flex-shrink:0}
+.pk3-sticker-v2-foot .pk3-sticker-author{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;color:rgba(60,40,10,.85)}
+.pk3-sticker-v2-foot .pk3-sticker-when{flex-shrink:0;white-space:nowrap;color:rgba(60,40,10,.5)}
+.pk3-sticker-v2-tools{position:absolute;top:8px;right:8px;display:flex;gap:4px;opacity:0;transition:opacity .15s;z-index:2}
+.pk3-sticker-v2:hover .pk3-sticker-v2-tools{opacity:1}
+.pk3-sticker-v2-tools button{background:rgba(255,255,255,.75);border:1px solid rgba(60,40,10,.15);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;color:#2a1f08;font-family:inherit;transition:all .12s}
+.pk3-sticker-v2-tools button:hover{border-color:var(--gold);color:var(--gold-h,#b07814);background:#fff}
+.pk3-sticker-v2-tools button.pk3-del:hover{background:var(--err,#e74c3c);color:#fff;border-color:var(--err)}
+.pk3-sticker-v2-expand{margin-top:4px;background:transparent;border:none;color:rgba(60,40,10,.55);font-size:10px;cursor:pointer;padding:0;font-family:inherit;text-align:left}
+.pk3-sticker-v2-expand:hover{color:rgba(60,40,10,.85)}
+.pk3-sticker-v2.pk3-editing{cursor:text;user-select:text;transform:rotate(0)!important;z-index:99999!important;animation:pk3-sticker-pop .35s cubic-bezier(.34,1.56,.64,1)}
+.pk3-sticker-v2.pk3-editing textarea{flex:1;width:100%;border:none;outline:none;background:transparent;color:#2a1f08;font-family:'Caveat',cursive;font-size:var(--stk-font,18px);line-height:1.25;resize:none;min-height:0;padding:0 calc(44px * var(--stk-s,1)) 0 0;box-sizing:border-box;overflow-y:auto}
+.pk3-sticker-v2.pk3-editing textarea::placeholder{color:rgba(60,40,10,.4);font-style:italic}
+.pk3-sticker-v2-edit-foot{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:8px;padding-top:8px;border-top:1px dashed rgba(60,40,10,.18);font-family:var(--font-sans,Inter,system-ui,sans-serif);font-size:11px;color:rgba(60,40,10,.5);flex-shrink:0}
+.pk3-sticker-v2-edit-foot .pk3-stk-btns{display:flex;gap:6px}
+.pk3-sticker-v2-edit-foot button{font-family:var(--font-sans,Inter,system-ui,sans-serif);font-size:12px;padding:4px 12px;border-radius:8px;cursor:pointer;border:1px solid rgba(60,40,10,.25);background:rgba(255,255,255,.65);color:#2a1f08;transition:all .12s}
+.pk3-sticker-v2-edit-foot button:hover{background:#fff;border-color:var(--gold,#d4a843)}
+.pk3-sticker-v2-edit-foot button[data-act="save"],.pk3-sticker-v2-edit-foot button[data-act="save-edit"]{background:linear-gradient(180deg,#ffd95e,#e8a93a);border-color:#b07814;font-weight:600}
+.pk3-sticky-board .pk3-stk-list{flex:1;overflow:auto;display:block;padding:14px;scrollbar-width:none;position:relative;width:100%;min-height:560px;box-sizing:border-box}
+.pk3-sticky-board .pk3-stk-list::-webkit-scrollbar{display:none}
+.pk3-sticky-board .pk3-stk-list-empty{text-align:center;color:rgba(255,255,255,.72);padding:40px 18px;font-size:13px;font-family:var(--font-sans,Inter,system-ui,sans-serif);text-shadow:0 1px 3px rgba(0,0,0,.5)}
+@keyframes pk3-sticker-pop{from{opacity:0;transform:rotate(-1.5deg) scale(.92)}to{opacity:1;transform:rotate(-1.5deg) scale(1)}}
+@media (max-width:1280px){.pk3-sticky-board{width:380px}}
+@media (max-width:1100px){.pk3-sticky-board{width:320px;left:16px}}
+@media (max-width:880px){.pk3-sticky-board{width:280px;left:10px;top:14px;bottom:14px}}
+@media (max-width:680px){.pk3-sticky-board{display:none!important}}
+
+/* Reminder contact block */
+.pk3-rem-contact{display:none;border:1px solid var(--brd-m);border-radius:10px;padding:12px;margin-bottom:12px;background:var(--bg3)}
+.pk3-rem-contact.pk3-show{display:block}
+.pk3-rem-contact-head{font-size:12px;font-weight:600;color:var(--gold-l);margin-bottom:10px}
+.pk3-rem-prefill{font-size:11px;color:var(--t3);cursor:pointer;margin-top:6px;display:inline-block}
+.pk3-rem-prefill:hover{color:var(--gold-l)}
 
 /* Финансы */
 .pk3-fin-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
@@ -443,66 +522,6 @@ window.AsgardPersonalKanbanPage = (function () {
 
 /* Sticky actions bar */
 .pk3-actions-bar{position:sticky;bottom:0;padding:13px 24px;background:var(--bg2);backdrop-filter:blur(14px) saturate(140%);border-top:1px solid var(--brd);display:flex;gap:8px;z-index:5;flex-wrap:wrap}
-
-/* 22.06.2026 v2: НАСТОЯЩИЕ post-it стикеры. С нуля, wow-эффект.
-   - Доска: прозрачная панель слева от drawer, на blur'е overlay (sticky на широких экранах)
-   - Стикеры: квадратные 3M-style, пастельные, реальные тени, лёгкая текстура бумаги
-   - Шрифт: Kalam (Google Fonts) — рукописный, отлично работает с кириллицей
-   - Анимации: pop-in появление, поворот при hover выпрямляется, тень оживает */
-.pk3-noteboard{position:fixed;top:24px;bottom:24px;left:24px;width:460px;z-index:99999;display:none;flex-direction:column;background:transparent;pointer-events:none;overflow:hidden;font-family:'Kalam','Caveat','Permanent Marker','Comic Sans MS',cursive}
-.pk3-noteboard.pk3-show{display:flex}
-.pk3-noteboard>*{pointer-events:auto}
-.pk3-noteboard-head{display:flex;align-items:center;gap:12px;padding:0 6px 14px;font-size:28px;color:#fff;letter-spacing:.5px;text-shadow:0 2px 0 rgba(0,0,0,.7),0 0 18px rgba(0,0,0,.6),2px 3px 0 rgba(0,0,0,.5)}
-.pk3-noteboard-head .pk3-noteboard-emoji{filter:drop-shadow(0 2px 4px rgba(0,0,0,.5))}
-.pk3-noteboard-head .pk3-count-badge{margin-left:auto;font-size:16px;color:#3a2f08;font-weight:600;background:#fff8a1;border:1px solid rgba(0,0,0,.15);padding:2px 12px;border-radius:9999px;box-shadow:0 3px 6px rgba(0,0,0,.35);text-shadow:none}
-.pk3-noteboard-hint{font-size:14px;color:rgba(255,255,255,.85);font-family:'Kalam','Caveat',cursive;padding:0 8px 12px;text-shadow:0 1px 3px rgba(0,0,0,.7)}
-
-.pk3-stk-list{flex:1 !important;overflow:auto !important;display:block !important;padding:14px !important;scrollbar-width:none;position:relative !important;width:100% !important;min-height:560px !important;height:auto !important;box-sizing:border-box}
-.pk3-stk-list::-webkit-scrollbar{display:none}
-.pk3-stk-list-empty{grid-column:1/-1;text-align:center;color:#fff;opacity:.7;padding:40px 18px;font-size:18px;font-family:'Kalam','Caveat',cursive;text-shadow:0 1px 3px rgba(0,0,0,.6)}
-
-/* === КАНОНИЧНЫЙ 3M POST-IT === */
-.pk3-sticker{position:relative;aspect-ratio:1/1;min-height:180px;padding:18px 16px 36px;display:flex;flex-direction:column;color:#2a1f08;font-size:21px;line-height:1.18;font-weight:400;cursor:default;background:#fff782;background-image:linear-gradient(135deg,rgba(255,255,255,.45) 0%,transparent 40%),linear-gradient(180deg,rgba(0,0,0,.04) 0%,transparent 18%),repeating-linear-gradient(45deg,rgba(0,0,0,.012) 0 2px,transparent 2px 6px);box-shadow:1px 1px 1px rgba(255,255,255,.25) inset,-1px -1px 1px rgba(0,0,0,.04) inset,3px 8px 16px -2px rgba(0,0,0,.4),0 2px 5px rgba(0,0,0,.18);transition:transform .25s cubic-bezier(.34,1.56,.64,1),box-shadow .25s ease,filter .25s ease;transform:rotate(-2.3deg);animation:pk3-sticker-pop .35s cubic-bezier(.34,1.56,.64,1)}
-.pk3-sticker::before{content:'';position:absolute;top:0;left:0;right:0;height:8px;background:linear-gradient(180deg,rgba(0,0,0,.06),transparent);pointer-events:none}
-.pk3-sticker::after{content:'';position:absolute;bottom:0;right:0;width:26px;height:26px;background:linear-gradient(135deg,transparent 49%,rgba(0,0,0,.18) 50%,rgba(0,0,0,.07) 65%,transparent 66%);pointer-events:none;filter:drop-shadow(-1px -1px 1px rgba(0,0,0,.08))}
-.pk3-sticker:hover{transform:rotate(0) translateY(-6px) scale(1.06);box-shadow:1px 1px 1px rgba(255,255,255,.3) inset,-1px -1px 1px rgba(0,0,0,.05) inset,4px 16px 28px -4px rgba(0,0,0,.55),0 4px 10px rgba(0,0,0,.28);z-index:5;filter:brightness(1.04)}
-.pk3-sticker:nth-child(5n+1){background-color:#fff782;transform:rotate(-2.3deg)}
-.pk3-sticker:nth-child(5n+2){background-color:#ffc7a8;transform:rotate(1.8deg)}
-.pk3-sticker:nth-child(5n+3){background-color:#bcebbc;transform:rotate(-1.2deg)}
-.pk3-sticker:nth-child(5n+4){background-color:#ffc4d8;transform:rotate(2.4deg)}
-.pk3-sticker:nth-child(5n+5){background-color:#b9deff;transform:rotate(-1.7deg)}
-.pk3-sticker:nth-child(5n+1):hover,.pk3-sticker:nth-child(5n+2):hover,.pk3-sticker:nth-child(5n+3):hover,.pk3-sticker:nth-child(5n+4):hover,.pk3-sticker:nth-child(5n+5):hover{transform:rotate(0) translateY(-6px) scale(1.06)}
-
-.pk3-sticker-body{flex:1;white-space:pre-wrap;word-break:break-word;color:#2a1f08;font-family:inherit;overflow:hidden;text-overflow:ellipsis;font-weight:400;line-height:1.16}
-.pk3-sticker-foot{position:absolute;bottom:10px;left:16px;right:16px;display:flex;align-items:baseline;gap:8px;font-size:13.5px;color:rgba(60,40,10,.65);font-family:inherit;font-weight:400;font-style:italic}
-.pk3-sticker-foot .pk3-sticker-author{color:rgba(60,40,10,.85);font-weight:500;font-style:normal}
-.pk3-sticker-foot .pk3-sticker-when{margin-left:auto;color:rgba(60,40,10,.55)}
-
-.pk3-sticker-tools{position:absolute;top:6px;right:6px;display:flex;gap:4px;opacity:0;transition:opacity .2s ease}
-.pk3-sticker:hover .pk3-sticker-tools{opacity:1}
-.pk3-sticker-tools button{background:rgba(60,40,10,.15);border:1px solid rgba(60,40,10,.25);border-radius:6px;width:26px;height:26px;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;transition:all .15s ease;font-family:inherit;color:#2a1f08;box-shadow:0 1px 2px rgba(0,0,0,.15)}
-.pk3-sticker-tools button:hover{background:rgba(60,40,10,.3);transform:scale(1.12)}
-.pk3-sticker-tools button.pk3-del:hover{background:rgba(180,30,30,.7);color:#fff;border-color:rgba(180,30,30,.8)}
-
-/* === EDIT MODE — пишем прямо на стикере === */
-.pk3-sticker.pk3-edit{transform:rotate(0)!important;animation:pk3-sticker-focus .3s ease;cursor:text;padding:14px 14px 12px}
-.pk3-sticker.pk3-edit textarea{flex:1;width:100%;border:none;outline:none;background:transparent;color:#2a1f08;font:inherit;font-size:21px;line-height:1.18;resize:none;padding:0;font-family:inherit;font-weight:400;min-height:90px}
-.pk3-sticker.pk3-edit textarea::placeholder{color:rgba(60,40,10,.4);font-style:italic}
-.pk3-sticker-edit-bar{display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:8px;padding-top:8px;border-top:1px dashed rgba(60,40,10,.2)}
-.pk3-sticker-edit-bar .pk3-sticker-hint{font-size:11px;color:rgba(60,40,10,.5);font-family:var(--font-sans);font-style:italic}
-.pk3-sticker-edit-bar button{font-family:'Kalam',cursive;font-size:14px;font-weight:600;padding:4px 11px;border-radius:6px;cursor:pointer;border:1px solid rgba(60,40,10,.25);background:rgba(60,40,10,.1);color:#2a1f08;transition:all .15s ease;box-shadow:0 1px 2px rgba(0,0,0,.15)}
-.pk3-sticker-edit-bar button:hover{transform:translateY(-1px);box-shadow:0 3px 6px rgba(0,0,0,.22)}
-.pk3-sticker-edit-bar button.pk3-save{background:linear-gradient(180deg,#ffd95e,#e8a93a);border-color:#b07814;color:#2a1f08;text-shadow:0 1px 0 rgba(255,255,255,.3)}
-.pk3-sticker-edit-bar button.pk3-cancel{background:rgba(255,255,255,.4)}
-
-/* Анимации */
-@keyframes pk3-sticker-pop{from{opacity:0;transform:rotate(-2.3deg) scale(.6)}to{opacity:1;transform:rotate(-2.3deg) scale(1)}}
-@keyframes pk3-sticker-focus{from{transform:rotate(-2.3deg) scale(1)}to{transform:rotate(0) scale(1)}}
-
-@media (max-width:1280px){.pk3-noteboard{width:380px}}
-@media (max-width:1100px){.pk3-noteboard{width:320px;left:16px}}
-@media (max-width:880px){.pk3-noteboard{width:280px;left:10px;top:14px;bottom:14px} .pk3-stk-list{grid-template-columns:1fr}}
-@media (max-width:680px){.pk3-noteboard{display:none}}
 
 /* Tags */
 .pk3-tag{display:inline-block;padding:2px 8px;border-radius:9999px;font-size:10.5px;font-weight:700;letter-spacing:.3px}
@@ -2039,10 +2058,28 @@ window.AsgardPersonalKanbanV3 = (function () {
     const t = (() => { try { return localStorage.getItem('asgard_token'); } catch (_) { return null; } })();
     return t ? { 'Authorization': 'Bearer ' + t, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
   }
+  function _authHeader() {
+    const t = (() => { try { return localStorage.getItem('asgard_token'); } catch (_) { return null; } })();
+    return t ? { 'Authorization': 'Bearer ' + t } : {};
+  }
+  function _toDateInputValue(val) {
+    if (!val) return '';
+    const s = String(val);
+    return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : '';
+  }
   async function api(path, opts) {
     const method = (opts && opts.method) || 'GET';
-    const init = { method, headers: _authHeaders() };
-    if (opts && opts.body) init.body = JSON.stringify(opts.body);
+    const headers = _authHeaders();
+    const init = { method, headers };
+    if (opts && opts.body) {
+      const isFd = opts.isFormData || (typeof FormData !== 'undefined' && opts.body instanceof FormData);
+      if (isFd) {
+        delete headers['Content-Type'];
+        init.body = opts.body;
+      } else {
+        init.body = JSON.stringify(opts.body);
+      }
+    }
     const resp = await fetch(path, init);
     let data = null;
     try { data = await resp.json(); } catch (_) { data = null; }
@@ -2824,7 +2861,37 @@ window.AsgardPersonalKanbanV3 = (function () {
       if (cid && prevScroll[cid] != null) b.scrollTop = prevScroll[cid];
     });
   }
+  function _v3KindLabel(entityKind) {
+    if (entityKind === 'pre_tender') return 'ПКП';
+    if (entityKind === 'inbox_application') return 'ЗАЯВКА';
+    if (entityKind === 'tender') return 'ТЕНДЕР';
+    if (entityKind === 'work') return 'WORK';
+    return entityKind || '';
+  }
+  function _v3CardDisplay(c) {
+    const ek = c.entity_kind || c.kind || '';
+    if (ek === 'pre_tender') {
+      return {
+        title: c.customer_name || c.title || ('#' + (c.entity_id || c.id)),
+        subtitle: c.work_description || '',
+        kindLabel: 'ПКП',
+      };
+    }
+    if (ek === 'inbox_application') {
+      return {
+        title: c.title || ('#' + (c.entity_id || c.id)),
+        subtitle: c.source_name || c.source_email || '',
+        kindLabel: 'ЗАЯВКА',
+      };
+    }
+    return {
+      title: c.title || ('#' + (c.entity_id || c.id)),
+      subtitle: c.customer_name || '',
+      kindLabel: _v3KindLabel(ek),
+    };
+  }
   function _v3RenderCardHtml(c) {
+    const disp = _v3CardDisplay(c);
     const kindShort = (c.kind || c.entity_kind || '').split('_')[0];
     const color = c.color || 'green';
     const winCls = c.col === 'win' ? ' pk3-win' : (c.col === 'lose' ? ' pk3-lose' : '');
@@ -2839,11 +2906,11 @@ window.AsgardPersonalKanbanV3 = (function () {
       <div class="pk3-card pk3-${color}${winCls}" draggable="true" data-card-id="${c.id}">
         ${addendumMark}
         <div class="pk3-card-top">
-          <span class="pk3-badge pk3-${kindShort}">${esc(c.kindLabel || kindShort)}</span>
+          <span class="pk3-badge pk3-${kindShort}">${esc(c.kindLabel || disp.kindLabel || kindShort)}</span>
           <span class="pk3-card-id">${esc(c.code || '#' + c.id)}</span>
         </div>
-        <div class="pk3-card-title">${esc(c.title || '')}</div>
-        <div class="pk3-card-customer">${esc(c.customer || '')}</div>
+        <div class="pk3-card-title">${esc(disp.title)}</div>
+        <div class="pk3-card-customer">${esc(disp.subtitle)}</div>
         <div class="pk3-card-meta">
           ${meta.map(m => `<span class="pk3-pill">${esc(m)}</span>`).join('')}
         </div>
@@ -3244,11 +3311,11 @@ window.AsgardPersonalKanbanV3 = (function () {
     const drawer = document.createElement('div');
     drawer.className = 'pk3-drawer show';
     drawer.innerHTML = _renderDrawerHtml(card);
-    // 22.06.2026 v2: доска заметок СЛЕВА от drawer'a (см. CSS .pk3-noteboard)
+    // 22.06.2026 v2: доска заметок СЛЕВА от drawer'a (см. CSS .pk3-sticky-board)
     // ВАЖНО: appendChild доска ВНУТРИ overlay — иначе backdrop-filter blur у overlay
     // создаёт новый stacking context и доска (даже с z-index 99999) уходит «за» blur.
     const notesBoard = document.createElement('div');
-    notesBoard.className = 'pk3-noteboard pk3-show';
+    notesBoard.className = 'pk3-sticky-board pk3-show';
     notesBoard.innerHTML = _renderNotesBoardHtml(card);
     document.body.appendChild(overlay);
     overlay.appendChild(notesBoard); // ← внутрь overlay, не в body
@@ -3342,8 +3409,9 @@ window.AsgardPersonalKanbanV3 = (function () {
   // Появляется вместе с открытием карты, исчезает при закрытии. Свой DOM-элемент.
   // 22.06.2026 v5: голая доска с absolute-стикерами (drag&drop). Inline width 100%.
   function _renderNotesBoardHtml(card) {
-    return `<div class="pk3-stk-list" id="pk3-stk-list" style="position:relative;flex:1;overflow:auto;padding:14px;width:100%;min-height:560px;display:block;box-sizing:border-box"></div>
-            <span id="pk3-notes-count" style="display:none">0</span>`;
+    return `<div class="pk3-sticky-board-head"><span>📌 Заметки</span><span class="pk3-count-badge" id="pk3-notes-count">0</span></div>
+            <div class="pk3-sticky-board-hint">Перетащите · двойной клик — крупнее · размер растёт пропорционально тексту</div>
+            <div class="pk3-stk-list" id="pk3-stk-list"></div>`;
   }
 
   function _fmtNoteWhen(iso) {
@@ -3362,73 +3430,82 @@ window.AsgardPersonalKanbanV3 = (function () {
     } catch (_) { return ''; }
   }
 
-  // 22.06.2026: адаптивный шрифт стикера по длине текста (чем длиннее — мельче)
-  function _stkFontSize(len) {
-    if (len <= 20)  return 22;
-    if (len <= 60)  return 18;
-    if (len <= 100) return 15;
-    if (len <= 130) return 13;
-    return 11;
-  }
-  const NOTE_MAX = 150;
+  const STK_BASE_W = 200;
+  const STK_BASE_H = 140;
+  const STK_BASE_FONT = 18;
+  const STK_SCALE_MAX = 1.85;
+  const STK_SCALE_EXPAND = 2.15;
 
-  // 22.06.2026 v4: стикер inline + absolute positioning + drag&drop
+  function _stkScale(text, expanded) {
+    const t = String(text || '');
+    const len = t.length;
+    const lines = t.split('\n').length;
+    const longest = t.split('\n').reduce((m, l) => Math.max(m, l.length), 0);
+    const vol = Math.max(len / 500, lines / 14, longest / 42, 0);
+    const eased = Math.min(1, Math.sqrt(vol));
+    const minS = 1;
+    const maxS = expanded ? STK_SCALE_EXPAND : STK_SCALE_MAX;
+    return minS + (maxS - minS) * eased;
+  }
+  function _stkSize(text, expanded) {
+    const s = _stkScale(text, expanded);
+    return {
+      w: Math.round(STK_BASE_W * s),
+      h: Math.round(STK_BASE_H * s),
+      font: Math.round(STK_BASE_FONT * (0.92 + 0.08 * s)),
+      scale: s,
+    };
+  }
+  function _noteNeedsExpand(text) {
+    const t = String(text || '');
+    return _stkScale(t, false) >= STK_SCALE_MAX - 0.08;
+  }
+  function _applyNoteStickerSize(noteEl, text, expanded) {
+    if (!noteEl) return;
+    const sz = _stkSize(text, expanded);
+    noteEl.style.width = sz.w + 'px';
+    noteEl.style.height = sz.h + 'px';
+    noteEl.style.minHeight = '';
+    noteEl.style.maxHeight = '';
+    noteEl.style.setProperty('--stk-w', sz.w + 'px');
+    noteEl.style.setProperty('--stk-h', sz.h + 'px');
+    noteEl.style.setProperty('--stk-font', sz.font + 'px');
+    noteEl.style.setProperty('--stk-s', String(sz.scale));
+    noteEl.dataset.stkScale = String(sz.scale);
+  }
+  function _syncNoteStickerSize(noteEl) {
+    if (!noteEl || noteEl.classList.contains('pk3-editing')) return;
+    const body = noteEl.querySelector('.pk3-sticker-v2-body');
+    const text = body ? (body.innerText || body.textContent || '') : '';
+    _applyNoteStickerSize(noteEl, text, noteEl.dataset.expanded === '1');
+  }
+  const NOTE_MAX = 500;
+
   function _renderNoteCard(n) {
     const author = esc(n.author_name || (n.author_id ? '#' + n.author_id : '—'));
     const when = esc(_fmtNoteWhen(n.created_at));
-    const body = esc(n.body || '').replace(/\n/g, '<br>');
+    const bodyText = n.body || '';
+    const body = esc(bodyText).replace(/\n/g, '<br>');
     const variant = (n.color_variant != null) ? (Number(n.color_variant) % 5) : (Math.abs(parseInt(n.id || 0)) % 5);
-    const colors = ['#fff782', '#ffc7a8', '#bcebbc', '#ffc4d8', '#b9deff'];
     const rotates = [-2.3, 1.8, -1.2, 2.4, -1.7];
-    const bg = colors[variant];
     const rot = rotates[variant];
-    const posX = (n.pos_x != null) ? Number(n.pos_x) : Math.floor(Math.random()*100);
-    const posY = (n.pos_y != null) ? Number(n.pos_y) : Math.floor(Math.random()*150);
+    const posX = (n.pos_x != null) ? Number(n.pos_x) : Math.floor(Math.random() * 100);
+    const posY = (n.pos_y != null) ? Number(n.pos_y) : Math.floor(Math.random() * 150);
     const zIdx = (n.z_index != null) ? Number(n.z_index) : 1;
-    const fz = _stkFontSize((n.body || '').length);
-    const styleBox = [
-      'position:absolute',
-      `left:${posX}px`,
-      `top:${posY}px`,
-      `z-index:${zIdx}`,
-      'width:170px',
-      'height:170px',
-      'box-sizing:border-box',
-      'padding:22px 14px 30px',
-      'overflow:hidden',
-      'display:flex',
-      'flex-direction:column',
-      'background:' + bg,
-      'color:#2a1f08',
-      `transform:rotate(${rot}deg)`,
-      'font-family:Kalam,Caveat,"Permanent Marker","Comic Sans MS",cursive',
-      `font-size:${fz}px`,
-      'line-height:1.18',
-      'font-weight:400',
-      'box-shadow:1px 1px 1px rgba(255,255,255,.3) inset, -1px -1px 1px rgba(0,0,0,.05) inset, 3px 8px 16px -2px rgba(0,0,0,.4), 0 2px 5px rgba(0,0,0,.18)',
-      'transition:transform .25s cubic-bezier(.34,1.56,.64,1), box-shadow .25s ease',
-      'cursor:grab',
-      'user-select:none',
-      'touch-action:none',
-      'animation:pk3-sticker-pop .35s cubic-bezier(.34,1.56,.64,1)',
-    ].join(';');
-    const styleBody  = `flex:1;white-space:pre-wrap;word-break:break-word;color:#2a1f08;overflow:hidden;font-weight:400;font-size:${fz}px;line-height:1.18;font-family:inherit`;
-    const styleFoot  = 'position:absolute;bottom:9px;left:16px;right:16px;display:flex;align-items:baseline;gap:8px;font-size:13.5px;color:rgba(60,40,10,.65);font-family:inherit;font-style:italic';
-    const styleTools = 'position:absolute;top:10px;right:10px;display:flex;gap:6px;opacity:0;transition:opacity .25s ease,transform .25s ease;transform:translateY(-4px);z-index:2';
-    const styleBtn   = 'background:rgba(255,255,255,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border:1px solid rgba(60,40,10,.18);border-radius:50%;width:30px;height:30px;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;color:#2a1f08;box-shadow:0 2px 6px rgba(0,0,0,.22),0 1px 2px rgba(0,0,0,.12);transition:all .18s cubic-bezier(.34,1.56,.64,1);font-family:inherit;line-height:1';
-    // Скотч-полоска сверху и загиб уголка — через инлайн SVG поверх
-    const styleScotch = 'position:absolute;top:-8px;left:50%;width:72px;height:18px;background:linear-gradient(180deg, rgba(220,220,220,.65), rgba(160,160,160,.5));transform:translateX(-50%) rotate(-3deg);box-shadow:0 2px 4px rgba(0,0,0,.25);opacity:.85;border-left:1px solid rgba(255,255,255,.5);border-right:1px solid rgba(0,0,0,.1);z-index:1;pointer-events:none';
+    const sz = _stkSize(bodyText, false);
+    const needsExpand = _noteNeedsExpand(bodyText);
     return `
-      <div data-note-id="${n.id || ''}" data-pk3-sticker="1" data-rot="${rot}" data-z="${zIdx}" style="${styleBox}" onmouseenter="this.style.transform='rotate(0) translateY(-4px) scale(1.05)';const t=this.querySelector('[data-tools]');t.style.opacity=1;t.style.transform='translateY(0)'" onmouseleave="if(this.dataset.dragging!=='1')this.style.transform='rotate(${rot}deg)';const t=this.querySelector('[data-tools]');t.style.opacity=0;t.style.transform='translateY(-4px)'">
-        <div style="${styleScotch}"></div>
-        <div data-tools style="${styleTools}">
-          <button data-note-act="edit" title="Редактировать" style="${styleBtn}" onmouseover="this.style.transform='scale(1.18) rotate(-8deg)';this.style.background='rgba(255,235,150,.9)';this.style.boxShadow='0 4px 10px rgba(0,0,0,.3)'" onmouseout="this.style.transform='';this.style.background='rgba(255,255,255,.55)';this.style.boxShadow='0 2px 6px rgba(0,0,0,.22),0 1px 2px rgba(0,0,0,.12)'">✏️</button>
-          <button data-note-act="delete" title="Удалить" style="${styleBtn}" onmouseover="this.style.transform='scale(1.18) rotate(8deg)';this.style.background='rgba(255,80,80,.85)';this.style.color='#fff';this.style.boxShadow='0 4px 10px rgba(180,30,30,.45)'" onmouseout="this.style.transform='';this.style.background='rgba(255,255,255,.55)';this.style.color='#2a1f08';this.style.boxShadow='0 2px 6px rgba(0,0,0,.22),0 1px 2px rgba(0,0,0,.12)'">🗑</button>
+      <div class="pk3-sticker-v2" data-note-id="${n.id || ''}" data-pk3-sticker="1" data-rot="${rot}" data-z="${zIdx}" data-expanded="0" data-color="${variant}" data-stk-scale="${sz.scale}"
+           style="left:${posX}px;top:${posY}px;z-index:${zIdx};width:${sz.w}px;height:${sz.h}px;--stk-w:${sz.w}px;--stk-h:${sz.h}px;--stk-font:${sz.font}px;--stk-s:${sz.scale};transform:rotate(${rot}deg)">
+        <div class="pk3-sticker-v2-tools">
+          <button type="button" data-note-act="edit" title="Редактировать">✏</button>
+          <button type="button" class="pk3-del" data-note-act="delete" title="Удалить">🗑</button>
         </div>
-        <div style="${styleBody}">${body}</div>
-        <div style="${styleFoot}">
-          <span style="font-weight:500;font-style:normal;color:rgba(60,40,10,.85)">${author}</span>
-          <span style="margin-left:auto;color:rgba(60,40,10,.55)">${when}</span>
+        <div class="pk3-sticker-v2-body">${body}</div>
+        ${needsExpand ? '<button type="button" class="pk3-sticker-v2-expand" data-note-act="expand">развернуть ↗</button>' : ''}
+        <div class="pk3-sticker-v2-foot">
+          <span class="pk3-sticker-author">${author}</span>
+          <span class="pk3-sticker-when">${when}</span>
         </div>
       </div>
     `;
@@ -3440,8 +3517,10 @@ window.AsgardPersonalKanbanV3 = (function () {
     if (!list) return;
     list.innerHTML = (notes && notes.length) ? notes.map(_renderNoteCard).join('') : '';
     if (cnt) cnt.textContent = String((notes || []).length);
-    // Подключаем drag к каждому стикеру
-    list.querySelectorAll('[data-pk3-sticker]').forEach((el) => _bindStickerDrag(el));
+    list.querySelectorAll('[data-pk3-sticker]').forEach((el) => {
+      _bindStickerDrag(el);
+      _syncNoteStickerSize(el);
+    });
   }
 
   // 22.06.2026 v4: native pointer-events drag для стикеров. Реалистично:
@@ -3799,7 +3878,7 @@ window.AsgardPersonalKanbanV3 = (function () {
       </select>`)}
       ${_row('Описание', `<textarea id="pk3-f-desc">${esc(card.work_description || '')}</textarea>`)}
       ${_row('Объём', `<div class="pk3-twocol"><input id="pk3-f-vol" placeholder="число" /><select id="pk3-f-volunit"><option>м³</option><option>часов</option><option>точек</option><option>тонн</option></select></div>`)}
-      ${_row('Дедлайн КП', `<input type="date" id="pk3-f-kpdeadline" value="${esc(card.work_deadline || '')}" />`)}
+      ${_row('Дедлайн КП', `<input type="date" id="pk3-f-kpdeadline" value="${esc(_toDateInputValue(card.work_deadline))}" />`)}
       ${_row('Сроки работ', `<div class="pk3-twocol"><input type="date" id="pk3-f-startp" /><input type="date" id="pk3-f-endp" /></div>`)}
     `);
   }
@@ -3827,105 +3906,181 @@ window.AsgardPersonalKanbanV3 = (function () {
       </div>
     `);
   }
-  function _secDocs(card) {
-    const emailDocs = card.email_attachments || [];
-    const pmDocs    = (card.pm_documents && card.pm_documents.length)
-      ? card.pm_documents
-      : (Array.isArray(card.manual_documents)
-        ? card.manual_documents.filter((d) => d && d.generated_by !== 'mimir' && d.source !== 'mimir')
-        : []);
-    const calcDocs  = card.calc_documents || [];
-    // _src='email' → download через /api/pre-tenders/:ptId/email-attachments/:attId/download
-    // _src='manual' → через /api/pre-tenders/:ptId/documents/:idx/download
-    // _src='calc'   → отдельный canal (TKP)
-    const renderDoc = (d, idx, src) => `
-      <div class="pk3-doc-row">
-        <span class="pk3-doc-ic">${esc(_docIcon(d.mime_type || d.original_filename || d.filename))}</span>
-        <span class="pk3-doc-name">${esc(d.original_filename || d.filename || 'файл')}</span>
-        <span class="pk3-doc-size">${d.size ? _fmtBytes(d.size) : ''}</span>
-        <div class="pk3-doc-actions">
-          <button class="pk3-doc-btn" data-action="doc-view" data-src="${src}" data-id="${d.id || idx}" title="Открыть">👁</button>
-          <button class="pk3-doc-btn" data-action="doc-dl"   data-src="${src}" data-id="${d.id || idx}" title="Скачать">⬇</button>
-        </div>
-      </div>
-    `;
-    // 🧙 manual_documents JSONB c generated_by='mimir' — сметы/отчёты/письма от AI.
-    // Сохраняем абсолютный индекс в исходном массиве — backend ждёт его в /:ptId/documents/:idx/download.
-    const allManual = Array.isArray(card.manual_documents) ? card.manual_documents : [];
-    const _isPdfSibling = (md) => !!(md && ((md.kind && /_pdf$/.test(md.kind)) || md.parent_kind));
-    const mimirAll = allManual
-      .map((md, idx) => ({ md, idx }))
-      .filter(x => x.md && x.md.generated_by === 'mimir');
-    // PDF-сиблинги схлопываются в кнопку у родителя — отдельной строкой не показываем.
-    const mimirDocs = mimirAll.filter(x => !_isPdfSibling(x.md));
-    // Карта parent_kind → {idx} для O(1) поиска PDF-сиблинга у родителя.
-    const mimirPdfByParent = {};
-    mimirAll.forEach(x => {
-      if (!_isPdfSibling(x.md)) return;
-      const pk = x.md.parent_kind || (x.md.kind || '').replace(/_pdf$/, '');
-      if (pk) mimirPdfByParent[pk] = x;
+  let _docFolderByCard = {};
+
+  const _DEFAULT_DOC_FOLDERS = [
+    { id: 'customer', name: 'От заказчика', system: true },
+    { id: 'pm_upload', name: 'Загружено РП', system: true },
+    { id: 'tkp', name: 'ТКП', system: true },
+    { id: 'mimir', name: 'Мимир', system: true },
+  ];
+
+  function _inferDocFolderId(doc) {
+    if (!doc) return 'pm_upload';
+    if (doc.folder_id) return doc.folder_id;
+    if (doc.generated_by === 'mimir' || doc.source === 'mimir') return 'mimir';
+    if (doc.kind === 'tkp' || doc.source === 'tkp') return 'tkp';
+    if (doc.source === 'email') return 'customer';
+    return 'pm_upload';
+  }
+
+  function _getDocFolder(card) {
+    if (_docFolderByCard[card.id]) return _docFolderByCard[card.id];
+    const hasEmail = (card.email_attachments || []).length > 0;
+    return hasEmail ? 'customer' : 'pm_upload';
+  }
+
+  function _setDocFolder(card, folderId) {
+    _docFolderByCard[card.id] = folderId;
+  }
+
+  function _collectDocsExplorer(card) {
+    const folders = (Array.isArray(card.document_folders) && card.document_folders.length)
+      ? card.document_folders : _DEFAULT_DOC_FOLDERS;
+    const buckets = {};
+    folders.forEach((f) => { buckets[f.id] = []; });
+
+    (card.email_attachments || []).forEach((d) => {
+      if (!buckets.customer) buckets.customer = [];
+      buckets.customer.push({
+        key: `email-${d.id}`,
+        name: d.original_filename || d.filename || 'файл',
+        size: d.size,
+        mime: d.mime_type,
+        src: 'email',
+        id: d.id,
+        idx: null,
+      });
     });
-    const _mimirIcon = (kind, mime) => {
-      if (kind === 'smeta') return '📊';
-      if (kind === 'director_report') return '📄';
-      if (kind === 'customer_letter') return '✉';
-      if (kind === 'tkp') return '📋';
-      return _docIcon(mime || '');
+
+    const allManual = Array.isArray(card.manual_documents) ? card.manual_documents : [];
+    allManual.forEach((md, idx) => {
+      const fid = _inferDocFolderId(md);
+      if (!buckets[fid]) buckets[fid] = [];
+      buckets[fid].push({
+        key: `manual-${idx}`,
+        name: md.original_name || md.filename || ('документ #' + idx),
+        size: md.size,
+        mime: md.mime_type,
+        src: 'manual',
+        id: idx,
+        idx,
+        kind: md.kind,
+        mimir: md.generated_by === 'mimir' || md.source === 'mimir',
+      });
+    });
+
+    (card.calc_documents || []).forEach((d, i) => {
+      if (!buckets.tkp) buckets.tkp = [];
+      buckets.tkp.push({
+        key: `calc-${i}`,
+        name: d.original_filename || d.filename || d.name || 'расчёт',
+        size: d.size,
+        mime: d.mime_type,
+        src: 'calc',
+        id: i,
+        idx: i,
+      });
+    });
+
+    return { folders, buckets };
+  }
+
+  function _docFolderCanUpload(folderId, folders) {
+    if (folderId === 'pm_upload' || folderId === 'customer') return true;
+    const f = (folders || []).find((x) => x.id === folderId);
+    return !!(f && !f.system);
+  }
+
+  function _closeDocCtxMenu() {
+    document.querySelectorAll('.pk3-doc-ctx').forEach((el) => el.remove());
+  }
+
+  function _showDocCtxMenu(x, y, items, onPick) {
+    _closeDocCtxMenu();
+    const menu = document.createElement('div');
+    menu.className = 'pk3-doc-ctx';
+    menu.innerHTML = items.map((it) =>
+      `<button type="button" class="${it.danger ? 'pk3-danger' : ''}" data-act="${esc(it.act)}">${esc(it.label)}</button>`
+    ).join('');
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+    document.body.appendChild(menu);
+    const close = () => { menu.remove(); document.removeEventListener('click', close); };
+    setTimeout(() => document.addEventListener('click', close), 0);
+    menu.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-act]');
+      if (!btn) return;
+      e.stopPropagation();
+      close();
+      onPick(btn.dataset.act);
+    });
+  }
+
+  function _secDocs(card) {
+    const selFolder = _getDocFolder(card);
+    const { folders, buckets } = _collectDocsExplorer(card);
+    const items = buckets[selFolder] || [];
+    const totalCount = Object.values(buckets).reduce((n, arr) => n + arr.length, 0);
+    const canUpload = _docFolderCanUpload(selFolder, folders);
+    const selFolderName = (folders.find(f => f.id === selFolder) || {}).name || selFolder;
+
+    const folderList = folders.map((f) => {
+      const cnt = (buckets[f.id] || []).length;
+      const active = f.id === selFolder ? ' pk3-active' : '';
+      const sysBadge = f.system ? '<span class="pk3-doc-folder-sys">· системная</span>' : '';
+      const customActs = !f.system ? `
+        <span class="pk3-doc-folder-actions">
+          <button type="button" class="pk3-doc-folder-act" data-action="doc-folder-rename" data-folder-id="${esc(f.id)}" title="Переименовать">✏</button>
+          <button type="button" class="pk3-doc-folder-act" data-action="doc-folder-delete" data-folder-id="${esc(f.id)}" title="Удалить">🗑</button>
+        </span>` : '';
+      return `<div class="pk3-doc-folder${active}" data-action="doc-folder-pick" data-folder-id="${esc(f.id)}" title="${esc(f.name)}">
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.name)}${sysBadge}</span>
+        <span class="pk3-doc-folder-count">${cnt}</span>
+        ${customActs}
+      </div>`;
+    }).join('');
+
+    const renderExplorerDoc = (d) => {
+      const canManage = d.src === 'manual' && d.idx != null;
+      return `<div class="pk3-doc-row" data-doc-key="${esc(d.key)}">
+        <span class="pk3-doc-ic">${esc(_docIcon(d.mime || d.name))}</span>
+        <span class="pk3-doc-name" title="${esc(d.name)}">${esc(d.name)}</span>
+        <span class="pk3-doc-size">${d.size ? _fmtBytes(d.size) : ''}</span>
+        <div class="pk3-doc-actions" style="position:relative">
+          <button class="pk3-doc-btn" data-action="doc-view" data-src="${d.src}" data-id="${d.id}" title="Открыть">👁</button>
+          <button class="pk3-doc-btn" data-action="doc-dl" data-src="${d.src}" data-id="${d.id}" title="Скачать">⬇</button>
+          ${canManage ? `<button class="pk3-doc-btn" data-action="doc-rename" data-src="manual" data-id="${d.idx}" title="Переименовать">✏</button>` : ''}
+          ${canManage ? `<button class="pk3-doc-btn" data-action="doc-move" data-src="manual" data-id="${d.idx}" title="Переместить">📁</button>` : ''}
+          ${canManage ? `<button class="pk3-doc-btn" data-action="doc-delete" data-src="manual" data-id="${d.idx}" title="Удалить">🗑</button>` : ''}
+          ${d.mimir && (d.kind === 'smeta' || (d.kind || '').includes('director_report')) ? `<button class="pk3-doc-btn" data-action="doc-preview-edit" data-src="manual" data-id="${d.idx}" data-kind="${esc(d.kind || '')}" title="Правки">📝</button>` : ''}
+        </div>
+      </div>`;
     };
-    const _mimirKindLbl = (kind) => {
-      if (kind === 'smeta') return 'смета';
-      if (kind === 'director_report') return 'отчёт директору';
-      if (kind === 'customer_letter') return 'письмо клиенту';
-      if (kind === 'tkp') return 'ТКП';
-      return '';
-    };
-    const renderMimirDoc = ({ md, idx }) => {
-      const name = md.filename || md.original_name || ('документ #' + idx);
-      const kind = md.kind || '';
-      const lbl  = _mimirKindLbl(kind);
-      const ext  = (name.split('.').pop() || '').toUpperCase();
-      const dlLbl = ext === 'XLSX' ? '⬇ XLSX' : (ext === 'DOCX' ? '⬇ DOCX' : (ext === 'PDF' ? '⬇ PDF' : '⬇ Скачать'));
-      // Кнопка «✏ Просмотр и правки» доступна для смет (xlsx) и отчётов директору (docx),
-      // т.к. для них backend умеет распарсить в JSON + сгенерить обратно.
-      const editable = (kind === 'smeta' || kind === 'mimir_smeta'
-                     || kind === 'director_report' || kind === 'mimir_director_report');
-      // Вторая кнопка «⬇ PDF» — если родитель НЕ PDF и (а) есть PDF-сиблинг в manual_documents
-      // (тогда качаем сиблинг по его idx), либо (б) исходник XLSX/DOCX — backend сконвертит
-      // on-demand через ?format=pdf на том же /:ptId/documents/:idx/download.
-      const pdfSib = mimirPdfByParent[kind];
-      const hasPdfBtn = ext !== 'PDF' && (pdfSib || ext === 'XLSX' || ext === 'DOCX');
-      const pdfId = pdfSib ? pdfSib.idx : idx;
-      return `
-        <div class="pk3-doc-row" data-mimir-kind="${esc(kind)}">
-          <span class="pk3-doc-ic">${esc(_mimirIcon(kind, md.mime))}</span>
-          <span class="pk3-doc-name">${esc(name)}${lbl ? ` <span style="color:var(--t3);font-size:11px;font-weight:400">· ${esc(lbl)}</span>` : ''}</span>
-          <span class="pk3-doc-size">${md.size ? _fmtBytes(md.size) : ''}</span>
-          <div class="pk3-doc-actions">
-            <button class="pk3-doc-btn" data-action="doc-view" data-src="manual" data-id="${idx}" title="Открыть">👁</button>
-            <button class="pk3-doc-btn" data-action="doc-dl"   data-src="manual" data-id="${idx}" title="Скачать ${esc(ext || 'файл')}">${dlLbl}</button>
-            ${hasPdfBtn ? `<button class="pk3-doc-btn" data-action="doc-dl-pdf" data-src="manual" data-id="${pdfId}" data-from-parent="${pdfSib ? '0' : '1'}" title="Скачать PDF">⬇ PDF</button>` : ''}
-            ${editable ? `<button class="pk3-doc-btn" data-action="doc-preview-edit" data-src="manual" data-id="${idx}" data-kind="${esc(kind)}" title="Просмотр и правки">✏</button>` : ''}
+
+    const filesHtml = items.length
+      ? items.map(renderExplorerDoc).join('')
+      : '<div class="pk3-doc-empty">В этой папке пока нет файлов. Перетащите файлы сюда или нажмите «Загрузить».</div>';
+
+    const uploadBtn = canUpload
+      ? `<button type="button" class="pk3-btn pk3-sm pk3-gold" data-action="doc-explorer-upload" data-folder-id="${esc(selFolder)}">⬆ Загрузить</button>`
+      : `<span class="pk3-doc-toolbar-info" style="font-size:11px;color:var(--t3)">Загрузка только в «От заказчика», «Загружено РП» и свои папки</span>`;
+
+    return _section('sec-docs', '📎', 'Документы', totalCount, `
+      <div class="pk3-doc-explorer" id="pk3-doc-explorer">
+        <div class="pk3-doc-toolbar">
+          <button type="button" class="pk3-btn pk3-sm pk3-ghost" data-action="doc-folder-new">＋ Папка</button>
+          ${uploadBtn}
+          <span class="pk3-doc-toolbar-info">${items.length} файл(ов) · «${esc(selFolderName)}»</span>
+        </div>
+        <div class="pk3-doc-explorer" style="display:grid;grid-template-columns:minmax(120px,34%) 1fr;gap:10px;min-height:180px">
+          <div class="pk3-doc-folders">
+            ${folderList}
+          </div>
+          <div class="pk3-doc-files pk3-doc-dropzone" data-drop-folder="${esc(selFolder)}">
+            ${filesHtml}
           </div>
         </div>
-      `;
-    };
-    const totalCount = emailDocs.length + pmDocs.length + calcDocs.length + mimirDocs.length;
-    return _section('sec-docs', '📎', 'Документы', totalCount, `
-      <div class="pk3-doc-group">
-        <h4>📧 Из письма клиента</h4>
-        ${emailDocs.length ? emailDocs.map((d,i) => renderDoc(d,i,'email')).join('') : '<div style="color:var(--t3);font-size:11.5px">Нет вложений</div>'}
-      </div>
-      <div class="pk3-doc-group">
-        <h4>📤 Загружено РП</h4>
-        ${pmDocs.length ? pmDocs.map((d,i) => renderDoc(d,i,'manual')).join('') : '<div class="pk3-doc-add" data-action="doc-upload">+ Перетащите файлы или нажмите чтобы выбрать</div>'}
-      </div>
-      <div class="pk3-doc-group">
-        <h4>🧮 Расчёты и сметы</h4>
-        ${calcDocs.length ? calcDocs.map((d,i) => renderDoc(d,i,'calc')).join('') : '<div style="color:var(--t3);font-size:11.5px">Сметы появятся после Quick/Кондуктора</div>'}
-      </div>
-      <div class="pk3-doc-group">
-        <h4>🧙 Сгенерировано Мимиром</h4>
-        ${mimirDocs.length ? mimirDocs.map(renderMimirDoc).join('') : '<div style="color:var(--t3);font-size:11.5px">Документы появятся после запуска Quick или Conductor</div>'}
       </div>
     `);
   }
@@ -4198,6 +4353,8 @@ window.AsgardPersonalKanbanV3 = (function () {
         <div style="display:flex;align-items:flex-start;gap:8px">
           <div style="flex:1;min-width:0">
             <div style="font-size:13px;font-weight:600;color:var(--t1)">${esc(_reminderKindLabel(rem.reminder_kind))}${rem.title ? ': ' + esc(rem.title) : ''}</div>
+            ${(rem.reminder_kind === 'call' || rem.reminder_kind === 'sms') && (rem.contact_name || rem.contact_phone) ? `
+            <div style="font-size:12px;color:var(--t2);margin-top:4px">👤 ${esc(rem.contact_name || '—')}${rem.contact_phone ? ' · 📞 ' + esc(rem.contact_phone) : ''}${rem.contact_company ? ' · 🏢 ' + esc(rem.contact_company) : ''}</div>` : ''}
             <div style="font-size:11.5px;color:var(--t3);margin-top:4px">
               📅 Событие: <b style="color:var(--t2)">${esc(_fmtReminderWhen(rem.event_at || rem.remind_at))}</b>
               · ${_reminderLeadLabel(rem.lead_minutes)}
@@ -4432,7 +4589,7 @@ window.AsgardPersonalKanbanV3 = (function () {
         const b = e.target.closest('[data-action]');
         if (!b || !_drawerEl.drawer.contains(b)) return;
         e.stopPropagation();
-        await _onDrawerAction(b.dataset.action, card);
+        await _onDrawerAction(b.dataset.action, card, e);
       });
     }
     // 22.06.2026 v3: event delegation для tools (✏️/🗑) inline-стикеров
@@ -4445,6 +4602,40 @@ window.AsgardPersonalKanbanV3 = (function () {
         const act = btn.dataset.noteAct;
         if (act === 'edit')   _startNoteEdit(noteEl, card);
         if (act === 'delete') _deleteNote(noteEl, card);
+        if (act === 'expand') {
+          const exp = noteEl.dataset.expanded === '1';
+          noteEl.dataset.expanded = exp ? '0' : '1';
+          const body = noteEl.querySelector('.pk3-sticker-v2-body');
+          const text = body ? (body.innerText || body.textContent || '') : '';
+          _applyNoteStickerSize(noteEl, text, !exp);
+          noteEl.style.zIndex = exp ? (noteEl.dataset.z || '1') : '99999';
+          btn.textContent = exp ? 'развернуть ↗' : 'свернуть ↙';
+        }
+      });
+      _drawerEl.notesBoard.addEventListener('dblclick', (e) => {
+        const noteEl = e.target.closest('[data-pk3-sticker]');
+        if (!noteEl || e.target.closest('[data-note-act]') || noteEl.classList.contains('pk3-editing')) return;
+        const btn = noteEl.querySelector('[data-note-act="expand"]');
+        if (btn) { btn.click(); return; }
+        if (noteEl.dataset.expanded !== '1') {
+          noteEl.dataset.expanded = '1';
+          const body = noteEl.querySelector('.pk3-sticker-v2-body');
+          const text = body ? (body.innerText || body.textContent || '') : '';
+          _applyNoteStickerSize(noteEl, text, true);
+          noteEl.style.zIndex = '99999';
+          let expandBtn = noteEl.querySelector('[data-note-act="expand"]');
+          if (!expandBtn) {
+            expandBtn = document.createElement('button');
+            expandBtn.type = 'button';
+            expandBtn.className = 'pk3-sticker-v2-expand';
+            expandBtn.dataset.noteAct = 'expand';
+            expandBtn.textContent = 'свернуть ↙';
+            const foot = noteEl.querySelector('.pk3-sticker-v2-foot');
+            if (foot) noteEl.insertBefore(expandBtn, foot);
+          } else {
+            expandBtn.textContent = 'свернуть ↙';
+          }
+        }
       });
     }
     // Грузим заметки асинхронно — drawer уже виден
@@ -4452,6 +4643,39 @@ window.AsgardPersonalKanbanV3 = (function () {
     _loadAndRenderReminders(card);
     // 22.06.2026: подгружаем прикреплённые ТКП в секции 📋 (с кнопками PDF/Excel)
     _loadAndRenderTkpList(card);
+    // Drag & drop файлов в проводник
+    const dropZone = _drawerEl && _drawerEl.drawer && _drawerEl.drawer.querySelector('.pk3-doc-dropzone');
+    if (dropZone) {
+      dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('pk3-doc-drop-over'); });
+      dropZone.addEventListener('dragleave', () => dropZone.classList.remove('pk3-doc-drop-over'));
+      dropZone.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('pk3-doc-drop-over');
+        const folderId = dropZone.dataset.dropFolder || _getDocFolder(card);
+        const files = Array.from(e.dataTransfer?.files || []);
+        if (files.length) await _uploadDocFiles(card, folderId, files);
+      });
+    }
+    // Контекстное меню папок (ПКМ)
+    const folderPanel = _drawerEl && _drawerEl.drawer && _drawerEl.drawer.querySelector('.pk3-doc-folders');
+    if (folderPanel) {
+      folderPanel.addEventListener('contextmenu', (e) => {
+        const row = e.target.closest('.pk3-doc-folder[data-folder-id]');
+        if (!row) return;
+        const folderId = row.dataset.folderId;
+        const { folders } = _collectDocsExplorer(card);
+        const f = folders.find((x) => x.id === folderId);
+        if (!f || f.system) return;
+        e.preventDefault();
+        _showDocCtxMenu(e.clientX, e.clientY, [
+          { act: 'rename', label: '✏ Переименовать' },
+          { act: 'delete', label: '🗑 Удалить папку' },
+        ], (act) => {
+          if (act === 'rename') _renameDocFolder(card, folderId);
+          if (act === 'delete') _deleteDocFolder(card, folderId);
+        });
+      });
+    }
     // Напоминания: делегирование кнопок в секции
     if (_drawerEl && _drawerEl.drawer) {
       _drawerEl.drawer.addEventListener('click', async (e) => {
@@ -4465,7 +4689,7 @@ window.AsgardPersonalKanbanV3 = (function () {
     }
   }
 
-  async function _onDrawerAction(act, card) {
+  async function _onDrawerAction(act, card, ev) {
     if (act === 'open-quick')      return _openQuickWizard(card);
     if (act === 'open-conductor')  return _openConductorModal(card);
     if (act === 'open-references') return _openReferencesModal(card);
@@ -4480,7 +4704,21 @@ window.AsgardPersonalKanbanV3 = (function () {
     if (act === 'customer-new')    return _openCreateCustomerModal(card);
     if (act === 'doc-view' || act === 'doc-dl' || act === 'doc-dl-pdf') return _onDocClick(card, act);
     if (act === 'doc-preview-edit') return _onDocPreviewEditClick(card);
-    if (act === 'doc-upload')      return _openDocUploadPicker(card);
+    if (act === 'doc-upload' || act === 'doc-explorer-upload') return _openDocUploadPicker(card, ev?.target?.dataset?.folderId);
+    if (act === 'doc-folder-pick') {
+      const fid = ev?.target?.closest('[data-folder-id]')?.dataset?.folderId;
+      if (fid && !ev?.target?.closest('[data-action="doc-folder-rename"],[data-action="doc-folder-delete"]')) {
+        _setDocFolder(card, fid);
+        return _reopenCurrentCard();
+      }
+      return;
+    }
+    if (act === 'doc-folder-new') return _createDocFolder(card);
+    if (act === 'doc-folder-rename') return _renameDocFolder(card, ev?.target?.closest('[data-folder-id]')?.dataset?.folderId);
+    if (act === 'doc-folder-delete') return _deleteDocFolder(card, ev?.target?.closest('[data-folder-id]')?.dataset?.folderId);
+    if (act === 'doc-move') return _showDocMoveMenu(card, ev?.target?.closest('[data-id]')?.dataset?.id, ev?.target);
+    if (act === 'doc-rename') return _renameDoc(card, ev?.target?.closest('[data-id]')?.dataset?.id);
+    if (act === 'doc-delete') return _deleteDoc(card, ev?.target?.closest('[data-id]')?.dataset?.id);
     if (act === 'note')            return _addNote(card);
     if (act === 'remind')          return _addReminder(card);
     if (act === 'letter') {
@@ -5373,10 +5611,64 @@ window.AsgardPersonalKanbanV3 = (function () {
     return false;
   }
 
-  // Открыть file-picker и загрузить документ в pre_tender (раздел «📤 Загружено РП»).
-  function _openDocUploadPicker(card) {
+  function _uploadDocsXhr(ptId, fd) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `/api/pre-tenders/${ptId}/upload-docs`);
+      const token = (() => { try { return localStorage.getItem('asgard_token') || ''; } catch { return ''; } })();
+      if (token) xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+      xhr.onload = () => {
+        let data = {};
+        try { data = JSON.parse(xhr.responseText || '{}'); } catch (_) {}
+        resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, data });
+      };
+      xhr.onerror = () => reject(new Error('network'));
+      xhr.send(fd);
+    });
+  }
+
+  async function _uploadDocFiles(card, folderId, files) {
+    const ptId = card.entity_id;
+    if (!ptId || !files || !files.length) return;
+    const targetFolder = folderId || _getDocFolder(card) || 'pm_upload';
+    const fd = new FormData();
+    files.forEach(f => fd.append('files', f, f.name));
+    fd.append('folder_id', targetFolder);
+    try {
+      let res = await fetch(`/api/pre-tenders/${ptId}/upload-docs`, {
+        method: 'POST', headers: _authHeader(), body: fd
+      });
+      let data = await res.json().catch(() => ({}));
+      if (!res.ok && (res.status === 400) && (data.error === 'multipart_length_mismatch' || data.code === 'FST_ERR_CTP_INVALID_CONTENT_LENGTH')) {
+        const fd2 = new FormData();
+        files.forEach(f => fd2.append('files', f, f.name));
+        fd2.append('folder_id', targetFolder);
+        const xhrRes = await _uploadDocsXhr(ptId, fd2);
+        res = { ok: xhrRes.ok, status: xhrRes.status };
+        data = xhrRes.data || {};
+      }
+      if (res.ok) {
+        toast('Загружено', `${files.length} файл(ов) в папку`, 'ok');
+        _setDocFolder(card, targetFolder);
+        _reopenCurrentCard();
+      } else {
+        const msg = data.message || data.error || ('HTTP ' + res.status);
+        toast('Не загрузилось', msg, 'err');
+      }
+    } catch (e) {
+      toast('Сеть упала', String(e.message || e), 'err');
+    }
+  }
+
+  // Открыть file-picker и загрузить документ в pre_tender (папка из проводника).
+  function _openDocUploadPicker(card, folderId, filesList) {
     const ptId = card.entity_id;
     if (!ptId) { toast('Нет привязки', 'Открой pre-tender', 'warn'); return; }
+    const targetFolder = folderId || _getDocFolder(card) || 'pm_upload';
+    if (filesList && filesList.length) {
+      _uploadDocFiles(card, targetFolder, filesList);
+      return;
+    }
     const input = document.createElement('input');
     input.type = 'file'; input.multiple = true;
     input.style.display = 'none';
@@ -5384,28 +5676,182 @@ window.AsgardPersonalKanbanV3 = (function () {
       const files = Array.from(input.files || []);
       input.remove();
       if (!files.length) return;
-      const fd = new FormData();
-      files.forEach(f => fd.append('files', f, f.name));
-      const headers = await _authHeaders();
-      try {
-        const res = await fetch(`/api/pre-tenders/${ptId}/upload-docs`, {
-          method: 'POST', headers, body: fd
-        });
-        const data = await res.json().catch(() => ({}));
-        if (res.ok) {
-          toast('Загружено', `${files.length} файл(ов) сохранено`, 'ok');
-          // Релоад drawer, чтобы появились в списке.
-          _reopenCurrentCard();
-        } else {
-          toast('Не загрузилось', data.error || ('HTTP ' + res.status), 'err');
-        }
-      } catch (e) {
-        toast('Сеть упала', String(e.message || e), 'err');
-      }
+      await _uploadDocFiles(card, targetFolder, files);
     });
     document.body.appendChild(input);
     input.click();
   }
+
+  async function _createDocFolder(card) {
+    const ptId = card.entity_id;
+    if (!ptId) return;
+    const html = `
+      <div class="pk3-modal" style="max-width:400px;height:auto;width:92vw">
+        <div class="pk3-modal-head"><h3>Новая папка</h3><button class="pk3-btn-icon" id="pk3-fld-close" type="button">✕</button></div>
+        <div class="pk3-modal-body" style="padding:16px 20px">
+          <label style="font-size:12px;color:var(--t3);display:block;margin-bottom:6px">Название папки</label>
+          <input type="text" id="pk3-fld-name" class="pk3-inp" maxlength="120" placeholder="Например: Договор, Чертежи…" />
+        </div>
+        <div class="pk3-modal-foot">
+          <button class="pk3-btn pk3-ghost" id="pk3-fld-cancel" type="button">Отмена</button>
+          <button class="pk3-btn pk3-gold" id="pk3-fld-save" type="button">Создать</button>
+        </div>
+      </div>`;
+    _openModal(html, {
+      onMount: (overlay) => {
+        const close = () => _closeTopModal();
+        overlay.querySelector('#pk3-fld-close')?.addEventListener('click', close);
+        overlay.querySelector('#pk3-fld-cancel')?.addEventListener('click', close);
+        overlay.querySelector('#pk3-fld-save')?.addEventListener('click', async () => {
+          const name = (overlay.querySelector('#pk3-fld-name')?.value || '').trim();
+          if (!name) { toast('Ошибка', 'Введите название', 'err'); return; }
+          try {
+            const res = await fetch(`/api/pre-tenders/${ptId}/folders`, {
+              method: 'POST', headers: _authHeaders(), body: JSON.stringify({ name })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) { toast('Ошибка', data.error || 'Не создать папку', 'err'); return; }
+            if (data.folder?.id) _setDocFolder(card, data.folder.id);
+            close();
+            toast('Готово', 'Папка создана', 'ok');
+            _reopenCurrentCard();
+          } catch (e) { toast('Сеть', e.message, 'err'); }
+        });
+        setTimeout(() => overlay.querySelector('#pk3-fld-name')?.focus(), 50);
+      }
+    });
+  }
+
+  async function _renameDocFolder(card, folderId) {
+    const ptId = card.entity_id;
+    if (!ptId || !folderId) return;
+    const { folders } = _collectDocsExplorer(card);
+    const f = folders.find((x) => x.id === folderId);
+    if (!f || f.system) { toast('Ошибка', 'Системную папку нельзя переименовать', 'warn'); return; }
+    const name = window.prompt('Новое название папки:', f.name);
+    if (!name || !name.trim() || name.trim() === f.name) return;
+    try {
+      const res = await fetch(`/api/pre-tenders/${ptId}/folders/${encodeURIComponent(folderId)}`, {
+        method: 'PATCH', headers: _authHeaders(), body: JSON.stringify({ name: name.trim() })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { toast('Ошибка', data.error || 'Не переименовать', 'err'); return; }
+      toast('Готово', 'Папка переименована', 'ok');
+      _reopenCurrentCard();
+    } catch (e) { toast('Сеть', e.message, 'err'); }
+  }
+
+  async function _deleteDocFolder(card, folderId) {
+    const ptId = card.entity_id;
+    if (!ptId || !folderId) return;
+    const { folders } = _collectDocsExplorer(card);
+    const f = folders.find((x) => x.id === folderId);
+    if (!f || f.system) { toast('Ошибка', 'Системную папку нельзя удалить', 'warn'); return; }
+    if (!window.confirm(`Удалить папку «${f.name}»? Папка должна быть пустой.`)) return;
+    try {
+      const res = await fetch(`/api/pre-tenders/${ptId}/folders/${encodeURIComponent(folderId)}`, {
+        method: 'DELETE', headers: _authHeaders()
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = data.error === 'folder_not_empty' ? 'Сначала переместите или удалите файлы из папки' : (data.error || 'Не удалить');
+        toast('Ошибка', msg, 'err');
+        return;
+      }
+      if (_getDocFolder(card) === folderId) _setDocFolder(card, 'pm_upload');
+      toast('Готово', 'Папка удалена', 'ok');
+      _reopenCurrentCard();
+    } catch (e) { toast('Сеть', e.message, 'err'); }
+  }
+
+  function _showDocMoveMenu(card, idxStr, anchorEl) {
+    const idx = Number(idxStr);
+    if (!Number.isFinite(idx) || !anchorEl) return;
+    document.querySelectorAll('.pk3-doc-move-menu').forEach((el) => el.remove());
+    const wrap = anchorEl.closest('.pk3-doc-actions');
+    if (!wrap) return;
+    const { folders } = _collectDocsExplorer(card);
+    const menu = document.createElement('div');
+    menu.className = 'pk3-doc-move-menu';
+    menu.innerHTML = folders.map((f) =>
+      `<button type="button" data-folder-id="${esc(f.id)}">${esc(f.name)}</button>`
+    ).join('');
+    wrap.appendChild(menu);
+    const close = (e) => {
+      if (menu.contains(e.target)) return;
+      menu.remove();
+      document.removeEventListener('click', close);
+    };
+    setTimeout(() => document.addEventListener('click', close), 0);
+    menu.addEventListener('click', async (e) => {
+      const btn = e.target.closest('button[data-folder-id]');
+      if (!btn) return;
+      menu.remove();
+      document.removeEventListener('click', close);
+      await _moveDocToFolder(card, idx, btn.dataset.folderId);
+    });
+  }
+
+  async function _moveDocToFolder(card, idx, folderId) {
+    const ptId = card.entity_id;
+    if (!ptId || !Number.isFinite(idx) || !folderId) return;
+    try {
+      const res = await fetch(`/api/pre-tenders/${ptId}/documents/${idx}/move`, {
+        method: 'PATCH', headers: _authHeaders(), body: JSON.stringify({ folder_id: folderId })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { toast('Ошибка', data.error || 'Не переместить', 'err'); return; }
+      _setDocFolder(card, folderId);
+      toast('Готово', 'Документ перемещён', 'ok');
+      _reopenCurrentCard();
+    } catch (e) { toast('Сеть', e.message, 'err'); }
+  }
+
+  async function _renameDoc(card, idxStr) {
+    const ptId = card.entity_id;
+    const idx = Number(idxStr);
+    if (!ptId || !Number.isFinite(idx)) return;
+    const docs = Array.isArray(card.manual_documents) ? card.manual_documents : [];
+    const doc = docs[idx];
+    if (!doc) return;
+    const cur = doc.original_name || doc.filename || '';
+    const name = window.prompt('Новое имя файла:', cur);
+    if (!name || !name.trim() || name.trim() === cur) return;
+    try {
+      const res = await fetch(`/api/pre-tenders/${ptId}/documents/${idx}`, {
+        method: 'PATCH', headers: _authHeaders(), body: JSON.stringify({ original_name: name.trim() })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { toast('Ошибка', data.error || 'Не переименовать', 'err'); return; }
+      toast('Готово', 'Файл переименован', 'ok');
+      _reopenCurrentCard();
+    } catch (e) { toast('Сеть', e.message, 'err'); }
+  }
+
+  async function _deleteDoc(card, idxStr) {
+    const ptId = card.entity_id;
+    const idx = Number(idxStr);
+    if (!ptId || !Number.isFinite(idx)) return;
+    const docs = Array.isArray(card.manual_documents) ? card.manual_documents : [];
+    const doc = docs[idx];
+    if (!doc) return;
+    const name = doc.original_name || doc.filename || 'файл';
+    if (!window.confirm(`Удалить «${name}»?`)) return;
+    try {
+      const res = await fetch(`/api/pre-tenders/${ptId}/documents/${idx}`, {
+        method: 'DELETE', headers: _authHeaders()
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = data.error === 'mimir_doc_protected' ? 'Документ Мимира — только директор может удалить' : (data.error || 'Не удалить');
+        toast('Ошибка', msg, 'err');
+        return;
+      }
+      toast('Готово', 'Файл удалён', 'ok');
+      _reopenCurrentCard();
+    } catch (e) { toast('Сеть', e.message, 'err'); }
+  }
+
   async function _reopenCurrentCard() {
     if (!_currentCard) return;
     try {
@@ -5563,53 +6009,55 @@ window.AsgardPersonalKanbanV3 = (function () {
   // 22.06.2026: кнопка «📝 Заметка» добавляет НА ДОСКУ слева новый пустой стикер
   // в режиме редактирования. Юзер пишет прямо в стикере → 💾 сохранить или 🗑 удалить.
   // Никаких модалок поверх drawer'а.
+  function _noteEditInnerHtml(saveAct, cancelAct, initialLen) {
+    return `
+      <textarea placeholder="Пиши…" maxlength="${NOTE_MAX}" rows="5"></textarea>
+      <div class="pk3-sticker-v2-edit-foot">
+        <span data-cnt>${initialLen}/${NOTE_MAX}</span>
+        <div class="pk3-stk-btns">
+          <button type="button" data-act="${cancelAct}">Отмена</button>
+          <button type="button" data-act="${saveAct}">💾</button>
+        </div>
+      </div>`;
+  }
+  function _bindNoteEditInput(stk, ta) {
+    const cntEl = stk.querySelector('[data-cnt]');
+    const onInput = () => {
+      const len = ta.value.length;
+      if (cntEl) {
+        cntEl.textContent = `${len}/${NOTE_MAX}`;
+        cntEl.style.color = len > NOTE_MAX - 50 ? '#b13030' : 'rgba(60,40,10,.5)';
+      }
+      _applyNoteStickerSize(stk, ta.value, true);
+    };
+    ta.addEventListener('input', onInput);
+    return onInput;
+  }
+
   function _addNote(card) {
     const list = document.getElementById('pk3-stk-list');
     if (!list) {
       toast('Доска заметок недоступна', 'Узкий экран. Расширьте окно.', 'warn');
       return;
     }
-    // Если уже есть открытый пустой edit-стикер — фокусим его, не плодим
-    const existing = list.querySelector('.pk3-sticker.pk3-edit[data-new="1"]');
+    const existing = list.querySelector('.pk3-sticker-v2.pk3-editing[data-new="1"]');
     if (existing) { const ta = existing.querySelector('textarea'); if (ta) ta.focus(); return; }
-    // Снимаем плейсхолдер если был
     const empty = list.querySelector('.pk3-stk-list-empty');
     if (empty) empty.remove();
-    // Вставляем НОВЫЙ пустой стикер в начало — inline-стили на жёлтом фоне как реальный post-it
+    const px = Math.floor(Math.random() * 120);
+    const py = Math.floor(Math.random() * 150);
+    const cv = Math.floor(Math.random() * 5);
     const stk = document.createElement('div');
+    stk.className = 'pk3-sticker-v2 pk3-editing';
     stk.setAttribute('data-new', '1');
     stk.setAttribute('data-pk3-sticker-edit', '1');
-    // Случайная позиция для нового стикера
-    const px = Math.floor(Math.random()*120);
-    const py = Math.floor(Math.random()*150);
-    const cv = Math.floor(Math.random()*5);
-    stk.dataset.colorVariant = String(cv);
-    const colors = ['#fff782', '#ffc7a8', '#bcebbc', '#ffc4d8', '#b9deff'];
-    const bg = colors[cv];
-    stk.style.cssText = `position:absolute;left:${px}px;top:${py}px;width:200px;height:200px;box-sizing:border-box;padding:18px 14px 12px;display:flex;flex-direction:column;background:${bg};color:#2a1f08;transform:rotate(0deg);z-index:99999;font-family:Kalam,Caveat,"Permanent Marker","Comic Sans MS",cursive;font-size:17px;line-height:1.18;font-weight:400;box-shadow:1px 1px 1px rgba(255,255,255,.3) inset, -1px -1px 1px rgba(0,0,0,.05) inset, 8px 18px 30px -4px rgba(0,0,0,.5), 0 4px 10px rgba(0,0,0,.25);animation:pk3-sticker-pop .35s cubic-bezier(.34,1.56,.64,1)`;
-    stk.innerHTML = `
-      <div style="position:absolute;top:-8px;left:50%;width:72px;height:18px;background:linear-gradient(180deg,rgba(220,220,220,.65),rgba(160,160,160,.5));transform:translateX(-50%) rotate(-3deg);box-shadow:0 2px 4px rgba(0,0,0,.25);opacity:.85;border-left:1px solid rgba(255,255,255,.5);border-right:1px solid rgba(0,0,0,.1);pointer-events:none"></div>
-      <textarea placeholder="Пиши…" maxlength="150" rows="4" style="flex:1;width:100%;border:none;outline:none;background:transparent;color:#2a1f08;font:inherit;resize:none;padding:0;font-family:inherit;box-sizing:border-box"></textarea>
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:6px;padding-top:6px;border-top:1px dashed rgba(60,40,10,.2)">
-        <span data-cnt style="font-size:11px;color:rgba(60,40,10,.5);font-family:var(--font-sans);font-style:italic">0/150</span>
-        <div style="display:flex;gap:6px">
-          <button data-act="cancel" style="font-family:'Kalam',cursive;font-size:13px;padding:4px 12px;border-radius:16px;cursor:pointer;border:1px solid rgba(60,40,10,.3);background:rgba(255,255,255,.55);color:#2a1f08;box-shadow:0 2px 4px rgba(0,0,0,.15);transition:all .15s ease" onmouseover="this.style.background='rgba(255,255,255,.85)';this.style.transform='translateY(-1px)'" onmouseout="this.style.background='rgba(255,255,255,.55)';this.style.transform=''">Отмена</button>
-          <button data-act="save" style="font-family:'Kalam',cursive;font-size:13px;font-weight:600;padding:4px 14px;border-radius:16px;cursor:pointer;border:1px solid #b07814;background:linear-gradient(180deg,#ffd95e,#e8a93a);color:#2a1f08;box-shadow:0 3px 8px rgba(176,120,20,.35);transition:all .15s ease" onmouseover="this.style.transform='translateY(-1px)'" onmouseout="this.style.transform=''">💾</button>
-        </div>
-      </div>
-    `;
+    stk.dataset.color = String(cv);
+    stk.style.cssText = `left:${px}px;top:${py}px;z-index:99999;transform:rotate(0)`;
+    _applyNoteStickerSize(stk, '', true);
+    stk.innerHTML = _noteEditInnerHtml('save', 'cancel', 0);
     list.insertBefore(stk, list.firstChild);
     const ta = stk.querySelector('textarea');
-    const cntEl = stk.querySelector('[data-cnt]');
-    const onInput = () => {
-      const len = ta.value.length;
-      if (cntEl) {
-        cntEl.textContent = `${len}/150`;
-        cntEl.style.color = len > 135 ? '#b13030' : 'rgba(60,40,10,.5)';
-      }
-      ta.style.fontSize = _stkFontSize(len) + 'px';
-    };
-    ta.addEventListener('input', onInput);
+    const onInput = _bindNoteEditInput(stk, ta);
     setTimeout(() => { ta.focus(); onInput(); }, 40);
 
     const cancel = () => { try { stk.remove(); } catch (_) {} _refreshNotesEmpty(); };
@@ -5631,7 +6079,8 @@ window.AsgardPersonalKanbanV3 = (function () {
         tmp.innerHTML = _renderNoteCard(r.data.item).trim();
         const newEl = tmp.firstChild;
         list.replaceChild(newEl, stk);
-        _bindStickerDrag(newEl); // 22.06: drag-handler для свежего стикера
+        _bindStickerDrag(newEl);
+        _syncNoteStickerSize(newEl);
         _updateNotesCount();
       } catch (e) {
         toast('Заметка', String(e.message || e), 'err');
@@ -5653,45 +6102,27 @@ window.AsgardPersonalKanbanV3 = (function () {
     const list = document.getElementById('pk3-stk-list');
     const cnt = document.getElementById('pk3-notes-count');
     if (!list || !cnt) return;
-    cnt.textContent = String(list.querySelectorAll('.pk3-sticker:not(.pk3-edit)').length);
+    cnt.textContent = String(list.querySelectorAll('[data-pk3-sticker]').length);
   }
   function _refreshNotesEmpty() {
     // 22.06.2026 v3: пустую доску оставляем пустой — без надписей
   }
 
-  // Edit существующего стикера — превращаем pk3-sticker в pk3-sticker.pk3-edit
+  // Edit существующего стикера — pk3-sticker-v2 в режиме pk3-editing
   function _startNoteEdit(noteEl, card) {
     if (noteEl.dataset.editing === '1') return;
     const noteId = noteEl.dataset.noteId;
-    const bodyDivs = noteEl.querySelectorAll('div[style*="white-space:pre-wrap"]');
-    const currentText = bodyDivs.length ? bodyDivs[0].innerText : (noteEl.textContent || '');
+    const currentText = noteEl.querySelector('.pk3-sticker-v2-body')?.innerText
+      || noteEl.textContent || '';
     noteEl.dataset.editing = '1';
-    // выпрямляем поворот
+    noteEl.classList.add('pk3-editing');
     noteEl.style.transform = 'rotate(0)';
-    noteEl.style.padding = '24px 16px 12px';
-    noteEl.innerHTML = `
-      <div style="position:absolute;top:-8px;left:50%;width:72px;height:18px;background:linear-gradient(180deg,rgba(220,220,220,.65),rgba(160,160,160,.5));transform:translateX(-50%) rotate(-3deg);box-shadow:0 2px 4px rgba(0,0,0,.25);opacity:.85;border-left:1px solid rgba(255,255,255,.5);border-right:1px solid rgba(0,0,0,.1);pointer-events:none"></div>
-      <textarea maxlength="150" rows="4" style="flex:1;width:100%;border:none;outline:none;background:transparent;color:#2a1f08;font:inherit;resize:none;padding:0;font-family:inherit;box-sizing:border-box"></textarea>
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-top:6px;padding-top:6px;border-top:1px dashed rgba(60,40,10,.2)">
-        <span data-cnt style="font-size:11px;color:rgba(60,40,10,.5);font-family:var(--font-sans);font-style:italic">0/150</span>
-        <div style="display:flex;gap:6px">
-          <button data-act="cancel-edit" style="font-family:'Kalam',cursive;font-size:13px;padding:4px 12px;border-radius:16px;cursor:pointer;border:1px solid rgba(60,40,10,.3);background:rgba(255,255,255,.55);color:#2a1f08;box-shadow:0 2px 4px rgba(0,0,0,.15);transition:all .15s ease" onmouseover="this.style.background='rgba(255,255,255,.85)';this.style.transform='translateY(-1px)'" onmouseout="this.style.background='rgba(255,255,255,.55)';this.style.transform=''">Отмена</button>
-          <button data-act="save-edit" style="font-family:'Kalam',cursive;font-size:13px;font-weight:600;padding:4px 14px;border-radius:16px;cursor:pointer;border:1px solid #b07814;background:linear-gradient(180deg,#ffd95e,#e8a93a);color:#2a1f08;box-shadow:0 3px 8px rgba(176,120,20,.35);transition:all .15s ease" onmouseover="this.style.transform='translateY(-1px)'" onmouseout="this.style.transform=''">💾</button>
-        </div>
-      </div>
-    `;
+    noteEl.style.zIndex = '99999';
+    _applyNoteStickerSize(noteEl, currentText, true);
+    noteEl.innerHTML = _noteEditInnerHtml('save-edit', 'cancel-edit', currentText.length);
     const ta = noteEl.querySelector('textarea');
     ta.value = currentText;
-    const cntEl = noteEl.querySelector('[data-cnt]');
-    const onInputEdit = () => {
-      const len = ta.value.length;
-      if (cntEl) {
-        cntEl.textContent = `${len}/150`;
-        cntEl.style.color = len > 135 ? '#b13030' : 'rgba(60,40,10,.5)';
-      }
-      ta.style.fontSize = _stkFontSize(len) + 'px';
-    };
-    ta.addEventListener('input', onInputEdit);
+    const onInputEdit = _bindNoteEditInput(noteEl, ta);
     setTimeout(() => { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); onInputEdit(); }, 40);
 
     const cancel = async () => { await _loadAndRenderNotes(card); };
@@ -5713,7 +6144,8 @@ window.AsgardPersonalKanbanV3 = (function () {
         tmp.innerHTML = _renderNoteCard(r.data.item).trim();
         const newEl = tmp.firstChild;
         noteEl.parentNode.replaceChild(newEl, noteEl);
-        _bindStickerDrag(newEl); // 22.06: drag-handler после редактирования
+        _bindStickerDrag(newEl);
+        _syncNoteStickerSize(newEl);
       } catch (e) {
         toast('Заметка', String(e.message || e), 'err');
         if (btn) { btn.disabled = false; btn.textContent = '💾 Сохранить'; }
@@ -5745,8 +6177,17 @@ window.AsgardPersonalKanbanV3 = (function () {
       toast('Заметка', String(e.message || e), 'err');
     }
   }
+  function _reminderContactDefaults(card) {
+    return {
+      contact_name: card.contact_person || '',
+      contact_phone: card.contact_phone || '',
+      contact_company: card.customer_name || card.source_name || ''
+    };
+  }
+
   async function _addReminder(card, existing) {
     const isEdit = !!existing;
+    const defaults = _reminderContactDefaults(card);
     const kind = existing ? (existing.reminder_kind || 'task') : 'task';
     const lead = existing ? Number(existing.lead_minutes || 0) : 60;
     const eventIso = existing && (existing.event_at || existing.remind_at)
@@ -5757,6 +6198,10 @@ window.AsgardPersonalKanbanV3 = (function () {
     const channels = existing && Array.isArray(existing.channels) ? existing.channels : ['inapp'];
     const title = existing && existing.title ? String(existing.title) : '';
     const message = existing && existing.message ? String(existing.message) : '';
+    const contactName = existing && existing.contact_name ? String(existing.contact_name) : defaults.contact_name;
+    const contactPhone = existing && existing.contact_phone ? String(existing.contact_phone) : defaults.contact_phone;
+    const contactCompany = existing && existing.contact_company ? String(existing.contact_company) : defaults.contact_company;
+    const showContactInit = kind === 'call' || kind === 'sms';
 
     const kindOpts = REMINDER_KINDS.map(k =>
       `<option value="${k.id}"${k.id === kind ? ' selected' : ''}>${esc(k.label)}</option>`
@@ -5782,9 +6227,25 @@ window.AsgardPersonalKanbanV3 = (function () {
             <label>Тип</label>
             <select id="pk3-rem-kind" class="pk3-inp" style="width:100%">${kindOpts}</select>
           </div>
+          <div id="pk3-rem-contact" class="pk3-rem-contact${showContactInit ? ' pk3-show' : ''}">
+            <div class="pk3-rem-contact-head">📞 Контакт для звонка / СМС</div>
+            <div class="pk3-row" style="margin-bottom:8px">
+              <label>Кому</label>
+              <input type="text" id="pk3-rem-cname" class="pk3-inp" maxlength="120" placeholder="ФИО контактного лица" value="${esc(contactName)}" />
+            </div>
+            <div class="pk3-row" style="margin-bottom:8px">
+              <label>Телефон</label>
+              <input type="tel" id="pk3-rem-cphone" class="pk3-inp" maxlength="30" placeholder="+7 …" value="${esc(contactPhone)}" />
+            </div>
+            <div class="pk3-row" style="margin-bottom:4px">
+              <label>Компания</label>
+              <input type="text" id="pk3-rem-ccompany" class="pk3-inp" maxlength="200" placeholder="Заказчик" value="${esc(contactCompany)}" />
+            </div>
+            <span class="pk3-rem-prefill" id="pk3-rem-prefill">📋 Подставить из карточки</span>
+          </div>
           <div class="pk3-row" style="margin-bottom:12px">
             <label>Заголовок <span style="color:var(--t3);font-weight:400">(необяз.)</span></label>
-            <input type="text" id="pk3-rem-title" class="pk3-inp" maxlength="200" placeholder="Кратко: кому звонить, тема встречи…" value="${esc(title)}" />
+            <input type="text" id="pk3-rem-title" class="pk3-inp" maxlength="200" placeholder="Кратко: тема встречи…" value="${esc(title)}" />
           </div>
           <div class="pk3-row" style="margin-bottom:12px">
             <label>Дата и время события</label>
@@ -5799,8 +6260,8 @@ window.AsgardPersonalKanbanV3 = (function () {
             <div style="display:flex;flex-direction:column;gap:6px">${chBoxes}</div>
           </div>
           <div class="pk3-row">
-            <label>Комментарий</label>
-            <textarea id="pk3-rem-msg" class="pk3-inp" rows="3" placeholder="О чём напомнить, детали…">${esc(message)}</textarea>
+            <label>Зачем / комментарий</label>
+            <textarea id="pk3-rem-msg" class="pk3-inp" rows="3" placeholder="О чём напомнить, цель звонка…">${esc(message)}</textarea>
           </div>
         </div>
         <div class="pk3-modal-foot">
@@ -5812,6 +6273,20 @@ window.AsgardPersonalKanbanV3 = (function () {
     _openModal(html, {
       onMount: (overlay) => {
         const close = () => _closeTopModal();
+        const kindSel = overlay.querySelector('#pk3-rem-kind');
+        const contactBlock = overlay.querySelector('#pk3-rem-contact');
+        const toggleContact = () => {
+          const k = kindSel?.value || 'task';
+          if (k === 'call' || k === 'sms') contactBlock?.classList.add('pk3-show');
+          else contactBlock?.classList.remove('pk3-show');
+        };
+        kindSel?.addEventListener('change', toggleContact);
+        overlay.querySelector('#pk3-rem-prefill')?.addEventListener('click', () => {
+          const d = _reminderContactDefaults(card);
+          const n = overlay.querySelector('#pk3-rem-cname'); if (n) n.value = d.contact_name;
+          const p = overlay.querySelector('#pk3-rem-cphone'); if (p) p.value = d.contact_phone;
+          const c = overlay.querySelector('#pk3-rem-ccompany'); if (c) c.value = d.contact_company;
+        });
         overlay.querySelector('#pk3-rem-close')?.addEventListener('click', close);
         overlay.querySelector('#pk3-rem-cancel')?.addEventListener('click', close);
         overlay.querySelector('#pk3-rem-save')?.addEventListener('click', async () => {
@@ -5830,13 +6305,18 @@ window.AsgardPersonalKanbanV3 = (function () {
           const selectedChannels = [...overlay.querySelectorAll('.pk3-rem-ch:checked')].map(el => el.value);
           if (!selectedChannels.length) { toast('Ошибка', 'Выберите хотя бы один канал', 'err'); return; }
 
+          const remKind = overlay.querySelector('#pk3-rem-kind')?.value || 'task';
+          const isCallLike = remKind === 'call' || remKind === 'sms';
           const body = {
-            reminder_kind: overlay.querySelector('#pk3-rem-kind')?.value || 'task',
+            reminder_kind: remKind,
             event_at: eventAt.toISOString(),
             lead_minutes: leadMinutes,
             channels: selectedChannels,
             title: (overlay.querySelector('#pk3-rem-title')?.value || '').trim() || null,
-            message: (overlay.querySelector('#pk3-rem-msg')?.value || '').trim() || null
+            message: (overlay.querySelector('#pk3-rem-msg')?.value || '').trim() || null,
+            contact_name: isCallLike ? ((overlay.querySelector('#pk3-rem-cname')?.value || '').trim() || null) : null,
+            contact_phone: isCallLike ? ((overlay.querySelector('#pk3-rem-cphone')?.value || '').trim() || null) : null,
+            contact_company: isCallLike ? ((overlay.querySelector('#pk3-rem-ccompany')?.value || '').trim() || null) : null
           };
 
           const saveBtn = overlay.querySelector('#pk3-rem-save');
@@ -6027,10 +6507,6 @@ window.AsgardPKv3Modals = (function () {
   // ── Helpers общие для Quick / Conductor ──────────────────────────────
   function _getToken() {
     try { return localStorage.getItem('asgard_token') || ''; } catch (_) { return ''; }
-  }
-  function _authHeader() {
-    const t = _getToken();
-    return t ? { 'Authorization': 'Bearer ' + t } : {};
   }
   function _fmtMoneyRub(n) {
     if (n == null || !isFinite(Number(n))) return '—';
@@ -7665,7 +8141,7 @@ tfoot .vat{color:var(--ok);font-size:18px}
               const fd = new FormData();
               filesSel.forEach(f => fd.append('files', f, f.name));
               const r = await fetch(`/api/pre-tenders/${ptId}/upload-docs`, {
-                method: 'POST', headers: await _authHeaders(), body: fd
+                method: 'POST', headers: _authHeader(), body: fd
               });
               if (!r.ok) {
                 const j = await r.json().catch(() => ({}));

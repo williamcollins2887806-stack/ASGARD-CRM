@@ -59,13 +59,12 @@ function buildIndexVersions() {
 
 buildIndexVersions();
 
-// Dev mode: перезагрузка при изменении файла
+// Перезагрузка index.html при изменении (в т.ч. production — иначе /api/version и HTML расходятся)
+fs.watchFile(indexHtmlPath, { interval: process.env.NODE_ENV === 'production' ? 5000 : 2000 }, () => {
+  try { buildIndexVersions(); console.log('[Server] index.html reloaded'); }
+  catch (e) { console.error('[Server] Failed to reload index.html:', e.message); }
+});
 if (process.env.NODE_ENV !== 'production') {
-  fs.watchFile(indexHtmlPath, { interval: 2000 }, () => {
-    try { buildIndexVersions(); console.log('[Server] index.html reloaded'); }
-    catch (e) { console.error('[Server] Failed to reload index.html:', e.message); }
-  });
-  // Watch mobile app index.html for dev hot-reload
   fs.watchFile(reactMobileHtmlPath, { interval: 2000 }, () => {
     try { buildIndexVersions(); console.log('[Server] /m/index.html reloaded'); }
     catch (e) { console.error('[Server] Failed to reload /m/index.html:', e.message); }
@@ -513,7 +512,7 @@ fastify.decorate('fieldAuthenticate', async function(request, reply) {
     // Load employee
     const { rows: employees } = await db.query(
       `SELECT id, fio, phone, city, position, role_tag, is_active, is_self_employed,
-              naks, naks_expiry, imt_number, imt_expires, permits, clothing_size, shoe_size,
+              naks, naks_expiry, imt_number, imt_expires, permits, clothing_size, shoe_size, headwear_size,
               phone_verified, field_last_login, day_rate
        FROM employees WHERE id = $1`,
       [payload.employee_id]
@@ -650,6 +649,7 @@ fastify.register(require('./routes/max-webhook'),      { prefix: '/api/max' });
 
 // ── HR Module v2 (Сессия 1) ──
 fastify.register(require('./routes/worker-readiness'),  { prefix: '/api/staff/readiness' });
+fastify.register(require('./routes/planned-engagements'), { prefix: '/api/staff/planned-engagements' });
 fastify.register(require('./routes/staff-requests-v2'), { prefix: '/api/staff-requests' });
 fastify.register(require('./routes/global-timesheet'),  { prefix: '/api/timesheet' });
 fastify.register(require('./routes/timesheet-v2'),      { prefix: '/api/timesheet/v2' });
@@ -1101,13 +1101,47 @@ fastify.setNotFoundHandler((request, reply) => {
 // Error Handler
 // ─────────────────────────────────────────────────────────────────────────────
 fastify.setErrorHandler((error, request, reply) => {
-  fastify.log.error(error);
-  
   const statusCode = error.statusCode || 500;
-  const message = statusCode === 500 ? 'Внутренняя ошибка сервера' : error.message;
-  
+
+  if (statusCode < 500) {
+    fastify.log.warn(
+      { err: { message: error.message, code: error.code }, url: request.url, method: request.method },
+      error.message
+    );
+  } else {
+    fastify.log.error(error);
+  }
+
+  let message = statusCode === 500 ? 'Внутренняя ошибка сервера' : error.message;
+  if (error.code === 'FST_ERR_CTP_INVALID_CONTENT_LENGTH') {
+    fastify.log.warn(
+      {
+        err: { message: error.message, code: error.code },
+        url: request.url,
+        method: request.method,
+        contentLength: request.headers['content-length'],
+        contentType: request.headers['content-type'],
+      },
+      'multipart_length_mismatch'
+    );
+    return reply.code(400).send({
+      error: 'multipart_length_mismatch',
+      message: 'Размер файла не совпал при передаче. Повторите загрузку или выберите файл меньшего размера.',
+      statusCode: 400,
+      code: error.code,
+    });
+  }
+  if (error.code === 'FST_ERR_VALIDATION' && Array.isArray(error.validation)) {
+    const v = error.validation[0];
+    if (v?.instancePath === '/runes_amount') {
+      if (v.keyword === 'maximum') message = 'Максимум 1000 рун за одну переплавку';
+      else if (v.keyword === 'minimum') message = 'Минимум 15 рун за переплавку';
+      else if (v.keyword === 'type') message = 'Укажите целое число рун';
+    }
+  }
+
   reply.code(statusCode).send({
-    error: error.name || 'Error',
+    error: message,
     message,
     statusCode
   });

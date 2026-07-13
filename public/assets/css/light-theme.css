@@ -6032,19 +6032,53 @@ html[data-theme="light"] .pk3-stk-list-empty {
 
 /* Сам холдер доски — добавляем мягкий пастельный беж-фон с лёгкой рамкой,
    на тёмной теме оставлен transparent (наследуется из inline-CSS). */
-html[data-theme="light"] .pk3-noteboard {
+html[data-theme="light"] .pk3-noteboard,
+html[data-theme="light"] .pk3-sticky-board {
   background: linear-gradient(180deg, #f0e5d0, #e8dabe) !important;
   border-radius: 14px !important;
   padding: 14px 12px !important;
   box-shadow: 0 8px 24px rgba(60, 40, 10, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
 }
 
+html[data-theme="light"] .pk3-sticky-board-head,
+html[data-theme="light"] .pk3-sticky-board-hint {
+  text-shadow: none !important;
+  color: var(--t2) !important;
+}
+
 /* Мягче тень стикеров на светлой теме */
-html[data-theme="light"] .pk3-sticker {
+html[data-theme="light"] .pk3-sticker,
+html[data-theme="light"] .pk3-sticker-v2 {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.10) !important;
 }
-html[data-theme="light"] .pk3-sticker:hover {
+html[data-theme="light"] .pk3-sticker:hover,
+html[data-theme="light"] .pk3-sticker-v2:hover {
   box-shadow: 0 8px 22px rgba(0, 0, 0, 0.15), 0 2px 6px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* ─── §51 Dashboard v2 — Soldag overrides ─── */
+html[data-theme="light"] .dash-widget-v2 {
+  background: var(--bg2);
+  border-color: var(--brd);
+  box-shadow: var(--shadow-sm);
+}
+html[data-theme="light"] .dash-widget-v2:hover {
+  border-color: rgba(26, 63, 116, 0.18);
+  box-shadow: var(--shadow-sm);
+}
+html[data-theme="light"] .dw-kpi-card {
+  background: var(--bg2);
+}
+html[data-theme="light"] .dw-kpi-card[data-tone="gold"] .dw-kpi-num {
+  color: var(--gold);
+}
+html[data-theme="light"] .dw-quick-btn:hover {
+  background: rgba(184, 132, 26, 0.08);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+html[data-theme="light"] .custom-dash .dash-head-title {
+  color: var(--gold);
 }
 
 /* ─── §50 PK3 END ─── */
