@@ -366,11 +366,13 @@ window.AsgardEmployeePage=(function(){
                   const cur = (emp.role_tag||"").toLowerCase();
                   const opts = [
                     { v: "слесарь", l: "🔧 Слесарь" },
+                    { v: "сварщик", l: "🔥 Сварщик" },
+                    { v: "альпинист", l: "🧗 Альпинист" },
                     { v: "мастер",  l: "👷 Мастер" },
                     { v: "РП",      l: "👑 РП (руководитель)" },
                   ];
-                  // Если текущее значение не в списке — добавим как "Другое"
-                  if (cur && !opts.find(o => o.v.toLowerCase() === cur)) {
+                  const std = opts.map(o => o.v.toLowerCase());
+                  if (cur && !std.includes(cur)) {
                     opts.push({ v: emp.role_tag, l: `⚠ ${esc(emp.role_tag)} (нестандарт)` });
                   }
                   return opts.map(o => `<option value="${esc(o.v)}" ${cur===o.v.toLowerCase()?"selected":""}>${o.l}</option>`).join("");

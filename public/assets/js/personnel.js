@@ -723,6 +723,9 @@ window.AsgardPersonnelPage = (function () {
 
   function openAddModal(auth) {
     const specialtyOptions = [
+      'Слесарь',
+      'Сварщик',
+      'Альпинист',
       'Оператор ВД',
       'Наблюдающий (ВД)',
       'Слесарь-сантехник',
@@ -730,7 +733,6 @@ window.AsgardPersonnelPage = (function () {
       'Стропальщик',
       'Мастер участка',
       'Подсобный рабочий',
-      'Сварщик',
       'Монтажник',
     ].map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
 

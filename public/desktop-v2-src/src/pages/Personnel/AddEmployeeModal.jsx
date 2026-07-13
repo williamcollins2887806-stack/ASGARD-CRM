@@ -112,6 +112,8 @@ export function AddEmployeeModal({ onSaved }) {
                 onChange={(v) => set('role_tag', v)}
                 options={[
                   { value: 'слесарь', label: '🔧 Слесарь' },
+                  { value: 'сварщик', label: '🔥 Сварщик' },
+                  { value: 'альпинист', label: '🧗 Альпинист' },
                   { value: 'мастер',  label: '👷 Мастер' },
                   { value: 'РП',      label: '👑 РП (руководитель)' },
                 ]}

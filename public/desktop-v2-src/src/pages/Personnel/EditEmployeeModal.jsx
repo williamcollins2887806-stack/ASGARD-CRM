@@ -28,6 +28,8 @@ const OFFICIAL_STATUSES = [
 
 const FINANCE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH'];
 
+const STANDARD_ROLE_TAGS = ['слесарь', 'сварщик', 'альпинист', 'мастер', 'РП'];
+
 const GENDERS = [
   { value: 'male',   label: 'Мужской' },
   { value: 'female', label: 'Женский' },
@@ -284,13 +286,15 @@ export function EditEmployeeModal({ employee, onSaved }) {
             <div className="grid-2-1-1 gap-10">
               <Field label="Должность" hint="Влияет на баллы за склад (слесарь=10б, мастер=12б). РП — руководитель, не попадает в табель как рабочий.">
                 <SelectInput
-                  value={['слесарь','мастер','РП'].includes(form.role_tag) ? form.role_tag : (form.role_tag ? '__other__' : 'слесарь')}
+                  value={STANDARD_ROLE_TAGS.includes(form.role_tag) ? form.role_tag : (form.role_tag ? '__other__' : 'слесарь')}
                   onChange={(v) => set('role_tag', v === '__other__' ? form.role_tag : v)}
                   options={[
                     { value: 'слесарь', label: '🔧 Слесарь' },
+                    { value: 'сварщик', label: '🔥 Сварщик' },
+                    { value: 'альпинист', label: '🧗 Альпинист' },
                     { value: 'мастер',  label: '👷 Мастер' },
                     { value: 'РП',      label: '👑 РП (руководитель)' },
-                    ...(form.role_tag && !['слесарь','мастер','РП'].includes(form.role_tag)
+                    ...(form.role_tag && !STANDARD_ROLE_TAGS.includes(form.role_tag)
                       ? [{ value: '__other__', label: `⚠ ${form.role_tag} (нестандарт)` }]
                       : []),
                   ]}
