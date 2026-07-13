@@ -6,6 +6,10 @@
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { logError } = require('../lib/log-error');
+const {
+  shouldHideTestUsersFromLists,
+  usersExcludeSql,
+} = require('../lib/user-filters');
 
 async function routes(fastify, options) {
   const db = fastify.db;
@@ -62,11 +66,39 @@ async function routes(fastify, options) {
       idx++;
     }
 
+    const hideTest = shouldHideTestUsersFromLists(request);
+    if (hideTest) {
+      sql += usersExcludeSql('u');
+    }
+
     sql += ` ORDER BY name ASC LIMIT $${idx} OFFSET $${idx + 1}`;
     params.push(limit, offset);
 
     const result = await db.query(sql, params);
-    const countResult = await db.query('SELECT COUNT(*) FROM users');
+
+    let countSql = 'SELECT COUNT(*) FROM users u WHERE 1=1';
+    const countParams = [];
+    let countIdx = 1;
+    if (role) {
+      const roleList = String(role).split(',').map((s) => s.trim()).filter(Boolean);
+      countSql += ` AND u.role = ANY($${countIdx}::text[])`;
+      countParams.push(roleList);
+      countIdx++;
+    }
+    if (is_active !== undefined) {
+      countSql += ` AND u.is_active = $${countIdx}`;
+      countParams.push(is_active === 'true');
+      countIdx++;
+    }
+    if (search) {
+      countSql += ` AND (LOWER(u.name) LIKE $${countIdx} OR LOWER(u.login) LIKE $${countIdx} OR LOWER(u.email) LIKE $${countIdx})`;
+      countParams.push(`%${search.toLowerCase()}%`);
+      countIdx++;
+    }
+    if (hideTest) {
+      countSql += usersExcludeSql('u');
+    }
+    const countResult = await db.query(countSql, countParams);
 
     return {
       users: result.rows,
