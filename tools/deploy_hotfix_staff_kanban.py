@@ -14,9 +14,6 @@ PROJECT = "/var/www/asgard-crm"
 ROOT = Path(__file__).resolve().parents[1]
 
 FILES = [
-    "src/routes/staff.js",
-    "public/assets/js/personal_kanban.js",
-    "public/assets/css/light-theme.css",
     "public/index.html",
     "public/sw.js",
 ]

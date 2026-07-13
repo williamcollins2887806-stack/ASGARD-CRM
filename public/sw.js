@@ -2,7 +2,7 @@
 // Shell caching + Push Notifications + Offline Support + Background Sync
 // Session 15: PWA + Push Actions + Badge + Offline
 
-const SHELL_VERSION = '20.26.90';
+const SHELL_VERSION = '20.26.91';
 const CACHE_NAME = `asgard-crm-shell-${SHELL_VERSION}`;
 const API_CACHE_NAME = 'asgard-crm-api-v2';
 
@@ -69,6 +69,12 @@ self.addEventListener('activate', (event) => {
       .then(() => {
         console.log('[SW] Old caches cleared, keeping', CACHE_NAME, '+ API cache. Claiming clients.');
         return self.clients.claim();
+      })
+      .then(() => self.clients.matchAll({ type: 'window', includeUncontrolled: true }))
+      .then((clientList) => {
+        clientList.forEach((client) => {
+          client.postMessage({ type: 'SHELL_UPDATED', version: SHELL_VERSION });
+        });
       })
   );
 });
