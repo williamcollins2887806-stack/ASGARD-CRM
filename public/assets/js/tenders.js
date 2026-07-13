@@ -859,8 +859,6 @@ window.AsgardTendersPage = (function(){
           </div>
         </div>
         <hr class="hr"/>
-        <div id="dist_panel"></div>
-        <div id="win_panel"></div>
         <div id="tkp_ready_panel"></div>
         <div style="overflow:auto">
           <table class="asg">
@@ -919,11 +917,10 @@ window.AsgardTendersPage = (function(){
 
     const tb=$("#tb");
     const cnt=$("#cnt");
-    const distPanel = $("#dist_panel");
-    const winPanel = $("#win_panel");
 
     await (async function renderDistributionPanel(){
-      if(!distPanel) return;
+      const distPanel = document.getElementById('dist_panel');
+      if (!distPanel) return;
       const canDist = (user.role==="HEAD_TO" || user.role==="ADMIN");
       if(!canDist){ distPanel.innerHTML=""; return; }
 
@@ -1083,7 +1080,10 @@ window.AsgardTendersPage = (function(){
     // того же или другого РП для работ. После выбора создаётся work.
     // ═══════════════════════════════════════════════════════════════
     await (async function renderWinAssignPanel(){
+      const winPanel = document.getElementById('win_panel');
       if(!winPanel) return;
+      winPanel.innerHTML = '';
+      return;
       const canWin = (user.role==="HEAD_TO" || isDirRole(user.role) || user.role==="ADMIN");
       if(!canWin){ winPanel.innerHTML=""; return; }
 
@@ -1566,6 +1566,21 @@ window.AsgardTendersPage = (function(){
         return;
       }
 
+      // Реестр / площадки / в работе ТО — отдельные панели, legacy-таблица не используется
+      if (currentMainTab === 'tenders' && (currentSubTab === 'registry' || currentSubTab === 'platforms' || currentSubTab === 'in_work')) {
+        const cntEl = document.getElementById('cnt');
+        const pgEl = document.getElementById('tenders_pagination');
+        if (cntEl) { cntEl.style.display = 'none'; cntEl.textContent = ''; }
+        if (pgEl) { pgEl.style.display = 'none'; pgEl.innerHTML = ''; }
+        updateKpi();
+        return;
+      }
+
+      const cntEl = document.getElementById('cnt');
+      const pgEl = document.getElementById('tenders_pagination');
+      if (cntEl) cntEl.style.display = '';
+      if (pgEl) pgEl.style.display = '';
+
       const periodVal = CRSelect.getValue('f_period')||"";
       const q = norm($("#f_q")?.value||"");
       const tp = CRSelect.getValue('f_type')||"";
@@ -1982,11 +1997,18 @@ window.AsgardTendersPage = (function(){
       if (regPanel) regPanel.style.display = (currentMainTab === 'tenders' && (currentSubTab === 'registry' || currentSubTab === 'in_work')) ? '' : 'none';
       mountRegistryPanels();
       const showTable = !(currentMainTab === 'tenders' && (currentSubTab === 'registry' || currentSubTab === 'platforms' || currentSubTab === 'in_work'));
-      if (tb) tb.closest('.table-wrap')?.style && (tb.closest('.table-wrap').style.display = showTable ? '' : 'none');
+      const tableWrap = tb ? (tb.closest('div[style*="overflow"]') || tb.closest('table')?.parentElement) : null;
+      if (tableWrap) tableWrap.style.display = showTable ? '' : 'none';
+      if (tb) tb.closest('table')?.style && (tb.closest('table').style.display = showTable ? '' : 'none');
       const tools = document.querySelector('.m-tender-tools');
       if (tools) tools.style.display = showTable ? '' : 'none';
-      // distPanel/winPanel/tkpReadyPanel — только в 🛡 Тендеры → 🧮 В работе ТО (на других табах прячем)
-      const showAux = (currentMainTab === 'tenders' && currentSubTab === 'in_work');
+      const cntLegacy = document.getElementById('cnt');
+      const pgLegacy = document.getElementById('tenders_pagination');
+      const hideLegacyFooter = !showTable;
+      if (cntLegacy) cntLegacy.style.display = hideLegacyFooter ? 'none' : '';
+      if (pgLegacy) pgLegacy.style.display = hideLegacyFooter ? 'none' : '';
+      // dist_panel / win_panel убраны — приоритетные строки в едином реестре
+      const showAux = false;
       ['dist_panel','win_panel','tkp_ready_panel'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = showAux ? '' : 'none';
@@ -2002,7 +2024,7 @@ window.AsgardTendersPage = (function(){
       }
       if (currentMainTab === 'tenders' && (currentSubTab === 'registry' || currentSubTab === 'in_work') && regEl && window.AsgardRegistryTab) {
         let subtab = 'registry';
-        if (currentSubTab === 'in_work') subtab = archiveMode ? 'archive' : 'submitted';
+        if (currentSubTab === 'in_work') subtab = archiveMode ? 'archive' : 'in_work';
         else if (archiveMode) subtab = 'archive';
         AsgardRegistryTab.mount(regEl, {
           subtab,

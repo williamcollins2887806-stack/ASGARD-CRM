@@ -46,6 +46,42 @@ const WORK_STATUS_TRANSITIONS = {
     return `<div class="pill" style="gap:10px; flex-wrap:wrap"><div class="who"><b>${typeLabel}</b> ? <a ${attrs}>${label}</a></div><button class="btn ghost" data-del-doc="${doc.id}">Удалить</button></div>`;
   }
 
+  function pmAuthHeaders(json){
+    const token = localStorage.getItem('asgard_token') || localStorage.getItem('auth_token');
+    const h = { Authorization: 'Bearer ' + token };
+    if(json) h['Content-Type'] = 'application/json';
+    return h;
+  }
+
+  async function staffFetchReviews(employeeId){
+    try {
+      const r = await fetch('/api/staff/employees/' + employeeId, { headers: pmAuthHeaders() });
+      if(!r.ok) return [];
+      const d = await r.json();
+      return (d && d.reviews) || [];
+    } catch(_) { return []; }
+  }
+
+  async function staffUpsertEmployeeReview(employeeId, { work_id, score, comment, pm_id }){
+    const r = await fetch('/api/staff/employees/' + employeeId + '/review', {
+      method: 'POST',
+      headers: pmAuthHeaders(true),
+      body: JSON.stringify({ work_id, score, comment, rating: score, pm_id })
+    });
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    return d.review;
+  }
+
+  async function worksFetchCustomerReviews(workId){
+    try {
+      const r = await fetch('/api/works/' + workId + '/customer-reviews', { headers: pmAuthHeaders() });
+      if(!r.ok) return [];
+      const d = await r.json();
+      return d.reviews || [];
+    } catch(_) { return []; }
+  }
+
   async function openDocsPack({tender_id, work_id, purchase_url}){
     const auth = await AsgardAuth.requireUser();
     const user = auth?auth.user:null;
@@ -214,7 +250,7 @@ window.AsgardPmWorksPage=(function(){
     if(!eid) return;
     const emp = await AsgardDB.get("employees", eid);
     if(!emp) return;
-    const reviews = await AsgardDB.byIndex("employee_reviews","employee_id", eid);
+    const reviews = await staffFetchReviews(eid);
     let sum=0, cnt=0;
     for(const r of (reviews||[])){
       const s=Number(r.score||0);
@@ -238,7 +274,7 @@ window.AsgardPmWorksPage=(function(){
 
     const missing=[];
     for(const eid of ids){
-      const revs = await AsgardDB.byIndex("employee_reviews","employee_id", eid);
+      const revs = await staffFetchReviews(eid);
       const has = (revs||[]).some(r=>Number(r.work_id||0)===Number(work.id||0) && Number(r.pm_id||0)===Number(pmUser.id||0));
       if(!has) missing.push(eid);
     }
@@ -283,13 +319,11 @@ window.AsgardPmWorksPage=(function(){
               for(const eid of missing){
                 const sc = Number($(`[data-score='${eid}']`, back).value||0);
                 const cm = String($(`[data-comment='${eid}']`, back).value||"").trim();
-                await AsgardDB.add("employee_reviews", {
-                  employee_id: Number(eid),
+                await staffUpsertEmployeeReview(Number(eid), {
                   work_id: Number(work.id),
                   pm_id: Number(pmUser.id),
                   score: sc,
                   comment: cm,
-                  created_at: isoNow()
                 });
                 await recomputeEmployeeRating(eid);
               }
@@ -308,21 +342,15 @@ window.AsgardPmWorksPage=(function(){
 
   async function upsertCustomerReview({work_id, pm_id, score, comment}){
     const wid = Number(work_id||0);
-    const pid = Number(pm_id||0);
-    if(!wid || !pid) throw new Error('Некорректные параметры оценки заказчика');
-    const list = await AsgardDB.byIndex('customer_reviews','work_id', wid);
-    const cur = (list||[]).find(r=>Number(r.pm_id||0)===pid);
-    const rec = {
-      id: cur?cur.id:undefined,
-      work_id: wid,
-      pm_id: pid,
-      score: Number(score||0),
-      comment: String(comment||'').trim(),
-      created_at: cur?cur.created_at:isoNow(),
-      updated_at: isoNow(),
-    };
-    if(cur){ await AsgardDB.put('customer_reviews', Object.assign(cur, rec)); return cur.id; }
-    return await AsgardDB.add('customer_reviews', rec);
+    if(!wid) throw new Error('Некорректные параметры оценки заказчика');
+    const r = await fetch('/api/works/' + wid + '/customer-review', {
+      method: 'POST',
+      headers: pmAuthHeaders(true),
+      body: JSON.stringify({ score: Number(score||0), comment: String(comment||'').trim() })
+    });
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+    return d.review && d.review.id;
   }
 
   async function closeoutWizard({work, pmUser, triggerStatus, onDone}={}){
@@ -486,7 +514,7 @@ window.AsgardPmWorksPage=(function(){
     // Prepare existing employee reviews
     const existingByEmp = new Map();
     for(const eid of ids){
-      const revs = await AsgardDB.byIndex('employee_reviews','employee_id', Number(eid));
+      const revs = await staffFetchReviews(Number(eid));
       const cur = (revs||[]).find(r=>Number(r.work_id||0)===Number(work.id||0) && Number(r.pm_id||0)===Number(pmUser.id||0));
       if(cur) existingByEmp.set(Number(eid), cur);
     }
@@ -494,7 +522,7 @@ window.AsgardPmWorksPage=(function(){
     // Existing customer review
     let custCur=null;
     try{
-      const custList = await AsgardDB.byIndex('customer_reviews','work_id', Number(work.id||0));
+      const custList = await worksFetchCustomerReviews(Number(work.id||0));
       custCur = (custList||[]).find(r=>Number(r.pm_id||0)===Number(pmUser.id||0)) || null;
     }catch(_){ custCur=null; }
 
@@ -554,19 +582,12 @@ window.AsgardPmWorksPage=(function(){
               for(const eid of ids){
                 const sc = Number($(`[data-score='${eid}']`, back).value||0);
                 const cm = String($(`[data-comment='${eid}']`, back).value||'').trim();
-                const cur = existingByEmp.get(Number(eid));
-                const rec = {
-                  id: cur?cur.id:undefined,
-                  employee_id:Number(eid),
-                  work_id:Number(work.id),
-                  pm_id:Number(pmUser.id),
+                await staffUpsertEmployeeReview(Number(eid), {
+                  work_id: Number(work.id),
+                  pm_id: Number(pmUser.id),
                   score: sc,
                   comment: cm,
-                  created_at: cur?cur.created_at:isoNow(),
-                  updated_at: isoNow(),
-                };
-                if(cur) await AsgardDB.put('employee_reviews', Object.assign(cur, rec));
-                else await AsgardDB.add('employee_reviews', rec);
+                });
                 await recomputeEmployeeRating(Number(eid));
               }
 

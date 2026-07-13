@@ -31,8 +31,10 @@ window.AsgardTimesheetV2 = (function () {
     night:     { icon: '🌙', label: 'Ночная смена',  color: 'var(--ts-night-bg)',     textColor: 'var(--ts-night-fg)' },
     warehouse: { icon: '📦', label: 'Склад',         color: 'var(--ts-warehouse-bg)', textColor: 'var(--ts-warehouse-fg)' },
     medical:   { icon: '🏥', label: 'Медосмотр',     color: 'var(--ts-medical-bg)',   textColor: 'var(--ts-medical-fg)' },
+    training:  { icon: '🎓', label: 'Обучение',      color: 'var(--ts-training-bg)',  textColor: 'var(--ts-training-fg)' },
     travel:    { icon: '✈️', label: 'Дорога',        color: 'var(--ts-travel-bg)',    textColor: 'var(--ts-travel-fg)' },
     ship:      { icon: '🚢', label: 'Корабль',       color: 'var(--ts-ship-bg)',      textColor: 'var(--ts-ship-fg)' },
+    helicopter:{ icon: '🚁', label: 'Вертолёт',      color: 'var(--ts-helicopter-bg)',textColor: 'var(--ts-helicopter-fg)' },
     waiting:   { icon: '⏰', label: 'Ожидание',      color: 'var(--ts-waiting-bg)',   textColor: 'var(--ts-waiting-fg)' }
   };
 
@@ -63,9 +65,9 @@ window.AsgardTimesheetV2 = (function () {
   const MODE_ALLOWED_TYPES = {
     pm:        ['day','night','waiting'],
     warehouse: ['warehouse'],
-    medical:   ['medical','ship'],
+    medical:   ['medical','training','ship','helicopter'],
     travel:    ['travel'],
-    global:    ['day','night','warehouse','medical','travel','ship','waiting']
+    global:    ['day','night','warehouse','medical','training','travel','ship','helicopter','waiting']
   };
 
   // По какому scope мы запираем месяц
@@ -148,8 +150,41 @@ window.AsgardTimesheetV2 = (function () {
       .tsv2-tooltip .tt-meta { color:var(--t3); font-size:10px; margin-top:4px; }
 
       .tsv2-scroll {
-        overflow-x:auto;
+        overflow:auto;
+        max-height:calc(100vh - 280px);
+        -webkit-overflow-scrolling:touch;
         border:1px solid var(--brd); border-radius:var(--r-md); background:var(--bg1);
+      }
+      .tsv2-filters {
+        display:flex; flex-wrap:wrap; gap:8px; align-items:center;
+        padding:8px 0 4px; width:100%;
+      }
+      .tsv2-filters input[type=search] {
+        flex:1; min-width:140px; max-width:280px;
+        padding:6px 10px; border-radius:var(--r-sm);
+        border:1px solid var(--brd); background:var(--bg1); color:var(--t1); font-size:12px;
+      }
+      .tsv2-project-chip {
+        font-size:11px; padding:4px 10px; border-radius:var(--r-pill);
+        background:color-mix(in srgb, var(--info) 12%, transparent);
+        color:var(--info); border:1px solid color-mix(in srgb, var(--info) 30%, transparent);
+        margin-bottom:8px;
+      }
+      .tsv2-roster-badges { display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; }
+      .tsv2-roster-badge {
+        font-size:9px; padding:1px 5px; border-radius:10px;
+        background:var(--bg3); color:var(--t2); border:1px solid var(--brd);
+      }
+      tr.tsv2-roster-only { opacity:0.72; }
+      .tsv2-scroll.tsv2-has-focus .tsv2-table tbody tr:not(.tsv2-focus-row) { opacity:0.32; filter:saturate(0.85); }
+      .tsv2-scroll.tsv2-has-focus .tsv2-table thead th:not(.tsv2-focus-col):not(:first-child) { opacity:0.32; }
+      .tsv2-focus-row td:first-child { background:color-mix(in srgb, var(--gold) 14%, var(--bg1)) !important; box-shadow:inset 3px 0 0 var(--gold); }
+      .tsv2-table thead th.tsv2-focus-col { background:color-mix(in srgb, var(--gold) 18%, var(--bg2)) !important; color:var(--gold); }
+      .tsv2-table tbody td.tsv2-focus-col { background:color-mix(in srgb, var(--gold) 8%, transparent); }
+      tr.tsv2-fio-match td:first-child { animation:tsv2-fio-pulse 1.2s ease 2; }
+      @keyframes tsv2-fio-pulse {
+        0%,100% { box-shadow:none; }
+        50% { box-shadow:inset 0 0 0 2px var(--gold); }
       }
       .tsv2-table { border-collapse:separate; border-spacing:0; font-size:12px; width:max-content; min-width:100%; }
       .tsv2-table th, .tsv2-table td {
@@ -913,12 +948,13 @@ window.AsgardTimesheetV2 = (function () {
     return html;
   }
 
-  function renderCellHtml(emp, dateISO, entry, canEdit) {
+  function renderCellHtml(emp, dateISO, entry, canEdit, dayNum) {
+    const dayAttr = dayNum != null ? ` data-day="${dayNum}"` : '';
     if (!entry || !entry.type) {
       const editAttr = canEdit
         ? ' class="tsv2-cell editable" data-tt="Добавить отметку"'
         : ' class="tsv2-cell" style="background:transparent;color:var(--t3)"';
-      return `<td><div${editAttr}
+      return `<td${dayAttr}><div${editAttr}
         data-emp="${emp.id}" data-date="${dateISO}" data-work="${emp.last_work_id || ''}"
         ></div></td>`;
     }
@@ -929,7 +965,7 @@ window.AsgardTimesheetV2 = (function () {
     // FIX 9 — title= больше не используется. Передаём данные через data-tt-json (escaped JSON).
     const ttHtml = tooltipLinesForEntry(emp, dateISO, entry);
     const ttData = encodeURIComponent(ttHtml);
-    return `<td><div class="tsv2-cell${editClass}"
+    return `<td${dayAttr}><div class="tsv2-cell${editClass}"
       style="background:${bg};color:${fg}"
       data-emp="${emp.id}" data-date="${dateISO}" data-work="${entry.work_id || ''}" data-type="${entry.type}"
       data-tt-enc="${ttData}">${esc(content)}</div></td>`;
@@ -947,6 +983,9 @@ window.AsgardTimesheetV2 = (function () {
     const now = new Date();
     let curYear = now.getFullYear(), curMonth = now.getMonth() + 1;
     let data = null;
+    let fioSearch = '';
+    let projectFilter = null;
+    let rosterLoading = false;
 
     // Stage W — для PM-режима добавляем вкладку «💵 Передачи от рабочих»
     const showHandoversTab = (mode === 'pm');
@@ -967,6 +1006,13 @@ window.AsgardTimesheetV2 = (function () {
           </div>
           <div class="tsv2-tb-right" id="tsv2_toolbar_extra"></div>
         </div>
+        <div class="tsv2-filters" id="tsv2_filters">
+          <input type="search" id="tsv2_fio_search" placeholder="Найти рабочего…" autocomplete="off">
+          <input type="search" id="tsv2_project_q" placeholder="Объект: МЛСП, Пуровский…" autocomplete="off">
+          <button class="btn ghost" id="tsv2_project_apply">Фильтр</button>
+          <button class="btn ghost" id="tsv2_project_clear" style="display:none">× Сбросить</button>
+        </div>
+        <div class="tsv2-project-chip" id="tsv2_project_chip" style="display:none"></div>
         ${tabsHtml}
         <div class="tsv2-view tsv2-view-grid" id="tsv2_view_grid">
           <div class="tsv2-locks" id="tsv2_locks"></div>
@@ -1162,6 +1208,161 @@ window.AsgardTimesheetV2 = (function () {
     function updatePeriodLabel() {
       const el = $('#tsv2_period');
       if (el) el.textContent = new Date(curYear, curMonth - 1).toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
+    }
+
+    function rosterBadgesHtml(emp) {
+      const r = emp.roster_reasons;
+      if (!r || !r.length) return '';
+      const parts = [];
+      if (r.includes('on_site')) parts.push('<span class="tsv2-roster-badge">🏗 сейчас</span>');
+      if (r.includes('approved')) parts.push('<span class="tsv2-roster-badge">✓ утверждён</span>');
+      if (r.includes('planned')) parts.push('<span class="tsv2-roster-badge">📋 в плане</span>');
+      if (r.includes('was_on')) parts.push('<span class="tsv2-roster-badge">↩ был</span>');
+      return `<div class="tsv2-roster-badges">${parts.join('')}</div>`;
+    }
+
+    function getDisplayEmployees() {
+      if (!data || !data.employees) return [];
+      let employees = [...data.employees];
+      if (projectFilter && projectFilter.employees && projectFilter.employees.length) {
+        const byId = new Map(employees.map((e) => [e.id, { ...e }]));
+        for (const r of projectFilter.employees) {
+          if (!byId.has(r.id)) {
+            byId.set(r.id, {
+              id: r.id, fio: r.fio, phone: r.phone, position: r.position,
+              days: {}, days_count: 0, total_points: null,
+              roster_reasons: r.roster_reasons,
+              planned_info: r.planned_info,
+              current_work_title: r.current_work_title,
+              _rosterOnly: true,
+            });
+          } else {
+            const ex = byId.get(r.id);
+            byId.set(r.id, {
+              ...ex,
+              roster_reasons: r.roster_reasons,
+              planned_info: r.planned_info || ex.planned_info,
+              current_work_title: r.current_work_title || ex.current_work_title,
+            });
+          }
+        }
+        employees = [...byId.values()];
+      }
+      const lq = (fioSearch || '').trim().toLowerCase();
+      if (lq) employees = employees.filter((e) => (e.fio || '').toLowerCase().includes(lq));
+      return employees;
+    }
+
+    async function applyProjectFilter() {
+      const inp = $('#tsv2_project_q');
+      const q = (inp && inp.value || '').trim();
+      if (q.length < 2) { toast('Фильтр', 'Введите минимум 2 символа', 'err'); return; }
+      rosterLoading = true;
+      renderProjectChip();
+      try {
+        const j = await apiGet(`/api/timesheet/v2/${curYear}/${curMonth}/roster?project_q=${encodeURIComponent(q)}`);
+        projectFilter = { query: q, work_matches: j.work_matches || [], employees: j.employees || [] };
+        renderTable();
+        renderProjectChip();
+      } catch (e) {
+        toast('Ошибка', e.message || 'Не удалось загрузить roster', 'err');
+      } finally {
+        rosterLoading = false;
+        renderProjectChip();
+      }
+    }
+
+    function clearProjectFilter() {
+      projectFilter = null;
+      const inp = $('#tsv2_project_q');
+      if (inp) inp.value = '';
+      renderProjectChip();
+      renderTable();
+    }
+
+    function renderProjectChip() {
+      const chip = $('#tsv2_project_chip');
+      const clr = $('#tsv2_project_clear');
+      if (!chip) return;
+      if (!projectFilter || !projectFilter.employees) {
+        chip.style.display = 'none';
+        if (clr) clr.style.display = 'none';
+        return;
+      }
+      const emps = projectFilter.employees;
+      const planned = emps.filter((e) => (e.roster_reasons || []).includes('planned')).length;
+      const approved = emps.filter((e) => (e.roster_reasons || []).includes('approved')).length;
+      const title = (projectFilter.work_matches && projectFilter.work_matches[0] && projectFilter.work_matches[0].work_title)
+        || projectFilter.query || 'Проект';
+      let txt = `${esc(title)} · ${emps.length} чел.`;
+      if (planned) txt += ` · ${planned} в плане`;
+      if (approved) txt += ` · ${approved} утверждён`;
+      if (rosterLoading) txt = 'Загрузка…';
+      chip.innerHTML = txt;
+      chip.style.display = 'block';
+      if (clr) clr.style.display = 'inline-flex';
+    }
+
+    function bindFilterInputs() {
+      const fioInp = $('#tsv2_fio_search');
+      if (fioInp && !fioInp.dataset.bound) {
+        fioInp.dataset.bound = '1';
+        fioInp.value = fioSearch;
+        fioInp.addEventListener('input', () => {
+          fioSearch = fioInp.value;
+          renderTable();
+        });
+        fioInp.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            const wrap = $('#tsv2_scroll');
+            const row = wrap && wrap.querySelector('tr[data-emp-id]');
+            if (row) row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          }
+        });
+      }
+      const applyBtn = $('#tsv2_project_apply');
+      if (applyBtn && !applyBtn.dataset.bound) {
+        applyBtn.dataset.bound = '1';
+        applyBtn.addEventListener('click', applyProjectFilter);
+      }
+      const clrBtn = $('#tsv2_project_clear');
+      if (clrBtn && !clrBtn.dataset.bound) {
+        clrBtn.dataset.bound = '1';
+        clrBtn.addEventListener('click', clearProjectFilter);
+      }
+      const pq = $('#tsv2_project_q');
+      if (pq && !pq.dataset.bound) {
+        pq.dataset.bound = '1';
+        pq.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyProjectFilter(); });
+      }
+    }
+
+    function bindCrosshair() {
+      const wrap = $('#tsv2_scroll');
+      if (!wrap) return;
+      wrap.querySelectorAll('.tsv2-cell').forEach((cell) => {
+        cell.addEventListener('mouseenter', () => {
+          const empId = cell.dataset.emp;
+          const dateISO = cell.dataset.date || '';
+          const day = dateISO ? parseInt(dateISO.split('-')[2], 10) : null;
+          wrap.classList.add('tsv2-has-focus');
+          wrap.querySelectorAll('tr[data-emp-id]').forEach((tr) => {
+            tr.classList.toggle('tsv2-focus-row', tr.dataset.empId === empId);
+          });
+          wrap.querySelectorAll('th[data-day], td[data-day]').forEach((el) => {
+            el.classList.toggle('tsv2-focus-col', String(el.dataset.day) === String(day));
+          });
+        });
+      });
+      if (!wrap.dataset.crosshairBound) {
+        wrap.dataset.crosshairBound = '1';
+        wrap.addEventListener('mouseleave', () => {
+          wrap.classList.remove('tsv2-has-focus');
+          wrap.querySelectorAll('.tsv2-focus-row, .tsv2-focus-col').forEach((el) => {
+            el.classList.remove('tsv2-focus-row', 'tsv2-focus-col');
+          });
+        });
+      }
     }
 
     function renderToolbarExtra() {
@@ -1763,14 +1964,18 @@ window.AsgardTimesheetV2 = (function () {
     function renderTable() {
       const wrap = $('#tsv2_scroll');
       if (!wrap) return;
-      if (!data || !data.employees || !data.employees.length) {
+      if (!data || !data.employees) {
         wrap.innerHTML = `<div class="tsv2-empty">
           Нет данных за выбранный период.<br>
           <span style="font-size:12px">Показаны рабочие, у кого есть хотя бы одна отметка.</span>
         </div>`;
         return;
       }
-      const employees = data.employees;
+      const employees = getDisplayEmployees();
+      if (!employees.length) {
+        wrap.innerHTML = `<div class="tsv2-empty">Никого не найдено по фильтру.</div>`;
+        return;
+      }
       const daysInMonth = data.days_in_month || new Date(curYear, curMonth, 0).getDate();
       const todayD = (new Date().getFullYear() === curYear && new Date().getMonth() + 1 === curMonth) ? new Date().getDate() : -1;
 
@@ -1783,7 +1988,7 @@ window.AsgardTimesheetV2 = (function () {
         let cls = '';
         if (wd === 0 || wd === 6) cls += ' tsv2-day-weekend';
         if (d === todayD) cls += ' tsv2-day-today';
-        header += `<th class="${cls.trim()}">${d}</th>`;
+        header += `<th class="${cls.trim()}" data-day="${d}">${d}</th>`;
       }
       // Колонки итогов: дни / баллы (если PM/GLOBAL) / ФОТ (если PM/GLOBAL) / суточные (если PM)
       header += `<th class="tsv2-total">Дни</th>`;
@@ -1822,16 +2027,18 @@ window.AsgardTimesheetV2 = (function () {
       const showGroups = mode === 'pm' || mode === 'global';
 
       const renderEmpRow = (emp) => {
-        let row = `<tr><td>
+        const rowCls = emp._rosterOnly ? ' tsv2-roster-only' : '';
+        let row = `<tr data-emp-id="${emp.id}" class="${rowCls.trim()}"><td>
           <div class="tsv2-fio">${esc(emp.fio || '—')}</div>
           <div class="tsv2-pos">${esc(emp.position || emp.role_tag || '')}</div>
+          ${rosterBadgesHtml(emp)}
         </td>`;
         if (mode === 'global') row += `<td class="tsv2-city">${esc(emp.city || '—')}</td>`;
         const days = emp.days || {};
         for (let d = 1; d <= daysInMonth; d++) {
           const dateISO = `${curYear}-${String(curMonth).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
           const entry = days[String(d)] || days[d];
-          row += renderCellHtml(emp, dateISO, entry, canEdit);
+          row += renderCellHtml(emp, dateISO, entry, canEdit, d);
         }
         row += `<td class="tsv2-total">${emp.days_count != null ? emp.days_count : '—'}</td>`;
         if (mode === 'pm' || mode === 'global') row += `<td class="tsv2-total">${emp.total_points != null ? emp.total_points : '—'}</td>`;
@@ -1882,10 +2089,15 @@ window.AsgardTimesheetV2 = (function () {
         });
         cell.addEventListener('mouseleave', hideTip);
       });
+      bindCrosshair();
     }
 
-    // Типы требующие work_id (синхрон с backend src/routes/timesheet-v2.js)
-    const REQUIRE_WORK_ID = new Set(['day', 'night', 'waiting', 'ship', 'warehouse']);
+    // Типы требующие work_id (синхрон с backend typeRequiresWorkId)
+    function typeRequiresWorkIdLocal(t) {
+      if (mode === 'medical' || mode === 'travel' || mode === 'warehouse') return false;
+      if (mode === 'pm') return t === 'day' || t === 'night' || t === 'waiting';
+      return t === 'day' || t === 'night' || t === 'waiting' || t === 'warehouse';
+    }
 
     // Кэш списка работ (по empId или 'pm' для глобального)
     const _worksCache = new Map();
@@ -2033,7 +2245,7 @@ window.AsgardTimesheetV2 = (function () {
           pop.remove();
           _editing = false; // FIX 13
           // Если тип требует work_id и нет — открыть picker
-          if (REQUIRE_WORK_ID.has(t) && !workId) {
+          if (typeRequiresWorkIdLocal(t) && !workId) {
             openWorkPicker(empId, meta.label, async (pickedId) => {
               await saveEntry(t, pickedId);
             });
@@ -2044,7 +2256,7 @@ window.AsgardTimesheetV2 = (function () {
         pop.appendChild(btn);
       });
 
-      if (curType) {
+      if (curType && allowedTypes.includes(curType)) {
         const del = document.createElement('button');
         del.className = 'ts-del';
         del.innerHTML = `🗑 Удалить отметку`;
@@ -2294,6 +2506,8 @@ window.AsgardTimesheetV2 = (function () {
       renderDashboard();
       renderKpi();
       renderTable();
+      bindFilterInputs();
+      renderProjectChip();
     }
 
     // Stage W — при смене месяца сбрасываем кэш handovers и перерисовываем (если вкладка активна)
@@ -2366,7 +2580,7 @@ window.AsgardTimesheetV2 = (function () {
   async function renderMedical(opts) {
     return renderGrid({
       layout: opts.layout,
-      title: opts.title || 'Табель учёта МО',
+      title: opts.title || 'Табель учёта МО/обучения/иной транспорт',
       mode: 'medical',
       toolbarExtra: ['lock', 'add-worker']
     });

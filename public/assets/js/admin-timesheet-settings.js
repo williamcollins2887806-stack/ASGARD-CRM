@@ -41,9 +41,15 @@ window.AsgardAdminTimesheetSettingsPage = (function () {
     },
     {
       id: 'medical',
-      title: '🏥 Медосмотр / Обучение',
-      hint: 'Баллы за день медосмотра или обучения (ставит ТО / Рук. ТО).',
-      items: [{ type: 'medical', position: null, label: 'Медосмотр / Обучение' }]
+      title: '🏥 Медосмотр',
+      hint: 'Баллы за день медосмотра (ставит ТО / Рук. ТО).',
+      items: [{ type: 'medical', position: null, label: 'Медосмотр' }]
+    },
+    {
+      id: 'training',
+      title: '🎓 Обучение',
+      hint: 'Баллы за день обучения. Ставят ТО / Рук. ТО.',
+      items: [{ type: 'training', position: null, label: 'Обучение' }]
     },
     {
       id: 'travel',
@@ -56,15 +62,23 @@ window.AsgardAdminTimesheetSettingsPage = (function () {
       title: '🚢 Корабль',
       hint: 'Альтернативный вид дороги — пароход / паром. Повышенная ставка.',
       items: [{ type: 'ship', position: null, label: 'Корабль' }]
+    },
+    {
+      id: 'helicopter',
+      title: '🚁 Вертолёт',
+      hint: 'Иной транспорт — вертолёт. Ставят ТО / Рук. ТО.',
+      items: [{ type: 'helicopter', position: null, label: 'Вертолёт' }]
     }
   ];
 
   const DEFAULTS = {
     'warehouse:слесарь': 10,
     'warehouse:мастер':  12,
-    'medical': 7,   // V255: 6→7
+    'medical': 7,
+    'training': 7,
     'travel':  6,
-    'ship':    12   // V255: новый тип
+    'ship':    12,
+    'helicopter': 6
   };
 
   function keyOf(type, position) {

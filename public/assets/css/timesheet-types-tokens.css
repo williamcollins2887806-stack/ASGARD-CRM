@@ -39,6 +39,14 @@
   --ts-ship-bg:      var(--gold-bg, rgba(212,168,67,0.14));
   --ts-ship-fg:      var(--gold,    #D4A843);
 
+  /* 🎓 Обучение */
+  --ts-training-bg:  var(--err-bg, rgba(200,41,59,0.10));
+  --ts-training-fg:  var(--err,    #B8324A);
+
+  /* 🚁 Вертолёт */
+  --ts-helicopter-bg:var(--gold-bg, rgba(212,168,67,0.10));
+  --ts-helicopter-fg:var(--gold,    #C49A2E);
+
   /* ⏰ Ожидание */
   --ts-waiting-bg:   var(--orange-bg, rgba(249,115,22,0.12));
   --ts-waiting-fg:   var(--orange,    #F97316);
@@ -56,5 +64,7 @@
   --ts-medical-fg:   var(--err,     #A82030);
   --ts-travel-fg:    var(--cyan,    #06B6D4);
   --ts-ship-fg:      var(--gold,    #B07E12);   /* V255 */
+  --ts-training-fg:  var(--err,     #A82030);
+  --ts-helicopter-fg:var(--gold,    #B07E12);
   --ts-waiting-fg:   var(--orange,  #E25510);
 }
