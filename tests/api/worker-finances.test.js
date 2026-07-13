@@ -405,7 +405,7 @@ module.exports = {
           VALUES ($1, $2, NOW() + interval '1 hour')
         `, [EMP.ONE_WORK, tokenHash]);
 
-        const BASE_URL = process.env.TEST_BASE_URL || 'https://92.242.61.184';
+        const BASE_URL = process.env.TEST_BASE_URL || 'http://127.0.0.1:3100';
         const https = require('https');
         const agent = new https.Agent({ rejectUnauthorized: false });
 

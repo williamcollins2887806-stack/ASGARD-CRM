@@ -7,8 +7,17 @@ const https = require('https');
 const _sharedAgent = new https.Agent({ rejectUnauthorized: false, keepAlive: true, maxSockets: 10 });
 const http = require('http');
 
-const BASE_URL = process.env.TEST_BASE_URL || 'https://92.242.61.184';
+const BASE_URL = process.env.TEST_BASE_URL || 'http://127.0.0.1:3100';
 const API_URL = `${BASE_URL}/api`;
+
+// Guard: API tests must not hit production by default (creates garbage works/payroll rows).
+const _PROD_HOST_PAT = /(?:^https?:\/\/)?(?:92\.242\.61\.184|asgard-crm\.ru)(?::3000)?(?:\/|$)/i;
+if (_PROD_HOST_PAT.test(BASE_URL) && process.env.ALLOW_PROD_API_TESTS !== '1') {
+  throw new Error(
+    `FATAL: TEST_BASE_URL=${BASE_URL} looks like production. ` +
+    'Use clone http://127.0.0.1:3100 or set ALLOW_PROD_API_TESTS=1 explicitly.'
+  );
+}
 
 const TEST_PASSWORD = 'Test123!';
 const TEST_PIN = '0000';
@@ -301,7 +310,7 @@ const TEST_USERS = {};
 
 async function initRealUsers() {
   try {
-    const resp = await api('GET', '/api/data/users?limit=500', { role: 'ADMIN' });
+    const resp = await api('GET', '/api/data/users?limit=500&include_test=1', { role: 'ADMIN' });
     const allUsers = resp.data?.users || resp.data?.data || (Array.isArray(resp.data) ? resp.data : []);
     for (const account of ACCOUNTS) {
       const found = allUsers.find(u => u.login === account.login);

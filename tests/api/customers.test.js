@@ -60,6 +60,38 @@ module.exports = {
       }
     },
     {
+      name: 'PM updates customer contacts array',
+      run: async () => {
+        const resp = await api('PUT', `/api/customers/${TEST_INN}`, {
+          role: 'PM',
+          body: {
+            contacts: [{
+              name: 'Sentinel Contact',
+              position: 'Manager',
+              phone: '79991234567',
+              email: 'sentinel@stage12.local',
+              is_primary: true
+            }]
+          }
+        });
+        assertOk(resp, 'update customer contacts');
+      }
+    },
+    {
+      name: 'Read-back contacts array after update',
+      run: async () => {
+        const resp = await api('GET', `/api/customers/${TEST_INN}`, { role: 'PM' });
+        assertOk(resp, 'get customer with contacts');
+        if (resp.ok && resp.data) {
+          const customer = resp.data.customer || resp.data;
+          const contacts = customer.contacts;
+          assert(Array.isArray(contacts), 'contacts should be an array');
+          assert(contacts.length === 1, `expected 1 contact, got ${contacts.length}`);
+          assertMatch(contacts[0], { name: 'Sentinel Contact', is_primary: true }, 'contact name');
+        }
+      }
+    },
+    {
       name: 'PM updates customer',
       run: async () => {
         const resp = await api('PUT', `/api/customers/${TEST_INN}`, {

@@ -14,7 +14,7 @@ const CORRESPONDENCE_ROLES = [
   'HEAD_TO'
 ];
 // S-7: для DELETE и /relink — отдельный whitelist (см. §5).
-const DELETE_ROLES = ['ADMIN', 'DIRECTOR_GEN'];
+const DELETE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'OFFICE_MANAGER'];
 const RELINK_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'OFFICE_MANAGER'];
 
 function hasAccess(user) {
@@ -29,6 +29,39 @@ function hasRelinkAccess(user) {
 
 module.exports = async function correspondenceRoutes(fastify) {
   const db = fastify.db;
+
+  fastify.get('/outgoing-number-status', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    if (!hasAccess(request.user)) {
+      return reply.code(403).send({ error: 'Нет доступа к корреспонденции' });
+    }
+    try {
+      return await correspondenceService.getOutgoingNumberStatus(db, {
+        date: request.query?.date
+      });
+    } catch (error) {
+      fastify.log.error({ err: error }, 'Correspondence outgoing-number-status error');
+      return reply.code(500).send({ error: 'Не удалось получить статус номеров' });
+    }
+  });
+
+  fastify.post('/check-outgoing-number', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    if (!hasAccess(request.user)) {
+      return reply.code(403).send({ error: 'Нет доступа к корреспонденции' });
+    }
+    try {
+      const number = request.body?.number;
+      const excludeId = request.body?.exclude_id ? parseInt(request.body.exclude_id, 10) : null;
+      return await correspondenceService.checkOutgoingNumberAvailable(db, number, excludeId);
+    } catch (error) {
+      if (error.statusCode) return reply.code(error.statusCode).send({ error: error.message });
+      fastify.log.error({ err: error }, 'Correspondence check-outgoing-number error');
+      return reply.code(500).send({ error: 'Не удалось проверить номер' });
+    }
+  });
 
   fastify.get('/next-outgoing-number', {
     preHandler: [fastify.authenticate]
@@ -99,7 +132,10 @@ module.exports = async function correspondenceRoutes(fastify) {
 
   // POST /:id/link-doc — привязать загруженный документ к корреспонденции
   fastify.post('/:id/link-doc', { preHandler: [fastify.authenticate] }, async (request, reply) => {
-    const corrId = parseInt(request.params.id);
+    if (!hasAccess(request.user)) {
+      return reply.code(403).send({ error: 'Нет доступа к корреспонденции' });
+    }
+    const corrId = parseInt(request.params.id, 10);
     const { document_id } = request.body || {};
     if (!document_id) return reply.code(400).send({ error: 'document_id обязателен' });
 
@@ -337,10 +373,47 @@ module.exports = async function correspondenceRoutes(fastify) {
     }
   });
 
-  // DELETE /api/correspondence/:id — soft-delete. Только ADMIN/DIRECTOR_GEN.
+  // GET /api/correspondence/:id/attachments — список вложений
+  fastify.get('/:id/attachments', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    if (!hasAccess(request.user)) {
+      return reply.code(403).send({ error: 'Нет доступа к корреспонденции' });
+    }
+    const id = parseInt(request.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+      return reply.code(400).send({ error: 'Некорректный id' });
+    }
+    try {
+      return await correspondenceService.getCorrespondenceAttachments(db, id);
+    } catch (err) {
+      if (err.statusCode) return reply.code(err.statusCode).send({ error: err.message });
+      fastify.log.error({ err }, 'correspondence/attachments error');
+      return reply.code(500).send({ error: 'Не удалось получить вложения' });
+    }
+  });
+
+  // POST /api/correspondence/:id/mark-sent — отметить отправленным вручную
+  fastify.post('/:id/mark-sent', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    if (!hasAccess(request.user)) {
+      return reply.code(403).send({ error: 'Нет доступа к корреспонденции' });
+    }
+    const id = parseInt(request.params.id, 10);
+    if (!Number.isInteger(id) || id <= 0) {
+      return reply.code(400).send({ error: 'Некорректный id' });
+    }
+    try {
+      const result = await correspondenceService.markCorrespondenceSent(db, id, request.body || {});
+      return { success: true, item: result };
+    } catch (err) {
+      if (err.statusCode) return reply.code(err.statusCode).send({ error: err.message });
+      fastify.log.error({ err }, 'correspondence/mark-sent error');
+      return reply.code(500).send({ error: 'Не удалось отметить как отправленное' });
+    }
+  });
+
+  // DELETE /api/correspondence/:id — soft-delete. ADMIN/DIRECTOR_GEN/OFFICE_MANAGER.
   fastify.delete('/:id', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     if (!hasDeleteAccess(request.user)) {
-      return reply.code(403).send({ error: 'Удалять может только ADMIN или DIRECTOR_GEN' });
+      return reply.code(403).send({ error: 'Удалять может только ADMIN, DIRECTOR_GEN или OFFICE_MANAGER' });
     }
     const id = parseInt(request.params.id, 10);
     if (!Number.isInteger(id) || id <= 0) {

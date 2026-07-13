@@ -89,6 +89,31 @@ module.exports = {
         const n1 = await api('GET', '/api/mailbox/next-outgoing-number', { role: 'ADMIN' });
         assertOk(n1, 'first number');
       }
+    },
+    {
+      name: 'CORR-9: OFFICE_MANAGER can access correspondence list',
+      run: async () => {
+        const resp = await api('GET', '/api/data/correspondence?limit=5', { role: 'OFFICE_MANAGER' });
+        assertOk(resp, 'OM correspondence list');
+      }
+    },
+    {
+      name: 'CORR-10: OFFICE_MANAGER outgoing-number-status',
+      run: async () => {
+        const resp = await api('GET', '/api/correspondence/outgoing-number-status', { role: 'OFFICE_MANAGER' });
+        assertOk(resp, 'OM outgoing number status');
+      }
+    },
+    {
+      name: 'CORR-11: OFFICE_MANAGER check-outgoing-number',
+      run: async () => {
+        const resp = await api('POST', '/api/correspondence/check-outgoing-number', {
+          role: 'OFFICE_MANAGER',
+          body: { number: 'АС-TEST-OM-99999' }
+        });
+        assertOk(resp, 'OM check outgoing number');
+        assert(resp.data?.available === true || resp.data?.available === false, 'available flag');
+      }
     }
   ]
 };

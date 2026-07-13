@@ -5,7 +5,7 @@
  *   tests/api/handovers-manual.test.js
  *
  * Использует tests/config.js (initRealUsers + хелперы api/assert).
- * BASE_URL берётся из env TEST_BASE_URL (по умолчанию https://92.242.61.184).
+ * TEST_BASE_URL берётся из env (по умолчанию http://127.0.0.1:3100 — клон БД, не прод).
  *
  * Запуск:
  *   TEST_BASE_URL=http://127.0.0.1:3100 node tests/_run_bulk_se_smoke.js
