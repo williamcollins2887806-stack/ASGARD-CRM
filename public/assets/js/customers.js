@@ -74,6 +74,8 @@ window.AsgardCustomersPage = (function(){
       ogrn: String(rec.ogrn||"").trim(),
       address: String(rec.address||"").trim(),
       contacts_json: String(rec.contacts_json||"").trim(),
+      contacts: Array.isArray(rec.contacts) ? rec.contacts : undefined,
+      contact_person: String(rec.contact_person||"").trim(),
       email: String(rec.email||"").trim(),
       phone: String(rec.phone||"").trim(),
       comment: String(rec.comment||"").trim(),
@@ -110,17 +112,92 @@ window.AsgardCustomersPage = (function(){
     }
   }
 
+  function normalizeContact(c){
+    return {
+      name:    String(c?.name || ""),
+      role:    String(c?.role || c?.position || ""),
+      phone:   String(c?.phone || ""),
+      email:   String(c?.email || ""),
+      comment: String(c?.comment || "")
+    };
+  }
+
+  /** contacts JSONB → contacts_json TEXT → []. */
+  function loadContacts(customer){
+    const raw = customer?.contacts;
+    if (Array.isArray(raw) && raw.length) return raw.map(normalizeContact);
+    if (typeof raw === "string" && raw.trim()) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length) return parsed.map(normalizeContact);
+      } catch(_) { /* fallback */ }
+    }
+    return parseContactsJson(customer?.contacts_json || "").map(normalizeContact);
+  }
+
+  function contactsToPayload(contacts){
+    const list = (contacts || []).map((c, i) => ({
+      name:       String(c.name || "").trim(),
+      position:   String(c.role || c.position || "").trim(),
+      phone:      String(c.phone || "").trim(),
+      email:      String(c.email || "").trim(),
+      is_primary: i === 0
+    })).filter((c) => c.name || c.phone || c.email);
+    if (list.length && !list.some((c) => c.is_primary)) list[0].is_primary = true;
+    return list;
+  }
+
   function contactsTemplate(contacts){
     const rows = (contacts||[]).map((c,i)=>`
-      <div class="pill" style="gap:10px; flex-wrap:wrap">
-        <div style="min-width:200px"><b>${esc(c.name||"")}</b><div class="help">${esc(c.role||"")}</div></div>
-        <div class="help" style="min-width:220px">${esc(c.phone||"")}</div>
-        <div class="help" style="min-width:240px">${esc(c.email||"")}</div>
-        <div style="flex:1 1 260px" class="help">${esc(c.comment||"")}</div>
-        <button class="btn ghost" data-del-contact="${i}" style="padding:6px 10px">Удалить</button>
+      <div class="pill between customer-contact-row" style="width:100%;margin-bottom:8px;box-sizing:border-box;overflow:visible">
+        <div style="flex:1;min-width:0;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:flex-start">
+          <div style="min-width:120px"><b>${esc(c.name||"")}</b><div class="help">${esc(c.role||"")}</div></div>
+          <div class="help">${esc(c.phone||"")}</div>
+          <div class="help">${esc(c.email||"")}</div>
+          ${c.comment ? `<div class="help">${esc(c.comment||"")}</div>` : ""}
+        </div>
+        <div class="customer-contact-actions" style="display:flex;gap:6px;flex-shrink:0;margin-left:8px">
+          <button type="button" class="btn ghost" data-edit-contact="${i}" style="padding:6px 10px;white-space:nowrap" title="Редактировать контакт">✎ Редактировать</button>
+          <button type="button" class="btn ghost" data-del-contact="${i}" style="padding:6px 10px;white-space:nowrap" title="Удалить контакт">Удалить</button>
+        </div>
       </div>
     `).join("");
     return rows || '<div class="help">Контактов пока нет.</div>';
+  }
+
+  function openContactModal({ title, contact, onSave }){
+    const html = '<div class="formrow">'
+      + '<div><label>ФИО</label><input id="c_name" value="'+esc(contact?.name||'')+'"/></div>'
+      + '<div><label>Должность</label><input id="c_role" value="'+esc(contact?.role||'')+'"/></div>'
+      + '<div><label>Телефон</label><input id="c_phone" value="'+esc(contact?.phone||'')+'"/></div>'
+      + '<div><label>Email</label><input id="c_email" value="'+esc(contact?.email||'')+'"/></div>'
+      + '</div>'
+      + '<div class="row" style="justify-content:flex-end;gap:8px;margin-top:12px">'
+      + '<button type="button" class="btn ghost" id="c_cancel">Отмена</button>'
+      + '<button type="button" class="btn" id="c_ok">Сохранить</button>'
+      + '</div>';
+    showModal({ title: title || "Контакт", html: html,
+      onMount: ({back})=>{
+        $("#c_cancel",back).onclick = ()=>AsgardUI.hideModal();
+        $("#c_ok",back).onclick = async ()=>{
+          const obj = {
+            name:    $("#c_name",back).value.trim(),
+            role:    $("#c_role",back).value.trim(),
+            phone:   $("#c_phone",back).value.trim(),
+            email:   $("#c_email",back).value.trim(),
+            comment: String(contact?.comment || "").trim()
+          };
+          if(!obj.name){ toast("Контакт","Укажите ФИО","err"); return; }
+          try {
+            const result = onSave(obj);
+            if (result && typeof result.then === "function") await result;
+            AsgardUI.hideModal();
+          } catch(e) {
+            toast("Контакт", e.message || "Не удалось сохранить", "err");
+          }
+        };
+      }
+    });
   }
 
   async function renderList({layout, title}={}){
@@ -179,7 +256,7 @@ window.AsgardCustomersPage = (function(){
     if(!c && (isNew || innQ)){
       c = { inn: innQ, name:"", full_name:"", kpp:"", ogrn:"", address:"", phone:"", email:"", comment:"", contacts_json:"" };
     }
-    const contacts = parseContactsJson(c?.contacts_json||"");
+    const contacts = loadContacts(c);
 
     const html = `
       <div class="tools" style="margin-bottom:10px">
@@ -207,35 +284,96 @@ window.AsgardCustomersPage = (function(){
       </div>
       <hr class="hr"/>
       <div class="help"><b>Контактные лица</b></div>
-      <div id="contactsBox" style="margin-top:10px">${contactsTemplate(contacts)}</div>
+      <div id="contactsBox" class="customer-contacts-box" style="margin-top:10px;overflow-x:auto;overflow-y:visible">${contactsTemplate(contacts)}</div>
       <div class="row" style="gap:10px;margin-top:10px"><button class="btn ghost" id="btnAddContact">+ Контакт</button></div>
     `;
 
     await layout('<div class="content"><div class="card">'+html+'</div></div>', { title, motto:"Храни имена и печати." });
 
+    function buildCustomerRec(){
+      const payload = contactsToPayload(contacts);
+      return {
+        inn: normInn($("#inn").value),
+        name: $("#name").value,
+        full_name: $("#full").value,
+        kpp: $("#kpp").value,
+        ogrn: $("#ogrn").value,
+        address: $("#addr").value,
+        phone: $("#phone").value,
+        email: $("#email").value,
+        comment: $("#comment").value,
+        contacts_json: JSON.stringify(contacts),
+        contacts: payload,
+        contact_person: payload.length
+          ? [payload.find((x)=>x.is_primary) || payload[0]].map((x)=>[x.name, x.position].filter(Boolean).join(" · "))[0]
+          : ""
+      };
+    }
+
+    async function saveCustomerContacts(msg){
+      const rec = buildCustomerRec();
+      if(!rec.inn || (rec.inn.length !== 10 && rec.inn.length !== 12)){
+        toast("Контакт","Сначала укажите корректный ИНН","warn");
+        return false;
+      }
+      if(!rec.name && !rec.full_name){
+        toast("Контакт","Сначала укажите название организации","warn");
+        return false;
+      }
+      await upsertCustomer(rec);
+      if(msg) toast("Контакт", msg, "ok");
+      return true;
+    }
+
     function refreshContactsBox(){
       $("#contactsBox").innerHTML = contactsTemplate(contacts);
-      $$("[data-del-contact]").forEach(b=>{
+      $$("[data-edit-contact]").forEach(b=>{
         b.addEventListener("click", ()=>{
+          const i = Number(b.getAttribute("data-edit-contact"));
+          if(i<0 || i>=contacts.length) return;
+          openContactModal({
+            title: "Редактировать контакт",
+            contact: contacts[i],
+            onSave: async (obj)=>{
+              contacts[i] = obj;
+              refreshContactsBox();
+              try {
+                await saveCustomerContacts("Контакт обновлён");
+              } catch(e) {
+                toast("Контакт", e.message || "Не удалось сохранить", "err");
+              }
+            }
+          });
+        });
+      });
+      $$("[data-del-contact]").forEach(b=>{
+        b.addEventListener("click", async ()=>{
           const i = Number(b.getAttribute("data-del-contact"));
-          if(i>=0 && i<contacts.length) contacts.splice(i,1);
+          if(i<0 || i>=contacts.length) return;
+          if(!confirm("Удалить контакт «"+(contacts[i].name||"")+"»?")) return;
+          contacts.splice(i,1);
           refreshContactsBox();
+          try {
+            await saveCustomerContacts("Контакт удалён");
+          } catch(e) {
+            toast("Контакт", e.message || "Не удалось удалить", "err");
+          }
         });
       });
     }
     refreshContactsBox();
 
     $("#btnAddContact").addEventListener("click", ()=>{
-      showModal({ title:"Добавить контакт", html: '<div class="formrow"><div><label>ФИО</label><input id="c_name"/></div><div><label>Должность</label><input id="c_role"/></div><div><label>Телефон</label><input id="c_phone"/></div><div><label>Email</label><input id="c_email"/></div></div><div class="row" style="justify-content:flex-end;gap:8px;margin-top:12px"><button class="btn ghost" id="c_cancel">Отмена</button><button class="btn" id="c_ok">Добавить</button></div>',
-        onMount: ({back})=>{
-          $("#c_cancel",back).onclick = ()=>AsgardUI.hideModal();
-          $("#c_ok",back).onclick = ()=>{
-            const obj = { name: $("#c_name",back).value.trim(), role: $("#c_role",back).value.trim(), phone: $("#c_phone",back).value.trim(), email: $("#c_email",back).value.trim() };
-            if(!obj.name){ toast("Контакт","Укажите ФИО","err"); return; }
-            contacts.push(obj);
-            AsgardUI.hideModal();
-            refreshContactsBox();
-          };
+      openContactModal({
+        title: "Добавить контакт",
+        onSave: async (obj)=>{
+          contacts.push(obj);
+          refreshContactsBox();
+          try {
+            await saveCustomerContacts("Контакт добавлен");
+          } catch(e) {
+            toast("Контакт", e.message || "Не удалось сохранить", "err");
+          }
         }
       });
     });
@@ -274,7 +412,7 @@ window.AsgardCustomersPage = (function(){
 
     $("#btnSave").addEventListener("click", async ()=>{
       try{
-        const rec = { inn: normInn($("#inn").value), name: $("#name").value, full_name: $("#full").value, kpp: $("#kpp").value, ogrn: $("#ogrn").value, address: $("#addr").value, phone: $("#phone").value, email: $("#email").value, comment: $("#comment").value, contacts_json: JSON.stringify(contacts) };
+        const rec = buildCustomerRec();
         if(!rec.name && !rec.full_name) throw new Error("Укажите название организации");
         const inn = await upsertCustomer(rec);
         toast("Контрагент","Сохранено");

@@ -442,6 +442,13 @@ window.AsgardPermitsPage = (function(){
     const orderedCats = CHECKLIST_CAT_ORDER.filter(c => cats[c])
       .concat(Object.keys(cats).filter(c => !CHECKLIST_CAT_ORDER.includes(c)));
 
+    const dateInputVal = (v) => {
+      if (v == null || v === '') return '';
+      const s = typeof v === 'string' ? v : String(v);
+      const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+      return m ? m[1] : '';
+    };
+
     const rowHtml = (t) => {
       const ex = byType[t.id];
       const checked = !!ex;
@@ -453,8 +460,8 @@ window.AsgardPermitsPage = (function(){
             <span style="border-left:3px solid ${cat.color};padding-left:8px;flex:1">${esc(t.name)}</span>
           </label>
           <div class="pchk-fields" style="display:${checked ? 'grid' : 'none'};grid-template-columns:1fr 1fr;gap:8px;padding:0 4px 10px 30px">
-            <div><label class="help">Выдан</label><input type="date" class="inp pchk-issue" value="${ex?.issue_date?.slice(0,10) || ''}"/></div>
-            <div><label class="help">Действует до</label><input type="date" class="inp pchk-expiry" value="${ex?.expiry_date?.slice(0,10) || ''}"/></div>
+            <div><label class="help">Выдан</label><input type="date" class="inp pchk-issue" value="${dateInputVal(ex?.issue_date)}"/></div>
+            <div><label class="help">Действует до</label><input type="date" class="inp pchk-expiry" value="${dateInputVal(ex?.expiry_date)}"/></div>
             <div><label class="help">Номер</label><input class="inp pchk-num" value="${esc(ex?.doc_number || '')}"/></div>
             <div><label class="help">Кем выдано</label><input class="inp pchk-issuer" value="${esc(ex?.issuer || '')}"/></div>
             <div style="grid-column:1/3"><label class="help">Примечание</label><input class="inp pchk-notes" value="${esc(ex?.notes || '')}"/></div>

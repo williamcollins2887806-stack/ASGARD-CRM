@@ -359,11 +359,12 @@ window.WorkerProfileDesktop = (function () {
 
         /* Try to get current project from employee assignments (2s timeout) */
         try {
-          if (window.AsgardDB) {
+          if (employeeId || userId) {
             const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 2000));
             const lookup = (async () => {
-              const assigns = await AsgardDB.byIndex('employee_assignments', 'employee_id', employeeId || userId);
-              if (assigns && assigns.length) {
+              const detail = await apiFetch('/staff/employees/' + (employeeId || userId));
+              const assigns = (detail && detail.assignments) || [];
+              if (assigns.length) {
                 const today = new Date().toISOString().slice(0, 10);
                 const current = assigns.find(a => !a.date_to || a.date_to.slice(0, 10) >= today);
                 if (current && current.work_id) {

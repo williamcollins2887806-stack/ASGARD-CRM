@@ -52,6 +52,7 @@
     const fileUrl = opts.fileUrl || '';
     const downloadUrl = opts.downloadUrl || fileUrl;
     const mime = opts.mime || '';
+    const htmlContent = opts.htmlContent || '';
 
     _overlay = document.createElement('div');
     _overlay.className = 'asg-doc-preview-overlay';
@@ -74,7 +75,14 @@
     inner.className = 'asg-doc-preview-inner';
     inner.style.transformOrigin = 'center center';
 
-    if (_isImg(fileUrl, mime)) {
+    if (htmlContent) {
+      const iframe = document.createElement('iframe');
+      iframe.title = title;
+      iframe.sandbox = 'allow-same-origin';
+      iframe.srcdoc = htmlContent;
+      iframe.style.cssText = 'width:min(960px,92vw);height:75vh;border:0;border-radius:8px;background:#fff';
+      inner.appendChild(iframe);
+    } else if (_isImg(fileUrl, mime)) {
       inner.innerHTML = `<img src="${esc(fileUrl)}" alt="${esc(title)}" style="max-width:100%;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.4)"/>`;
     } else if (_isPdf(fileUrl, mime)) {
       inner.innerHTML = `<iframe src="${esc(fileUrl)}" title="${esc(title)}" style="width:min(960px,92vw);height:75vh;border:0;border-radius:8px;background:#fff"></iframe>`;

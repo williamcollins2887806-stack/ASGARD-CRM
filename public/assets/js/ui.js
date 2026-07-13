@@ -242,13 +242,24 @@ window.AsgardUI = (function(){
   function replaceModal(a, b){
     if(!_modalStack.length){ showModal(a, b); return; }
     const overlay = _modalStack[_modalStack.length - 1];
+    const modal = $(".cr-m", overlay);
     const title = (a && typeof a === "object") ? (a.title || "Окно") : (a || "Окно");
     const html  = (a && typeof a === "object") ? (a.html  || "")     : (b || "");
     const icon  = (a && typeof a === "object") ? (a.icon  || null)   : null;
     const sub   = (a && typeof a === "object") ? (a.subtitle || "")  : "";
+    const wide  = (a && typeof a === "object") ? a.wide : undefined;
+    const fullscreen = (a && typeof a === "object") ? a.fullscreen : undefined;
     $("#modalTitle", overlay).textContent = title;
     if(icon) $("#modalIcon", overlay).textContent = icon;
     $("#modalBody", overlay).innerHTML = html;
+    if(wide !== undefined){
+      modal.classList.toggle("cr-m--wide", !!wide);
+      modal.classList.toggle("wide", !!wide);
+    }
+    if(fullscreen !== undefined){
+      modal.classList.toggle("cr-m--fullscreen", !!fullscreen);
+      modal.classList.toggle("fullscreen", !!fullscreen);
+    }
     const subEl = $("#modalSubtitle", overlay);
     if(sub){ subEl.textContent = sub; subEl.style.display = ""; }
     else   { subEl.textContent = ""; subEl.style.display = "none"; }

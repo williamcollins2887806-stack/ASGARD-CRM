@@ -26,7 +26,7 @@ window.AsgardPersonnelPage = (function () {
   // FIX (23.06.2026): HEAD_PM (руководитель РП) и OFFICE_MANAGER (офис-менеджер) — могут править
   // контактные/паспортные данные и добавлять новых. Финансовые поля и статус увольнения остаются под HR/директорами
   // (см. employee.js: canEditFinance / canEditHrSensitive).
-  const EDIT_ROLES    = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'HEAD_PM', 'OFFICE_MANAGER'];
+  const EDIT_ROLES    = ['ADMIN', 'HR', 'HR_MANAGER', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'HEAD_PM', 'OFFICE_MANAGER', 'TO', 'HEAD_TO'];
   // FIN_ROLES = финансовые операции, в т.ч. импорт остатков СЗ из Excel Озон-Банка.
   // Зеркалит src/routes/staff.js FIN_ROLES (ADMIN/DIRECTOR_GEN/DIRECTOR_COMM/DIRECTOR_DEV/BUH).
   const FIN_ROLES     = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH'];
@@ -39,8 +39,10 @@ window.AsgardPersonnelPage = (function () {
     { code: 'approved',  label: 'Утверждён',  bgVar: '--info-bg', tVar: '--info-t'  },
     { code: 'ready',     label: 'Готов',      bgVar: '--gold-bg', tVar: '--gold'    },
     { code: 'not_ready', label: 'Не готов',   bgVar: '--warn-bg', tVar: '--warn-t'  },
+    { code: 'planned',   label: 'В плане',    bgVar: '--info-bg', tVar: '--info-t'  },
     { code: 'archive',   label: 'Архив',      bgVar: '--bg3',     tVar: '--t3'      },
   ];
+  const TABLE_STATUSES = STATUSES.filter(s => s.code !== 'planned');
 
   const STATUS_MAP = Object.fromEntries(STATUSES.map(s => [s.code, s]));
 
@@ -175,6 +177,14 @@ window.AsgardPersonnelPage = (function () {
     return `<span style="font-weight:700;color:${col}">${n.toFixed(1)}</span>`;
   }
 
+  function sizSizesHtml(e) {
+    const parts = [];
+    if (e.clothing_size) parts.push(`<div style="font-size:11px;color:var(--t2)"><span title="Одежда">👕</span> ${esc(e.clothing_size)}</div>`);
+    if (e.shoe_size) parts.push(`<div style="font-size:11px;color:var(--t2)"><span title="Обувь">👟</span> ${esc(e.shoe_size)}</div>`);
+    if (e.headwear_size) parts.push(`<div style="font-size:11px;color:var(--t2)"><span title="Головной убор">⛑</span> ${esc(e.headwear_size)}</div>`);
+    return parts.length ? parts.join('') : '<span style="color:var(--t3)">—</span>';
+  }
+
   // ─── Основной рендер страницы ─────────────────────────────────────────────
 
   async function render({ layout, title }) {
@@ -197,10 +207,13 @@ window.AsgardPersonnelPage = (function () {
     // 25.06.2026: фильтры по городу и пропускам (БОСИЕТ/РУКАВ/МЛСП/ФСБ)
     const qCity   = (query.city || '').trim();
     const qPass   = (query.pass || '').trim();
+    const viewMode = (function () {
+      try { return localStorage.getItem('prs-view') || 'list'; } catch (_) { return 'list'; }
+    })();
 
     // ── Загрузка данных ────────────────────────────────────────────────────────
     let employees = [];
-    let groups    = { on_site: 0, approved: 0, ready: 0, not_ready: 0, archive: 0 };
+    let groups    = { on_site: 0, approved: 0, ready: 0, not_ready: 0, archive: 0, planned: 0 };
 
     try {
       const data = await apiFetch('/staff/readiness');
@@ -230,7 +243,9 @@ window.AsgardPersonnelPage = (function () {
     if (qSpec) {
       rows = rows.filter(e => (e.role_tag || '') === qSpec);
     }
-    if (qStatus) {
+    if (qStatus === 'planned') {
+      rows = rows.filter(e => !!e.planned_info);
+    } else if (qStatus) {
       rows = rows.filter(e => (e.effective_status || e.readiness_status || '') === qStatus);
     }
     if (qCity) {
@@ -267,7 +282,7 @@ window.AsgardPersonnelPage = (function () {
 
     // ── Статусные группы для секций таблицы ───────────────────────────────────
     const grouped = {};
-    STATUSES.forEach(s => { grouped[s.code] = []; });
+    TABLE_STATUSES.forEach(s => { grouped[s.code] = []; });
     rows.forEach(e => {
       const st = e.effective_status || e.readiness_status || 'archive';
       if (grouped[st]) grouped[st].push(e);
@@ -343,7 +358,7 @@ window.AsgardPersonnelPage = (function () {
 
     // Бейджи суммарных статусов
     const summaryBadges = STATUSES.map(s => {
-      const cnt = groups[s.code] || 0;
+      const cnt = s.code === 'planned' ? (groups.planned || 0) : (groups[s.code] || 0);
       const active = qStatus === s.code ? 'outline:2px solid var(--accent);' : '';
       return `<button class="btn-status-badge" data-status="${s.code}"
         style="background:var(${s.bgVar});color:var(${s.tVar});border:none;border-radius:var(--r-md);
@@ -356,7 +371,7 @@ window.AsgardPersonnelPage = (function () {
     // Строки таблицы по секциям
     let tbodyHtml = '';
     let anyRow = false;
-    STATUSES.forEach(st => {
+    TABLE_STATUSES.forEach(st => {
       const list = grouped[st.code];
       if (!list || !list.length) return;
       anyRow = true;
@@ -364,7 +379,7 @@ window.AsgardPersonnelPage = (function () {
       // Заголовок группы
       tbodyHtml += `
         <tr>
-          <td colspan="10" style="background:var(${st.bgVar});color:var(${st.tVar});
+          <td colspan="12" style="background:var(${st.bgVar});color:var(${st.tVar});
               font-weight:700;font-size:12px;letter-spacing:.5px;padding:6px 12px;border:none">
             ${esc(st.label.toUpperCase())} &nbsp;·&nbsp; ${list.length}
           </td>
@@ -416,9 +431,13 @@ window.AsgardPersonnelPage = (function () {
               ${titleHtml}
               ${pmHtml}
             </td>
+            <td style="font-size:12px;color:var(--t2)">
+              ${e.planned_info ? `<span style="font-size:10px;font-weight:700;color:var(--info-t);background:var(--info-bg);padding:2px 5px;border-radius:4px;margin-right:4px">План</span>${esc(e.planned_info.work_title || '')}${e.planned_info.planned_from ? '<div style="font-size:11px;color:var(--t3)">с '+fmtDate(e.planned_info.planned_from)+'</div>' : ''}` : '<span style="color:var(--t3)">—</span>'}
+            </td>
             <td style="white-space:nowrap;font-size:13px;color:var(--t2)">${startDate}</td>
             <td style="text-align:center">${docIndicator(e.permits)}</td>
             <td style="text-align:center">${keyPermChipsHtml(e.key_permits)}</td>
+            <td style="font-size:11px;min-width:110px">${sizSizesHtml(e)}</td>
             <td style="font-size:12.5px;color:var(--t2)">${e.city ? esc(e.city) : '<span style="color:var(--t3)">—</span>'}</td>
             <td>${e.is_self_employed ? seLimitBar(seTrans, SE_YEAR_LIMIT) : '<span style="color:var(--t3);font-size:12px">—</span>'}</td>
             <td style="text-align:right">${ratingHtml(e.rating_avg)}</td>
@@ -427,9 +446,56 @@ window.AsgardPersonnelPage = (function () {
     });
 
     if (!anyRow) {
-      tbodyHtml = `<tr><td colspan="10" class="muted" style="text-align:center;padding:32px">
+      tbodyHtml = `<tr><td colspan="12" class="muted" style="text-align:center;padding:32px">
         Нет рабочих, соответствующих фильтрам
       </td></tr>`;
+    }
+
+    // ── Вид «По проектам» ─────────────────────────────────────────────────────
+    let byProjectHtml = '';
+    if (viewMode === 'by_project') {
+      let projects = [];
+      try {
+        const bd = await apiFetch('/staff/planned-engagements/by-project');
+        projects = bd.projects || [];
+      } catch (e) {
+        byProjectHtml = `<div class="help" style="padding:24px;text-align:center;color:var(--err)">Не удалось загрузить план: ${esc(e.message)}</div>`;
+      }
+      if (!byProjectHtml) {
+        if (!projects.length) {
+          byProjectHtml = `<div class="help" style="padding:32px;text-align:center">Нет планируемого привлечения. Назначьте проект в карточке рабочего.</div>`;
+        } else {
+          byProjectHtml = projects.map(p => {
+            const workersRows = (p.workers || []).map(w => {
+              const st = STATUS_MAP[w.effective_status || w.readiness_status] || STATUS_MAP.not_ready;
+              const period = [w.planned_from, w.planned_to].filter(Boolean).map(d => fmtDate(d)).join(' — ');
+              const nowHtml = w.on_site_info
+                ? `<span style="font-size:10px;font-weight:700;color:var(--ok-t);background:var(--ok-bg);padding:2px 5px;border-radius:4px">На объекте</span><div style="font-size:12px;margin-top:2px">${esc(w.on_site_info.work_title || '')}</div>`
+                : (st ? `<span style="font-size:10px;font-weight:700;color:var(${st.tVar});background:var(${st.bgVar});padding:2px 5px;border-radius:4px">${esc(st.label)}</span>` : '—');
+              return `<tr class="prs-row" data-id="${w.employee_id}" style="cursor:pointer">
+                <td><div style="font-weight:600">${esc(w.fio || '—')}</div></td>
+                <td style="font-size:13px;color:var(--t2)">${esc(w.role_tag || w.position || '—')}</td>
+                <td>${nowHtml}</td>
+                <td style="font-size:12px;color:var(--t2)">${period || '—'}</td>
+                <td style="font-size:12px;color:var(--t3)">${esc(w.note || '—')}</td>
+              </tr>`;
+            }).join('');
+            return `<details open style="margin-bottom:12px;border:1px solid var(--brd);border-radius:var(--r-md);overflow:hidden">
+              <summary style="padding:10px 14px;background:var(--bg2);cursor:pointer;font-weight:700;font-size:13px;list-style:none;display:flex;gap:8px;align-items:center">
+                <span>▼</span>
+                <span style="flex:1">${esc(p.work_title || 'Проект')}</span>
+                <span style="font-weight:500;color:var(--t3);font-size:12px">${(p.workers || []).length} чел. · РП ${esc(p.pm_name || '—')}</span>
+              </summary>
+              <table class="asg" style="margin:0">
+                <thead><tr>
+                  <th>ФИО</th><th>Специальность</th><th>Сейчас</th><th>Период плана</th><th>Примечание</th>
+                </tr></thead>
+                <tbody>${workersRows}</tbody>
+              </table>
+            </details>`;
+          }).join('');
+        }
+      }
     }
 
     const html = `
@@ -453,8 +519,14 @@ window.AsgardPersonnelPage = (function () {
         </div>
 
         <!-- Статусные счётчики -->
-        <div class="row" style="gap:10px;flex-wrap:wrap;margin-bottom:18px" id="prs_statusBadges">
+        <div class="row" style="gap:10px;flex-wrap:wrap;margin-bottom:10px;align-items:center" id="prs_statusBadges">
           ${summaryBadges}
+        </div>
+
+        <!-- Переключатель вида -->
+        <div class="row" style="gap:6px;margin-bottom:18px">
+          <button class="btn ${viewMode === 'list' ? '' : 'ghost'}" id="prs_viewList" type="button">Список</button>
+          <button class="btn ${viewMode === 'by_project' ? '' : 'ghost'}" id="prs_viewByProject" type="button">По проектам</button>
         </div>
 
         <!-- Фильтры -->
@@ -481,7 +553,8 @@ window.AsgardPersonnelPage = (function () {
           <button class="btn ghost" id="prs_btnReset">Сброс</button>
         </div>
 
-        <!-- Таблица -->
+        <!-- Таблица / По проектам -->
+        ${viewMode === 'by_project' ? `<div id="prs_byProject">${byProjectHtml}</div>` : `
         <div class="tablewrap">
           <table class="asg" id="prs_table">
             <thead>
@@ -490,9 +563,11 @@ window.AsgardPersonnelPage = (function () {
                 <th>Специальность</th>
                 <th>Статус</th>
                 <th>Объект / РП</th>
+                <th>→ План</th>
                 <th>Начало работ</th>
                 <th style="text-align:center;width:60px">Документы</th>
                 <th style="text-align:center;width:170px" title="БОСИЕТ · РУКАВ · МЛСП · ФСБ">Ключевые допуски</th>
+                <th style="width:120px">СИЗ</th>
                 <th style="width:120px">Город</th>
                 <th style="width:140px">Лимит СЗ</th>
                 <th style="text-align:right;width:70px">Рейтинг</th>
@@ -502,7 +577,7 @@ window.AsgardPersonnelPage = (function () {
               ${tbodyHtml}
             </tbody>
           </table>
-        </div>
+        </div>`}
 
         <!-- Пагинация -->
         <div id="prs_pagination"></div>
@@ -585,6 +660,20 @@ window.AsgardPersonnelPage = (function () {
     // 25.06.2026: автоприменение фильтров по городу и пропускам
     $('#prs_city')?.addEventListener('change', buildFilter);
     $('#prs_pass')?.addEventListener('change', buildFilter);
+
+    // Переключатель вида
+    $('#prs_viewList')?.addEventListener('click', () => {
+      try { localStorage.setItem('prs-view', 'list'); } catch (_) {}
+      const qs = (location.hash.split('?')[1] || '').trim();
+      location.hash = '#/personnel' + (qs ? '?' + qs : '');
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+    $('#prs_viewByProject')?.addEventListener('click', () => {
+      try { localStorage.setItem('prs-view', 'by_project'); } catch (_) {}
+      const qs = (location.hash.split('?')[1] || '').trim();
+      location.hash = '#/personnel' + (qs ? '?' + qs : '');
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
 
     // Клик по статусным бейджам — фильтруем
     $$('.btn-status-badge').forEach(btn => {

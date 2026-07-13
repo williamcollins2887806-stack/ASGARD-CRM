@@ -85,6 +85,28 @@ window.AsgardOfficeSchedulePage=(function(){
     return colors;
   }
 
+  function isSkippedOfficeUser(u){
+    if(!u || !u.is_active) return true;
+    if(u.role === 'BOT' || u.role === 'ADMIN' || u.role === 'FIELD_WORKER') return true;
+    const login = String(u.login || '');
+    if(login.startsWith('test_') || login === 'mimir_bot') return true;
+    const name = String(u.name || '').trim();
+    if(name.startsWith('Test ') || name.startsWith('Тест ')) return true;
+    return false;
+  }
+
+  async function loadDisplayStaff(){
+    const staff = await AsgardDB.all("staff") || [];
+    const users = await AsgardDB.all("users") || [];
+    const skipUserIds = new Set(users.filter(isSkippedOfficeUser).map(u => u.id));
+    return staff.filter(s => {
+      if(s.user_id && skipUserIds.has(s.user_id)) return false;
+      const nm = String(s.name || '').trim();
+      if(nm.startsWith('Test ') || nm.startsWith('Тест ')) return false;
+      return true;
+    });
+  }
+
   async function ensureStaffSeed(){
     const staff = await AsgardDB.all("staff") || [];
     const users = await AsgardDB.all("users") || [];
@@ -93,7 +115,7 @@ window.AsgardOfficeSchedulePage=(function(){
 
     // Добавляем всех активных пользователей, которых нет в staff
     for(const u of users){
-      if(!u.is_active || u.role === 'BOT' || u.role === 'ADMIN' || u.role === 'FIELD_WORKER' || String(u.login||'').startsWith('test_') || u.login === 'mimir_bot') continue;
+      if(isSkippedOfficeUser(u)) continue;
       if(existingUserIds.has(u.id)) continue;
       await AsgardDB.add("staff", {
         user_id: u.id,
@@ -206,7 +228,7 @@ window.AsgardOfficeSchedulePage=(function(){
     let viewYear = now.getFullYear();
     let viewMonth = now.getMonth();
 
-    const staff = await AsgardDB.all("staff");
+    const staff = await loadDisplayStaff();
     const staffSorted = (staff||[]).sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""), 'ru'));
     const staffIds = staffSorted.map(s=>s.id);
     const colors = await getColors();

@@ -4,6 +4,7 @@
 window.AsgardPlatformTenders = (function () {
   const { esc, toast } = AsgardUI;
   const API = AsgardRegistryApi;
+  const fmtDate = (v) => API.fmtDate(v);
   let mountEl = null;
   let onRefreshCb = null;
 
@@ -29,7 +30,7 @@ window.AsgardPlatformTenders = (function () {
         '<td>' + esc(row.title || row.tender_title || '—') + '</td>' +
         '<td>' + esc(row.customer_name || '—') + '</td>' +
         '<td>' + (row.nmc != null ? Number(row.nmc).toLocaleString('ru-RU') : (row.tender_price != null ? Number(row.tender_price).toLocaleString('ru-RU') : '—')) + '</td>' +
-        '<td>' + (row.deadline || row.docs_deadline ? String(row.deadline || row.docs_deadline).slice(0, 10) : '—') + '</td>' +
+        '<td>' + fmtDate(row.deadline || row.docs_deadline) + '</td>' +
         '<td style="display:flex;gap:6px;flex-wrap:wrap">' +
         '<button type="button" class="btn mini plat-accept">Принять</button>' +
         '<button type="button" class="btn mini ghost plat-dup">Дубликат</button>' +

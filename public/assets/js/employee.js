@@ -4,6 +4,50 @@ window.AsgardEmployeePage=(function(){
 
   function isoNow(){ return new Date().toISOString(); }
 
+  function getToken() {
+    return localStorage.getItem('asgard_token') || localStorage.getItem('auth_token') || '';
+  }
+
+  async function employeeApiPut(path, body) {
+    const r = await fetch('/api' + path, {
+      method: 'PUT',
+      headers: {
+        'Authorization': 'Bearer ' + getToken(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+    return data;
+  }
+
+  const EMP_API_FIELDS = [
+    'fio', 'phone', 'email', 'birth_date', 'gender', 'role_tag', 'position', 'grade', 'city', 'address',
+    'hire_date', 'contract_type', 'pass_series', 'pass_number', 'passport_series', 'passport_number',
+    'passport_issued', 'passport_date', 'passport_code', 'registration_address', 'inn', 'snils',
+    'notes', 'comment', 'is_self_employed', 'is_officially_employed', 'se_payee_id',
+    'spouse_name', 'spouse_phone', 'relative_name', 'relative_relation', 'relative_phone',
+    'phone2', 'telegram', 'education', 'specialty', 'marital_status', 'children_count',
+    'clothing_size', 'shoe_size', 'headwear_size', 'height', 'blood_type', 'medical_notes',
+    'docs_url', 'permits',
+  ];
+
+  function buildEmployeeApiPayload(emp, canEditFinance) {
+    const payload = {};
+    for (const k of EMP_API_FIELDS) {
+      if (emp[k] !== undefined) payload[k] = emp[k] === '' ? null : emp[k];
+    }
+    if (canEditFinance) {
+      ['can_exceed_limit', 'se_yearly_used_initial', 'se_monthly_used_initial',
+        'official_salary', 'official_non_burnable', 'official_hire_date',
+        'official_status', 'official_leave_from', 'official_leave_to'].forEach((k) => {
+        if (emp[k] !== undefined) payload[k] = emp[k];
+      });
+    }
+    return payload;
+  }
+
   function normalizeDateInput(value){
     if(value === undefined || value === null || value === '') return '';
 
@@ -41,8 +85,13 @@ window.AsgardEmployeePage=(function(){
   }
 
   async function recomputeRating(employee_id){
-    const revs = await AsgardDB.byIndex("employee_reviews","employee_id", employee_id);
-    const list = (revs||[]);
+    let list = [];
+    try {
+      const detail = await apiFetch('/staff/employees/' + employee_id);
+      list = (detail && detail.reviews) || [];
+    } catch(_) {
+      list = [];
+    }
     if(list.length===0){
       const e = await AsgardDB.get("employees", employee_id);
       if(e){ e.rating_avg=null; await AsgardDB.put("employees", e); }
@@ -64,7 +113,7 @@ window.AsgardEmployeePage=(function(){
 
     // FIX (23.06.2026): HEAD_PM и OFFICE_MANAGER редактируют контактные/паспортные/основные поля.
     // Финансовые остаются под BUH/директорами. Статус увольнения/официальное трудоустройство — HR.
-    const canEdit = (user.role==="ADMIN" || user.role==="HR" || user.role==="HR_MANAGER" || user.role==="TO" || user.role==="HEAD_PM" || user.role==="OFFICE_MANAGER" || isDirRole(user.role));
+    const canEdit = (user.role==="ADMIN" || user.role==="HR" || user.role==="HR_MANAGER" || user.role==="TO" || user.role==="HEAD_TO" || user.role==="HEAD_PM" || user.role==="OFFICE_MANAGER" || user.role==="PM" || isDirRole(user.role));
     // Финансовые поля (Оклад/несгораемая/can_exceed_limit/offset) — правит только бухгалтер/директор/админ.
     // HR/TO/HEAD_PM/OFFICE_MANAGER — видят значения текстом, без input.
     const canEditFinance = ["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","BUH"].includes(user.role);
@@ -73,7 +122,14 @@ window.AsgardEmployeePage=(function(){
 
     const query = parseQuery();
     const id = Number(query.id||0);
-    const emp = await AsgardDB.get("employees", id);
+    let emp = await AsgardDB.get("employees", id);
+    if (!emp) {
+      try {
+        const detail = await apiFetch('/staff/employees/' + id);
+        emp = (detail && detail.employee) || detail;
+        if (emp && emp.id) await AsgardDB.put("employees", emp);
+      } catch (_) { /* offline / только сервер */ }
+    }
     if(!emp){ toast("Сотрудник","Не найден","err"); location.hash="#/personnel"; return; }
 
     // Подтягиваем серверный snapshot из /api/staff/readiness — там есть on_site_info/approved_info,
@@ -92,8 +148,20 @@ window.AsgardEmployeePage=(function(){
         emp.readiness_status     = empServer.readiness_status || emp.readiness_status;
         emp.readiness_date       = empServer.readiness_date   || emp.readiness_date;
         emp.readiness_reason     = empServer.readiness_reason || emp.readiness_reason;
+        emp.planned_info         = empServer.planned_info         || null;
       }
     } catch(_) { /* offline / API недоступен — рендерим без блока */ }
+
+    // planned_info также приходит из детальной карточки
+    try {
+      const detailEarly = await apiFetch('/staff/employees/' + id);
+      if (detailEarly && detailEarly.planned_info) {
+        emp.planned_info = detailEarly.planned_info;
+      }
+      if (detailEarly && detailEarly.on_site_info && !emp.on_site_info) {
+        emp.on_site_info = detailEarly.on_site_info;
+      }
+    } catch (_) { /* ignore */ }
 
     // Если у рабочего привязан получатель НПД (se_payee_id) — подгрузим ФИО+телефон
     // для отображения. Локальная БД может его не знать; ищем через /staff/payees.
@@ -126,10 +194,16 @@ window.AsgardEmployeePage=(function(){
     const works = await AsgardDB.all("works");
     const usersAll = await AsgardDB.all("users");
     const userMap = new Map((usersAll||[]).map(u=>[u.id, u.name||u.login||'']));
-    const assigns = (await AsgardDB.byIndex("employee_assignments","employee_id", id)) || [];
+    let assigns = [], revs = [];
+    try {
+      const detail = await apiFetch('/staff/employees/' + id);
+      assigns = (detail && detail.assignments) || [];
+      revs = (detail && detail.reviews) || [];
+    } catch(_) {
+      assigns = [];
+      revs = [];
+    }
     assigns.sort((a,b)=> String(b.date_from||"").localeCompare(String(a.date_from||"")));
-
-    const revs = (await AsgardDB.byIndex("employee_reviews","employee_id", id)) || [];
     revs.sort((a,b)=> String(b.created_at||"").localeCompare(String(a.created_at||"")));
 
     const workMap = new Map((works||[]).map(w=>[w.id,w]));
@@ -206,6 +280,44 @@ window.AsgardEmployeePage=(function(){
               ? ` &middot; <span style="color:var(--t3)">РП:</span> <b>${esc((emp.on_site_info || emp.approved_info).pm_name)}</b>`
               : ""}
           </div>` : ""}
+
+        ${(canEdit || emp.planned_info) ? `
+        <details style="margin-top:12px" ${emp.planned_info || canEdit ? 'open' : ''}>
+          <summary class="kpi" style="cursor:pointer"><span style="display:inline-block;width:3px;height:14px;border-radius:2px;background:var(--info);margin-right:8px;vertical-align:middle"></span> Планируемое привлечение</summary>
+          <div style="margin-top:10px;padding:12px 14px;background:var(--bg2);border-radius:8px;border:1px solid var(--brd)">
+            ${emp.planned_info && !canEdit ? `
+              <div style="font-size:13px"><b>📋 План:</b> ${esc(emp.planned_info.work_title || '—')}</div>
+              ${emp.planned_info.pm_name ? `<div class="help" style="margin-top:4px">РП: ${esc(emp.planned_info.pm_name)}</div>` : ''}
+              ${emp.planned_info.planned_from ? `<div class="help" style="margin-top:4px">с ${new Date(emp.planned_info.planned_from).toLocaleDateString('ru-RU')}${emp.planned_info.planned_to ? ' по ' + new Date(emp.planned_info.planned_to).toLocaleDateString('ru-RU') : ''}</div>` : ''}
+              ${emp.planned_info.note ? `<div class="help" style="margin-top:4px">${esc(emp.planned_info.note)}</div>` : ''}
+            ` : canEdit ? `
+              <div class="formrow" style="margin-top:0">
+                <div style="grid-column:1/-1">
+                  <label>Проект</label>
+                  <select id="plan_work_id" class="input"></select>
+                </div>
+                <div>
+                  <label>С даты</label>
+                  <input id="plan_from" type="date" class="input" value="${esc(normalizeDateInput(emp.planned_info?.planned_from))}"/>
+                </div>
+                <div>
+                  <label>По дату</label>
+                  <input id="plan_to" type="date" class="input" value="${esc(normalizeDateInput(emp.planned_info?.planned_to))}"/>
+                </div>
+                <div style="grid-column:1/-1">
+                  <label>Комментарий</label>
+                  <input id="plan_note" class="input" value="${esc(emp.planned_info?.note || '')}" placeholder="Необязательно"/>
+                </div>
+              </div>
+              <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">
+                <button class="btn" id="btnPlanSave" type="button">Сохранить план</button>
+                ${emp.planned_info ? '<button class="btn ghost" id="btnPlanClear" type="button">Снять с плана</button>' : ''}
+              </div>
+              ${emp.on_site_info ? `<div class="help" style="margin-top:8px">Сейчас на объекте: <b>${esc(emp.on_site_info.work_title || '')}</b>. План на другой проект не меняет статус «На объекте».</div>` : ''}
+              <div class="help" style="margin-top:6px">План не создаёт назначение и не меняет статус готовности.</div>
+            ` : ''}
+          </div>
+        </details>` : ''}
 
         ${canEdit && window.AsgardPersonnelPage ? `
           <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:12px">
@@ -546,11 +658,15 @@ window.AsgardEmployeePage=(function(){
             </div>
             <div>
               <label>Размер одежды</label>
-              <input id="clothing_size" value="${esc(emp.clothing_size||"")}" placeholder="48-50" ${canEdit?"":"disabled"}/>
+              <input id="clothing_size" value="${esc(emp.clothing_size||"")}" placeholder="48-50 / M" ${canEdit?"":"disabled"}/>
             </div>
             <div>
               <label>Размер обуви</label>
-              <input id="shoe_size" value="${esc(emp.shoe_size||"")}" ${canEdit?"":"disabled"}/>
+              <input id="shoe_size" value="${esc(emp.shoe_size||"")}" placeholder="43" ${canEdit?"":"disabled"}/>
+            </div>
+            <div>
+              <label>Головной убор (каска)</label>
+              <input id="headwear_size" value="${esc(emp.headwear_size||"")}" placeholder="стандарт / 58-60" ${canEdit?"":"disabled"}/>
             </div>
             <div>
               <label>Рост (см)</label>
@@ -672,7 +788,7 @@ window.AsgardEmployeePage=(function(){
     await layout(html, {title: title || "Личное дело", motto: "Сильна дружина, где помнят имена и дела."});
 
     // ─── CRSelect: employee form fields ───
-    $('#gender_w')?.appendChild(CRSelect.create({ id: 'gender', options: [{ value: '', label: '—' }, { value: 'male', label: 'Мужской' }, { value: 'female', label: 'Женский' }], value: emp.gender || '', disabled: !canEdit }));
+    $('#gender_w')?.appendChild(CRSelect.create({ id: 'gender', options: [{ value: '', label: '—' }, { value: 'male', label: 'Мужской' }, { value: 'female', label: 'Женский' }], value: (() => { const g = String(emp.gender || '').toLowerCase(); if (['m','м','male','мужской'].includes(g)) return 'male'; if (['f','ж','female','женский'].includes(g)) return 'female'; return ''; })(), disabled: !canEdit }));
     $('#marital_status_w')?.appendChild(CRSelect.create({ id: 'marital_status', options: [{ value: '', label: '—' }, { value: 'single', label: 'Не женат/не замужем' }, { value: 'married', label: 'Женат/замужем' }, { value: 'divorced', label: 'Разведён(а)' }], value: emp.marital_status || '', disabled: !canEdit }));
     const _bloodOpts = [{ value: '', label: '—' }, { value: 'O+', label: 'O(I)+' }, { value: 'O-', label: 'O(I)−' }, { value: 'A+', label: 'A(II)+' }, { value: 'A-', label: 'A(II)−' }, { value: 'B+', label: 'B(III)+' }, { value: 'B-', label: 'B(III)−' }, { value: 'AB+', label: 'AB(IV)+' }, { value: 'AB-', label: 'AB(IV)−' }];
     $('#blood_type_w')?.appendChild(CRSelect.create({ id: 'blood_type', options: _bloodOpts, value: emp.blood_type || '', disabled: !canEdit }));
@@ -819,6 +935,72 @@ window.AsgardEmployeePage=(function(){
 
     $("#btnSchedule").onclick=()=>{ location.hash=`#/workers-schedule?emp=${id}`; };
 
+    // ── Планируемое привлечение ─────────────────────────────────────────────
+    const planWorkSel = document.getElementById("plan_work_id");
+    if (planWorkSel && canEdit) {
+      (async () => {
+        let worksList = [];
+        try {
+          const token = localStorage.getItem('asgard_token') || localStorage.getItem('auth_token') || '';
+          const r = await fetch('/api/works?limit=500', { headers: { Authorization: 'Bearer ' + token } });
+          const d = await r.json();
+          worksList = (d.works || d.items || []).filter(w => !w.deleted_at && w.work_status !== 'Архив');
+        } catch (_) {
+          worksList = (works || []).filter(w => !w.deleted_at && w.work_status !== 'Архив');
+        }
+        worksList.sort((a, b) => String(a.work_title || '').localeCompare(String(b.work_title || ''), 'ru'));
+        planWorkSel.innerHTML = '<option value="">— выберите работу —</option>' + worksList.map(w =>
+          `<option value="${w.id}"${emp.planned_info && Number(emp.planned_info.work_id) === Number(w.id) ? ' selected' : ''}>${esc((w.work_title || ('#' + w.id)).slice(0, 80))}</option>`
+        ).join('');
+      })();
+    }
+    const btnPlanSave = document.getElementById("btnPlanSave");
+    if (btnPlanSave) {
+      btnPlanSave.onclick = async () => {
+        const workId = Number(planWorkSel?.value || 0);
+        if (!workId) { toast('План', 'Выберите проект', 'err'); return; }
+        const body = {
+          work_id: workId,
+          planned_from: document.getElementById('plan_from')?.value || null,
+          planned_to: document.getElementById('plan_to')?.value || null,
+          note: (document.getElementById('plan_note')?.value || '').trim() || null,
+        };
+        try {
+          const token = localStorage.getItem('asgard_token') || localStorage.getItem('auth_token') || '';
+          const r = await fetch('/api/staff/planned-engagements/employees/' + id, {
+            method: 'PUT',
+            headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          const data = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+          if (data.warnings && data.warnings.length) toast('Предупреждение', data.warnings.join('; '), 'warn');
+          toast('План', 'Сохранён', 'ok');
+          render();
+        } catch (e) {
+          toast('План', e.message || 'Ошибка', 'err');
+        }
+      };
+    }
+    const btnPlanClear = document.getElementById("btnPlanClear");
+    if (btnPlanClear) {
+      btnPlanClear.onclick = async () => {
+        try {
+          const token = localStorage.getItem('asgard_token') || localStorage.getItem('auth_token') || '';
+          const r = await fetch('/api/staff/planned-engagements/employees/' + id, {
+            method: 'DELETE',
+            headers: { Authorization: 'Bearer ' + token },
+          });
+          const data = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+          toast('План', 'Снят с плана', 'ok');
+          render();
+        } catch (e) {
+          toast('План', e.message || 'Ошибка', 'err');
+        }
+      };
+    }
+
     // ── Кнопки статуса готовности (✓ Готов / ✗ Не готов / Архив) ─────────
     // Делегируем в AsgardPersonnelPage.openStatusModal — модалку которая
     // и так умеет менять статус через PUT /staff/readiness/:id/status,
@@ -909,6 +1091,7 @@ window.AsgardEmployeePage=(function(){
         emp.children_count=$("#children_count")?.value ? Number($("#children_count").value) : null;
         emp.clothing_size=$("#clothing_size")?.value?.trim() || "";
         emp.shoe_size=$("#shoe_size")?.value?.trim() || "";
+        emp.headwear_size=$("#headwear_size")?.value?.trim() || "";
         emp.height=$("#height")?.value ? Number($("#height").value) : null;
         emp.blood_type=CRSelect.getValue('blood_type') || "";
         emp.medical_notes=$("#medical_notes")?.value?.trim() || "";
@@ -959,6 +1142,12 @@ window.AsgardEmployeePage=(function(){
         }
 
         emp.updated_at = isoNow();
+        try {
+          await employeeApiPut('/staff/employees/' + id, buildEmployeeApiPayload(emp, canEditFinance));
+        } catch (e) {
+          toast("Ошибка", e.message || "Не удалось сохранить", "err");
+          return;
+        }
         await AsgardDB.put("employees", emp);
         toast("Сохранено","Данные обновлены");
       };

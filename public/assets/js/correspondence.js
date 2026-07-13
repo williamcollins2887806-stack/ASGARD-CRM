@@ -104,11 +104,13 @@ window.AsgardCorrespondencePage = (function(){
   // Роли с полным доступом (видят все письма, могут удалять/финализировать/создавать новые редакции).
   const FULL_ACCESS_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'OFFICE_MANAGER'];
 
-  // Роли, которым разрешено soft-delete (см. §5: только ADMIN + DIRECTOR_GEN).
-  const DELETE_ROLES = ['ADMIN', 'DIRECTOR_GEN'];
+  // Роли, которым разрешено soft-delete.
+  const DELETE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'OFFICE_MANAGER'];
 
-  // Роли, которые могут финализировать чужие письма (OFFICE_MANAGER — НЕ может, см. §5).
-  const FINALIZE_ANY_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+  // Роли, которые могут финализировать чужие письма.
+  const FINALIZE_ANY_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'OFFICE_MANAGER'];
+
+  const SEND_EMAIL_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'OFFICE_MANAGER'];
 
   function _hasRole(user, list){
     if(!user) return false;
@@ -156,34 +158,42 @@ window.AsgardCorrespondencePage = (function(){
   // Может ли user редактировать item (текст черновика).
   function canEditItem(user, item){
     if(!item) return false;
-    // Финализированное/отправленное — никто не редактирует (только new-revision).
     if(item.signing_status && item.signing_status !== 'draft') return false;
-    // OFFICE_MANAGER — НЕ редактирует (только просмотр+скачивание, см. §5).
-    if(user && (user.role === 'OFFICE_MANAGER' || (Array.isArray(user.roles) && user.roles.includes('OFFICE_MANAGER')))){
-      return false;
-    }
-    if(_hasRole(user, ['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV'])) return true;
-    // PM/HEAD_PM/TO/HEAD_TO — только своё.
+    if(_hasRole(user, ['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','OFFICE_MANAGER'])) return true;
     return isOwnItem(user, item);
   }
 
   function canFinalizeItem(user, item){
     if(!item || (item.signing_status && item.signing_status !== 'draft')) return false;
+    if(item.direction !== 'outgoing') return false;
     if(canFinalizeAny(user)) return true;
-    // PM/HEAD_PM/TO/HEAD_TO — финализируют только свои.
     if(_hasRole(user, ['PM','HEAD_PM','TO','HEAD_TO'])) return isOwnItem(user, item);
     return false;
   }
 
   function canNewRevision(user, item){
-    if(!item || item.signing_status !== 'sent') return false;
+    if(!item || !['finalized','sent'].includes(item.signing_status)) return false;
+    if(item.direction !== 'outgoing') return false;
     if(canFinalizeAny(user)) return true;
+    if(_hasRole(user, ['OFFICE_MANAGER'])) return true;
     if(_hasRole(user, ['PM','HEAD_PM','TO','HEAD_TO'])) return isOwnItem(user, item);
     return false;
   }
 
-  // === Скачивание защищённых файлов: получаем blob с Bearer-токеном, открываем как objectURL ===
-  // Аналог openProtected из desktop-v2-src/src/api/download.js — но vanilla.
+  function canSendEmail(user, item){
+    if(!item || item.direction !== 'outgoing') return false;
+    if(item.signing_status !== 'finalized') return false;
+    return _hasRole(user, SEND_EMAIL_ROLES);
+  }
+
+  function canMarkSent(user, item){
+    if(!item || item.direction !== 'outgoing') return false;
+    if(item.signing_status === 'sent') return false;
+    if(item.signing_status === 'finalized') return _hasRole(user, SEND_EMAIL_ROLES);
+    if(item.signing_status === 'draft' && item.number) return _hasRole(user, SEND_EMAIL_ROLES);
+    return false;
+  }
+
   async function openProtected(url, filename){
     try {
       const resp = await fetch(url, {
@@ -209,6 +219,62 @@ window.AsgardCorrespondencePage = (function(){
       setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
     } catch(e){
       toast('Скачивание', e.message || 'Не удалось получить файл', 'err');
+    }
+  }
+
+  async function fetchBlobUrl(url){
+    const resp = await fetch(url, { headers: { Authorization: 'Bearer ' + getToken() } });
+    if(!resp.ok){
+      const txt = await resp.text().catch(() => '');
+      throw new Error(txt || ('HTTP ' + resp.status));
+    }
+    const blob = await resp.blob();
+    return { blobUrl: URL.createObjectURL(blob), contentType: resp.headers.get('content-type') || '' };
+  }
+
+  async function previewProtected(url, title, mime){
+    try {
+      const { blobUrl } = await fetchBlobUrl(url);
+      if(window.AsgardDocPreview){
+        window.AsgardDocPreview.open({ title, fileUrl: blobUrl, mime, downloadUrl: url });
+      } else {
+        openProtected(url, title);
+      }
+    } catch(e){
+      toast('Просмотр', e.message || 'Не удалось открыть файл', 'err');
+    }
+  }
+
+  async function fetchCorrespondenceList(){
+    const tok = (window.AsgardAuth && window.AsgardAuth.token) || localStorage.getItem('asgard_token');
+    const r = await fetch('/api/data/correspondence?limit=5000', {
+      headers: { Authorization: 'Bearer ' + tok },
+      cache: 'no-store'
+    });
+    if(!r.ok) throw new Error('GET /api/data/correspondence ' + r.status);
+    const j = await r.json();
+    const raw = Array.isArray(j) ? j : (j.correspondence || j.items || j.rows || j.data || []);
+    return raw.map(it => ({
+      ...it,
+      created_by: it.created_by && typeof it.created_by === 'object'
+        ? Number(it.created_by.id) : it.created_by
+    }));
+  }
+
+  async function resolveItem(id){
+    const numId = Number(id);
+    let item = items.find(x => Number(x.id) === numId);
+    if(item) return item;
+    try {
+      const data = await apiFetch('/api/data/correspondence/' + encodeURIComponent(numId));
+      item = data?.item || data?.row || data || null;
+      if(item){
+        item.created_by = item.created_by && typeof item.created_by === 'object'
+          ? Number(item.created_by.id) : item.created_by;
+      }
+      return item;
+    } catch(e){
+      try { return await AsgardDB.get('correspondence', numId); } catch(_){ return null; }
     }
   }
 
@@ -291,20 +357,8 @@ window.AsgardCorrespondencePage = (function(){
         items = [];
       }
     } else {
-      // Общий реестр писем — прямой fetch (IDB-кэш отражал старые удалённые записи).
       try {
-        const tok = (window.AsgardAuth && window.AsgardAuth.token) || localStorage.getItem('asgard_token');
-        const r = await fetch('/api/correspondence', {
-          headers: { Authorization: 'Bearer ' + tok },
-          cache: 'no-store'
-        });
-        if (!r.ok) throw new Error('GET /api/correspondence ' + r.status);
-        const j = await r.json();
-        items = (j.correspondence || j.items || j.data || []).map(it => ({
-          ...it,
-          created_by: it.created_by && typeof it.created_by === 'object'
-            ? Number(it.created_by.id) : it.created_by
-        }));
+        items = await fetchCorrespondenceList();
       } catch(e){
         console.warn('[correspondence] fetch failed, fallback to IDB:', e.message);
         try { items = await AsgardDB.all('correspondence'); } catch(_){}
@@ -327,20 +381,8 @@ window.AsgardCorrespondencePage = (function(){
           }));
         } catch(e){ return items; }
       }
-      // Общий реестр после write-операции — прямой fetch.
       try {
-        const tok = (window.AsgardAuth && window.AsgardAuth.token) || localStorage.getItem('asgard_token');
-        const r = await fetch('/api/correspondence', {
-          headers: { Authorization: 'Bearer ' + tok },
-          cache: 'no-store'
-        });
-        if (!r.ok) throw new Error('GET /api/correspondence ' + r.status);
-        const j = await r.json();
-        return (j.correspondence || j.items || j.data || []).map(it => ({
-          ...it,
-          created_by: it.created_by && typeof it.created_by === 'object'
-            ? Number(it.created_by.id) : it.created_by
-        }));
+        return await fetchCorrespondenceList();
       } catch(e){
         console.warn('[correspondence] reloadItems fetch failed, fallback to IDB:', e.message);
         try { return await AsgardDB.all('correspondence'); } catch(_){ return items; }
@@ -353,31 +395,55 @@ window.AsgardCorrespondencePage = (function(){
 
     // Фильтры
     let filters = {
-      year: currentYear,
+      year: '',
       month: '',
       direction: '',
       docType: '',
+      signingStatus: '',
       search: ''
     };
 
+    let outgoingNumberStatus = { last: null, next: null };
+
+    async function loadOutgoingNumberStatus(){
+      try {
+        const data = await apiFetch('/api/correspondence/outgoing-number-status');
+        outgoingNumberStatus = data || { last: null, next: null };
+      } catch(e){
+        outgoingNumberStatus = { last: null, next: null };
+      }
+    }
+    await loadOutgoingNumberStatus();
+
     function filterItems(){
-      return items.filter(item => {
+      const withDate = [];
+      const withoutDate = [];
+      items.forEach(item => {
+        if(item.deleted_at) return;
         const date = item.date ? new Date(item.date) : null;
-        if(!date) return false;
-        if(filters.year && date.getFullYear() !== Number(filters.year)) return false;
-        if(filters.month !== '' && date.getMonth() !== Number(filters.month)) return false;
-        if(filters.direction && item.direction !== filters.direction) return false;
-        if(filters.docType && item.doc_type !== filters.docType) return false;
+        if(filters.year && date && date.getFullYear() !== Number(filters.year)) return;
+        if(filters.year && !date) return;
+        if(filters.month !== '' && date && date.getMonth() !== Number(filters.month)) return;
+        if(filters.month !== '' && !date) return;
+        if(filters.direction && item.direction !== filters.direction) return;
+        if(filters.docType && item.doc_type !== filters.docType) return;
+        if(filters.signingStatus){
+          const sk = item.signing_status || (item.direction === 'outgoing' && !item.number ? 'draft' : 'finalized');
+          if(sk !== filters.signingStatus) return;
+        }
         if(filters.search){
           const s = filters.search.toLowerCase();
-          const match = 
+          const match =
             (item.subject || '').toLowerCase().includes(s) ||
             (item.counterparty || '').toLowerCase().includes(s) ||
             (item.number || '').toLowerCase().includes(s);
-          if(!match) return false;
+          if(!match) return;
         }
-        return true;
-      }).sort((a,b) => String(b.date || '').localeCompare(String(a.date || '')));
+        if(date) withDate.push(item);
+        else withoutDate.push(item);
+      });
+      withDate.sort((a,b) => String(b.date || '').localeCompare(String(a.date || '')));
+      return [...withDate, ...withoutDate];
     }
 
     function calcStats(list){
@@ -634,6 +700,8 @@ window.AsgardCorrespondencePage = (function(){
               <div class="help" style="margin-top:8px">Реестр входящих и исходящих документов</div>
             </div>
             <div class="corr-header-actions">
+              <button class="btn" id="btnRefreshCorr" title="Обновить список">↻ Обновить</button>
+              <button class="btn" id="btnRegisterExternal" title="Зарегистрировать письмо с готовым Исх.№">📋 Вне CRM</button>
               <button class="btn primary" id="btnComposeLetter" title="Открыть редактор официального письма (Composer)">✉ Написать письмо</button>
               <button class="btn" id="btnAddIncoming">📥 Входящее</button>
               <button class="btn" id="btnAddOutgoing">📤 Исходящее</button>
@@ -665,11 +733,20 @@ window.AsgardCorrespondencePage = (function(){
             </div>
           </div>
 
+          ${(outgoingNumberStatus.last || outgoingNumberStatus.next) ? `
+            <div class="corr-number-status-banner" style="display:flex;flex-wrap:wrap;gap:16px 24px;align-items:center;padding:12px 16px;margin-bottom:16px;background:var(--bg3);border:1px solid rgba(148,163,184,.15);border-radius:6px;font-size:13px">
+              <div><span style="color:var(--muted)">Последний Исх.№:</span> <b style="color:var(--gold);font-family:var(--mono)">${esc(outgoingNumberStatus.last?.number || '—')}</b>${outgoingNumberStatus.last?.date ? ' <span style="color:var(--muted)">(' + esc(AsgardUI.formatDate(outgoingNumberStatus.last.date)) + ')</span>' : ''}</div>
+              <div><span style="color:var(--muted)">Следующий в CRM:</span> <b style="color:var(--info-t);font-family:var(--mono)">${esc(outgoingNumberStatus.next?.number || '—')}</b> <span style="color:var(--muted);font-size:11px">(при финализации)</span></div>
+              <button class="btn ghost" id="btnRefreshNumbers" style="margin-left:auto">↻</button>
+            </div>
+          ` : ''}
+
           <div class="corr-filters">
             <div class="corr-filter"><label>Год</label><div id="f_year_w"></div></div>
             <div class="corr-filter"><label>Месяц</label><div id="f_month_w"></div></div>
             <div class="corr-filter"><label>Направление</label><div id="f_direction_w"></div></div>
             <div class="corr-filter"><label>Тип</label><div id="f_docType_w"></div></div>
+            <div class="corr-filter"><label>Статус</label><div id="f_signingStatus_w"></div></div>
             <div class="corr-filter" style="flex:1; min-width:200px">
               <label>Поиск</label>
               <input id="f_search" placeholder="Тема, контрагент, номер..." value="${esc(filters.search)}"/>
@@ -763,10 +840,12 @@ window.AsgardCorrespondencePage = (function(){
       const _moOpts = [{ value: '', label: 'Все' }, ...MONTHS.map((m, i) => ({ value: String(i), label: m }))];
       const _dirOpts = [{ value: '', label: 'Все' }, { value: 'incoming', label: '📥 Входящие' }, { value: 'outgoing', label: '📤 Исходящие' }];
       const _dtOpts = [{ value: '', label: 'Все' }, ...DOC_TYPES.map(t => ({ value: t.key, label: t.icon + ' ' + t.label }))];
+      const _ssOpts = [{ value: '', label: 'Все статусы' }, { value: 'draft', label: '✎ Черновики' }, { value: 'finalized', label: '🔒 Финализировано' }, { value: 'sent', label: '✉ Отправлено' }];
       $('#f_year_w')?.appendChild(CRSelect.create({ id: 'f_year', options: _yrOpts, value: filters.year || '', onChange: v => { filters.year = v; corrCurrentPage = 1; renderPage(); } }));
       $('#f_month_w')?.appendChild(CRSelect.create({ id: 'f_month', options: _moOpts, value: filters.month || '', onChange: v => { filters.month = v; corrCurrentPage = 1; renderPage(); } }));
       $('#f_direction_w')?.appendChild(CRSelect.create({ id: 'f_direction', options: _dirOpts, value: filters.direction || '', onChange: v => { filters.direction = v; corrCurrentPage = 1; renderPage(); } }));
       $('#f_docType_w')?.appendChild(CRSelect.create({ id: 'f_docType', options: _dtOpts, value: filters.docType || '', onChange: v => { filters.docType = v; corrCurrentPage = 1; renderPage(); } }));
+      $('#f_signingStatus_w')?.appendChild(CRSelect.create({ id: 'f_signingStatus', options: _ssOpts, value: filters.signingStatus || '', onChange: v => { filters.signingStatus = v; corrCurrentPage = 1; renderPage(); } }));
       $('#f_search')?.addEventListener('input', e => { filters.search = e.target.value; corrCurrentPage = 1; renderPage(); });
 
       // Pagination controls
@@ -777,7 +856,18 @@ window.AsgardCorrespondencePage = (function(){
         );
       }
 
-      // S-16 (F-26): сброс фильтра по родительской сущности.
+      $('#btnRefreshCorr')?.addEventListener('click', async () => {
+        items = await reloadItems();
+        await loadOutgoingNumberStatus();
+        renderPage();
+      });
+
+      $('#btnRefreshNumbers')?.addEventListener('click', async () => {
+        await loadOutgoingNumberStatus();
+        renderPage();
+      });
+
+      $('#btnRegisterExternal')?.addEventListener('click', () => openRegisterExternalModal());
       $('#btnClearParentFilter')?.addEventListener('click', () => {
         location.hash = '#/correspondence';
       });
@@ -806,8 +896,9 @@ window.AsgardCorrespondencePage = (function(){
       $$('[data-view]').forEach(btn => {
         btn.addEventListener('click', async () => {
           const id = Number(btn.dataset.view);
-          const item = await AsgardDB.get('correspondence', id);
+          const item = await resolveItem(id);
           if(item) openViewModal(item);
+          else toast('Просмотр', 'Документ не найден', 'err');
         });
       });
 
@@ -815,10 +906,9 @@ window.AsgardCorrespondencePage = (function(){
       $$('[data-edit]').forEach(btn => {
         btn.addEventListener('click', async () => {
           const id = Number(btn.dataset.edit);
-          const item = await AsgardDB.get('correspondence', id);
+          const item = await resolveItem(id);
           if(!item) return;
           if(!canEditItem(user, item)){
-            // PM/TO попытка открыть чужое или финализированное — fallback на просмотр.
             openViewModal(item);
             return;
           }
@@ -1264,7 +1354,7 @@ window.AsgardCorrespondencePage = (function(){
 
             await audit(user.id, 'delete', item.id, { subject: item.subject, number: item.number });
 
-            await AsgardDB.del('correspondence', item.id);
+            await apiFetch('/api/correspondence/' + item.id, { method: 'DELETE' });
             toast('Документ', 'Удалён');
             if (AsgardDB.clearCache) AsgardDB.clearCache('correspondence');
             items = await reloadItems();
@@ -1301,7 +1391,109 @@ window.AsgardCorrespondencePage = (function(){
       }
     }
 
-    function openViewModal(item){
+    async function openRegisterExternalModal(){
+      let numberCheck = null;
+      const html = `
+        <div class="help" style="margin-bottom:12px">Исходящее письмо с готовым Исх.№ и сканом бланка.</div>
+        <div class="formrow">
+          <div><label>Исх. номер *</label><input id="ext_number" placeholder="АС-2026-07-042"/></div>
+          <div id="ext_number_hint" class="help" style="margin-top:4px"></div>
+          <div><label>Дата письма *</label><input id="ext_date" type="date" value="${today()}"/></div>
+          <div><label>Статус</label><div id="ext_status_w"></div></div>
+          <div id="ext_sent_row" style="display:none"><label>Дата отправки</label><input id="ext_sent_at" type="date" value="${today()}"/></div>
+          <div style="grid-column:1/-1"><label>Тема *</label><input id="ext_subject"/></div>
+          <div><label>Получатель *</label><input id="ext_counterparty"/></div>
+          <div><label>Контакт</label><input id="ext_contact"/></div>
+          <div style="grid-column:1/-1"><label>Примечание</label><textarea id="ext_note" rows="2"></textarea></div>
+          <div style="grid-column:1/-1"><label>Скан бланка *</label><input id="ext_file" type="file" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"/></div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+          <button class="btn" id="ext_cancel">Отмена</button>
+          <button class="btn primary" id="ext_save">Зарегистрировать</button>
+        </div>
+      `;
+      showModal({ title: 'Зарегистрировать вне CRM', html, icon: '📋' });
+
+      const statusOpts = [{ value: 'finalized', label: 'Финализировано' }, { value: 'sent', label: 'Уже отправлено' }];
+      let extStatus = 'sent';
+      $('#ext_status_w')?.appendChild(CRSelect.create({ id: 'ext_status', options: statusOpts, value: extStatus, onChange: v => {
+        extStatus = v;
+        const row = $('#ext_sent_row');
+        if(row) row.style.display = v === 'sent' ? '' : 'none';
+      }}));
+
+      let checkTimer = null;
+      $('#ext_number')?.addEventListener('input', (e) => {
+        clearTimeout(checkTimer);
+        const n = (e.target.value || '').trim();
+        const hint = $('#ext_number_hint');
+        if(!n){ if(hint) hint.textContent = ''; return; }
+        checkTimer = setTimeout(async () => {
+          try {
+            numberCheck = await apiFetch('/api/correspondence/check-outgoing-number', { method: 'POST', body: JSON.stringify({ number: n }) });
+            if(hint) hint.innerHTML = numberCheck.available
+              ? '<span style="color:var(--ok-t)">Номер свободен</span>'
+              : '<span style="color:var(--red)">Номер занят — документ #' + esc(String(numberCheck.conflict_id || '')) + '</span>';
+          } catch(_){ if(hint) hint.textContent = ''; }
+        }, 400);
+      });
+
+      $('#ext_cancel')?.addEventListener('click', () => AsgardUI.closeModal && AsgardUI.closeModal());
+
+      $('#ext_save')?.addEventListener('click', async () => {
+        const number = ($('#ext_number')?.value || '').trim();
+        const subject = ($('#ext_subject')?.value || '').trim();
+        const counterparty = ($('#ext_counterparty')?.value || '').trim();
+        const fileInput = $('#ext_file');
+        const file = fileInput?.files?.[0];
+        if(!number){ toast('Ошибка', 'Укажите исходящий номер', 'err'); return; }
+        if(numberCheck && !numberCheck.available){ toast('Ошибка', 'Номер уже занят', 'err'); return; }
+        if(!subject || !counterparty){ toast('Ошибка', 'Укажите тему и получателя', 'err'); return; }
+        if(!file){ toast('Ошибка', 'Приложите скан бланка', 'err'); return; }
+        try {
+          const fd = new FormData();
+          fd.append('file', file);
+          fd.append('type', 'Корреспонденция');
+          const up = await fetch('/api/files/upload', { method: 'POST', headers: { Authorization: 'Bearer ' + getToken() }, body: fd });
+          if(!up.ok) throw new Error('Не удалось загрузить файл');
+          const uploaded = await up.json();
+          const payload = {
+            registration_mode: 'external',
+            direction: 'outgoing',
+            number,
+            date: $('#ext_date')?.value || today(),
+            subject,
+            counterparty,
+            contact_person: ($('#ext_contact')?.value || '').trim() || null,
+            note: ($('#ext_note')?.value || '').trim() || null,
+            signing_status: extStatus,
+            file_path: uploaded.download_url || uploaded.filename || null,
+            doc_type: 'letter',
+            letter_kind: 'free'
+          };
+          if(extStatus === 'sent') payload.sent_at = $('#ext_sent_at')?.value || today();
+          if(hasParentFilter){
+            if(parentType === 'tender') payload.tender_id = Number(parentId);
+            if(parentType === 'work') payload.work_id = Number(parentId);
+          }
+          const resp = await apiFetch('/api/correspondence', { method: 'POST', body: JSON.stringify(payload) });
+          const newId = resp?.id || resp?.item?.id;
+          if(newId && uploaded.document_id){
+            await apiFetch('/api/correspondence/' + newId + '/link-doc', { method: 'POST', body: JSON.stringify({ document_id: uploaded.document_id }) }).catch(() => {});
+          }
+          toast('Письмо', 'Зарегистрировано · № ' + (resp?.item?.number || number));
+          if(AsgardDB.clearCache) AsgardDB.clearCache('correspondence');
+          items = await reloadItems();
+          await loadOutgoingNumberStatus();
+          AsgardUI.closeModal && AsgardUI.closeModal();
+          renderPage();
+        } catch(e){
+          toast('Ошибка', e.message || 'Не удалось зарегистрировать', 'err');
+        }
+      });
+    }
+
+    async function openViewModal(item){
       const dir = DIRECTIONS[item.direction];
       const dtype = getDocTypeInfo(item.doc_type);
       const creator = usersMap.get(Number(item.created_by));
@@ -1315,6 +1507,51 @@ window.AsgardCorrespondencePage = (function(){
       const parentItem = isRevision ? items.find(x => Number(x.id) === Number(item.parent_correspondence_id)) : null;
       const showDownloads = isOutgoing && isFinalized;
       const showNewRevision = canNewRevision(user, item);
+      const showSendEmail = canSendEmail(user, item);
+      const showMarkSent = canMarkSent(user, item);
+      const showFinalize = canFinalizeItem(user, item);
+      const showDelete = canDelete(user);
+      const showEdit = canEditItem(user, item);
+      const showBlankPreview = isOutgoing && isFinalized;
+
+      let attachments = [];
+      try {
+        const attData = await apiFetch('/api/correspondence/' + item.id + '/attachments');
+        attachments = attData?.items || [];
+      } catch(_){}
+
+      const attachmentsHtml = (attachments.length || showBlankPreview) ? `
+        <hr class="hr"/>
+        <div><label>Вложения${attachments.length ? ' (' + attachments.length + ')' : ''}</label>
+          <div style="margin-top:6px">
+            ${attachments.map((att, i) => `
+              <div style="display:flex;align-items:center;gap:8px;padding:4px 0">
+                <span>📎 ${esc(att.filename || att.name || 'Файл')}</span>
+                ${att.size ? '<span class="help">' + Math.round(att.size / 1024) + ' КБ</span>' : ''}
+                <button class="corr-btn" data-att-preview="${i}" type="button">Просмотр</button>
+              </div>
+            `).join('')}
+            ${showBlankPreview ? `
+              <div style="display:flex;align-items:center;gap:8px;padding:4px 0">
+                <span>📄 Бланк письма (PDF)</span>
+                <button class="corr-btn" id="btnPreviewBlank" type="button">Просмотр бланка</button>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      ` : '';
+
+      const actionsHtml = `
+        <hr class="hr"/>
+        <div class="corr-dl-btns" style="justify-content:flex-end">
+          ${showDelete ? '<button class="corr-btn" id="btnViewDelete" style="color:var(--red)">🗑 Удалить</button>' : ''}
+          ${showMarkSent ? '<button class="corr-btn" id="btnViewMarkSent">✉ Отметить отправленным</button>' : ''}
+          ${showSendEmail ? '<button class="corr-btn" id="btnViewSendEmail">📧 Отправить email</button>' : ''}
+          ${showNewRevision ? '<button class="corr-btn" id="btnNewRevision" style="background:var(--gold-bg);color:var(--gold)">🔁 Новая редакция</button>' : ''}
+          ${showFinalize ? '<button class="corr-btn" id="btnViewFinalize">🔒 Финализировать</button>' : ''}
+          ${showEdit ? '<button class="corr-btn primary" id="btnViewEdit">✎ Редактировать</button>' : ''}
+        </div>
+      `;
 
       const html = `
         <div style="display:flex; align-items:center; gap:12px; margin-bottom:20px; flex-wrap:wrap">
@@ -1368,13 +1605,8 @@ window.AsgardCorrespondencePage = (function(){
           <hr class="hr"/>
           <div><label>Примечание</label><div class="help">${esc(item.note)}</div></div>
         ` : ''}
-        ${item.file_path ? `
-          <hr class="hr"/>
-          <div style="display:flex;align-items:center;gap:10px">
-            <span style="font-size:20px">📎</span>
-            <a href="${esc(item.file_path)}" target="_blank" download style="color:var(--blue);font-weight:600;font-size:14px">Скачать вложение</a>
-          </div>
-        ` : ''}
+
+        ${attachmentsHtml}
 
         ${showDownloads ? `
           <hr class="hr"/>
@@ -1387,12 +1619,7 @@ window.AsgardCorrespondencePage = (function(){
           </div>
         ` : ''}
 
-        ${showNewRevision ? `
-          <hr class="hr"/>
-          <div style="display:flex; justify-content:flex-end">
-            <button class="corr-btn" id="btnNewRevision" style="background:var(--gold-bg); color:var(--gold); font-weight:700">🔁 Создать новую редакцию</button>
-          </div>
-        ` : ''}
+        ${actionsHtml}
 
         <hr class="hr"/>
         <div class="help" style="font-size:11px; color:var(--muted)">
@@ -1412,11 +1639,80 @@ window.AsgardCorrespondencePage = (function(){
         openProtected('/api/letter/' + item.id + '/render/docx', fileBase + '.docx');
       });
 
+      attachments.forEach((att, i) => {
+        $(`[data-att-preview="${i}"]`)?.addEventListener('click', () => {
+          const url = att.url || att.file_path;
+          if(url) previewProtected(url, att.filename || 'Вложение', att.mime_type || att.mime || '');
+        });
+      });
+
+      $('#btnPreviewBlank')?.addEventListener('click', () => {
+        previewProtected('/api/letter/' + item.id + '/render/pdf?with_signature=1&with_stamp=1', 'Бланк ' + (item.number || item.id), 'application/pdf');
+      });
+
+      $('#btnViewEdit')?.addEventListener('click', () => {
+        AsgardUI.closeModal && AsgardUI.closeModal();
+        openEditModal(item);
+      });
+
+      $('#btnViewFinalize')?.addEventListener('click', async () => {
+        if(!confirm('Финализировать письмо?')) return;
+        try {
+          const resp = await apiFetch('/api/correspondence/' + item.id + '/finalize', { method: 'POST', body: JSON.stringify({}) });
+          toast('Письмо', 'Финализировано · № ' + (resp?.number || ''));
+          items = await reloadItems();
+          AsgardUI.closeModal && AsgardUI.closeModal();
+          renderPage();
+        } catch(e){ toast('Ошибка', e.message || 'Не удалось финализировать', 'err'); }
+      });
+
+      $('#btnViewDelete')?.addEventListener('click', async () => {
+        if(!confirm('Удалить документ?')) return;
+        try {
+          await apiFetch('/api/correspondence/' + item.id, { method: 'DELETE' });
+          toast('Документ', 'Удалён');
+          items = await reloadItems();
+          AsgardUI.closeModal && AsgardUI.closeModal();
+          renderPage();
+        } catch(e){ toast('Ошибка', e.message || 'Не удалось удалить', 'err'); }
+      });
+
+      $('#btnViewSendEmail')?.addEventListener('click', async () => {
+        const to = (prompt('Email получателя (через запятую для нескольких):', '') || '').trim();
+        if(!to) return;
+        const emails = to.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
+        try {
+          await apiFetch('/api/letter/' + item.id + '/send-email', {
+            method: 'POST',
+            body: JSON.stringify({ to: emails.length === 1 ? emails[0] : emails, subject: item.subject, body_text: 'Добрый день!\n\nНаправляем письмо во вложении.\n\nС уважением.' })
+          });
+          toast('Письмо', 'Отправлено по email');
+          items = await reloadItems();
+          AsgardUI.closeModal && AsgardUI.closeModal();
+          renderPage();
+        } catch(e){ toast('Ошибка', e.message || 'Не удалось отправить', 'err'); }
+      });
+
+      $('#btnViewMarkSent')?.addEventListener('click', async () => {
+        const sentAt = prompt('Дата отправки (YYYY-MM-DD):', today()) || today();
+        const note = (prompt('Примечание (опц.):', '') || '').trim();
+        try {
+          await apiFetch('/api/correspondence/' + item.id + '/mark-sent', {
+            method: 'POST',
+            body: JSON.stringify({ sent_at: sentAt, channel: 'manual', note: note || undefined })
+          });
+          toast('Письмо', 'Отмечено как отправленное');
+          items = await reloadItems();
+          AsgardUI.closeModal && AsgardUI.closeModal();
+          renderPage();
+        } catch(e){ toast('Ошибка', e.message || 'Не удалось обновить статус', 'err'); }
+      });
+
       // Создание новой редакции.
       $('#btnNewRevision')?.addEventListener('click', async () => {
         const note = (prompt('Краткое примечание к новой редакции (опц.):', '') || '').trim();
         try {
-          const resp = await apiFetch('/api/correspondence/' + item.id + '/new-revision', {
+          const resp = await apiFetch('/api/letter/' + item.id + '/new-revision', {
             method: 'POST',
             body: JSON.stringify(note ? { revision_note: note } : {})
           });
