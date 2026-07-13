@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Реестр ТО — макет действий в строке</title>
+  <script>(function(){try{document.documentElement.dataset.theme='dark';}catch(e){}})();</script>
+  <link rel="stylesheet" href="assets/css/design-tokens.css"/>
+  <link rel="stylesheet" href="assets/css/components.css"/>
+  <link rel="stylesheet" href="assets/css/app.css"/>
+  <style>
+    body { margin: 0; padding: 24px; background: var(--bg, #0d1117); color: var(--t1, #e6edf3); font-family: system-ui, sans-serif; }
+    h1 { font-size: 18px; margin: 0 0 4px; }
+    .sub { color: var(--t3, #8b949e); font-size: 13px; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <h1>Реестр ТО — макет</h1>
+  <p class="sub">Одна таблица · подсветка строк с действием · сортировка по заголовкам · сброс</p>
+
+  <div class="reg-toolbar" style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <span class="muted" style="font-size:13px">142 тендера · 4 нуждают действия</span>
+    <button type="button" class="btn mini ghost" id="mockReset" hidden>↺ Сброс сортировки</button>
+    <button type="button" class="btn mini">+ Строка</button>
+  </div>
+
+  <div class="reg-table-wrap" style="overflow-x:auto">
+    <table class="tnd-table asg reg-table" style="width:100%;font-size:13px" id="mockTable">
+      <thead><tr id="mockHead"></tr></thead>
+      <tbody id="mockBody"></tbody>
+    </table>
+  </div>
+
+  <script>
+    const rows = [
+      { id: 855, customer_name: 'АО "МИХАЙЛОВСКИЙ ГОК"', tender_title: 'Гидромеханическая очистка оборудования (ФОК) в 2026г.', tender_price: 12500000, docs_deadline: '2026-07-15', registry_status: 'рассмотрение', calculator_user_name: '', action: { needs: true, type: 'assign', label: 'Назначить просчёт', tone: 'warn' } },
+      { id: 1259, customer_name: 'ООО "БАЙКАЛЬСКАЯ ЭНЕРГЕТИЧЕСКАЯ КОМПАНИЯ"', tender_title: 'Химическая промывка котлов', tender_price: 8200000, docs_deadline: '2026-07-20', registry_status: 'рассмотрение', calculator_user_name: 'Петров И.', action: { needs: true, type: 'wait', label: 'Ждёт отчёт РП', tone: 'warn' } },
+      { id: 870, customer_name: 'АО "ТАТЭНЕРГО"', tender_title: 'Гидродинамическая очистка', tender_price: 5400000, docs_deadline: '2026-08-01', registry_status: 'выиграли', calculator_user_name: '—', action: { needs: true, type: 'won', label: 'Создать работу', tone: 'success' } },
+      { id: 1080, customer_name: 'АО "ОХК УРАЛХИМ"', tender_title: 'Комплексные работы по разборке', tender_price: 3100000, docs_deadline: '2026-08-10', registry_status: 'рассмотрение', calculator_user_name: 'Сидоров', rp_final: true, action: { needs: true, type: 'decide', label: 'Решение по отчёту', tone: 'info' } },
+      { id: 959, customer_name: 'ООО МЕЧЕЛ-ЭНЕРГО', tender_title: 'Очистка трубок конденсаторов', tender_price: 2900000, docs_deadline: '2026-09-01', registry_status: 'подались', calculator_user_name: 'Иванов', action: { needs: false } },
+      { id: 867, customer_name: 'АО "АНГАРСКАЯ НЕФТЕХИМИЧЕСКАЯ КОМПАНИЯ"', tender_title: 'Реагентная чистка', tender_price: 1800000, docs_deadline: '2026-06-28', registry_status: 'рассмотрение', calculator_user_name: 'Козлов', rp_draft: true, action: { needs: true, type: 'draft', label: 'Черновик отчёта', tone: 'warn' } }
+    ];
+
+    const SORT_COLS = [
+      { key: 'customer_name', label: 'Заказчик' },
+      { key: 'tender_title', label: 'Тендер' },
+      { key: 'tender_price', label: 'НМЦ' },
+      { key: 'docs_deadline', label: 'Срок' },
+      { key: 'registry_status', label: 'Статус' },
+      { key: 'calculator_user_name', label: 'Считает' },
+      { key: '_action_sort', label: 'Действие' }
+    ];
+
+    let sortKey = null, sortDir = 1;
+    const STATUS_CLS = { рассмотрение: 'reg-st-review', готовим: 'reg-st-prep', подались: 'reg-st-submitted', выиграли: 'reg-st-won' };
+    const STATUS_PILL = { рассмотрение: 'Рассмотрение', подались: 'Подались', выиграли: 'Выиграли' };
+
+    function fmtMoney(v) { return v ? v.toLocaleString('ru-RU') + ' ₽' : '—'; }
+    function fmtDate(s) { if (!s) return '—'; const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? m[3]+'.'+m[2]+'.'+m[1] : s; }
+
+    function actionRank(r) {
+      if (!r.action.needs) return 99;
+      return { won: 0, decide: 1, assign: 2, draft: 3, wait: 4 }[r.action.type] ?? 50;
+    }
+
+    function sortRows() {
+      const list = rows.slice();
+      if (!sortKey) {
+        return list.sort((a, b) => {
+          const na = a.action.needs ? 0 : 1, nb = b.action.needs ? 0 : 1;
+          if (na !== nb) return na - nb;
+          return (b.docs_deadline || '').localeCompare(a.docs_deadline || '');
+        });
+      }
+      return list.sort((a, b) => {
+        let av = a[sortKey], bv = b[sortKey];
+        if (sortKey === '_action_sort') { av = actionRank(a); bv = actionRank(b); }
+        if (typeof av === 'number') return sortDir * (av - bv);
+        return sortDir * String(av || '').localeCompare(String(bv || ''), 'ru');
+      });
+    }
+
+    function actionCell(r) {
+      if (!r.action.needs) return '<span class="muted">—</span>';
+      let ctrl = '';
+      if (r.action.type === 'won') ctrl = '<select class="inp" style="min-width:120px;font-size:11px"><option>РП на работу</option></select><button class="btn mini">OK</button>';
+      else if (r.action.type === 'assign') ctrl = '<button class="btn mini ghost">Считаю сам</button><select class="inp" style="min-width:100px;font-size:11px"><option>РП</option></select><button class="btn mini">→</button>';
+      else if (r.action.type === 'decide') ctrl = '<button class="btn mini">Смотреть отчёт</button>';
+      else if (r.action.type === 'draft') ctrl = '<button class="btn mini ghost">Черновик</button>';
+      else ctrl = '<span class="muted" style="font-size:11px">' + (r.calculator_user_name || '') + ' считает</span>';
+      return '<div class="reg-action-head reg-action-tone-' + r.action.tone + '"><span class="reg-action-dot"></span><span class="reg-action-label">' + r.action.label + '</span></div><div class="reg-action-controls">' + ctrl + '</div>';
+    }
+
+    function render() {
+      document.getElementById('mockHead').innerHTML = SORT_COLS.map(c => {
+        const active = sortKey === c.key;
+        const ind = active ? (sortDir === 1 ? '▲' : '▼') : '';
+        return '<th><button type="button" class="reg-th-sort' + (active ? ' reg-th-sort-active' : '') + '" data-sort="' + c.key + '">' + c.label + (ind ? ' <span class="reg-sort-ind">' + ind + '</span>' : '') + '</button></th>';
+      }).join('') + '<th class="reg-th-nosort" title="Ссылка">↗</th><th class="reg-th-nosort"></th>';
+
+      document.getElementById('mockBody').innerHTML = sortRows().map(r => {
+        const a = r.action;
+        const rowCls = 'reg-row ' + (STATUS_CLS[r.registry_status] || '') + (a.needs ? ' reg-row-needs-action reg-action-tone-' + a.tone : '');
+        return '<tr class="' + rowCls + '">' +
+          '<td><span class="reg-cell-text">' + r.customer_name + '</span></td>' +
+          '<td><span class="reg-cell-text">' + r.tender_title + '</span></td>' +
+          '<td>' + fmtMoney(r.tender_price) + '</td>' +
+          '<td>' + fmtDate(r.docs_deadline) + '</td>' +
+          '<td><span class="pill ' + (STATUS_CLS[r.registry_status] || '') + '">' + (STATUS_PILL[r.registry_status] || r.registry_status) + '</span></td>' +
+          '<td class="muted">' + (r.calculator_user_name || '—') + '</td>' +
+          '<td class="reg-action-cell">' + actionCell(r) + '</td>' +
+          '<td class="reg-purchase-cell"><span class="muted">—</span></td>' +
+          '<td><button class="btn mini ghost">⋯</button></td></tr>';
+      }).join('');
+
+      document.getElementById('mockReset').hidden = !sortKey;
+    }
+
+    document.getElementById('mockTable').addEventListener('click', e => {
+      const btn = e.target.closest('.reg-th-sort');
+      if (btn) {
+        const k = btn.dataset.sort;
+        if (sortKey === k) sortDir *= -1; else { sortKey = k; sortDir = 1; }
+        render();
+      }
+    });
+    document.getElementById('mockReset').addEventListener('click', () => { sortKey = null; sortDir = 1; render(); });
+    render();
+  </script>
+</body>
+</html>

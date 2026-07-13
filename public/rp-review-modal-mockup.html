@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Отчёт РП — макет UI</title>
+  <script>(function(){document.documentElement.dataset.theme='dark';})();</script>
+  <link rel="stylesheet" href="assets/css/design-tokens.css"/>
+  <link rel="stylesheet" href="assets/css/components.css"/>
+  <link rel="stylesheet" href="assets/css/app.css"/>
+  <link rel="stylesheet" href="assets/css/rp-review-modal.css"/>
+  <style>
+    body { margin: 0; padding: 20px; background: #0d1117; color: #e6edf3; font-family: system-ui, sans-serif; }
+    .mock-switch { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+    .mock-panel { max-width: 760px; margin: 0 auto; background: #161b22; border-radius: 12px; padding: 20px; border: 1px solid #30363d; }
+  </style>
+</head>
+<body>
+  <h1 style="font-size:18px;margin:0 0 8px">Макет: отчёт РП / решение ТО</h1>
+  <p class="muted" style="font-size:13px;margin:0 0 16px">Переключите режим — так будет выглядеть модалка в CRM</p>
+  <div class="mock-switch">
+    <button type="button" class="btn mini" data-m="analysis">Анализ (РП)</button>
+    <button type="button" class="btn mini ghost" data-m="calc">Просчёт (РП)</button>
+    <button type="button" class="btn mini ghost" data-m="to">Просмотр ТО</button>
+  </div>
+  <div class="mock-panel" id="root"></div>
+  <script>
+    const T = {
+      id: 855,
+      customer_name: 'АО "МИХАЙЛОВСКИЙ ГОК ИМ. А.В. ВАРИЧЕВА"',
+      tender_title: 'Гидромеханическая и реагентная очистка оборудования (ФОК) в 2026г.',
+      tender_price: 12500000,
+      docs_deadline: '2026-07-15',
+      score: { win_chance_pct: 34 },
+      purchase_url: '#',
+      registry_status: 'рассмотрение'
+    };
+
+    function fmtMoney(v) {
+      return v ? Number(v).toLocaleString('ru-RU') + ' ₽' : '—';
+    }
+
+    function render(mode) {
+      const ro = mode === 'to';
+      const calc = mode === 'calc';
+      const h = `
+        <div class="rp-review-modal">
+          <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px">
+            <strong style="font-size:15px">📊 Отчёт РП · #${T.id}</strong>
+            <span class="rp-review-badge ${ro ? 'final' : 'draft'}">${ro ? 'Готов' : 'Черновик'}</span>
+            <span class="rp-review-badge mode-${calc ? 'calc' : 'analysis'}">${calc ? 'Полный просчёт' : 'Быстрый анализ'}</span>
+          </div>
+          <p class="muted" style="margin:0 0 10px;font-size:13px">${T.customer_name} · ${T.tender_title}</p>
+          <div class="rp-review-meta">
+            <span>НМЦ <strong>${fmtMoney(T.tender_price)}</strong></span>
+            <span>Срок <strong>15.07.2026</strong></span>
+            <span>Скор <strong>34%</strong></span>
+            <span><a href="#">↗ Закупка</a></span>
+          </div>
+          <div class="rp-review-tabs">
+            <button class="rp-review-tab active">Отчёт</button>
+            <button class="rp-review-tab">Тендер</button>
+            <button class="rp-review-tab">История</button>
+            <button class="rp-review-tab">Команда</button>
+          </div>
+          ${ro ? `
+          <div class="rp-review-summary-card submit">
+            <strong style="color:#4ade80">✓ Подаём</strong> · 8 200 000 ₽
+            <p style="margin:8px 0 0;font-size:13px">Рекомендуем участвовать: объём в компетенции, сроки реалистичны при 2 бригадах.</p>
+          </div>` : `
+          <div class="rp-review-decision-row">
+            <button type="button" class="rp-review-decision-card selected submit">
+              <div class="rp-dec-icon">✓</div>
+              <div class="rp-dec-title">Подаём</div>
+              <div class="rp-dec-hint">Рекомендуем участие</div>
+            </button>
+            <button type="button" class="rp-review-decision-card">
+              <div class="rp-dec-icon">✕</div>
+              <div class="rp-dec-title">Не подаём</div>
+              <div class="rp-dec-hint">С указанием причин</div>
+            </button>
+          </div>`}
+          ${!ro ? '<div class="rp-review-progress">Заполнено 6/9 разделов<bar><i style="width:66%"></i></bar></div>' : ''}
+          <div class="rp-review-section">
+            <div class="rp-review-section-head">Оценка и рекомендация <span class="rp-section-chevron">▼</span></div>
+            <div class="rp-review-section-body">
+              <div class="rp-review-field-row">
+                <div class="rp-review-field">
+                  <label>Выполнимость</label>
+                  <div class="rp-review-seg">
+                    <button class="on" ${ro ? 'disabled' : ''}>Да</button>
+                    <button ${ro ? 'disabled' : ''}>Условно</button>
+                    <button ${ro ? 'disabled' : ''}>Нет</button>
+                  </div>
+                </div>
+                <div class="rp-review-field">
+                  <label>Конкуренция</label>
+                  <div class="rp-review-seg">
+                    <button ${ro ? 'disabled' : ''}>Низкая</button>
+                    <button class="on" ${ro ? 'disabled' : ''}>Средняя</button>
+                    <button ${ro ? 'disabled' : ''}>Высокая</button>
+                  </div>
+                </div>
+              </div>
+              ${calc ? `<div class="rp-review-field-row">
+                <div class="rp-review-field"><label>Ориентир цены от, ₽</label><input class="inp" value="7500000" ${ro ? 'disabled' : ''}/></div>
+                <div class="rp-review-field"><label>до, ₽</label><input class="inp" value="9200000" ${ro ? 'disabled' : ''}/></div>
+              </div>` : ''}
+              <div class="rp-review-field">
+                <label>Суть для ТО <span class="req">*</span></label>
+                ${ro ? '<div class="rp-review-ro">Гидромеханическая очистка ФОК, 2 контуров, срок 14 дней на площадке.</div>' :
+                  '<textarea class="inp" rows="2">Гидромеханическая очистка ФОК...</textarea>'}
+              </div>
+              <div class="rp-review-field">
+                <label>Риски</label>
+                ${ro ? '<div class="rp-review-ro">Доступ на объект только в окно 08:00–18:00</div>' :
+                  '<textarea class="inp" rows="2"></textarea>'}
+              </div>
+              <div class="rp-review-field">
+                <label>Рекомендация РП</label>
+                ${ro ? '<div class="rp-review-ro">Участвуем при подтверждении графика с заказчиком</div>' :
+                  '<textarea class="inp" rows="2"></textarea>'}
+              </div>
+            </div>
+          </div>
+          ${calc ? `
+          <div class="rp-review-section">
+            <div class="rp-review-section-head">Объём и сроки <span class="rp-section-chevron">▼</span></div>
+            <div class="rp-review-section-body">
+              <div class="rp-review-field"><label>Объём работ (scope)</label><textarea class="inp" rows="2" ${ro?'disabled':''}></textarea></div>
+              <div class="rp-review-field-row">
+                <div class="rp-review-field"><label>Срок, дней</label><input class="inp" type="number" value="14" ${ro?'disabled':''}/></div>
+                <div class="rp-review-field"><label>Ресурсы</label><input class="inp" value="2 бригады + насосная" ${ro?'disabled':''}/></div>
+              </div>
+            </div>
+          </div>
+          <div class="rp-review-section">
+            <div class="rp-review-section-head">Финансы <span class="rp-section-chevron">▼</span></div>
+            <div class="rp-review-section-body">
+              <div class="rp-review-field"><label>Цена работ, ₽ <span class="req">*</span></label><input class="inp" value="8200000" ${ro?'disabled':''}/></div>
+              <div class="rp-review-estimate has-file"><strong>Смета_МГОК.xlsx</strong> (245 КБ) <a class="btn mini" style="margin-left:8px">Скачать</a></div>
+            </div>
+          </div>` : ''}
+          <div class="rp-review-section">
+            <div class="rp-review-section-head">Не хватает данных <span class="rp-section-chevron">▼</span></div>
+            <div class="rp-review-section-body">
+              <div class="rp-review-chips">
+                <button class="rp-review-chip on" ${ro?'disabled':''}>ТЗ</button>
+                <button class="rp-review-chip" ${ro?'disabled':''}>Объём</button>
+                <button class="rp-review-chip on" ${ro?'disabled':''}>Сроки</button>
+                <button class="rp-review-chip" ${ro?'disabled':''}>Доступ</button>
+                <button class="rp-review-chip" ${ro?'disabled':''}>Контакт</button>
+              </div>
+            </div>
+          </div>
+          ${ro ? `
+          <div class="rp-review-to-bar">
+            <h4>Решение ТО</h4>
+            <div class="rp-review-to-actions">
+              <button class="btn">Принять → Готовим</button>
+              <button class="btn ghost">На доработку</button>
+              <button class="btn ghost" style="color:#f87171">Отклонить</button>
+            </div>
+          </div>` : `
+          <div class="rp-review-footer">
+            <button class="btn ghost">Выход</button>
+            <span class="spacer"></span>
+            <button class="btn ghost">Сохранить черновик</button>
+            <button class="btn">Закрыть отчёт</button>
+          </div>`}
+        </div>`;
+      document.getElementById('root').innerHTML = h;
+      document.querySelectorAll('[data-m]').forEach(b => {
+        b.className = 'btn mini' + (b.dataset.m === mode ? '' : ' ghost');
+      });
+    }
+
+    document.querySelectorAll('[data-m]').forEach(b => b.addEventListener('click', () => render(b.dataset.m)));
+    render('analysis');
+  </script>
+</body>
+</html>
